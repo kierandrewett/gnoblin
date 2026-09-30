@@ -37,7 +37,7 @@
 #include "core/util-private.h"
 #include "core/window-private.h"
 #include "wayland/gnoblin-portal-policy.h"
-#include "wayland/meta-gnoblin-lua-pattern.h"
+#include "wayland/gnoblin-lua-pattern.h"
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-activation.h"
 #include "wayland/meta-wayland-seat.h"
@@ -10686,7 +10686,7 @@ static void native_mutter_signal_marshal(GClosure* closure, GValue* return_value
         g_variant_builder_add(&payload, "{sv}", type_name, g_variant_new_string(g_type_name(type)));
     }
     g_autoptr(GVariant) event_payload = g_variant_ref_sink(g_variant_builder_end(&payload));
-    native_runtime_dispatch_event(watch->control->display, watch->event, event_payload, NULL, NULL);
+    native_runtime_dispatch_event(watch->control, watch->event, event_payload);
 }
 
 static void clear_object_signal_watches(GObject* object, GArray* handler_ids) {
@@ -11617,6 +11617,19 @@ static GHashTable* native_runtime_event_subscriptions_from_payload(GVariant* pay
     return subscriptions;
 }
 
+static gboolean native_runtime_event_subscriptions_equal(GHashTable* left, GHashTable* right) {
+    if (g_hash_table_size(left) != g_hash_table_size(right))
+        return FALSE;
+    GHashTableIter iter;
+    gpointer event_name;
+    g_hash_table_iter_init(&iter, left);
+    while (g_hash_table_iter_next(&iter, &event_name, NULL)) {
+        if (!g_hash_table_contains(right, event_name))
+            return FALSE;
+    }
+    return TRUE;
+}
+
 static gboolean native_runtime_resume_snapshot_matches(GnoblinNativeControl* control,
                                                        GVariant* payload) {
     g_autoptr(GVariant) document =
@@ -11631,8 +11644,10 @@ static gboolean native_runtime_resume_snapshot_matches(GnoblinNativeControl* con
     guint64 operation_id_watermark = 0;
     if (!subscriptions || !control->runtime_event_subscriptions)
         return FALSE;
-    return g_hash_table_equal(subscriptions, control->runtime_event_subscriptions) && document &&
-           current_document && g_variant_lookup(payload, "settings_revision", "t", &revision) &&
+    return native_runtime_event_subscriptions_equal(subscriptions,
+                                                    control->runtime_event_subscriptions) &&
+           document && current_document &&
+           g_variant_lookup(payload, "settings_revision", "t", &revision) &&
            g_variant_lookup(payload, "runtime_generation", "t", &generation) &&
            g_variant_lookup(payload, "operation_id_watermark", "t", &operation_id_watermark) &&
            revision == gnoblin_runtime_cache_get_settings_revision(control->runtime_cache) &&
@@ -12202,8 +12217,9 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                                     "supervisor sent an invalid configuration snapshot");
             }
             if (handled) {
-                gboolean events_changed = !control->runtime_event_subscriptions ||
-                                          !g_hash_table_equal(control->runtime_event_subscriptions,
+                gboolean events_changed =
+                    !control->runtime_event_subscriptions || !next_event_subscriptions ||
+                    !native_runtime_event_subscriptions_equal(control->runtime_event_subscriptions,
                                                               next_event_subscriptions);
                 if (events_changed) {
                     g_clear_pointer(&control->runtime_event_subscriptions, g_hash_table_unref);
