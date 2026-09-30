@@ -201,16 +201,18 @@ int main(void) {
         g_variant_ref_sink(g_variant_builder_end(&api_arguments_builder));
     g_autoptr(GVariant) api_operation =
         gnoblin_config_call_api("workspace.list", api_arguments, &error);
-    g_assert_no_error(error);
-    g_assert_nonnull(api_operation);
-    g_autoptr(GVariant) api_method =
-        g_variant_lookup_value(api_operation, "method", G_VARIANT_TYPE_STRING);
-    g_assert_nonnull(api_method);
-    g_assert_cmpstr(g_variant_get_string(api_method, NULL), ==, "workspace.list");
+    g_assert_null(api_operation);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_assert_cmpstr(error->message, ==, "unknown Gnoblin API method 'workspace.list'");
+    g_clear_error(&error);
+    g_autoptr(GVariant) legacy_window_list =
+        gnoblin_config_call_api("window.list", api_arguments, &error);
+    g_assert_null(legacy_window_list);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_assert_cmpstr(error->message, ==, "unknown Gnoblin API method 'window.list'");
+    g_clear_error(&error);
     g_autoptr(GVariant) queued_api_operations = gnoblin_config_drain_runtime_operations();
-    g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 1);
-    g_autoptr(GVariant) queued_api_operation = g_variant_get_child_value(queued_api_operations, 0);
-    g_assert_true(g_variant_equal(api_operation, queued_api_operation));
+    g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 0);
 
     GVariantBuilder thumbnail_event_builder;
     g_variant_builder_init(&thumbnail_event_builder, G_VARIANT_TYPE_VARDICT);

@@ -242,7 +242,6 @@ static void push_focus_context(lua_State* state, guint64 handle, guint64 generat
 }
 
 static const char* api_methods[] = {
-    "workspace.list",
     "workspace.create",
     "workspace.rename",
     "workspace.remove",
@@ -266,7 +265,6 @@ static const char* api_methods[] = {
     "window.focus",
     "window.begin_move",
     "window.begin_resize",
-    "window.list",
     "window.match",
     "window.thumbnail",
     "layer.list",
@@ -2021,8 +2019,7 @@ static int lua_workspace_action(lua_State* state) {
 
     GVariantBuilder arguments;
     g_variant_builder_init(&arguments, G_VARIANT_TYPE_VARDICT);
-    if (g_str_equal(method, "workspace.list") || g_str_equal(method, "workspace.next") ||
-        g_str_equal(method, "workspace.previous")) {
+    if (g_str_equal(method, "workspace.next") || g_str_equal(method, "workspace.previous")) {
         if (lua_gettop(state) != 0)
             return luaL_error(state, "%s takes no arguments", method);
     } else if (g_str_equal(method, "workspace.create")) {
@@ -2180,15 +2177,13 @@ static int lua_generic_api_action(lua_State* state) {
     if (lua_gettop(state) == 0) {
         if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind"))
             return luaL_error(state, "%s requires an argument table", method);
-        if (g_str_has_prefix(method, "window.") && !g_str_equal(method, "window.list") &&
-            !g_str_equal(method, "window.match"))
+        if (g_str_has_prefix(method, "window.") && !g_str_equal(method, "window.match"))
             return luaL_error(state, "%s requires an argument table", method);
         GVariantBuilder empty;
         g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
         arguments = g_variant_builder_end(&empty);
     } else if (lua_gettop(state) == 1 && lua_istable(state, 1)) {
-        if (g_str_has_prefix(method, "window.") && !g_str_equal(method, "window.list") &&
-            !g_str_equal(method, "window.match"))
+        if (g_str_has_prefix(method, "window.") && !g_str_equal(method, "window.match"))
             window_operation_valid_args(state, method);
         if (g_str_equal(method, "input.select"))
             input_source_selector_valid_args(state);
