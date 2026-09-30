@@ -205,7 +205,7 @@ jobs:
           pacman -Syu --noconfirm --needed \
             accountsservice adwaita-cursors base-devel cmake desktop-file-utils egl-wayland \
             gcr-4 gettext git glib2-devel gnome-desktop-4 gobject-introspection \
-            gjs gtk4 \
+            gtk4 \
             libadwaita libcanberra libdisplay-info libei libibus libinput libnm libxkbcommon \
             libxkbfile libxres lua meson ninja patchelf pipewire pkgconf polkit \
             python python-docutils python-packaging sassc startup-notification \
@@ -251,7 +251,7 @@ jobs:
           pacman -U --noconfirm "$package"
           pacman -Q gnoblin
           ! pacman -Q gnoblin-gnome-integration
-          test -x /usr/lib/gnoblin/bin/gnome-shell
+          test -x /usr/lib/gnoblin/bin/gnoblin-mutter
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -x /usr/bin/gnoblinctl
           test -f /usr/share/wayland-sessions/gnoblin.desktop
@@ -315,7 +315,7 @@ jobs:
           test "${#integration_packages[@]}" -eq 1
           pacman -U --noconfirm "${packages[0]}"
           pacman -Q gnoblin
-          test -x /usr/lib/gnoblin/bin/gnome-shell
+          test -x /usr/lib/gnoblin/bin/gnoblin-mutter
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
@@ -329,7 +329,7 @@ jobs:
           done
           mapfile -t mutter_libdirs < <(find /usr/lib/gnoblin/lib -maxdepth 1 -type d -name 'mutter-*')
           test "${#mutter_libdirs[@]}" -eq 1
-          export LD_LIBRARY_PATH="/usr/lib/gnoblin/lib/gnome-shell:/usr/lib/gnoblin/lib:${mutter_libdirs[0]}"
+          export LD_LIBRARY_PATH="/usr/lib/gnoblin/lib:${mutter_libdirs[0]}"
           while IFS= read -r -d '' binary; do
             if [[ $(head -c 4 "$binary") == $'\x7fELF' ]]; then
               linkage="$(ldd "$binary" 2>&1 || true)"
