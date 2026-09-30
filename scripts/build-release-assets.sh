@@ -51,6 +51,10 @@ SOURCE_BUNDLE="$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-source.tar.
     "$GNOBLIN_VERSION" \
     "$SOURCES/mutter-$GNOME_VERSION.tar.xz" \
     "$SOURCES/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz"
+# The main source RPM consumes the same complete bundle under its Source0
+# filename. Keep this alias in the private staging directory; the public
+# release still publishes one versioned source bundle.
+install -m 0644 -- "$SOURCE_BUNDLE" "$SOURCES/gnoblin-$GNOBLIN_VERSION-source.tar.xz"
 SOURCE_BUNDLE_SHA256="$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')"
 python3 "$ROOT/scripts/sync-package-manifest.py" arch-release \
     --output "$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION.PKGBUILD" \
