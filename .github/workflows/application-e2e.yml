@@ -58,7 +58,7 @@ jobs:
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
             json-glib-devel desktop-file-utils python3 weston dbus-daemon dbus-tools
-          dnf -y builddep packaging/rpm/mutter.spec packaging/rpm/gnoblin-portal.spec
+          dnf -y builddep --allowerasing packaging/rpm/mutter.spec packaging/rpm/gnoblin-portal.spec
           useradd --create-home builder
           builder_uid="$(id -u builder)"
           install -d -o builder -g builder -m 700 "/run/user/$builder_uid"
