@@ -17,7 +17,7 @@
 %global libdisplay_info_version 0.2
 %global libinput_version 1.31.0
 %global pixman_version 0.42
-%global pipewire_version 1.6.0
+%global pipewire_version 1.4.11
 %global lcms2_version 2.6
 %global colord_version 1.4.5
 %global libei_version 1.3.901
@@ -58,7 +58,6 @@ BuildRequires: pkgconfig(glib-2.0) >= %{glib_version}
 BuildRequires: pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
 BuildRequires: pkgconfig(sm)
 BuildRequires: pkgconfig(lcms2) >= %{lcms2_version}
-BuildRequires: pkgconfig(lua)
 BuildRequires: pkgconfig(libwacom)
 BuildRequires: xkeyboard-config-devel
 BuildRequires: pkgconfig(xkbcommon)
@@ -186,13 +185,13 @@ fi
 - Remove the unused duplicate Lua event dispatch entry point.
 
 * Sun Sep 27 2026 Gnoblin contributors - 51.0-29.gnoblin
-- Return owned Lua runtime operation variants to GJS.
+- Send owned Lua operation variants from the supervisor to the native compositor.
 
 * Sun Sep 27 2026 Gnoblin contributors - 51.0-28.gnoblin
-- Own the Lua document before handing another reference to Shell.
+- Commit Lua event documents before sending updated configuration to Mutter.
 
 * Sun Sep 27 2026 Gnoblin contributors - 51.0-27.gnoblin
-- Skip Shell config-document dispatch for Lua events without listeners.
+- Skip Mutter configuration updates when a Lua event makes no document changes.
 
 * Sun Sep 27 2026 Gnoblin contributors - 51.0-26.gnoblin
 - Define Wayland support for the compositor's Gnoblin runtime API.

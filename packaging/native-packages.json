@@ -2,14 +2,13 @@
   "formatVersion": 1,
   "packages": {
     "gnoblin": {
-      "meta": true,
-      "requires": [],
-      "requiresSameMajor": ["gnoblin-session"],
+      "requires": ["cursor-theme", "dbus-tools", "dconf", "glib", "json-glib", "lua", "systemd", "wireplumber"],
+      "requiresSameMajor": ["gnoblin-mutter", "gnoblin-portal"],
       "version": "0.1.7"
     },
     "gnoblin-gnome-integration": {
       "requires": ["gvfs", "gnome-keyring", "xdg-user-dirs"],
-      "requiresSameMajor": ["gnoblin-session"],
+      "requiresExact": ["gnoblin"],
       "version": "0.1.7"
     },
     "gnoblin-mutter": {
@@ -27,18 +26,6 @@
       "requires": ["xdg-desktop-portal"],
       "source": "xdg-desktop-portal-gnome",
       "version": "51.0"
-    },
-    "gnoblin-session": {
-      "requires": ["cursor-theme", "dbus-tools", "dconf", "json-glib", "wireplumber"],
-      "requiresSameMajor": ["gnoblin-shell", "gnoblin-portal"],
-      "source": "gnome-shell",
-      "version": "51.0"
-    },
-    "gnoblin-shell": {
-      "requires": ["accountsservice", "ibus", "glib", "gjs", "gsettings-desktop-schemas"],
-      "requiresSameMajor": ["gnoblin-mutter"],
-      "source": "gnome-shell",
-      "version": "51.0"
     }
   },
   "release": {
@@ -46,19 +33,12 @@
     "gnoblinVersion": "0.1.7",
     "gnomeMajor": 51,
     "gnomeVersion": "51.0",
-    "metaRpmRelease": 20,
+    "gnoblinRpmRelease": 21,
     "mutterApi": "51",
     "mutterRpmRelease": "44.gnoblin",
     "rpmEpoch": 1
   },
   "requirements": {
-    "accountsservice": {
-      "minVersion": null,
-      "names": {
-        "arch": "accountsservice",
-        "rpm": "accountsservice-libs"
-      }
-    },
     "cursor-theme": {
       "minVersion": null,
       "names": {
@@ -78,13 +58,6 @@
       "names": {
         "arch": "dconf",
         "rpm": "dconf"
-      }
-    },
-    "gjs": {
-      "minVersion": "1.87.1",
-      "names": {
-        "arch": "gjs",
-        "rpm": "gjs"
       }
     },
     "glib": {
@@ -115,18 +88,18 @@
         "rpm": "gvfs"
       }
     },
-    "ibus": {
-      "minVersion": null,
-      "names": {
-        "arch": "libibus",
-        "rpm": "ibus-libs"
-      }
-    },
     "json-glib": {
       "minVersion": null,
       "names": {
         "arch": "json-glib",
         "rpm": "json-glib"
+      }
+    },
+    "systemd": {
+      "minVersion": null,
+      "names": {
+        "arch": "systemd-libs",
+        "rpm": "systemd"
       }
     },
     "libinput": {
@@ -136,8 +109,15 @@
         "rpm": "libinput"
       }
     },
+    "lua": {
+      "minVersion": "5.4",
+      "names": {
+        "arch": "lua",
+        "rpm": "lua-libs"
+      }
+    },
     "pipewire": {
-      "minVersion": "1.6.0",
+      "minVersion": "1.4.11",
       "names": {
         "arch": "pipewire",
         "rpm": "pipewire"
@@ -180,10 +160,6 @@
     }
   },
   "sources": {
-    "gnome-shell": {
-      "commit": "2177bdf9624b2d285de7c1d34274073d3769d6b8",
-      "version": "51.0"
-    },
     "gsettings-desktop-schemas": {
       "commit": "1db238b6a349ea7fae6f1c0713afe04d1bb7ea5c",
       "version": "51.0"
