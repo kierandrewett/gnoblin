@@ -3965,6 +3965,9 @@ static void dispatch_operation_completion_full(GnoblinNativeControl* control, gi
                                                gboolean dispatch_lua) {
     if (request_id <= 0)
         return;
+    if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
+        g_message("gnoblin-native-control: completing %s request=%" G_GINT64_FORMAT " ok=%d",
+                  method, request_id, ok);
 
     gboolean cancelled_by_restart =
         control->runtime_cancelled_operation_ids &&
@@ -9791,6 +9794,9 @@ static void write_done(GObject* source, GAsyncResult* result, gpointer user_data
     gboolean written =
         g_output_stream_write_all_finish(G_OUTPUT_STREAM(source), result, NULL, &error);
     Client* client = pending->client;
+    if (g_getenv("GNOBLIN_DEBUG_SOCKET") && !written)
+        g_message("gnoblin-native-control: socket write failed: %s",
+                  error ? error->message : "unknown error");
     client->writing = FALSE;
     client->pending_bytes -= strlen(pending->response);
     g_free(pending->response);
