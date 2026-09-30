@@ -5581,12 +5581,12 @@ static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
         } else if (g_str_equal(key, "focused")) {
             matched = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN) &&
                       g_variant_get_boolean(value) == focused;
-        } else if (g_str_equal(key, "workspace_id")) {
+        } else if (g_str_equal(key, "workspace-id")) {
             const char* expected = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)
                                        ? g_variant_get_string(value, NULL)
                                        : NULL;
             matched = expected && workspace_id && g_str_equal(expected, workspace_id);
-        } else if (g_str_equal(key, "workspace_number")) {
+        } else if (g_str_equal(key, "workspace-number")) {
             gint64 expected = 0;
             if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64)) {
                 expected = g_variant_get_int64(value);
@@ -5649,9 +5649,9 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
 
         native_rule_get_number(corners, "radius", &radius);
         native_rule_get_number(corners, "smoothing", &smoothing);
-        g_variant_lookup(corners, "keep_maximized", "b", &keep_maximized);
-        g_variant_lookup(corners, "keep_fullscreen", "b", &keep_fullscreen);
-        g_variant_lookup(corners, "keep_tiled", "b", &keep_tiled);
+        g_variant_lookup(corners, "keep-maximized", "b", &keep_maximized);
+        g_variant_lookup(corners, "keep-fullscreen", "b", &keep_fullscreen);
+        g_variant_lookup(corners, "keep-tiled", "b", &keep_tiled);
         g_autoptr(GVariant) mode_value = g_variant_lookup_value(corners, "mode", NULL);
         if (mode_value && g_variant_is_of_type(mode_value, G_VARIANT_TYPE_STRING)) {
             g_free(mode);
