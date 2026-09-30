@@ -20,7 +20,7 @@ The [configuration reference](/config/configure) describes the Lua
 settings. The [CLI](gnoblinctl.md) is convenient for commands; the
 [compositor bridge](compositor-bridge.md) supplies subscriptions and shortcuts
 to a long-running shell. [Wayland protocols](wayland-protocols.md) serve native
-clients, and [user scripts](user-scripts.md) react inside GNOME Shell.
+clients, and [Lua event handlers](user-scripts.md) react to compositor events.
 
 ## Assemble a small desktop
 
@@ -84,15 +84,15 @@ several languages.
 
 ## Choose the right interface
 
-| Task                                     | Interface                                                  |
-| ---------------------------------------- | ---------------------------------------------------------- |
-| Change a window from a script            | `gnoblinctl window ...`                                    |
-| Maintain a live switcher or dock         | Compositor bridge `windows` subscription                   |
-| Place a bar or dock                      | `zwlr_layer_shell_v1`                                      |
-| Capture output with a native client      | `zwlr_screencopy_manager_v1`, subject to its protocol gate |
-| Apply per-app styling                    | `gnoblin.window_rule` in Lua                               |
-| React to a workspace change inside Shell | GJS user script `api.on("workspace-changed", ...)`         |
-| Supply an application titlebar           | Frame rule and optional renderer service                   |
+| Task                                 | Interface                                                  |
+| ------------------------------------ | ---------------------------------------------------------- |
+| Change a window from a script        | `gnoblinctl window ...`                                    |
+| Maintain a live switcher or dock     | Compositor bridge `windows` subscription                   |
+| Place a bar or dock                  | `zwlr_layer_shell_v1`                                      |
+| Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate |
+| Apply per-app styling                | `gnoblin.window_rule` in Lua                               |
+| React to a window or workspace event | Lua callback registered with `gnoblin.events.on`           |
+| Supply an application titlebar       | Frame rule and optional renderer service                   |
 
 The desktop portal has its own permission policy. Disabling a Wayland protocol
 does not replace [portal permissions](/guides/permissions) for screen sharing or
