@@ -41,6 +41,15 @@ with open(sys.argv[1], encoding="utf-8") as stream:
     json.load(stream)
 print("WINDOWS:json")
 PY
+gnoblinctl --json workspace next > "$XDG_RUNTIME_DIR/workspace-next.json"
+python3 - "$XDG_RUNTIME_DIR/workspace-next.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    json.load(stream)
+print("WORKSPACE:next")
+PY
 SCRIPT
 )
 
@@ -54,4 +63,5 @@ grep -q 'Gnoblin is ready on nested Wayland display' <<<"$output"
 grep -q 'PING:pong' <<<"$output"
 grep -q 'CONFIG:click' <<<"$output"
 grep -q 'WINDOWS:json' <<<"$output"
+grep -q 'WORKSPACE:next' <<<"$output"
 printf '%s\n' 'PASS: Lua config and native control API work in the supervised nested runtime'
