@@ -17,6 +17,26 @@ def function_body(source: str, signature: str, end_marker: str) -> str:
 
 
 class NativeSocketTextSnapTests(unittest.TestCase):
+    def test_window_socket_events_keep_legacy_field_aliases(self):
+        source = CONTROL.read_text()
+        aliases = function_body(
+            source,
+            "static void native_window_event_add_compat_aliases(",
+            "static void publish_native_socket_event(",
+        )
+        publish = function_body(
+            source,
+            "static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
+            "static void native_publish_request_event(",
+        )
+
+        self.assertIn('{"window", "last"}', aliases)
+        self.assertIn("native_window_record_add_public_aliases", aliases)
+        self.assertIn("window_property_names[property].lua_name", aliases)
+        self.assertIn("window_property_names[property].native_name", aliases)
+        self.assertIn('g_str_has_prefix(name, "gnoblin.window.")', publish)
+        self.assertIn("native_window_event_add_compat_aliases(socket_object)", publish)
+
     def test_appearance_changes_reach_lua_and_socket_at_api_134(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()

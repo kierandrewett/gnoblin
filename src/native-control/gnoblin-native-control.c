@@ -5273,6 +5273,37 @@ static void remove_private_focus_context(JsonNode* node) {
     }
 }
 
+static void native_window_event_add_compat_aliases(JsonObject* object) {
+    const char* record_names[] = {"window", "last"};
+    for (guint i = 0; i < G_N_ELEMENTS(record_names); i++) {
+        JsonNode* record = json_object_get_member(object, record_names[i]);
+        if (record && JSON_NODE_HOLDS_OBJECT(record))
+            native_window_record_add_public_aliases(json_node_get_object(record));
+    }
+
+    JsonNode* changed_node = json_object_get_member(object, "changed");
+    if (!changed_node || !JSON_NODE_HOLDS_ARRAY(changed_node))
+        return;
+
+    JsonArray* source = json_node_get_array(changed_node);
+    JsonArray* changed = json_array_new();
+    for (guint i = 0; i < json_array_get_length(source); i++) {
+        const char* name = json_array_get_string_element(source, i);
+        if (!name)
+            continue;
+        json_array_add_string_element(changed, name);
+        for (guint property = 0; property < G_N_ELEMENTS(window_property_names); property++) {
+            if (!g_str_equal(window_property_names[property].lua_name, name) ||
+                g_str_equal(window_property_names[property].lua_name,
+                            window_property_names[property].native_name))
+                continue;
+            json_array_add_string_element(changed, window_property_names[property].native_name);
+            break;
+        }
+    }
+    json_object_set_array_member(object, "changed", changed);
+}
+
 static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {
     JsonObject* object = json_node_get_object(payload);
     const char* borrowed_name = json_object_get_string_member_with_default(object, "name", NULL);
@@ -5285,6 +5316,8 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
     json_object_set_string_member(socket_object, "event", name);
     json_object_remove_member(socket_object, "name");
     remove_private_focus_context(socket_event);
+    if (g_str_has_prefix(name, "gnoblin.window."))
+        native_window_event_add_compat_aliases(socket_object);
     g_autofree char* encoded = json_to_string(socket_event, FALSE);
     g_autofree char* line = g_strconcat(encoded, "\n", NULL);
     gint64 completed_operation_id = 0;
