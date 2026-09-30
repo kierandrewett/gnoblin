@@ -41,6 +41,8 @@ def source_remote():
 release = json.loads((root / "gnoblin-version.json").read_text())
 gnome = json.loads((root / "gnome-versions.json").read_text())
 components = gnome["components"]
+# Only list components installed by the default Gnoblin session build.
+shipped_components = {name: components[name] for name in ("mutter", "xdg-desktop-portal-gnome") if name in components}
 embedded = root / "source-provenance.json"
 provenance = json.loads(embedded.read_text()) if embedded.exists() else {}
 sha = provenance.get("gitSha") or os.environ.get("GNOBLIN_SOURCE_GIT_SHA") or git("rev-parse", "HEAD")
@@ -58,10 +60,10 @@ else:
     source_modified = bool(git("status", "--porcelain", "--untracked-files=all", "--ignore-submodules=all"))
 identity = {
     "version": release["version"],
-    "gnomeVersion": components["gnome-shell"]["version"],
+    "gnomeVersion": components["mutter"]["version"],
     "mutterApi": components["mutter"]["api"],
-    "components": {name: value["version"] for name, value in components.items()},
-    "componentCommits": {name: value["commit"] for name, value in components.items()},
+    "components": {name: value["version"] for name, value in shipped_components.items()},
+    "componentCommits": {name: value["commit"] for name, value in shipped_components.items()},
     "gitSha": sha,
     "gitRemote": remote,
     "sourceModified": source_modified,
