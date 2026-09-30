@@ -1,70 +1,47 @@
 # Source development
 
-Start with [build from source](install-source.md). This page covers rebuilding
-individual components after that first build.
+Start with [build from source](install-source.md). The source build uses Ninja
+to coordinate Gnoblin, Mutter, the portal backend, and session files.
 
-## Rebuild
+## Build a component
 
-Use the Ninja targets when rebuilding a component:
+The default command builds the complete standalone session:
+
+```sh
+./build.sh
+```
+
+To rebuild one upstream component, select its CMake target:
 
 ```sh
 ./build.sh --target mutter
+./build.sh --target xdg-desktop-portal-gnome
 ```
 
-Use `gnome-shell` or `xdg-desktop-portal-gnome` for those components. Each
-target checks its own development libraries. Mutter must be built before Shell;
-the portal target does not build either one. Run `./build.sh` for the full
-session, including Gnoblin's portal backend.
+Each target prepares its pinned source and checks its own development
+dependencies. Use the default command after rebuilding to install the complete
+session into the selected prefix.
 
-Native compositor changes need a fresh session. A config reload does not load
-rebuilt libraries.
+Native compositor changes require a fresh session. A Lua config reload does not
+load rebuilt libraries. For Lua API methods, events, and operation results, use
+the [runtime API reference](/config/runtime-api) and [event catalog](/config/lua-events).
 
-The private `mutter` executable accepts `--gnoblin-config PATH` for a native
-compositor preview. The Lua file supports:
+## Preview a change
 
-- [`protocols`](/config/configure/protocols) and
-  [`layer_shell`](/config/configure/layer_shell) for Wayland features.
-- [Top-level `workspaces`](/recipes/writing-workspace) for initial IDs and names.
-- [`window_management`](/config/configure/window_management) for focus,
-  placement, and titlebar policy.
-- [`compositor`](/config/configure/compositor) for animations and bell behavior.
-- [`autostart`](/config/configure/autostart) for launching separate clients
-  after the Wayland display is available.
-- [`shortcuts`](/config/configure/shortcuts) for command bindings on key press
-  or release, including bare Super on release.
-- [`input`](/config/configure/input) for mouse, touchpad, keyboard, tablet,
-  stylus, and orientation overrides.
-- [`keybindings`](/config/configure/keybindings) for Mutter's `wm`, `mutter`,
-  and `wayland` action groups.
+Build the nested viewer when needed and start a private Gnoblin session:
 
-Those references give each field's values and defaults. The compositor applies
-the settings at startup. Autostart commands launch once per name and inherit
-the Wayland display. Launch failures appear in the compositor journal. A config
-reload does not restart or replace a launched command.
+```sh
+./build.sh --preview
+```
 
-The native preview can load the same config file as the Shell session. It
-applies the sections listed above and logs a warning for known Shell-only
-sections and Lua event handlers that it skips. Unknown top-level sections still
-stop startup, which helps catch misspelled settings.
-
-The native shortcut path accepts named actions for the `wm`, `mutter`, and
-`wayland` groups, alongside command shortcuts.
-
-The native preview logs and skips `keybindings.shell`, `gnome:shell` actions,
-and command shortcuts with `capture_input = true`; they need the Shell session.
-Native input overrides apply at startup. A new session is needed after editing
-them; the native preview does not reload the config.
-
-The preview answers `gnoblinctl ping`, `gnoblinctl monitor list`,
-`gnoblinctl window list`, workspace management by ID or number, and basic window
-actions. It keeps connections open for multiple requests. Socket
-clients can subscribe to window snapshots with
-`{"op":"windows"}`. A Gnoblin login is still needed for the other bridge
-streams, Shell commands, and lock screen.
+The preview uses a temporary home, config, data, cache, state, runtime
+directory, and D-Bus session. It still uses the host Wayland display and may
+connect to the host PipeWire socket. This is a development session, not a
+sandbox. See the [devkit guide](/devkit) for options and isolation details.
 
 ## Choose a prefix
 
-Default: `./install`, with libraries in `lib64`.
+The default build prefix is `./install`, with libraries in `lib64`.
 
 ```sh
 GNOBLIN_LIBDIR=lib ./build.sh --prefix /tmp/gnoblin
@@ -72,22 +49,34 @@ GNOBLIN_LIBDIR=lib ./build.sh --prefix /tmp/gnoblin
 ```
 
 `GNOBLIN_LIBDIR` is relative to the prefix. Use the same prefix for subsequent
-build and devkit commands. System prefixes `/usr` and `/usr/local` are rejected.
+build and preview commands. System prefixes `/usr` and `/usr/local` are
+rejected. To add the built session to your login screen, run:
+
+```sh
+./build.sh --prefix /tmp/gnoblin --register-session
+```
 
 ## Portal backend
 
-`./build.sh` builds the Gnoblin portal backend. Register the built session with
-`./build.sh --register-session` to install its portal metadata. The portal
-frontend selects it in a Gnoblin session; a GNOME session keeps GNOME's backend.
-See [permission policy](/guides/permissions) before testing remote access.
+The default build includes Gnoblin's portal backend. Gnoblin selects it in a
+Gnoblin session; a GNOME session can continue using GNOME's backend. See
+[permission policy](/guides/permissions) when testing remote access.
 
-## Verify
+## Verify changes
 
-For a source build:
+Run deterministic checks and the native runtime tests with:
 
 ```sh
-just test-session
+just check
+just test-runtime
 ```
 
-For a Nix build, use `nix flake check` and `nix build .#gnoblin`. See [testing](testing.md) for the
-full suite and [hardware verification](real-hardware-verification.md) for login checks.
+Use `just test-preview` for an isolated live session. It requires a working
+Wayland desktop and a current build. A successful build or CTest run does not
+verify login on a real seat; see [hardware verification](real-hardware-verification.md).
+
+Keep upstream submodules at their pinned commits. Put Gnoblin-owned behavior in
+`src/`, protocol changes in `src/protocols/`, and narrow upstream fixes in
+`patches/`. Export committed subproject changes with
+[`scripts/manage-patches.py`](../scripts/manage-patches.py) so patch identity
+and headers stay consistent.
