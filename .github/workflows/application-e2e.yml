@@ -54,7 +54,7 @@ jobs:
       - name: Prepare the Fedora build environment
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
-            json-glib-devel desktop-file-utils python3 weston
+            json-glib-devel desktop-file-utils python3 weston dbus-daemon dbus-tools
           dnf -y builddep packaging/rpm/mutter.spec packaging/rpm/gnoblin-portal.spec
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           useradd --create-home builder
