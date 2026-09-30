@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-// Standalone session idle policy and freedesktop screen saver inhibition.
+// Session activity monitoring and freedesktop screen saver inhibition.
 
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
@@ -48,11 +48,9 @@ typedef struct {
     GDBusConnection* session_bus;
     GDBusConnection* system_bus;
     GDBusProxy* idle_monitor;
-    GSettings* session_settings;
     GHashTable* inhibitors;
     GMainLoop* loop;
     guint next_cookie;
-    guint idle_watch;
     guint activity_idle_watch;
     guint activity_active_watch;
     guint idle_name_watch;
@@ -66,7 +64,6 @@ typedef struct {
     guint64 activity_idle_for_ms;
 } IdleService;
 
-static void maybe_activate_idle(IdleService* service);
 static void update_activity(IdleService* service, gboolean publish);
 
 static void publish_activity(IdleService* service, gboolean available, gboolean idle,
@@ -182,56 +179,6 @@ static GVariant* call_screen_saver(IdleService* service, const char* method, GVa
                                        error);
 }
 
-static void maybe_activate_idle(IdleService* service) {
-    g_autoptr(GVariant) reply = NULL;
-    g_autoptr(GError) error = NULL;
-    guint delay = g_settings_get_uint(service->session_settings, "idle-delay");
-    guint64 elapsed = 0;
-
-    if (!service->idle_monitor || delay == 0 || g_hash_table_size(service->inhibitors) != 0)
-        return;
-
-    reply = g_dbus_proxy_call_sync(service->idle_monitor, "GetIdletime", NULL,
-                                   G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
-    if (!reply) {
-        g_warning("Could not read idle time: %s", error->message);
-        return;
-    }
-    g_variant_get(reply, "(t)", &elapsed);
-    if (elapsed >= (guint64)delay * 1000) {
-        /* Shell owns the fade, wake-up and lock delay. Its normal presence
-         * handler consumes this private signal in the standalone session. */
-        if (!g_dbus_connection_emit_signal(service->session_bus, NULL, SESSION_IDLE_PATH,
-                                           SESSION_IDLE_INTERFACE, "Idle", NULL, &error))
-            g_warning("Could not deliver idle event: %s", error->message);
-    }
-}
-
-static void replace_idle_watch(IdleService* service) {
-    g_autoptr(GVariant) reply = NULL;
-    g_autoptr(GError) error = NULL;
-    guint delay = g_settings_get_uint(service->session_settings, "idle-delay");
-
-    if (!service->idle_monitor)
-        return;
-    if (service->idle_watch)
-        g_dbus_proxy_call_sync(service->idle_monitor, "RemoveWatch",
-                               g_variant_new("(u)", service->idle_watch), G_DBUS_CALL_FLAGS_NONE,
-                               5000, NULL, NULL);
-    service->idle_watch = 0;
-    if (delay == 0)
-        return;
-
-    reply = g_dbus_proxy_call_sync(service->idle_monitor, "AddIdleWatch",
-                                   g_variant_new("(t)", (guint64)delay * 1000),
-                                   G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
-    if (!reply) {
-        g_warning("Could not register idle watch: %s", error->message);
-        return;
-    }
-    g_variant_get(reply, "(u)", &service->idle_watch);
-}
-
 static void on_idle_signal(GDBusProxy* proxy, const char* sender, const char* signal,
                            GVariant* parameters, gpointer data) {
     IdleService* service = data;
@@ -240,9 +187,7 @@ static void on_idle_signal(GDBusProxy* proxy, const char* sender, const char* si
     if (!g_str_equal(signal, "WatchFired"))
         return;
     g_variant_get(parameters, "(u)", &watch);
-    if (watch == service->idle_watch)
-        maybe_activate_idle(service);
-    else if (watch == service->activity_idle_watch) {
+    if (watch == service->activity_idle_watch) {
         service->activity_idle_watch = 0;
         update_activity(service, TRUE);
     } else if (watch == service->activity_active_watch) {
@@ -265,21 +210,15 @@ static void on_idle_appeared(GDBusConnection* connection, const char* name, cons
         return;
     }
     g_signal_connect(service->idle_monitor, "g-signal", G_CALLBACK(on_idle_signal), service);
-    replace_idle_watch(service);
     replace_activity_watches(service);
 }
 
 static void on_idle_vanished(GDBusConnection* connection, const char* name, gpointer data) {
     IdleService* service = data;
-    service->idle_watch = 0;
     service->activity_idle_watch = 0;
     service->activity_active_watch = 0;
     g_clear_object(&service->idle_monitor);
     publish_activity(service, FALSE, FALSE, 0);
-}
-
-static void on_idle_setting_changed(GSettings* settings, const char* key, gpointer data) {
-    replace_idle_watch(data);
 }
 
 static gboolean remove_disconnected_inhibitor(gpointer key, gpointer value, gpointer data) {
@@ -296,9 +235,7 @@ static void on_name_owner_changed(GDBusConnection* connection, const char* sende
     g_variant_get(parameters, "(&s&s&s)", &name, &old_owner, &new_owner);
     if (name[0] != ':' || new_owner[0] != '\0')
         return;
-    if (g_hash_table_foreach_remove(service->inhibitors, remove_disconnected_inhibitor,
-                                    (gpointer)name) != 0)
-        maybe_activate_idle(service);
+    g_hash_table_foreach_remove(service->inhibitors, remove_disconnected_inhibitor, (gpointer)name);
 }
 
 static int take_logind_idle_lock(IdleService* service, const char* application, const char* reason,
@@ -372,7 +309,6 @@ static void handle_method_call(GDBusConnection* connection, const char* sender, 
         }
         g_hash_table_remove(service->inhibitors, GUINT_TO_POINTER(cookie));
         g_dbus_method_invocation_return_value(invocation, NULL);
-        maybe_activate_idle(service);
         return;
     }
 
@@ -449,9 +385,6 @@ int main(int argc, char** argv) {
         g_error("Could not export session activity interface: %s", error->message);
 
     service.inhibitors = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, inhibitor_free);
-    service.session_settings = g_settings_new("org.gnome.desktop.session");
-    g_signal_connect(service.session_settings, "changed::idle-delay",
-                     G_CALLBACK(on_idle_setting_changed), &service);
     service.dbus_owner_signal = g_dbus_connection_signal_subscribe(
         service.session_bus, "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
         "/org/freedesktop/DBus", NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_name_owner_changed, &service,
@@ -476,7 +409,6 @@ int main(int argc, char** argv) {
     g_dbus_connection_signal_unsubscribe(service.session_bus, service.screensaver_signal);
     g_hash_table_unref(service.inhibitors);
     g_clear_object(&service.idle_monitor);
-    g_clear_object(&service.session_settings);
     g_clear_object(&service.system_bus);
     g_clear_object(&service.session_bus);
     g_main_loop_unref(service.loop);
