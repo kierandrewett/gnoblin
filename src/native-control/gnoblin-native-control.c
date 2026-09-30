@@ -5240,8 +5240,14 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
     if (operation_completion)
         completed_operation_id = json_object_get_int_member(object, "operation_id");
     GList* clients = g_hash_table_get_keys(control->clients);
+    if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
+        g_message("gnoblin-native-control: delivery snapshot event=%s hash_size=%u list_length=%u",
+                  name, g_hash_table_size(control->clients), g_list_length(clients));
     for (GList* item = clients; item; item = item->next) {
         Client* client = item->data;
+        if (g_getenv("GNOBLIN_DEBUG_SOCKET"))
+            g_message("gnoblin-native-control: delivery candidate event=%s client=%p", name,
+                      (void*)client);
         gboolean subscribed = client->event_api_minor >= 9 && client->event_subscriptions &&
                               g_hash_table_contains(client->event_subscriptions, name);
         if (g_str_equal(name, "gnoblin.operation.completed") && completed_operation_id > 0 &&
