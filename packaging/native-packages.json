@@ -124,7 +124,7 @@
       }
     },
     "wayland": {
-      "minVersion": "1.26",
+      "minVersion": "1.25",
       "names": {
         "arch": "wayland",
         "rpm": "libwayland-client"
