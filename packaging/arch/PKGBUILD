@@ -8,7 +8,7 @@ arch=('x86_64')
 url='https://github.com/kierandrewett/gnoblin'
 license=('GPL-2.0-or-later')
 makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4' 'json-glib' 'libadwaita' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' 'lua>=5.4' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
-depends=('adwaita-cursors' 'dbus' 'dconf' 'glib2>=2.86.0' 'gsettings-desktop-schemas>=51.0' 'json-glib' 'libinput>=1.31.0' 'lua>=5.4' 'pipewire>=1.4.11' 'systemd-libs' 'wayland>=1.26' 'wireplumber' 'xdg-desktop-portal>=1.21.1' 'glycin' 'gtk4' 'libadwaita' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libsecret' 'polkit' 'startup-notification')
+depends=('adwaita-cursors' 'dbus' 'dconf' 'glib2>=2.86.0' 'gsettings-desktop-schemas>=51.0' 'json-glib' 'libinput>=1.31.0' 'lua>=5.4' 'pipewire>=1.4.11' 'systemd-libs' 'wayland>=1.25' 'wireplumber' 'xdg-desktop-portal>=1.21.1' 'glycin' 'gtk4' 'libadwaita' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libsecret' 'polkit' 'startup-notification')
 
 source=("$pkgname-$pkgver-gnome-51.0-source.tar.xz::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v$pkgver/$pkgname-$pkgver-gnome-51.0-source.tar.xz")
 sha256sums=('SKIP')

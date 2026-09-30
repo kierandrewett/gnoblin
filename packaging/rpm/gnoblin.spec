@@ -28,7 +28,7 @@ Requires:       libinput >= 1.31.0
 Requires:       lua-libs >= 5.4
 Requires:       pipewire >= 1.4.11
 Requires:       systemd
-Requires:       libwayland-client >= 1.26
+Requires:       libwayland-client >= 1.25
 Requires:       wireplumber
 Requires:       xdg-desktop-portal >= 1.21.1
 Requires:       gnoblin-mutter = 51.0-44.gnoblin%{?dist}
