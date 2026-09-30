@@ -789,7 +789,8 @@ API 1.22 extends `shortcut.bind` with four optional fields:
 Subscribe to `gnoblin.shortcut.session.activated`,
 `gnoblin.shortcut.session.key`, and `gnoblin.shortcut.session.ended` to receive
 session events. `session.key` carries the key value, key code, modifiers, and
-whether the key was pressed or released.
+whether the key was pressed or released. If the Lua runtime stops while a
+socket client owns the active session, Gnoblin ends it with `runtime_stopped`.
 
 Modal and bare-Super sessions capture those key events for the shell instead
 of delivering them to the focused application. A session ends when its held

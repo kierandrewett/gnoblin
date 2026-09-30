@@ -1138,7 +1138,9 @@ Socket clients can subscribe to the following API 1.22 events:
   `keyval`, `keycode`, `modifiers`, `phase` (`press` or `release`), and `time`.
 - `gnoblin.shortcut.session.ended` when a session ends. Reasons are `released`,
   `unbound`, `owner_disconnected`, `config_changed`, `locked`, `preempted`,
-  `timed_out`, and `compositor_stopped`.
+  `timed_out`, `compositor_stopped`, and `runtime_stopped`. The last reason is
+  sent to a socket client when the Lua runtime stops while that client owns the
+  active session.
 
 `gnoblin.shortcut.binding-activated` remains available from API 1.11. Its first
 trusted activation can carry a connection-bound, one-use `focus_context` token.
