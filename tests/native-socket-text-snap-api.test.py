@@ -35,6 +35,25 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             with self.subTest(method=method):
                 self.assertIn(f'"{method}"', methods)
 
+    def test_window_match_uses_native_query_and_is_advertised(self):
+        source = CONTROL.read_text()
+        connected = function_body(
+            source,
+            "static gboolean client_connected(",
+            "GVariant* gnoblin_native_control_receive_runtime_config(",
+        )
+        methods = connected.split("static const char* methods[] = {", 1)[1].split("NULL,", 1)[0]
+        dispatcher = function_body(
+            source,
+            'if (g_str_equal(method, "window.match")) {',
+            'if (g_str_equal(method, "window.focus")) {',
+        )
+
+        self.assertIn('"window.match"', methods)
+        self.assertIn("meta_gnoblin_dispatch_native_api", dispatcher)
+        self.assertIn("client->control->display, method, arguments, &error", dispatcher)
+        self.assertNotIn("queue_runtime_api_request", dispatcher)
+
     def test_window_socket_events_keep_legacy_field_aliases(self):
         source = CONTROL.read_text()
         aliases = function_body(

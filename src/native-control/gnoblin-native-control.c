@@ -10340,6 +10340,37 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 id, NULL,
                 "native window.action focus is denied; use window.focus with a live focus_context");
     }
+    if (g_str_equal(method, "window.match")) {
+        JsonObject* arguments_object = arguments_node && JSON_NODE_HOLDS_OBJECT(arguments_node)
+                                           ? json_node_get_object(arguments_node)
+                                           : NULL;
+        if ((arguments_node && !arguments_object) ||
+            (arguments_object && json_object_get_size(arguments_object) > 1))
+            return encode_response(id, NULL,
+                                   "window.match accepts only an optional string window selector");
+        if (arguments_object) {
+            GList* keys = json_object_get_members(arguments_object);
+            gboolean valid =
+                !keys || (keys->next == NULL && g_str_equal((const char*)keys->data, "window"));
+            g_list_free(keys);
+            JsonNode* window_node = json_object_get_member(arguments_object, "window");
+            if (!valid || (window_node && (!JSON_NODE_HOLDS_VALUE(window_node) ||
+                                           json_node_get_value_type(window_node) != G_TYPE_STRING)))
+                return encode_response(
+                    id, NULL, "window.match accepts only an optional string window selector");
+        }
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) arguments = arguments_node
+                                            ? variant_from_json(arguments_node)
+                                            : g_variant_ref_sink(g_variant_builder_end(&empty));
+        g_autoptr(GVariant) result =
+            meta_gnoblin_dispatch_native_api(client->control->display, method, arguments, &error);
+        if (!result)
+            return encode_response(id, NULL, error ? error->message : "window match failed");
+        g_autoptr(JsonNode) json = json_from_variant(result);
+        return encode_response(id, json, NULL);
+    }
     if (g_str_equal(method, "window.focus")) {
         JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
         g_autoptr(GVariant) result = native_socket_focus_window(client, arguments, &error);
@@ -11111,6 +11142,7 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         "grant.revoke",
         "portals.grants",
         "window.list",
+        "window.match",
         "window.thumbnail",
         "window.snap.offer",
         "window.action",
