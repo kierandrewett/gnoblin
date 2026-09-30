@@ -1241,7 +1241,9 @@ that match Lua records. New clients should use:
 - `last_user_time`;
 - `frame`, which aliases the previous `geometry` field.
 
-The previous camelCase fields remain in API 1.x responses for compatibility.
+API 1.x retains camelCase fields for compatibility. Socket window lifecycle
+events include both naming styles in `window` and `last` records, and list both
+spellings in `changed`. Lua callbacks use snake_case names only.
 
 ## Limits and disconnects
 
