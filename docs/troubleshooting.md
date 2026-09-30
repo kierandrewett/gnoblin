@@ -81,8 +81,9 @@ or edit its entries after the component loads.
 
 ## A window rule does not match
 
-Every matcher must match. Text matchers use JavaScript regex, not Lua patterns.
-Check anchors, escaping and the raw app ID. See [window rules](/guides/window_rules).
+Every matcher must match. Text matchers use case-sensitive Lua patterns, not
+JavaScript or PCRE regex. Check anchors, escaping (`%.` matches a literal
+dot), and the raw app ID. See [window rules](/guides/window_rules).
 
 ## A shortcut fails
 
