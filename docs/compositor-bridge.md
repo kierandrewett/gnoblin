@@ -8,23 +8,18 @@ shell read windows and request window actions.
 For terminal commands and scripts, [gnoblinctl](gnoblinctl.md) handles the
 connection for you.
 
+Jump to the bridge's [API versions](#availability), [request format](#connect),
+[operation reference](#operation-index), [common UI patterns](#example-watch-the-window-list),
+or [connection limits](#limits-and-disconnects):
+
 ## Availability
 
 The bridge is a built-in Gnoblin compositor service. It starts with the
-Gnoblin Shell component, stays available across `gnoblinctl reload`, and does
-not need to be installed under `~/.config/gnoblin/scripts/`.
-
-The native compositor preview started with `mutter --gnoblin-config PATH` has
-a limited endpoint at the same socket path. It sends `hello` with an empty
-`features` list and accepts multiple API requests on one connection. It
-supports ping, window, monitor, layer, input-device, and XKB input-source
-listing, workspace management by ID or number, and basic window actions.
+standalone session and remains available across Lua configuration reloads.
 
 The greeting lists the methods, events, and capabilities available in the
-preview. `monitor.list` returns active connector names as IDs and the current
-numeric `index` used by compatibility actions. For a logical monitor that
-combines cloned outputs, Gnoblin uses the lexicographically first active
-connector.
+current build. `monitor.list` returns active connector names as IDs and the
+current numeric `index` used by compatibility actions.
 
 `layer.list` returns layer-shell surfaces with stable IDs, layer placement,
 anchor, exclusive zone, keyboard-interactivity mode, geometry, and their
@@ -50,12 +45,13 @@ lifecycle messages. `hello.events` lists available messages, and
 `hello.capabilities` includes `window-lifecycle-events`,
 `workspace-lifecycle-events`, and `monitor-lifecycle-events`.
 
-API version 1.2 adds `layer.list` and the `layer-list` capability. Its optional
-`monitor_id`, `namespace`, and `layer` arguments are exact string filters. Layer
-snapshots use the same state revision as window, workspace, and monitor
-snapshots. The preview does not send layer lifecycle events.
-Request API version 1.2 when calling `layer.list`; older or versionless
-requests receive an unsupported-version error. For example:
+API 1.2 adds `layer.list` and the `layer-list` capability. The method accepts
+exact-string filters for `monitor_id`, `namespace`, and `layer`. Its snapshots
+share the state revision used by windows, workspaces, and monitors. The bridge
+does not send layer lifecycle events.
+
+Request API 1.2 or newer; older and versionless requests receive an
+unsupported-version error:
 
 ```json
 { "op": "api", "id": "layers", "api_version": { "major": 1, "minor": 2 }, "method": "layer.list", "arguments": {} }
@@ -95,7 +91,7 @@ version 1.4 to receive lifecycle events:
 ### API version 1.5: shortcut actions
 
 API version 1.5 adds `shortcut.actions` to list built-in Mutter and window
-manager shortcut actions without GNOME Shell. Its optional `group` argument
+manager shortcut actions. Its optional `group` argument
 accepts `wm`, `mutter`, or `wayland`. Omit it to list all installed groups.
 
 Each result record contains `id`, `group`, `key`, and `default_bindings`. A
@@ -122,7 +118,7 @@ shortcuts configured for the native compositor. Each record contains `name`,
 A record also contains a `command` argument array or an `action` identifier.
 One binding is returned as a string; multiple bindings are returned as an
 array. A built-in action with no bindings has `enabled: false`. Disabled
-declarations and shell integration shortcuts are not included.
+declarations and shortcuts registered outside Gnoblin are not included.
 
 ```json
 {
@@ -219,13 +215,11 @@ The stream reports `unfocused` before `focused` when focus moves between
 windows. Focus changes do not also emit `changed` solely because the focus
 field changed. Versionless and 1.0 subscriptions receive snapshots only.
 
-The preview does not provide other subscription types, bindings, or Shell commands.
-Its workspace IDs belong to Mutter and follow their workspace objects. Its
-window records use the GTK app ID or
-WM class because Shell's application tracker is not active in this preview.
+The compositor uses Mutter workspace IDs. Window records use the GTK app ID or WM
+class; Gnoblin does not run a Shell application tracker.
 
-`gnoblinctl window list` uses the same socket. Check `gnoblinctl status` before
-debugging a client connection.
+Use `gnoblinctl window list` to check whether the bridge can return its current
+window snapshot.
 
 If the socket pathname disappears or stops accepting connections while Gnoblin
 is running, the bridge restores it within a few seconds. Clients should retry
@@ -243,28 +237,33 @@ _Bingux is one shell example built on Gnoblin's compositor interfaces._
 Socket: `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
 Use `GNOBLIN_COMPOSITOR_SOCKET` on both ends for a private test path.
 
-The server sends a greeting, including available features:
+The server sends a greeting with its API version, current state revision,
+methods, events, and capabilities. The `features` array is empty.
+
+Send one UTF-8 JSON object per line, followed by a newline, and keep the
+connection open.
+
+`state_revision` is the latest revision for compositor state. `revision_scope`
+names the kinds of state covered by that revision:
+
+- windows, workspaces, monitors, and layer surfaces;
+- input devices and input sources.
+
+The revision advances when any covered state changes. Launch feedback uses a
+separate revision on each launch record and `gnoblin.launch.changed` event.
+
+Clients can request a protocol version with `api_version`, an object with
+`major` and `minor` integer fields. The equivalent top-level `api_major` and
+`api_minor` integer fields are also accepted.
+
+Send a transport ping to confirm that the socket responds; it does not require
+an API version:
 
 ```json
-{ "event": "hello", "version": 1, "features": ["ui-sessions", "switcher-fallback", "overlay-shortcut"] }
+{ "op": "ping", "id": "health-check" }
 ```
 
-Additional features depend on the running build. Send one UTF-8 JSON object
-per line, followed by a newline. Keep the connection open.
-
-The native compositor preview greeting reports its API version and lists
-supported methods, events, and capabilities. `state_revision` is the latest
-revision for the preview state.
-
-`revision_scope` names the window, workspace, monitor, layer, input-device,
-and input-source state covered by that revision. It advances when any of those
-states change. Launch feedback uses its own revision on each launch record and
-`gnoblin.launch.changed` event.
-The full shell bridge may advertise additional features.
-
-Native preview clients may request an API version with `api_version`, which
-contains `major` and `minor` fields. The equivalent `api_major` and `api_minor`
-fields are also accepted.
+The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 
 | Minimum version | Added methods or events                                                                               |
 | --------------- | ----------------------------------------------------------------------------------------------------- |
@@ -281,6 +280,361 @@ fields are also accepted.
 | 1.13            | `gnoblin.focus.policy-changed`                                                                        |
 | 1.14            | Portal grant listing and revocation                                                                   |
 | 1.15            | Portal grant snapshots and lifecycle events                                                           |
+| 1.16            | Permission policy snapshots and `gnoblin.permission.changed`                                          |
+| 1.17            | Privacy state reads and `gnoblin.privacy.changed`                                                     |
+| 1.18            | Animation registry, preview operations, and animation lifecycle events                                |
+| 1.19            | Shared Lua reads for version, capabilities, focus, and settings                                       |
+| 1.20            | Native `runtime.reload_config` for supported runtime settings                                         |
+| 1.21            | `session.lock` and compositor-confirmed lock-state events                                             |
+| 1.22            | Held and modal shortcut sessions, bare-Super capture, and forwarded key events                        |
+| 1.23            | `window.thumbnail` and the `window-thumbnails` capability                                             |
+| 1.24            | `session.activity`, activity-change events, and the `session-activity` capability                     |
+| 1.26            | Pointer-drag lifecycle events and capability-bound `window.snap.offer`                                |
+| 1.27            | `gnoblin.window.menu-requested` and `gnoblin.osd.requested`                                           |
+| 1.28            | Connection-owned text targets and keyboard snap contexts                                              |
+| 1.29            | `session.status` live-state read                                                                      |
+| 1.30            | One-use WM menu capabilities for target-bound move and resize grabs                                   |
+| 1.31            | Privacy session stop methods and the `layer.animation_policy` shared read                             |
+| 1.32            | XDG Activation token focus and `session.logout`                                                       |
+| 1.33            | `microphone-monitor` availability and `gnoblin.capability.changed`                                    |
+| 1.34            | `gnoblin.appearance.color-scheme-changed`                                                             |
+| 1.35            | Snake_case aliases for window snapshot fields                                                         |
+
+### API 1.27: shell presentation requests
+
+Subscribe to `gnoblin.window.menu-requested` and `gnoblin.osd.requested` to
+handle requests that previously depended on shell-owned UI. Gnoblin reports
+requests; the external shell owns their presentation.
+
+The window-menu event contains:
+
+- `window_id`: the stable Gnoblin window ID;
+- `menu_type`: `wm` for a window manager menu or `app` for an application menu;
+- `x` and `y`: global logical coordinates from Mutter.
+
+The OSD event contains the stable `monitor_id` and, when provided, `icon` and
+`label`. Mutter supplies no level, maximum, or output list.
+
+### API 1.30: WM menu actions
+
+API 1.30 adds a `menu_context` capability to `gnoblin.window.menu-requested`
+only when `menu_type` is `wm`. `app` menu requests remain informational and
+carry no authority. The opaque token is unique to the receiving connection,
+expires after five seconds, and is bound to the exact live window that raised
+the WM menu. It is not an expiry timestamp or a reusable window ID.
+
+Use the token with the existing interactive-grab methods without supplying a
+window ID:
+
+```json
+{
+    "op": "api",
+    "id": "menu-move",
+    "api_version": { "major": 1, "minor": 30 },
+    "method": "window.begin_move",
+    "arguments": { "menu_context": "TOKEN_FROM_WM_MENU_EVENT" }
+}
+```
+
+`window.begin_resize` accepts the same token and an `edge` from the eight
+`ResizeEdge` values documented for API 1.12. Each token authorizes one
+operation and is consumed even when its arguments are invalid.
+
+A request rejected for an unsupported API version or a minor below 1.30 still
+consumes its matching token; request a new WM menu event before retrying.
+
+Before starting Mutter's keyboard grab with a fresh compositor timestamp,
+Gnoblin resolves the original window again and checks that it is live and
+movable or resizable. It also checks that the session is unlocked. Disconnect,
+event-subscription replacement, session lock, runtime/config teardown, and use
+revoke the token.
+
+### API 1.28: text insertion and keyboard snapping
+
+Subscribe to `gnoblin.shortcut.activated` and pass its one-use
+`focus_context` to `input.text_target`:
+
+```json
+{
+    "op": "api",
+    "api_version": { "major": 1, "minor": 28 },
+    "id": "text-target-1",
+    "method": "input.text_target",
+    "arguments": { "focus_context": "<token from the event>" }
+}
+```
+
+The response contains an opaque `target`, and may include `window_id` and
+`caret`. Pass the target to `input.insert_text` with the text:
+
+```json
+{
+    "op": "api",
+    "api_version": { "major": 1, "minor": 28 },
+    "id": "insert-text-1",
+    "method": "input.insert_text",
+    "arguments": { "target": "<target from the response>", "text": "😀" }
+}
+```
+
+Text must be 1–256 bytes of valid UTF-8, with no NUL or control characters.
+Insertion requires the same active text-input-v3 client and focus epoch, an
+unlocked session, and the allowed modifier state unchanged. Success returns
+`inserted: true`. X11 clients are unsupported.
+
+For keyboard-selected layouts, pass the shortcut event's `focus_context` to
+`window.snap_context`. Gnoblin binds the context to the focused movable window.
+
+```json
+{
+    "op": "api",
+    "api_version": { "major": 1, "minor": 28 },
+    "id": "snap-context-1",
+    "method": "window.snap_context",
+    "arguments": { "focus_context": "<token from the event>" }
+}
+```
+
+The response includes an opaque, connection-bound `context`. It also reports
+`window_id`, `monitor_id`, monitor geometry, and work-area geometry. The
+context expires after five seconds; its expiry timestamp is not exposed. Use it
+with a frame inside the selected monitor's work area:
+
+```json
+{
+    "op": "api",
+    "api_version": { "major": 1, "minor": 28 },
+    "id": "snap-1",
+    "method": "window.snap",
+    "arguments": {
+        "context": "<context from the response>",
+        "monitor_id": "<active monitor ID>",
+        "frame": { "x": 0, "y": 0, "width": 700, "height": 900 }
+    }
+}
+```
+
+`window.snap` checks the monitor and work-area bounds before moving the window.
+Success returns `committed: true`, `window_id`, and `monitor_id`.
+
+Targets and contexts belong to the connection that created them:
+
+- Other connections cannot use or consume them.
+- The owner loses a token on its first commit attempt, even if another
+  argument is invalid.
+- Gnoblin revokes tokens when the owner disconnects, replaces its event
+  subscription, locks the session, or reloads the config.
+- The compositor retains at most 128 active text targets and 128 active snap
+  contexts. Creation fails at the limit until a token expires or is revoked.
+
+### Pointer snap offers
+
+Subscribe before a move begins to receive drag state:
+
+- `gnoblin.window.drag.started` starts a drag record.
+- `gnoblin.window.drag.updated` refreshes its pointer and monitor state.
+- `gnoblin.window.drag.ended` reports its result.
+
+Started and updated events include an unpredictable `drag_token` for the
+receiving connection. Use it on that same connection to call
+`window.snap.offer` with the event's `id` as `drag_id`.
+
+An offer contains 1 to 128 targets. Each target has a unique `id` and integer
+logical-coordinate `hit` and `frame` rectangles. Both rectangles must fit in
+the current work area.
+
+Targets may also set `maximize`, `required_modifiers`, or
+`forbidden_modifiers`. Modifier filters currently accept only `control`.
+
+The token is bound to the connection, live drag, and runtime generation. The
+first accepted Lua or socket offer owns the drag; only its owner can replace
+the target list. Disconnect or replacing the event subscription revokes a
+socket token and clears its offer.
+
+Mutter rechecks the release pointer, modifiers, monitor, and work area before
+applying a match. Trusted keyboard `SnapContext` is available to Lua only.
+
+The socket exposes these reads at the listed API versions:
+
+| API version | Socket method       | Lua read                        | Arguments                             |
+| ----------- | ------------------- | ------------------------------- | ------------------------------------- |
+| 1.19        | `version`           | `gnoblin.version()`             | None                                  |
+| 1.19        | `capabilities.list` | `gnoblin.capabilities.list()`   | None                                  |
+| 1.19        | `focus.history`     | `gnoblin.focus.history(filter)` | `workspace_id`, `monitor_id`, `limit` |
+| 1.19        | `settings`          | `gnoblin.settings`              | None                                  |
+| 1.19        | `focus.policy`      | `gnoblin.focus.policy`          | None                                  |
+| 1.24        | `session.activity`  | `gnoblin.session.activity()`    | None                                  |
+| 1.29        | `session.status`    | `gnoblin.session.status()`      | None                                  |
+
+The result includes:
+
+- `state: "running"` when the compositor answers the request.
+- `lock_available`, plus `lock_state` when that value is true.
+
+Mutter answers this socket read directly from its current state, so the read
+does not require the Lua supervisor. It reports compositor availability, not
+Lua supervisor health. The socket cannot report a final state after the
+compositor stops; a failed connection means the compositor is unavailable.
+
+API 1.20 adds `runtime.reload_config()` with no arguments. In a standalone
+native session, reload applies changes to these settings:
+
+- `animations`
+- `input`
+- `permissions`
+- `touchpad-gestures`
+- `window-rules`
+- `workspaces`
+
+Any other setting change is rejected and leaves the active runtime unchanged.
+Start a new session to apply it. The native open-animation matcher uses updated rules for windows mapped after
+reload. Reload does not replay open animations for windows already mapped.
+
+The result contains `ok: true`, `action: "config reload"`, and
+`runtime_generation`. This is the generation the new runtime will receive if
+Gnoblin activates the new config.
+
+The Lua operation succeeds after Gnoblin loads and validates the new config.
+It does not mean the config is active yet. Subscribe to
+`gnoblin.config.reloaded` to know when the new config is active. If the
+session stops first, Gnoblin discards the new config and does not send this
+event.
+
+The socket returns success after the new config is active. If the session stops
+before then, the connection may close before the server sends an error. Treat
+that disconnect as a failed request.
+
+API 1.20 clients can subscribe to config reload events:
+
+- `gnoblin.config.reloaded` includes `path` and `revision`.
+- `gnoblin.config.reload-failed` includes `path` and an error string.
+
+Lua listeners receive the same event fields.
+If a reload is already in progress, a second request returns an error. It does
+not emit `gnoblin.config.reload-failed` because Gnoblin has not loaded or
+validated a second config.
+
+### API version 1.21: session locking
+
+API 1.21 adds:
+
+- `session.lock`
+- `gnoblin.session.lock-requested`
+- `gnoblin.session.lock-state-changed`
+
+#### Request a lock
+
+`session.lock` takes no arguments. It sends the lock request to clients
+subscribed to `gnoblin.session.lock-requested`. It fails if compositor locking
+is unavailable or no client is subscribed.
+
+A successful response contains `dispatched: true` and `subscribers`. This is the
+number of connected clients targeted for the request. Queue limits can close a
+slow connection before it handles the event. These fields are not a delivery
+acknowledgement or evidence that the session is locked.
+
+#### Track lock state
+
+Subscribe to `gnoblin.session.lock-state-changed` for Mutter's lock state. Each
+event includes `state`, `sequence`, and monotonic-clock `time`. The possible
+states are:
+
+- `unlocked`: no active session lock.
+- `covering`: the compositor has started the lock transition.
+- `locked`: Mutter confirmed the lock transition.
+- `failsafe`: the lock client failed and Mutter retained its failsafe state.
+
+Only `locked` confirms the lock transition. There is no socket unlock method.
+
+### API version 1.23: window thumbnails
+
+API 1.23 adds the asynchronous `window.thumbnail` method and the
+`window-thumbnails` capability. Pass a stable window ID and positive integer
+dimensions, capped at 480 by 320.
+
+The result contains `window_id`, the actual dimensions, and `data`, a base64
+PNG. Mutter preserves aspect ratio and limits the encoded PNG to 512 KiB.
+
+- Requests fail while locked.
+- Each client may have one request in progress, with four across the session.
+- Gnoblin drops a result if the requester disconnects or the window closes.
+
+The preview is rendered from the Mutter window actor. Mutter 51 provides no
+protected-content metadata or capture-redaction guarantee; Gnoblin does not
+promise to hide DRM or other protected content. The socket is restricted to
+the current user, and same-user processes are inside this session trust
+boundary. Keep previews within that boundary.
+
+```json
+{
+    "op": "api",
+    "id": "thumbnail-1",
+    "api_version": { "major": 1, "minor": 23 },
+    "method": "window.thumbnail",
+    "arguments": { "id": "42", "width": 480, "height": 320 }
+}
+```
+
+The server replies with a request ID and operation ID. Subscribe to
+`gnoblin.operation.completed` at API 1.11 to receive the asynchronous result.
+
+### API version 1.24: session activity
+
+API 1.24 adds the `session-activity` capability, the `session.activity` read,
+and `gnoblin.session.activity-changed`.
+
+The read returns `available`, `idle`, `threshold_ms`, `idle_for_ms`, and
+`revision`. The threshold is fixed at 120000 milliseconds, independent of idle
+inhibitors and GNOME's idle-delay setting. When monitoring is unavailable,
+`idle` is false and `idle_for_ms` is zero. While idle, reads advance the
+duration from the last native sample using monotonic time.
+
+Subscribe to the event for state transitions. Its `idle_for_ms` is sampled
+when availability or idle state changes and does not update continuously. The
+event also includes `threshold_ms`, `revision`, `sequence`, and monotonic-clock
+`time`.
+
+```json
+{
+    "op": "events",
+    "api_version": { "major": 1, "minor": 24 },
+    "events": ["gnoblin.session.activity-changed"]
+}
+```
+
+The lock client renders and authenticates its own UI; Mutter remains
+authoritative for lock state.
+
+```json
+{"op":"events","api_version":{"major":1,"minor":21},"events":["gnoblin.session.lock-requested","gnoblin.session.lock-state-changed"]}
+{"op":"api","api_version":{"major":1,"minor":21},"id":"lock-1","method":"session.lock","arguments":{}}
+```
+
+The first event lets a shell client handle the request. A successful method
+response means at least one subscribed connection was targeted. Use the state
+event to learn what Mutter actually did.
+
+Send an empty `arguments` object for reads without filters. `focus.history`
+uses the same filter values and defaults as the Lua method. The response
+contains the snapshot directly in `result`; list reads return JSON arrays,
+including an empty array when there are no records.
+
+These reads are available after native control seeds their snapshots.
+
+For example, request the committed settings snapshot with:
+
+```json
+{
+    "op": "api",
+    "id": "settings",
+    "api_version": { "major": 1, "minor": 19 },
+    "method": "settings",
+    "arguments": {}
+}
+```
+
+The `reply` record returns the settings snapshot directly in its `result`
+field. Use `capabilities.list` and `focus.history` for array results.
 
 ### API version 1.9: event subscriptions
 
@@ -356,6 +710,14 @@ Config reloads, session locks, subscription changes, and disconnects revoke
 socket tokens. Native Lua `Window:focus(context)` uses its protected Lua
 context instead of a socket token.
 
+Any compositor-socket client can focus a listed window with an XDG Activation
+token. The client must create the token after user input on one of its Wayland
+surfaces, and the socket connection must belong to that same process.
+
+Mutter verifies the input serial and source surface; Gnoblin consumes the token
+once. Requests fail while the session is locked. Lua callbacks do not receive
+raw activation tokens or input serials.
+
 ### API version 1.11: dynamic shortcut bindings
 
 #### Register a binding
@@ -371,10 +733,6 @@ Use `shortcut.bind` to register a connection-owned global accelerator. The
 - Bindings activate on key press and ignore autorepeat.
 - Each connection can register up to 32 bindings. The compositor accepts 128
   dynamic bindings in total.
-
-The `hold`, `modal`, `trigger`, and `captureInput` options are rejected. This
-API does not provide held-modifier sessions, modal input handling, or type-ahead
-handoff.
 
 ```json
 {
@@ -408,8 +766,54 @@ older clients. Subscribe with `op: "events"`; clients tracking input-source or
 shortcut-capture APIs also receive completion notifications. Match them by
 operation ID.
 
-Dynamic bindings do not replace the Shell `op: "bind"` protocol. Use that
-protocol for held-modifier sessions, modal input, or type-ahead handoff.
+Dynamic bindings are connection-owned and disappear when the client
+disconnects. The API 1.11 binding activates on press. API 1.22 adds held and
+modal shortcut sessions, described below. It does not buffer typing for later
+delivery to a popup.
+
+### API version 1.22: held and modal shortcut sessions
+
+API 1.22 extends `shortcut.bind` with four optional fields:
+
+- `trigger` is `press` (the default) or `release`.
+- `hold` is `none` (the default), `super`, `control`, or `alt`. A held binding
+  emits a shortcut-session activation and remains active until the held
+  modifier is released.
+- `mode` is `passive` (the default) or `modal`. Modal mode requires a non-`none`
+  `hold` value and captures keyboard input while the held modifier remains
+  down.
+- `capture_input` is a boolean, defaulting to `false`. It is supported only
+  for an explicit `accelerator: "Super"` binding. Bare Super must use
+  `trigger: "release"` and `hold: "none"`.
+
+Subscribe to `gnoblin.shortcut.session.activated`,
+`gnoblin.shortcut.session.key`, and `gnoblin.shortcut.session.ended` to receive
+session events. `session.key` carries the key value, key code, modifiers, and
+whether the key was pressed or released.
+
+Modal and bare-Super sessions capture those key events for the shell instead
+of delivering them to the focused application. A session ends when its held
+modifier is released, after ten seconds, on lock, or when the binding is
+unbound or its owner disconnects.
+
+```json
+{
+    "op": "api",
+    "api_version": { "major": 1, "minor": 22 },
+    "id": "bind-switcher",
+    "method": "shortcut.bind",
+    "arguments": {
+        "id": "switcher",
+        "accelerator": "<Alt>Tab",
+        "hold": "alt",
+        "mode": "modal"
+    }
+}
+```
+
+The shell should subscribe before binding if it needs session events. Bare
+Super capture is intended for shells that open their overlay after the key is
+released.
 
 ### API version 1.12: interactive window grabs
 
@@ -585,6 +989,39 @@ revision, sequence, and monotonic-time metadata.
 { "op": "events", "api_version": { "major": 1, "minor": 16 }, "events": ["gnoblin.permission.changed"] }
 ```
 
+### API version 1.17: privacy state
+
+API 1.17 adds `privacy.state`, which returns a privacy snapshot and revision.
+Each source has an availability flag. Unavailable activity fields are omitted.
+
+Mutter tracks screen-sharing and recording through remote-access handles.
+Microphone monitoring requires remote-desktop support and a PipeWire connection.
+It reports running audio-capture streams, excluding the GNOME Volume Control
+and pavucontrol meter streams. It does not check for audible samples. Camera
+and location monitoring are unavailable.
+
+```json
+{
+    "op": "api",
+    "id": "privacy",
+    "api_version": { "major": 1, "minor": 17 },
+    "method": "privacy.state",
+    "arguments": {}
+}
+```
+
+Subscribe to `gnoblin.privacy.changed` at API 1.17 to receive updates. Each
+event has a `state` snapshot with its `revision`, plus top-level `sequence` and
+monotonic `time` metadata.
+
+```json
+{
+    "op": "events",
+    "api_version": { "major": 1, "minor": 17 },
+    "events": ["gnoblin.privacy.changed"]
+}
+```
+
 The socket and its parent directory are restricted to the current user. Any
 same-user process can connect, so treat connected clients as trusted shell
 components.
@@ -594,6 +1031,8 @@ another client.
 
 Call `launch.status` to read current records and enable launch-change events on
 the connection.
+
+Launch feedback uses Gnoblin's native controller.
 
 `launch.begin` requests cursor feedback for an application hint. It does not
 start a process. Mutter reports `started` when a matching mapped window appears
@@ -609,169 +1048,24 @@ Versionless requests remain supported for API 1.0 methods. Newer methods require
 their documented minimum version. An unsupported or malformed requested version
 returns an error and closes that connection.
 
-The `hello.version` field is the socket protocol version. This build always
-advertises `ui-sessions`, `switcher-fallback` and `overlay-shortcut`. It may
-also advertise `blur-regions` and `layer-animation-policy` when the required
-compositor support is available.
-
-A validation error has an `error` event. If a valid `command` request fails,
-the response also carries its request `id`. Malformed JSON or excessive input
-closes the socket; ordinary validation errors leave it open.
+Use the API-version tables above to choose a socket method and its minimum
+version. For Lua calls, see the [runtime API reference](/config/runtime-api).
 
 ## Operation index
 
-| `op`                             | Required fields                                                          | Reply or stream                                     |
-| -------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------- |
-| `command`                        | `id`, `command`; command-specific fields                                 | One `reply` with matching `id`, or `error`          |
-| `windows`                        | None                                                                     | Current `windows` snapshot, then changes            |
-| `privacy`                        | None                                                                     | Current `privacy` state, then changes               |
-| `status`                         | None                                                                     | One `status` with binding IDs and active session ID |
-| `bind`                           | `id`, `accelerator`, `hold`; optional `trigger`, `modal`, `captureInput` | `bound`, then activation and input events           |
-| `activate`                       | `window`; optional `session`                                             | Focus a window; no success reply                    |
-| `preview`                        | `window`, `width`, `height`                                              | One `preview` event                                 |
-| `shortcut-input`                 | `name`, `state`                                                          | Input handoff; no success reply                     |
-| `ui-session`                     | `action`; other fields depend on action                                  | `ui-state` or `ui-command` events                   |
-| `layer-animation-policy`         | `namespace`                                                              | One policy event for that layer namespace           |
-| `blur-region`                    | `namespace`, `screen`, `region`                                          | No success reply                                    |
-| `window-drag`                    | None                                                                     | Current `window-drag` state, then changes           |
-| `snap-offer`                     | `serial`, `regions`                                                      | No success reply; may later get `snap-completed`    |
-| `snap-context`                   | None                                                                     | One `snap-context` event                            |
-| `snap-window`                    | `window`, `monitor`, `target`                                            | Applies a region; no success reply                  |
-| `stop-sharing`, `stop-recording` | None                                                                     | Requests stop; no success reply                     |
-| `end`                            | Optional `session` for fallback switcher                                 | Ends this client's input session                    |
-| `clear`                          | None                                                                     | Removes this client's bindings and session          |
+The standalone socket accepts these top-level operations:
 
-`command` accepts `windows`, `capture-windows`, `workspaces`, `workspace-list`,
-`workspace-switch`, `workspace-next`, `workspace-previous`,
-`workspace-move-active`, `monitors`, `layers` and `window`. `layers` returns
-the current layer-shell surfaces in a `surfaces` array. `window` needs an
-`action` and a stable window ID or `"active"`. The [CLI reference](gnoblinctl.md)
-lists window actions and arguments.
+| `op`       | Fields                                   | Result                                                                   |
+| ---------- | ---------------------------------------- | ------------------------------------------------------------------------ |
+| `events`   | API version and event names              | Confirms the subscription; later event records arrive on the connection. |
+| `windows`  | None                                     | Current window snapshot and later window changes.                        |
+| `monitors` | None                                     | Current monitor snapshot and later monitor changes.                      |
+| `api`      | API version, `id`, `method`, `arguments` | One result or error for a native API method.                             |
 
-### Workspace commands
-
-Use `workspace-list` to get the workspace ID, current one-based number, display
-name, active state and eligible window count:
-
-```json
-{ "op": "command", "id": "request-1", "command": "workspace-list" }
-```
-
-The reply's `result` is shaped like this:
-
-```json
-{
-    "workspaces": [
-        { "id": "code", "number": 1, "name": "Code", "active": true, "windows": 2 },
-        { "id": "web", "number": 2, "name": "Web", "active": false, "windows": 0 }
-    ]
-}
-```
-
-The request `id` correlates its reply. A configured workspace ID is assigned by
-its initial position and stays with that `MetaWorkspace` if workspaces are
-reordered during the session. An unconfigured workspace receives a session-only
-ID such as `@session-N`.
-
-Each item from `workspaces` has these fields:
-
-| Field     | Meaning                                                             |
-| --------- | ------------------------------------------------------------------- |
-| `id`      | Configured ID, or a generated session-only ID such as `@session-1`. |
-| `number`  | Current one-based position.                                         |
-| `name`    | Display label.                                                      |
-| `active`  | Whether this workspace is selected.                                 |
-| `windows` | Number of eligible windows on the workspace.                        |
-
-The older `workspaces` command keeps its legacy response: its numeric `id` is
-the current one-based position, and it does not include the display name.
-
-Switch by stable ID or current number. Send exactly one selector:
-
-```json
-{"op":"command","id":"request-2","command":"workspace-switch","workspaceId":"code"}
-{"op":"command","id":"request-3","command":"workspace-switch","workspaceNumber":2}
-```
-
-`workspace-switch` also accepts a numeric `workspace` selector.
-`workspace-next` and `workspace-previous` take no selector and wrap at the
-ends of the current workspace list.
-
-Switch replies contain `ok`, `pending`, and the one-based `workspace` number.
-They also include the resolved workspace's `id`, `number`, `name`, `active`,
-and `windows` fields.
-
-Move the focused window with `workspace-move-active`. It accepts the same
-`workspaceId` or `workspaceNumber` selector, plus an optional `follow` boolean.
-The default is `false`; set it to `true` to activate the destination after
-moving.
-
-For an explicit window, use `command: "window"`, `action: "workspace"`, and
-the `window` ID with `workspaceId` or `workspaceNumber`. The one-based numeric
-`workspace` selector is also accepted.
-
-Successful move replies include the resolved workspace fields, `follow`, the
-stable window `window` ID, and the selected `workspace` number, `workspaceId`,
-and `workspaceNumber`.
-
-Numbers can change when dynamic workspaces are removed. Use IDs in shell
-integrations that need to keep addressing a configured workspace. The
-[workspace CLI examples](gnoblinctl.md#workspaces-and-monitors) show equivalent
-terminal commands.
-
-Only `command` supplies a correlation ID: match `reply` or `error` by that ID
-because other events can arrive first. A reply with `pending: true` means the
-action was accepted; observe later state to confirm completion.
-
-Animations are registered in Lua with `gnoblin.animation` and are previewed
-through `gnoblinctl animation`. Shell clients should continue to own their
-surface content motion; use a matching `animation = "none"` layer rule to
-avoid applying compositor motion twice.
-
-The bridge's `layer-animation-policy` operation lets a shell read the
-configured enter/exit policy for a namespace. See the [animation guide](/guides/animations)
-for layer-shell lifecycle events and target selection.
-
-### Capture records
-
-`capture-windows` returns visible, non-minimised windows in stacking order.
-
-| Field                         | Meaning                                                          |
-| ----------------------------- | ---------------------------------------------------------------- |
-| `id`                          | Mutter window ID, used for capture.                              |
-| `title`, `appId`, `appName`   | Window title, desktop-entry ID and application name.             |
-| `x`, `y`, `width`, `height`   | Frame rectangle in logical pixels.                               |
-| `bufferWidth`, `bufferHeight` | Paint-box size; may include decoration shadows beyond the frame. |
-
-### Window records
-
-The `windows` snapshot has these fields:
-
-| Field                                         | Meaning                                                              |
-| --------------------------------------------- | -------------------------------------------------------------------- |
-| `id`                                          | Stable window sequence ID for this session.                          |
-| `title`, `appId`                              | Window title and desktop-entry ID (or WM class if unavailable).      |
-| `gtkAppId`, `wmClass`, `ruleAppId`            | Raw GTK ID, WM class and the ID used by window rules.                |
-| `focused`, `minimized`                        | Whether the window is focused or minimised.                          |
-| `workspace`, `workspaceId`, `workspaceNumber` | Current workspace number, stable ID and current one-based position.  |
-| `monitorId`                                   | Active connector name for the current monitor, when available.       |
-| `monitorIndex`, `monitor`                     | Zero-based monitor index and its logical origin `{x, y}`.            |
-| `maximized`, `fullscreen`                     | Current window state.                                                |
-| `above`, `sticky`, `demandsAttention`         | Stacking, workspace visibility, and attention state.                 |
-| `closable`, `minimizable`, `maximizable`      | Whether the corresponding window operation is supported.             |
-| `movable`, `resizable`                        | Whether the window can be moved or resized.                          |
-| `role`, `type`                                | Optional window role and Mutter `MetaWindowType` integer.            |
-| `geometry`                                    | Frame rectangle `{x, y, width, height}` in logical pixels.           |
-| `lastUserTime`                                | Mutter's timestamp for the last user interaction with the window.    |
-| `parent`                                      | Stable ID of its transient parent, or `null`/omitted if unavailable. |
-
-Mutter omits optional parent and monitor values when unavailable. Shell may
-return `null` for these fields and may omit native-only fields. See the [Lua event
-reference](/config/lua-events#gnoblin) for `MetaWindowType` values.
-
-Capture IDs come from Mutter; `windows` snapshots use stable sequence IDs.
-Use an ID from the `windows` snapshot or `gnoblinctl window list` for a
-`window` action. The CLI reference lists the supported actions and arguments.
+The `hello` greeting advertises the available methods, events, capabilities,
+and API version. Its `features` array is empty. Use the API-version tables
+above to select socket methods and event subscriptions. The complete Lua
+runtime contract is in the [runtime API reference](/config/runtime-api).
 
 ## Example: watch the window list
 
@@ -800,228 +1094,159 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
                 print(event)
 ```
 
-It prints the current list and subsequent snapshots. The native preview also
+It prints the current list and subsequent snapshots. The standalone compositor also
 prints individual window lifecycle events for created, changed, focused, and
 closed windows. Stop it with Ctrl+C. Each snapshot replaces the previous list;
 it is not a list of changes.
 
-## Temporary UI bindings
+## Client-owned shortcuts and controls
 
-Use `bind` for an interactive UI such as a switcher. These bindings belong to
-the client connection and disappear when it disconnects.
+Use `shortcut.bind` and `shortcut.unbind` to register a connection-owned
+accelerator. The native bridge reports activation through
+`gnoblin.shortcut.binding-activated`. It does not provide modal grabs, held
+modifier sessions, a switcher fallback, or buffered typing. See
+[API version 1.11](#api-version-111-dynamic-shortcuts) for the request shape.
 
-Optional `trigger` is `"press"` (the default) or `"release"`; it chooses whether `activated` is sent when the accelerator is pressed or its main key is released. This works with chords using Alt, Control, Shift or Super. Bare `"Super"` is release-only because Mutter first checks whether another key joins the chord.
+Window, workspace, input, permission, portal-grant, privacy, animation, and
+launch methods are listed in the API-version tables above. They use
+`op: "api"` with a version, request ID, method name, and arguments object.
 
-```json
-{ "op": "bind", "id": "example", "accelerator": "<Alt>F8", "hold": 8, "trigger": "release" }
-```
+### API version 1.31: privacy stop methods and layer animation policy
 
-The server acknowledges:
+API 1.31 adds `privacy.stop_sharing` and `privacy.stop_recording`. Each method
+takes no arguments and calls `stop()` on matching tracked Mutter handles. The
+methods match handles by their `is-recording` property.
 
-```json
-{ "event": "bound", "id": "example" }
-```
-
-| Field          | Accepted values                                              | Default                                         |
-| -------------- | ------------------------------------------------------------ | ----------------------------------------------- |
-| `id`           | 1–64 letters, numbers, `_` or `-`; unique on this connection | Required                                        |
-| `accelerator`  | GTK accelerator string up to 128 characters, or `"Super"`    | Required                                        |
-| `hold`         | `0`, Alt `8`, Control `4`, or Super `67108864`               | Required; `0` fires once                        |
-| `trigger`      | `"press"` or `"release"`                                     | `"press"`; `"Super"` uses `"release"`           |
-| `modal`        | Boolean                                                      | `true`; `false` leaves app input ungrabbed      |
-| `captureInput` | Boolean                                                      | `false`; enables the popup typing handoff below |
-
-For a modal held shortcut, Gnoblin captures key and pointer events before your
-popup becomes visible. An Alt-held switcher can finish when Alt is released.
-
-Set `modal = false` for a held shortcut that should leave focus and input with
-the current app. Gnoblin reports the activation and modifier release without
-opening an input grab. For example, this reports Alt+F8 and the later Alt
-release while the app keeps receiving input:
+The socket returns an operation descriptor. Wait for its matching
+`gnoblin.operation.completed` event. The result has an integer `requested`
+field: the number of handles passed to `meta_remote_access_handle_stop()`.
+Calls are issued synchronously, but the count does not confirm session closure.
+The privacy snapshot and `gnoblin.privacy.changed` event update after Mutter
+signals that a handle has stopped. Stop methods do not revoke persistent grants.
 
 ```json
-{ "op": "bind", "id": "cycle-mode", "accelerator": "<Alt>F8", "hold": 8, "modal": false }
+{
+    "op": "api",
+    "id": "stop-sharing",
+    "api_version": { "major": 1, "minor": 31 },
+    "method": "privacy.stop_sharing",
+    "arguments": {}
+}
 ```
 
-Events sent during a binding session:
+API 1.31 also exposes `layer.animation_policy` through the shared Lua read
+path. It accepts a `namespace` string of 1–128 UTF-8 bytes and returns the
+effective enter and exit phases plus `window_shadow`.
 
-| Event                   | Fields                                        | Meaning                                                      |
-| ----------------------- | --------------------------------------------- | ------------------------------------------------------------ |
-| `activated`             | `id`, `first`, `session`, `modifiers`, `time` | The accelerator fired.                                       |
-| `key`                   | `key`, `modifiers`                            | A captured key press.                                        |
-| `pointer`               | `x`, `y`, `button`                            | A captured button press in global logical pixels; 1 is left. |
-| `released`, `cancelled` | `session`                                     | The modifier was released or the session ended early.        |
+Without a matching animation rule, both phases use `slide`. The
+`window_shadow` default is `false` unless a matching default-window rule
+supplies a shadow value.
 
-`first` is true when no binding session was active. `session` is zero for
-ordinary bindings and nonzero for the built-in switcher fallback. `modifiers`
-is a Clutter modifier mask, and `time` is the event timestamp in milliseconds.
+### API version 1.32: XDG Activation focus and session logout
 
-Hide the UI on release or cancellation. Sending `{"op":"end"}`, locking,
-disconnecting or reaching the ten-second timeout also releases the captured
-input.
+API 1.32 accepts `activation_token` as an alternative to `focus_context` for
+`window.focus`. The token must come from an XDG Activation request made by the
+process that owns the compositor socket connection.
 
-## Bare Super and buffered typing
+Gnoblin resolves the stable target ID, asks Mutter to validate the token's
+source surface and input serial, and consumes the token before focusing the
+window. Tokens cannot be replayed. Requests do not accept a caller-supplied
+timestamp or serial.
 
 ```json
-{ "op": "bind", "id": "search", "accelerator": "Super", "hold": 0, "captureInput": true }
+{
+    "op": "api",
+    "id": "focus",
+    "api_version": { "major": 1, "minor": 32 },
+    "method": "window.focus",
+    "arguments": { "id": "42", "activation_token": "TOKEN_FROM_XDG_ACTIVATION" }
+}
 ```
 
-Requires the advertised `overlay-shortcut` feature. Only one bridge client can
-own bare Super; remove a duplicate Lua command binding first.
+`session.logout` takes an empty `arguments` object and returns an operation
+descriptor. On success, Gnoblin shuts down the compositor and its session
+wrapper stops the session's user services. The desktop returns to the login
+manager.
 
-Super activates on release, excluding chords. With capture enabled, report the
-popup's focus handoff:
-
-```jsonl
-{ "op": "shortcut-input", "name": "search", "state": "prepared" }
-{ "op": "shortcut-input", "name": "search", "state": "ready" }
-```
-
-Send `prepared` once the popup is mapped. Gnoblin releases its keyboard grab
-but keeps buffering keys. Send `ready` when the text field has focus; Gnoblin
-replays the buffered keys in order. Send `closed` when the popup is dismissed.
-The buffer expires after three seconds if the popup never becomes ready.
-
-The binding ID is the handoff name.
-
-## Windows and controls
-
-| Request                            | Result                                    |
-| ---------------------------------- | ----------------------------------------- |
-| `{"op":"windows"}`                 | Subscribe to complete snapshots           |
-| `{"op":"activate","window":"123"}` | End this client's grab and focus a window |
-| `{"op":"status"}`                  | Registered IDs and active session         |
-| `{"op":"end"}`                     | Cancel this client's input session        |
-| `{"op":"clear"}`                   | Remove this client's bindings and session |
-
-Snapshots exclude skip-taskbar and override-redirect windows. IDs last for the
-window's session lifetime. The client chooses grouping and ordering; stale IDs
-return an error. See the field list below for the complete record shape.
-
-A subscription with no open windows produces:
+A client subscribed to `gnoblin.operation.completed` can see the operation
+completion before shutdown, but the socket may close before the reply or
+completion is delivered. Do not retry after a disconnect; the session may
+already be closing.
 
 ```json
-{ "event": "windows", "windows": [] }
+{
+    "op": "api",
+    "id": "logout",
+    "api_version": { "major": 1, "minor": 32 },
+    "method": "session.logout",
+    "arguments": {}
+}
 ```
 
-When windows exist, the array uses the [window record example](gnoblinctl.md#output-for-scripts).
-See [CLI development](cli-development.md#change-a-window) for a complete
-request, successful reply and error reply.
+### API version 1.33: capability availability changes
 
-## Previews
+`capabilities.list` includes `microphone-monitor`. It is available when this
+Mutter build includes remote-desktop support and its PipeWire monitor is
+connected. When unavailable, the record includes `reason`:
+
+- `remote_desktop_disabled`: this Mutter build has remote-desktop support
+  disabled.
+- `pipewire_unavailable`: the PipeWire microphone monitor is disconnected or
+  could not connect.
+
+Subscribe to `gnoblin.capability.changed` at API 1.33 to receive the updated
+record when availability changes. Each event contains:
+
+- `capability`: the updated capability record.
+- `revision`: the current compositor state revision.
+- `sequence`: the event sequence number.
+- `time`: monotonic event time.
+
+Microphone activity changes remain part of `gnoblin.privacy.changed`.
 
 ```json
-{ "op": "preview", "window": "123", "width": 224, "height": 126 }
+{
+    "op": "events",
+    "api_version": { "major": 1, "minor": 33 },
+    "events": ["gnoblin.capability.changed"]
+}
 ```
 
-The response contains a PNG data URI in `source`, dimensions and window ID.
-On failure it returns an empty source and a message; retain the last valid image.
+### API version 1.34: desktop appearance changes
 
-Maximum size: 480 × 320, preserving aspect ratio. One capture may be pending
-per client. No continuous stream is started; clients choose update frequency.
+Subscribe to `gnoblin.appearance.color-scheme-changed` for desktop preference
+changes. The event follows `org.gnome.desktop.interface/color-scheme` and is
+emitted only after a change; subscribing does not return the current value.
 
-Capture is unavailable while locked. Readback runs at low priority, PNG encoding
-uses a worker, and minimised windows use their retained buffer.
+Each event contains:
 
-## Bingux text-entry integration
+- `color_scheme`: `default`, `prefer-dark`, or `prefer-light`.
+- `sequence`: the event sequence number.
+- `time`: monotonic time in microseconds.
 
-Text entry is provided by a Bingux-owned integration. Bingux installs a Gnoblin
-script that registers the namespaced
-`bingux.input-anchor` and `bingux.type-text` operations. Other shells can omit
-the integration script and implement their own text-entry behavior.
-
-`{"op":"bingux.input-anchor"}` returns x, y, pid, window, frame and caret.
-Coordinates are logical desktop pixels. Caret may be null; it clears on focus
-changes and lock, and adjusts when the window moves.
-
-`{"op":"bingux.type-text","window":"123","text":"…"}` accepts up to 64 UTF-16
-units, without control characters. The target must be focused and unlocked,
-with Control, Alt and Super released.
-
-Hide the picker and restore the target before sending. A `typed` reply
-acknowledges delivery, not proof that the app consumed the text.
-
-For XWayland, a GTK helper temporarily offers the text and sends Ctrl+V.
-It preserves clipboard formats and restores them after 600 ms unless a new copy
-takes priority. Clipboard managers may record the temporary text.
-
-Clipboard preparation is limited to 64 formats, 64 MiB and three seconds.
-Failed preparation leaves it unchanged. Native Wayland text input does not
-use the clipboard.
-
-On XWayland, Bingux uses its `bingux-clipboard-paste` helper, which needs
-Python, PyGObject and GTK 3. Native Wayland text input does not use the helper.
-The helper and GJS integration are shipped by Bingux. The integration script
-is loaded from the XDG script search path; see [writing scripts](user-scripts.md).
-
-## Recording and camera activity
-
-`{"op":"privacy"}` subscribes to screenSharing, recording, recordingCount,
-recordingElapsed, cameraInUse and locationCaptures.
-
-Location captures list authorised GeoClue desktop IDs. Elapsed time is whole
-seconds; clients can advance it between updates.
-
-`stop-sharing` stops non-recording remote sessions.
-`stop-recording` stops recording sessions. An encoder owner should use its
-normal finalisation path to save output. These requests do not grant access.
-
-## Coordinate shell processes
-
-`ui-session` shares named state between UI processes. Names match
-`^[a-z][a-z0-9-]{0,63}$`; one client owns each name.
-
-| Action    | Fields                 | Event                                       |
-| --------- | ---------------------- | ------------------------------------------- |
-| `watch`   | None                   | `ui-state` for each owner and later changes |
-| `state`   | `name`, `state` object | Publishes `ui-state`                        |
-| `command` | `name`, `command`      | Sends `ui-command` to the owner             |
-
-`watch` immediately sends current owners, then updates. A `state` request claims
-or updates a name; another client cannot claim it. Owner disconnect removes its
-state and publishes `state: null`. `command` is forwarded to the current owner
-as-is; it is ignored when no owner exists and is never queued.
-
-These requests show the message shapes; each goes over the relevant client's
-own bridge connection:
-
-```jsonl
-{"op":"ui-session","action":"watch"}
-{"op":"ui-session","action":"state","name":"search","state":{"visible":true}}
-{"op":"ui-session","action":"command","name":"search","command":{"action":"close"}}
+```json
+{
+    "op": "events",
+    "api_version": { "major": 1, "minor": 34 },
+    "events": ["gnoblin.appearance.color-scheme-changed"]
+}
 ```
 
-The owner defines the state and command objects. To coordinate layer stacking,
-include `surface` (the owner's namespace) and `companions` (up to 16 namespace
-strings) in state. Gnoblin applies the request while `visible` or
-`revealCompanions` is true; set `companionsAbove: true` to place companions
-above the owner. The state is advisory and does not change how a client draws.
+### API version 1.35: snake_case window fields
 
-| Operation                | Fields                                                                                    | Limit or effect                                                                                                                            |
-| ------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `blur-region`            | `namespace`, monitor origin `screen: [x,y]`, local `region: [x,y,width,height]` or `null` | Up to 64 per client; requires a matching blur window rule; cleared on disconnect. See [effect rendering](effects-rendering.md#blur-cache). |
-| `layer-animation-policy` | `namespace`                                                                               | Returns `enter`, `exit`, `windowShadow`; namespace at most 128 characters                                                                  |
+Window snapshots and window-change event records now include snake_case fields
+that match Lua records. New clients should use:
 
-For `blur-region`:
+- `app_id`, `workspace_id`, and `monitor_id`;
+- `last_user_time`;
+- `frame`, which aliases the previous `geometry` field.
 
-- `screen`: two finite coordinates within ±65,536 for the monitor origin.
-- `region`: `null` clears it. Otherwise use four finite values
-  `[x, y, width, height]`; coordinates must be within ±65,536, and dimensions
-  cannot be negative.
-- Scope: Gnoblin applies the rectangle only to a matching layer surface owned
-  by the sending process. A matching window rule must also enable blur.
-
-For drag layouts, subscribe with `window-drag`, offer hit and target rectangles
-using `snap-offer`, and apply a keyboard-chosen rectangle with `snap-window`.
-The [snapping guide](/guides/window_snapping#shell-integration) gives the request
-shapes and work-area checks.
+The previous camelCase fields remain in API 1.x responses for compatibility.
 
 ## Limits and disconnects
 
-The socket directory is private to the user.
-Limits: 32 clients, 32 bindings per client, 64 queued records and 4 MiB queued
-output per connection. An input buffer over 16 KiB or malformed JSON closes the
-connection. A slow reader can also be disconnected when its output queue fills.
-
-Invalid requests return errors. Malformed JSON or excessive input disconnects
-the client. Disconnect releases its bindings and other resources.
+The socket directory is private to the user. Limits are 32 clients, 32 bindings
+per client, 64 queued records, and 4 MiB of queued output per connection. Input
+over 16 KiB, malformed JSON, or a full output queue disconnects the client.
+Invalid requests return errors without closing the connection. Disconnect
+releases the client's bindings and other resources.
