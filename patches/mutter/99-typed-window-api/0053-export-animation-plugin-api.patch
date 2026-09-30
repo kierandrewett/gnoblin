@@ -1,0 +1,14 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: export animation callbacks used by plugin
+
+---
+diff --git a/src/core/gnoblin-animation.h b/src/core/gnoblin-animation.h
+index 2a8af7cd3..cf91750d6 100644
+--- a/src/core/gnoblin-animation.h
++++ b/src/core/gnoblin-animation.h
+@@ -9,0 +10 @@ void meta_gnoblin_animation_window_mapped (MetaWindowActor *window_actor);
++META_EXPORT
+@@ -11,0 +13 @@ gboolean meta_gnoblin_animation_window_destroying (MetaPlugin *plugin,
++META_EXPORT

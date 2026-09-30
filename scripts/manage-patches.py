@@ -5,7 +5,7 @@ Usage:
   scripts/manage-patches.py check [PROJECT]
   scripts/manage-patches.py normalize [PROJECT]
   scripts/manage-patches.py export PROJECT REVISION OUTPUT [--replace]
-  scripts/manage-patches.py export-worktree PROJECT OUTPUT --subject TEXT
+  scripts/manage-patches.py export-worktree PROJECT OUTPUT --subject TEXT [--unified N]
 
 For imported patches, keep the original author's credit in Original-Author.
 """
@@ -60,6 +60,7 @@ def main() -> int:
     working.add_argument("--replace", action="store_true")
     working.add_argument("--source-tree", type=Path)
     working.add_argument("--against-index", action="store_true")
+    working.add_argument("--unified", type=int, default=3)
     working.add_argument(
         "--paths",
         nargs="+",
@@ -102,6 +103,7 @@ def main() -> int:
                     str(source),
                     "diff",
                     "--binary",
+                    f"--unified={args.unified}",
                     *([] if args.against_index else ["HEAD"]),
                     "--",
                     *(args.paths or []),
