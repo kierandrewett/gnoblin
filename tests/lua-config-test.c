@@ -387,7 +387,7 @@ int main(void) {
         "capabilities={'remote-desktop'}, level='allow', devices={'keyboard','touchscreen'}, "
         "clipboard=true}\n"
         "g.on('mutter.touchpad.gesture', function(event)\n"
-        "  if event.phase == 'begin' then g.workspace.list() end\n"
+        "  if event.phase == 'begin' then g.workspace.next() end\n"
         "end)\n"
         "g.on('test.animation', function()\n"
         "  local animations=g.animations.list()\n"
@@ -559,7 +559,7 @@ int main(void) {
     g_assert_cmpuint(g_variant_n_children(operations), ==, 1);
     g_autoptr(GVariant) operation = g_variant_get_child_value(operations, 0);
     g_autoptr(GVariant) method = g_variant_lookup_value(operation, "method", G_VARIANT_TYPE_STRING);
-    g_assert_cmpstr(g_variant_get_string(method, NULL), ==, "workspace.list");
+    g_assert_cmpstr(g_variant_get_string(method, NULL), ==, "workspace.next");
     gnoblin_config_finish_event(TRUE);
 
     g_variant_builder_init(&payload_builder, G_VARIANT_TYPE_VARDICT);
