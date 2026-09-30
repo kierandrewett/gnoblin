@@ -261,30 +261,22 @@ should not be saved in configuration.
 See the [workspace configuration reference](/config/configure/window_management)
 and the [writing workspace recipe](/recipes/writing-workspace).
 
-| Method                        | Arguments                                                          | Successful result             |
-| ----------------------------- | ------------------------------------------------------------------ | ----------------------------- |
-| `workspace.create(args)`      | `name` required; optional `id`, `activate`                         | New `Workspace` record        |
-| `workspace.rename(args)`      | Exactly one of `id` or `number`, plus `name`                       | Updated `Workspace` record    |
-| `workspace.remove(args)`      | Exactly one of `id` or `number`                                    | Removed workspace record      |
-| `workspace.switch(args)`      | Exactly one of `id` or `number`                                    | Activated `Workspace` record  |
-| `workspace.next()`            | None                                                               | Activated `Workspace` record  |
-| `workspace.previous()`        | None                                                               | Activated `Workspace` record  |
-| `workspace.move_active(args)` | `workspace` selector; optional `follow`                            | `{workspace, window, follow}` |
-| `workspace.move_window(args)` | `window` ID or `"active"`; `workspace` selector; optional `follow` | `{workspace, window, follow}` |
+| Method                         | Arguments                                                          | Successful result             |
+| ------------------------------ | ------------------------------------------------------------------ | ----------------------------- |
+| `workspaces.create(args)`      | `name` required; optional `id`, `activate`                         | New `Workspace` record        |
+| `workspaces.rename(args)`      | Exactly one of `id` or `number`, plus `name`                       | Updated `Workspace` record    |
+| `workspaces.remove(args)`      | Exactly one of `id` or `number`                                    | Removed workspace record      |
+| `workspaces.activate(args)`    | Exactly one of `id` or `number`                                    | Activated `Workspace` record  |
+| `workspaces.next()`            | None                                                               | Activated `Workspace` record  |
+| `workspaces.previous()`        | None                                                               | Activated `Workspace` record  |
+| `workspaces.move_active(args)` | `workspace` selector; optional `follow`                            | `{workspace, window, follow}` |
+| `workspaces.move_window(args)` | `window` ID or `"active"`; `workspace` selector; optional `follow` | `{workspace, window, follow}` |
 
 `workspaces.list()` returns the current workspaces as an immediate,
-immutable snapshot. Workspace mutations also have plural aliases:
-
-| Lua alias                      | Canonical method              |
-| ------------------------------ | ----------------------------- |
-| `workspaces.create(args)`      | `workspace.create(args)`      |
-| `workspaces.rename(args)`      | `workspace.rename(args)`      |
-| `workspaces.remove(args)`      | `workspace.remove(args)`      |
-| `workspaces.activate(args)`    | `workspace.switch(args)`      |
-| `workspaces.next()`            | `workspace.next()`            |
-| `workspaces.previous()`        | `workspace.previous()`        |
-| `workspaces.move_active(args)` | `workspace.move_active(args)` |
-| `workspaces.move_window(args)` | `workspace.move_window(args)` |
+immutable snapshot. Mutations return operation handles and complete
+asynchronously. Workspace reads and mutations all use the `workspaces`
+namespace in Lua configuration. The singular `workspace.*` names are reserved
+for compositor-socket operation identifiers.
 
 `create` requires a nonempty name of up to 80 characters. Its optional ID must
 match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`; if omitted, Gnoblin generates a

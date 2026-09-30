@@ -69,7 +69,7 @@ gnoblin.on("gnoblin.workspace.activated", function(event)
     end
 
     creating = true
-    local operation = gnoblin.workspace.create {
+    local operation = gnoblin.workspaces.create {
         id = "review-session",
         name = "Review session",
     }
@@ -97,12 +97,12 @@ Config-declared workspaces cannot be removed, and Gnoblin rejects removal of
 the active or occupied workspace. The [Lua runtime API](/config/runtime-api)
 lists available methods and result fields.
 
-| Call or field                 | Accepted value                                | Meaning                                         |
-| ----------------------------- | --------------------------------------------- | ----------------------------------------------- |
-| `workspaces.list()`           | No arguments                                  | Returns an immediate immutable snapshot.        |
-| `workspace.create` `name`     | Required, nonempty string up to 80 characters | Display name for the new workspace.             |
-| `workspace.create` `id`       | Optional unique ID for this session           | Gives the temporary workspace a predictable ID. |
-| `workspace.create` `activate` | Boolean; default `false`                      | Switches to the new workspace when `true`.      |
+| Call or field                  | Accepted value                                | Meaning                                         |
+| ------------------------------ | --------------------------------------------- | ----------------------------------------------- |
+| `workspaces.list()`            | No arguments                                  | Returns an immediate immutable snapshot.        |
+| `workspaces.create` `name`     | Required, nonempty string up to 80 characters | Display name for the new workspace.             |
+| `workspaces.create` `id`       | Optional unique ID for this session           | Gives the temporary workspace a predictable ID. |
+| `workspaces.create` `activate` | Boolean; default `false`                      | Switches to the new workspace when `true`.      |
 
 Only workspace creation returns an operation handle and completion event.
 
