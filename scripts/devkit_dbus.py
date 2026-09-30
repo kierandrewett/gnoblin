@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Write the isolated DBus config used by gnoblin devkit runs.
+"""Write an isolated D-Bus config for nested Gnoblin development sessions.
 
-The visible devkit and the headless harness both need xdg-desktop-portal for
-Mutter ScreenCast, but must not inherit the host session's full DBus service
-directory. In particular, the real document portal tries to mount FUSE at the
-user's real /run/user/.../doc. This helper writes a small per-run service dir
-with only the portal services the devkit needs plus gnoblin's document stub.
+The nested compositor does not inherit the host session's full service
+directory. A private document portal stub also prevents tests and clients from
+mounting FUSE in the host user's document directory.
 """
 
 from __future__ import annotations
@@ -17,19 +15,16 @@ import shlex
 import shutil
 import sys
 
-DBUS_SERVICES = (
+REQUIRED_DBUS_SERVICES = (
     "org.freedesktop.portal.Desktop",
     "org.freedesktop.impl.portal.PermissionStore",
-    "org.freedesktop.impl.portal.desktop.gnome",
-    "org.freedesktop.impl.portal.desktop.gtk",
-    # dconf: needed for cross-process gsettings change notification in tests that
-    # verify one process reacting to another's SetFeature (e.g. the notifications
-    # toggle). The keyfile backend's file monitor is unavailable in the sandbox.
-    "ca.desrt.dconf",
 )
-# Older GNOME releases do not provide this portal helper. They can still run
-# the compositor/control tests; global-shortcut portal tests need the helper.
-OPTIONAL_DBUS_SERVICES = ("org.gnome.Settings.GlobalShortcutsProvider",)
+OPTIONAL_DBUS_SERVICES = (
+    "org.freedesktop.impl.portal.desktop.gtk",
+    "ca.desrt.dconf",
+    "org.freedesktop.impl.portal.desktop.gnome",
+    "org.gnome.Settings.GlobalShortcutsProvider",
+)
 
 
 def write_config(tmp: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
@@ -38,7 +33,7 @@ def write_config(tmp: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
     service_dir = tmp / "dbus-services"
     service_dir.mkdir(parents=True, exist_ok=True)
     system_service_dir = pathlib.Path("/usr/share/dbus-1/services")
-    for name in (*DBUS_SERVICES, *OPTIONAL_DBUS_SERVICES):
+    for name in (*REQUIRED_DBUS_SERVICES, *OPTIONAL_DBUS_SERVICES):
         src = system_service_dir / f"{name}.service"
         if not src.exists():
             if name in OPTIONAL_DBUS_SERVICES:
@@ -58,9 +53,8 @@ def write_config(tmp: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
     conf = tmp / "dbus-session.conf"
     service_dir_xml = html.escape(str(service_dir), quote=False)
 
-    # Also expose gnoblin's own installed D-Bus services (gnome-shell's
-    # dbusServices: notifications, screencast, calendar, …) so tests can activate
-    # them on demand. On-demand only — nothing auto-starts by adding the dir.
+    # Expose services installed by the Gnoblin runtime on demand. Adding this
+    # directory does not activate any service by itself.
     prefix = pathlib.Path(os.environ.get("GNOBLIN_PREFIX", str(repo_root / "install")))
     prefix_service_dir = prefix / "share" / "dbus-1" / "services"
     prefix_service_dir_xml = (
