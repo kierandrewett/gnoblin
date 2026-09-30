@@ -29,10 +29,13 @@
 #include "backends/meta-keymap-description-private.h"
 #include "clutter/clutter.h"
 #include "compositor/meta-window-actor-private.h"
+#include "compositor/meta-window-actor-wayland.h"
 #include "core/display-private.h"
 #include "core/events.h"
 #include "core/util-private.h"
+#include "core/window-private.h"
 #include "wayland/gnoblin-portal-policy.h"
+#include "wayland/meta-gnoblin-lua-pattern.h"
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-activation.h"
 #include "wayland/meta-wayland-seat.h"
@@ -269,6 +272,8 @@ static void native_publish_runtime_snapshot(GnoblinNativeControl* control, const
 static void native_activity_publish(GnoblinNativeControl* control, gboolean available,
                                     gboolean idle, guint64 threshold_ms, guint64 idle_for_ms);
 static void native_activity_query(GnoblinNativeControl* control);
+static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow* window);
+static void native_apply_all_window_rules(GnoblinNativeControl* control);
 
 /* The supervised compositor may consume configuration only from the immutable
  * snapshot transferred by its Lua-owning parent. Keep legacy reads confined to
@@ -5533,6 +5538,145 @@ static GVariant* native_stop_privacy_sessions(GnoblinNativeControl* control, gbo
 
 static GVariant* filter_native_touchpad_gestures(GVariant* gestures);
 
+static gboolean native_rule_get_number(GVariant* record, const char* key, double* number) {
+    g_autoptr(GVariant) value = g_variant_lookup_value(record, key, NULL);
+    if (!value)
+        return FALSE;
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
+        *number = g_variant_get_double(value);
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
+        *number = (double)g_variant_get_int64(value);
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32))
+        *number = (double)g_variant_get_int32(value);
+    else
+        return FALSE;
+    return isfinite(*number);
+}
+
+static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
+                                           GnoblinNativeControl* control) {
+    const char* title = meta_window_get_title(window);
+    const char* gtk_app_id = meta_window_get_gtk_application_id(window);
+    const char* wm_class = meta_window_get_wm_class(window);
+    const char* rule_app_id = gtk_app_id && *gtk_app_id ? gtk_app_id : (wm_class ? wm_class : "");
+    MetaWorkspace* workspace = meta_window_get_workspace(window);
+    const char* workspace_id =
+        workspace ? g_object_get_data(G_OBJECT(workspace), "gnoblin-native-id") : NULL;
+    const int workspace_number = workspace ? meta_workspace_index(workspace) + 1 : 0;
+    const gboolean focused = meta_display_get_focus_window(control->display) == window;
+    GVariantIter iter;
+    const char* key;
+    GVariant* value;
+
+    if (!g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT))
+        return FALSE;
+
+    g_variant_iter_init(&iter, match);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+        gboolean matched = FALSE;
+
+        if (g_str_equal(key, "type")) {
+            matched = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+                      g_str_equal(g_variant_get_string(value, NULL), "window");
+        } else if (g_str_equal(key, "focused")) {
+            matched = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN) &&
+                      g_variant_get_boolean(value) == focused;
+        } else if (g_str_equal(key, "workspace_id")) {
+            const char* expected = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)
+                                       ? g_variant_get_string(value, NULL)
+                                       : NULL;
+            matched = expected && workspace_id && g_str_equal(expected, workspace_id);
+        } else if (g_str_equal(key, "workspace_number")) {
+            gint64 expected = 0;
+            if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64)) {
+                expected = g_variant_get_int64(value);
+                matched = TRUE;
+            } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32)) {
+                expected = g_variant_get_int32(value);
+                matched = TRUE;
+            }
+            matched = matched && expected == workspace_number;
+        } else if (g_str_equal(key, "app-id") || g_str_equal(key, "app_id") ||
+                   g_str_equal(key, "title")) {
+            const char* pattern = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)
+                                      ? g_variant_get_string(value, NULL)
+                                      : NULL;
+            const char* subject = g_str_equal(key, "title") ? (title ? title : "") : rule_app_id;
+            g_autoptr(GError) error = NULL;
+            gboolean pattern_matched = FALSE;
+            matched = pattern &&
+                      gnoblin_lua_pattern_match(pattern, subject, &pattern_matched, &error) &&
+                      pattern_matched;
+        }
+
+        g_variant_unref(value);
+        if (!matched)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow* window) {
+    if (!control || !window)
+        return;
+
+    MetaWindowActor* actor = meta_window_actor_from_window(window);
+    if (!actor || !META_IS_WINDOW_ACTOR_WAYLAND(actor))
+        return;
+
+    double radius = 0;
+    double smoothing = 0;
+    gboolean keep_maximized = TRUE;
+    gboolean keep_fullscreen = FALSE;
+    gboolean keep_tiled = FALSE;
+    g_autofree char* mode = g_strdup("auto");
+    g_autoptr(GVariant) document = native_config_document(control);
+    g_autoptr(GVariant) rules =
+        document ? g_variant_lookup_value(document, "window-rules", NULL) : NULL;
+
+    for (gsize i = 0; rules && i < g_variant_n_children(rules); i++) {
+        g_autoptr(GVariant) boxed_rule = g_variant_get_child_value(rules, i);
+        g_autoptr(GVariant) rule = g_variant_is_of_type(boxed_rule, G_VARIANT_TYPE_VARIANT)
+                                       ? g_variant_get_variant(boxed_rule)
+                                       : g_variant_ref(boxed_rule);
+        g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
+        if (!match || !native_window_rule_matches(match, window, control))
+            continue;
+
+        g_autoptr(GVariant) corners = g_variant_lookup_value(rule, "corners", NULL);
+        if (!corners || !g_variant_is_of_type(corners, G_VARIANT_TYPE_VARDICT))
+            continue;
+
+        native_rule_get_number(corners, "radius", &radius);
+        native_rule_get_number(corners, "smoothing", &smoothing);
+        g_variant_lookup(corners, "keep_maximized", "b", &keep_maximized);
+        g_variant_lookup(corners, "keep_fullscreen", "b", &keep_fullscreen);
+        g_variant_lookup(corners, "keep_tiled", "b", &keep_tiled);
+        g_autoptr(GVariant) mode_value = g_variant_lookup_value(corners, "mode", NULL);
+        if (mode_value && g_variant_is_of_type(mode_value, G_VARIANT_TYPE_STRING)) {
+            g_free(mode);
+            mode = g_strdup(g_variant_get_string(mode_value, NULL));
+        }
+    }
+
+    const gboolean tiled = meta_window_is_tiled_side_by_side(window);
+    const gboolean enabled = radius > 0 && !g_str_equal(mode, "off") &&
+                             (!meta_window_is_maximized(window) || keep_maximized) &&
+                             (!meta_window_is_fullscreen(window) || keep_fullscreen) &&
+                             (!tiled || keep_tiled);
+    meta_window_actor_wayland_set_rounded_clip(actor, enabled ? radius : 0,
+                                               2 + CLAMP(smoothing, 0, 1) * 4);
+}
+
+static void native_apply_all_window_rules(GnoblinNativeControl* control) {
+    if (!control || !control->display)
+        return;
+    GSList* windows = meta_display_list_windows(control->display, META_LIST_DEFAULT);
+    for (GSList* link = windows; link; link = link->next)
+        native_apply_window_rules(control, link->data);
+    g_slist_free(windows);
+}
+
 static void native_settings_changed(guint64 revision, gpointer user_data) {
     GnoblinNativeControl* control = user_data;
     if (!control || control->stopping || !control->display)
@@ -5555,6 +5699,7 @@ static void native_settings_changed(guint64 revision, gpointer user_data) {
     meta_prefs_apply_gnoblin_window_preferences(window_management);
     meta_prefs_apply_gnoblin_compositor_preferences(compositor_preferences);
     meta_prefs_apply_gnoblin_keyboard_preferences(keyboard_preferences);
+    native_apply_all_window_rules(control);
     g_autoptr(GVariant) configured_gestures =
         config ? g_variant_lookup_value(config, "touchpad-gestures", G_VARIANT_TYPE("av")) : NULL;
     g_clear_pointer(&control->native_touchpad_gestures, g_variant_unref);
@@ -9867,6 +10012,7 @@ static gboolean publish_windows(gpointer user_data) {
     GnoblinNativeControl* control = user_data;
     guint64 revision = control->state_revision;
     control->publish_id = 0;
+    native_apply_all_window_rules(control);
     g_autoptr(GError) workspace_error = NULL;
     g_autoptr(JsonNode) workspace_json = workspace_snapshot_json(control, &workspace_error);
     if (!workspace_json)
@@ -10275,10 +10421,12 @@ static void refresh_all_window_signal_watches(GnoblinNativeControl* control) {
 }
 
 static void window_workspace_changed(MetaWindow* window, gpointer user_data) {
+    native_apply_window_rules(user_data, window);
     schedule_windows(user_data);
 }
 
 static void window_notified(GObject* window, GParamSpec* property, gpointer user_data) {
+    native_apply_window_rules(user_data, META_WINDOW(window));
     schedule_windows(user_data);
 }
 
@@ -10304,6 +10452,7 @@ static void track_window(GnoblinNativeControl* control, MetaWindow* window) {
     g_signal_connect(window, "workspace-changed", G_CALLBACK(window_workspace_changed), control);
     g_signal_connect(window, "unmanaged", G_CALLBACK(window_unmanaged), control);
     refresh_window_signal_watches(control, window);
+    native_apply_window_rules(control, window);
     schedule_windows(control);
 }
 
@@ -10312,6 +10461,8 @@ static void window_created(MetaDisplay* display, MetaWindow* window, gpointer us
 }
 
 static void display_notified(GObject* display, GParamSpec* property, gpointer user_data) {
+    if (g_str_equal(property->name, "focus-window"))
+        native_apply_all_window_rules(user_data);
     schedule_windows(user_data);
 }
 
