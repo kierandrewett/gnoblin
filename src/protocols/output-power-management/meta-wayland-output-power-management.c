@@ -31,7 +31,7 @@
 #include "meta/meta-monitor-manager.h"
 #include "wayland/meta-wayland-outputs.h"
 #include "wayland/meta-wayland-private.h"
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 
 #include "wlr-output-power-management-unstable-v1-server-protocol.h"
 
@@ -197,7 +197,7 @@ void meta_wayland_init_output_power_management(MetaWaylandCompositor* compositor
     MetaBackend* backend = meta_context_get_backend(context);
     MetaWaylandOutputPowerContext* ctx;
 
-    if (!gnoblin_config_protocol_enabled("wlr-output-power-management")) {
+    if (!gnoblin_native_control_protocol_enabled("wlr-output-power-management")) {
         g_message("Gnoblin wlr-output-power-management protocol disabled by settings");
         return;
     }

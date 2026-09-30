@@ -34,7 +34,7 @@
 #include "wayland/meta-wayland-text-input.h"
 #include "wayland/meta-wayland-touch.h"
 
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 
 #include "ext-session-lock-v1-server-protocol.h"
 
@@ -824,9 +824,9 @@ void meta_wayland_init_session_lock(MetaWaylandCompositor* compositor) {
 
     /* This standard global is a Gnoblin-session capability, never a replacement
      * policy or launcher. The existing predicate defaults it on only for
-     * GNOME_SHELL_SESSION_MODE=gnoblin, preserving GNOME ScreenShield's normal
+     * XDG_CURRENT_DESKTOP=Gnoblin, preserving GNOME ScreenShield's normal
      * session behaviour. A global cannot safely be retracted at config reload. */
-    if (!gnoblin_config_protocol_enabled("ext-session-lock"))
+    if (!gnoblin_native_control_protocol_enabled("ext-session-lock"))
         return;
 
     controller = get_controller(compositor);
