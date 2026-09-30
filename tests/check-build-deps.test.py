@@ -15,6 +15,16 @@ spec.loader.exec_module(checker)
 
 
 class BuildRequirements(unittest.TestCase):
+    def test_dependency_check_uses_gnoblin_patched_pipewire_floor(self):
+        source = """
+libpipewire_req = '>= 1.6.0'
+libpipewire_dep = dependency('libpipewire-0.3', version: libpipewire_req)
+"""
+
+        patched = checker.apply_dependency_version_patches(source, "mutter", "meson.build")
+
+        self.assertEqual(list(checker.requirements(patched)), [("libpipewire-0.3", ">= 1.4.11")])
+
     def test_requirement_extraction_includes_required_unversioned_dependencies(self):
         source = """
 glib_req = '>= 2.86.0'

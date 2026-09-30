@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+MESON_ASSIGNMENT = re.compile(r"^([a-zA-Z0-9_]+)\s*=\s*'([^']+)'$", re.MULTILINE)
 
 
 def bundled_subprojects(source):
@@ -60,6 +61,51 @@ def requirements(source, include_schemas=False, bundled=()):
         # files may declare several earlier prerelease floors for this module.
         if module not in subprojects | {"umockdev-1.0"} and (include_schemas or module != "gsettings-desktop-schemas"):
             yield module, minimum
+
+
+def apply_dependency_version_patches(source, project, build_file):
+    """Apply patched Meson version-variable assignments to pinned source text."""
+    variables = dict(MESON_ASSIGNMENT.findall(source))
+    patch_root = ROOT / "patches" / project
+
+    def apply_section(target, removed, added, patch):
+        if target != build_file:
+            return
+        for name, new_value in added.items():
+            old_value = removed.get(name)
+            if old_value is None:
+                continue
+            current_value = variables.get(name)
+            if current_value not in (old_value, new_value):
+                raise ValueError(
+                    f"{patch}: expected {name} = {old_value!r} in pinned {project}/{build_file}, "
+                    f"found {current_value!r}"
+                )
+            variables[name] = new_value
+
+    for patch in sorted(patch_root.rglob("*.patch")):
+        target = None
+        removed = {}
+        added = {}
+        for line in patch.read_text().splitlines():
+            if line.startswith("diff --git "):
+                apply_section(target, removed, added, patch)
+                parts = line.split()
+                target = parts[3][2:] if len(parts) == 4 and parts[3].startswith("b/") else None
+                removed = {}
+                added = {}
+            elif target == build_file and line.startswith(("-", "+")) and not line.startswith(("---", "+++")):
+                match = MESON_ASSIGNMENT.fullmatch(line[1:])
+                if match:
+                    assignments = removed if line.startswith("-") else added
+                    assignments[match.group(1)] = match.group(2)
+        apply_section(target, removed, added, patch)
+
+    def replace(match):
+        name = match.group(1)
+        return f"{name} = '{variables[name]}'"
+
+    return re.sub(r"(?m)^([a-zA-Z0-9_]+)\s*=\s*'[^']+'$", replace, source)
 
 
 def check(mode="checkout", project=None, xwayland=True, vector_cursors=False):
@@ -143,6 +189,7 @@ def check(mode="checkout", project=None, xwayland=True, vector_cursors=False):
                     )
                     return 1
                 root_source = result.stdout
+            source = apply_dependency_version_patches(source, source_project, build_file)
         for module, minimum in requirements(
             source,
             include_schemas=(source_project == "xdg-desktop-portal-gnome" and project is not None),
