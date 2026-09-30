@@ -5515,6 +5515,19 @@ static void native_settings_changed(guint64 revision, gpointer user_data) {
         dynamic_shortcut_end_session(control, control->active_shortcut_session, "config_changed");
 
     g_autoptr(GVariant) config = native_config_document(control);
+    g_autoptr(GVariant) window_management =
+        config ? g_variant_lookup_value(config, "window-management", G_VARIANT_TYPE_VARDICT) : NULL;
+    g_autoptr(GVariant) compositor_preferences =
+        config ? g_variant_lookup_value(config, "compositor", G_VARIANT_TYPE_VARDICT) : NULL;
+    g_autoptr(GVariant) input_preferences =
+        config ? g_variant_lookup_value(config, "input", G_VARIANT_TYPE_VARDICT) : NULL;
+    g_autoptr(GVariant) keyboard_preferences =
+        input_preferences
+            ? g_variant_lookup_value(input_preferences, "keyboard", G_VARIANT_TYPE_VARDICT)
+            : NULL;
+    meta_prefs_apply_gnoblin_window_preferences(window_management);
+    meta_prefs_apply_gnoblin_compositor_preferences(compositor_preferences);
+    meta_prefs_apply_gnoblin_keyboard_preferences(keyboard_preferences);
     g_autoptr(GVariant) configured_gestures =
         config ? g_variant_lookup_value(config, "touchpad-gestures", G_VARIANT_TYPE("av")) : NULL;
     g_clear_pointer(&control->native_touchpad_gestures, g_variant_unref);
