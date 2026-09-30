@@ -29,6 +29,7 @@
 #include "backends/meta-keymap-description-private.h"
 #include "clutter/clutter.h"
 #include "compositor/meta-window-actor-private.h"
+#include "compositor/meta-window-actor-x11.h"
 #include "compositor/meta-window-actor-wayland.h"
 #include "core/display-private.h"
 #include "core/events.h"
@@ -5621,7 +5622,7 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         return;
 
     MetaWindowActor* actor = meta_window_actor_from_window(window);
-    if (!actor || !META_IS_WINDOW_ACTOR_WAYLAND(actor))
+    if (!actor)
         return;
 
     double radius = 0;
@@ -5664,8 +5665,13 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                              (!meta_window_is_maximized(window) || keep_maximized) &&
                              (!meta_window_is_fullscreen(window) || keep_fullscreen) &&
                              (!tiled || keep_tiled);
-    meta_window_actor_wayland_set_rounded_clip(
-        actor, enabled ? radius : 0, 2 + CLAMP(smoothing, 0, 1) * 4, g_str_equal(mode, "auto"));
+    const double exponent = 2 + CLAMP(smoothing, 0, 1) * 4;
+    if (META_IS_WINDOW_ACTOR_WAYLAND(actor))
+        meta_window_actor_wayland_set_rounded_clip(actor, enabled ? radius : 0, exponent,
+                                                   g_str_equal(mode, "auto"));
+    else if (META_IS_WINDOW_ACTOR_X11(actor))
+        meta_window_actor_x11_set_rounded_clip(META_WINDOW_ACTOR_X11(actor), enabled ? radius : 0,
+                                               exponent, g_str_equal(mode, "auto"));
 }
 
 static void native_apply_all_window_rules(GnoblinNativeControl* control) {
