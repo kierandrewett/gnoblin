@@ -22,9 +22,7 @@ if [[ -n "$PREPARED_SOURCES" ]]; then
     }
     for project in mutter xdg-desktop-portal-gnome; do
         version="$($ROOT/scripts/gnome-versions.py get "$project" version)"
-        archive="$project"
-        if [[ "$project" == gnome-shell ]]; then archive=gnoblin-shell; fi
-        source="$PREPARED_SOURCES/$archive-$version.tar.xz"
+        source="$PREPARED_SOURCES/$project-$version.tar.xz"
         [[ -f "$source" ]] || {
             echo "Missing prepared source: $source" >&2
             exit 1
