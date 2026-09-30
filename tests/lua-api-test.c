@@ -138,6 +138,7 @@ int main(void) {
         "gnoblin.shell.version()",
         "gnoblin.shell.status()",
         "gnoblin.shell.reload()",
+        "gnoblin.set {window_management={focus_mode='click'}}",
         "gnoblin.window_rule(false)",
         "gnoblin.config=false; gnoblin.configure {window_management={workspace_names={'x'}}}",
         "gnoblin.shortcut {command={'x'}}",

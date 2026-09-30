@@ -1514,12 +1514,6 @@ static int lua_set(lua_State* state) {
     lua_pop(state, 2);
     return 0;
 }
-static int lua_legacy_set(lua_State* state) {
-    g_warning("gnoblin.set is deprecated and may be removed at any time; migrate to "
-              "gnoblin.configure with public snake_case setting names");
-    return lua_set(state);
-}
-
 static int lua_subscription_unsubscribe(lua_State* state) {
     luaL_checktype(state, 1, LUA_TTABLE);
     lua_getfield(state, 1, "_active");
@@ -4871,8 +4865,6 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_setfield(state, -2, "events");
     lua_newtable(state);
     lua_setfield(state, -2, "listeners");
-    lua_pushcfunction(state, lua_legacy_set);
-    lua_setfield(state, -2, "set");
     lua_newtable(state);
     lua_newtable(state);
     lua_pushcfunction(state, lua_configure_call);
