@@ -93,9 +93,7 @@ jobs:
             find "$RUNNER_TEMP/rpmbuild/RPMS" -type f \( \
               -name 'gnoblin-mutter-[0-9]*.rpm' -o \
               -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \
-              -name 'gnoblin-shell-[0-9]*.rpm' -o \
-              -name 'gnoblin-portal-[0-9]*.rpm' -o \
-              -name 'gnoblin-session-[0-9]*.rpm' \
+              -name 'gnoblin-portal-[0-9]*.rpm' \
             \) | sort
           )
           python3 scripts/check-rpm-isolation.py "${rpms[@]}"
@@ -130,26 +128,22 @@ jobs:
             find rpms -type f \( \
               -name 'gnoblin-mutter-[0-9]*.rpm' -o \
               -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \
-              -name 'gnoblin-shell-[0-9]*.rpm' -o \
-              -name 'gnoblin-portal-[0-9]*.rpm' -o \
-              -name 'gnoblin-session-[0-9]*.rpm' \
+              -name 'gnoblin-portal-[0-9]*.rpm' \
             \) | sort
           )
           mapfile -t runtime_rpms < <(
             find rpms -type f \( \
               -name 'gnoblin-[0-9]*.rpm' -o \
               -name 'gnoblin-mutter-[0-9]*.rpm' -o \
-              -name 'gnoblin-shell-[0-9]*.rpm' -o \
-              -name 'gnoblin-portal-[0-9]*.rpm' -o \
-              -name 'gnoblin-session-[0-9]*.rpm' \
+              -name 'gnoblin-portal-[0-9]*.rpm' \
             \) | sort
           )
-          test "${#runtime_rpms[@]}" -eq 5
+          test "${#runtime_rpms[@]}" -eq 3
           integration_rpm="$(find rpms -type f -name 'gnoblin-gnome-integration-*.rpm' -print -quit)"
           test -n "$integration_rpm"
           python3 scripts/check-rpm-isolation.py "${component_rpms[@]}"
           zypper --non-interactive install --no-recommends --allow-unsigned-rpm "${runtime_rpms[@]}"
-          rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-portal gnoblin-session
+          rpm -q gnoblin gnoblin-mutter gnoblin-portal
           ! rpm -q gnoblin-gnome-integration
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
@@ -179,7 +173,7 @@ jobs:
       - name: Remove Gnoblin and reverify stock GNOME
         run: |
           zypper --non-interactive remove \
-            gnoblin-gnome-integration gnoblin gnoblin-session gnoblin-portal gnoblin-shell gnoblin-mutter
+            gnoblin-gnome-integration gnoblin gnoblin-portal gnoblin-mutter
           ! test -e /usr/share/wayland-sessions/gnoblin.desktop
           ! test -e /usr/lib/systemd/user/org.gnoblin.Shell.target
           ! test -e /usr/lib/systemd/user/gnoblin-session.target
