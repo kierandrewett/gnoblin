@@ -201,7 +201,7 @@ gnoblin.window_rule {
         dialog_open = string?, dialog_close = string?,
         layer_open = string?, layer_close = string?,
         minimize = string?, restore = string?, workspace_switch = string?,
-        console_open = string?, console_close = string?, shadow_change = string?,
+        shadow_change = string?,
         layer_companion_close = string?, resize = string?,
         tile_preview_open = string?, tile_preview_close = string?,
         dialog_dim = string?, dialog_undim = string?,
