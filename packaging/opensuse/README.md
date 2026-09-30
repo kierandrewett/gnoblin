@@ -12,7 +12,7 @@ Gnoblin compositor packages because an OBS project must build those
 in this order:
 
 1. `gnoblin-mutter` and `gnoblin-mutter-devel`
-2. `gnoblin-shell`, `gnoblin-portal`, and `gnoblin-session`
+2. `gnoblin-portal`
 3. `gnoblin` and its optional `gnoblin-gnome-integration` subpackage
 
 The check proves that Tumbleweed can resolve the external BuildRequires. It
