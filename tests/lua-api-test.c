@@ -175,6 +175,18 @@ int main(void) {
         "  else\n"
         "    assert(event.menu_context==nil)\n"
         "  end\n"
+        "end)\n"
+        "local thumbnail_events=0\n"
+        "g.on('gnoblin.window.created', function()\n"
+        "  thumbnail_events=thumbnail_events+1\n"
+        "  if thumbnail_events==1 then\n"
+        "    local operation=g.window.thumbnail({id='42',width=320,height=200})\n"
+        "    assert(operation.method=='window.thumbnail' and operation.status=='pending')\n"
+        "  else\n"
+        "    assert(not pcall(function()\n"
+        "      g.window.thumbnail({id='42',width=481,height=200})\n"
+        "    end))\n"
+        "  end\n"
         "end)\n";
     g_assert_true(g_file_set_contents(root, menu_runtime_source, -1, &error));
     g_autoptr(GVariant) menu_runtime = gnoblin_config_load_runtime(root, NULL, NULL, &error);
@@ -198,6 +210,41 @@ int main(void) {
     g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 1);
     g_autoptr(GVariant) queued_api_operation = g_variant_get_child_value(queued_api_operations, 0);
     g_assert_true(g_variant_equal(api_operation, queued_api_operation));
+
+    GVariantBuilder thumbnail_event_builder;
+    g_variant_builder_init(&thumbnail_event_builder, G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) thumbnail_event_payload =
+        g_variant_ref_sink(g_variant_builder_end(&thumbnail_event_builder));
+    g_autoptr(GVariant) thumbnail_event_result =
+        gnoblin_config_dispatch_event("gnoblin.window.created", thumbnail_event_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(thumbnail_event_result);
+    g_autoptr(GVariant) thumbnail_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(thumbnail_operations), ==, 1);
+    g_autoptr(GVariant) thumbnail_operation = g_variant_get_child_value(thumbnail_operations, 0);
+    g_autoptr(GVariant) thumbnail_method =
+        g_variant_lookup_value(thumbnail_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(thumbnail_method, NULL), ==, "window.thumbnail");
+    g_autoptr(GVariant) thumbnail_arguments =
+        g_variant_lookup_value(thumbnail_operation, "arguments", G_VARIANT_TYPE_VARDICT);
+    const char* thumbnail_id = NULL;
+    gint64 thumbnail_width = 0;
+    gint64 thumbnail_height = 0;
+    g_assert_true(g_variant_lookup(thumbnail_arguments, "id", "&s", &thumbnail_id));
+    g_assert_true(g_variant_lookup(thumbnail_arguments, "width", "x", &thumbnail_width));
+    g_assert_true(g_variant_lookup(thumbnail_arguments, "height", "x", &thumbnail_height));
+    g_assert_cmpstr(thumbnail_id, ==, "42");
+    g_assert_cmpint(thumbnail_width, ==, 320);
+    g_assert_cmpint(thumbnail_height, ==, 200);
+    gnoblin_config_finish_event(TRUE);
+
+    g_autoptr(GVariant) invalid_thumbnail_result =
+        gnoblin_config_dispatch_event("gnoblin.window.created", thumbnail_event_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(invalid_thumbnail_result);
+    g_autoptr(GVariant) invalid_thumbnail_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(invalid_thumbnail_operations), ==, 0);
+    gnoblin_config_finish_event(TRUE);
 
     GVariantBuilder menu_event;
     g_variant_builder_init(&menu_event, G_VARIANT_TYPE_VARDICT);
