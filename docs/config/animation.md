@@ -42,7 +42,7 @@ gnoblin.animation {
     name = string,
     event = "minimize" | "restore" | "open" | "close" | "dialog-open" | "dialog-close"
         | "layer-open" | "layer-close" | "workspace-switch"
-        | "shadow-change" | "layer-companion-close" | "resize"
+        | "shadow-change" | "resize"
         | "tile-preview-open" | "tile-preview-close" | "dialog-dim" | "dialog-undim",
     enable = boolean?,
     duration = integer?, -- 0–10000 ms

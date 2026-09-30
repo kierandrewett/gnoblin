@@ -53,7 +53,6 @@ animation runs:
 | `dialog-open`, `dialog-close`             | When a dialog opens or closes                    |
 | `dialog-dim`, `dialog-undim`              | When a dialog dims or returns to normal          |
 | `layer-open`, `layer-close`               | When a layer-shell surface appears or disappears |
-| `layer-companion-close`                   | When a layer companion is dismissed              |
 | `workspace-switch`                        | When the active workspace changes                |
 | `shadow-change`                           | When a window shadow changes                     |
 | `resize`                                  | While a window resizes                           |
@@ -201,7 +200,6 @@ Those profiles belong to Gnoblin.
 | `gnome-dialog-dim`, `gnome-dialog-undim`                              | 500 ms / 250 ms, ease-out quad; eases dim `progress` in / out.                                                                              |
 | `gnoblin-layer-open`, `gnoblin-layer-close`                           | 250 ms, ease-out cubic; slides from/to the layer's anchor-derived offset, or fades when the offset is zero.                                 |
 | `gnoblin-shadow-change`                                               | Uses the configured shadow duration and easing; animates shadow `progress`.                                                                 |
-| `gnoblin-layer-companion-close`                                       | 180 ms, ease-in quad; moves the companion actor by its dismissal offset.                                                                    |
 
 These are resolved defaults. Geometry-dependent destinations vary with the
 window, dock, monitor, and layer anchors. Custom registrations can replace an
