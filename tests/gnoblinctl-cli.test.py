@@ -40,7 +40,16 @@ def main() -> int:
     version_result = run(binary, "--version", "--format", "json")
     assert version_result.returncode == 0, version_result.stderr
     identity = json.loads(version_result.stdout)
-    for field in ("version", "gnomeVersion", "mutterApi", "gitRemote", "gitSha"):
+    for field in (
+        "version",
+        "gnomeVersion",
+        "mutterApi",
+        "luaVersion",
+        "apiVersion",
+        "buildId",
+        "gitRemote",
+        "gitSha",
+    ):
         assert isinstance(identity.get(field), str) and identity[field], field
     assert isinstance(identity.get("sourceModified"), bool)
     components = identity.get("components")

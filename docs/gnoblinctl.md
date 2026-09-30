@@ -1,11 +1,10 @@
 # gnoblinctl
 
 Run `gnoblinctl --version` to read the installed build identity without a
-running session. It reports the Gnoblin version, the Mutter and Gnoblin portal
-backend versions, Mutter API, source Git remote, and commit. `gnoblin --version`
-prints the same identity.
-Use `gnoblin --version --json` or `gnoblinctl --version --json` to save the
-complete build identity as JSON.
+running session. It reports the Gnoblin and GNOME versions, Mutter and portal
+backend versions, Lua and native API versions, build ID, Git remote, and commit.
+`gnoblin --version` prints the same identity. Add `--json` to either command to
+save the complete build identity as JSON.
 
 In a Git checkout, the command reads the source manifests, current commit and
 tracking remote (or `origin`). In a release tarball, it reads the embedded
