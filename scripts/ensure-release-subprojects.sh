@@ -7,12 +7,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 if [ "$#" -gt 0 ]; then
     projects=("$@")
 else
-    projects=(mutter gnome-shell xdg-desktop-portal-gnome)
+    projects=(mutter xdg-desktop-portal-gnome)
 fi
 
 for project in "${projects[@]}"; do
     case "$project" in
-        mutter | gnome-shell | xdg-desktop-portal-gnome) ;;
+        mutter | xdg-desktop-portal-gnome) ;;
         *)
             echo "Unknown source project: $project" >&2
             exit 2

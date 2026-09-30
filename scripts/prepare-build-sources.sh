@@ -6,11 +6,11 @@ mode="${1:?source mode required}"
 if [ "$#" -gt 1 ]; then
     projects=("$2")
 else
-    projects=(mutter gnome-shell xdg-desktop-portal-gnome)
+    projects=(mutter xdg-desktop-portal-gnome)
 fi
 for name in "${projects[@]}"; do
     case "$name" in
-        mutter | gnome-shell | xdg-desktop-portal-gnome) ;;
+        mutter | xdg-desktop-portal-gnome) ;;
         *)
             echo "Unknown source project: $name" >&2
             exit 2
@@ -31,7 +31,6 @@ if [ "$mode" = release-archive ]; then
             exit 1
         fi
         archive_name="$name"
-        [ "$name" = gnome-shell ] && archive_name=gnoblin-shell
         archives=(sources/"$archive_name"-*.tar.xz)
         if [ "${#archives[@]}" -ne 1 ] || [ ! -f "${archives[0]}" ]; then
             echo "Expected one $archive_name source archive in sources/." >&2
