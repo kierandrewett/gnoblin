@@ -285,6 +285,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("gboolean matching_success", completion)
         self.assertIn('g_variant_lookup(operation_result, "accepted", "b", &logout_accepted)', completion)
         self.assertIn('g_str_equal(method, "session.logout")', completion)
+        self.assertIn('g_variant_lookup_value(payload, "value", G_VARIANT_TYPE_VARDICT)', completion)
         self.assertLess(
             completion.index("send_pending_operations(runtime, error)"), completion.index("if (matching_success)")
         )
