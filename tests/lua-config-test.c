@@ -1,4 +1,5 @@
 #include "gnoblin-config.h"
+#include "gnoblin-portal-policy.h"
 #include <glib/gstdio.h>
 #include <string.h>
 
@@ -423,6 +424,10 @@ int main(void) {
         gnoblin_config_load_runtime(explicit_root, NULL, NULL, &error);
     g_assert_no_error(error);
     g_assert_nonnull(runtime_document);
+    g_auto(GnoblinPermission) expected_permission = gnoblin_permission_policy_evaluate(
+        runtime_document, "remote-desktop", "app-id:org.example.Remote");
+    g_assert_cmpint(expected_permission.level, ==, GNOBLIN_PERMISSION_ALLOW);
+    g_assert_cmpstr(expected_permission.rule, ==, "remote-test");
     gnoblin_config_finish_load(TRUE);
 
     GVariantBuilder empty_bind_event;
