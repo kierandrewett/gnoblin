@@ -44,7 +44,7 @@ After your component includes, append a rule:
 ```lua
 gnoblin.permission_rule {
     name = "rustdesk",
-    match = [[^host-exe:/usr/bin/rustdesk$]],
+    match = [[^host%-exe:/usr/bin/rustdesk$]],
     capabilities = {"screen-cast", "remote-desktop"},
     level = "allow",
     monitors = {"primary"},
@@ -58,13 +58,21 @@ configure RustDesk's separate `uinput` path.
 
 ## Match an identity
 
-`match` is a case-sensitive JavaScript regex against one namespaced identity:
+`match` is a Lua pattern against one complete namespaced identity:
 
 - `app-id:<id>`: supplied by the trusted portal frontend.
 - `host-exe:<absolute-path>`: caller executable when the frontend has no app ID.
 
-Use anchors for exact matches. Window titles and client Wayland app IDs are not
-permission identities. Do not grant a broad temporary directory for an AppImage.
+Use anchors for exact matches. Escape Lua pattern characters with `%`; for
+example, `.` becomes `%.` and `host-exe:` becomes `host%-exe:`.
+
+Convert regex `^host-exe:/opt/Remote\.App$` to Lua pattern
+`^host%-exe:/opt/Remote%.App$`. Lua patterns do not support regex features
+such as alternation, `{m,n}`, `\d`, or lookarounds. See the
+[Lua 5.4 pattern reference](https://www.lua.org/manual/5.4/manual.html#6.4.1).
+
+Window titles and client Wayland `app_id` values are not permission identities.
+Avoid broad temporary-directory patterns for an AppImage.
 
 If the portal cannot verify the caller's identity, Gnoblin will not approve it
 automatically. It rejects the request when the global default is `deny`;
@@ -129,6 +137,3 @@ Frontend-cached permissions may bypass the backend.
 
 `access` cannot distinguish camera, microphone and location requests.
 [Protocol settings](/guides/session_settings#protocol-settings) are separate.
-
-Developer checks: `node tests/permissions.test.mjs` and
-`tests/test-permissions-live.py` in a private session with the patched backend.
