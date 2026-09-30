@@ -30,7 +30,7 @@ The build does not change system packages.
   --with-vector-cursors  Build the optional Adwaita vector cursor theme
   --verbose           Stream every build command and its output
   --dry-run           Show stages without changing files
-  --target NAME       Build a CMake target (default: gnoblin)
+  --target NAME       Build a CMake target (default: gnoblin-session)
   --register-session  Add the standalone Gnoblin login
   --preview           Build the optional viewer if needed, then open it
   --terminal NAME     Terminal to open with --preview (default: first available)
@@ -45,7 +45,7 @@ vector_cursors=false
 xwayland_selected=false
 prefix="$PWD/install"
 terminal=''
-target=gnoblin
+target=gnoblin-session
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --jobs)
