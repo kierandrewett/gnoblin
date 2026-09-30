@@ -308,6 +308,7 @@ static guint api_minor_for_method(const char* method) {
         {"session.lock", 21},
         {"runtime.reload_config", 20},
         {"version", 19},
+        {"window.list", 19},
         {"capabilities.list", 19},
         {"focus.history", 19},
         {"focus.policy", 19},
@@ -354,7 +355,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "privacy.stop_sharing") ||
         g_str_equal(method_name, "privacy.stop_recording") ||
         g_str_equal(method_name, "launch.status") ||
-        g_str_equal(method_name, "capabilities.list") ||
+        g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "window.list") ||
         g_str_equal(method_name, "focus.history") || g_str_equal(method_name, "focus.policy") ||
         g_str_equal(method_name, "settings") || g_str_equal(method_name, "runtime.reload_config") ||
         g_str_has_prefix(method_name, "animation.")) {

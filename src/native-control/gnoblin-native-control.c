@@ -8924,9 +8924,10 @@ static JsonNode* permission_decision_json(GVariant* document, const char* capabi
 
 static gboolean native_api_read_method(const char* method) {
     return method &&
-           (g_str_equal(method, "version") || g_str_equal(method, "capabilities.list") ||
-            g_str_equal(method, "focus.history") || g_str_equal(method, "settings") ||
-            g_str_equal(method, "focus.policy") || g_str_equal(method, "session.activity") ||
+           (g_str_equal(method, "window.list") || g_str_equal(method, "version") ||
+            g_str_equal(method, "capabilities.list") || g_str_equal(method, "focus.history") ||
+            g_str_equal(method, "settings") || g_str_equal(method, "focus.policy") ||
+            g_str_equal(method, "session.activity") ||
             g_str_equal(method, "layer.animation_policy"));
 }
 
@@ -9470,6 +9471,21 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     JsonNode* arguments_node = json_object_get_member(request, "arguments");
     if (arguments_node && !JSON_NODE_HOLDS_OBJECT(arguments_node))
         return encode_response(id, NULL, "arguments must be an object");
+    if (g_str_equal(method, "window.list")) {
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) arguments = arguments_node
+                                            ? variant_from_json(arguments_node)
+                                            : g_variant_ref_sink(g_variant_builder_end(&empty));
+        if (!arguments)
+            return encode_response(id, NULL, "window.list arguments are invalid");
+        g_autoptr(GVariant) result =
+            meta_gnoblin_dispatch_native_api(client->control->display, method, arguments, &error);
+        if (!result)
+            return encode_response(id, NULL, error ? error->message : "window listing unavailable");
+        g_autoptr(JsonNode) json = json_from_variant(result);
+        return encode_response(id, json, NULL);
+    }
     if (g_str_equal(method, "session.status")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "session.status does not accept arguments");
