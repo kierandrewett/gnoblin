@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: lower minimum PipeWire version
+
+---
+diff --git a/meson.build b/meson.build
+index cdd13b683..074ce4243 100644
+--- a/meson.build
++++ b/meson.build
+@@ -55,7 +55,7 @@ gbm_req = '>= 21.3'
+ libdrm_req = '>= 2.4.118'
+ 
+ # screen cast version requirements
+-libpipewire_req = '>= 1.6.0'
++libpipewire_req = '>= 1.4.11'
+ 
+ # profiler requirements
+ sysprof_req = '>= 3.37.2'
