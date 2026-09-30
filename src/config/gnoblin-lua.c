@@ -992,6 +992,26 @@ static void push_readonly_copy(lua_State* state, int index) {
     lua_setmetatable(state, readonly);
 }
 
+/* Event payloads describe a point-in-time state just like the snapshot API.
+ * Keep the event envelope mutable while making every structured field a
+ * detached read-only value with any applicable record methods. */
+static void push_readonly_event_fields(lua_State* state, GVariant* payload, int event_index) {
+    event_index = lua_absindex(state, event_index);
+    GVariantIter iter;
+    const char* key = NULL;
+    GVariant* value = NULL;
+    g_variant_iter_init(&iter, payload);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+        lua_getfield(state, event_index, key);
+        if (lua_istable(state, -1)) {
+            push_readonly_copy(state, -1);
+            lua_setfield(state, event_index, key);
+        }
+        lua_pop(state, 1);
+        g_variant_unref(value);
+    }
+}
+
 static gboolean variant_is_animation_preview(GVariant* value) {
     const char* session = NULL;
     const char* name = NULL;
@@ -5920,6 +5940,7 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
             for (lua_Integer i = 1; i <= count; i++) {
                 lua_rawgeti(state, listeners, i);
                 push_variant(state, event_payloads[event_index]);
+                push_readonly_event_fields(state, event_payloads[event_index], -1);
                 lua_pushstring(state, event_names[event_index]);
                 lua_setfield(state, -2, "name");
                 if (g_str_equal(event_names[event_index], "gnoblin.window.drag.started") ||

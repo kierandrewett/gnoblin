@@ -666,6 +666,12 @@ int main(void) {
         "  assert(not latest.available.microphone_in_use and not latest.available.camera_in_use)\n"
         "  assert(not latest.available.location_in_use)\n"
         "end)\n"
+        "g.on('gnoblin.window.changed', function(event)\n"
+        "  assert(event.name=='gnoblin.window.changed')\n"
+        "  assert(event.window.id=='window-1')\n"
+        "  assert(not pcall(function() event.window.above=true end))\n"
+        "  assert(event.window:set_above(true).method=='window.set_above')\n"
+        "end)\n"
         "g.on('test.snapshot_methods', function()\n"
         "  local window=assert(g.windows.by_id('window-1'))\n"
         "  assert(window:set_above(true).method=='window.set_above')\n"
@@ -792,6 +798,37 @@ int main(void) {
         g_assert_nonnull(method);
         g_assert_cmpstr(g_variant_get_string(method, NULL), ==, expected_snapshot_methods[i]);
     }
+    gnoblin_config_finish_event(TRUE);
+
+    GVariantBuilder event_window_builder;
+    g_variant_builder_init(&event_window_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&event_window_builder, "{sv}", "id", g_variant_new_string("window-1"));
+    g_variant_builder_add(&event_window_builder, "{sv}", "focused", g_variant_new_boolean(TRUE));
+    GVariantBuilder event_window_frame_builder;
+    g_variant_builder_init(&event_window_frame_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&event_window_frame_builder, "{sv}", "x", g_variant_new_int64(0));
+    g_variant_builder_add(&event_window_frame_builder, "{sv}", "y", g_variant_new_int64(0));
+    g_variant_builder_add(&event_window_frame_builder, "{sv}", "width", g_variant_new_int64(800));
+    g_variant_builder_add(&event_window_frame_builder, "{sv}", "height", g_variant_new_int64(600));
+    g_variant_builder_add(&event_window_builder, "{sv}", "frame",
+                          g_variant_builder_end(&event_window_frame_builder));
+    GVariantBuilder window_event_builder;
+    g_variant_builder_init(&window_event_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&window_event_builder, "{sv}", "window",
+                          g_variant_builder_end(&event_window_builder));
+    g_autoptr(GVariant) window_event_payload =
+        g_variant_ref_sink(g_variant_builder_end(&window_event_builder));
+    g_autoptr(GVariant) window_event_result =
+        gnoblin_config_dispatch_event("gnoblin.window.changed", window_event_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(window_event_result);
+    g_autoptr(GVariant) window_event_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(window_event_operations), ==, 1);
+    g_autoptr(GVariant) window_event_operation =
+        g_variant_get_child_value(window_event_operations, 0);
+    g_autoptr(GVariant) window_event_method =
+        g_variant_lookup_value(window_event_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(window_event_method, NULL), ==, "window.set_above");
     gnoblin_config_finish_event(TRUE);
 
     GVariantBuilder read_filter_builder;
