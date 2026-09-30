@@ -261,21 +261,19 @@ should not be saved in configuration.
 See the [workspace configuration reference](/config/configure/window_management)
 and the [writing workspace recipe](/recipes/writing-workspace).
 
-| Method                        | Arguments                                                          | Successful result                 |
-| ----------------------------- | ------------------------------------------------------------------ | --------------------------------- |
-| `workspace.list()`            | None                                                               | `{workspaces = {Workspace, ...}}` |
-| `workspace.create(args)`      | `name` required; optional `id`, `activate`                         | New `Workspace` record            |
-| `workspace.rename(args)`      | Exactly one of `id` or `number`, plus `name`                       | Updated `Workspace` record        |
-| `workspace.remove(args)`      | Exactly one of `id` or `number`                                    | Removed workspace record          |
-| `workspace.switch(args)`      | Exactly one of `id` or `number`                                    | Activated `Workspace` record      |
-| `workspace.next()`            | None                                                               | Activated `Workspace` record      |
-| `workspace.previous()`        | None                                                               | Activated `Workspace` record      |
-| `workspace.move_active(args)` | `workspace` selector; optional `follow`                            | `{workspace, window, follow}`     |
-| `workspace.move_window(args)` | `window` ID or `"active"`; `workspace` selector; optional `follow` | `{workspace, window, follow}`     |
+| Method                        | Arguments                                                          | Successful result             |
+| ----------------------------- | ------------------------------------------------------------------ | ----------------------------- |
+| `workspace.create(args)`      | `name` required; optional `id`, `activate`                         | New `Workspace` record        |
+| `workspace.rename(args)`      | Exactly one of `id` or `number`, plus `name`                       | Updated `Workspace` record    |
+| `workspace.remove(args)`      | Exactly one of `id` or `number`                                    | Removed workspace record      |
+| `workspace.switch(args)`      | Exactly one of `id` or `number`                                    | Activated `Workspace` record  |
+| `workspace.next()`            | None                                                               | Activated `Workspace` record  |
+| `workspace.previous()`        | None                                                               | Activated `Workspace` record  |
+| `workspace.move_active(args)` | `workspace` selector; optional `follow`                            | `{workspace, window, follow}` |
+| `workspace.move_window(args)` | `window` ID or `"active"`; `workspace` selector; optional `follow` | `{workspace, window, follow}` |
 
-Workspace mutations also have plural aliases. The plural collection reads
-below return immediate native snapshots; `workspace.list()` remains an
-operation-based compatibility method.
+`workspaces.list()` returns the current workspaces as an immediate,
+immutable snapshot. Workspace mutations also have plural aliases:
 
 | Lua alias                      | Canonical method              |
 | ------------------------------ | ----------------------------- |
@@ -686,10 +684,12 @@ full, context creation fails until an existing context expires or is revoked.
 Any same-user process can connect to the mode-0600 socket, so same-user clients
 are inside the trust boundary.
 
-The singular `gnoblin.window.list()` and `gnoblin.workspace.list()` methods
-remain operation based and return their existing record fields. Native window
-records use the snake_case fields described in [Lua events](/config/lua-events)
-and add a per-record revision.
+Lua configuration reads windows and workspaces through the immediate,
+immutable `gnoblin.windows.list()` and `gnoblin.workspaces.list()` snapshots.
+The compositor socket separately exposes `window.list` and `workspace.list`
+to clients such as `gnoblinctl`. Native window records use the snake_case
+fields described in [Lua events](/config/lua-events) and add a per-record
+revision.
 
 Native workspace records rename the `windows` count to `window_count` and add
 a revision. Window, workspace, monitor, layer, input-device, and capability
