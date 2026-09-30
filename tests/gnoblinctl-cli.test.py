@@ -61,6 +61,15 @@ def main() -> int:
     for component in ("mutter", "xdg-desktop-portal-gnome"):
         assert isinstance(component_commits.get(component), str) and component_commits[component], component
 
+    human_version = run(binary, "--version")
+    assert human_version.returncode == 0, human_version.stderr
+    for label, field in (
+        ("Lua", "luaVersion"),
+        ("Native API", "apiVersion"),
+        ("Build ID", "buildId"),
+    ):
+        assert f"{label}: {identity[field]}" in human_version.stdout
+
     config_path = Path(build_directory) / "test-config" / "init.lua"
     config_result = run(
         binary,
