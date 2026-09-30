@@ -533,18 +533,23 @@ are applied by the compositor; clients must not multiply geometry by scale.
 
 ### Workspaces
 
-| Lua call                                | Arguments                                             | Result                     | Canonical operation     |
-| --------------------------------------- | ----------------------------------------------------- | -------------------------- | ----------------------- |
-| `gnoblin.workspaces.list()`             | none                                                  | `Workspace[]`              | `workspace.list`        |
-| `gnoblin.workspaces.active()`           | none                                                  | `Workspace or nil`         | state read              |
-| `gnoblin.workspaces.by_id(id)`          | stable workspace ID                                   | `Workspace or nil`         | state read              |
-| `gnoblin.workspaces.create(options)`    | `name`, optional `id`, `activate`                     | `Operation<Workspace>`     | `workspace.create`      |
-| `gnoblin.workspaces.next()`             | none                                                  | `Operation<Workspace>`     | `workspace.next`        |
-| `gnoblin.workspaces.previous()`         | none                                                  | `Operation<Workspace>`     | `workspace.previous`    |
-| `workspace:activate()`                  | none                                                  | `Operation<Workspace>`     | `workspace.switch`      |
-| `workspace:rename(name)`                | nonempty name, at most 80 characters                  | `Operation<Workspace>`     | `workspace.rename`      |
-| `workspace:remove()`                    | none                                                  | `Operation<Workspace>`     | `workspace.remove`      |
-| `workspace:move_here(window, options?)` | `Window`, window ID, or `"active"`; optional `follow` | `Operation<WorkspaceMove>` | `workspace.move_window` |
+| Lua call                                  | Arguments                                             | Result                     | Canonical operation     |
+| ----------------------------------------- | ----------------------------------------------------- | -------------------------- | ----------------------- |
+| `gnoblin.workspaces.list()`               | none                                                  | `Workspace[]`              | `workspace.list`        |
+| `gnoblin.workspaces.active()`             | none                                                  | `Workspace or nil`         | state read              |
+| `gnoblin.workspaces.by_id(id)`            | stable workspace ID                                   | `Workspace or nil`         | state read              |
+| `gnoblin.workspaces.create(options)`      | `name`, optional `id`, `activate`                     | `Operation<Workspace>`     | `workspace.create`      |
+| `gnoblin.workspaces.rename(options)`      | workspace selector and `name`                         | `Operation<Workspace>`     | `workspace.rename`      |
+| `gnoblin.workspaces.remove(options)`      | workspace selector                                    | `Operation<Workspace>`     | `workspace.remove`      |
+| `gnoblin.workspaces.activate(options)`    | workspace selector                                    | `Operation<Workspace>`     | `workspace.switch`      |
+| `gnoblin.workspaces.next()`               | none                                                  | `Operation<Workspace>`     | `workspace.next`        |
+| `gnoblin.workspaces.previous()`           | none                                                  | `Operation<Workspace>`     | `workspace.previous`    |
+| `gnoblin.workspaces.move_active(options)` | workspace selector and optional `follow`              | `Operation<WorkspaceMove>` | `workspace.move_active` |
+| `gnoblin.workspaces.move_window(options)` | window and workspace selectors, optional `follow`     | `Operation<WorkspaceMove>` | `workspace.move_window` |
+| `workspace:activate()`                    | none                                                  | `Operation<Workspace>`     | `workspace.switch`      |
+| `workspace:rename(name)`                  | nonempty name, at most 80 characters                  | `Operation<Workspace>`     | `workspace.rename`      |
+| `workspace:remove()`                      | none                                                  | `Operation<Workspace>`     | `workspace.remove`      |
+| `workspace:move_here(window, options?)`   | `Window`, window ID, or `"active"`; optional `follow` | `Operation<WorkspaceMove>` | `workspace.move_window` |
 
 A workspace record has:
 
@@ -1215,7 +1220,7 @@ The compositor socket retains its `window.list` and `workspace.list` requests
 for clients such as `gnoblinctl`; those names are not registered as Lua
 methods. The table maps the remaining operation methods to the target API.
 
-| Current method                                                         | Target name or decision                                                                                                                        |
+| Compositor operation                                                   | Lua API method or decision                                                                                                                     |
 | ---------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | `workspace.create`                                                     | `gnoblin.workspaces.create(options)`                                                                                                           |
 | `workspace.rename`                                                     | `workspace:rename(name)`                                                                                                                       |
