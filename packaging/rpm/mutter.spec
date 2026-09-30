@@ -15,7 +15,7 @@
 %global gsettings_desktop_schemas_version 51.0
 %global libdrm_version 2.4.118
 %global libdisplay_info_version 0.2
-%global libinput_version 1.31.0
+%global libinput_version 1.30.0
 %global pixman_version 0.42
 %global pipewire_version 1.4.11
 %global lcms2_version 2.6
