@@ -5624,6 +5624,12 @@ static gboolean native_rule_get_number(GVariant* record, const char* key, double
     return isfinite(*number);
 }
 
+static gboolean native_rule_get_boolean(GVariant* record, const char* key, const char* legacy_key,
+                                        gboolean* value) {
+    return g_variant_lookup(record, key, "b", value) ||
+           (legacy_key && g_variant_lookup(record, legacy_key, "b", value));
+}
+
 enum {
     NATIVE_CORNER_TOOLKIT_NONE = 0,
     NATIVE_CORNER_TOOLKIT_ADWAITA = 1 << 0,
@@ -6067,12 +6073,12 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
 
         native_rule_get_number(corners, "radius", &radius);
         native_rule_get_number(corners, "smoothing", &smoothing);
-        g_variant_lookup(corners, "keep-maximized", "b", &keep_maximized);
-        g_variant_lookup(corners, "keep-fullscreen", "b", &keep_fullscreen);
-        g_variant_lookup(corners, "keep-tiled", "b", &keep_tiled);
-        g_variant_lookup(corners, "skip-libadwaita", "b", &skip_libadwaita);
-        g_variant_lookup(corners, "skip-libhandy", "b", &skip_libhandy);
-        g_variant_lookup(corners, "remove-csd", "b", &remove_csd);
+        native_rule_get_boolean(corners, "keep_maximized", "keep-maximized", &keep_maximized);
+        native_rule_get_boolean(corners, "keep_fullscreen", "keep-fullscreen", &keep_fullscreen);
+        native_rule_get_boolean(corners, "keep_tiled", "keep-tiled", &keep_tiled);
+        native_rule_get_boolean(corners, "skip_libadwaita", "skip-libadwaita", &skip_libadwaita);
+        native_rule_get_boolean(corners, "skip_libhandy", "skip-libhandy", &skip_libhandy);
+        native_rule_get_boolean(corners, "remove_csd", "remove-csd", &remove_csd);
         g_autoptr(GVariant) mode_value = g_variant_lookup_value(corners, "mode", NULL);
         if (mode_value && g_variant_is_of_type(mode_value, G_VARIANT_TYPE_STRING)) {
             g_free(mode);

@@ -46,6 +46,22 @@ class PermissionContractTest(unittest.TestCase):
         for field in ("workspace_id", "workspace-id", "workspace_number", "workspace-number"):
             self.assertIn(f'g_str_equal(key, "{field}")', implementation)
 
+    def test_corner_rule_booleans_accept_public_lua_field_names(self):
+        matcher = CONTROL.index("static gboolean native_window_rule_matches(")
+        start = CONTROL.index("static void native_apply_window_rules(", matcher)
+        end = CONTROL.index("static void native_apply_all_window_rules(", start)
+        implementation = CONTROL[start:end]
+
+        for field in (
+            "keep_maximized",
+            "keep_fullscreen",
+            "keep_tiled",
+            "skip_libadwaita",
+            "skip_libhandy",
+            "remove_csd",
+        ):
+            self.assertIn(f'native_rule_get_boolean(corners, "{field}"', implementation)
+
 
 if __name__ == "__main__":
     unittest.main()
