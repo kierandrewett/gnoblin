@@ -5,7 +5,7 @@ Subject: [PATCH] mutter: support native rounded clipping for X11 windows
 
 ---
 diff --git a/src/compositor/meta-window-actor-x11.c b/src/compositor/meta-window-actor-x11.c
-index 54b03c0dc..d8ec8038a 100644
+index 54b03c0dc..b360959e3 100644
 --- a/src/compositor/meta-window-actor-x11.c
 +++ b/src/compositor/meta-window-actor-x11.c
 @@ -26,6 +26,7 @@
@@ -16,7 +16,7 @@ index 54b03c0dc..d8ec8038a 100644
  #include "compositor/meta-shaped-texture-private.h"
  #include "compositor/meta-surface-actor.h"
  #include "core/window-private.h"
-@@ -1066,6 +1067,18 @@ meta_window_actor_x11_update_shape (MetaWindowActorX11 *actor_x11)
+@@ -1066,6 +1067,24 @@ meta_window_actor_x11_update_shape (MetaWindowActorX11 *actor_x11)
    clutter_actor_queue_redraw (CLUTTER_ACTOR (surface));
  }
  
@@ -26,10 +26,16 @@ index 54b03c0dc..d8ec8038a 100644
 +                                        double              exponent,
 +                                        gboolean            automatic)
 +{
++  MetaSurfaceActor *surface;
++
 +  g_return_if_fail (META_IS_WINDOW_ACTOR_X11 (actor_x11));
 +
++  surface = meta_window_actor_get_surface (META_WINDOW_ACTOR (actor_x11));
++  if (!surface)
++    return;
++
 +  meta_gnoblin_window_effects_set_rounded_clip (
-+    CLUTTER_ACTOR (actor_x11), radius, exponent, automatic);
++    CLUTTER_ACTOR (surface), radius, exponent, automatic);
 +}
 +
  static void
