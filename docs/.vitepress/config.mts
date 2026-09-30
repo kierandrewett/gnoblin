@@ -132,7 +132,6 @@ export default defineConfig({
                         text: "Route new app windows to named workspaces",
                         link: "/recipes/put-apps-on-named-workspaces",
                     },
-                    { text: "Animate the developer console", link: "/recipes/animate-the-developer-console" },
                     { text: "Give an app a springy entrance", link: "/recipes/springy-app-entrance" },
                 ],
             },
