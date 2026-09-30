@@ -1,5 +1,3 @@
 # project source destination
 mutter gnoblin-lua-pattern.c src/wayland/gnoblin-lua-pattern.c
 mutter gnoblin-lua-pattern.h src/wayland/gnoblin-lua-pattern.h
-mutter gnoblin-console-lua.h src/wayland/gnoblin-console-lua.h
-mutter gnoblin-console-lua.inc src/wayland/gnoblin-console-lua.inc
