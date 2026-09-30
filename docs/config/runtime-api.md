@@ -33,9 +33,9 @@ build time. The `lua` field reports the linked Lua runtime version. Remote URLs
 have userinfo, query, and fragment parts removed before returning.
 
 The record contains string fields `gnoblin`, `gnome`, `mutter`, `lua`, `api`,
-`git_remote`, `git_sha`, and `build_id`. The current installed identity file
-does not include a separate `buildId`, so `build_id` is `"unknown"` unless an
-identity file supplies it.
+`git_remote`, `git_sha`, and `build_id`. The generated `build_id` combines the
+Gnoblin release version with the source commit; builds from modified source
+trees add a `modified` suffix.
 
 Native-control API 1.19 exposes these reads to local clients:
 
