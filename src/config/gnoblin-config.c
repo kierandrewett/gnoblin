@@ -580,6 +580,39 @@ static gboolean validate_touchpad_gestures(GVariant* gestures, GError** error) {
     return TRUE;
 }
 
+static gboolean validate_window_rule_padding(GVariant* section, gsize rule_index,
+                                             const char* section_name, GError** error) {
+    g_autoptr(GVariant) padding = g_variant_lookup_value(section, "padding", NULL);
+    if (!padding)
+        return TRUE;
+    if (!g_variant_is_of_type(padding, G_VARIANT_TYPE("av")) ||
+        g_variant_n_children(padding) != 4) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "window-rules[%zu].%s.padding must contain four numbers", rule_index,
+                    section_name);
+        return FALSE;
+    }
+
+    for (gsize i = 0; i < 4; i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(padding, i);
+        g_autoptr(GVariant) value = g_variant_get_variant(boxed);
+        double number;
+        if (!input_number(value, &number)) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "window-rules[%zu].%s.padding[%zu] must be a finite number", rule_index,
+                        section_name, i + 1);
+            return FALSE;
+        }
+        if (number < -128.0 || number > 128.0) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "window-rules[%zu].%s.padding[%zu] must be finite and from -128 to 128",
+                        rule_index, section_name, i + 1);
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
 static gboolean validate_window_rule_patterns(GVariant* document, GError** error) {
     g_autoptr(GVariant) rules = g_variant_lookup_value(document, "window-rules", NULL);
     if (!rules)
@@ -620,6 +653,16 @@ static gboolean validate_window_rule_patterns(GVariant* document, GError** error
                             pattern_error->message);
                 return FALSE;
             }
+        }
+
+        static const char* const effect_sections[] = {"corners", "borders", NULL};
+        for (guint section_index = 0; effect_sections[section_index]; section_index++) {
+            g_autoptr(GVariant) section =
+                g_variant_lookup_value(rule, effect_sections[section_index], NULL);
+            if (section && g_variant_is_of_type(section, G_VARIANT_TYPE_VARDICT) &&
+                !validate_window_rule_padding(section, i + 1, effect_sections[section_index],
+                                              error))
+                return FALSE;
         }
     }
     return TRUE;

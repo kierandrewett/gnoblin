@@ -41,6 +41,7 @@ int main(void) {
     g_autofree char* example_root = g_build_filename(dir, "example.lua", NULL);
     g_autofree char* explicit_root = g_build_filename(dir, "personal.lua", NULL);
     g_autofree char* malformed_patterns = g_build_filename(dir, "malformed-patterns.lua", NULL);
+    g_autofree char* padding_config = g_build_filename(dir, "padding.lua", NULL);
     g_autofree char* module = g_build_filename(dir, "module.lua", NULL);
     g_autofree char* nested = g_build_filename(dir, "nested.lua", NULL);
     g_autofree char* legacy_root = g_build_filename(dir, "legacy.toml", NULL);
@@ -133,6 +134,39 @@ int main(void) {
     g_assert_null(document);
     g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
     g_assert_nonnull(strstr(error->message, "window-rules[2].match.title"));
+    g_clear_error(&error);
+
+    g_assert_true(g_file_set_contents(
+        padding_config,
+        "local g=require('gnoblin')\n"
+        "g.window_rule {match={type='window'}, corners={padding={-128, 1.5, 0, 128}}}\n"
+        "g.window_rule {match={type='window'}, borders={padding={0, 0, 0, 0}}}\n",
+        -1, &error));
+    g_autoptr(GVariant) valid_padding = load(padding_config, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(valid_padding);
+    g_clear_pointer(&valid_padding, g_variant_unref);
+
+    g_assert_true(
+        g_file_set_contents(padding_config,
+                            "local g=require('gnoblin')\n"
+                            "g.window_rule {match={type='window'}, corners={padding={0, 0, 0}}}\n",
+                            -1, &error));
+    g_autoptr(GVariant) invalid_padding = load(padding_config, NULL, &error);
+    g_assert_null(invalid_padding);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_assert_nonnull(strstr(error->message, "window-rules[1].corners.padding"));
+    g_clear_error(&error);
+
+    g_assert_true(g_file_set_contents(
+        padding_config,
+        "local g=require('gnoblin')\n"
+        "g.window_rule {match={type='window'}, borders={padding={0, 0, 0, 128.5}}}\n",
+        -1, &error));
+    g_autoptr(GVariant) out_of_range_padding = load(padding_config, NULL, &error);
+    g_assert_null(out_of_range_padding);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_assert_nonnull(strstr(error->message, "borders.padding[4]"));
     g_clear_error(&error);
 
     const char* source_root = g_getenv("GNOBLIN_TEST_SOURCE_ROOT");
