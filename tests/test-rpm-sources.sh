@@ -6,9 +6,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d /tmp/gnoblin-rpm-sources-test.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
-mkdir -p "$TMP/mutter" "$TMP/gnome-shell"
+mkdir -p "$TMP/mutter"
 "$ROOT/scripts/stage-rpm-sources.sh" mutter "$TMP/mutter"
-"$ROOT/scripts/stage-rpm-sources.sh" gnome-shell "$TMP/gnome-shell"
 assert_local_sources() {
     local project="${1:?project required}"
     local output_dir="${2:?output directory required}"
@@ -26,12 +25,9 @@ assert_local_sources() {
 }
 
 assert_local_sources mutter "$TMP/mutter"
-assert_local_sources gnome-shell "$TMP/gnome-shell"
-grep -Fq 'Copyright © 2026 Working Directory Ltd.' "$TMP/gnome-shell/gnoblin-COPYING"
-grep -Fq 'GNOME-derived portions are Copyright ©' "$TMP/gnome-shell/gnoblin-COPYING"
 
 "$ROOT/scripts/list-tarball-sources.sh" mutter >"$TMP/mutter.sources"
-"$ROOT/scripts/list-tarball-sources.sh" gnome-shell >"$TMP/gnome-shell.sources"
+"$ROOT/scripts/list-tarball-sources.sh" xdg-desktop-portal-gnome >"$TMP/xdg-desktop-portal-gnome.sources"
 
 assert_archive_source() {
     local project="${1:?project required}"
@@ -53,8 +49,6 @@ assert_archive_source() {
 }
 
 assert_archive_source mutter subprojects/gvdb/meson.build
-assert_archive_source gnome-shell subprojects/gvc/meson.build
-assert_archive_source gnome-shell subprojects/libshew/meson.build
-assert_archive_source gnome-shell subprojects/jasmine-gjs/meson.build
+assert_archive_source xdg-desktop-portal-gnome subprojects/libgxdp/meson.build
 
 echo "PASS: RPM sidecars and mandatory archive sources staged"

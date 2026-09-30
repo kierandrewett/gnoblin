@@ -2,47 +2,12 @@
 # Stage the loose, Gnoblin-owned RPM Source files for one patched subproject.
 set -euo pipefail
 
-PROJECT="${1:?usage: stage-rpm-sources.sh <mutter|gnome-shell> <outdir>}"
-OUTDIR="${2:?usage: stage-rpm-sources.sh <mutter|gnome-shell> <outdir>}"
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-
+PROJECT="${1:?usage: stage-rpm-sources.sh <mutter|xdg-desktop-portal-gnome> <outdir>}"
+OUTDIR="${2:?usage: stage-rpm-sources.sh <mutter|xdg-desktop-portal-gnome> <outdir>}"
 install -d -- "$OUTDIR"
 
 case "$PROJECT" in
     mutter | xdg-desktop-portal-gnome)
-        ;;
-    gnome-shell)
-        install -m 0644 -- "$ROOT/src/data/session/modes/gnoblin.json" "$OUTDIR/gnoblin.json"
-        install -m 0644 -- "$ROOT/src/data/session/gnome-session/gnoblin.session" "$OUTDIR/gnoblin.session"
-        install -m 0644 -- "$ROOT/src/data/session/gnoblin.desktop" "$OUTDIR/gnoblin.desktop"
-        install -m 0644 -- \
-            "$ROOT/src/data/session/schemas/00_org.gnoblin.mutter.gschema.override" \
-            "$OUTDIR/00_org.gnoblin.mutter.gschema.override"
-        install -m 0644 -- \
-            "$ROOT/src/data/session/systemd-user/org.gnoblin.Shell.target" \
-            "$OUTDIR/org.gnoblin.Shell.target"
-        install -m 0644 -- \
-            "$ROOT/src/data/session/systemd-user/gnoblin-session.target" \
-            "$OUTDIR/gnoblin-session.target"
-        install -m 0644 -- \
-            "$ROOT/src/data/session/systemd-user/gnoblin-idle.service.in" \
-            "$OUTDIR/gnoblin-idle.service.in"
-        install -m 0644 -- "$ROOT/src/session/gnoblin-idle.c" \
-            "$OUTDIR/gnoblin-idle.c"
-        install -m 0644 -- \
-            "$ROOT/src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in" \
-            "$OUTDIR/org.gnoblin.Shell@wayland.service.in"
-        install -m 0644 -- \
-            "$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf" \
-            "$OUTDIR/gnome-session@gnoblin.target.d.conf"
-        install -m 0644 -- "$ROOT/src/tools/gnoblin-env.sh" "$OUTDIR/gnoblin-env.sh"
-        install -m 0644 -- "$ROOT/src/tools/gnoblin" "$OUTDIR/gnoblin"
-        install -m 0644 -- "$ROOT/COPYING" "$OUTDIR/gnoblin-COPYING"
-        install -m 0644 -- "$ROOT/src/tools/gnoblin-seed-config" "$OUTDIR/gnoblin-seed-config"
-        install -m 0644 -- "$ROOT/src/data/init.lua.example" "$OUTDIR/init.lua.example"
-        python3 "$ROOT/scripts/build-identity.py" "$OUTDIR/gnoblin-version.json"
-        install -m 0644 -- "$ROOT/src/tools/gnoblin-shell-service" "$OUTDIR/gnoblin-shell-service"
-        install -m 0644 -- "$ROOT/src/tools/gnoblinctl.c" "$OUTDIR/gnoblinctl.c"
         ;;
     *)
         echo "unknown RPM source project: $PROJECT" >&2
