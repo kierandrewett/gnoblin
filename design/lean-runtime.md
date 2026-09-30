@@ -1,10 +1,12 @@
 # Gnoblin session and compositor architecture
 
-Gnoblin currently builds patched Mutter, GNOME Shell, and a portal backend from
-GNOME sources. Its source and package login entries launch a lean session
-directly. GNOME Session and Settings Daemon remain an optional source-login
-mode. Removing a package requirement does not remove code that uses its
-interfaces.
+The standalone `./build.sh` path builds the Gnoblin supervisor and Lua runtime,
+patched Mutter, and the portal backend from pinned GNOME sources. It does not
+build GNOME Shell. Separate Shell compatibility recipes and patches remain in
+the repository and still use GJS; they are outside the standalone build and
+remain migration work. GNOME Session and Settings Daemon are optional services
+for compatibility login paths. Removing a package requirement does not remove
+code that uses its interfaces.
 
 ## Ownership target
 
@@ -48,14 +50,14 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 
 ## Current seams
 
-| Part                      | Current dependency                          | Reason it remains                                                                                                                                           |
-| ------------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Compositor                | Mutter 51                                   | Current patches add Gnoblin protocols, input, rendering, configuration, and native control. Target: `gnoblin-mutter`, with a small patch set over upstream. |
-| Session                   | `gnoblin`, logind, systemd user targets     | Target: `gnoblin` supervises Mutter, its Lua runtime, and session tools.                                                                                    |
-| Shell host                | GNOME Shell and GJS                         | The GNOME compatibility path currently hosts a JavaScript adapter. GJS is excluded from the standalone session.                                             |
-| Optional desktop services | `gnome-settings-daemon`                     | The fuller source-login mode requests hardware, accessibility, and other services.                                                                          |
-| Portals                   | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                               |
-| Settings                  | `gsettings-desktop-schemas`                 | Mutter and Shell read shared desktop setting definitions.                                                                                                   |
+| Part                      | Current dependency                                         | Reason it remains                                                                                                                                           |
+| ------------------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compositor                | Mutter 51                                                  | Current patches add Gnoblin protocols, input, rendering, configuration, and native control. Target: `gnoblin-mutter`, with a small patch set over upstream. |
+| Session                   | `gnoblin`, logind, systemd user targets                    | Target: `gnoblin` supervises Mutter, its Lua runtime, and session tools.                                                                                    |
+| Shell host                | Separate shell clients; optional GNOME Shell compatibility | The standalone build omits GNOME Shell. Compatibility packaging and its GJS adapter remain separate and are not yet retired.                                |
+| Optional desktop services | `gnome-settings-daemon`                                    | The fuller source-login mode requests hardware, accessibility, and other services.                                                                          |
+| Portals                   | `xdg-desktop-portal` plus Gnoblin's backend                | The generic frontend routes requests to the selected backend.                                                                                               |
+| Settings                  | `gsettings-desktop-schemas`                                | Mutter and Shell read shared desktop setting definitions.                                                                                                   |
 
 The package recipes select Gnoblin's portal backend for a Gnoblin session.
 The Gnoblin session package requires `gnoblin-portal` and the generic portal
@@ -249,34 +251,28 @@ remains: its PipeWire state feeds `cameraInUse` in the compositor bridge.
    `gnome-settings-daemon` services the session actually needs. Replace or
    make each one optional only with an equivalent user-visible behavior for
    input, accessibility, hardware controls, and XSettings.
-3. **Move policy and runtime ownership into Gnoblin.** The current Lua API
-   validates calls and emits operation descriptors, but its runtime is hosted
-   by Mutter and the Shell bridge still executes most descriptors in
-   JavaScript. Move configuration, policy, state, and command dispatch into a
-   Gnoblin process. Keep the Shell bridge as a temporary adapter. Use standard
-   Wayland interfaces for compositor operations where they exist; isolate the
-   remaining operations behind a small Mutter adapter instead of expanding
-   Gnoblin logic inside Mutter. Preserve socket replies and Lua completion
-   events as implementations move. This first cut is tracked as `gnoblin-0zx`.
-4. **Run Mutter under Gnoblin session supervision.** A Gnoblin launcher should
-   own the session and start Mutter as its compositor child, then start the
-   Gnoblin runtime, portal, and configured clients. Shell projects such as
-   Bingux remain separately installed clients, not Gnoblin session internals.
-   The launcher should own readiness, environment handoff, failure reporting,
-   and cleanup. GJS can leave the base runtime when Gnoblin's runtime and
-   session tools no longer depend on Shell.
-   The runtime must own Lua config loading and reload. It should validate a
-   new document before committing it, then send live changes to Mutter and
-   connected shell clients. Each setting needs a clear live-versus-restart
-   requirement; protocol registration and other compositor startup settings
-   cannot become live merely by moving Lua out of Mutter.
-   Fault recovery must distinguish the supervisor/runtime from the
-   compositor. Restarting Gnoblin's control plane or a shell client can keep
-   windows open only while Mutter remains alive and retains its Wayland
-   clients. If Mutter exits, its clients lose the Wayland connection and their
-   windows cannot be preserved. A supervisor restart must not cause logind or
-   the session cgroup to terminate the still-running compositor. This recovery
-   behavior has not been implemented or verified.
+3. **Finish native API coverage and retire the GJS adapter.** The standalone
+   `gnoblin` binary now owns the Lua worker, configuration reload, operation
+   completions, and the native control socket. Native-control validates
+   requests and dispatches compositor-owned operations through Mutter's
+   versioned API; `gnoblinctl` is a native client. Keep compositor policy in
+   Lua and use standard Wayland interfaces where they cover the operation.
+   The standalone build omits Shell, but separate compatibility code still
+   contains a GJS bridge. Compare every remaining compatibility operation with
+   the native API, preserve its documented socket response, and retire the
+   bridge only when no supported path depends on it. Track remaining cutovers
+   in `gnoblin-0zx`.
+4. **Verify session supervision and recovery.** `gnoblin` starts Mutter as its
+   compositor child, supervises the Lua worker, and owns readiness, environment
+   handoff, failure reporting, and cleanup. Shell projects such as Bingux
+   remain separately installed clients, not Gnoblin session internals. The
+   worker and compositor have separate restart paths; restarting the worker
+   can preserve windows while Mutter remains alive, but restarting Mutter
+   disconnects Wayland clients and loses their windows. Verify these boundaries
+   at a real login before claiming recovery behavior. The runtime owns Lua
+   config loading and reload; each setting still needs a clear live-versus-
+   restart requirement because protocol registration and other startup-only
+   compositor settings cannot become live merely by moving Lua out of Mutter.
    The built `mutter` executable ran for eight seconds as a headless Wayland
    compositor with a virtual monitor and its default plugin, without starting
    GNOME Shell. Upstream describes plain standalone Mutter as a debugging
