@@ -120,7 +120,11 @@ Queries are local snapshot reads and return immediately. Mutations are queued
 for the compositor or supervisor and complete asynchronously. Lua callbacks
 run on the supervised runtime's event loop, not Mutter's compositor main
 thread, and must not block that loop. An operation requested
-from a callback is dispatched only after that callback returns.
+from a callback is dispatched only after that callback returns. Runtime
+mutations are available only while a supervised event callback is running;
+calling one during top-level config evaluation or ordinary module loading fails
+before an operation is queued. The control socket has its own validated call
+path for methods it exposes.
 
 Argument tables reject unknown fields. Optional fields are omitted rather than
 set to `nil`. Errors have a stable `code`, human-readable `message`, and
@@ -208,7 +212,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current; native runtime only.** Read-only revisioned workspace snapshots and typed workspace operations. |
 | `gnoblin.monitors` | `list()`, `primary()` | **Current; native runtime only.** Read-only revisioned monitor snapshot records. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current; native runtime only.** Read-only revisioned layer-surface records and effective animation/shadow policy. |
-| `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `select(args)`, `text_target(context)` | **Current; native runtime only.** Read-only device/source snapshots, XKB source selection, and trusted text insertion targets. |
+| `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `text_target(context)` | **Current; native runtime only.** Read-only device/source snapshots, XKB source selection, and trusted text insertion targets. |
 | `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current; native runtime only.** Read and control declared compositor animation previews. |
 | `gnoblin.launches` | `list()`, `begin(args)`, `end(args)` | **Current; native runtime only.** Read and report tracked application launches. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current; native runtime only.** Read active portal grants, optionally by kind. |
@@ -950,9 +954,9 @@ end)
 
 Supported since API 1.23:
 
-| Lua call                 | Arguments                             | Result                 | Canonical operation |
-| ------------------------ | ------------------------------------- | ---------------------- | ------------------- |
-| `window:thumbnail(size)` | integer `width` 1–480, `height` 1–320 | `Operation<Thumbnail>` | `window.thumbnail`  |
+| Lua call                 | Arguments                                         | Result                 | Canonical operation |
+| ------------------------ | ------------------------------------------------- | ---------------------- | ------------------- |
+| `window:thumbnail(size)` | `{width = integer 1–480, height = integer 1–320}` | `Operation<Thumbnail>` | `window.thumbnail`  |
 
 `Thumbnail` contains `window_id`, actual `width` and `height`, and `data`, a
 base64-encoded PNG. The compositor scales down to fit while preserving aspect
@@ -1435,7 +1439,7 @@ namespaces.
 | `windows`                | Snapshots: `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)`. `Window` records expose typed close, state, geometry, focus, interactive move/resize, workspace, monitor, and thumbnail methods. |
 | `layer` / `monitor`      | `layer.list()`, `monitor.list()`; snapshot aliases `layers.list(filter?)`, `monitors.list()`, `monitors.primary()`, and `layers.animation_policy(namespace)`.                                                   |
 | `animations`             | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)`. Configuration declarations use `gnoblin.animation(entry)`.        |
-| `input`                  | `list()`, `current()`, `select(args)`, `sources()`, `current_source()`, `text_target(context)`, `devices()`, `select_source(selector)`. `text_target()` returns a trusted target with `insert_text(text)`.      |
+| `input`                  | `list()`, `current()`, `sources()`, `current_source()`, `text_target(context)`, `devices()`, `select_source(selector)`. `text_target()` returns a trusted target with `insert_text(text)`.                      |
 | `privacy`                | `stop_sharing()`, `stop_recording()`; read-only `state()` snapshot.                                                                                                                                             |
 | `permissions` / `grant`  | `permissions.list()`, `permissions.policy()`, `permissions.check(args)`, `grant.list()`, `grant.revoke(args)`, and read-only `portals.grants()`.                                                                |
 | `launch` / `launches`    | `launch.status()`, `launch.begin(args)`, `launch.end(args)`; `launches.list()`, `launches.begin(args)`, and `launches.end(args)`.                                                                               |

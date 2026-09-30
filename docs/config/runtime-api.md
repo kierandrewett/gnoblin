@@ -514,21 +514,21 @@ Window and workspace snapshots expose methods that queue the corresponding
 typed operation. Call them with colon syntax from a runtime event callback.
 Each method returns an `Operation` handle.
 
-| Window method                                  | Arguments                                     | Effect                                                    |
-| ---------------------------------------------- | --------------------------------------------- | --------------------------------------------------------- |
-| `window:close()`                               | None                                          | Ask the application to close.                             |
-| `window:minimize()`                            | None                                          | Minimize the window.                                      |
-| `window:toggle_minimize()`                     | None                                          | Minimize or restore the window.                           |
-| `window:restore()`                             | None                                          | Remove minimization and maximization.                     |
-| `window:set_maximized(enabled)`                | Boolean                                       | Set maximization.                                         |
-| `window:set_fullscreen(enabled)`               | Boolean                                       | Set fullscreen.                                           |
-| `window:set_above(enabled)`                    | Boolean                                       | Set the above state.                                      |
-| `window:set_sticky(enabled)`                   | Boolean                                       | Set visibility across workspaces.                         |
-| `window:move(position)`                        | `{x, y}` integer coordinates                  | Move in logical desktop pixels.                           |
-| `window:resize(size)`                          | `{width, height}` integer dimensions          | Resize in logical pixels.                                 |
-| `window:move_to_workspace(selector, options?)` | Workspace selector; optional `follow` boolean | Move this window and optionally activate the destination. |
-| `window:move_to_monitor(target)`               | Monitor connector ID or `{id = ID}`           | Move this window to an active monitor.                    |
-| `window:thumbnail(size)`                       | `width` 1–480; `height` 1–320                 | Capture a bounded compositor-rendered PNG preview.        |
+| Window method                                  | Arguments                                         | Effect                                                    |
+| ---------------------------------------------- | ------------------------------------------------- | --------------------------------------------------------- |
+| `window:close()`                               | None                                              | Ask the application to close.                             |
+| `window:minimize()`                            | None                                              | Minimize the window.                                      |
+| `window:toggle_minimize()`                     | None                                              | Minimize or restore the window.                           |
+| `window:restore()`                             | None                                              | Remove minimization and maximization.                     |
+| `window:set_maximized(enabled)`                | Boolean                                           | Set maximization.                                         |
+| `window:set_fullscreen(enabled)`               | Boolean                                           | Set fullscreen.                                           |
+| `window:set_above(enabled)`                    | Boolean                                           | Set the above state.                                      |
+| `window:set_sticky(enabled)`                   | Boolean                                           | Set visibility across workspaces.                         |
+| `window:move(position)`                        | `{x, y}` integer coordinates                      | Move in logical desktop pixels.                           |
+| `window:resize(size)`                          | `{width, height}` integer dimensions              | Resize in logical pixels.                                 |
+| `window:move_to_workspace(selector, options?)` | Workspace selector; optional `follow` boolean     | Move this window and optionally activate the destination. |
+| `window:move_to_monitor(target)`               | Monitor connector ID or `{id = ID}`               | Move this window to an active monitor.                    |
+| `window:thumbnail(size)`                       | `{width = integer 1–480, height = integer 1–320}` | Capture a bounded compositor-rendered PNG preview.        |
 
 | Workspace method                        | Arguments                                                                   | Effect                              |
 | --------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------- |
