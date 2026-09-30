@@ -32,7 +32,7 @@ export GNOBLIN_COMPOSITOR_SOCKET="$snapshot/runtime/compositor.sock"
 export BINGUX_CONFIG_PATH="${BINGUX_CONFIG_PATH:-$task_root/../bingux/shell/bingux}"
 export BINGUX_QUICKSHELL="${BINGUX_QUICKSHELL:-gnoblin-quickshell}"
 export GSETTINGS_BACKEND=dconf
-export GNOME_DEVKIT_UNSAFE_MODE=1
-export GNOME_DEVKIT_EXEC="python3 '$task_root/tests/nested-desktop-session.py'"
+export GNOBLIN_DEVKIT_CONFIG_SOURCE="$snapshot/config"
+export GNOBLIN_DEVKIT_EXEC="python3 '$task_root/tests/nested-desktop-session.py'"
 echo "Normal-config snapshot and proof artifacts: $snapshot"
-exec "$task_root/scripts/run-gnome-devkit.sh"
+exec "$task_root/scripts/run-gnoblin-devkit.sh"
