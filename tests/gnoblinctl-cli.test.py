@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Exercise the compiled gnoblinctl client without a running desktop session."""
 
+import base64
 import json
 import socket
 import subprocess
@@ -60,9 +61,9 @@ def main() -> int:
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                     server.bind(socket_path)
-                    server.listen(4)
+                    server.listen(8)
                     ready.set()
-                    for _ in range(6):
+                    for _ in range(7):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -88,6 +89,8 @@ def main() -> int:
                                 result = {"request_id": 18, "method": "workspace.create"}
                             elif request["method"] == "workspace.list":
                                 result = {"request_id": 19, "method": "workspace.list"}
+                            elif request["method"] == "window.thumbnail":
+                                result = {"request_id": 20, "method": "window.thumbnail"}
                             else:
                                 result = {
                                     "request_id": 17,
@@ -102,6 +105,7 @@ def main() -> int:
                                 "animation.preview",
                                 "workspace.create",
                                 "workspace.list",
+                                "window.thumbnail",
                             }:
                                 operation_id = result["request_id"]
                                 method = request["method"]
@@ -109,6 +113,13 @@ def main() -> int:
                                     value = {"session": "preview-17"}
                                 elif method == "workspace.create":
                                     value = {"id": "codex-probe", "name": "Codex Probe"}
+                                elif method == "window.thumbnail":
+                                    value = {
+                                        "window_id": "42",
+                                        "width": 1,
+                                        "height": 1,
+                                        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p1sAAAAASUVORK5CYII=",
+                                    }
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
@@ -178,11 +189,37 @@ def main() -> int:
         )
         assert workspace_list.returncode == 0, workspace_list.stderr
         assert json.loads(workspace_list.stdout) == {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
+        thumbnail_path = Path(temporary) / "window.png"
+        thumbnail = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "window",
+            "thumbnail",
+            "42",
+            "--output",
+            str(thumbnail_path),
+            "--width",
+            "64",
+            "--height",
+            "64",
+        )
+        assert thumbnail.returncode == 0, thumbnail.stderr
+        assert json.loads(thumbnail.stdout) == {
+            "path": str(thumbnail_path),
+            "width": 1,
+            "height": 1,
+        }
+        assert thumbnail_path.read_bytes() == base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p1sAAAAASUVORK5CYII="
+        )
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 6
-        assert len(subscriptions) == 6
+        assert len(received) == 7
+        assert len(subscriptions) == 7
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 34}
@@ -218,6 +255,10 @@ def main() -> int:
         list_request = received[5]
         assert list_request["method"] == "workspace.list"
         assert list_request["arguments"] == {}
+        thumbnail_request = received[6]
+        assert thumbnail_request["method"] == "window.thumbnail"
+        assert thumbnail_request["api_version"] == {"major": 1, "minor": 23}
+        assert thumbnail_request["arguments"] == {"id": "42", "width": 64, "height": 64}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
