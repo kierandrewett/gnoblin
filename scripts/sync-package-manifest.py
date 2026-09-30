@@ -23,7 +23,7 @@ def load_manifest() -> dict:
 
     expected = {
         "gnomeMajor": versions["major"],
-        "gnomeVersion": versions["components"]["gnome-shell"]["version"],
+        "gnomeVersion": versions["components"]["mutter"]["version"],
         "gnoblinVersion": release["version"],
         "mutterApi": versions["components"]["mutter"]["api"],
     }
@@ -45,21 +45,27 @@ def load_manifest() -> dict:
     return manifest
 
 
-def dependency_closure(manifest: dict, package_name: str) -> tuple[list[str], list[str]]:
+def dependency_closure(manifest: dict, package_name: str) -> tuple[list[str], list[str], list[str]]:
     packages = manifest["packages"]
-    package_names: set[str] = set()
+    same_major_packages: set[str] = set()
+    exact_packages: set[str] = set()
     requirements: set[str] = set()
 
     def visit(name: str) -> None:
         package = packages[name]
         requirements.update(package.get("requires", []))
         for dependency in package.get("requiresSameMajor", []):
-            if dependency not in package_names:
-                package_names.add(dependency)
+            if dependency not in same_major_packages:
+                same_major_packages.add(dependency)
+                visit(dependency)
+        for dependency in package.get("requiresExact", []):
+            if dependency not in exact_packages:
+                exact_packages.add(dependency)
                 visit(dependency)
 
     visit(package_name)
-    return sorted(package_names), sorted(requirements)
+    exact_packages.difference_update(same_major_packages)
+    return sorted(same_major_packages), sorted(exact_packages), sorted(requirements)
 
 
 def native_requirement(manifest: dict, name: str, adapter: str) -> tuple[str, str | None]:
@@ -68,16 +74,18 @@ def native_requirement(manifest: dict, name: str, adapter: str) -> tuple[str, st
 
 
 def render_rpm(manifest: dict) -> str:
-    version = manifest["packages"]["gnoblin"]["version"]
-    next_major = manifest["release"]["gnomeMajor"] + 1
+    gnoblin = manifest["packages"]["gnoblin"]
+    version = gnoblin["version"]
     epoch = manifest["release"]["rpmEpoch"]
-    meta_release = manifest["release"]["metaRpmRelease"]
+    gnoblin_release = manifest["release"]["gnoblinRpmRelease"]
+    next_major = manifest["release"]["gnomeMajor"] + 1
     mutter_version = manifest["packages"]["gnoblin-mutter"]["version"]
     mutter_release = manifest["release"]["mutterRpmRelease"]
-    packages, requirements = dependency_closure(manifest, "gnoblin")
-    dependencies = [
-        *(f"Requires:       {name} >= {version}" for name in packages),
-        *(f"Requires:       {name} < {next_major}" for name in packages),
+    same_major_packages, exact_packages, requirements = dependency_closure(manifest, "gnoblin")
+    runtime_requirements = [
+        *(f"Requires:       {name} >= {manifest['release']['gnomeMajor']}" for name in same_major_packages),
+        *(f"Requires:       {name} < {next_major}" for name in same_major_packages),
+        *(f"Requires:       {name} = {manifest['packages'][name]['version']}" for name in exact_packages),
         *(
             f"Requires:       {package_name}" + (f" >= {minimum}" if minimum is not None else "")
             for name in requirements
@@ -85,41 +93,42 @@ def render_rpm(manifest: dict) -> str:
         ),
     ]
     integration = manifest["packages"]["gnoblin-gnome-integration"]
-    integration_requirements = [native_requirement(manifest, name, "rpm")[0] for name in integration["requires"]]
-    integration_dependencies = "\n".join(f"Requires:       {name}" for name in integration_requirements)
-    gnome_major = manifest["release"]["gnomeMajor"]
-    return (
-        "# Generated from packaging/native-packages.json; do not edit.\n"
-        "Name:           gnoblin\n"
-        f"Version:        {version}\n"
-        f"Epoch:          {epoch}\n"
-        f"Release:        {meta_release}%{{?dist}}\n"
-        "Summary:        Gnoblin desktop session\n"
-        "License:        GPL-2.0-or-later\n"
-        f"URL:            {PROJECT_URL}\n"
-        "BuildArch:      noarch\n"
-        + "\n".join(dependencies)
-        + f"\nRequires:       gnoblin-mutter = {mutter_version}-{mutter_release}%{{?dist}}\n\n"
-        "%package -n gnoblin-gnome-integration\n"
-        "Summary:        Optional GNOME application services for Gnoblin\n"
-        f"Requires:       gnoblin-session >= {gnome_major}\n"
-        f"Requires:       gnoblin-session < {next_major}\n"
-        f"{integration_dependencies}\n\n"
-        "%description\n"
-        "Installs the complete Gnoblin session while reusing compatible GNOME userspace.\n\n"
-        "%description -n gnoblin-gnome-integration\n"
-        "Adds GNOME Keyring, GVfs, and standard user directories to a Gnoblin session.\n"
-        "Applications are installed separately.\n\n"
-        "%files\n\n"
-        "%files -n gnoblin-gnome-integration\n"
+    integration_same_major, integration_exact, integration_native = dependency_closure(
+        manifest, "gnoblin-gnome-integration"
     )
+    del integration_same_major, integration_native
+    integration_requires = [
+        *(f"Requires:       {name} = {epoch}:{manifest['packages'][name]['version']}" for name in integration_exact),
+        *(
+            f"Requires:       {package_name}" + (f" >= {minimum}" if minimum is not None else "")
+            for name in integration["requires"]
+            for package_name, minimum in [native_requirement(manifest, name, "rpm")]
+        ),
+    ]
+    template = (ROOT / "packaging/rpm/gnoblin.spec.in").read_text()
+    replacements = {
+        "@VERSION@": version,
+        "@EPOCH@": str(epoch),
+        "@GNOBLIN_RELEASE@": str(gnoblin_release),
+        "@MUTTER_VERSION@": mutter_version,
+        "@MUTTER_RELEASE@": mutter_release,
+        "@RUNTIME_REQUIRES@": "\n".join(runtime_requirements),
+        "@INTEGRATION_REQUIRES@": "\n".join(integration_requires),
+    }
+    for placeholder, value in replacements.items():
+        template = template.replace(placeholder, value)
+    if re.search(r"@[A-Z_]+@", template):
+        raise ValueError("RPM spec template contains an unknown placeholder")
+    return template
 
 
 def render_arch(manifest: dict, source_sha256: str = "SKIP", release_tag: str = "gnoblin-v$pkgver") -> str:
     version = manifest["packages"]["gnoblin"]["version"]
     package_release = manifest["release"]["archPkgRelease"]
     gnome_version = manifest["release"]["gnomeVersion"]
-    _, requirements = dependency_closure(manifest, "gnoblin")
+    _, _, requirements = dependency_closure(manifest, "gnoblin")
+    lua_package, lua_minimum = native_requirement(manifest, "lua", "arch")
+    lua_build_requirement = lua_package + (f">={lua_minimum}" if lua_minimum is not None else "")
     dependencies = [
         f"'{package_name}" + (f">={minimum}" if minimum is not None else "") + "'"
         for name in requirements
@@ -130,7 +139,6 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP", release_tag: str = 
     dependencies += [
         f"'{name}'"
         for name in (
-            "gcr-4",
             "glycin",
             "gtk4",
             "libadwaita",
@@ -141,7 +149,6 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP", release_tag: str = 
             "libsecret",
             "polkit",
             "startup-notification",
-            "systemd-libs",
         )
     ]
     return f"""# Generated from packaging/native-packages.json; do not edit.
@@ -149,11 +156,11 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP", release_tag: str = 
 pkgname=gnoblin
 pkgver={version}
 pkgrel={package_release}
-pkgdesc='Gnoblin desktop session with a private GNOME runtime'
+pkgdesc='Standalone Gnoblin desktop session'
 arch=('x86_64')
 url='{PROJECT_URL}'
 license=('GPL-2.0-or-later')
-makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gcr-4' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4' 'json-glib' 'libadwaita' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'lua' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
+makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4' 'json-glib' 'libadwaita' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' '{lua_build_requirement}' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
 depends=({" ".join(dependencies)})
 
 source=("$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz")
@@ -163,9 +170,8 @@ _prefix=/usr/lib/gnoblin
 
 prepare() {{
     cd "$srcdir/$pkgname-$pkgver" || return
-    for project in mutter gnome-shell xdg-desktop-portal-gnome; do
+    for project in mutter xdg-desktop-portal-gnome; do
         archive_name="$project"
-        [[ "$project" == gnome-shell ]] && archive_name=gnoblin-shell
         archive=(sources/"$archive_name"-*.tar.xz)
         test ${{#archive[@]}} -eq 1
         mkdir -p "subprojects/$project"
@@ -175,29 +181,24 @@ prepare() {{
 
 build() {{
     cd "$srcdir/$pkgname-$pkgver" || return
-    cmake -S . -B build/ninja -G Ninja \
-        -DGNOBLIN_PREFIX="$_prefix" -DGNOBLIN_LIBDIR=lib \
-        -DGNOBLIN_BUILD_TYPE=release -DGNOBLIN_SOURCE_MODE=release-archive \
-        -DGNOBLIN_STAGE_ROOT="$srcdir/$pkgname-$pkgver/stage" \
-        -DGNOBLIN_JOBS="$(nproc)"
-    cmake --build build/ninja --target gnoblin --parallel "$(nproc)"
+    cmake -S . -B build/ninja -G Ninja -DGNOBLIN_PREFIX="$_prefix" -DGNOBLIN_LIBDIR=lib -DGNOBLIN_BUILD_TYPE=release -DGNOBLIN_SOURCE_MODE=release-archive -DGNOBLIN_STAGE_ROOT="$srcdir/$pkgname-$pkgver/stage" -DGNOBLIN_JOBS="$(nproc)"
+    cmake --build build/ninja --target standalone-session --parallel "$(nproc)"
+    cmake --build build/ninja --target xdg-desktop-portal-gnome --parallel "$(nproc)"
 }}
 
 package() {{
     cd "$srcdir/$pkgname-$pkgver" || return
     cp -a stage/. "$pkgdir/"
-    install -Dm644 "$pkgdir$_prefix/share/wayland-sessions/gnoblin.desktop" "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
-    sed -i -e 's|^Exec=.*|Exec=env GNOBLIN_STANDALONE_SESSION=1 /usr/lib/gnoblin/bin/gnoblin|' -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
     install -d "$pkgdir/usr/bin"
     ln -s "$_prefix/bin/gnoblin" "$pkgdir/usr/bin/gnoblin"
     ln -s "$_prefix/bin/gnoblinctl" "$pkgdir/usr/bin/gnoblinctl"
-    install -Dm644 "$pkgdir$_prefix/lib/systemd/user/org.gnoblin.Shell.target" "$pkgdir/usr/lib/systemd/user/org.gnoblin.Shell.target"
     install -Dm644 "$pkgdir$_prefix/lib/systemd/user/gnoblin-session.target" "$pkgdir/usr/lib/systemd/user/gnoblin-session.target"
-    install -Dm644 "$pkgdir$_prefix/lib/systemd/user/org.gnoblin.Shell@wayland.service" "$pkgdir/usr/lib/systemd/user/org.gnoblin.Shell@wayland.service"
     install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/portals/gnoblin.portal" "$pkgdir/usr/share/xdg-desktop-portal/portals/gnoblin.portal"
     install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/gnoblin-portals.conf" "$pkgdir/usr/share/xdg-desktop-portal/gnoblin-portals.conf"
     install -Dm644 "$pkgdir$_prefix/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service" "$pkgdir/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service"
     install -Dm644 "$pkgdir$_prefix/lib/systemd/user/xdg-desktop-portal-gnoblin.service" "$pkgdir/usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service"
+    install -Dm644 "$pkgdir$_prefix/share/wayland-sessions/gnoblin.desktop" "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
+    sed -i -e 's|^Exec=.*|Exec=/usr/lib/gnoblin/bin/gnoblin|' -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
     api="$(scripts/gnome-versions.py get mutter api)"
     find "$pkgdir$_prefix" -type f -print0 | while IFS= read -r -d '' file; do
         head -c 4 "$file" | grep -qx $'\177ELF' || continue
