@@ -99,9 +99,9 @@ def main() -> int:
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                     server.bind(socket_path)
-                    server.listen(8)
+                    server.listen(9)
                     ready.set()
-                    for _ in range(8):
+                    for _ in range(9):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -129,6 +129,20 @@ def main() -> int:
                                 result = {"request_id": 19, "method": "workspace.list"}
                             elif request["method"] == "window.thumbnail":
                                 result = {"request_id": 20, "method": "window.thumbnail"}
+                            elif request["method"] == "window.match":
+                                result = {
+                                    "id": "42",
+                                    "app_id": "org.example.Editor.desktop",
+                                    "gtk_app_id": "org.example.Editor",
+                                    "wm_class": "Editor",
+                                    "rule_app_id": "org.example.Editor",
+                                    "match": {
+                                        "type": "window",
+                                        "app_id": "org.example.Editor",
+                                        "title": "Notes",
+                                        "focused": True,
+                                    },
+                                }
                             elif request["method"] == "launch.status":
                                 result = {
                                     "launches": [{"token": "one", "application": "app", "state": "pending"}],
@@ -232,6 +246,30 @@ def main() -> int:
         )
         assert workspace_list.returncode == 0, workspace_list.stderr
         assert json.loads(workspace_list.stdout) == {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
+        window_match = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "window",
+            "match",
+            "42",
+        )
+        assert window_match.returncode == 0, window_match.stderr
+        assert json.loads(window_match.stdout) == {
+            "id": "42",
+            "app_id": "org.example.Editor.desktop",
+            "gtk_app_id": "org.example.Editor",
+            "wm_class": "Editor",
+            "rule_app_id": "org.example.Editor",
+            "match": {
+                "type": "window",
+                "app_id": "org.example.Editor",
+                "title": "Notes",
+                "focused": True,
+            },
+        }
         thumbnail_path = Path(temporary) / "window.png"
         thumbnail = run(
             binary,
@@ -275,8 +313,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 8
-        assert len(subscriptions) == 8
+        assert len(received) == 9
+        assert len(subscriptions) == 9
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 34}
@@ -312,11 +350,15 @@ def main() -> int:
         list_request = received[5]
         assert list_request["method"] == "workspace.list"
         assert list_request["arguments"] == {}
-        thumbnail_request = received[6]
+        match_request = received[6]
+        assert match_request["method"] == "window.match"
+        assert "api_version" not in match_request
+        assert match_request["arguments"] == {"window": "42"}
+        thumbnail_request = received[7]
         assert thumbnail_request["method"] == "window.thumbnail"
         assert thumbnail_request["api_version"] == {"major": 1, "minor": 23}
         assert thumbnail_request["arguments"] == {"id": "42", "width": 64, "height": 64}
-        launch_status_request = received[7]
+        launch_status_request = received[8]
         assert launch_status_request["method"] == "launch.status"
         assert launch_status_request["api_version"] == {"major": 1, "minor": 8}
         assert launch_status_request["arguments"] == {}
