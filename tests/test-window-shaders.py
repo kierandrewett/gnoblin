@@ -2,12 +2,13 @@
 """Pixel checks for shaders, blur composition, reload and rejected shader edits."""
 
 import os
+import json
 from pathlib import Path
 import subprocess
 import time
 from PIL import Image, ImageChops, ImageStat
 
-assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
+assert os.environ.get("GNOBLIN_COMPOSITOR_SOCKET"), "Run inside a supervised Gnoblin session"
 root = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin"
 root.mkdir(parents=True, exist_ok=True)
 shader = root / "test.frag"
@@ -46,13 +47,18 @@ def write_shader(colour):
 
 
 def configure(enabled=True, strength=1, blur=0, path="test.frag"):
-    shader = f', shader = {path!r}, ["shader-uniforms"] = {{strength = {strength}.0}}' if enabled else ""
-    config.write_text(f"""local g = require("gnoblin")
-g.set({{
-    shell = {{["layer-animation"] = "none"}},
-    ["window-rules"] = {{{{match = {{layer = "^shader-card$"}}, blur = {blur}{shader}}}}},
-}})
-""")
+    if enabled:
+        shader = f"shader = {json.dumps(path)}, shader_uniforms = {{strength = {strength}.0}},"
+        config.write_text(
+            f"""gnoblin.window_rule {{
+    match = {{layer = "^shader-card$"}},
+    blur = {blur},
+    {shader}
+}}
+"""
+        )
+    else:
+        config.write_text("")
     time.sleep(0.5)
 
 
