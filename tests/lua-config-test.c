@@ -422,7 +422,14 @@ int main(void) {
         "end)\n"
         "g.on('gnoblin.shortcut.binding-activated', function(event)\n"
         "  assert(event.first==true)\n"
-        "  if event.focus_context~=nil then assert(type(event.focus_context)=='userdata') end\n"
+        "  if event.focus_context~=nil then\n"
+        "    assert(type(event.focus_context)=='userdata')\n"
+        "    local window=g.windows.by_id('window-1')\n"
+        "    if window then\n"
+        "      local operation=window:focus(event.focus_context)\n"
+        "      assert(operation.method=='window.focus' and operation.status=='pending')\n"
+        "    end\n"
+        "  end\n"
         "  assert(event.focus_context_handle==nil and event.focus_context_generation==nil)\n"
         "end)\n"
         "g.on('test.shortcut.register', function()\n"
@@ -469,12 +476,58 @@ int main(void) {
     g_variant_builder_add(&trusted_shortcut, "{sv}", "session_id", g_variant_new_uint64(9));
     g_autoptr(GVariant) trusted_payload =
         g_variant_ref_sink(g_variant_builder_end(&trusted_shortcut));
+    GVariantBuilder focus_window_builder;
+    g_variant_builder_init(&focus_window_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&focus_window_builder, "{sv}", "id", g_variant_new_string("window-1"));
+    GVariantBuilder focus_frame_builder;
+    g_variant_builder_init(&focus_frame_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&focus_frame_builder, "{sv}", "x", g_variant_new_int64(0));
+    g_variant_builder_add(&focus_frame_builder, "{sv}", "y", g_variant_new_int64(0));
+    g_variant_builder_add(&focus_frame_builder, "{sv}", "width", g_variant_new_int64(800));
+    g_variant_builder_add(&focus_frame_builder, "{sv}", "height", g_variant_new_int64(600));
+    g_variant_builder_add(&focus_window_builder, "{sv}", "frame",
+                          g_variant_builder_end(&focus_frame_builder));
+    GVariantBuilder focus_windows_builder;
+    g_variant_builder_init(&focus_windows_builder, G_VARIANT_TYPE("av"));
+    g_variant_builder_add(&focus_windows_builder, "v",
+                          g_variant_builder_end(&focus_window_builder));
+    GVariantBuilder focus_snapshot_builder;
+    g_variant_builder_init(&focus_snapshot_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&focus_snapshot_builder, "{sv}", "windows",
+                          g_variant_builder_end(&focus_windows_builder));
+    g_autoptr(GVariant) focus_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&focus_snapshot_builder));
+    gnoblin_config_update_window_snapshot(focus_snapshot, 1);
     g_clear_pointer(&dispatched_document, g_variant_unref);
     dispatched_document = gnoblin_config_dispatch_shortcut_event(
         "gnoblin.shortcut.binding-activated", trusted_payload, 1, 1,
         g_get_monotonic_time() + G_USEC_PER_SEC, &error);
     g_assert_no_error(error);
     g_assert_nonnull(dispatched_document);
+    g_autoptr(GVariant) focus_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(focus_operations), ==, 1);
+    g_autoptr(GVariant) focus_operation = g_variant_get_child_value(focus_operations, 0);
+    gint64 focus_request_id = 0;
+    const char* focus_method = NULL;
+    g_assert_true(g_variant_lookup(focus_operation, "request_id", "x", &focus_request_id));
+    g_assert_true(g_variant_lookup(focus_operation, "method", "&s", &focus_method));
+    g_assert_cmpstr(focus_method, ==, "window.focus");
+    g_autoptr(GVariant) focus_arguments =
+        g_variant_lookup_value(focus_operation, "arguments", G_VARIANT_TYPE_VARDICT);
+    const char* focus_window_id = NULL;
+    g_assert_true(g_variant_lookup(focus_arguments, "id", "&s", &focus_window_id));
+    g_assert_cmpstr(focus_window_id, ==, "window-1");
+    guint64 focus_handle = 0;
+    guint64 focus_generation = 0;
+    guint64 native_focus_generation = 0;
+    gint64 focus_expires_at_us = 0;
+    g_assert_true(gnoblin_config_take_focus_context(focus_request_id, &focus_handle,
+                                                    &focus_generation, &native_focus_generation,
+                                                    &focus_expires_at_us));
+    g_assert_cmpuint(focus_handle, ==, 1);
+    g_assert_cmpuint(focus_generation, ==, gnoblin_config_runtime_generation());
+    g_assert_cmpuint(native_focus_generation, ==, 1);
+    g_assert_cmpint(focus_expires_at_us, >, g_get_monotonic_time());
     gnoblin_config_finish_event(TRUE);
 
     g_clear_pointer(&dispatched_document, g_variant_unref);
