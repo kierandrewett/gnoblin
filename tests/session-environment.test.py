@@ -14,6 +14,14 @@ class SessionEnvironmentTests(unittest.TestCase):
         installer = (ROOT / "scripts/install-session.sh").read_text()
         desktop = (ROOT / "src/data/session/gnoblin.desktop").read_text()
         runtime = (ROOT / "src/session/gnoblin-runtime.c").read_text()
+        portal_policy = (ROOT / "src/permissions/gnoblin-portal-policy.c").read_text()
+        portal_session = portal_policy[
+            portal_policy.index("static gboolean is_gnoblin_session(") : portal_policy.index(
+                "GnoblinPermission gnoblin_permission_check("
+            )
+        ]
+        self.assertIn('g_getenv("XDG_CURRENT_DESKTOP")', portal_session)
+        self.assertNotIn("GNOME_SHELL_SESSION_MODE", portal_session)
         self.assertLess(
             runtime.index('g_unsetenv("GNOME_SHELL_SESSION_MODE")'), runtime.index("run_activation_update(sync)")
         )

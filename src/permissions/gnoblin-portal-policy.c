@@ -369,7 +369,7 @@ static gboolean is_gnoblin_session(void) {
     for (guint i = 0; desktops[i]; i++)
         if (g_ascii_strcasecmp(desktops[i], "gnoblin") == 0)
             return TRUE;
-    return g_strcmp0(g_getenv("GNOME_SHELL_SESSION_MODE"), "gnoblin") == 0;
+    return FALSE;
 }
 
 GnoblinPermission gnoblin_permission_check(GDBusMethodInvocation* invocation,
