@@ -774,7 +774,7 @@ static gboolean handle_completion(Runtime* runtime, guint64 packet_id, GVariant*
     gboolean succeeded = FALSE;
     gboolean logout_accepted = FALSE;
     g_autoptr(GVariant) operation_result =
-        g_variant_lookup_value(payload, "result", G_VARIANT_TYPE_VARDICT);
+        g_variant_lookup_value(payload, "value", G_VARIANT_TYPE_VARDICT);
     if (operation_result)
         g_variant_lookup(operation_result, "accepted", "b", &logout_accepted);
     gboolean matching_success = logout_operation &&

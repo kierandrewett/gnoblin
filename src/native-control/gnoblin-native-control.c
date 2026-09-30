@@ -4031,9 +4031,16 @@ static void dispatch_operation_completion_full(GnoblinNativeControl* control, gi
         if (ok && result) {
             g_autoptr(GVariant) value = variant_from_json(result);
             if (value)
-                g_variant_builder_add(&completion, "{sv}", "result", value);
+                g_variant_builder_add(&completion, "{sv}", "value", value);
         } else if (!ok) {
-            g_variant_builder_add(&completion, "{sv}", "error", g_variant_new_string(failure));
+            GVariantBuilder error_record;
+            g_variant_builder_init(&error_record, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(
+                &error_record, "{sv}", "code",
+                g_variant_new_string(error_code && *error_code ? error_code : "internal"));
+            g_variant_builder_add(&error_record, "{sv}", "message", g_variant_new_string(failure));
+            g_variant_builder_add(&completion, "{sv}", "error",
+                                  g_variant_builder_end(&error_record));
         }
         g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&completion));
         g_autoptr(GError) completion_error = NULL;
@@ -11313,11 +11320,17 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
     g_variant_builder_add(&completion, "{sv}", "method", g_variant_new_string(method));
     g_variant_builder_add(&completion, "{sv}", "ok", g_variant_new_boolean(result != NULL));
     if (result)
-        g_variant_builder_add(&completion, "{sv}", "result", result);
-    else
-        g_variant_builder_add(&completion, "{sv}", "error",
+        g_variant_builder_add(&completion, "{sv}", "value", result);
+    else {
+        GVariantBuilder error_record;
+        g_variant_builder_init(&error_record, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&error_record, "{sv}", "code",
+                              g_variant_new_string(native_operation_error_code(operation_error)));
+        g_variant_builder_add(&error_record, "{sv}", "message",
                               g_variant_new_string(operation_error ? operation_error->message
                                                                    : "native operation failed"));
+        g_variant_builder_add(&completion, "{sv}", "error", g_variant_builder_end(&error_record));
+    }
     g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&completion));
     if (!native_runtime_send(control, GNOBLIN_RUNTIME_PACKET_COMPLETION, (guint64)operation_id,
                              payload, error))
