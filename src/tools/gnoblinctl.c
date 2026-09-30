@@ -308,7 +308,7 @@ static guint api_minor_for_method(const char* method) {
         {"session.lock", 21},
         {"runtime.reload_config", 20},
         {"version", 19},
-        {"window.list", 19},
+        {"window.list", 35},
         {"capabilities.list", 19},
         {"focus.history", 19},
         {"focus.policy", 19},
@@ -1291,11 +1291,15 @@ static char* human_label(const char* name) {
 }
 
 static char* table_header(const char* name) {
-    if (g_str_equal(name, "appId"))
+    if (g_str_equal(name, "appId") || g_str_equal(name, "app_id"))
         return g_strdup("APP ID");
-    if (g_str_equal(name, "monitorId"))
+    if (g_str_equal(name, "gtk_app_id"))
+        return g_strdup("GTK APP ID");
+    if (g_str_equal(name, "wm_class"))
+        return g_strdup("WM CLASS");
+    if (g_str_equal(name, "monitorId") || g_str_equal(name, "monitor_id"))
         return g_strdup("MONITOR ID");
-    if (g_str_equal(name, "monitorIndex"))
+    if (g_str_equal(name, "monitorIndex") || g_str_equal(name, "monitor_index"))
         return g_strdup("MONITOR INDEX");
     if (g_str_equal(name, "shortName"))
         return g_strdup("SHORT NAME");
@@ -1505,13 +1509,27 @@ static void render(JsonNode* result, const char* format, gboolean raw_string) {
         if (print_privacy_state(object))
             return;
         GList* members = json_object_get_members(object);
-        if (members && !members->next &&
-            JSON_NODE_HOLDS_ARRAY(json_object_get_member(object, members->data))) {
-            JsonArray* array = json_node_get_array(json_object_get_member(object, members->data));
-            if (g_str_equal(members->data, "grants"))
+        const char* array_member = NULL;
+        guint array_member_count = 0;
+        for (GList* item = members; item; item = item->next) {
+            if (JSON_NODE_HOLDS_ARRAY(json_object_get_member(object, item->data))) {
+                array_member = item->data;
+                array_member_count++;
+            }
+        }
+        if (array_member_count == 1) {
+            JsonArray* array = json_node_get_array(json_object_get_member(object, array_member));
+            if (g_str_equal(array_member, "grants"))
                 print_grants(array);
             else
                 print_table(array);
+            for (GList* item = members; item; item = item->next) {
+                if (g_str_equal(item->data, array_member))
+                    continue;
+                g_autofree char* label = human_label(item->data);
+                g_autofree char* value = node_text(json_object_get_member(object, item->data));
+                g_print("%s: %s\n", label, value);
+            }
         } else
             for (GList* item = members; item; item = item->next) {
                 g_autofree char* label = human_label(item->data);

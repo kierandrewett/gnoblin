@@ -101,7 +101,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(9):
+                    for _ in range(10):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -121,6 +121,20 @@ def main() -> int:
                                 result = {"session": "test-session", "locked": False}
                             elif request["method"] == "monitor.list":
                                 result = {"monitors": [{"id": "HDMI-1", "primary": True}]}
+                            elif request["method"] == "window.list":
+                                result = {
+                                    "windows": [
+                                        {
+                                            "id": "42",
+                                            "focused": True,
+                                            "workspace": 1,
+                                            "monitor_index": 0,
+                                            "app_id": "org.example.Editor",
+                                            "title": "Notes",
+                                        }
+                                    ],
+                                    "revision": 5,
+                                }
                             elif request["method"] == "animation.get":
                                 result = None
                             elif request["method"] == "workspace.create":
@@ -200,6 +214,11 @@ def main() -> int:
         monitor_result = run(binary, "--socket", socket_path, "--format", "json", "monitor", "list")
         assert monitor_result.returncode == 0, monitor_result.stderr
         assert json.loads(monitor_result.stdout) == {"monitors": [{"id": "HDMI-1", "primary": True}]}
+        window_list = run(binary, "--socket", socket_path, "--format", "table", "window", "list")
+        assert window_list.returncode == 0, window_list.stderr
+        assert "APP ID" in window_list.stdout, window_list.stdout
+        assert "org.example.Editor" in window_list.stdout
+        assert "revision: 5" in window_list.stdout
         animation_get = run(binary, "--socket", socket_path, "--format", "json", "animation", "get", "missing")
         assert animation_get.returncode == 0, animation_get.stderr
         assert json.loads(animation_get.stdout) is None
@@ -313,8 +332,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 9
-        assert len(subscriptions) == 9
+        assert len(received) == 10
+        assert len(subscriptions) == 10
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -328,11 +347,15 @@ def main() -> int:
         assert monitor_request["op"] == "api"
         assert monitor_request["method"] == "monitor.list"
         assert monitor_request["arguments"] == {}
-        get_request = received[2]
+        window_request = received[2]
+        assert window_request["method"] == "window.list"
+        assert window_request["api_version"] == {"major": 1, "minor": 35}
+        assert window_request["arguments"] == {}
+        get_request = received[3]
         assert get_request["method"] == "animation.get"
         assert get_request["api_version"] == {"major": 1, "minor": 18}
         assert get_request["arguments"] == {"name": "missing"}
-        preview_request = received[3]
+        preview_request = received[4]
         assert preview_request["method"] == "animation.preview"
         assert preview_request["arguments"] == {
             "name": "gnoblin-layer-open",
@@ -340,25 +363,25 @@ def main() -> int:
             "target": "panel:test",
             "autoplay": False,
         }
-        create_request = received[4]
+        create_request = received[5]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
             "id": "codex-probe",
             "name": "Codex Probe",
             "activate": False,
         }
-        list_request = received[5]
+        list_request = received[6]
         assert list_request["method"] == "workspace.list"
         assert list_request["arguments"] == {}
-        match_request = received[6]
+        match_request = received[7]
         assert match_request["method"] == "window.match"
         assert "api_version" not in match_request
         assert match_request["arguments"] == {"window": "42"}
-        thumbnail_request = received[7]
+        thumbnail_request = received[8]
         assert thumbnail_request["method"] == "window.thumbnail"
         assert thumbnail_request["api_version"] == {"major": 1, "minor": 23}
         assert thumbnail_request["arguments"] == {"id": "42", "width": 64, "height": 64}
-        launch_status_request = received[8]
+        launch_status_request = received[9]
         assert launch_status_request["method"] == "launch.status"
         assert launch_status_request["api_version"] == {"major": 1, "minor": 8}
         assert launch_status_request["arguments"] == {}
