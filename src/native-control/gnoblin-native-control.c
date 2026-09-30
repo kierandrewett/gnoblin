@@ -5660,8 +5660,12 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         }
     }
 
-    const gboolean tiled = meta_window_is_tiled_side_by_side(window);
-    const gboolean enabled = radius > 0 && !g_str_equal(mode, "off") &&
+    const MetaMaximizeFlags maximize_flags = meta_window_get_maximize_flags(window);
+    const gboolean partially_maximized = !!(maximize_flags & META_MAXIMIZE_HORIZONTAL) !=
+                                         !!(maximize_flags & META_MAXIMIZE_VERTICAL);
+    const gboolean tiled = meta_window_is_tiled_side_by_side(window) || partially_maximized;
+    const gboolean normal = meta_window_get_window_type(window) == META_WINDOW_NORMAL;
+    const gboolean enabled = normal && radius > 0 && !g_str_equal(mode, "off") &&
                              (!meta_window_is_maximized(window) || keep_maximized) &&
                              (!meta_window_is_fullscreen(window) || keep_fullscreen) &&
                              (!tiled || keep_tiled);
