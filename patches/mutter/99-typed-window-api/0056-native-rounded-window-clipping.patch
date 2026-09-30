@@ -5,7 +5,7 @@ Subject: [PATCH] mutter: add native rounded window clipping
 
 ---
 diff --git a/src/compositor/meta-window-actor-wayland.c b/src/compositor/meta-window-actor-wayland.c
-index 310c953e0..550ac0af4 100644
+index 310c953e0..238e2cb1c 100644
 --- a/src/compositor/meta-window-actor-wayland.c
 +++ b/src/compositor/meta-window-actor-wayland.c
 @@ -24,6 +24,7 @@
@@ -16,14 +16,15 @@ index 310c953e0..550ac0af4 100644
  #include "meta/meta-window-actor.h"
  #include "wayland/meta-wayland-actor-surface.h"
  #include "wayland/meta-wayland-buffer.h"
-@@ -660,6 +661,20 @@ meta_window_actor_wayland_sync_geometry (MetaWindowActor *actor)
+@@ -660,6 +661,21 @@ meta_window_actor_wayland_sync_geometry (MetaWindowActor *actor)
    self->needs_sync = !do_sync_geometry (self);
  }
  
 +void
 +meta_window_actor_wayland_set_rounded_clip (MetaWindowActor *actor,
 +                                            double           radius,
-+                                            double           exponent)
++                                            double           exponent,
++                                            gboolean         automatic)
 +{
 +  MetaWindowActorWayland *self;
 +
@@ -31,24 +32,25 @@ index 310c953e0..550ac0af4 100644
 +
 +  self = META_WINDOW_ACTOR_WAYLAND (actor);
 +  meta_gnoblin_window_effects_set_rounded_clip (
-+    CLUTTER_ACTOR (self->surface_container), radius, exponent);
++    CLUTTER_ACTOR (self->surface_container), radius, exponent, automatic);
 +}
 +
  static void
  meta_window_actor_wayland_map (ClutterActor *actor)
  {
 diff --git a/src/compositor/meta-window-actor-wayland.h b/src/compositor/meta-window-actor-wayland.h
-index c32c8b77d..12a1a3a2e 100644
+index c32c8b77d..89054bf60 100644
 --- a/src/compositor/meta-window-actor-wayland.h
 +++ b/src/compositor/meta-window-actor-wayland.h
-@@ -35,3 +35,7 @@ G_DECLARE_FINAL_TYPE (MetaSurfaceContainerActorWayland,
+@@ -35,3 +35,8 @@ G_DECLARE_FINAL_TYPE (MetaSurfaceContainerActorWayland,
                        ClutterActor)
  
  void meta_window_actor_wayland_rebuild_surface_tree (MetaWindowActor *actor);
 +
 +void meta_window_actor_wayland_set_rounded_clip (MetaWindowActor *actor,
 +                                                 double           radius,
-+                                                 double           exponent);
++                                                 double           exponent,
++                                                 gboolean         automatic);
 diff --git a/src/meson.build b/src/meson.build
 index 8a31d5b84..3cc855a9c 100644
 --- a/src/meson.build

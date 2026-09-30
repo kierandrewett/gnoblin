@@ -5664,8 +5664,8 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                              (!meta_window_is_maximized(window) || keep_maximized) &&
                              (!meta_window_is_fullscreen(window) || keep_fullscreen) &&
                              (!tiled || keep_tiled);
-    meta_window_actor_wayland_set_rounded_clip(actor, enabled ? radius : 0,
-                                               2 + CLAMP(smoothing, 0, 1) * 4);
+    meta_window_actor_wayland_set_rounded_clip(
+        actor, enabled ? radius : 0, 2 + CLAMP(smoothing, 0, 1) * 4, g_str_equal(mode, "auto"));
 }
 
 static void native_apply_all_window_rules(GnoblinNativeControl* control) {
