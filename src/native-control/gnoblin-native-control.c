@@ -147,6 +147,7 @@ struct _GnoblinNativeControl {
     GHashTable* runtime_cancelled_operation_ids;
     GHashTable* runtime_event_subscriptions;
     GArray* display_signal_handler_ids;
+    GArray* workspace_manager_signal_handler_ids;
     GHashTable* window_signal_handler_ids;
     GQueue* pending_runtime_states;
     GQueue* pending_runtime_events;
@@ -10055,6 +10056,8 @@ static void refresh_object_signal_watches(GnoblinNativeControl* control, GObject
                 event = "mutter.display.restacked";
             else if (g_str_equal(source, "window"))
                 event = "mutter.window.position-changed";
+            else if (g_str_equal(source, "workspace-manager"))
+                event = "mutter.workspace-manager.active-workspace-changed";
             else
                 continue;
         }
@@ -10106,6 +10109,19 @@ static void refresh_display_signal_watches(GnoblinNativeControl* control) {
     if (control && control->display)
         refresh_object_signal_watches(control, G_OBJECT(control->display), "display",
                                       control->display_signal_handler_ids);
+}
+
+static void clear_workspace_manager_signal_watches(GnoblinNativeControl* control) {
+    if (control && control->workspace_manager)
+        clear_object_signal_watches(G_OBJECT(control->workspace_manager),
+                                    control->workspace_manager_signal_handler_ids);
+}
+
+static void refresh_workspace_manager_signal_watches(GnoblinNativeControl* control) {
+    if (control && control->workspace_manager)
+        refresh_object_signal_watches(control, G_OBJECT(control->workspace_manager),
+                                      "workspace-manager",
+                                      control->workspace_manager_signal_handler_ids);
 }
 
 static void refresh_window_signal_watches(GnoblinNativeControl* control, MetaWindow* window) {
@@ -11433,6 +11449,7 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                         g_steal_pointer(&next_event_subscriptions);
                     refresh_display_signal_watches(control);
                     refresh_all_window_signal_watches(control);
+                    refresh_workspace_manager_signal_watches(control);
                 }
             }
             g_clear_pointer(&document, g_variant_unref);
@@ -11574,6 +11591,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     control->runtime_event_subscriptions =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     control->display_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
+    control->workspace_manager_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
     control->window_signal_handler_ids =
         g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify)g_array_unref);
     control->pending_runtime_states = g_queue_new();
@@ -11926,6 +11944,8 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     }
     g_clear_pointer(&control->window_signal_handler_ids, g_hash_table_unref);
     if (control->workspace_manager)
+        clear_workspace_manager_signal_watches(control);
+    if (control->workspace_manager)
         g_signal_handlers_disconnect_by_data(control->workspace_manager, control);
     if (control->monitor_manager)
         g_signal_handlers_disconnect_by_data(control->monitor_manager, control);
@@ -11998,6 +12018,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->runtime_cancelled_operation_ids, g_hash_table_unref);
     g_clear_pointer(&control->runtime_event_subscriptions, g_hash_table_unref);
     g_clear_pointer(&control->display_signal_handler_ids, g_array_unref);
+    g_clear_pointer(&control->workspace_manager_signal_handler_ids, g_array_unref);
     g_clear_pointer(&control->runtime_reader, gnoblin_runtime_reader_free);
     g_clear_pointer(&control->runtime_writer, gnoblin_runtime_writer_free);
     if (control->pending_runtime_states) {
