@@ -348,7 +348,33 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
     json_builder_end_object(builder);
     g_autoptr(JsonNode) request = json_builder_get_root(builder);
     g_autofree char* encoded = json_to_string(request, FALSE);
-    g_autofree char* payload = g_strconcat(encoded, "\n", NULL);
+    g_autofree char* payload = NULL;
+    if (method) {
+        g_autofree char* subscription_id = g_uuid_string_random();
+        g_autoptr(JsonBuilder) subscription_builder = json_builder_new();
+        json_builder_begin_object(subscription_builder);
+        json_builder_set_member_name(subscription_builder, "op");
+        json_builder_add_string_value(subscription_builder, "events");
+        json_builder_set_member_name(subscription_builder, "id");
+        json_builder_add_string_value(subscription_builder, subscription_id);
+        json_builder_set_member_name(subscription_builder, "api_version");
+        json_builder_begin_object(subscription_builder);
+        json_builder_set_member_name(subscription_builder, "major");
+        json_builder_add_int_value(subscription_builder, 1);
+        json_builder_set_member_name(subscription_builder, "minor");
+        json_builder_add_int_value(subscription_builder, 9);
+        json_builder_end_object(subscription_builder);
+        json_builder_set_member_name(subscription_builder, "events");
+        json_builder_begin_array(subscription_builder);
+        json_builder_add_string_value(subscription_builder, "gnoblin.api.operation-completed");
+        json_builder_end_array(subscription_builder);
+        json_builder_end_object(subscription_builder);
+        g_autoptr(JsonNode) subscription_request = json_builder_get_root(subscription_builder);
+        g_autofree char* subscription_encoded = json_to_string(subscription_request, FALSE);
+        payload = g_strdup_printf("%s\n%s\n", subscription_encoded, encoded);
+    } else {
+        payload = g_strconcat(encoded, "\n", NULL);
+    }
 
     gboolean waits_for_operation =
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "grant.list") ||
@@ -447,6 +473,9 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                 JsonObject* result = member_object(response, "result");
                 gboolean read_method = word_in(
                     "version capabilities.list focus.history settings focus.policy", method_name);
+                gboolean operation_descriptor = result &&
+                                                json_object_has_member(result, "request_id") &&
+                                                json_object_has_member(result, "method");
                 gboolean array_result = result_node && JSON_NODE_HOLDS_ARRAY(result_node) &&
                                         word_in("capabilities.list focus.history", method_name);
                 gboolean null_result = result_node && JSON_NODE_HOLDS_NULL(result_node) &&
@@ -456,7 +485,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                                         "Invalid compositor response");
                     return NULL;
                 }
-                if (waits_for_operation) {
+                if (waits_for_operation || operation_descriptor) {
                     JsonNode* request_id = json_object_get_member(result, "request_id");
                     if (!request_id || !JSON_NODE_HOLDS_VALUE(request_id) ||
                         (json_node_get_value_type(request_id) != G_TYPE_INT &&

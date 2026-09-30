@@ -52,6 +52,7 @@ def main() -> int:
     with tempfile.TemporaryDirectory(prefix="gnoblinctl-", dir=build_directory) as temporary:
         socket_path = str(Path(temporary) / "compositor.sock")
         received: list[dict[str, object]] = []
+        subscriptions: list[dict[str, object]] = []
         server_error: list[BaseException] = []
         ready = threading.Event()
 
@@ -61,11 +62,21 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(4)
                     ready.set()
-                    for _ in range(4):
+                    for _ in range(6):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
                             request = json.loads(stream.readline())
+                            if request["op"] == "events":
+                                subscriptions.append(request)
+                                response = {
+                                    "event": "reply",
+                                    "id": request["id"],
+                                    "result": {"subscribed": True},
+                                }
+                                stream.write(json.dumps(response).encode() + b"\n")
+                                stream.flush()
+                                request = json.loads(stream.readline())
                             received.append(request)
                             if request["method"] == "session.status":
                                 result = {"session": "test-session", "locked": False}
@@ -73,6 +84,10 @@ def main() -> int:
                                 result = {"monitors": [{"id": "HDMI-1", "primary": True}]}
                             elif request["method"] == "animation.get":
                                 result = None
+                            elif request["method"] == "workspace.create":
+                                result = {"request_id": 18, "method": "workspace.create"}
+                            elif request["method"] == "workspace.list":
+                                result = {"request_id": 19, "method": "workspace.list"}
                             else:
                                 result = {
                                     "request_id": 17,
@@ -83,13 +98,25 @@ def main() -> int:
                             response = {"event": "reply", "id": request["id"], "result": result}
                             stream.write(json.dumps(response).encode() + b"\n")
                             stream.flush()
-                            if request.get("method") == "animation.preview":
+                            if request.get("method") in {
+                                "animation.preview",
+                                "workspace.create",
+                                "workspace.list",
+                            }:
+                                operation_id = result["request_id"]
+                                method = request["method"]
+                                if method == "animation.preview":
+                                    value = {"session": "preview-17"}
+                                elif method == "workspace.create":
+                                    value = {"id": "codex-probe", "name": "Codex Probe"}
+                                else:
+                                    value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
                                     "event": "gnoblin.operation.completed",
-                                    "operation_id": 17,
-                                    "method": "animation.preview",
+                                    "operation_id": operation_id,
+                                    "method": method,
                                     "ok": True,
-                                    "value": {"session": "preview-17"},
+                                    "value": value,
                                 }
                                 stream.write(json.dumps(completion).encode() + b"\n")
                                 stream.flush()
@@ -122,10 +149,44 @@ def main() -> int:
         )
         assert animation_preview.returncode == 0, animation_preview.stderr
         assert json.loads(animation_preview.stdout) == {"session": "preview-17"}
+        workspace_create = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "workspace",
+            "create",
+            "--id",
+            "codex-probe",
+            "--name",
+            "Codex Probe",
+        )
+        assert workspace_create.returncode == 0, workspace_create.stderr
+        assert json.loads(workspace_create.stdout) == {
+            "id": "codex-probe",
+            "name": "Codex Probe",
+        }
+        workspace_list = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "workspace",
+            "list",
+        )
+        assert workspace_list.returncode == 0, workspace_list.stderr
+        assert json.loads(workspace_list.stdout) == {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 4
+        assert len(received) == 6
+        assert len(subscriptions) == 6
+        for subscription in subscriptions:
+            assert subscription["op"] == "events"
+            assert subscription["api_version"] == {"major": 1, "minor": 9}
+            assert subscription["events"] == ["gnoblin.api.operation-completed"]
         request = received[0]
         assert request["op"] == "api"
         assert request["method"] == "session.status"
@@ -147,6 +208,16 @@ def main() -> int:
             "target": "panel:test",
             "autoplay": False,
         }
+        create_request = received[4]
+        assert create_request["method"] == "workspace.create"
+        assert create_request["arguments"] == {
+            "id": "codex-probe",
+            "name": "Codex Probe",
+            "activate": False,
+        }
+        list_request = received[5]
+        assert list_request["method"] == "workspace.list"
+        assert list_request["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
