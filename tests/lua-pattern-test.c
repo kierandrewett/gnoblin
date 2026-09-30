@@ -26,6 +26,7 @@ static void test_valid_patterns(void) {
         {"^a-b$", "acb", FALSE},
         {"^%d%d%d%d$", "2026", TRUE},
         {"^%d%d%d%d$", "26", FALSE},
+        {"^app%-id:org%.example%.Remote$", "app-id:org.example.Remote", TRUE},
         {"plain", "prefix plain suffix", TRUE},
         {"plain", "absent", FALSE},
     };
