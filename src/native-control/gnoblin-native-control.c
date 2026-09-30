@@ -472,6 +472,7 @@ struct _NativeDynamicShortcut {
     gboolean active;
     gboolean releasing;
     gboolean activation_dispatched;
+    gboolean activated;
 };
 
 typedef struct {
@@ -798,6 +799,7 @@ static const char* native_socket_events[] = {
     "gnoblin.session.activity-changed",
     "gnoblin.shortcut.activated",
     "gnoblin.shortcut.binding-activated",
+    "gnoblin.shortcut.binding-deactivated",
     "gnoblin.shortcut.session.activated",
     "gnoblin.shortcut.session.key",
     "gnoblin.shortcut.session.ended",
@@ -2504,6 +2506,7 @@ static void dispatch_dynamic_shortcut_activated(GnoblinNativeControl* control, g
         g_autofree char* encoded = json_to_string(root, FALSE);
         send_response(client, g_strconcat(encoded, "\n", NULL));
     }
+    shortcut->activated = !shortcut->trigger_release;
 }
 
 static void dispatch_dynamic_shortcut_repeat(GnoblinNativeControl* control, guint action,
@@ -2546,6 +2549,18 @@ static void native_shortcut_deactivated(MetaDisplay* display, guint action, gpoi
         dynamic->releasing = FALSE;
         clutter_event_free(dynamic->trigger_event);
         dynamic->trigger_event = NULL;
+    }
+    if (dynamic && !dynamic->trigger_release && dynamic->activated) {
+        GVariantBuilder builder;
+        g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&builder, "{sv}", "id", g_variant_new_string(dynamic->id));
+        g_variant_builder_add(&builder, "{sv}", "accelerator",
+                              g_variant_new_string(dynamic->accelerator));
+        g_variant_builder_add(&builder, "{sv}", "input_time", g_variant_new_uint32(timestamp));
+        g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&builder));
+        dynamic_shortcut_publish_event(control, dynamic, "gnoblin.shortcut.binding-deactivated",
+                                       payload);
+        dynamic->activated = FALSE;
     }
     /* A release-triggered binding may only become active in this callback,
      * after the hold key's physical release was already observed. Complete
@@ -9903,6 +9918,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 g_hash_table_unref(subscriptions);
                 return encode_response(
                     "", NULL, "dynamic shortcut activation events require API version 1.11");
+            }
+            if (g_str_equal(name, "gnoblin.shortcut.binding-deactivated") &&
+                client->api_minor < 36) {
+                g_hash_table_unref(subscriptions);
+                return encode_response("", NULL,
+                                       "shortcut deactivation events require API version 1.36");
             }
             if ((g_str_equal(name, "gnoblin.shortcut.session.activated") ||
                  g_str_equal(name, "gnoblin.shortcut.session.key") ||
