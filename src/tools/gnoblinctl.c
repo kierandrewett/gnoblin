@@ -172,6 +172,11 @@ static void print_version(const char* format) {
     JsonObject* object = json_node_get_object(identity);
     g_print("Gnoblin %s (GNOME %s)\n", member_string(object, "version", "unknown"),
             member_string(object, "gnomeVersion", "unknown"));
+    g_print("Mutter: %s\n",
+            member_string(member_object(object, "components"), "mutter", "unknown"));
+    g_print("Lua: %s\n", member_string(object, "luaVersion", "unknown"));
+    g_print("Native API: %s\n", member_string(object, "apiVersion", "unknown"));
+    g_print("Build ID: %s\n", member_string(object, "buildId", "unknown"));
     const char* mutter_api = member_string(object, "mutterApi", NULL);
     if (mutter_api)
         g_print("Mutter API: %s\n", mutter_api);

@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -38,6 +39,23 @@ def source_remote():
     return None
 
 
+def package_version(*packages):
+    for package in packages:
+        result = subprocess.run(["pkg-config", "--modversion", package], capture_output=True, text=True, check=False)
+        if result.returncode == 0:
+            return result.stdout.strip()
+    raise RuntimeError(f"cannot determine Lua version from pkg-config ({', '.join(packages)})")
+
+
+def native_api_version():
+    header = (root / "src/native-control/gnoblin-native-control.h").read_text()
+    major = re.search(r"^#define GNOBLIN_NATIVE_CONTROL_API_MAJOR (\d+)$", header, re.MULTILINE)
+    minor = re.search(r"^#define GNOBLIN_NATIVE_CONTROL_API_MINOR (\d+)$", header, re.MULTILINE)
+    if not major or not minor:
+        raise RuntimeError("cannot determine native-control API version")
+    return f"{major.group(1)}.{minor.group(1)}"
+
+
 release = json.loads((root / "gnoblin-version.json").read_text())
 gnome = json.loads((root / "gnome-versions.json").read_text())
 components = gnome["components"]
@@ -58,10 +76,16 @@ elif modified_override is not None:
     source_modified = modified_override == "1"
 else:
     source_modified = bool(git("status", "--porcelain", "--untracked-files=all", "--ignore-submodules=all"))
+build_id = f"{release['version']}+{sha[:12] if sha else 'unknown'}"
+if source_modified:
+    build_id += ".modified"
 identity = {
     "version": release["version"],
     "gnomeVersion": components["mutter"]["version"],
     "mutterApi": components["mutter"]["api"],
+    "luaVersion": package_version("lua5.4", "lua-5.4", "lua54", "lua"),
+    "apiVersion": native_api_version(),
+    "buildId": build_id,
     "components": {name: value["version"] for name, value in shipped_components.items()},
     "componentCommits": {name: value["commit"] for name, value in shipped_components.items()},
     "gitSha": sha,
@@ -92,6 +116,8 @@ if arguments.ini_output:
         "gnoblin": identity.get("version"),
         "gnome": identity.get("gnomeVersion"),
         "mutter": identity.get("components", {}).get("mutter"),
+        "lua": identity.get("luaVersion"),
+        "api": identity.get("apiVersion"),
         "git_remote": identity.get("gitRemote"),
         "git_sha": identity.get("gitSha"),
         "build_id": identity.get("buildId"),
