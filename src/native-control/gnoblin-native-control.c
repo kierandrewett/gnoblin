@@ -79,6 +79,7 @@ typedef struct _NativeMutterSignalWatch NativeMutterSignalWatch;
 struct _NativeMutterSignalWatch {
     GnoblinNativeControl* control;
     char* event;
+    char* source;
     char* signal;
     guint signal_id;
 };
@@ -146,6 +147,7 @@ struct _GnoblinNativeControl {
     GHashTable* runtime_cancelled_operation_ids;
     GHashTable* runtime_event_subscriptions;
     GArray* display_signal_handler_ids;
+    GHashTable* window_signal_handler_ids;
     GQueue* pending_runtime_states;
     GQueue* pending_runtime_events;
     gint64 shortcut_capture_request_id;
@@ -9923,12 +9925,6 @@ static void window_changed(MetaWindow* window, gpointer user_data) {
     schedule_windows(user_data);
 }
 
-static gboolean native_runtime_wants_event(GnoblinNativeControl* control, const char* event) {
-    return control && control->runtime_event_subscriptions &&
-           (g_hash_table_contains(control->runtime_event_subscriptions, event) ||
-            g_hash_table_contains(control->runtime_event_subscriptions, "*"));
-}
-
 static gboolean mutter_signal_value_supported(GType type) {
     type &= ~G_SIGNAL_TYPE_STATIC_SCOPE;
     return type == G_TYPE_BOOLEAN || type == G_TYPE_CHAR || type == G_TYPE_UCHAR ||
@@ -9980,8 +9976,19 @@ static void native_mutter_signal_watch_free(gpointer data, GClosure* closure) {
     (void)closure;
     NativeMutterSignalWatch* watch = data;
     g_free(watch->event);
+    g_free(watch->source);
     g_free(watch->signal);
     g_free(watch);
+}
+
+static void add_window_signal_identity(GVariantBuilder* payload, MetaWindow* window) {
+    const char* app_id = meta_window_get_gtk_application_id(window);
+    const char* title = meta_window_get_title(window);
+    g_variant_builder_add(payload, "{sv}", "window_id",
+                          g_variant_new_uint32(meta_window_get_stable_sequence(window)));
+    g_variant_builder_add(payload, "{sv}", "app_id", g_variant_new_string(app_id ? app_id : ""));
+    g_variant_builder_add(payload, "{sv}", "window_title",
+                          g_variant_new_string(title ? title : ""));
 }
 
 static void native_mutter_signal_marshal(GClosure* closure, GValue* return_value,
@@ -9997,8 +10004,13 @@ static void native_mutter_signal_marshal(GClosure* closure, GValue* return_value
         return;
     GVariantBuilder payload;
     g_variant_builder_init(&payload, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&payload, "{sv}", "source", g_variant_new_string("display"));
+    g_variant_builder_add(&payload, "{sv}", "source", g_variant_new_string(watch->source));
     g_variant_builder_add(&payload, "{sv}", "signal", g_variant_new_string(watch->signal));
+    if (g_str_equal(watch->source, "window") && G_VALUE_HOLDS_OBJECT(&param_values[0])) {
+        GObject* object = g_value_get_object(&param_values[0]);
+        if (object && META_IS_WINDOW(object))
+            add_window_signal_identity(&payload, META_WINDOW(object));
+    }
     for (guint i = 0; i < query.n_params; i++) {
         GType type = query.param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE;
         g_autoptr(GVariant) argument = mutter_signal_value_to_variant(&param_values[i + 1]);
@@ -10015,28 +10027,37 @@ static void native_mutter_signal_marshal(GClosure* closure, GValue* return_value
     native_runtime_dispatch_event(watch->control->display, watch->event, event_payload, NULL, NULL);
 }
 
-static void clear_display_signal_watches(GnoblinNativeControl* control) {
-    if (!control || !control->display || !control->display_signal_handler_ids)
+static void clear_object_signal_watches(GObject* object, GArray* handler_ids) {
+    if (!object || !handler_ids)
         return;
-    for (guint i = 0; i < control->display_signal_handler_ids->len; i++) {
-        gulong handler_id = g_array_index(control->display_signal_handler_ids, gulong, i);
-        if (g_signal_handler_is_connected(control->display, handler_id))
-            g_signal_handler_disconnect(control->display, handler_id);
+    for (guint i = 0; i < handler_ids->len; i++) {
+        gulong handler_id = g_array_index(handler_ids, gulong, i);
+        if (g_signal_handler_is_connected(object, handler_id))
+            g_signal_handler_disconnect(object, handler_id);
     }
-    g_array_set_size(control->display_signal_handler_ids, 0);
+    g_array_set_size(handler_ids, 0);
 }
 
-static void refresh_display_signal_watches(GnoblinNativeControl* control) {
-    clear_display_signal_watches(control);
-    if (!control || !control->display || !control->runtime_event_subscriptions)
+static void refresh_object_signal_watches(GnoblinNativeControl* control, GObject* object,
+                                          const char* source, GArray* handler_ids) {
+    clear_object_signal_watches(object, handler_ids);
+    if (!control || !object || !source || !handler_ids || !control->runtime_event_subscriptions)
         return;
+    g_autofree char* prefix = g_strdup_printf("mutter.%s.", source);
     GHashTableIter iter;
     gpointer key;
     g_autoptr(GHashTable) connected = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     g_hash_table_iter_init(&iter, control->runtime_event_subscriptions);
     while (g_hash_table_iter_next(&iter, &key, NULL)) {
-        const char* event = g_str_equal(key, "*") ? "mutter.display.restacked" : key;
-        const char* prefix = "mutter.display.";
+        const char* event = key;
+        if (g_str_equal(event, "*")) {
+            if (g_str_equal(source, "display"))
+                event = "mutter.display.restacked";
+            else if (g_str_equal(source, "window"))
+                event = "mutter.window.position-changed";
+            else
+                continue;
+        }
         if (!g_str_has_prefix(event, prefix) || !event[strlen(prefix)])
             continue;
         if (g_hash_table_contains(connected, event))
@@ -10045,8 +10066,7 @@ static void refresh_display_signal_watches(GnoblinNativeControl* control) {
         const char* signal = event + strlen(prefix);
         guint signal_id = 0;
         GQuark detail = 0;
-        if (!g_signal_parse_name(signal, G_OBJECT_TYPE(control->display), &signal_id, &detail,
-                                 FALSE)) {
+        if (!g_signal_parse_name(signal, G_OBJECT_TYPE(object), &signal_id, &detail, FALSE)) {
             g_warning("gnoblin: cannot subscribe to unknown Mutter event %s", event);
             continue;
         }
@@ -10064,44 +10084,47 @@ static void refresh_display_signal_watches(GnoblinNativeControl* control) {
         NativeMutterSignalWatch* watch = g_new0(NativeMutterSignalWatch, 1);
         watch->control = control;
         watch->event = g_strdup(event);
+        watch->source = g_strdup(source);
         watch->signal = g_strdup(signal);
         watch->signal_id = signal_id;
         GClosure* closure = g_closure_new_simple(sizeof(GClosure), watch);
         g_closure_set_marshal(closure, native_mutter_signal_marshal);
         g_closure_add_finalize_notifier(closure, watch, native_mutter_signal_watch_free);
         gulong handler_id =
-            g_signal_connect_closure_by_id(control->display, signal_id, detail, closure, TRUE);
-        g_array_append_val(control->display_signal_handler_ids, handler_id);
+            g_signal_connect_closure_by_id(object, signal_id, detail, closure, TRUE);
+        g_array_append_val(handler_ids, handler_id);
     }
 }
 
-static void dispatch_mutter_event(GnoblinNativeControl* control, const char* object,
-                                  const char* signal, MetaWindow* window) {
-    g_autofree char* event = g_strdup_printf("mutter.%s.%s", object, signal);
-    if (!native_runtime_wants_event(control, event))
+static void clear_display_signal_watches(GnoblinNativeControl* control) {
+    if (control && control->display)
+        clear_object_signal_watches(G_OBJECT(control->display),
+                                    control->display_signal_handler_ids);
+}
+
+static void refresh_display_signal_watches(GnoblinNativeControl* control) {
+    if (control && control->display)
+        refresh_object_signal_watches(control, G_OBJECT(control->display), "display",
+                                      control->display_signal_handler_ids);
+}
+
+static void refresh_window_signal_watches(GnoblinNativeControl* control, MetaWindow* window) {
+    if (!control || !control->window_signal_handler_ids || !window)
         return;
-    GVariantBuilder payload;
-    g_variant_builder_init(&payload, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&payload, "{sv}", "source", g_variant_new_string(object));
-    g_variant_builder_add(&payload, "{sv}", "signal", g_variant_new_string(signal));
-    if (window) {
-        const char* app_id = meta_window_get_gtk_application_id(window);
-        const char* title = meta_window_get_title(window);
-        g_variant_builder_add(&payload, "{sv}", "window_id",
-                              g_variant_new_uint32(meta_window_get_stable_sequence(window)));
-        g_variant_builder_add(&payload, "{sv}", "app_id",
-                              g_variant_new_string(app_id ? app_id : ""));
-        g_variant_builder_add(&payload, "{sv}", "window_title",
-                              g_variant_new_string(title ? title : ""));
-    }
-    g_autoptr(GVariant) event_payload = g_variant_ref_sink(g_variant_builder_end(&payload));
-    native_runtime_dispatch_event(control->display, event, event_payload, NULL, NULL);
+    GArray* handler_ids = g_hash_table_lookup(control->window_signal_handler_ids, window);
+    if (handler_ids)
+        refresh_object_signal_watches(control, G_OBJECT(window), "window", handler_ids);
 }
 
-static void window_position_changed(MetaWindow* window, gpointer user_data) {
-    GnoblinNativeControl* control = user_data;
-    schedule_windows(control);
-    dispatch_mutter_event(control, "window", "position-changed", window);
+static void refresh_all_window_signal_watches(GnoblinNativeControl* control) {
+    if (!control || !control->window_signal_handler_ids)
+        return;
+    GHashTableIter iter;
+    gpointer window;
+    gpointer handler_ids;
+    g_hash_table_iter_init(&iter, control->window_signal_handler_ids);
+    while (g_hash_table_iter_next(&iter, &window, &handler_ids))
+        refresh_object_signal_watches(control, G_OBJECT(window), "window", handler_ids);
 }
 
 static void window_workspace_changed(MetaWindow* window, gpointer user_data) {
@@ -10114,6 +10137,9 @@ static void window_notified(GObject* window, GParamSpec* property, gpointer user
 
 static void window_unmanaged(MetaWindow* window, gpointer user_data) {
     GnoblinNativeControl* control = user_data;
+    GArray* handler_ids = g_hash_table_lookup(control->window_signal_handler_ids, window);
+    clear_object_signal_watches(G_OBJECT(window), handler_ids);
+    g_hash_table_remove(control->window_signal_handler_ids, window);
     g_signal_handlers_disconnect_by_data(window, control);
     g_hash_table_remove(control->windows, window);
     schedule_windows(control);
@@ -10123,11 +10149,14 @@ static void track_window(GnoblinNativeControl* control, MetaWindow* window) {
     if (g_hash_table_contains(control->windows, window))
         return;
     g_hash_table_add(control->windows, g_object_ref(window));
+    GArray* handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
+    g_hash_table_insert(control->window_signal_handler_ids, window, handler_ids);
     g_signal_connect(window, "notify", G_CALLBACK(window_notified), control);
-    g_signal_connect(window, "position-changed", G_CALLBACK(window_position_changed), control);
+    g_signal_connect(window, "position-changed", G_CALLBACK(window_changed), control);
     g_signal_connect(window, "size-changed", G_CALLBACK(window_changed), control);
     g_signal_connect(window, "workspace-changed", G_CALLBACK(window_workspace_changed), control);
     g_signal_connect(window, "unmanaged", G_CALLBACK(window_unmanaged), control);
+    refresh_window_signal_watches(control, window);
     schedule_windows(control);
 }
 
@@ -11403,6 +11432,7 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                     control->runtime_event_subscriptions =
                         g_steal_pointer(&next_event_subscriptions);
                     refresh_display_signal_watches(control);
+                    refresh_all_window_signal_watches(control);
                 }
             }
             g_clear_pointer(&document, g_variant_unref);
@@ -11544,6 +11574,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     control->runtime_event_subscriptions =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     control->display_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
+    control->window_signal_handler_ids =
+        g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, (GDestroyNotify)g_array_unref);
     control->pending_runtime_states = g_queue_new();
     control->pending_runtime_events = g_queue_new();
     control->privacy_handles =
@@ -11885,10 +11917,14 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         GHashTableIter window_iter;
         gpointer window;
         g_hash_table_iter_init(&window_iter, control->windows);
-        while (g_hash_table_iter_next(&window_iter, &window, NULL))
+        while (g_hash_table_iter_next(&window_iter, &window, NULL)) {
+            GArray* handler_ids = g_hash_table_lookup(control->window_signal_handler_ids, window);
+            clear_object_signal_watches(G_OBJECT(window), handler_ids);
             g_signal_handlers_disconnect_by_data(window, control);
+        }
         g_hash_table_unref(control->windows);
     }
+    g_clear_pointer(&control->window_signal_handler_ids, g_hash_table_unref);
     if (control->workspace_manager)
         g_signal_handlers_disconnect_by_data(control->workspace_manager, control);
     if (control->monitor_manager)
