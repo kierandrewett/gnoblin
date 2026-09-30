@@ -20,29 +20,17 @@ your distribution. The build reports missing libraries and minimum versions.
 Python is used while building; the installed control command is a native
 GLib/GIO program.
 
-The Shell loads the AccountsService and IBus 1.0 typelibs at startup, even
-without their daemons. The build checks for both before compiling the Shell.
-Install these runtime packages:
-
-- Fedora: `accountsservice-libs` and `ibus-libs`
-- Arch: `accountsservice` and `libibus`
-- Debian: `gir1.2-accountsservice-1.0` and `gir1.2-ibus-1.0`
-
-Install the `ibus` daemon separately if you use IBus input methods. The lean
-session starts it when an IBus input source is configured.
-
 The installed `gsettings-desktop-schemas` development package must be at least
 the version pinned in `gnome-versions.json`.
 
-Gnoblin builds its patched Mutter and GNOME Shell into a separate prefix. It
-uses development libraries from your distribution; you do not need its
-`gnome-shell` or `mutter` packages.
+Gnoblin builds its runtime, patched Mutter, and portal backend into a separate
+prefix. It uses the pinned sources and your installed development libraries;
+you do not need the distribution's `gnome-shell` or `mutter` packages to build
+or run Gnoblin.
 
 Mutter reads monitor vendor names from the system's udev hardware database.
-Gnoblin builds without the gnome-desktop development package. Its wallpaper
-slideshows and input-source lookup use native Shell helpers. The portal's
-wallpaper preview uses the Glycin development library already needed by the
-Shell.
+Gnoblin builds without the gnome-desktop development package. The portal's
+wallpaper preview uses Glycin.
 
 The portal also needs GTK4 and libadwaita for its dialogs and capture features.
 Mutter's development viewer is built only for `./build.sh --preview`.
@@ -54,20 +42,7 @@ your system does not have one. To include Gnoblin's optional Adwaita vector
 theme, install librsvg, hyprcursor-util and the Adwaita cursor theme, then run
 `./build.sh --with-vector-cursors`. Inkscape is not required.
 
-GNOME Shell's separate built-in screen recorder needs the GStreamer runtime,
-its good plugins, and PipeWire's GStreamer plugin. Install them if you use
-that recorder. GStreamer development headers are not needed to build the
-Shell. Portal screen sharing uses the compositor's PipeWire support.
-
-When built with NetworkManager support, Gnoblin keeps its network secret
-agent but does not need libnma's network menu typelib for its session.
-Gnoblin also starts without the GDM UI typelib; it uses its own session lock.
-
-The GNOME Bluetooth panel library is optional too; Gnoblin does not show that
-panel.
-GNOME's extension tool is disabled, so `gnome-autoar` is not a build
-prerequisite. The default build also omits GNOME Shell's test and performance
-helpers.
+Portal screen sharing uses the compositor's PipeWire support.
 
 ## 1. Get the source
 
@@ -82,8 +57,8 @@ cd gnoblin-[0-9]*/
 ./build.sh
 ```
 
-The tarball includes Gnoblin and the pinned, patched Mutter, Shell and portal
-sources. `./build.sh` unpacks those sources and builds them with your installed
+The tarball includes Gnoblin and the pinned, patched Mutter and portal sources.
+`./build.sh` unpacks those sources and builds them with your installed
 development libraries; it does not need Git. Keep the extracted directory if
 you register it as a login session.
 
@@ -129,19 +104,15 @@ The example configuration binds media keys to `playerctl` and brightness keys
 to `brightnessctl`. Install either command if you want those shortcuts, or
 change the bindings to commands available on your system.
 
-Register the lean login without GNOME Session or Settings Daemon:
+Register the standalone Gnoblin login:
 
 ```sh
 ./build.sh --register-session
 ```
 
-For a session with GNOME's hardware and accessibility services, also install
-`gnome-session`, `gnome-settings-daemon`, and `upower`, then register that login
-instead:
-
-```sh
-./build.sh --register-session --gnome-session
-```
+Registration adds only the standalone Gnoblin login. The normal GNOME session
+remains a separate login-screen choice, so you can switch back to GNOME without
+installing a Gnoblin compatibility session.
 
 The lean launcher needs `dbus-update-activation-environment` to update the
 shared user bus. Install `dbus-tools` on Fedora or `dbus` on Arch before
@@ -161,7 +132,7 @@ desktop settings:
 - `org.gnome.desktop.screensaver lock-enabled`: `true` locks the screen after
   activation; `false` leaves it unlocked.
 - `org.gnome.desktop.screensaver lock-delay`: requested seconds before locking;
-  the Shell finishes its idle fade first.
+  the compositor applies the delay after idle activation.
 
 Run `gsettings get org.gnome.desktop.session idle-delay` to see the current
 timeout. Applications can prevent idle activation through the ScreenSaver
@@ -169,28 +140,25 @@ timeout. Applications can prevent idle activation through the ScreenSaver
 Portal inhibition ends when the request closes or its caller disconnects.
 Direct ScreenSaver inhibition ends at `UnInhibit` or caller disconnect.
 
-The lean login reports logout and user-switch inhibition as unsupported. The
-GNOME Session login delegates all four inhibition types to GNOME SessionManager.
-
-It uses `Gnoblin` as its desktop identity
-so GNOME-only autostart entries stay out of the lean session. The launcher
+The login reports logout and user-switch inhibition as unsupported. It uses
+`Gnoblin` as its desktop identity so GNOME-only autostart entries stay out of
+the session. The launcher
 clears display addresses left by a previous login before the compositor starts.
 
 If Xwayland is absent, the lean login starts without X11 application support.
 Install Xwayland through your distribution if you need X11 applications.
 
-Logout ends the compositor and returns to the login manager without GNOME's
-logout confirmation dialog. Save your work before logging out.
+Logout ends the compositor and returns to the login manager. Save your work
+before logging out.
 
-GNOME Settings Daemon services do not start, so their hardware controls,
-accessibility features, and XSettings are unavailable. Use the GNOME Session
-option if you need them.
+The Gnoblin login does not start GNOME Settings Daemon services. Select the
+separate GNOME login at the login screen when you need those services.
 
 The lean path needs a fresh Wayland login managed by logind. The login manager
 must set `XDG_SESSION_TYPE=wayland` when it starts Gnoblin.
 
-Either command asks for sudo to install the login entry and Gnoblin portal
-metadata, then links its user services. [Install a shell](bring-your-own-shell.md),
+`./build.sh --register-session` asks for sudo to install the login entry and
+Gnoblin portal metadata, then links its user services. [Install a shell](bring-your-own-shell.md),
 log out, and select **Gnoblin**. This registration changes the login entry for
 Gnoblin; it does not change a separate GNOME session.
 
@@ -198,18 +166,17 @@ Registration only adds session files; it does not build a missing runtime.
 
 ## Build options
 
-| Command                                         | Behaviour                                 |
-| ----------------------------------------------- | ----------------------------------------- |
-| `./build.sh`                                    | Build Gnoblin and its session data        |
-| `./build.sh --jobs N`                           | Use N parallel compilation jobs           |
-| `./build.sh --prefix DIR`                       | Build into DIR instead of `./install`     |
-| `./build.sh --without-xwayland`                 | Omit X11 application support              |
-| `./build.sh --with-vector-cursors`              | Include the optional vector cursor theme  |
-| `./build.sh --dry-run`                          | Show what will be built                   |
-| `./build.sh --verbose`                          | Show all build output as it runs          |
-| `./build.sh --preview`                          | Try the build in a nested Wayland session |
-| `./build.sh --register-session`                 | Add the lean login entry                  |
-| `./build.sh --register-session --gnome-session` | Add the GNOME Session login entry         |
+| Command                            | Behaviour                                 |
+| ---------------------------------- | ----------------------------------------- |
+| `./build.sh`                       | Build Gnoblin and its session data        |
+| `./build.sh --jobs N`              | Use N parallel compilation jobs           |
+| `./build.sh --prefix DIR`          | Build into DIR instead of `./install`     |
+| `./build.sh --without-xwayland`    | Omit X11 application support              |
+| `./build.sh --with-vector-cursors` | Include the optional vector cursor theme  |
+| `./build.sh --dry-run`             | Show what will be built                   |
+| `./build.sh --verbose`             | Show all build output as it runs          |
+| `./build.sh --preview`             | Try the build in a nested Wayland session |
+| `./build.sh --register-session`    | Add the standalone Gnoblin login entry    |
 
 Use `./build.sh --preview --terminal kitty` to choose a terminal.
 Use `--without-xwayland` only if you run Wayland-native applications; X11-only
@@ -229,9 +196,14 @@ interrupt a build with space available in the checkout.
 
 ## How GNOME stays separate
 
-Gnoblin's patched Mutter and GNOME Shell stay in the private build prefix.
-It uses development libraries installed by your distribution. The build does not add
-library paths to your shell profile or the system loader configuration.
+Gnoblin's patched Mutter stays in the private build prefix. The runtime and
+portal backend use development libraries installed by your distribution. The
+build does not add library paths to your shell profile or the system loader
+configuration.
+
+Gnoblin adds its own login entry and leaves the distribution's GNOME session
+available. Select the GNOME entry at login to return to the normal GNOME
+desktop.
 
 The host still provides the kernel, graphics drivers, system services and
 compatible base libraries. The installed PipeWire client connects to the existing
@@ -252,8 +224,7 @@ rebuilding; configuration reload cannot replace compositor libraries.
 For a release tarball, download the newer source tarball, extract it into a
 new directory, and run `./build.sh` there. If the old build was registered as
 a login session, register the new build with the same registration option you
-used before: `./build.sh --register-session` or
-`./build.sh --register-session --gnome-session`.
+used before: `./build.sh --register-session`.
 
 Registration updates Gnoblin's user-unit links to the new build. If a custom
 unit uses one of those names, move it aside first.
@@ -261,7 +232,9 @@ Log out and back in to use the new compositor.
 
 ## Remove the local session
 
-Log into another session. Remove only the files created by local registration:
+Log into another session. Remove only the files created by local registration.
+The `org.gnoblin.Shell*` and `gnome-session@gnoblin` paths below are included to
+clean up registrations created by older Gnoblin builds.
 
 ```sh
 rm -f ~/.config/systemd/user/gnoblin-session.target
