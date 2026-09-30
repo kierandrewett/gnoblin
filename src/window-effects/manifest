@@ -1,0 +1,3 @@
+# project source destination
+mutter meta-gnoblin-window-effects.c src/compositor/meta-gnoblin-window-effects.c
+mutter meta-gnoblin-window-effects.h src/compositor/meta-gnoblin-window-effects.h
