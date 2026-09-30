@@ -55,6 +55,9 @@ The source prefixes are `mutter.display`, `mutter.window`,
 signals exposed by the running Mutter build. Newly created windows and
 workspaces are watched as they appear.
 
+Workspace events include `workspace_index`. A `MetaWindow` argument is an
+identity record with `window_id`, `app_id`, and `window_title`.
+
 Gnoblin starts this signal watcher only when the config registers one of these
 events or the `*` listener.
 

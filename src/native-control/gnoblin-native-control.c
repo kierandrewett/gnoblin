@@ -46,6 +46,7 @@
 #include "meta/meta-orientation-manager.h"
 #include "meta/meta-remote-access-controller.h"
 #include "meta/meta-workspace-manager.h"
+#include "meta/workspace.h"
 #include "meta/meta-wayland-surface.h"
 #include "meta/prefs.h"
 #include "meta/util.h"
@@ -91,6 +92,7 @@ struct _GnoblinNativeControl {
     GHashTable* windows;
     GHashTable* window_state;
     GHashTable* workspace_state;
+    GHashTable* workspace_signal_handler_ids;
     GHashTable* monitor_state;
     GHashTable* input_device_state;
     GHashTable* input_device_ids;
@@ -9939,6 +9941,14 @@ static gboolean mutter_signal_value_supported(GType type) {
            G_TYPE_IS_ENUM(type) || G_TYPE_IS_FLAGS(type);
 }
 
+static void add_window_signal_identity(GVariantBuilder* payload, MetaWindow* window);
+
+static gboolean mutter_signal_argument_supported(GType type, const char* source) {
+    type &= ~G_SIGNAL_TYPE_STATIC_SCOPE;
+    return mutter_signal_value_supported(type) ||
+           (g_str_equal(source, "workspace") && type == META_TYPE_WINDOW);
+}
+
 static GVariant* mutter_signal_value_to_variant(const GValue* value) {
     GType type = G_VALUE_TYPE(value);
     type &= ~G_SIGNAL_TYPE_STATIC_SCOPE;
@@ -9975,6 +9985,20 @@ static GVariant* mutter_signal_value_to_variant(const GValue* value) {
     if (G_TYPE_IS_FLAGS(type))
         return g_variant_new_uint64(g_value_get_flags(value));
     return NULL;
+}
+
+static GVariant* mutter_signal_argument_to_variant(const GValue* value, const char* source) {
+    GType type = G_VALUE_TYPE(value) & ~G_SIGNAL_TYPE_STATIC_SCOPE;
+    if (g_str_equal(source, "workspace") && type == META_TYPE_WINDOW) {
+        MetaWindow* window = g_value_get_object(value);
+        if (!window || !META_IS_WINDOW(window))
+            return NULL;
+        GVariantBuilder identity;
+        g_variant_builder_init(&identity, G_VARIANT_TYPE_VARDICT);
+        add_window_signal_identity(&identity, window);
+        return g_variant_builder_end(&identity);
+    }
+    return mutter_signal_value_to_variant(value);
 }
 
 static void native_mutter_signal_watch_free(gpointer data, GClosure* closure) {
@@ -10016,9 +10040,17 @@ static void native_mutter_signal_marshal(GClosure* closure, GValue* return_value
         if (object && META_IS_WINDOW(object))
             add_window_signal_identity(&payload, META_WINDOW(object));
     }
+    if (g_str_equal(watch->source, "workspace") && G_VALUE_HOLDS_OBJECT(&param_values[0])) {
+        GObject* object = g_value_get_object(&param_values[0]);
+        if (object && META_IS_WORKSPACE(object))
+            g_variant_builder_add(
+                &payload, "{sv}", "workspace_index",
+                g_variant_new_int32(meta_workspace_index(META_WORKSPACE(object))));
+    }
     for (guint i = 0; i < query.n_params; i++) {
         GType type = query.param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE;
-        g_autoptr(GVariant) argument = mutter_signal_value_to_variant(&param_values[i + 1]);
+        g_autoptr(GVariant) argument =
+            mutter_signal_argument_to_variant(&param_values[i + 1], watch->source);
         if (!argument) {
             g_variant_builder_clear(&payload);
             return;
@@ -10088,7 +10120,7 @@ static void refresh_object_signal_watches(GnoblinNativeControl* control, GObject
         GType return_type = query.return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE;
         gboolean supported = return_type == G_TYPE_NONE;
         for (guint i = 0; supported && i < query.n_params; i++)
-            supported = mutter_signal_value_supported(query.param_types[i]);
+            supported = mutter_signal_argument_supported(query.param_types[i], source);
         if (!supported) {
             g_warning("gnoblin: Mutter event %s has a signal signature that Lua cannot represent",
                       event);
@@ -10132,6 +10164,35 @@ static void refresh_workspace_manager_signal_watches(GnoblinNativeControl* contr
         refresh_object_signal_watches(control, G_OBJECT(control->workspace_manager),
                                       "workspace-manager",
                                       control->workspace_manager_signal_handler_ids);
+}
+
+static void clear_all_workspace_signal_watches(GnoblinNativeControl* control) {
+    if (!control || !control->workspace_signal_handler_ids)
+        return;
+    GHashTableIter iter;
+    gpointer workspace;
+    gpointer handler_ids;
+    g_hash_table_iter_init(&iter, control->workspace_signal_handler_ids);
+    while (g_hash_table_iter_next(&iter, &workspace, &handler_ids))
+        clear_object_signal_watches(G_OBJECT(workspace), handler_ids);
+    g_hash_table_remove_all(control->workspace_signal_handler_ids);
+}
+
+static void refresh_all_workspace_signal_watches(GnoblinNativeControl* control) {
+    if (!control || !control->workspace_manager || !control->workspace_signal_handler_ids)
+        return;
+    clear_all_workspace_signal_watches(control);
+    int count = meta_workspace_manager_get_n_workspaces(control->workspace_manager);
+    for (int index = 0; index < count; index++) {
+        MetaWorkspace* workspace =
+            meta_workspace_manager_get_workspace_by_index(control->workspace_manager, index);
+        if (!workspace)
+            continue;
+        GArray* handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
+        g_hash_table_insert(control->workspace_signal_handler_ids, g_object_ref(workspace),
+                            handler_ids);
+        refresh_object_signal_watches(control, G_OBJECT(workspace), "workspace", handler_ids);
+    }
 }
 
 static void clear_backend_signal_watches(GnoblinNativeControl* control) {
@@ -10278,7 +10339,9 @@ static void input_device_removed(ClutterSeat* seat, ClutterInputDevice* device,
 
 static void workspace_manager_index_changed(MetaWorkspaceManager* manager, int index,
                                             gpointer user_data) {
-    workspace_manager_changed(manager, user_data);
+    GnoblinNativeControl* control = user_data;
+    refresh_all_workspace_signal_watches(control);
+    workspace_manager_changed(manager, control);
 }
 
 static void read_request(Client* client);
@@ -11496,6 +11559,7 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                         g_steal_pointer(&next_event_subscriptions);
                     refresh_display_signal_watches(control);
                     refresh_all_window_signal_watches(control);
+                    refresh_all_workspace_signal_watches(control);
                     refresh_workspace_manager_signal_watches(control);
                     refresh_backend_signal_watches(control);
                     refresh_monitor_manager_signal_watches(control);
@@ -11642,6 +11706,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     control->display_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
     control->workspace_manager_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
+    control->workspace_signal_handler_ids = g_hash_table_new_full(
+        g_direct_hash, g_direct_equal, g_object_unref, (GDestroyNotify)g_array_unref);
     control->backend_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
     control->monitor_manager_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
     control->cursor_tracker_signal_handler_ids = g_array_new(FALSE, FALSE, sizeof(gulong));
@@ -11999,6 +12065,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->window_signal_handler_ids, g_hash_table_unref);
     if (control->workspace_manager)
         clear_workspace_manager_signal_watches(control);
+    clear_all_workspace_signal_watches(control);
     clear_backend_signal_watches(control);
     clear_monitor_manager_signal_watches(control);
     clear_cursor_tracker_signal_watches(control);
@@ -12076,6 +12143,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->runtime_event_subscriptions, g_hash_table_unref);
     g_clear_pointer(&control->display_signal_handler_ids, g_array_unref);
     g_clear_pointer(&control->workspace_manager_signal_handler_ids, g_array_unref);
+    g_clear_pointer(&control->workspace_signal_handler_ids, g_hash_table_unref);
     g_clear_pointer(&control->backend_signal_handler_ids, g_array_unref);
     g_clear_pointer(&control->monitor_manager_signal_handler_ids, g_array_unref);
     g_clear_pointer(&control->cursor_tracker_signal_handler_ids, g_array_unref);
