@@ -5639,6 +5639,31 @@ static gboolean native_rule_get_number(GVariant* record, const char* key, double
     return isfinite(*number);
 }
 
+static gboolean native_rule_get_padding(GVariant* record, double padding[4]) {
+    g_autoptr(GVariant) values = g_variant_lookup_value(record, "padding", G_VARIANT_TYPE("av"));
+    if (!values || g_variant_n_children(values) != 4)
+        return FALSE;
+
+    double parsed[4];
+    for (gsize i = 0; i < G_N_ELEMENTS(parsed); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(values, i);
+        g_autoptr(GVariant) value = g_variant_get_variant(boxed);
+        if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
+            parsed[i] = g_variant_get_double(value);
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
+            parsed[i] = (double)g_variant_get_int64(value);
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32))
+            parsed[i] = (double)g_variant_get_int32(value);
+        else
+            return FALSE;
+        if (!isfinite(parsed[i]) || parsed[i] < -128 || parsed[i] > 128)
+            return FALSE;
+    }
+
+    memcpy(padding, parsed, sizeof(parsed));
+    return TRUE;
+}
+
 static gboolean native_rule_get_boolean(GVariant* record, const char* key, const char* legacy_key,
                                         gboolean* value) {
     return g_variant_lookup(record, key, "b", value) ||
@@ -6062,6 +6087,7 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
 
     double radius = 0;
     double smoothing = 0;
+    double padding[4] = {0, 0, 0, 0};
     gboolean keep_maximized = TRUE;
     gboolean keep_fullscreen = FALSE;
     gboolean keep_tiled = FALSE;
@@ -6088,6 +6114,7 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
 
         native_rule_get_number(corners, "radius", &radius);
         native_rule_get_number(corners, "smoothing", &smoothing);
+        native_rule_get_padding(corners, padding);
         native_rule_get_boolean(corners, "keep_maximized", "keep-maximized", &keep_maximized);
         native_rule_get_boolean(corners, "keep_fullscreen", "keep-fullscreen", &keep_fullscreen);
         native_rule_get_boolean(corners, "keep_tiled", "keep-tiled", &keep_tiled);
@@ -6116,10 +6143,10 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     const double exponent = 2 + CLAMP(smoothing, 0, 1) * 4;
     if (META_IS_WINDOW_ACTOR_WAYLAND(actor))
         meta_window_actor_wayland_set_rounded_clip(actor, enabled ? radius : 0, exponent,
-                                                   g_str_equal(mode, "auto"));
+                                                   g_str_equal(mode, "auto"), padding);
     else if (META_IS_WINDOW_ACTOR_X11(actor))
         meta_window_actor_x11_set_rounded_clip(META_WINDOW_ACTOR_X11(actor), enabled ? radius : 0,
-                                               exponent, g_str_equal(mode, "auto"));
+                                               exponent, g_str_equal(mode, "auto"), padding);
 }
 
 static void native_apply_all_window_rules(GnoblinNativeControl* control) {
