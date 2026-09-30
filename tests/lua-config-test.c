@@ -577,6 +577,8 @@ int main(void) {
         NULL, G_LOG_LEVEL_WARNING, capture_animation_callback_warning, &animation_callback_warning);
     dispatched_document = gnoblin_config_dispatch_event("test.animation", payload, &error);
     g_log_remove_handler(NULL, animation_warning_handler);
+    if (animation_callback_warning)
+        g_error("unexpected animation callback warning: %s", animation_callback_warning);
     g_assert_null(animation_callback_warning);
     g_assert_no_error(error);
     g_assert_nonnull(dispatched_document);
