@@ -8,6 +8,12 @@ diff --git a/meson.build b/meson.build
 index b926c9b39..2a7e802d8 100644
 --- a/meson.build
 +++ b/meson.build
-@@ -49 +49 @@ umockdev_req = '>= 0.3.0'
+@@ -46,7 +46,7 @@ gudev_req = '>= 238'
+ umockdev_req = '>= 0.3.0'
+ 
+ # wayland version requirements
 -wayland_server_req = '>= 1.26'
 +wayland_server_req = '>= 1.25'
+ wayland_protocols_req = '>= 1.48'
+ 
+ # native backend version requirements
