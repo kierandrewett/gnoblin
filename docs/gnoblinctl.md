@@ -424,16 +424,24 @@ IDs, titles and geometry below are illustrative:
         {
             "id": "42",
             "title": "Notes",
+            "app_id": "org.example.Editor.desktop",
             "appId": "org.example.Editor.desktop",
             "focused": true,
             "minimized": false,
             "workspace": 1,
+            "workspace_id": "code",
+            "workspace_number": 1,
             "workspaceId": "code",
             "workspaceNumber": 1,
+            "monitor_id": "DP-1",
             "monitorIndex": 0,
+            "monitor_index": 0,
+            "monitorId": "DP-1",
             "maximized": false,
             "fullscreen": false,
+            "frame": { "x": 100, "y": 80, "width": 900, "height": 600 },
             "geometry": { "x": 100, "y": 80, "width": 900, "height": 600 },
+            "last_user_time": 123456,
             "lastUserTime": 123456,
             "parent": null,
             "monitor": { "x": 0, "y": 0 }
@@ -441,6 +449,11 @@ IDs, titles and geometry below are illustrative:
     ]
 }
 ```
+
+Window JSON records use snake_case names such as `app_id`, `workspace_id`,
+`monitor_id`, and `last_user_time`, matching the Lua window API. The older
+camelCase names remain as compatibility aliases for API 1.x clients; use the
+snake_case names in new scripts.
 
 The standalone compositor returns window fields from Mutter:
 ID, title and app identity, focus, minimize, workspace and monitor state,
