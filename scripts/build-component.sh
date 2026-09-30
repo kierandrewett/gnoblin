@@ -60,9 +60,6 @@ elif [ "$name" = mutter ]; then
             exit 2
             ;;
     esac
-elif [ "$name" = gnome-shell ]; then
-    options=(-Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false
-        -Dportal_helper=false -Dcalendar_server=false -Dhotplug_sniffer=false)
 else
     options=()
 fi
@@ -97,10 +94,4 @@ if [ -n "$stage_root" ]; then
     done < <(find "$installed_prefix/$libdir/pkgconfig" "$installed_prefix/share/pkgconfig" -maxdepth 1 -name '*.pc' -type f -print0 2>/dev/null)
 else
     meson install -C "$build_dir" --no-rebuild
-fi
-if [ "$name" = gnome-shell ]; then
-    rm -f -- \
-        "$installed_prefix/lib/systemd/user/org.gnome.Shell-disable-extensions.service" \
-        "$installed_prefix/libexec/gnome-shell-hotplug-sniffer" \
-        "$installed_prefix/share/dbus-1/services/org.gnome.Shell.HotplugSniffer.service"
 fi
