@@ -15,7 +15,7 @@
 %global gsettings_desktop_schemas_version 51.0
 %global libdrm_version 2.4.118
 %global libinput_version 1.31.0
-%global pipewire_version 1.6.0
+%global pipewire_version 1.4.11
 %global libei_version 1.3.901
 %global wayland_protocols_version 1.48
 %global wayland_server_version 1.24
@@ -57,9 +57,9 @@ BuildRequires:  pkgconfig(libpipewire-0.3) >= %{pipewire_version}
 BuildRequires:  pkgconfig(libstartup-notification-1.0)
 BuildRequires:  pkgconfig(libsystemd)
 BuildRequires:  pkgconfig(libwacom)
-BuildRequires:  pkgconfig(lua)
 BuildRequires:  pkgconfig(pixman-1)
 BuildRequires:  pkgconfig(sm)
+BuildRequires:  pkgconfig(xkeyboard-config)
 BuildRequires:  pkgconfig(udev)
 BuildRequires:  pkgconfig(wayland-protocols) >= %{wayland_protocols_version}
 BuildRequires:  pkgconfig(wayland-server) >= %{wayland_server_version}
@@ -166,13 +166,13 @@ fi
 - Remove the unused duplicate Lua event dispatch entry point.
 
 * Sun Sep 27 2026 Gnoblin contributors
-- Return owned Lua runtime operation variants to GJS.
+- Send owned Lua operation variants from the supervisor to the native compositor.
 
 * Sun Sep 27 2026 Gnoblin contributors
-- Sink the Lua document before returning it to Shell.
+- Commit Lua event documents before sending updated configuration to Mutter.
 
 * Sun Sep 27 2026 Gnoblin contributors
-- Skip no-op Lua event document delivery to Shell.
+- Skip Mutter configuration updates when a Lua event makes no document changes.
 
 * Sun Sep 27 2026 Gnoblin contributors
 - Release session-lock resources safely and enable the Wayland runtime API.
