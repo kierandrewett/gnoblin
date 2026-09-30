@@ -1,14 +1,13 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #include "gnoblin-portal-policy.h"
 #include "gnoblin-portal-identity.h"
+#include "gnoblin-lua-pattern.h"
 
 #include <string.h>
 
 #define GNOBLIN_COMPOSITOR_NAME "org.gnoblin.Compositor"
 #define GNOBLIN_COMPOSITOR_PATH "/org/gnoblin/Compositor"
 #define GNOBLIN_COMPOSITOR_IFACE "org.gnoblin.Compositor"
-#define PERMISSION_REGEX_FLAGS (G_REGEX_OPTIMIZE | G_REGEX_JAVASCRIPT_COMPAT)
-
 static const char* capabilities[] = {"screen-cast", "remote-desktop", "input-capture",
                                      "screenshot",  "access",         NULL};
 static const char* levels[] = {"default", "ask", "allow", "deny", NULL};
@@ -58,6 +57,24 @@ static gboolean string_array_valid(GVariant* value, const char* const* choices, 
         if (seen)
             g_hash_table_add(seen, g_strdup(text));
     }
+    return TRUE;
+}
+
+static gboolean permission_name_valid(const char* value) {
+    if (!value || !*value || strlen(value) > 80)
+        return FALSE;
+    for (const guchar* p = (const guchar*)value; *p; p++)
+        if (!(g_ascii_isalnum(*p) || *p == '_' || *p == '.' || *p == '-'))
+            return FALSE;
+    return TRUE;
+}
+
+static gboolean monitor_name_valid(const char* value) {
+    if (!value || !*value || strlen(value) > 80)
+        return FALSE;
+    for (const guchar* p = (const guchar*)value; *p; p++)
+        if (!(g_ascii_isalnum(*p) || *p == '_' || *p == '.' || *p == ':' || *p == '-'))
+            return FALSE;
     return TRUE;
 }
 
@@ -119,15 +136,19 @@ gboolean gnoblin_permission_policy_validate(GVariant* document, GError** error) 
         const char* level = level_v && g_variant_is_of_type(level_v, G_VARIANT_TYPE_STRING)
                                 ? g_variant_get_string(level_v, NULL)
                                 : "";
-        valid = *name && strlen(name) <= 80 &&
-                g_regex_match_simple("^[A-Za-z0-9_.-]{1,80}$", name, G_REGEX_OPTIMIZE, 0) &&
-                !g_hash_table_contains(names, name) && *pattern && strlen(pattern) <= 512 &&
-                g_utf8_validate(pattern, -1, NULL) && string_in(level, levels) && capabilities_v &&
+        valid = permission_name_valid(name) && !g_hash_table_contains(names, name) && *pattern &&
+                strlen(pattern) <= 512 && g_utf8_validate(pattern, -1, NULL) &&
+                string_in(level, levels) && capabilities_v &&
                 string_array_valid(capabilities_v, capabilities, TRUE, FALSE);
         if (valid) {
-            g_autoptr(GError) regex_error = NULL;
-            g_autoptr(GRegex) regex = g_regex_new(pattern, PERMISSION_REGEX_FLAGS, 0, &regex_error);
-            valid = regex != NULL;
+            g_autoptr(GError) pattern_error = NULL;
+            gboolean matched = FALSE;
+            if (!gnoblin_lua_pattern_match(pattern, "", &matched, &pattern_error)) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "permissions.rules[%zu].match must be a valid Lua pattern: %s", i,
+                            pattern_error ? pattern_error->message : "invalid pattern");
+                return FALSE;
+            }
         }
         if (valid)
             g_hash_table_add(names, g_strdup(name));
@@ -139,9 +160,7 @@ gboolean gnoblin_permission_policy_validate(GVariant* document, GError** error) 
                 g_autoptr(GVariant) boxed_monitor = g_variant_get_child_value(monitors, j);
                 g_autoptr(GVariant) monitor = g_variant_get_variant(boxed_monitor);
                 const char* monitor_name = g_variant_get_string(monitor, NULL);
-                valid = strlen(monitor_name) <= 80 &&
-                        g_regex_match_simple("^[A-Za-z0-9_.:-]{1,80}$", monitor_name,
-                                             G_REGEX_OPTIMIZE, 0);
+                valid = monitor_name_valid(monitor_name);
             }
             gboolean supports_monitor = FALSE;
             for (gsize j = 0; j < g_variant_n_children(capabilities_v); j++) {
@@ -260,9 +279,9 @@ GnoblinPermission gnoblin_permission_policy_evaluate(GVariant* document, const c
         }
         if (!applies)
             continue;
-        g_autoptr(GError) regex_error = NULL;
-        g_autoptr(GRegex) regex = g_regex_new(pattern, PERMISSION_REGEX_FLAGS, 0, &regex_error);
-        if (!regex || !g_regex_match(regex, identity, 0, NULL))
+        g_autoptr(GError) pattern_error = NULL;
+        gboolean matched = FALSE;
+        if (!gnoblin_lua_pattern_match(pattern, identity, &matched, &pattern_error) || !matched)
             continue;
         permission.level = parse_level(level);
         g_free(permission.rule);
