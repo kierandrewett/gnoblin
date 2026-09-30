@@ -19,6 +19,14 @@ mkdir -p "$output_dir"
 spec="$repo_dir/packaging/rpm/$project.spec"
 # Do not use spectool to download Source0: upstream archives lack our patches.
 expanded_spec="$(rpmspec -P "$spec")"
+if [[ "$project" == gnoblin ]]; then
+    version="$("$repo_dir/scripts/gnoblin-version.py" get version)"
+    source_archive="$source_dir/gnoblin-$version-source.tar.xz"
+    if [[ ! -f "$source_archive" ]]; then
+        echo "Missing complete Gnoblin source bundle: $source_archive" >&2
+        exit 1
+    fi
+fi
 while IFS= read -r source; do
     name="${source##*/}"
     if [[ ! -f "$source_dir/$name" ]]; then

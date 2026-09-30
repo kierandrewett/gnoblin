@@ -14,6 +14,12 @@ mkdir -p "$SOURCES" "$BUILDROOT"
 
 "$ROOT/packaging/opensuse/check-buildrequires.sh" --install
 if [[ -n "$PREPARED_SOURCES" ]]; then
+    gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
+    gnoblin_source="$PREPARED_SOURCES/gnoblin-$gnoblin_version-source.tar.xz"
+    [[ -f "$gnoblin_source" ]] || {
+        echo "Missing complete Gnoblin source bundle: $gnoblin_source" >&2
+        exit 1
+    }
     for project in mutter gnome-shell xdg-desktop-portal-gnome; do
         version="$($ROOT/scripts/gnome-versions.py get "$project" version)"
         archive="$project"
