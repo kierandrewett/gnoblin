@@ -81,9 +81,8 @@ if [ "$SOURCE" = copr ]; then
 else
     META_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin.spec")"
     MUTTER_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/mutter.spec")"
-    SHELL_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin-shell.spec")"
     PORTAL_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin-portal.spec")"
-    packages=("gnoblin:$META_VERSION" "gnoblin-mutter:$MUTTER_VERSION" "gnoblin-shell:$SHELL_VERSION" "gnoblin-portal:$PORTAL_VERSION" "gnoblin-session:$SHELL_VERSION")
+    packages=("gnoblin:$META_VERSION" "gnoblin-mutter:$MUTTER_VERSION" "gnoblin-portal:$PORTAL_VERSION")
     if rpm -q gnoblin-mutter-devel >/dev/null 2>&1; then
         packages+=("gnoblin-mutter-devel:$MUTTER_VERSION")
     fi
@@ -95,7 +94,6 @@ else
             gnoblin) project=gnoblin ;;
             gnoblin-mutter*) project=mutter ;;
             gnoblin-portal) project=gnoblin-portal ;;
-            *) project=gnoblin-shell ;;
         esac
         release="$(rpmspec -q --srpm --qf '%{RELEASE}' "$ROOT/packaging/rpm/$project.spec")"
         mapfile -t matches < <(find "$RPM_DIR" -type f -name "$name-$version-$release.*.rpm" | sort)
@@ -124,6 +122,6 @@ for unit in "${units[@]}"; do
     fi
 done
 systemctl --user daemon-reload
-rpm -q gnoblin gnoblin-mutter gnoblin-shell gnoblin-portal gnoblin-session
+rpm -q gnoblin gnoblin-mutter gnoblin-portal
 printf '%s\n' 'Installed. Select Gnoblin at login; GNOME remains available.' \
-    'Remove with: sudo dnf remove gnoblin gnoblin-session gnoblin-portal gnoblin-shell gnoblin-mutter'
+    'Remove with: sudo dnf remove gnoblin gnoblin-portal gnoblin-mutter'
