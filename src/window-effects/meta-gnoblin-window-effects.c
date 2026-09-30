@@ -37,10 +37,7 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
         "uniform vec4 gnoblin_rounded_clip_bounds;"
         "uniform float gnoblin_rounded_clip_radius;"
         "uniform float gnoblin_rounded_clip_exponent;"
-        "uniform float gnoblin_rounded_clip_automatic;",
-        "vec2 p=gnoblin_rounded_clip_bounds.xy+"
-        "cogl_tex_coord_in[0].st*(gnoblin_rounded_clip_bounds.zw-"
-        "gnoblin_rounded_clip_bounds.xy);"
+        "uniform float gnoblin_rounded_clip_automatic;"
         "float sourceAlpha(vec2 point){"
         "vec2 uv=(point-gnoblin_rounded_clip_bounds.xy)/"
         "(gnoblin_rounded_clip_bounds.zw-gnoblin_rounded_clip_bounds.xy);"
@@ -58,7 +55,10 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
         "float diagonal=sourceAlpha(origin+direction*0.75);"
         "float horizontal=sourceAlpha(origin+direction*vec2(inset,0.75));"
         "float vertical=sourceAlpha(origin+direction*vec2(0.75,inset));"
-        "return reference>0.02&&min(diagonal,min(horizontal,vertical))>=reference*0.85;}"
+        "return reference>0.02&&min(diagonal,min(horizontal,vertical))>=reference*0.85;}",
+        "vec2 p=gnoblin_rounded_clip_bounds.xy+"
+        "cogl_tex_coord_in[0].st*(gnoblin_rounded_clip_bounds.zw-"
+        "gnoblin_rounded_clip_bounds.xy);"
         "vec2 half_size=(gnoblin_rounded_clip_bounds.zw-"
         "gnoblin_rounded_clip_bounds.xy)*0.5;"
         "float radius=min(gnoblin_rounded_clip_radius,min(half_size.x,half_size.y));"
