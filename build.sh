@@ -133,7 +133,7 @@ if "$preview"; then
         echo '--preview must be used on its own, optionally with --terminal NAME.' >&2
         exit 2
     fi
-    exec ./scripts/run-gnome-devkit.sh "$terminal"
+    exec ./scripts/run-gnoblin-devkit.sh "$terminal"
 fi
 if "$dry_run"; then
     printf 'Build Gnoblin from pinned sources.\n'
