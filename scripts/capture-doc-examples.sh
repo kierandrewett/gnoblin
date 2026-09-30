@@ -89,15 +89,12 @@ source "$root/src/tools/gnoblin-env.sh"
 # gnoblin_env_apply prepends this build's share directory to /usr/share.
 export XDG_DATA_DIRS=/usr/share
 gnoblin_env_apply "$GNOBLIN_PREFIX"
-expected_version="$(python3 "$root/scripts/gnome-versions.py" get gnome-shell version)"
-installed_version="$("$GNOBLIN_PREFIX/bin/gnome-shell" --version)"
-case "$installed_version" in
-    *"$expected_version"*) ;;
-    *)
-        echo "Build the current Gnoblin source before capturing (expected $expected_version, found $installed_version)" >&2
-        exit 1
-        ;;
-esac
+expected_version="$(python3 "$root/scripts/gnome-versions.py" get mutter version)"
+installed_version="$("$GNOBLIN_PREFIX/bin/gnoblinctl" --version --format=json | python3 -c 'import json,sys; print(json.load(sys.stdin)["gnomeVersion"])')"
+if [ "$installed_version" != "$expected_version" ]; then
+    echo "Build the current Gnoblin source before capturing (expected GNOME $expected_version, found $installed_version)" >&2
+    exit 1
+fi
 
 mkdir -p "$XDG_CONFIG_HOME/gnoblin" "$XDG_CONFIG_HOME/waybar" \
     "$XDG_CONFIG_HOME/mako" "$XDG_CONFIG_HOME/foot" "$XDG_CONFIG_HOME/fuzzel"
@@ -446,5 +443,5 @@ fi
 pointer_command="YDOTOOL_SOCKET='$ydotool_socket' ydotool mousemove --absolute $pointer_position"
 post_app_command="${post_app_command:-:}"
 desktop_command="set -e; gsettings set org.gnome.desktop.interface color-scheme prefer-dark; gsettings set org.gnome.desktop.interface gtk-theme Adwaita-dark; swaybg -i '$wallpaper' -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
-export GNOME_DEVKIT_EXEC="$desktop_command"
-bash "$root/scripts/run-gnome-devkit.sh"
+export GNOBLIN_DEVKIT_EXEC="$desktop_command"
+bash "$root/scripts/run-gnoblin-devkit.sh"
