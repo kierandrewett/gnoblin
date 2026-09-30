@@ -18,7 +18,7 @@
 %global pipewire_version 1.4.11
 %global libei_version 1.3.901
 %global wayland_protocols_version 1.48
-%global wayland_server_version 1.24
+%global wayland_server_version 1.25
 %global tarball_version %%(echo %{version} | tr '~' '.')
 
 Name:           gnoblin-mutter

@@ -23,7 +23,7 @@
 %global libei_version 1.3.901
 %global mutter_api_version 51
 %global wayland_protocols_version 1.48
-%global wayland_server_version 1.24
+%global wayland_server_version 1.25
 
 %global major_version %%(echo %{version} | cut -d '.' -f1 | cut -d '~' -f 1)
 %global tarball_version %%(echo %{version} | tr '~' '.')
