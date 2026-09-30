@@ -5031,6 +5031,8 @@ static GHashTable* input_device_state_from_snapshot(JsonNode* snapshot) {
     return devices;
 }
 
+static void native_window_record_add_public_aliases(JsonObject* object);
+
 static JsonNode* window_snapshot_json(GnoblinNativeControl* control, gboolean update_lua_snapshot,
                                       GError** error) {
     GVariantBuilder empty;
@@ -5046,6 +5048,15 @@ static JsonNode* window_snapshot_json(GnoblinNativeControl* control, gboolean up
     if (update_lua_snapshot)
         cache_lua_window_snapshot(control, result, control->state_revision);
     g_autoptr(JsonNode) json = json_from_variant(result);
+    if (JSON_NODE_HOLDS_OBJECT(json)) {
+        JsonArray* windows = json_object_get_array_member(json_node_get_object(json), "windows");
+        for (guint i = 0; windows && i < json_array_get_length(windows); i++) {
+            JsonNode* window = json_array_get_element(windows, i);
+            if (!JSON_NODE_HOLDS_OBJECT(window))
+                continue;
+            native_window_record_add_public_aliases(json_node_get_object(window));
+        }
+    }
     return g_steal_pointer(&json);
 }
 
@@ -5093,6 +5104,18 @@ static const struct {
     {"monitor", "monitor"},
     {"geometry", "frame"},
 };
+
+static void native_window_record_add_public_aliases(JsonObject* object) {
+    for (guint property = 0; property < G_N_ELEMENTS(window_property_names); property++) {
+        const char* native_name = window_property_names[property].native_name;
+        const char* public_name = window_property_names[property].lua_name;
+        if (g_str_equal(native_name, public_name) || !json_object_has_member(object, native_name) ||
+            json_object_has_member(object, public_name))
+            continue;
+        json_object_set_member(object, public_name,
+                               json_node_copy(json_object_get_member(object, native_name)));
+    }
+}
 
 static gboolean window_record_is_modal(JsonObject* record) {
     JsonNode* type = json_object_get_member(record, "type");
