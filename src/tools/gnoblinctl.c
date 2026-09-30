@@ -318,6 +318,7 @@ static guint api_minor_for_method(const char* method) {
         {"grant.revoke", 14},
         {"layer.list", 2},
         {"input.devices", 3},
+        {"launch.status", 8},
     };
 
     if (g_str_has_prefix(method, "animation."))
@@ -352,6 +353,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "session.activity") || g_str_equal(method_name, "session.lock") ||
         g_str_equal(method_name, "privacy.stop_sharing") ||
         g_str_equal(method_name, "privacy.stop_recording") ||
+        g_str_equal(method_name, "launch.status") ||
         g_str_equal(method_name, "capabilities.list") ||
         g_str_equal(method_name, "focus.history") || g_str_equal(method_name, "focus.policy") ||
         g_str_equal(method_name, "settings") || g_str_equal(method_name, "runtime.reload_config") ||
@@ -1072,7 +1074,11 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         if (action)
             method = owned_method = g_strdup_printf("grant.%s", action);
     } else if (is(command, "launch")) {
-        if (is(action, "begin")) {
+        if (is(action, "status")) {
+            if (!require_count(cli, 0, 0, error))
+                goto invalid;
+            method = "launch.status";
+        } else if (is(action, "begin")) {
             if (!require_count(cli, 2, 3, error))
                 goto invalid;
             set_string(arguments, "token", arg(cli, 0));

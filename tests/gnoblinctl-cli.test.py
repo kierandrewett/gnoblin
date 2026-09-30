@@ -63,7 +63,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(8)
                     ready.set()
-                    for _ in range(7):
+                    for _ in range(8):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -91,6 +91,11 @@ def main() -> int:
                                 result = {"request_id": 19, "method": "workspace.list"}
                             elif request["method"] == "window.thumbnail":
                                 result = {"request_id": 20, "method": "window.thumbnail"}
+                            elif request["method"] == "launch.status":
+                                result = {
+                                    "launches": [{"token": "one", "application": "app", "state": "pending"}],
+                                    "revision": 4,
+                                }
                             else:
                                 result = {
                                     "request_id": 17,
@@ -215,11 +220,25 @@ def main() -> int:
         assert thumbnail_path.read_bytes() == base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p1sAAAAASUVORK5CYII="
         )
+        launch_status = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "launch",
+            "status",
+        )
+        assert launch_status.returncode == 0, launch_status.stderr
+        assert json.loads(launch_status.stdout) == {
+            "launches": [{"token": "one", "application": "app", "state": "pending"}],
+            "revision": 4,
+        }
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 7
-        assert len(subscriptions) == 7
+        assert len(received) == 8
+        assert len(subscriptions) == 8
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 34}
@@ -259,6 +278,10 @@ def main() -> int:
         assert thumbnail_request["method"] == "window.thumbnail"
         assert thumbnail_request["api_version"] == {"major": 1, "minor": 23}
         assert thumbnail_request["arguments"] == {"id": "42", "width": 64, "height": 64}
+        launch_status_request = received[7]
+        assert launch_status_request["method"] == "launch.status"
+        assert launch_status_request["api_version"] == {"major": 1, "minor": 8}
+        assert launch_status_request["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
