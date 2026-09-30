@@ -100,6 +100,8 @@ add_test(NAME gnoblinctl-cli
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/gnoblinctl-cli.test.py"
     "$<TARGET_FILE:gnoblinctl>" "${CMAKE_BINARY_DIR}")
 set_tests_properties(gnoblinctl-cli PROPERTIES TIMEOUT 15)
+add_test(NAME permission-contract
+  COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/permission-contract.test.py")
 add_custom_target(gnoblinctl-identity
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/build-identity.py"
     "${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
