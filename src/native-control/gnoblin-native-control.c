@@ -16,6 +16,7 @@
 #include <glib-unix.h>
 #include <json-glib/json-glib.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <math.h>
 #include <string.h>
 #include <sys/random.h>
@@ -71,6 +72,8 @@
 #define MAX_DYNAMIC_SHORTCUTS 128
 #define MAX_PENDING_THUMBNAILS 4
 #define MAX_PENDING_THUMBNAILS_PER_CLIENT 1
+#define MAX_CORNER_TOOLKIT_CACHE_ENTRIES 256
+#define MAX_CORNER_TOOLKIT_MAPS_BYTES (4 * 1024 * 1024)
 #define FOCUS_CONTEXT_LIFETIME_US (5 * G_USEC_PER_SEC)
 #define PORTAL_GRANT_TIMEOUT_MS 5000
 #define PORTAL_BACKEND_BUS_NAME "org.freedesktop.impl.portal.desktop.gnoblin"
@@ -80,6 +83,13 @@
 
 typedef struct _NativeDynamicShortcut NativeDynamicShortcut;
 typedef struct _NativeMutterSignalWatch NativeMutterSignalWatch;
+typedef struct _NativeCornerToolkitCache NativeCornerToolkitCache;
+
+struct _NativeCornerToolkitCache {
+    gint ref_count;
+    GnoblinNativeControl* control;
+    GHashTable* entries;
+};
 
 struct _NativeMutterSignalWatch {
     GnoblinNativeControl* control;
@@ -159,6 +169,7 @@ struct _GnoblinNativeControl {
     GArray* monitor_manager_signal_handler_ids;
     GArray* cursor_tracker_signal_handler_ids;
     GHashTable* window_signal_handler_ids;
+    NativeCornerToolkitCache* corner_toolkit_cache;
     GQueue* pending_runtime_states;
     GQueue* pending_runtime_events;
     gint64 shortcut_capture_request_id;
@@ -236,11 +247,13 @@ static void stop_native_shortcut_capture(GnoblinNativeControl* control, gboolean
                                          const char* error_code, const char* message);
 static void dynamic_shortcut_end_session(GnoblinNativeControl* control,
                                          NativeDynamicShortcut* shortcut, const char* reason);
+static void native_corner_toolkit_cache_shutdown(GnoblinNativeControl* control);
 
 static void native_runtime_abort(GnoblinNativeControl* control) {
     if (!control)
         return;
     control->stopping = TRUE;
+    native_corner_toolkit_cache_shutdown(control);
     if (control->runtime_read_source_id) {
         g_source_remove(control->runtime_read_source_id);
         control->runtime_read_source_id = 0;
@@ -5554,6 +5567,175 @@ static gboolean native_rule_get_number(GVariant* record, const char* key, double
     return isfinite(*number);
 }
 
+enum {
+    NATIVE_CORNER_TOOLKIT_NONE = 0,
+    NATIVE_CORNER_TOOLKIT_ADWAITA = 1 << 0,
+    NATIVE_CORNER_TOOLKIT_HANDY = 1 << 1,
+    NATIVE_CORNER_TOOLKIT_PENDING = 1 << 2,
+};
+
+typedef struct {
+    NativeCornerToolkitCache* cache;
+    pid_t pid;
+} NativeCornerToolkitProbe;
+
+static NativeCornerToolkitCache* native_corner_toolkit_cache_ref(NativeCornerToolkitCache* cache) {
+    g_atomic_int_inc(&cache->ref_count);
+    return cache;
+}
+
+static void native_corner_toolkit_cache_unref(NativeCornerToolkitCache* cache) {
+    if (!cache || !g_atomic_int_dec_and_test(&cache->ref_count))
+        return;
+    g_hash_table_unref(cache->entries);
+    g_free(cache);
+}
+
+static void native_corner_toolkit_cache_shutdown(GnoblinNativeControl* control) {
+    if (!control || !control->corner_toolkit_cache)
+        return;
+
+    NativeCornerToolkitCache* cache = control->corner_toolkit_cache;
+    control->corner_toolkit_cache = NULL;
+    /* Worker callbacks are dispatched on the compositor's main context. The
+     * cache outlives them, but clearing this pointer makes them harmless after
+     * control teardown without keeping the whole native control alive. */
+    cache->control = NULL;
+    native_corner_toolkit_cache_unref(cache);
+}
+
+static void native_corner_toolkit_probe_free(gpointer data) {
+    NativeCornerToolkitProbe* probe = data;
+    native_corner_toolkit_cache_unref(probe->cache);
+    g_free(probe);
+}
+
+static void native_corner_toolkit_probe_worker(GTask* task, gpointer source_object,
+                                               gpointer task_data, GCancellable* cancellable) {
+    (void)source_object;
+    (void)cancellable;
+    NativeCornerToolkitProbe* probe = task_data;
+    g_autofree char* path = g_strdup_printf("/proc/%d/maps", probe->pid);
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) {
+        /* Restricted /proc access is expected in some sandboxes. Match the
+         * previous behavior: failed detection leaves clipping enabled. */
+        g_task_return_int(task, NATIVE_CORNER_TOOLKIT_NONE);
+        return;
+    }
+
+    g_autoptr(GByteArray) contents = g_byte_array_sized_new(MAX_CORNER_TOOLKIT_MAPS_BYTES + 1);
+    guint8 chunk[8192];
+    while (contents->len < MAX_CORNER_TOOLKIT_MAPS_BYTES) {
+        const gsize remaining = MAX_CORNER_TOOLKIT_MAPS_BYTES - contents->len;
+        const ssize_t count = read(fd, chunk, MIN(sizeof(chunk), remaining));
+        if (count > 0) {
+            g_byte_array_append(contents, chunk, count);
+            continue;
+        }
+        if (count < 0 && errno == EINTR)
+            continue;
+        break;
+    }
+    close(fd);
+    g_byte_array_append(contents, (const guint8*)"", 1);
+
+    guint result = NATIVE_CORNER_TOOLKIT_NONE;
+    if (strstr((const char*)contents->data, "/libadwaita-1.so"))
+        result |= NATIVE_CORNER_TOOLKIT_ADWAITA;
+    if (strstr((const char*)contents->data, "/libhandy-1.so"))
+        result |= NATIVE_CORNER_TOOLKIT_HANDY;
+    g_task_return_int(task, result);
+}
+
+static void native_corner_toolkit_probe_finished(GObject* source_object, GAsyncResult* result,
+                                                 gpointer user_data) {
+    (void)source_object;
+    (void)user_data;
+    GTask* task = G_TASK(result);
+    NativeCornerToolkitProbe* probe = g_task_get_task_data(task);
+    NativeCornerToolkitCache* cache = probe->cache;
+    GnoblinNativeControl* control = cache->control;
+    const guint toolkit_flags = g_task_propagate_int(task, NULL);
+
+    if (!control || control->stopping || !control->display)
+        return;
+
+    g_hash_table_insert(cache->entries, GINT_TO_POINTER(probe->pid),
+                        GUINT_TO_POINTER(toolkit_flags + 1));
+    GSList* windows = meta_display_list_windows(control->display, META_LIST_DEFAULT);
+    for (GSList* link = windows; link; link = link->next) {
+        MetaWindow* window = link->data;
+        if (meta_window_get_pid(window) == probe->pid)
+            native_apply_window_rules(control, window);
+    }
+    g_slist_free(windows);
+}
+
+static void native_corner_toolkit_probe(GnoblinNativeControl* control, pid_t pid) {
+    NativeCornerToolkitCache* cache = control->corner_toolkit_cache;
+    if (!cache) {
+        cache = g_new0(NativeCornerToolkitCache, 1);
+        cache->ref_count = 1;
+        cache->control = control;
+        cache->entries = g_hash_table_new(g_direct_hash, g_direct_equal);
+        control->corner_toolkit_cache = cache;
+    }
+
+    if (g_hash_table_size(cache->entries) >= MAX_CORNER_TOOLKIT_CACHE_ENTRIES) {
+        GHashTableIter iter;
+        gpointer value;
+        gboolean has_pending = FALSE;
+        g_hash_table_iter_init(&iter, cache->entries);
+        while (g_hash_table_iter_next(&iter, NULL, &value)) {
+            if (GPOINTER_TO_UINT(value) == NATIVE_CORNER_TOOLKIT_PENDING + 1) {
+                has_pending = TRUE;
+                break;
+            }
+        }
+        if (has_pending)
+            return;
+        g_hash_table_remove_all(cache->entries);
+    }
+
+    g_hash_table_insert(cache->entries, GINT_TO_POINTER(pid),
+                        GUINT_TO_POINTER(NATIVE_CORNER_TOOLKIT_PENDING + 1));
+    NativeCornerToolkitProbe* probe = g_new0(NativeCornerToolkitProbe, 1);
+    probe->cache = native_corner_toolkit_cache_ref(cache);
+    probe->pid = pid;
+    GTask* task = g_task_new(NULL, NULL, native_corner_toolkit_probe_finished, NULL);
+    g_task_set_task_data(task, probe, native_corner_toolkit_probe_free);
+    g_task_run_in_thread(task, native_corner_toolkit_probe_worker);
+    g_object_unref(task);
+}
+
+static gboolean native_corner_toolkit_should_skip(GnoblinNativeControl* control, MetaWindow* window,
+                                                  gboolean skip_libadwaita,
+                                                  gboolean skip_libhandy) {
+    if ((!skip_libadwaita && !skip_libhandy) || !control || control->stopping)
+        return FALSE;
+
+    const pid_t pid = meta_window_get_pid(window);
+    if (pid <= 0)
+        return FALSE;
+
+    NativeCornerToolkitCache* cache = control->corner_toolkit_cache;
+    gpointer encoded = cache ? g_hash_table_lookup(cache->entries, GINT_TO_POINTER(pid)) : NULL;
+    if (!encoded) {
+        native_corner_toolkit_probe(control, pid);
+        /* Match the old watcher: apply auto mode while detection is pending,
+         * then update the actor when the bounded maps scan completes. */
+        return FALSE;
+    }
+
+    const guint toolkit_flags = GPOINTER_TO_UINT(encoded) - 1;
+    if (toolkit_flags == NATIVE_CORNER_TOOLKIT_PENDING)
+        return FALSE;
+
+    return (skip_libadwaita && (toolkit_flags & NATIVE_CORNER_TOOLKIT_ADWAITA)) ||
+           (skip_libhandy && (toolkit_flags & NATIVE_CORNER_TOOLKIT_HANDY));
+}
+
 static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
                                            GnoblinNativeControl* control) {
     const char* title = meta_window_get_title(window);
@@ -5630,6 +5812,9 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     gboolean keep_maximized = TRUE;
     gboolean keep_fullscreen = FALSE;
     gboolean keep_tiled = FALSE;
+    gboolean skip_libadwaita = TRUE;
+    gboolean skip_libhandy = FALSE;
+    gboolean remove_csd = FALSE;
     g_autofree char* mode = g_strdup("auto");
     g_autoptr(GVariant) document = native_config_document(control);
     g_autoptr(GVariant) rules =
@@ -5653,6 +5838,9 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         g_variant_lookup(corners, "keep-maximized", "b", &keep_maximized);
         g_variant_lookup(corners, "keep-fullscreen", "b", &keep_fullscreen);
         g_variant_lookup(corners, "keep-tiled", "b", &keep_tiled);
+        g_variant_lookup(corners, "skip-libadwaita", "b", &skip_libadwaita);
+        g_variant_lookup(corners, "skip-libhandy", "b", &skip_libhandy);
+        g_variant_lookup(corners, "remove-csd", "b", &remove_csd);
         g_autoptr(GVariant) mode_value = g_variant_lookup_value(corners, "mode", NULL);
         if (mode_value && g_variant_is_of_type(mode_value, G_VARIANT_TYPE_STRING)) {
             g_free(mode);
@@ -5665,10 +5853,13 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                                          !!(maximize_flags & META_MAXIMIZE_VERTICAL);
     const gboolean tiled = meta_window_is_tiled_side_by_side(window) || partially_maximized;
     const gboolean normal = meta_window_get_window_type(window) == META_WINDOW_NORMAL;
-    const gboolean enabled = normal && radius > 0 && !g_str_equal(mode, "off") &&
-                             (!meta_window_is_maximized(window) || keep_maximized) &&
-                             (!meta_window_is_fullscreen(window) || keep_fullscreen) &&
-                             (!tiled || keep_tiled);
+    gboolean enabled = normal && radius > 0 && !g_str_equal(mode, "off") &&
+                       (!meta_window_is_maximized(window) || keep_maximized) &&
+                       (!meta_window_is_fullscreen(window) || keep_fullscreen) &&
+                       (!tiled || keep_tiled);
+    if (enabled && g_str_equal(mode, "auto") && !remove_csd &&
+        native_corner_toolkit_should_skip(control, window, skip_libadwaita, skip_libhandy))
+        enabled = FALSE;
     const double exponent = 2 + CLAMP(smoothing, 0, 1) * 4;
     if (META_IS_WINDOW_ACTOR_WAYLAND(actor))
         meta_window_actor_wayland_set_rounded_clip(actor, enabled ? radius : 0, exponent,
