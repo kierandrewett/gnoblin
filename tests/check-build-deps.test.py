@@ -17,18 +17,23 @@ spec.loader.exec_module(checker)
 class BuildRequirements(unittest.TestCase):
     def test_dependency_check_uses_gnoblin_patched_pipewire_floor(self):
         source = """
+wayland_server_req = '>= 1.26'
+wayland_server_dep = dependency('wayland-server', version: wayland_server_req)
 libpipewire_req = '>= 1.6.0'
 libpipewire_dep = dependency('libpipewire-0.3', version: libpipewire_req)
 """
 
         patched = checker.apply_dependency_version_patches(source, "mutter", "meson.build")
 
-        self.assertEqual(list(checker.requirements(patched)), [("libpipewire-0.3", ">= 1.4.11")])
+        self.assertEqual(
+            list(checker.requirements(patched)),
+            [("wayland-server", ">= 1.25"), ("libpipewire-0.3", ">= 1.4.11")],
+        )
 
     def test_requirement_extraction_includes_required_unversioned_dependencies(self):
         source = """
 glib_req = '>= 2.86.0'
-wayland_req = '>= 1.26'
+wayland_req = '>= 1.25'
 schemas_req = '>= 51.rc'
 glib_dep = dependency('glib-2.0', version: glib_req)
 wayland_dep = dependency('wayland-server',
@@ -45,7 +50,7 @@ bundled_dep = dependency('bundled-lib')
             list(checker.requirements(source)),
             [
                 ("glib-2.0", ">= 2.86.0"),
-                ("wayland-server", ">= 1.26"),
+                ("wayland-server", ">= 1.25"),
                 ("gnome-desktop-4", None),
                 ("option-dependent", None),
             ],

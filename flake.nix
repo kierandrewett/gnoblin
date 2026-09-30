@@ -128,8 +128,8 @@
             ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.glib.version "2.86.0") "glib-below-2.86"
             ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.gjs.version "1.87.1") "gjs-below-1.87.1"
             ++ nixpkgs.lib.optional (
-              !nixpkgs.lib.versionAtLeast pkgs.wayland.version "1.26"
-            ) "wayland-below-1.26"
+              !nixpkgs.lib.versionAtLeast pkgs.wayland.version "1.25"
+            ) "wayland-below-1.25"
             ++ nixpkgs.lib.optional (
               !nixpkgs.lib.versionAtLeast pkgs.wayland-protocols.version "1.48"
             ) "wayland-protocols-below-1.48"
