@@ -40,10 +40,8 @@ SRPMS="$WORK/srpms"
 mkdir -p "$OUTPUT" "$SOURCES" "$SRPMS"
 
 "$ROOT/scripts/make-tarball.sh" mutter "$SOURCES"
-"$ROOT/scripts/make-tarball.sh" gnome-shell "$SOURCES"
 "$ROOT/scripts/make-tarball.sh" xdg-desktop-portal-gnome "$SOURCES"
 install -m 0644 -- "$SOURCES/mutter-$GNOME_VERSION.tar.xz" "$OUTPUT/"
-install -m 0644 -- "$SOURCES/gnoblin-shell-$GNOME_VERSION.tar.xz" "$OUTPUT/"
 install -m 0644 -- "$SOURCES/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" "$OUTPUT/"
 SOURCE_BUNDLE="$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-source.tar.xz"
 "$ROOT/scripts/build-source-bundle.sh" \
@@ -65,7 +63,6 @@ install -m 0644 -- "$ROOT/packaging/arch/gnome-integration/PKGBUILD" \
 
 if [ "$SOURCE_ONLY" != --source-only ]; then
     "$ROOT/scripts/build-srpm.sh" mutter "$SOURCES" "$SRPMS"
-    "$ROOT/scripts/build-srpm.sh" gnoblin-shell "$SOURCES" "$SRPMS"
     "$ROOT/scripts/build-srpm.sh" gnoblin-portal "$SOURCES" "$SRPMS"
     "$ROOT/scripts/build-srpm.sh" gnoblin "$SOURCES" "$SRPMS"
     find "$SRPMS" -maxdepth 1 -type f -name '*.src.rpm' -exec install -m 0644 -t "$OUTPUT" -- {} +
