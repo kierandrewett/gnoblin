@@ -37,7 +37,7 @@
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-seat.h"
 #include "wayland/meta-wayland-input.h"
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 #include "wayland/meta-wayland-shell-surface.h"
 #include "wayland/meta-wayland-surface-private.h"
 #include "wayland/meta-wayland-window-configuration.h"
@@ -1365,9 +1365,10 @@ static void bind_layer_shell(struct wl_client* client, void* data, uint32_t vers
 }
 
 void meta_wayland_init_layer_shell(MetaWaylandCompositor* compositor) {
-    preserve_active_window = gnoblin_config_get_bool("layer-shell", "preserve-active-window", TRUE);
+    preserve_active_window =
+        gnoblin_native_control_get_config_bool(NULL, "layer-shell", "preserve-active-window", TRUE);
 
-    if (!gnoblin_config_protocol_enabled("wlr-layer-shell")) {
+    if (!gnoblin_native_control_protocol_enabled("wlr-layer-shell")) {
         g_message("Gnoblin wlr-layer-shell protocol disabled by settings");
         return;
     }
