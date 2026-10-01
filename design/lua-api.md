@@ -1228,6 +1228,9 @@ differ or which remain socket-only.
 as the established CLI result. The raw socket `window.match` request remains
 for compatibility with existing clients; new clients route it through the
 shared Lua window snapshot.
+Native-control API 1.45 introduced `portals.grants` through
+`gnoblin.portals.grants(filter?)`. Every supported client version now uses the
+Lua read and retains the JSON array response.
 Native-control API 1.46 introduced shared Lua reads for `input.devices`,
 `input.sources`, and `input.current_source`. All supported client versions now
 use these reads. API 1.47 routes `privacy.state` through
@@ -1315,7 +1318,7 @@ compatibility path for basic actions and do not support legacy resize or move.
 | `permissions.list`                                                     | `gnoblin.permissions.list()`; shared Lua read from native-control API 1.42, with the native route retained for older clients.                                                                            |
 | `permissions.policy`                                                   | `gnoblin.permissions.policy()`; shared Lua read from native-control API 1.44, with the native route retained for older clients.                                                                          |
 | `permissions.check`                                                    | `gnoblin.permissions.check(capability, identity)`; shared Lua read from native-control API 1.43, with the native route retained for older clients.                                                       |
-| `grant.list`                                                           | `gnoblin.portals.grants()`; shared Lua read from native-control API 1.45, with the native route retained for older clients.                                                                              |
+| `grant.list`                                                           | `gnoblin.portals.grants()`; shared Lua read from native-control API 1.45 for every supported client version.                                                                                             |
 | `grant.revoke`                                                         | `grant:revoke()`                                                                                                                                                                                         |
 | `launch.status`                                                        | CLI uses `gnoblin.launches.snapshot()` to preserve the collection revision; retain the raw socket method for compatibility.                                                                              |
 | `launch.begin`                                                         | `gnoblin.launches.begin(options)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                                                                  |
