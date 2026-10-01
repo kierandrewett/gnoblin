@@ -1052,6 +1052,8 @@ loaded.
 
 Native-control API 1.15 adds the socket method `portals.grants`, which returns
 the same records as a JSON array and accepts the same optional `kind` filter.
+API 1.45 routes this read through `gnoblin.portals.grants()`; older clients keep
+the native compatibility path.
 API 1.15 clients can subscribe to `gnoblin.portal.grant-added` and
 `gnoblin.portal.grant-removed`; see the [compositor bridge](/compositor-bridge#api-version-115-portal-grant-snapshots-and-events).
 

@@ -126,6 +126,11 @@ API 1.44 routes `permissions.policy` through `gnoblin.permissions.policy()`.
 It keeps the policy and revision fields and requires the Lua supervisor. Clients
 requesting API 1.43 or earlier keep the native compatibility route.
 
+API 1.45 routes `portals.grants` through `gnoblin.portals.grants(filter?)`.
+It keeps the JSON array and optional `kind` filter and requires the Lua
+supervisor. Clients requesting API 1.44 or earlier keep the native
+compatibility route.
+
 ### API version 1.9: configured shortcuts
 
 API version 1.9 adds `shortcut.list`. It takes no arguments and returns named
@@ -325,6 +330,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.42            | Shared `permissions.list` read backed by the installed Lua runtime                                    |
 | 1.43            | Shared `permissions.check` read backed by the installed Lua runtime                                   |
 | 1.44            | Shared `permissions.policy` read backed by the installed Lua runtime                                  |
+| 1.45            | Shared `portals.grants` read backed by the installed Lua runtime                                      |
 
 ### API 1.27: shell presentation requests
 
@@ -519,6 +525,7 @@ The socket exposes these reads at the listed API versions:
 | 1.42        | `permissions.list`   | `gnoblin.permissions.list()`        | None                                                       |
 | 1.43        | `permissions.check`  | `gnoblin.permissions.check(args)`   | `capability`, `identity`                                   |
 | 1.44        | `permissions.policy` | `gnoblin.permissions.policy()`      | None                                                       |
+| 1.45        | `portals.grants`     | `gnoblin.portals.grants(filter?)`   | Optional `kind`: `screen-cast` or `remote-desktop`         |
 | 1.24        | `session.activity`   | `gnoblin.session.activity()`        | None                                                       |
 | 1.29        | `session.status`     | `gnoblin.session.status()`          | None                                                       |
 
