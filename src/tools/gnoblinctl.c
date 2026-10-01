@@ -347,9 +347,23 @@ static guint api_minor_for_method(const char* method) {
     return 8;
 }
 
+static const char* wire_operation_method(const char* method) {
+    static const struct {
+        const char* public_method;
+        const char* wire_method;
+    } aliases[] = {
+        {"input.select_source", "input.select"},
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(aliases); i++)
+        if (g_str_equal(method, aliases[i].public_method))
+            return aliases[i].wire_method;
+    return method;
+}
+
 static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                                  JsonObject* arguments, GError** error) {
     const char* method_name = method ? method : "";
+    const char* operation_method = wire_operation_method(method_name);
     g_autofree char* id = g_uuid_string_random();
     g_autoptr(JsonBuilder) builder = json_builder_new();
     json_builder_begin_object(builder);
@@ -495,7 +509,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
             gint64 completion_id = json_object_get_int_member_with_default(
                 response, legacy_completion ? "request_id" : "operation_id", 0);
             if (operation_request_id > 0 && (legacy_completion || canonical_completion) &&
-                g_str_equal(member_string(response, "method", ""), method_name) &&
+                g_str_equal(member_string(response, "method", ""), operation_method) &&
                 completion_id == operation_request_id) {
                 if (!json_object_get_boolean_member_with_default(response, "ok", FALSE)) {
                     const char* message = member_string(response, "error", NULL);
@@ -552,7 +566,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                         (json_node_get_value_type(request_id) != G_TYPE_INT &&
                          json_node_get_value_type(request_id) != G_TYPE_INT64) ||
                         json_node_get_int(request_id) <= 0 ||
-                        !g_str_equal(member_string(result, "method", ""), method_name)) {
+                        !g_str_equal(member_string(result, "method", ""), operation_method)) {
                         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                                             "Invalid operation descriptor");
                         return NULL;
