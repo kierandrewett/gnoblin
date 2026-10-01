@@ -912,6 +912,7 @@ int main(void) {
         "  assert(g.input.current_source().id=='us' and g.input.current().id=='us')\n"
         "  local window=assert(g.windows.by_id('window-1'))\n"
         "  assert(window:set_above(true).method=='window.set_above')\n"
+        "  assert(window:unminimize().method=='window.unminimize')\n"
         "  local workspace=assert(g.workspaces.active())\n"
         "  assert(workspace.id=='workspace-1' and workspace.name=='Main')\n"
         "  assert(g.workspaces.by_id('workspace-1'):rename('Work').method=='workspace.rename')\n"
@@ -1040,8 +1041,9 @@ int main(void) {
     g_assert_nonnull(snapshot_methods_result);
     g_autoptr(GVariant) snapshot_method_operations = gnoblin_config_drain_runtime_operations();
     const char* const expected_snapshot_methods[] = {
-        "window.set_above",      "workspace.rename", "workspace.switch", "workspace.remove",
-        "workspace.move_window", "workspace.create", "workspace.next",   "workspace.previous",
+        "window.set_above", "window.unminimize", "workspace.rename",
+        "workspace.switch", "workspace.remove",  "workspace.move_window",
+        "workspace.create", "workspace.next",    "workspace.previous",
     };
     g_assert_cmpuint(g_variant_n_children(snapshot_method_operations), ==,
                      G_N_ELEMENTS(expected_snapshot_methods));
