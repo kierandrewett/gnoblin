@@ -1170,13 +1170,16 @@ int main(void) {
     g_autoptr(GVariant) empty_monitors = empty_array_snapshot("monitors");
     g_autoptr(GVariant) empty_layers = empty_array_snapshot("layers");
     g_autoptr(GVariant) empty_launches = empty_array_snapshot("launches");
+    g_autoptr(GVariant) empty_shortcuts = empty_array_snapshot("shortcuts");
     gnoblin_config_update_workspace_snapshot(empty_workspaces, 19);
     gnoblin_config_update_monitor_snapshot(empty_monitors, 19);
     gnoblin_config_update_layer_snapshot(empty_layers, 19);
     gnoblin_config_update_launch_snapshot(empty_launches, 19);
+    gnoblin_config_update_shortcut_snapshot(empty_shortcuts, 19);
     assert_empty_api_array("workspaces.list", empty_read_arguments);
     assert_empty_api_array("monitors.list", empty_read_arguments);
     assert_empty_api_array("launches.list", empty_read_arguments);
+    assert_empty_api_array("shortcuts.list", empty_read_arguments);
     g_autoptr(GVariant) launch_snapshot =
         gnoblin_config_read_api("launches.snapshot", empty_read_arguments, &error);
     g_assert_no_error(error);

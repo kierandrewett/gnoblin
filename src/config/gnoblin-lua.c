@@ -4317,6 +4317,7 @@ static int lua_shortcuts_list(lua_State* state) {
     g_autoptr(GVariant) shortcuts =
         g_variant_lookup_value(config->shortcut_snapshot, "shortcuts", G_VARIANT_TYPE("av"));
     lua_newtable(state);
+    mark_array_table(state, -1);
     for (gsize i = 0; shortcuts && i < g_variant_n_children(shortcuts); i++) {
         g_autoptr(GVariant) wrapped = g_variant_get_child_value(shortcuts, i);
         g_autoptr(GVariant) shortcut = g_variant_get_variant(wrapped);
@@ -6328,11 +6329,22 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
 
 GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {
     static const char* read_methods[] = {
-        "version",          "windows.list",      "capabilities.list",
-        "focus.history",    "settings",          "focus.policy",
-        "session.activity", "session.status",    "layer.animation_policy",
-        "workspaces.list",  "monitors.list",     "layers.list",
-        "launches.list",    "launches.snapshot", NULL,
+        "version",
+        "windows.list",
+        "capabilities.list",
+        "focus.history",
+        "settings",
+        "focus.policy",
+        "session.activity",
+        "session.status",
+        "layer.animation_policy",
+        "workspaces.list",
+        "monitors.list",
+        "layers.list",
+        "launches.list",
+        "launches.snapshot",
+        "shortcuts.list",
+        NULL,
     };
     gboolean known = FALSE;
     for (guint i = 0; method && read_methods[i]; i++)
@@ -6441,6 +6453,11 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "launches.snapshot")) {
         lua_getfield(state, -1, "launches");
         lua_getfield(state, -1, "snapshot");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "shortcuts.list")) {
+        lua_getfield(state, -1, "shortcuts");
+        lua_getfield(state, -1, "list");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else { /* focus.policy */
