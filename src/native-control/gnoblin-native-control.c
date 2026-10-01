@@ -9581,112 +9581,6 @@ static void publish_window_changes(GnoblinNativeControl* control, JsonNode* snap
     control->window_state_initialized = TRUE;
 }
 
-static gint compare_string_pointers(gconstpointer a, gconstpointer b, gpointer user_data) {
-    const char* const* left = a;
-    const char* const* right = b;
-    (void)user_data;
-    return g_strcmp0(*left, *right);
-}
-
-static JsonNode* shortcut_actions_snapshot(JsonObject* arguments, GError** error) {
-    static const struct {
-        const char* group;
-        const char* schema_id;
-    } schemas[] = {
-        {"wm", "org.gnome.desktop.wm.keybindings"},
-        {"mutter", "org.gnome.mutter.keybindings"},
-        {"wayland", "org.gnome.mutter.wayland.keybindings"},
-    };
-    const char* requested_group = NULL;
-    if (arguments && json_object_get_size(arguments)) {
-        if (json_object_get_size(arguments) != 1 || !json_object_has_member(arguments, "group")) {
-            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                                "shortcut.actions accepts only the optional group argument");
-            return NULL;
-        }
-        JsonNode* group_node = json_object_get_member(arguments, "group");
-        if (!JSON_NODE_HOLDS_VALUE(group_node) ||
-            json_node_get_value_type(group_node) != G_TYPE_STRING) {
-            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                                "shortcut.actions group must be a string");
-            return NULL;
-        }
-        requested_group = json_node_get_string(group_node);
-    }
-    if (requested_group) {
-        gboolean known = FALSE;
-        for (guint i = 0; i < G_N_ELEMENTS(schemas); i++)
-            known |= g_str_equal(requested_group, schemas[i].group);
-        if (!known) {
-            g_set_error_literal(
-                error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                "unknown shortcut action group; expected 'wm', 'mutter', or 'wayland'");
-            return NULL;
-        }
-    }
-
-    GSettingsSchemaSource* source = g_settings_schema_source_get_default();
-    if (!source) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-                            "GSettings schema source is unavailable");
-        return NULL;
-    }
-    JsonNode* result = json_node_new(JSON_NODE_ARRAY);
-    JsonArray* actions = json_array_new();
-    json_node_take_array(result, actions);
-    for (guint group_index = 0; group_index < G_N_ELEMENTS(schemas); group_index++) {
-        const char* group = schemas[group_index].group;
-        if (requested_group && !g_str_equal(requested_group, group))
-            continue;
-        g_autoptr(GSettingsSchema) schema =
-            g_settings_schema_source_lookup(source, schemas[group_index].schema_id, TRUE);
-        if (!schema) {
-            if (requested_group) {
-                g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-                            "shortcut schema is not installed for group '%s'", group);
-                g_clear_pointer(&result, json_node_unref);
-                return NULL;
-            }
-            continue;
-        }
-        g_auto(GStrv) keys = g_settings_schema_list_keys(schema);
-        if (!keys)
-            continue;
-        g_sort_array(keys, g_strv_length(keys), sizeof(*keys), compare_string_pointers, NULL);
-        for (guint key_index = 0; keys[key_index]; key_index++) {
-            g_autoptr(GSettingsSchemaKey) key = g_settings_schema_get_key(schema, keys[key_index]);
-            if (!key || !g_variant_type_equal(g_settings_schema_key_get_value_type(key),
-                                              G_VARIANT_TYPE_STRING_ARRAY))
-                continue;
-            g_autoptr(GVariant) defaults = g_settings_schema_key_get_default_value(key);
-            if (!defaults || !g_variant_is_of_type(defaults, G_VARIANT_TYPE_STRING_ARRAY))
-                continue;
-
-            g_autofree char* public_key = g_strdup(keys[key_index]);
-            g_strdelimit(public_key, "-", '_');
-            g_autofree char* id = g_strdup_printf("%s.%s", group, public_key);
-            JsonObject* action = json_object_new();
-            json_object_set_string_member(action, "id", id);
-            json_object_set_string_member(action, "group", group);
-            json_object_set_string_member(action, "key", public_key);
-            const char* description = g_settings_schema_key_get_description(key);
-            if (description && *description)
-                json_object_set_string_member(action, "description", description);
-            JsonArray* bindings = json_array_new();
-            for (gsize binding_index = 0; binding_index < g_variant_n_children(defaults);
-                 binding_index++) {
-                g_autoptr(GVariant) binding = g_variant_get_child_value(defaults, binding_index);
-                json_array_add_string_element(bindings, g_variant_get_string(binding, NULL));
-            }
-            json_object_set_array_member(action, "default_bindings", bindings);
-            JsonNode* action_node = json_node_new(JSON_NODE_OBJECT);
-            json_node_take_object(action_node, action);
-            json_array_add_element(actions, action_node);
-        }
-    }
-    return result;
-}
-
 static gboolean dynamic_shortcut_id_valid(const char* id) {
     if (!id || !*id || strlen(id) > 64)
         return FALSE;
@@ -11029,20 +10923,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "shortcut.list")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "shortcut.list does not accept arguments");
-        if (client->api_minor >= 55) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            GVariantBuilder empty;
-            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-            g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
-            return queue_runtime_api_request(client, id, "shortcuts.list", read_arguments, "read");
-        }
-        g_autoptr(GVariant) snapshot = native_shortcut_snapshot(client->control);
-        g_autoptr(JsonNode) json = json_from_variant(snapshot);
-        JsonArray* records = json_object_get_array_member(json_node_get_object(json), "shortcuts");
-        g_autoptr(JsonNode) result = json_node_new(JSON_NODE_ARRAY);
-        json_node_set_array(result, json_array_ref(records));
-        return encode_response(id, result, NULL);
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+        return queue_runtime_api_request(client, id, "shortcuts.list", read_arguments, "read");
     }
     if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind")) {
         JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
@@ -11140,25 +11026,16 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         return encode_response(id, sources, NULL);
     }
     if (g_str_equal(method, "shortcut.actions")) {
-        if (client->api_minor >= 56) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            GVariantBuilder empty;
-            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-            g_autoptr(GVariant) read_arguments =
-                arguments_node ? variant_from_json(arguments_node)
-                               : g_variant_ref_sink(g_variant_builder_end(&empty));
-            if (!read_arguments)
-                return encode_response(id, NULL, "shortcut.actions arguments are invalid");
-            return queue_runtime_api_request(client, id, "shortcuts.actions", read_arguments,
-                                             "read");
-        }
-        g_autoptr(JsonNode) json = shortcut_actions_snapshot(
-            arguments_node ? json_node_get_object(arguments_node) : NULL, &error);
-        if (!json)
-            return encode_response(id, NULL,
-                                   error ? error->message : "shortcut action listing unavailable");
-        return encode_response(id, json, NULL);
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) read_arguments =
+            arguments_node ? variant_from_json(arguments_node)
+                           : g_variant_ref_sink(g_variant_builder_end(&empty));
+        if (!read_arguments)
+            return encode_response(id, NULL, "shortcut.actions arguments are invalid");
+        return queue_runtime_api_request(client, id, "shortcuts.actions", read_arguments, "read");
     }
     GVariantBuilder empty;
     g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);

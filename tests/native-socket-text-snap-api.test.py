@@ -1108,7 +1108,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"launch.status"', read_api)
         self.assertIn('g_str_equal(method, "launches.snapshot") || g_str_equal(method, "launch.status")', read_api)
 
-    def test_legacy_shortcut_list_uses_lua_for_api_155(self):
+    def test_legacy_shortcut_list_always_uses_lua(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
@@ -1121,12 +1121,12 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
         self.assertGreaterEqual(api_minor(header), 59)
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
-        self.assertIn("client->api_minor >= 55", shortcut_list)
+        self.assertNotIn("client->api_minor >= 55", shortcut_list)
         self.assertIn("client->control->supervised_runtime", shortcut_list)
         self.assertIn('queue_runtime_api_request(client, id, "shortcuts.list", read_arguments, "read")', shortcut_list)
-        self.assertIn("native_shortcut_snapshot", shortcut_list)
+        self.assertNotIn("native_shortcut_snapshot", shortcut_list)
 
-    def test_legacy_shortcut_actions_use_lua_for_api_156(self):
+    def test_legacy_shortcut_actions_always_use_lua(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
@@ -1139,10 +1139,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
         self.assertGreaterEqual(api_minor(header), 59)
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
-        self.assertIn("client->api_minor >= 56", shortcut_actions)
+        self.assertNotIn("client->api_minor >= 56", shortcut_actions)
         self.assertIn("client->control->supervised_runtime", shortcut_actions)
         self.assertIn('queue_runtime_api_request(client, id, "shortcuts.actions", read_arguments,', shortcut_actions)
-        self.assertIn("shortcut_actions_snapshot", shortcut_actions)
+        self.assertNotIn("shortcut_actions_snapshot", shortcut_actions)
 
     def test_legacy_layer_list_always_uses_lua(self):
         source = CONTROL.read_text()
