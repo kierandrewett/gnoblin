@@ -119,7 +119,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(19):
+                    for _ in range(20):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -201,6 +201,17 @@ def main() -> int:
                                     "launches": [{"token": "one", "application": "app", "state": "pending"}],
                                     "revision": 4,
                                 }
+                            elif request["method"] == "shortcuts.list":
+                                result = [
+                                    {
+                                        "name": "test.shortcut",
+                                        "binding": "<Super>space",
+                                        "enabled": True,
+                                        "trigger": "press",
+                                        "action": "test.action",
+                                        "revision": 6,
+                                    }
+                                ]
                             elif request["method"] == "window.move_to_monitor":
                                 result = {"id": "42", "monitor_id": "HDMI-1"}
                             elif request["method"] == "window.restore_or_minimize":
@@ -447,11 +458,23 @@ def main() -> int:
         input_select = run(binary, "--socket", socket_path, "--format", "json", "input", "select", "xkb", "us")
         assert input_select.returncode == 0, input_select.stderr
         assert json.loads(input_select.stdout) == {"type": "xkb", "id": "us"}
+        shortcut_list = run(binary, "--socket", socket_path, "--format", "json", "shortcut", "list")
+        assert shortcut_list.returncode == 0, shortcut_list.stderr
+        assert json.loads(shortcut_list.stdout) == [
+            {
+                "name": "test.shortcut",
+                "binding": "<Super>space",
+                "enabled": True,
+                "trigger": "press",
+                "action": "test.action",
+                "revision": 6,
+            }
+        ]
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 19
-        assert len(subscriptions) == 19
+        assert len(received) == 20
+        assert len(subscriptions) == 20
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -531,6 +554,9 @@ def main() -> int:
         assert received[18]["method"] == "input.select_source"
         assert received[18]["api_version"] == {"major": 1, "minor": 6}
         assert received[18]["arguments"] == {"type": "xkb", "id": "us"}
+        assert received[19]["method"] == "shortcuts.list"
+        assert received[19]["api_version"] == {"major": 1, "minor": 40}
+        assert received[19]["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
