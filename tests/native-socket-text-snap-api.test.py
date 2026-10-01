@@ -757,6 +757,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
+        overlay_manifest = (ROOT / "src/native-control/manifest").read_text()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -765,6 +766,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
         self.assertEqual(api_minor(header), 60)
         self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=60", cmake)
+        self.assertIn(
+            "mutter gnoblin-native-control.c src/core/gnoblin-native-control.c",
+            overlay_manifest,
+        )
         self.assertIn('g_str_equal(json_node_get_string(action_node), "focus")', handler)
         self.assertIn("arguments_node ? json_node_get_object(arguments_node) : NULL", handler)
         self.assertIn("native_socket_has_exact_fields(arguments, fields, G_N_ELEMENTS(fields))", handler)
