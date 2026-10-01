@@ -1137,7 +1137,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('queue_runtime_api_request(client, id, "shortcuts.actions", read_arguments,', shortcut_actions)
         self.assertIn("shortcut_actions_snapshot", shortcut_actions)
 
-    def test_legacy_layer_list_uses_lua_for_api_157(self):
+    def test_legacy_layer_list_always_uses_lua(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
@@ -1145,7 +1145,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         layer_list = function_body(
             dispatcher,
-            'if (g_str_equal(method, "layer.list") && client->api_minor >= 57) {',
+            'if (g_str_equal(method, "layer.list")) {',
             'if (g_str_equal(method, "privacy.state")) {',
         )
         read_api = function_body(
@@ -1156,12 +1156,13 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
         self.assertGreaterEqual(api_minor(header), 59)
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertNotIn("client->api_minor >= 57", layer_list)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', layer_list)
         self.assertIn('"layer.list"', read_api)
         self.assertIn("legacy_layer_list_from_lua", read_api)
         self.assertIn('"surfaces"', lua)
 
-    def test_legacy_monitor_list_uses_lua_for_api_158(self):
+    def test_legacy_monitor_list_always_uses_lua(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
@@ -1169,7 +1170,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         monitor_list = function_body(
             dispatcher,
-            'if (g_str_equal(method, "monitor.list") && client->api_minor >= 58) {',
+            'if (g_str_equal(method, "monitor.list")) {',
             'if (g_str_equal(method, "privacy.state")) {',
         )
         read_api = function_body(
@@ -1180,6 +1181,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
         self.assertGreaterEqual(api_minor(header), 59)
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertNotIn("client->api_minor >= 58", monitor_list)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', monitor_list)
         self.assertIn('g_str_equal(method, "monitor.list")', read_api)
         self.assertIn("Lua monitor record has no integer index", read_api)

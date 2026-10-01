@@ -10682,7 +10682,7 @@ static char* handle_request(Client* client, const char* data, gsize length) {
             return encode_response(id, NULL, "Lua supervisor is not connected");
         return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
-    if (g_str_equal(method, "layer.list") && client->api_minor >= 57) {
+    if (g_str_equal(method, "layer.list")) {
         GVariantBuilder empty;
         g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
         g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
@@ -10690,7 +10690,7 @@ static char* handle_request(Client* client, const char* data, gsize length) {
             return encode_response(id, NULL, "Lua supervisor is not connected");
         return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
-    if (g_str_equal(method, "monitor.list") && client->api_minor >= 58) {
+    if (g_str_equal(method, "monitor.list")) {
         GVariantBuilder empty;
         g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
         g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
