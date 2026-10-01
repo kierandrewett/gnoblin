@@ -1,10 +1,8 @@
 # Integrate a desktop shell
 
-These APIs are for shell authors. Desktop configuration starts with
-[the configuration guide](/config).
-
-For session status, input sources, live feature switches and permission state,
-see the [`org.gnoblin.Shell` D-Bus reference](/shell-dbus-api).
+These APIs are for shell authors. The
+[compositor bridge](/compositor-bridge) provides live compositor state and
+operations. Desktop configuration starts with [the configuration guide](/config).
 
 ## Dock animation targets
 
@@ -57,7 +55,7 @@ Choose a window interface based on what the shell needs:
 
 See the [Wayland protocol catalogue](wayland-protocols.md) for advertised globals
 and versions. For persistent keybindings, use the [Lua shortcut config](/config/configure/shortcuts).
-Use the [window-menu contract](/guides/window_menu#write-a-handler) for titlebar
+Use the [window-menu contract](/guides/window_menu) for titlebar
 menus and the [snapping contract](/guides/window_snapping#shell-integration) for
 layout pickers.
 
