@@ -582,6 +582,43 @@ static char* focused_window_id(Cli* cli, GError** error) {
     return NULL;
 }
 
+static char* monitor_id_for_index(Cli* cli, guint monitor_index, GError** error) {
+    g_autoptr(JsonObject) arguments = json_object_new();
+    g_autoptr(JsonNode) snapshot = call_compositor(cli, "api", "monitor.list", arguments, error);
+    if (!snapshot)
+        return NULL;
+    if (!JSON_NODE_HOLDS_OBJECT(snapshot)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Invalid monitor snapshot");
+        return NULL;
+    }
+
+    JsonObject* object = json_node_get_object(snapshot);
+    JsonNode* monitors_node = json_object_get_member(object, "monitors");
+    if (!monitors_node || !JSON_NODE_HOLDS_ARRAY(monitors_node)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "Monitor snapshot has no monitors array");
+        return NULL;
+    }
+
+    JsonArray* monitors = json_node_get_array(monitors_node);
+    for (guint i = 0; i < json_array_get_length(monitors); i++) {
+        JsonObject* monitor = json_array_get_object_element(monitors, i);
+        if (!monitor)
+            continue;
+        JsonNode* index = json_object_get_member(monitor, "index");
+        const char* id = member_string(monitor, "id", NULL);
+        if (index && JSON_NODE_HOLDS_VALUE(index) &&
+            (json_node_get_value_type(index) == G_TYPE_INT64 ||
+             json_node_get_value_type(index) == G_TYPE_INT) &&
+            json_node_get_int(index) == monitor_index && id && *id)
+            return g_strdup(id);
+    }
+
+    g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                "monitor index %u is not present in the current monitor list", monitor_index);
+    return NULL;
+}
+
 static gboolean is(const char* left, const char* right) {
     return g_strcmp0(left, right) == 0;
 }
@@ -883,10 +920,9 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                                     "window toggle-minimize requires a stable window ID");
                 goto invalid;
             }
-            gboolean typed =
-                !word_in("focus menu interactive-move interactive-resize restore-or-minimize",
-                         action) &&
-                (!is(action, "monitor") || !is(window, "active"));
+            gboolean active_window = is(window, "active");
+            gboolean typed = !word_in(
+                "focus menu interactive-move interactive-resize restore-or-minimize", action);
             g_autofree char* resolved_window = NULL;
             if (typed && is(window, "active")) {
                 resolved_window = focused_window_id(cli, error);
@@ -929,7 +965,22 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
             }
             if (is(action, "move") || is(action, "resize") || is(action, "monitor")) {
                 if (is(action, "monitor") && typed) {
+                    g_autofree char* indexed_monitor_id = NULL;
                     const char* monitor_id = arg(cli, 1);
+                    if (active_window) {
+                        guint monitor_index;
+                        if (!parse_uint(monitor_id, 0, 1023, &monitor_index)) {
+                            g_set_error_literal(
+                                error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                                "active window monitor target must be an index from "
+                                "gnoblinctl monitor list");
+                            goto invalid;
+                        }
+                        indexed_monitor_id = monitor_id_for_index(cli, monitor_index, error);
+                        if (!indexed_monitor_id)
+                            goto invalid;
+                        monitor_id = indexed_monitor_id;
+                    }
                     if (!monitor_id || !*monitor_id || strlen(monitor_id) > 128 ||
                         !g_utf8_validate(monitor_id, -1, NULL)) {
                         g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,

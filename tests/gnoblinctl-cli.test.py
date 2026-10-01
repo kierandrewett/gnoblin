@@ -119,7 +119,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(10):
+                    for _ in range(13):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -138,7 +138,7 @@ def main() -> int:
                             if request["method"] == "session.status":
                                 result = {"session": "test-session", "locked": False}
                             elif request["method"] == "monitor.list":
-                                result = {"monitors": [{"id": "HDMI-1", "primary": True}]}
+                                result = {"monitors": [{"id": "HDMI-1", "index": 0, "primary": True}]}
                             elif request["method"] == "window.list":
                                 result = {
                                     "windows": [
@@ -180,6 +180,8 @@ def main() -> int:
                                     "launches": [{"token": "one", "application": "app", "state": "pending"}],
                                     "revision": 4,
                                 }
+                            elif request["method"] == "window.move_to_monitor":
+                                result = {"id": "42", "monitor_id": "HDMI-1"}
                             else:
                                 result = {
                                     "request_id": 17,
@@ -230,7 +232,7 @@ def main() -> int:
         assert json.loads(result.stdout) == {"session": "test-session", "locked": False}
         monitor_result = run(binary, "--socket", socket_path, "--format", "json", "monitor", "list")
         assert monitor_result.returncode == 0, monitor_result.stderr
-        assert json.loads(monitor_result.stdout) == {"monitors": [{"id": "HDMI-1", "primary": True}]}
+        assert json.loads(monitor_result.stdout) == {"monitors": [{"id": "HDMI-1", "index": 0, "primary": True}]}
         window_list = run(binary, "--socket", socket_path, "--format", "table", "window", "list")
         assert window_list.returncode == 0, window_list.stderr
         assert "APP ID" in window_list.stdout, window_list.stdout
@@ -346,11 +348,24 @@ def main() -> int:
             "launches": [{"token": "one", "application": "app", "state": "pending"}],
             "revision": 4,
         }
+        move_active_monitor = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "window",
+            "monitor",
+            "active",
+            "0",
+        )
+        assert move_active_monitor.returncode == 0, move_active_monitor.stderr
+        assert json.loads(move_active_monitor.stdout) == {"id": "42", "monitor_id": "HDMI-1"}
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 10
-        assert len(subscriptions) == 10
+        assert len(received) == 13
+        assert len(subscriptions) == 13
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -402,6 +417,12 @@ def main() -> int:
         assert launch_status_request["method"] == "launch.status"
         assert launch_status_request["api_version"] == {"major": 1, "minor": 8}
         assert launch_status_request["arguments"] == {}
+        assert received[10]["method"] == "window.list"
+        assert received[10]["arguments"] == {"focused": True}
+        assert received[11]["method"] == "monitor.list"
+        assert received[11]["arguments"] == {}
+        assert received[12]["method"] == "window.move_to_monitor"
+        assert received[12]["arguments"] == {"id": "42", "monitor": "HDMI-1"}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
