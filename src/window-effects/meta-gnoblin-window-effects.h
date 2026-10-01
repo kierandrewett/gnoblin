@@ -25,4 +25,16 @@ void meta_gnoblin_window_effects_set_rounded_clip(ClutterActor* actor, double ra
 /* Remove the rounded alpha clip, if this module added one. */
 void meta_gnoblin_window_effects_clear_rounded_clip(ClutterActor* actor);
 
+/*
+ * Detect client-rendered rounded corner cutouts from the shaped texture. The
+ * returned insets use logical actor units and are ordered top, right, bottom,
+ * left. Results are cached for the current texture dimensions. A false result
+ * means that no safe reconstruction was found.
+ */
+gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* actor, double insets[4]);
+
+/* Enable conservative filling of detected transparent CSD corner pixels. */
+void meta_gnoblin_window_effects_set_csd_reconstruction(ClutterActor* actor, gboolean enabled,
+                                                        const double insets[4]);
+
 G_END_DECLS
