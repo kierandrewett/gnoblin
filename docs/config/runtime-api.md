@@ -558,6 +558,7 @@ Each method returns an `Operation` handle.
 | `window:close()`                               | None                                              | Ask the application to close.                             |
 | `window:minimize()`                            | None                                              | Minimize the window.                                      |
 | `window:toggle_minimize()`                     | None                                              | Minimize or restore the window.                           |
+| `window:unminimize()`                          | None                                              | Remove minimization without changing maximization.        |
 | `window:restore()`                             | None                                              | Remove minimization and maximization.                     |
 | `window:set_maximized(enabled)`                | Boolean                                           | Set maximization.                                         |
 | `window:set_fullscreen(enabled)`               | Boolean                                           | Set fullscreen.                                           |
