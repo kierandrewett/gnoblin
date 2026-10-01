@@ -822,6 +822,9 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
+        resize_patch = (
+            ROOT / "patches/mutter/99-typed-window-api/0065-native-window-resize-user-operation.patch"
+        ).read_text()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -838,6 +841,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"window.action resize requires integer width and height"', handler)
         self.assertIn('"window.action resize requires integer width and height and accepts "', handler)
         self.assertIn('"call", action, target)', handler)
+        self.assertIn(
+            "meta_window_move_resize_frame (window, TRUE, frame.x, frame.y,",
+            resize_patch,
+        )
 
     def test_portal_grants_uses_lua_at_api_145_and_keeps_native_route(self):
         source = CONTROL.read_text()
