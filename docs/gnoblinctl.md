@@ -466,13 +466,29 @@ stable ID:
 { "id": "42" }
 ```
 
-For workspace lists, `gnoblinctl workspace list --json` returns:
+`gnoblinctl workspace list` reads the API 1.37 `workspaces.list` snapshot.
+Its JSON output keeps the `workspaces` object and the `windows` count field;
+each record also includes the snapshot revision:
 
 ```json
 {
     "workspaces": [
-        { "id": "code", "number": 1, "name": "Code", "active": true, "windows": 2 },
-        { "id": "web", "number": 2, "name": "Web", "active": false, "windows": 0 }
+        {
+            "id": "code",
+            "number": 1,
+            "name": "Code",
+            "active": true,
+            "windows": 2,
+            "revision": 123
+        },
+        {
+            "id": "web",
+            "number": 2,
+            "name": "Web",
+            "active": false,
+            "windows": 0,
+            "revision": 123
+        }
     ]
 }
 ```

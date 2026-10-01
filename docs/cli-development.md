@@ -23,7 +23,13 @@ Session API operations use the compositor socket with a canonical method name
 and a JSON object of arguments:
 
 ```json
-{ "op": "api", "id": "REQUEST_ID", "method": "workspace.list", "arguments": {} }
+{
+    "op": "api",
+    "id": "REQUEST_ID",
+    "api_version": { "major": 1, "minor": 37 },
+    "method": "workspaces.list",
+    "arguments": {}
+}
 ```
 
 Lua and CLI calls share the method registry. The CLI maps its actions and
@@ -34,6 +40,10 @@ operations, which require the stable ID printed by `gnoblinctl window list`.
 the CLI's `windows` JSON wrapper. The list below is a method-name index. See
 the [runtime API reference](/config/runtime-api) for method arguments,
 accepted values, results, and compatibility limits.
+
+`gnoblinctl workspace list` reads `workspaces.list` and keeps its `workspaces`
+JSON wrapper. It maps each snapshot's `window_count` to the CLI's `windows`
+field. Raw socket clients can continue using the older `workspace.list` method.
 
 | Group         | Methods                                                                                                                                                                                                                              |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -67,15 +77,15 @@ the [Lua runtime API](/config/runtime-api).
 Methods use the `domain.method` form on the socket. A workspace selector has
 exactly one of these fields:
 
-| Field    | Type or accepted values      | Meaning                                                   |
-| -------- | ---------------------------- | --------------------------------------------------------- |
-| `id`     | String from `workspace.list` | Selects that stable workspace.                            |
-| `number` | Integer from 1 to 1024       | Selects the workspace at that current one-based position. |
+| Field    | Type or accepted values                           | Meaning                                                   |
+| -------- | ------------------------------------------------- | --------------------------------------------------------- |
+| `id`     | String from `workspaces.list` or `workspace.list` | Selects that stable workspace.                            |
+| `number` | Integer from 1 to 1024                            | Selects the workspace at that current one-based position. |
 
 Replies retain the request ID and return a structured result:
 
 ```json
-{ "event": "reply", "id": "REQUEST_ID", "result": { "workspaces": [] } }
+{ "event": "reply", "id": "REQUEST_ID", "result": [] }
 ```
 
 Errors use `event: "error"`, retain the request ID and include a `message`.
