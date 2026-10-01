@@ -1240,6 +1240,9 @@ preserving connection-owned launch event tracking. Earlier clients keep the
 synchronous route, and `launch.status` remains a direct snapshot read.
 API 1.51 routes `session.status` through the shared Lua read method; earlier
 clients retain the native compatibility route.
+API 1.52 routes the socket-only `workspace.list` alias through
+`gnoblin.workspaces.list()` while preserving its legacy object wrapper and
+`windows` count field. Earlier clients retain the native compatibility route.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |

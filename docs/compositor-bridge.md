@@ -346,6 +346,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.49            | Lua runtime operation for `session.lock`                                                              |
 | 1.50            | Lua operations for `launch.begin` and `launch.end`                                                    |
 | 1.51            | Lua runtime read for `session.status`                                                                 |
+| 1.52            | Lua-backed compatibility read for `workspace.list`                                                    |
 
 ### API 1.27: shell presentation requests
 
@@ -1131,6 +1132,11 @@ a direct snapshot read and enables launch-change events for the connection.
 API 1.51 reads `session.status` through Lua. The response contains `state`,
 `lock_available`, and `lock_state` when locking is available. Earlier versions
 use the native route.
+
+API 1.52 and newer serve `workspace.list` from the Lua workspace snapshot.
+The reply keeps the `{ "workspaces": [...] }` wrapper and `windows` count.
+Earlier API versions use the native route. Lua callers use
+`gnoblin.workspaces.list()`.
 
 `launch.begin` requests cursor feedback for an application hint. It does not
 start a process. Mutter reports `started` when a matching mapped window appears
