@@ -1480,6 +1480,14 @@ int main(void) {
     g_autoptr(GVariant) empty_layer_filter =
         g_variant_ref_sink(g_variant_builder_end(&empty_layer_filter_builder));
     assert_empty_api_array("layers.list", empty_layer_filter);
+    g_autoptr(GVariant) legacy_layer_list =
+        gnoblin_config_read_api("layer.list", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(legacy_layer_list, G_VARIANT_TYPE_VARDICT));
+    g_autoptr(GVariant) legacy_layer_surfaces =
+        g_variant_lookup_value(legacy_layer_list, "surfaces", G_VARIANT_TYPE("aa{sv}"));
+    g_assert_nonnull(legacy_layer_surfaces);
+    g_assert_cmpuint(g_variant_n_children(legacy_layer_surfaces), ==, 0);
 
     g_unlink(fragment);
     g_unlink(malformed_patterns);
