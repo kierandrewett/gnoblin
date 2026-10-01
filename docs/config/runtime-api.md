@@ -734,27 +734,30 @@ snapshots share a revision that advances when any of those states changes.
 Lua configuration changes windows through typed methods on `Window` snapshots.
 
 The raw compositor socket exposes the operations below to clients such as
-`gnoblinctl`. The legacy `window.action` method accepts only the basic
-compositor actions listed below. Lua configuration uses typed window methods
-instead.
+`gnoblinctl`. The legacy `window.action` method accepts basic compositor
+actions and, from API 1.61, a resize request. Lua configuration uses typed
+window methods instead.
 
-| Method                   | Arguments                                                         | Successful result                                            |
-| ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------ |
-| `window.list(args)`      | Optional `app_id`, `title`, `focused` filters                     | `{windows = {Window, ...}}`                                  |
-| `window.match(args)`     | Optional string `window` ID; defaults to `"active"`               | Window identity and a `match` rule table                     |
-| `window.action(args)`    | `action`; optional `window` ID or `"active"`                      | `{ok, pending, window, action}`                              |
-| `window.thumbnail(args)` | Stable window `id`; integer `width` and `height` up to 480 by 320 | Asynchronous operation with actual dimensions and base64 PNG |
-| `layer.list()`           | None                                                              | `{surfaces = {Surface, ...}}`                                |
-| `monitor.list()`         | None                                                              | `{monitors = {Monitor, ...}}`                                |
+| Method                   | Arguments                                                                                    | Successful result                                            |
+| ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
+| `window.list(args)`      | Optional `app_id`, `title`, `focused` filters                                                | `{windows = {Window, ...}}`                                  |
+| `window.match(args)`     | Optional string `window` ID; defaults to `"active"`                                          | Window identity and a `match` rule table                     |
+| `window.action(args)`    | `action`; optional `window` ID or `"active"`; resize also takes integer `width` and `height` | `{ok, pending, window, action}`                              |
+| `window.thumbnail(args)` | Stable window `id`; integer `width` and `height` up to 480 by 320                            | Asynchronous operation with actual dimensions and base64 PNG |
+| `layer.list()`           | None                                                                                         | `{surfaces = {Surface, ...}}`                                |
+| `monitor.list()`         | None                                                                                         | `{monitors = {Monitor, ...}}`                                |
 
 `window.thumbnail` requires API 1.23. It accepts a stable window `id` and
 integer `width` and `height` dimensions up to 480 by 320. The compositor scales
 down to fit while preserving aspect ratio.
 
-Native-control API 1.60 and newer route `window.action` through the Lua runtime
-and preserve its response fields. The response acknowledges that Lua queued the
-typed operation; the compositor applies it asynchronously. Earlier clients use
-the native compatibility route.
+Native-control API 1.60 and newer route basic `window.action` requests through
+the Lua runtime. API 1.61 adds `action: "resize"` with integer `width` and
+`height` values from 1 to 32768 logical pixels. This uses `window.resize`.
+
+The response acknowledges that Lua queued the typed operation. The compositor
+applies it asynchronously. Earlier clients use the native compatibility route
+for basic actions and do not support resize through `window.action`.
 
 The operation returns the stable `window_id`, actual dimensions, and `data` as
 a base64-encoded PNG. Encoded PNG output is limited to 512 KiB.
@@ -808,11 +811,13 @@ WindowAction = "above" | "unabove" | "stick" | "unstick" | "close"
              | "fullscreen" | "unfullscreen"
 ```
 
-The optional `window` is a stable ID from `window.list`; when omitted, the
-currently focused window is used. `focus`, menu, interactive move or resize,
-geometry changes, workspace moves, and monitor moves are not accepted by this
-legacy method. Use the typed methods below for those operations. Focus and
-interactive operations require a trusted context and fail without one.
+The optional `window` is a stable ID from `window.list`. When omitted, the
+focused window is used. API 1.61 also accepts `action: "resize"` with integer
+`width` and `height` values from 1 to 32768.
+
+This legacy method does not accept focus, menus, interactive moves or resizes,
+workspace moves, or monitor moves. Use the typed methods below for those
+operations. Focus and interactive operations require a trusted context.
 
 The result reports that the compositor accepted the action for the selected
 window. The change may complete asynchronously. Requests fail while the session

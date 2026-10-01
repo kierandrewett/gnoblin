@@ -163,11 +163,15 @@ For monitor moves, the CLI accepts the numeric monitor index and maps it to a
 connector ID from the shared `monitors.list` snapshot. This read uses
 compositor API 1.37.
 
-Raw socket clients can use `window.action` for the basic actions documented in
-the runtime API. Its `window` argument is a stable ID or `"active"`.
+Raw socket clients can use `window.action` for the actions documented in the
+runtime API. Its `window` argument is a stable ID or `"active"`.
 
-API 1.60 and newer execute it through the Lua runtime while preserving the
-response shape; earlier versions use the native compatibility route. Focus,
+API 1.61 adds `action: "resize"` with integer `width` and `height` values from
+1 to 32768.
+
+API 1.60 routes basic actions through the Lua runtime; API 1.61 also routes
+resize through `window.resize`. Both preserve the legacy response shape.
+Earlier versions use the native compatibility route for basic actions. Focus,
 menu, and interactive move or resize use their dedicated methods because they
 require verified activation or menu context.
 
