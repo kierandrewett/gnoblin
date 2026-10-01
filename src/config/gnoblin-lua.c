@@ -6467,6 +6467,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "focus.policy",
         "session.activity",
         "session.status",
+        "launch.status",
         "workspace.list",
         "layer.animation_policy",
         "workspaces.list",
@@ -6624,7 +6625,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_getfield(state, -1, "list");
         lua_remove(state, -2);
         lua_remove(state, -2);
-    } else if (g_str_equal(method, "launches.snapshot")) {
+    } else if (g_str_equal(method, "launches.snapshot") || g_str_equal(method, "launch.status")) {
         lua_getfield(state, -1, "launches");
         lua_getfield(state, -1, "snapshot");
         lua_remove(state, -2);
