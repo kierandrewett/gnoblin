@@ -9,7 +9,11 @@ trap 'rm -rf -- "$fixture_root"' EXIT
 cat >"$fixture_root/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {window_management = {focus_mode = "click"}}
 gnoblin.events.once("gnoblin.config.reloaded", function()
-    assert(type(gnoblin.settings) == "table")
+    assert(type(gnoblin.settings) == "userdata")
+    assert(gnoblin.settings.window_management.focus_mode == "click")
+    assert(not pcall(function()
+        gnoblin.settings.window_management.focus_mode = "sloppy"
+    end))
     assert(type(gnoblin.windows.list()) == "table")
     assert(type(gnoblin.workspaces.list()) == "table")
     assert(type(gnoblin.monitors.list()) == "table")
