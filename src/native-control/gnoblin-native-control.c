@@ -10927,7 +10927,7 @@ static char* handle_request(Client* client, const char* data, gsize length) {
             } else {
                 lua_method = g_str_equal(action, "close")      ? "window.close"
                              : g_str_equal(action, "minimize") ? "window.minimize"
-                                                               : "window.restore";
+                                                               : "window.unminimize";
             }
 
             GVariantBuilder typed_arguments;
@@ -11827,6 +11827,7 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         "window.close",
         "window.minimize",
         "window.toggle_minimize",
+        "window.unminimize",
         "window.restore",
         "window.restore_or_minimize",
         "window.set_maximized",
@@ -12840,32 +12841,24 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                                     "supervisor sent an invalid API response");
             } else {
                 if (ok && pending->legacy_window_action) {
-                    gint64 operation_id = 0;
                     if (!pending->legacy_window_id ||
                         !g_variant_is_of_type(result, G_VARIANT_TYPE_INT64) ||
-                        !g_variant_get_int64(result)) {
+                        g_variant_get_int64(result) <= 0) {
                         ok = FALSE;
                         message = "Lua returned an invalid window action operation";
                     } else {
-                        operation_id = g_variant_get_int64(result);
-                        if (operation_id < 0) {
-                            ok = FALSE;
-                            message = "Lua returned an invalid window action operation";
-                        } else {
-                            GVariantBuilder legacy_result;
-                            g_variant_builder_init(&legacy_result, G_VARIANT_TYPE_VARDICT);
-                            g_variant_builder_add(&legacy_result, "{sv}", "ok",
-                                                  g_variant_new_boolean(TRUE));
-                            g_variant_builder_add(&legacy_result, "{sv}", "pending",
-                                                  g_variant_new_boolean(TRUE));
-                            g_variant_builder_add(&legacy_result, "{sv}", "window",
-                                                  g_variant_new_string(pending->legacy_window_id));
-                            g_variant_builder_add(
-                                &legacy_result, "{sv}", "action",
-                                g_variant_new_string(pending->legacy_window_action));
-                            g_clear_pointer(&result, g_variant_unref);
-                            result = g_variant_ref_sink(g_variant_builder_end(&legacy_result));
-                        }
+                        GVariantBuilder legacy_result;
+                        g_variant_builder_init(&legacy_result, G_VARIANT_TYPE_VARDICT);
+                        g_variant_builder_add(&legacy_result, "{sv}", "ok",
+                                              g_variant_new_boolean(TRUE));
+                        g_variant_builder_add(&legacy_result, "{sv}", "pending",
+                                              g_variant_new_boolean(TRUE));
+                        g_variant_builder_add(&legacy_result, "{sv}", "window",
+                                              g_variant_new_string(pending->legacy_window_id));
+                        g_variant_builder_add(&legacy_result, "{sv}", "action",
+                                              g_variant_new_string(pending->legacy_window_action));
+                        g_clear_pointer(&result, g_variant_unref);
+                        result = g_variant_ref_sink(g_variant_builder_end(&legacy_result));
                     }
                 }
                 if (!ok && !message)

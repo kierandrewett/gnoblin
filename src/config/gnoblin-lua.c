@@ -253,6 +253,7 @@ static const char* api_methods[] = {
     "window.close",
     "window.minimize",
     "window.toggle_minimize",
+    "window.unminimize",
     "window.restore",
     "window.restore_or_minimize",
     "window.set_maximized",
@@ -745,6 +746,7 @@ static int lua_record_method(lua_State* state) {
     }
     if (g_str_equal(method, "window.close") || g_str_equal(method, "window.minimize") ||
         g_str_equal(method, "window.toggle_minimize") || g_str_equal(method, "window.restore") ||
+        g_str_equal(method, "window.unminimize") ||
         g_str_equal(method, "window.restore_or_minimize") ||
         g_str_equal(method, "workspace.remove") || g_str_equal(method, "workspace.switch")) {
         if (supplied != 0)
@@ -897,6 +899,7 @@ static void add_snapshot_methods(lua_State* state, int backing, int method_table
         const char* methods[][2] = {{"close", "window.close"},
                                     {"minimize", "window.minimize"},
                                     {"toggle_minimize", "window.toggle_minimize"},
+                                    {"unminimize", "window.unminimize"},
                                     {"restore", "window.restore"},
                                     {"restore_or_minimize", "window.restore_or_minimize"},
                                     {"set_maximized", "window.set_maximized"},
