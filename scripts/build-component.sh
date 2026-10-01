@@ -51,7 +51,7 @@ elif [ "$name" = mutter ]; then
             exit 2
             ;;
     esac
-    options=("-Ddevkit=$devkit" "-Dxwayland=$xwayland_option" -Dlibgnome_desktop=false -Dinstall_tools=false -Dtests=disabled -Ddocs=false -Dprofiler=false -Dbash_completion=false "-Dudev_dir=$prefix/lib/udev")
+    options=("-Ddevkit=$devkit" "-Dxwayland=$xwayland_option" -Dlibgnome_desktop=false -Dtests=disabled -Ddocs=false -Dprofiler=false -Dbash_completion=false "-Dudev_dir=$prefix/lib/udev")
     case "$vector_cursors" in
         ON | TRUE | true | 1) options+=("-Dhyprcursor=enabled") ;;
         OFF | FALSE | false | 0) options+=("-Dhyprcursor=disabled") ;;
