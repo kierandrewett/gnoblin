@@ -116,18 +116,15 @@ bindings. Request API version 1.5:
 
 The API 1.5 socket method uses the same Lua read as `shortcuts.actions`.
 
-API 1.42 routes `permissions.list` through `gnoblin.permissions.list()` and
-preserves its existing response shape. This version requires the Lua supervisor
-to be connected. Clients requesting API 1.41 or earlier keep the native
-compatibility route.
+API 1.42 adds the `permissions.list` Lua read. All supported client versions
+use it and preserve the existing response shape. It requires the Lua supervisor.
 
-API 1.43 routes `permissions.check` through `gnoblin.permissions.check(args)`.
-It keeps the decision response shape and requires the Lua supervisor. Clients
-requesting API 1.42 or earlier keep the native compatibility route.
+API 1.43 adds the `permissions.check` Lua read. All supported client versions
+use it and preserve the decision response shape. It requires the Lua supervisor.
 
-API 1.44 routes `permissions.policy` through `gnoblin.permissions.policy()`.
-It keeps the policy and revision fields and requires the Lua supervisor. Clients
-requesting API 1.43 or earlier keep the native compatibility route.
+API 1.44 adds the `permissions.policy` Lua read. All supported client versions
+use it and preserve the policy and revision fields. It requires the Lua
+supervisor.
 
 API 1.45 adds `portals.grants` as a Lua-backed read. All supported clients get
 the same JSON array and optional `kind` filter. The read requires the Lua
@@ -347,9 +344,9 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.39            | `launches.snapshot` with collection revision                                    |
 | 1.40            | Shared `shortcuts.list` snapshot read                                           |
 | 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime             |
-| 1.42            | Shared `permissions.list` read backed by the installed Lua runtime              |
-| 1.43            | Shared `permissions.check` read backed by the installed Lua runtime             |
-| 1.44            | Shared `permissions.policy` read backed by the installed Lua runtime            |
+| 1.42            | Adds Lua-backed `permissions.list`; all client versions now use it              |
+| 1.43            | Adds Lua-backed `permissions.check`; all client versions now use it             |
+| 1.44            | Adds Lua-backed `permissions.policy`; all client versions now use it            |
 | 1.45            | Adds the Lua-backed `portals.grants` read; all client versions now use it       |
 | 1.46            | Adds shared Lua input reads; all client versions now use them                   |
 | 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                 |

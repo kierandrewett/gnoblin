@@ -66,19 +66,18 @@ Native-control API 1.41 adds `shortcuts.actions`, a shared read backed by
 `gnoblin.shortcuts.actions(group?)`. It returns built-in action metadata from
 the installed GSettings schemas and requires the Lua supervisor.
 
-Native-control API 1.42 routes `permissions.list` through
-`gnoblin.permissions.list()`. It returns the committed permission policy,
-capabilities, levels, and configuration path, and requires the Lua supervisor.
-Older socket clients keep the native compatibility route.
+Native-control API 1.42 adds the `permissions.list` Lua read. Every supported
+socket client uses `gnoblin.permissions.list()`. It returns the committed
+permission policy, capabilities, levels, and configuration path, and requires
+the Lua supervisor.
 
-Native-control API 1.43 routes `permissions.check` through
-`gnoblin.permissions.check(args)`. It returns the same decision record and
-requires the Lua supervisor. Older socket clients keep the native
-compatibility route.
+Native-control API 1.43 adds the `permissions.check` Lua read. Every supported
+socket client uses `gnoblin.permissions.check(args)`. It returns the decision
+record and requires the Lua supervisor.
 
-Native-control API 1.44 routes `permissions.policy` through
-`gnoblin.permissions.policy()`. It returns the policy and revision and requires
-the Lua supervisor. Older socket clients keep the native compatibility route.
+Native-control API 1.44 adds the `permissions.policy` Lua read. Every supported
+socket client uses `gnoblin.permissions.policy()`. It returns the policy and
+revision and requires the Lua supervisor.
 
 Native-control API 1.23 adds `window.thumbnail`. API 1.24 adds
 `session.activity` and its change event. API 1.26 adds pointer-drag lifecycle
