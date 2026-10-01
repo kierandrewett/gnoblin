@@ -226,6 +226,9 @@ exact ID from `gnoblinctl monitor list`. Each entry also has a current `index`
 that can change when outputs are added or removed. Cloned outputs use the
 lexicographically first active connector as their ID.
 
+`gnoblinctl monitor list` reads the API 1.37 `monitors.list` snapshot. Its JSON
+output keeps the `monitors` object, and each record includes its state revision.
+
 The standalone compositor supports workspace list, create,
 rename, remove, switch, next, previous, and window moves by ID or number.
 Its list includes configured IDs and names, generated session IDs, active state,

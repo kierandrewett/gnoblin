@@ -122,14 +122,15 @@ Setters take an `enabled` boolean. Move takes `x` and `y`; resize takes `width`
 and `height`.
 
 Workspace moves take a `workspace` selector with either an `id` or `number`.
-Typed monitor moves take the connector ID from `monitor.list()`.
+Typed monitor moves take the connector ID printed by `gnoblinctl monitor list`.
 
 For `active`, the CLI reads `windows.list` from the shared Lua runtime and
 resolves the focused window's stable ID before sending the typed request. This
 read requires compositor API 1.37.
 
 For monitor moves, the CLI accepts the numeric monitor index and maps it to a
-connector ID from `monitors.list`. This read also requires compositor API 1.37.
+connector ID from the shared `monitors.list` snapshot. This read uses
+compositor API 1.37.
 Raw socket clients can continue using the numeric index with `window.action`.
 
 `window.action` remains the compatibility route for focus, menu, and interactive
