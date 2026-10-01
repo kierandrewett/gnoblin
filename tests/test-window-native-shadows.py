@@ -20,7 +20,9 @@ title = "Native shadow fixture"
 
 def configure(shadow, mode="force"):
     corners = f'radius = 24, mode = "{mode}"'
-    if shadow:
+    if isinstance(shadow, str):
+        corners += f", shadow = {shadow}"
+    elif shadow:
         corners += ', shadow = {x = 0, y = 4, blur = 20, spread = 0, opacity = 0.8, color = "#000000"}'
     config.write_text(
         f'gnoblin.window_rule {{\n    match = {{title = "^{title}$"}},\n    corners = {{{corners}}},\n}}\n'
@@ -129,6 +131,23 @@ with (root / "native-shadow-client.log").open("w") as log:
             shadowed.getpixel(rounded_corner),
         )
 
+        configure(
+            '{{x = 0, y = 4, blur = 20, spread = 0, opacity = 0.8, color = "#000000"}, '
+            '{x = 0, y = 4, blur = 20, spread = 0, opacity = 0.8, color = "#000000"}}'
+        )
+        layered = None
+        for _ in range(50):
+            time.sleep(0.1)
+            layered = capture()
+            difference = ImageChops.difference(shadowed.crop(shadow_region), layered.crop(shadow_region))
+            if sum(ImageStat.Stat(difference).sum) > 100:
+                break
+        difference = ImageChops.difference(shadowed.crop(shadow_region), layered.crop(shadow_region))
+        assert sum(ImageStat.Stat(difference).sum) > 100, (
+            "a second Lua shadow layer did not change pixels outside the window",
+            ImageStat.Stat(difference).sum,
+        )
+
         configure(False)
         restored = None
         for _ in range(50):
@@ -142,7 +161,7 @@ with (root / "native-shadow-client.log").open("w") as log:
             "removing the shadow rule did not restore the original background",
             ImageStat.Stat(difference).sum,
         )
-        print("PASS: standalone Lua shadow rules render, preserve window pixels, and clear on reload")
+        print("PASS: standalone Lua single- and multi-layer shadows render and clear on reload")
     finally:
         process.terminate()
         process.wait(timeout=5)
