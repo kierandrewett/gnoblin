@@ -1260,6 +1260,10 @@ route.
 API 1.57 routes the legacy `layer.list` socket method through
 `gnoblin.layers.list()`, preserving its `{surfaces = {...}}` response shape.
 Earlier clients retain the existing compatibility path.
+API 1.58 routes the legacy `monitor.list` socket method through
+`gnoblin.monitors.list()`, preserving the `{monitors = [...]}` response and
+the legacy integer monitor IDs. Earlier clients retain the existing native
+compatibility path.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
