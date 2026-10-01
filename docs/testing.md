@@ -5,14 +5,15 @@ nested preview, and real login each verify a different part of the session.
 
 ## Available checks
 
-| Command                    | What it checks                                                                 | Requirement                                |
-| -------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------ |
-| `just check`               | Source manifests, patch metadata, scripts, configuration, and packaging checks | Python and repository tooling              |
-| `just test-runtime`        | CTest runtime, Lua configuration, protocol, and CLI tests                      | A configured build in `build/ninja`        |
-| `just test-all`            | Builds the standalone session, then runs the native runtime checks             | Installed source-build dependencies        |
-| `just test-preview`        | Config and native control behavior in a fresh nested Gnoblin session           | A working Wayland desktop                  |
-| `just test-window-manager` | Mutter unit, Wayland, backend, and focus tests                                 | A working seat and file-monitoring support |
-| `just test-release`        | Build and run the native release verification checks                           | Source dependencies and test tools         |
+| Command                    | What it checks                                                                 | Requirement                                     |
+| -------------------------- | ------------------------------------------------------------------------------ | ----------------------------------------------- |
+| `just check`               | Source manifests, patch metadata, scripts, configuration, and packaging checks | Python and repository tooling                   |
+| `just test-runtime`        | CTest runtime, Lua configuration, protocol, and CLI tests                      | A configured build in `build/ninja`             |
+| `just test-all`            | Builds the standalone session, then runs the native runtime checks             | Installed source-build dependencies             |
+| `just test-preview`        | Config and native control behavior in a fresh nested Gnoblin session           | A working Wayland desktop                       |
+| `just test-window-csd`     | Lua `remove_csd` pixel behavior in a fresh nested Gnoblin session              | Quickshell, grim, Pillow, and a Wayland desktop |
+| `just test-window-manager` | Mutter unit, Wayland, backend, and focus tests                                 | A working seat and file-monitoring support      |
+| `just test-release`        | Build and run the native release verification checks                           | Source dependencies and test tools              |
 
 ## Test the Lua runtime in a preview
 
