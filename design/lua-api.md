@@ -1232,7 +1232,9 @@ as the established CLI result. The raw socket `window.match` request remains
 for compatibility; Lua callers inspect and filter `gnoblin.windows.list()`.
 Native-control API 1.46 routes `input.devices`, `input.sources`, and
 `input.current_source` through their shared Lua methods; earlier clients retain
-the native compatibility route.
+the native compatibility route. API 1.47 routes `privacy.state` through
+`gnoblin.privacy.state()`; earlier clients retain the native compatibility
+route.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
