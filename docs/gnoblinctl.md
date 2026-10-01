@@ -356,7 +356,7 @@ clicked window with an XDG Activation token through the
 | `privacy stop-sharing`                                            | Ask Mutter to stop tracked screen-sharing sessions (API 1.31+)                           |
 | `privacy stop-recording`                                          | Ask Mutter to stop tracked recording sessions (API 1.31+)                                |
 | `permissions list`                                                | Read portal rules and capabilities through the Lua runtime (API 1.42+)                   |
-| `permissions policy`                                              | Read the committed policy and its revision (native-control API 1.16+)                    |
+| `permissions policy`                                              | Read the committed policy and its revision through Lua (API 1.44+)                       |
 | `permissions check CAPABILITY IDENTITY`                           | Explain a decision for `app-id:…` or `host-exe:…` (API 1.43+)                            |
 | `grant list`, `grant revoke KIND ID`                              | List or revoke persistent portal grants; kind is `screen-cast` or `remote-desktop`       |
 | `launch status`                                                   | List pending launch feedback and its revision (API 1.39+)                                |
@@ -372,7 +372,8 @@ lock state to confirm that the screen is locked.
 `permissions list` requires a connected Lua supervisor. Older socket clients
 that request API 1.41 or earlier retain the native compatibility route.
 `permissions check` also requires the supervisor; clients requesting API 1.42
-or earlier retain its native compatibility route.
+or earlier retain its native compatibility route. `permissions policy`
+requires the supervisor at API 1.44; older API clients retain the native route.
 
 The privacy stop commands ask Mutter to stop matching tracked sessions. Their
 `requested` count reports how many stop calls were issued; it does not confirm
