@@ -1,1 +1,2 @@
 mutter gnoblin-plugin.c src/compositor/plugins/gnoblin-plugin.c
+mutter gnoblin-config.h src/wayland/gnoblin-config.h
