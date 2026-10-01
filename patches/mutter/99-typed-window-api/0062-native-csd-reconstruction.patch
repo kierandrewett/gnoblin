@@ -1,0 +1,83 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] Apply CSD reconstruction to native window actors
+
+---
+diff --git a/src/compositor/meta-window-actor-wayland.c b/src/compositor/meta-window-actor-wayland.c
+index 23f24ae27..813bc8bfa 100644
+--- a/src/compositor/meta-window-actor-wayland.c
++++ b/src/compositor/meta-window-actor-wayland.c
+@@ -677,6 +677,20 @@ meta_window_actor_wayland_set_rounded_clip (MetaWindowActor *actor,
+     CLUTTER_ACTOR (self->surface_container), radius, exponent, automatic, padding);
+ }
+ 
++void
++meta_window_actor_wayland_set_csd_reconstruction (MetaWindowActor *actor,
++                                                  gboolean         enabled,
++                                                  const double     insets[4])
++{
++  MetaWindowActorWayland *self;
++
++  g_return_if_fail (META_IS_WINDOW_ACTOR_WAYLAND (actor));
++
++  self = META_WINDOW_ACTOR_WAYLAND (actor);
++  meta_gnoblin_window_effects_set_csd_reconstruction (
++    CLUTTER_ACTOR (self->surface_container), enabled, insets);
++}
++
+ static void
+ meta_window_actor_wayland_map (ClutterActor *actor)
+ {
+diff --git a/src/compositor/meta-window-actor-wayland.h b/src/compositor/meta-window-actor-wayland.h
+index b05a6f88a..06bb1ca87 100644
+--- a/src/compositor/meta-window-actor-wayland.h
++++ b/src/compositor/meta-window-actor-wayland.h
+@@ -41,3 +41,7 @@ void meta_window_actor_wayland_set_rounded_clip (MetaWindowActor *actor,
+                                                  double           exponent,
+                                                  gboolean         automatic,
+                                                  const double     padding[4]);
++
++void meta_window_actor_wayland_set_csd_reconstruction (MetaWindowActor *actor,
++                                                       gboolean         enabled,
++                                                       const double     insets[4]);
+diff --git a/src/compositor/meta-window-actor-x11.c b/src/compositor/meta-window-actor-x11.c
+index 7f9a6ac99..90c975748 100644
+--- a/src/compositor/meta-window-actor-x11.c
++++ b/src/compositor/meta-window-actor-x11.c
+@@ -1086,6 +1086,23 @@ meta_window_actor_x11_set_rounded_clip (MetaWindowActorX11 *actor_x11,
+     CLUTTER_ACTOR (surface), radius, exponent, automatic, padding);
+ }
+ 
++void
++meta_window_actor_x11_set_csd_reconstruction (MetaWindowActorX11 *actor_x11,
++                                             gboolean            enabled,
++                                             const double        insets[4])
++{
++  MetaSurfaceActor *surface;
++
++  g_return_if_fail (META_IS_WINDOW_ACTOR_X11 (actor_x11));
++
++  surface = meta_window_actor_get_surface (META_WINDOW_ACTOR (actor_x11));
++  if (!surface)
++    return;
++
++  meta_gnoblin_window_effects_set_csd_reconstruction (
++    CLUTTER_ACTOR (surface), enabled, insets);
++}
++
+ static void
+ handle_updates (MetaWindowActorX11 *actor_x11)
+ {
+diff --git a/src/compositor/meta-window-actor-x11.h b/src/compositor/meta-window-actor-x11.h
+index ab62f9789..ed6dd9651 100644
+--- a/src/compositor/meta-window-actor-x11.h
++++ b/src/compositor/meta-window-actor-x11.h
+@@ -37,3 +37,7 @@ void meta_window_actor_x11_set_rounded_clip (MetaWindowActorX11 *actor_x11,
+                                              double              exponent,
+                                              gboolean            automatic,
+                                              const double        padding[4]);
++
++void meta_window_actor_x11_set_csd_reconstruction (MetaWindowActorX11 *actor_x11,
++                                                   gboolean            enabled,
++                                                   const double        insets[4]);

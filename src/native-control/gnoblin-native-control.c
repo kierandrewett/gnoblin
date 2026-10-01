@@ -32,7 +32,6 @@
 #include "compositor/meta-window-actor-private.h"
 #include "compositor/meta-window-actor-x11.h"
 #include "compositor/meta-window-actor-wayland.h"
-#include "compositor/meta-gnoblin-window-effects.h"
 #include "core/display-private.h"
 #include "core/events.h"
 #include "core/util-private.h"
@@ -6157,8 +6156,12 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         meta_window_actor_x11_set_rounded_clip(META_WINDOW_ACTOR_X11(actor), enabled ? radius : 0,
                                                exponent, g_str_equal(mode, "auto") && !csd_detected,
                                                padding);
-    meta_gnoblin_window_effects_set_csd_reconstruction(CLUTTER_ACTOR(actor),
-                                                       enabled && csd_detected, csd_insets);
+    if (META_IS_WINDOW_ACTOR_WAYLAND(actor))
+        meta_window_actor_wayland_set_csd_reconstruction(actor, enabled && csd_detected,
+                                                         csd_insets);
+    else if (META_IS_WINDOW_ACTOR_X11(actor))
+        meta_window_actor_x11_set_csd_reconstruction(META_WINDOW_ACTOR_X11(actor),
+                                                     enabled && csd_detected, csd_insets);
 }
 
 static void native_apply_all_window_rules(GnoblinNativeControl* control) {
