@@ -76,6 +76,10 @@ Native-control API 1.43 routes `permissions.check` through
 requires the Lua supervisor. Older socket clients keep the native
 compatibility route.
 
+Native-control API 1.44 routes `permissions.policy` through
+`gnoblin.permissions.policy()`. It returns the policy and revision and requires
+the Lua supervisor. Older socket clients keep the native compatibility route.
+
 Native-control API 1.23 adds `window.thumbnail`. API 1.24 adds
 `session.activity` and its change event. API 1.26 adds pointer-drag lifecycle
 events and capability-bound `window.snap.offer`.
@@ -997,6 +1001,7 @@ methods do not revoke a saved portal grant.
 `permissions.policy()` returns the committed Gnoblin policy. The record has a
 default level, ordered rules, and revision. Native-control API 1.16 adds the
 matching socket method and `gnoblin.permission.changed` event.
+API 1.44 routes that socket method through the Lua runtime.
 
 `permissions.list()` returns that policy with capability names, supported
 levels, and the configuration path. Its socket method uses the Lua runtime
