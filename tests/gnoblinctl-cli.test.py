@@ -662,7 +662,7 @@ def main() -> int:
         assert received[13]["method"] == "window.move_to_monitor"
         assert received[13]["arguments"] == {"id": "42", "monitor": "HDMI-1"}
         assert received[14]["method"] == "window.restore_or_minimize"
-        assert received[14]["api_version"] == {"major": 1, "minor": 38}
+        assert received[14]["api_version"] == {"major": 1, "minor": 48}
         assert received[14]["arguments"] == {"id": "42"}
         assert received[15]["method"] == "layers.list"
         assert received[15]["api_version"] == {"major": 1, "minor": 37}

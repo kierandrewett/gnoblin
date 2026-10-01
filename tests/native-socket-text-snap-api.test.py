@@ -440,7 +440,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         status = function_body(
             dispatcher,
             'if (g_str_equal(method, "session.status")) {',
-            'if (g_str_equal(method, "input.text_target") ||',
+            'if (g_str_equal(method, "window.restore_or_minimize")) {',
         )
         reads = function_body(
             source,
@@ -809,10 +809,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"privacy.state"', lua_read)
         self.assertIn('g_str_equal(method, "privacy.state")', lua_read)
         self.assertIn('lua_getfield(state, -1, "state")', lua_read)
-        self.assertEqual(api_minor(header), 47)
+        self.assertGreaterEqual(api_minor(header), 47)
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
 
-    def test_restore_or_minimize_is_native_and_clears_saved_frames(self):
+    def test_restore_or_minimize_uses_lua_for_api_148_and_keeps_legacy_route(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         helper = function_body(
@@ -846,7 +846,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "GVariant* gnoblin_native_control_focus_window(",
         )
 
-        self.assertGreaterEqual(api_minor(header), 38)
+        self.assertEqual(api_minor(header), 48)
+        self.assertIn("client->api_minor >= 48", dispatcher)
+        self.assertIn('queue_runtime_api_request(client, id, method, operation_arguments, "call")', dispatcher)
+        self.assertIn("client->control->supervised_runtime", dispatcher)
         self.assertIn("window.restore_or_minimize", source)
         self.assertIn("client->api_minor < 38", dispatcher)
         self.assertIn("gnoblin_native_control_restore_or_minimize_window", dispatcher)
@@ -862,6 +865,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("g_hash_table_contains(control->snap_restore_frames, window)", snap)
         self.assertIn("drag->original_frame = drag->frame", drag_begin)
         self.assertIn("*original_frame = drag->original_frame", drag_snap)
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
 
 
 if __name__ == "__main__":
