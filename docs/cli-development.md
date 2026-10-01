@@ -168,9 +168,12 @@ runtime API. Its `window` argument is a stable ID or `"active"`.
 
 API 1.61 adds `action: "resize"` with integer `width` and `height` values from
 1 to 32768.
+API 1.62 adds `action: "move"` with integer `x` and `y` coordinates from
+−100000 to 100000 logical pixels.
 
 API 1.60 routes basic actions through the Lua runtime; API 1.61 also routes
-resize through `window.resize`. Both preserve the legacy response shape.
+resize through `window.resize`, and API 1.62 routes move through
+`window.move`. These preserve the legacy response shape.
 Earlier versions use the native compatibility route for basic actions. Focus,
 menu, and interactive move or resize use their dedicated methods because they
 require verified activation or menu context.
