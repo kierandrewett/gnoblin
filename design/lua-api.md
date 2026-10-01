@@ -655,9 +655,10 @@ type.
 `InputSource` fields: string `id`, `type`, `short_name`, and `name`;
 boolean `current`; and integer `revision`. A source selector contains both
 `type` and `id`; copy the pair from a listed source record. Native mode lists
-and selects configured XKB layouts or variants only. It rejects IBus
-selection because the native runtime has no IBus engine client. The standalone
-runtime supports the documented XKB source-selection path only.
+configured XKB layouts or variants and IBus engine IDs. IBus records currently
+use the engine ID as their display names. XKB selection changes Mutter's
+keymap; IBus selection calls `SetGlobalEngine` over the session bus. IBus is an
+optional runtime service and is not a linked build dependency.
 
 `ShortcutState` fields: string `name`; `binding` as one accelerator string
 or an array of strings; boolean `enabled`; `trigger` as `"press"` or

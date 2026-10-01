@@ -471,23 +471,29 @@ paths or `enabled`.
 The current Mutter backend does not expose a safe enabled-state getter, so
 records omit `enabled`.
 
-`gnoblin.input.sources()` returns the configured, available keyboard layouts
-and variants. Native runtime records currently include XKB sources only.
+`gnoblin.input.sources()` returns configured XKB layouts and variants and
+configured IBus engine IDs. XKB entries are checked against the installed XKB
+registry. IBus records use the engine ID for both `name` and `short_name`.
+Gnoblin does not need an IBus library to list or select them. The IBus service
+must be running for selection; otherwise the operation fails with
+`unavailable`.
 
 The list comes from `input-sources.sources` when configured. Otherwise it uses
 the desktop input-source setting. Mutter loads at most four layouts into one
 keymap at a time. Gnoblin switches the active group of four when you select a
 listed source outside that group.
 
-`gnoblin.input.current_source()` returns the confirmed current source, or nil
-when Mutter uses a keymap Gnoblin did not install or the active group is
-unknown.
+`gnoblin.input.current_source()` returns the current configured XKB source or
+the current configured IBus engine, or nil when the active source is unknown
+or is not configured in Gnoblin.
 
 `gnoblin.input.select_source({type = "xkb", id = "us"})` requests a listed XKB
-source and returns an operation handle. The operation completes only after
-Mutter confirms the keymap change. Native IBus selection is not implemented;
-selecting an IBus engine fails explicitly. Native selection changes the seat's
-keyboard layout. Per-window source restoration is not provided.
+source and returns an operation handle. The operation completes after Mutter
+confirms the keymap change. Use `{type = "ibus", id = "engine-id"}` to select a
+listed IBus source. Gnoblin calls `org.freedesktop.IBus.SetGlobalEngine` over
+the session bus and completes when IBus accepts the request. XKB selection
+changes the seat's keyboard layout; IBus selection changes the session's
+global input method. Per-window source restoration is not provided.
 
 Subscribe to `gnoblin.input.source-changed` for confirmed current-source
 changes and `gnoblin.input.sources-changed` when the configured source list
