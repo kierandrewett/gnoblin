@@ -2,6 +2,7 @@
 # Materialise pinned source projects for the CMake/Ninja graph.
 set -euo pipefail
 cd -- "$(dirname -- "$(realpath -- "$0")")/.."
+ROOT="$(pwd -P)"
 mode="${1:?source mode required}"
 if [ "$#" -gt 1 ]; then
     projects=("$2")
