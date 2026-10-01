@@ -129,10 +129,9 @@ API 1.44 routes `permissions.policy` through `gnoblin.permissions.policy()`.
 It keeps the policy and revision fields and requires the Lua supervisor. Clients
 requesting API 1.43 or earlier keep the native compatibility route.
 
-API 1.45 routes `portals.grants` through `gnoblin.portals.grants(filter?)`.
-It keeps the JSON array and optional `kind` filter and requires the Lua
-supervisor. Clients requesting API 1.44 or earlier keep the native
-compatibility route.
+API 1.45 adds `portals.grants` as a Lua-backed read. All supported clients get
+the same JSON array and optional `kind` filter. The read requires the Lua
+supervisor.
 
 API 1.46 routes `input.devices`, `input.sources`, and `input.current_source`
 through their shared Lua reads. Their response objects and revision fields stay
@@ -351,7 +350,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.42            | Shared `permissions.list` read backed by the installed Lua runtime              |
 | 1.43            | Shared `permissions.check` read backed by the installed Lua runtime             |
 | 1.44            | Shared `permissions.policy` read backed by the installed Lua runtime            |
-| 1.45            | Shared `portals.grants` read backed by the installed Lua runtime                |
+| 1.45            | Adds the Lua-backed `portals.grants` read; all client versions now use it       |
 | 1.46            | Adds shared Lua input reads; all client versions now use them                   |
 | 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                 |
 | 1.48            | Lua runtime operation for `window.restore_or_minimize`                          |
