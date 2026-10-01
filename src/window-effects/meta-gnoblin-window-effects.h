@@ -74,4 +74,41 @@ void meta_gnoblin_window_effects_set_window_shadow(
 /* Used by Mutter's X11 scanout path to avoid bypassing a visible shadow. */
 gboolean meta_gnoblin_window_effects_has_window_shadow(ClutterActor* window_actor);
 
+typedef struct {
+    const char* name;
+    double value;
+} MetaGnoblinWindowShaderUniform;
+
+typedef enum {
+    META_GNOBLIN_WINDOW_EFFECTS_ERROR_INVALID_ARGUMENT,
+    META_GNOBLIN_WINDOW_EFFECTS_ERROR_INVALID_UNIFORM,
+    META_GNOBLIN_WINDOW_EFFECTS_ERROR_LIMIT,
+    META_GNOBLIN_WINDOW_EFFECTS_ERROR_NAME_OCCUPIED,
+} MetaGnoblinWindowEffectsError;
+
+#define META_GNOBLIN_WINDOW_EFFECTS_ERROR (meta_gnoblin_window_effects_error_quark())
+GQuark meta_gnoblin_window_effects_error_quark(void);
+
+/*
+ * Apply a per-window fragment transform to @surface_actor. @function_source
+ * must define vec4 gnoblin_effect(vec4 color, vec2 uv), where color is straight
+ * alpha and uv is normalized texture space. The helper unpremultiplies the
+ * input Cogl color before calling the function and premultiplies its result.
+ *
+ * @uniforms supplies scalar float values for declarations in the shader
+ * source. The helper also provides gnoblin_size, gnoblin_width, and
+ * gnoblin_height from the logical dimensions. Replacing a shader is atomic
+ * with respect to input validation: invalid input leaves the attached shader
+ * unchanged. Shader compilation is performed by Clutter when the effect is
+ * rendered.
+ */
+gboolean meta_gnoblin_window_effects_set_shader(ClutterActor* surface_actor,
+                                                const char* function_source,
+                                                const MetaGnoblinWindowShaderUniform* uniforms,
+                                                guint n_uniforms, double logical_width,
+                                                double logical_height, GError** error);
+
+/* Remove the Gnoblin shader effect from @surface_actor, if present. */
+void meta_gnoblin_window_effects_clear_shader(ClutterActor* surface_actor);
+
 G_END_DECLS

@@ -4,7 +4,9 @@
 #include "compositor/meta-gnoblin-window-effects.h"
 
 #include <clutter/clutter.h>
+#include <clutter/clutter-shader-effect.h>
 #include <cogl/cogl.h>
+#include <float.h>
 #include <math.h>
 #include <string.h>
 
@@ -18,6 +20,9 @@
 #define CSD_MAX_PIXELS 16000000
 #define WINDOW_SHADOW_ACTOR_KEY "gnoblin-window-shadow"
 #define WINDOW_SHADOW_EFFECT_NAME "gnoblin-window-shadow-effect"
+#define WINDOW_SHADER_EFFECT_NAME "gnoblin-window-shader-effect"
+#define WINDOW_SHADER_SOURCE_LIMIT (64 * 1024)
+#define WINDOW_SHADER_UNIFORM_LIMIT 64
 
 int meta_shaped_texture_get_width(MetaShapedTexture* texture);
 int meta_shaped_texture_get_height(MetaShapedTexture* texture);
@@ -436,6 +441,138 @@ gboolean meta_gnoblin_window_effects_has_window_shadow(ClutterActor* window_acto
         return FALSE;
     MetaGnoblinWindowShadowEffect* effect = META_GNOBLIN_WINDOW_SHADOW_EFFECT(attached);
     return effect->n_to > 0 || (effect->progress < 1. && effect->n_from > 0);
+}
+
+GQuark meta_gnoblin_window_effects_error_quark(void) {
+    return g_quark_from_static_string("meta-gnoblin-window-effects-error");
+}
+
+static gboolean window_shader_uniform_name_valid(const char* name) {
+    if (!name || (!g_ascii_isalpha(name[0]) && name[0] != '_'))
+        return FALSE;
+    for (const char* p = name + 1; *p; p++) {
+        if (!g_ascii_isalnum(*p) && *p != '_')
+            return FALSE;
+    }
+    /* These names are owned by the wrapper or by Cogl/GLSL. */
+    return !g_str_has_prefix(name, "cogl_") && !g_str_has_prefix(name, "gl_") &&
+           !g_str_has_prefix(name, "gnoblin_");
+}
+
+void meta_gnoblin_window_effects_clear_shader(ClutterActor* surface_actor) {
+    g_return_if_fail(CLUTTER_IS_ACTOR(surface_actor));
+
+    ClutterEffect* effect = clutter_actor_get_effect(surface_actor, WINDOW_SHADER_EFFECT_NAME);
+    if (!effect)
+        return;
+    if (!CLUTTER_IS_SHADER_EFFECT(effect)) {
+        g_warning("Gnoblin shader effect name is occupied by an unrelated effect");
+        return;
+    }
+    clutter_actor_remove_effect(surface_actor, effect);
+}
+
+gboolean meta_gnoblin_window_effects_set_shader(ClutterActor* surface_actor,
+                                                const char* function_source,
+                                                const MetaGnoblinWindowShaderUniform* uniforms,
+                                                guint n_uniforms, double logical_width,
+                                                double logical_height, GError** error) {
+    g_return_val_if_fail(CLUTTER_IS_ACTOR(surface_actor), FALSE);
+    g_return_val_if_fail(error == NULL || *error == NULL, FALSE);
+
+    if (!function_source || !*function_source) {
+        g_set_error_literal(error, META_GNOBLIN_WINDOW_EFFECTS_ERROR,
+                            META_GNOBLIN_WINDOW_EFFECTS_ERROR_INVALID_ARGUMENT,
+                            "Shader source must not be empty");
+        return FALSE;
+    }
+    if (strlen(function_source) > WINDOW_SHADER_SOURCE_LIMIT ||
+        n_uniforms > WINDOW_SHADER_UNIFORM_LIMIT || (n_uniforms > 0 && !uniforms)) {
+        g_set_error_literal(error, META_GNOBLIN_WINDOW_EFFECTS_ERROR,
+                            META_GNOBLIN_WINDOW_EFFECTS_ERROR_LIMIT,
+                            "Shader source or uniform table exceeds the supported limit");
+        return FALSE;
+    }
+    if (!isfinite(logical_width) || !isfinite(logical_height) || logical_width <= 0. ||
+        logical_height <= 0. || logical_width > FLT_MAX || logical_height > FLT_MAX) {
+        g_set_error_literal(error, META_GNOBLIN_WINDOW_EFFECTS_ERROR,
+                            META_GNOBLIN_WINDOW_EFFECTS_ERROR_INVALID_ARGUMENT,
+                            "Shader logical size must be finite and positive");
+        return FALSE;
+    }
+
+    g_autoptr(GHashTable) names = g_hash_table_new(g_str_hash, g_str_equal);
+    for (guint i = 0; i < n_uniforms; i++) {
+        if (!window_shader_uniform_name_valid(uniforms[i].name) || !isfinite(uniforms[i].value) ||
+            fabs(uniforms[i].value) > FLT_MAX) {
+            g_set_error(error, META_GNOBLIN_WINDOW_EFFECTS_ERROR,
+                        META_GNOBLIN_WINDOW_EFFECTS_ERROR_INVALID_UNIFORM,
+                        "Shader uniform %u has an invalid name or non-finite value", i);
+            return FALSE;
+        }
+        if (g_hash_table_contains(names, uniforms[i].name)) {
+            g_set_error(error, META_GNOBLIN_WINDOW_EFFECTS_ERROR,
+                        META_GNOBLIN_WINDOW_EFFECTS_ERROR_INVALID_UNIFORM,
+                        "Shader uniform '%s' is declared more than once", uniforms[i].name);
+            return FALSE;
+        }
+        g_hash_table_add(names, (gpointer)uniforms[i].name);
+    }
+
+    ClutterEffect* existing = clutter_actor_get_effect(surface_actor, WINDOW_SHADER_EFFECT_NAME);
+    if (existing && !CLUTTER_IS_SHADER_EFFECT(existing)) {
+        g_set_error_literal(error, META_GNOBLIN_WINDOW_EFFECTS_ERROR,
+                            META_GNOBLIN_WINDOW_EFFECTS_ERROR_NAME_OCCUPIED,
+                            "Gnoblin shader effect name is occupied by an unrelated effect");
+        return FALSE;
+    }
+
+    /* Existing Gnoblin shader files declare their own custom uniforms. */
+    g_autoptr(GString) globals =
+        g_string_new("uniform vec2 gnoblin_size;\nuniform float gnoblin_width;\n"
+                     "uniform float gnoblin_height;\n");
+    g_string_append_c(globals, '\n');
+    g_string_append(globals, function_source);
+
+    static const char hook[] = "vec4 gnoblin_premultiplied = cogl_color_out;\n"
+                               "float gnoblin_alpha = clamp(gnoblin_premultiplied.a, 0.0, 1.0);\n"
+                               "vec3 gnoblin_rgb = gnoblin_alpha > 0.000001 ? "
+                               "gnoblin_premultiplied.rgb / gnoblin_alpha : vec3(0.0);\n"
+                               "vec4 gnoblin_straight = vec4(gnoblin_rgb, gnoblin_alpha);\n"
+                               "vec4 gnoblin_result = gnoblin_effect(gnoblin_straight, "
+                               "cogl_tex_coord_in[0].st);\n"
+                               "gnoblin_result.a = min(clamp(gnoblin_result.a, 0.0, 1.0), "
+                               "gnoblin_alpha);\n"
+                               "gnoblin_result.rgb = clamp(gnoblin_result.rgb, 0.0, 1.0);\n"
+                               "cogl_color_out = vec4(gnoblin_result.rgb * gnoblin_result.a, "
+                               "gnoblin_result.a);\n";
+
+    g_autoptr(CoglSnippet) snippet =
+        cogl_snippet_new(COGL_SNIPPET_HOOK_FRAGMENT, globals->str, hook);
+    g_autoptr(ClutterEffect) replacement = clutter_shader_effect_new_with_snippet(snippet);
+    if (!replacement) {
+        g_set_error_literal(error, META_GNOBLIN_WINDOW_EFFECTS_ERROR,
+                            META_GNOBLIN_WINDOW_EFFECTS_ERROR_INVALID_ARGUMENT,
+                            "Mutter could not create the shader effect");
+        return FALSE;
+    }
+    ClutterShaderEffect* shader = CLUTTER_SHADER_EFFECT(replacement);
+    const float size[2] = {(float)logical_width, (float)logical_height};
+    clutter_shader_effect_set_uniform_float(shader, "gnoblin_size", 2, 2, size);
+    const float width = (float)logical_width;
+    const float height = (float)logical_height;
+    clutter_shader_effect_set_uniform_float(shader, "gnoblin_width", 1, 1, &width);
+    clutter_shader_effect_set_uniform_float(shader, "gnoblin_height", 1, 1, &height);
+    for (guint i = 0; i < n_uniforms; i++) {
+        const float value = (float)uniforms[i].value;
+        clutter_shader_effect_set_uniform_float(shader, uniforms[i].name, 1, 1, &value);
+    }
+
+    /* Keep the current effect attached until the replacement is fully built. */
+    if (existing)
+        clutter_actor_remove_effect(surface_actor, existing);
+    clutter_actor_add_effect_with_name(surface_actor, WINDOW_SHADER_EFFECT_NAME, replacement);
+    return TRUE;
 }
 
 void meta_gnoblin_window_effects_set_window_shadow(
