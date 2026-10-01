@@ -59,7 +59,7 @@ The monitor and layer list commands also use their API 1.37 snapshot methods,
 existing `monitors` or `layers` key.
 
 The input commands use `input.sources`, `input.current_source`, and
-`input.select_source` at API 1.6. Source selection returns an operation that
+`input.select` at API 1.6. Source selection returns an operation that
 completes after Mutter confirms the selected keyboard layout.
 
 `gnoblinctl shortcut actions` reads `shortcuts.actions` from the shared Lua

@@ -144,7 +144,7 @@ shared Lua read introduced in API 1.46. It prints the configured XKB sources.
 `gnoblinctl input current` reads `input.current_source` through the same Lua
 route. Its JSON record includes `available` and, when known, `source`.
 
-`gnoblinctl input select TYPE ID` calls `input.select_source`. It waits for
+`gnoblinctl input select TYPE ID` calls `input.select`. It waits for
 Mutter to confirm the layout change.
 
 The Lua-only aliases `gnoblin.input.list()` and `gnoblin.input.current()` are
