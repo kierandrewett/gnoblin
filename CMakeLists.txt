@@ -69,7 +69,7 @@ if(GNOBLIN_LUA_FOUND)
     src/config src/permissions src/native-control)
   target_compile_definitions(gnoblin-config-core PUBLIC
     GNOBLIN_NATIVE_CONTROL_API_MAJOR=1
-    GNOBLIN_NATIVE_CONTROL_API_MINOR=48)
+    GNOBLIN_NATIVE_CONTROL_API_MINOR=49)
   target_link_libraries(gnoblin-config-core PUBLIC
     PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_LUA m)
 
