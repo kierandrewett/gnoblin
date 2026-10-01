@@ -162,9 +162,13 @@ class IsolationTests(unittest.TestCase):
         self.assertNotIn("gnoblin-session", packages)
         self.assertIn("lua", packages["gnoblin"]["requires"])
         self.assertEqual(manifest["requirements"]["lua"]["minVersion"], "5.4")
+        self.assertIn("gtk4", packages["gnoblin-portal"]["requires"])
+        self.assertEqual(manifest["requirements"]["gtk4"]["minVersion"], "4.22.0")
         arch = (ROOT / "packaging/arch/PKGBUILD").read_text()
         self.assertIn("'lua>=5.4'", arch.splitlines()[9])
         self.assertIn("'lua>=5.4'", arch.splitlines()[10])
+        self.assertIn("'gtk4>=4.22.0'", arch.splitlines()[9])
+        self.assertIn("'gtk4>=4.22.0'", arch.splitlines()[10])
         self.assertIn("systemd", packages["gnoblin"]["requires"])
         self.assertEqual(packages["gnoblin-gnome-integration"]["requiresExact"], ["gnoblin"])
 
