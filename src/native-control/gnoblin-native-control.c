@@ -10707,6 +10707,14 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "permissions.list")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "permissions.list does not accept arguments");
+        if (client->api_minor >= 42) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            GVariantBuilder empty;
+            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+            g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+            return queue_runtime_api_request(client, id, method, read_arguments, "read");
+        }
         g_autoptr(GVariant) document = native_config_document(client->control);
         if (!document)
             return encode_response(id, NULL, "committed permission policy is unavailable");
