@@ -434,7 +434,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("native_menu_context_revoke_client(control, client->client_id)", socket_revoke)
         self.assertIn("revoke_menu_contexts(control)", source)
 
-    def test_status_socket_read_uses_lua_for_current_clients_and_keeps_legacy_path(self):
+    def test_status_socket_read_always_uses_lua(self):
         source = CONTROL.read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         status = function_body(
@@ -448,10 +448,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean runtime_reload_document_supported(",
         )
 
-        self.assertIn("client->api_minor >= 51", status)
+        self.assertNotIn("client->api_minor >= 51", status)
         self.assertIn("supervised_runtime", status)
         self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', status)
-        self.assertIn("native_session_status_json", status)
+        self.assertNotIn("native_session_status_json", status)
         self.assertIn('"session.status"', status)
         self.assertIn('g_str_equal(method, "session.status")', reads)
 
@@ -932,7 +932,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
         self.assertGreaterEqual(api_minor(header), 46)
 
-    def test_privacy_state_uses_lua_at_api_147_and_keeps_native_route(self):
+    def test_privacy_state_always_uses_lua(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
@@ -953,9 +953,9 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "GVariant* gnoblin_config_current_document(",
         )
 
-        self.assertIn("client->api_minor >= 47", handler)
+        self.assertNotIn("client->api_minor >= 47", handler)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', handler)
-        self.assertIn("client->control->privacy_snapshot", handler)
+        self.assertNotIn("client->control->privacy_snapshot", handler)
         self.assertNotIn('g_str_equal(method, "privacy.state")', reads)
         self.assertIn('"privacy.state"', lua_read)
         self.assertIn('g_str_equal(method, "privacy.state")', lua_read)

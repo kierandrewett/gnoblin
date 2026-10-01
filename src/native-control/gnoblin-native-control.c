@@ -4831,15 +4831,6 @@ static GVariant* native_session_lock_snapshot(MetaWaylandCompositor* compositor)
     return g_variant_ref_sink(g_variant_builder_end(&builder));
 }
 
-static JsonNode* native_session_status_json(MetaWaylandCompositor* compositor) {
-    g_autoptr(GVariant) lock_snapshot = native_session_lock_snapshot(compositor);
-    g_autoptr(JsonNode) result = json_from_variant(lock_snapshot);
-    if (!JSON_NODE_HOLDS_OBJECT(result))
-        return NULL;
-    json_object_set_string_member(json_node_get_object(result), "state", "running");
-    return g_steal_pointer(&result);
-}
-
 static void native_session_lock_changed(MetaWaylandCompositor* compositor,
                                         MetaWaylandSessionLockState state, gpointer user_data) {
     GnoblinNativeControl* control = user_data;
@@ -10572,19 +10563,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "session.status")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "session.status does not accept arguments");
-        if (client->api_minor >= 51) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            GVariantBuilder empty;
-            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-            g_autoptr(GVariant) arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
-            return queue_runtime_api_request(client, id, method, arguments, "read");
-        }
-        g_autoptr(JsonNode) status =
-            native_session_status_json(client->control->wayland_compositor);
-        if (!status)
-            return encode_response(id, NULL, "could not read compositor session status");
-        return encode_response(id, status, NULL);
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+        return queue_runtime_api_request(client, id, method, arguments, "read");
     }
     if (g_str_equal(method, "window.restore_or_minimize")) {
         JsonObject* json_arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
@@ -10701,22 +10685,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "privacy.state")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "privacy.state does not accept arguments");
-        if (client->api_minor >= 47) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            GVariantBuilder empty;
-            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-            g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
-            return queue_runtime_api_request(client, id, method, read_arguments, "read");
-        }
-        if (!client->control->privacy_snapshot)
-            return encode_response(id, NULL, "native privacy snapshot is unavailable");
-        g_autoptr(JsonNode) json = json_from_variant(client->control->privacy_snapshot);
-        if (!JSON_NODE_HOLDS_OBJECT(json))
-            return encode_response(id, NULL, "native privacy snapshot is invalid");
-        json_object_set_int_member(json_node_get_object(json), "revision",
-                                   client->control->privacy_revision);
-        return encode_response(id, json, NULL);
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+        return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
     if (g_str_equal(method, "portals.grants")) {
         JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
