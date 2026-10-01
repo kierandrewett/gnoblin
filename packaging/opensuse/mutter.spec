@@ -15,7 +15,7 @@
 %global gsettings_desktop_schemas_version 51.0
 %global libdrm_version 2.4.118
 %global libinput_version 1.30.0
-%global pipewire_version 1.4.11
+%global pipewire_version 1.6.0
 %global libei_version 1.3.901
 %global wayland_protocols_version 1.48
 %global wayland_server_version 1.25
