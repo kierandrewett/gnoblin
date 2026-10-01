@@ -51,7 +51,8 @@ Native-control API 1.38 adds `window.restore_or_minimize`. It unmaximizes a
 maximized window, restores its saved pre-snap frame, or minimizes it. Its result
 contains the stable `id` and the action performed. The [bridge
 reference](/compositor-bridge#api-138-restore-a-snapped-window) lists the
-possible actions.
+possible actions. Every supported socket client uses the shared Lua operation,
+which requires the Lua supervisor.
 
 Native-control API 1.39 adds `launches.snapshot`, which returns the launch
 records and their collection revision together. It requires a connected Lua

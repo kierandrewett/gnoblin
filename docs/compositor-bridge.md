@@ -340,7 +340,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | Minimum version | Added methods or events                                                         |
 | --------------- | ------------------------------------------------------------------------------- |
 | 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches      |
-| 1.38            | Compatibility route for `window.restore_or_minimize`                            |
+| 1.38            | Adds `window.restore_or_minimize`; all supported clients use the Lua operation  |
 | 1.39            | `launches.snapshot` with collection revision                                    |
 | 1.40            | Shared `shortcuts.list` snapshot read                                           |
 | 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime             |
@@ -350,7 +350,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.45            | Adds the Lua-backed `portals.grants` read; all client versions now use it       |
 | 1.46            | Adds shared Lua input reads; all client versions now use them                   |
 | 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                 |
-| 1.48            | Lua runtime operation for `window.restore_or_minimize`                          |
+| 1.48            | Adds Lua operation for `window.restore_or_minimize`; all clients now use it     |
 | 1.49            | Lua runtime operation for `session.lock`                                        |
 | 1.50            | Lua operations for `launch.begin` and `launch.end`                              |
 | 1.51            | Adds Lua-backed `session.status`; all client versions now use it                |
@@ -500,7 +500,9 @@ Call `window.restore_or_minimize` with a stable window ID:
 Mutter unmaximizes a maximized window, restores its saved pre-snap frame when
 available, or minimizes it. The response includes `id` and `action`, whose
 value is `unmaximize`, `restore`, or `minimize`. The operation fails while the
-session is locked or if the target window is no longer available.
+session is locked or if the target window is no longer available. Every
+supported socket client uses the shared Lua operation, which requires the Lua
+supervisor.
 
 Targets and contexts belong to the connection that created them:
 
