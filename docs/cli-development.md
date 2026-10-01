@@ -43,7 +43,12 @@ accepted values, results, and compatibility limits.
 
 `gnoblinctl workspace list` reads `workspaces.list` and keeps its `workspaces`
 JSON wrapper. It maps each snapshot's `window_count` to the CLI's `windows`
-field. Raw socket clients can continue using the older `workspace.list` method.
+field.
+
+Raw socket clients can continue using the older `workspace.list` method.
+API 1.52 and newer serve that compatibility method from the Lua snapshot while
+keeping its original wrapper and `windows` count; earlier API versions use the
+native route.
 
 The monitor and layer list commands also use their API 1.37 snapshot methods,
 `monitors.list` and `layers.list`; the CLI wraps each returned array under its

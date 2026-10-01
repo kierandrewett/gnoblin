@@ -712,10 +712,11 @@ are inside the trust boundary.
 
 Lua configuration reads windows and workspaces through the immediate,
 immutable `gnoblin.windows.list()` and `gnoblin.workspaces.list()` snapshots.
-The compositor socket separately exposes `window.list` and `workspace.list`
-to clients such as `gnoblinctl`. Native window records use the snake_case
-fields described in [Lua events](/config/lua-events) and add a per-record
-revision.
+The compositor socket keeps `window.list` and `workspace.list` for compatibility
+clients. API 1.52 and newer read `workspace.list` from the Lua snapshot while
+preserving its legacy response shape; older clients use the native route.
+Native window records use the snake_case fields described in
+[Lua events](/config/lua-events) and add a per-record revision.
 
 Native workspace records rename the `windows` count to `window_count` and add
 a revision. Window, workspace, monitor, layer, input-device, and capability
