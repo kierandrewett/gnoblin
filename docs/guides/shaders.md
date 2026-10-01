@@ -56,5 +56,3 @@ geometry shader or multi-pass API.
 Files reload after edits settle for 100 ms. Invalid or missing shader files
 keep the previous working effect and log a `gnoblin-shader` warning.
 Fix the file to retry.
-
-See [effect tests](/effects-rendering#tests) for pixel and reload coverage.

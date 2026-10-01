@@ -174,4 +174,3 @@ table, as above, changes only its supplied fields.
 ## Custom fragment shaders
 
 [Custom shaders](/guides/shaders) shows how to tint a window and pass shader parameters.
-For how Gnoblin draws these effects, see [effect rendering](/effects-rendering).
