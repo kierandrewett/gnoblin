@@ -11,7 +11,7 @@
 #include "core/gnoblin-runtime-cache.h"
 
 #define GNOBLIN_NATIVE_CONTROL_API_MAJOR 1
-#define GNOBLIN_NATIVE_CONTROL_API_MINOR 37
+#define GNOBLIN_NATIVE_CONTROL_API_MINOR 38
 
 typedef struct _GnoblinNativeControl GnoblinNativeControl;
 
@@ -105,6 +105,8 @@ GVariant* gnoblin_native_control_create_snap_context(MetaDisplay* display, guint
                                                      GError** error);
 GVariant* gnoblin_native_control_commit_snap_context(MetaDisplay* display, GVariant* arguments,
                                                      GError** error);
+GVariant* gnoblin_native_control_restore_or_minimize_window(MetaDisplay* display,
+                                                            GVariant* arguments, GError** error);
 
 /* Dispatch portal grant reads and revocations through the session portal. */
 gboolean gnoblin_native_control_portal_grant_operation(MetaDisplay* display, const char* method,
