@@ -720,9 +720,8 @@ are inside the trust boundary.
 Lua configuration reads windows and workspaces through the immediate,
 immutable `gnoblin.windows.list()` and `gnoblin.workspaces.list()` snapshots.
 The compositor socket keeps `window.list` and `workspace.list` for compatibility
-clients. API 1.52 and newer read `workspace.list` from Lua and preserve its
-legacy response shape. API 1.53 and newer do the same for `window.list`,
-including its legacy field names. Older clients use the native route.
+clients. Every client version reads both methods from the Lua snapshots; the
+socket adapters preserve their existing response shapes and field names.
 
 The newer `windows.list` method returns the snake_case fields described in
 [Lua events](/config/lua-events) and adds a per-record revision.

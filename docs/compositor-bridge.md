@@ -363,8 +363,8 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.49            | Lua runtime operation for `session.lock`                                        |
 | 1.50            | Lua operations for `launch.begin` and `launch.end`                              |
 | 1.51            | Lua runtime read for `session.status`                                           |
-| 1.52            | Lua-backed compatibility read for `workspace.list`                              |
-| 1.53            | Lua-backed compatibility read for `window.list`                                 |
+| 1.52            | Adds Lua-backed `workspace.list`; all client versions now use it                |
+| 1.53            | Adds Lua-backed `window.list`; all client versions now use it                   |
 | 1.54            | Lua-backed compatibility read for `launch.status`                               |
 | 1.55            | Lua-backed compatibility read for `shortcut.list`                               |
 | 1.56            | Lua-backed `shortcut.actions`; older clients use the native snapshot            |
