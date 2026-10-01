@@ -4330,13 +4330,7 @@ static int lua_shortcuts_list(lua_State* state) {
     return 1;
 }
 
-static int lua_launches_list(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.launches.list takes no arguments");
-    if (!config || !config->launch_snapshot)
-        return luaL_error(state, "native launch snapshot is unavailable");
-
+static void push_launches_array(lua_State* state, LuaConfig* config) {
     g_autoptr(GVariant) launches =
         g_variant_lookup_value(config->launch_snapshot, "launches", G_VARIANT_TYPE("av"));
     lua_newtable(state);
@@ -4349,6 +4343,32 @@ static int lua_launches_list(lua_State* state) {
         lua_remove(state, -2);
         lua_rawseti(state, -2, i + 1);
     }
+}
+
+static int lua_launches_list(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.launches.list takes no arguments");
+    if (!config || !config->launch_snapshot)
+        return luaL_error(state, "native launch snapshot is unavailable");
+    push_launches_array(state, config);
+    return 1;
+}
+
+static int lua_launches_snapshot(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.launches.snapshot takes no arguments");
+    if (!config || !config->launch_snapshot)
+        return luaL_error(state, "native launch snapshot is unavailable");
+
+    lua_newtable(state);
+    push_launches_array(state, config);
+    lua_setfield(state, -2, "launches");
+    lua_pushinteger(state, config->launch_revision);
+    lua_setfield(state, -2, "revision");
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
     return 1;
 }
 
@@ -4874,6 +4894,9 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_launches_list, 1);
     lua_setfield(state, -2, "list");
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_launches_snapshot, 1);
+    lua_setfield(state, -2, "snapshot");
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_launches_begin, 1);
     lua_setfield(state, -2, "begin");
@@ -6305,20 +6328,11 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
 
 GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {
     static const char* read_methods[] = {
-        "version",
-        "windows.list",
-        "capabilities.list",
-        "focus.history",
-        "settings",
-        "focus.policy",
-        "session.activity",
-        "session.status",
-        "layer.animation_policy",
-        "workspaces.list",
-        "monitors.list",
-        "layers.list",
-        "launches.list",
-        NULL,
+        "version",          "windows.list",      "capabilities.list",
+        "focus.history",    "settings",          "focus.policy",
+        "session.activity", "session.status",    "layer.animation_policy",
+        "workspaces.list",  "monitors.list",     "layers.list",
+        "launches.list",    "launches.snapshot", NULL,
     };
     gboolean known = FALSE;
     for (guint i = 0; method && read_methods[i]; i++)
@@ -6422,6 +6436,11 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "launches.list")) {
         lua_getfield(state, -1, "launches");
         lua_getfield(state, -1, "list");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "launches.snapshot")) {
+        lua_getfield(state, -1, "launches");
+        lua_getfield(state, -1, "snapshot");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else { /* focus.policy */

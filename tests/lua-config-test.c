@@ -1177,6 +1177,17 @@ int main(void) {
     assert_empty_api_array("workspaces.list", empty_read_arguments);
     assert_empty_api_array("monitors.list", empty_read_arguments);
     assert_empty_api_array("launches.list", empty_read_arguments);
+    g_autoptr(GVariant) launch_snapshot =
+        gnoblin_config_read_api("launches.snapshot", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(launch_snapshot, G_VARIANT_TYPE_VARDICT));
+    g_autoptr(GVariant) launch_records =
+        g_variant_lookup_value(launch_snapshot, "launches", G_VARIANT_TYPE("av"));
+    g_assert_nonnull(launch_records);
+    g_assert_cmpuint(g_variant_n_children(launch_records), ==, 0);
+    gint64 launch_revision = 0;
+    g_assert_true(g_variant_lookup(launch_snapshot, "revision", "x", &launch_revision));
+    g_assert_cmpuint(launch_revision, ==, 19);
 
     GVariantBuilder empty_layer_filter_builder;
     g_variant_builder_init(&empty_layer_filter_builder, G_VARIANT_TYPE_VARDICT);
