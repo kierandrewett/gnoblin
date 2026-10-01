@@ -15,13 +15,14 @@ now use the versioned API. Window-switcher previews now use the native
 thumbnail API.
 
 A live devkit check confirmed that a modal held shortcut registers through
-`ShortcutSession.qml`. Focus, snapping, privacy, text insertion, and OSD still
+`ShortcutSession.qml`. Window-switcher focus also uses the native focus API.
+Application-launch focus, snapping, privacy, text insertion, and OSD still
 need migration before the whole shell works in a standalone session.
 
 - `shell/bingux/ShortcutSession.qml` uses `shortcut.bind`, `shortcut.unbind`,
   `ping`, and versioned shortcut event subscriptions when connected to
   standalone Gnoblin. It retains the compatibility protocol for GNOME sessions.
-  Its window activation, drag, privacy, text input, and private
+  Its app-launch activation, drag, privacy, text input, and private
   `bingux.*` operations still need standalone API replacements.
 - `shell/bingux/WorkspaceState.qml` now uses the versioned `workspace.list` and
   `workspace.switch` API methods. It subscribes to workspace lifecycle events
@@ -55,13 +56,11 @@ Replace these compatibility-bridge calls:
 - **Windows:** Subscribe with `op: "windows"` for the initial snapshot and live
   window and workspace events. Use `window.list` for filtered socket reads or
   `windows.list` when using the newer Lua-backed snapshot method.
-- **Focus:** Replace `activate` with `window.focus` using an XDG Activation token
-  created from user input on the same socket connection. A window ID alone
-  cannot take focus. A Quickshell surface can create the XDG token after the
-  click and pass it to the compositor socket owned by that same process.
-  A keyboard switcher can instead use the one-use `focus_context` from
-  `gnoblin.shortcut.activated`. The token belongs to its receiving connection
-  and authorizes only one request.
+- **Focus:** `WindowSwitcher.qml` now passes the one-use `focus_context` from
+  `gnoblin.shortcut.binding-activated` to `window.focus`. For other
+  pointer-driven focus, use an XDG Activation token created from user input on
+  the same socket connection. A window ID alone cannot take focus. The token
+  belongs to its receiving connection and authorizes one request.
 - **Previews:** Replace `preview` with the asynchronous `window.thumbnail` API.
   `ShortcutSession.qml` now requests thumbnails and routes the completion event
   back to the switcher. Requests fail while the session is locked, and a closed
