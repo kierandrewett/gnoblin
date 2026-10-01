@@ -81,6 +81,9 @@
 #define NATIVE_POLICY_BUS_NAME "org.gnoblin.Compositor"
 #define NATIVE_POLICY_OBJECT_PATH "/org/gnoblin/Compositor"
 #define NATIVE_POLICY_INTERFACE "org.gnoblin.Compositor"
+#define IBUS_BUS_NAME "org.freedesktop.IBus"
+#define IBUS_OBJECT_PATH "/org/freedesktop/IBus"
+#define IBUS_INTERFACE "org.freedesktop.IBus"
 
 typedef struct _NativeDynamicShortcut NativeDynamicShortcut;
 typedef struct _NativeMutterSignalWatch NativeMutterSignalWatch;
@@ -115,7 +118,9 @@ struct _GnoblinNativeControl {
     GVariant* portal_grant_snapshot;
     GVariant* privacy_snapshot;
     GPtrArray* input_sources;
+    GPtrArray* ibus_sources;
     GPtrArray* configured_input_source_ids;
+    GPtrArray* configured_ibus_source_ids;
     GPtrArray* active_input_source_ids;
     GPtrArray* shortcuts;
     GHashTable* dynamic_shortcuts;
@@ -149,6 +154,7 @@ struct _GnoblinNativeControl {
     GSettings* input_source_settings;
     GSettings* appearance_settings;
     char* last_published_input_source;
+    char* current_ibus_source_id;
     guint64 next_input_device_id;
     guint publish_id;
     guint launch_tick_id;
@@ -158,6 +164,8 @@ struct _GnoblinNativeControl {
     guint portal_grant_added_subscription_id;
     guint portal_grant_removed_subscription_id;
     guint portal_owner_subscription_id;
+    guint ibus_signal_subscription_id;
+    guint ibus_owner_subscription_id;
     guint portal_grant_retry_id;
     guint runtime_read_source_id;
     guint runtime_write_source_id;
@@ -222,6 +230,7 @@ struct _GnoblinNativeControl {
     gboolean policy_bus_name_owned;
     gboolean portal_backend_available;
     guint pending_input_source_ops;
+    guint pending_ibus_queries;
     guint pending_portal_grant_ops;
     guint pending_thumbnail_count;
     GVariant* session_activity_snapshot;
@@ -481,6 +490,7 @@ typedef struct {
     GnoblinNativeControl* control;
     MetaKeymapDescription* description;
     GPtrArray* source_ids;
+    char* selected_type;
     char* selected_id;
     gint64 request_id;
     char* method;
@@ -1360,6 +1370,7 @@ static void native_activity_owner_changed(GDBusConnection* connection, const cha
     const char* new_owner = NULL;
     g_variant_get(parameters, "(&s&s&s)", &name, &old_owner, &new_owner);
     (void)old_owner;
+    (void)old_owner;
     if (g_str_equal(name, SESSION_ACTIVITY_BUS_NAME)) {
         control->session_activity_generation++;
         if (new_owner && *new_owner)
@@ -1477,6 +1488,16 @@ static void stop_native_policy_dbus(GnoblinNativeControl* control) {
                                              control->portal_owner_subscription_id);
         control->portal_owner_subscription_id = 0;
     }
+    if (control->ibus_signal_subscription_id) {
+        g_dbus_connection_signal_unsubscribe(control->session_bus,
+                                             control->ibus_signal_subscription_id);
+        control->ibus_signal_subscription_id = 0;
+    }
+    if (control->ibus_owner_subscription_id) {
+        g_dbus_connection_signal_unsubscribe(control->session_bus,
+                                             control->ibus_owner_subscription_id);
+        control->ibus_owner_subscription_id = 0;
+    }
     if (control->session_activity_subscription_id) {
         g_dbus_connection_signal_unsubscribe(control->session_bus,
                                              control->session_activity_subscription_id);
@@ -1506,6 +1527,7 @@ static void stop_native_policy_dbus(GnoblinNativeControl* control) {
 }
 
 typedef struct {
+    char* type;
     char* id;
     char* layout;
     char* variant;
@@ -3814,6 +3836,7 @@ static GVariant* input_device_snapshot(GnoblinNativeControl* control) {
 
 static void native_input_source_free(gpointer data) {
     NativeInputSource* source = data;
+    g_free(source->type);
     g_free(source->id);
     g_free(source->layout);
     g_free(source->variant);
@@ -3864,6 +3887,7 @@ static NativeInputSource* input_source_new(const char* id) {
     xkb_keymap_unref(keymap);
 
     NativeInputSource* source = g_new0(NativeInputSource, 1);
+    source->type = g_strdup("xkb");
     source->id = g_strdup(id);
     source->layout = g_steal_pointer(&layout);
     source->variant = g_strdup(variant);
@@ -3873,11 +3897,24 @@ static NativeInputSource* input_source_new(const char* id) {
     return source;
 }
 
+static NativeInputSource* ibus_input_source_new(const char* id) {
+    if (!id || !*id || strlen(id) > 128 || !g_utf8_validate(id, -1, NULL))
+        return NULL;
+    NativeInputSource* source = g_new0(NativeInputSource, 1);
+    source->type = g_strdup("ibus");
+    source->id = g_strdup(id);
+    /* Engine IDs are stable names from IBus. The optional engine metadata is
+     * not needed to select an engine and is intentionally not guessed here. */
+    source->name = g_strdup(id);
+    source->short_name = g_strdup(id);
+    return source;
+}
+
 static GVariant* input_source_record_variant(NativeInputSource* source, guint64 revision,
                                              gboolean current) {
     GVariantBuilder record;
     g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&record, "{sv}", "type", g_variant_new_string("xkb"));
+    g_variant_builder_add(&record, "{sv}", "type", g_variant_new_string(source->type));
     g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string(source->id));
     g_variant_builder_add(&record, "{sv}", "short_name", g_variant_new_string(source->short_name));
     g_variant_builder_add(&record, "{sv}", "name", g_variant_new_string(source->name));
@@ -3895,7 +3932,24 @@ static NativeInputSource* input_source_by_id(GnoblinNativeControl* control, cons
     return NULL;
 }
 
+static NativeInputSource* ibus_input_source_by_id(GnoblinNativeControl* control, const char* id) {
+    for (guint i = 0; control->ibus_sources && i < control->ibus_sources->len; i++) {
+        NativeInputSource* source = g_ptr_array_index(control->ibus_sources, i);
+        if (g_str_equal(source->id, id))
+            return source;
+    }
+    return NULL;
+}
+
 static NativeInputSource* current_input_source(GnoblinNativeControl* control) {
+    if (control->current_ibus_source_id) {
+        for (guint i = 0; control->ibus_sources && i < control->ibus_sources->len; i++) {
+            NativeInputSource* source = g_ptr_array_index(control->ibus_sources, i);
+            if (g_str_equal(source->id, control->current_ibus_source_id))
+                return source;
+        }
+        return NULL;
+    }
     if (!control->backend || !control->input_keymap_description ||
         meta_backend_get_keymap_description(control->backend) !=
             control->input_keymap_description ||
@@ -3914,6 +3968,12 @@ static GVariant* input_source_snapshot(GnoblinNativeControl* control) {
     NativeInputSource* current = current_input_source(control);
     for (guint i = 0; control->input_sources && i < control->input_sources->len; i++) {
         NativeInputSource* source = g_ptr_array_index(control->input_sources, i);
+        g_variant_builder_add_value(&sources,
+                                    g_variant_new_variant(input_source_record_variant(
+                                        source, control->state_revision, source == current)));
+    }
+    for (guint i = 0; control->ibus_sources && i < control->ibus_sources->len; i++) {
+        NativeInputSource* source = g_ptr_array_index(control->ibus_sources, i);
         g_variant_builder_add_value(&sources,
                                     g_variant_new_variant(input_source_record_variant(
                                         source, control->state_revision, source == current)));
@@ -3940,7 +4000,7 @@ static void add_configured_input_source_id(GPtrArray* ids, const char* id) {
 }
 
 static GPtrArray* read_configured_input_source_ids(GnoblinNativeControl* control,
-                                                   GVariant* document) {
+                                                   GVariant* document, const char* source_type) {
     GPtrArray* ids = g_ptr_array_new_with_free_func(g_free);
     g_autoptr(GVariant) config =
         document ? g_variant_lookup_value(document, "input-sources", G_VARIANT_TYPE_VARDICT) : NULL;
@@ -3955,7 +4015,7 @@ static GPtrArray* read_configured_input_source_ids(GnoblinNativeControl* control
             const char* type = NULL;
             const char* id = NULL;
             if (!g_variant_lookup(record, "type", "&s", &type) ||
-                !g_variant_lookup(record, "id", "&s", &id) || !g_str_equal(type, "xkb"))
+                !g_variant_lookup(record, "id", "&s", &id) || !g_str_equal(type, source_type))
                 continue;
             add_configured_input_source_id(ids, id);
         }
@@ -3970,7 +4030,7 @@ static GPtrArray* read_configured_input_source_ids(GnoblinNativeControl* control
         const char* id;
         g_variant_iter_init(&iter, defaults);
         while (g_variant_iter_next(&iter, "(&s&s)", &type, &id)) {
-            if (!g_str_equal(type, "xkb"))
+            if (!g_str_equal(type, source_type))
                 continue;
             add_configured_input_source_id(ids, id);
         }
@@ -3994,23 +4054,39 @@ static gboolean refresh_input_sources(GnoblinNativeControl* control, GVariant* d
         current_document = native_config_document(control);
         document = current_document;
     }
-    GPtrArray* ids = read_configured_input_source_ids(control, document);
-    if (input_source_id_lists_equal(control->configured_input_source_ids, ids)) {
-        g_ptr_array_unref(ids);
+    GPtrArray* xkb_ids = read_configured_input_source_ids(control, document, "xkb");
+    GPtrArray* ibus_ids = read_configured_input_source_ids(control, document, "ibus");
+    gboolean changed =
+        !input_source_id_lists_equal(control->configured_input_source_ids, xkb_ids) ||
+        !input_source_id_lists_equal(control->configured_ibus_source_ids, ibus_ids);
+    if (!changed) {
+        g_ptr_array_unref(xkb_ids);
+        g_ptr_array_unref(ibus_ids);
         return FALSE;
     }
     g_clear_pointer(&control->configured_input_source_ids, g_ptr_array_unref);
-    control->configured_input_source_ids = ids;
+    g_clear_pointer(&control->configured_ibus_source_ids, g_ptr_array_unref);
+    control->configured_input_source_ids = xkb_ids;
+    control->configured_ibus_source_ids = ibus_ids;
 
     GPtrArray* sources = g_ptr_array_new_with_free_func(native_input_source_free);
-    for (guint i = 0; i < ids->len; i++) {
-        const char* id = g_ptr_array_index(ids, i);
+    for (guint i = 0; i < xkb_ids->len; i++) {
+        const char* id = g_ptr_array_index(xkb_ids, i);
         NativeInputSource* source = input_source_new(id);
         if (source)
             g_ptr_array_add(sources, source);
     }
     g_clear_pointer(&control->input_sources, g_ptr_array_unref);
     control->input_sources = sources;
+    sources = g_ptr_array_new_with_free_func(native_input_source_free);
+    for (guint i = 0; i < ibus_ids->len; i++) {
+        const char* id = g_ptr_array_index(ibus_ids, i);
+        NativeInputSource* source = ibus_input_source_new(id);
+        if (source)
+            g_ptr_array_add(sources, source);
+    }
+    g_clear_pointer(&control->ibus_sources, g_ptr_array_unref);
+    control->ibus_sources = sources;
     return TRUE;
 }
 
@@ -4019,6 +4095,7 @@ static void pending_input_source_free(PendingInputSource* pending) {
         return;
     g_clear_pointer(&pending->description, meta_keymap_description_unref);
     g_clear_pointer(&pending->source_ids, g_ptr_array_unref);
+    g_free(pending->selected_type);
     g_free(pending->selected_id);
     g_free(pending->method);
     g_free(pending);
@@ -4026,16 +4103,37 @@ static void pending_input_source_free(PendingInputSource* pending) {
 
 static void release_input_source_state(GnoblinNativeControl* control) {
     g_clear_pointer(&control->input_sources, g_ptr_array_unref);
+    g_clear_pointer(&control->ibus_sources, g_ptr_array_unref);
     g_clear_pointer(&control->configured_input_source_ids, g_ptr_array_unref);
+    g_clear_pointer(&control->configured_ibus_source_ids, g_ptr_array_unref);
     g_clear_pointer(&control->active_input_source_ids, g_ptr_array_unref);
     g_clear_pointer(&control->input_keymap_description, meta_keymap_description_unref);
     g_clear_object(&control->input_source_settings);
     g_clear_object(&control->appearance_settings);
     g_clear_pointer(&control->last_published_input_source, g_free);
+    g_clear_pointer(&control->current_ibus_source_id, g_free);
 }
 
 static const char* native_operation_error_code(const GError* error) {
-    if (!error || error->domain != G_IO_ERROR)
+    if (!error)
+        return "internal";
+    if (error->domain == G_DBUS_ERROR) {
+        switch (error->code) {
+        case G_DBUS_ERROR_SERVICE_UNKNOWN:
+        case G_DBUS_ERROR_NAME_HAS_NO_OWNER:
+            return "unavailable";
+        case G_DBUS_ERROR_UNKNOWN_METHOD:
+        case G_DBUS_ERROR_NOT_SUPPORTED:
+            return "unsupported";
+        case G_DBUS_ERROR_TIMEOUT:
+            return "timed_out";
+        case G_DBUS_ERROR_FAILED:
+            return "not_found";
+        default:
+            return "internal";
+        }
+    }
+    if (error->domain != G_IO_ERROR)
         return "internal";
     switch (error->code) {
     case G_IO_ERROR_INVALID_ARGUMENT:
@@ -4164,12 +4262,14 @@ static void dispatch_operation_completion(GnoblinNativeControl* control, gint64 
 }
 
 static void dispatch_input_source_operation(GnoblinNativeControl* control, gint64 request_id,
-                                            const char* method, gboolean ok,
-                                            const char* selected_id, const char* error_code,
-                                            const char* message) {
+                                            const char* method, const char* source_type,
+                                            gboolean ok, const char* selected_id,
+                                            const char* error_code, const char* message) {
     g_autoptr(JsonNode) result = NULL;
     if (ok && selected_id) {
-        NativeInputSource* source = input_source_by_id(control, selected_id);
+        NativeInputSource* source = g_str_equal(source_type, "ibus")
+                                        ? ibus_input_source_by_id(control, selected_id)
+                                        : input_source_by_id(control, selected_id);
         if (source) {
             g_autoptr(GVariant) record =
                 input_source_record_variant(source, control->state_revision, TRUE);
@@ -4177,6 +4277,107 @@ static void dispatch_input_source_operation(GnoblinNativeControl* control, gint6
         }
     }
     dispatch_operation_completion(control, request_id, method, ok, result, error_code, message);
+}
+
+static char* ibus_engine_name_from_value(GVariant* value) {
+    if (!value)
+        return NULL;
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_VARIANT)) {
+        g_autoptr(GVariant) unwrapped = g_variant_get_variant(value);
+        return ibus_engine_name_from_value(unwrapped);
+    }
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
+        const char* name = NULL;
+        if (g_variant_lookup(value, "name", "&s", &name) && name && *name)
+            return g_strdup(name);
+        return NULL;
+    }
+    if (g_variant_is_container(value)) {
+        for (gsize i = 0; i < g_variant_n_children(value); i++) {
+            g_autoptr(GVariant) child = g_variant_get_child_value(value, i);
+            char* name = ibus_engine_name_from_value(child);
+            if (name)
+                return name;
+        }
+    }
+    return NULL;
+}
+
+static void ibus_global_engine_query_done(GObject* source_object, GAsyncResult* result,
+                                          gpointer user_data) {
+    GnoblinNativeControl* control = user_data;
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) reply =
+        g_dbus_connection_call_finish(G_DBUS_CONNECTION(source_object), result, &error);
+    control->pending_ibus_queries--;
+    if (!control->stopping) {
+        g_autofree char* engine = reply ? ibus_engine_name_from_value(reply) : NULL;
+        g_free(control->current_ibus_source_id);
+        control->current_ibus_source_id = g_steal_pointer(&engine);
+        publish_input_source_changes(control, control->state_revision);
+    }
+    native_control_maybe_free_stopped(control);
+}
+
+static void query_ibus_global_engine(GnoblinNativeControl* control) {
+    if (!control || control->stopping || !control->session_bus)
+        return;
+    control->pending_ibus_queries++;
+    g_dbus_connection_call(control->session_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
+                           "GetGlobalEngine", NULL, G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE,
+                           1000, NULL, ibus_global_engine_query_done, control);
+}
+
+static void ibus_global_engine_changed(GDBusConnection* connection, const char* sender_name,
+                                       const char* object_path, const char* interface_name,
+                                       const char* signal_name, GVariant* parameters,
+                                       gpointer user_data) {
+    GnoblinNativeControl* control = user_data;
+    const char* engine = NULL;
+    if (control->stopping)
+        return;
+    g_variant_get(parameters, "(&s)", &engine);
+    g_free(control->current_ibus_source_id);
+    control->current_ibus_source_id = *engine ? g_strdup(engine) : NULL;
+    publish_input_source_changes(control, control->state_revision);
+}
+
+static void ibus_name_owner_changed(GDBusConnection* connection, const char* sender_name,
+                                    const char* object_path, const char* interface_name,
+                                    const char* signal_name, GVariant* parameters,
+                                    gpointer user_data) {
+    GnoblinNativeControl* control = user_data;
+    const char* name = NULL;
+    const char* old_owner = NULL;
+    const char* new_owner = NULL;
+    g_variant_get(parameters, "(&s&s&s)", &name, &old_owner, &new_owner);
+    if (control->stopping || !g_str_equal(name, IBUS_BUS_NAME))
+        return;
+    if (*new_owner)
+        query_ibus_global_engine(control);
+    else {
+        g_clear_pointer(&control->current_ibus_source_id, g_free);
+        publish_input_source_changes(control, control->state_revision);
+    }
+}
+
+static void start_ibus_input_source_tracking(GnoblinNativeControl* control) {
+    if (!control->session_bus)
+        return;
+    control->ibus_signal_subscription_id = g_dbus_connection_signal_subscribe(
+        control->session_bus, IBUS_BUS_NAME, IBUS_INTERFACE, "GlobalEngineChanged",
+        IBUS_OBJECT_PATH, NULL, G_DBUS_SIGNAL_FLAGS_NONE, ibus_global_engine_changed, control,
+        NULL);
+    control->ibus_owner_subscription_id = g_dbus_connection_signal_subscribe(
+        control->session_bus, "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+        "/org/freedesktop/DBus", IBUS_BUS_NAME, G_DBUS_SIGNAL_FLAGS_NONE, ibus_name_owner_changed,
+        control, NULL);
+    g_autoptr(GVariant) owner = g_dbus_connection_call_sync(
+        control->session_bus, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+        "org.freedesktop.DBus", "GetNameOwner", g_variant_new("(s)", IBUS_BUS_NAME),
+        G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 250, NULL, NULL);
+    if (owner)
+        query_ibus_global_engine(control);
 }
 
 static void pending_portal_grant_operation_free(PendingPortalGrantOperation* pending) {
@@ -4191,8 +4392,9 @@ static void pending_portal_grant_operation_free(PendingPortalGrantOperation* pen
 static void native_control_maybe_free_stopped(GnoblinNativeControl* control) {
     /* Runtime abort can precede compositor teardown while async callbacks drain. */
     if (!control || !control->stopping || !control->teardown_complete ||
-        control->pending_input_source_ops != 0 || control->pending_portal_grant_ops != 0 ||
-        control->pending_thumbnail_count != 0 || control->pending_activity_queries != 0)
+        control->pending_input_source_ops != 0 || control->pending_ibus_queries != 0 ||
+        control->pending_portal_grant_ops != 0 || control->pending_thumbnail_count != 0 ||
+        control->pending_activity_queries != 0)
         return;
     release_input_source_state(control);
     g_clear_pointer(&control->session_activity_snapshot, g_variant_unref);
@@ -4942,7 +5144,8 @@ static void input_source_keymap_set_done(GObject* source_object, GAsyncResult* r
         error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_FAILED,
                                     "Mutter did not confirm the requested keymap group");
     publish_input_source_changes(control, control->state_revision);
-    dispatch_input_source_operation(control, pending->request_id, pending->method, confirmed,
+    dispatch_input_source_operation(control, pending->request_id, pending->method,
+                                    pending->selected_type, confirmed,
                                     confirmed ? pending->selected_id : NULL,
                                     confirmed ? NULL : native_operation_error_code(error),
                                     confirmed ? NULL
@@ -5025,6 +5228,7 @@ static gboolean select_xkb_source(GnoblinNativeControl* control, const char* id,
     pending->control = control;
     pending->description = description;
     pending->source_ids = ids;
+    pending->selected_type = g_strdup("xkb");
     pending->selected_id = g_strdup(id);
     pending->request_id = request_id;
     pending->method = g_strdup(method);
@@ -5032,6 +5236,65 @@ static gboolean select_xkb_source(GnoblinNativeControl* control, const char* id,
     control->pending_input_source_ops++;
     meta_backend_set_keymap_async(control->backend, description, pending->group, NULL,
                                   input_source_keymap_set_done, pending);
+    return TRUE;
+}
+
+static void ibus_input_source_set_done(GObject* source_object, GAsyncResult* result,
+                                       gpointer user_data) {
+    PendingInputSource* pending = user_data;
+    GnoblinNativeControl* control = pending->control;
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) reply =
+        g_dbus_connection_call_finish(G_DBUS_CONNECTION(source_object), result, &error);
+    control->pending_input_source_ops--;
+    NativeInputSource* source = ibus_input_source_by_id(control, pending->selected_id);
+    gboolean confirmed = !control->stopping && reply && source;
+    if (confirmed) {
+        g_free(control->current_ibus_source_id);
+        control->current_ibus_source_id = g_strdup(pending->selected_id);
+        publish_input_source_changes(control, control->state_revision);
+    } else if (!control->stopping && reply) {
+        error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                                    "IBus source was removed before selection completed");
+    }
+    if (!control->stopping)
+        dispatch_input_source_operation(control, pending->request_id, pending->method, "ibus",
+                                        confirmed, confirmed ? pending->selected_id : NULL,
+                                        confirmed ? NULL : native_operation_error_code(error),
+                                        confirmed ? NULL
+                                        : error   ? error->message
+                                                  : "IBus selection failed");
+    pending_input_source_free(pending);
+    native_control_maybe_free_stopped(control);
+}
+
+static gboolean select_ibus_source(GnoblinNativeControl* control, const char* id, gint64 request_id,
+                                   const char* method, GError** error) {
+    if (!ibus_input_source_by_id(control, id)) {
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                    "IBus input source is not configured: %s", id);
+        return FALSE;
+    }
+    if (control->pending_input_source_ops > 0) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_BUSY,
+                            "another input source selection is still pending");
+        return FALSE;
+    }
+    if (!control->session_bus) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
+                            "the session bus is unavailable");
+        return FALSE;
+    }
+    PendingInputSource* pending = g_new0(PendingInputSource, 1);
+    pending->control = control;
+    pending->selected_type = g_strdup("ibus");
+    pending->selected_id = g_strdup(id);
+    pending->request_id = request_id;
+    pending->method = g_strdup(method);
+    control->pending_input_source_ops++;
+    g_dbus_connection_call(control->session_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
+                           "SetGlobalEngine", g_variant_new("(s)", id), G_VARIANT_TYPE_UNIT,
+                           G_DBUS_CALL_FLAGS_NONE, 5000, NULL, ibus_input_source_set_done, pending);
     return TRUE;
 }
 
@@ -5055,10 +5318,7 @@ gboolean gnoblin_native_control_select_input_source(MetaDisplay* display, GVaria
         return FALSE;
     }
     if (g_str_equal(type, "ibus")) {
-        g_set_error_literal(
-            error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-            "native input source selection currently supports XKB only; IBus is unavailable");
-        return FALSE;
+        return select_ibus_source(control, source_id, request_id, method, error);
     }
     if (!g_str_equal(type, "xkb")) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -8895,13 +9155,14 @@ static void publish_input_source_changes(GnoblinNativeControl* control, guint64 
     if (sources_changed && control->input_source_state_initialized)
         dispatch_lua_input_sources_changed(control, revision);
     NativeInputSource* current = current_input_source(control);
-    const char* current_id = current ? current->id : NULL;
+    g_autofree char* current_key =
+        current ? g_strdup_printf("%s:%s", current->type, current->id) : NULL;
     if (control->pending_input_source_ops == 0) {
         if (control->input_source_state_initialized &&
-            g_strcmp0(control->last_published_input_source, current_id) != 0)
+            g_strcmp0(control->last_published_input_source, current_key) != 0)
             dispatch_lua_input_source_changed(control, revision, current);
         g_free(control->last_published_input_source);
-        control->last_published_input_source = g_strdup(current_id);
+        control->last_published_input_source = g_steal_pointer(&current_key);
     }
     control->input_source_state_initialized = TRUE;
 }
@@ -13165,6 +13426,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     if (appearance_schema)
         g_settings_schema_unref(appearance_schema);
     refresh_input_sources(control, document);
+    start_ibus_input_source_tracking(control);
     windows = meta_display_list_all_windows(control->display);
     for (GList* item = windows; item; item = item->next)
         track_window(control, item->data);
