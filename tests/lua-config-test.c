@@ -841,6 +841,29 @@ int main(void) {
     g_autoptr(GVariant) privacy_snapshot =
         g_variant_ref_sink(g_variant_builder_end(&privacy_builder));
     gnoblin_config_update_privacy_snapshot(privacy_snapshot, 41);
+
+    GVariantBuilder input_source_builder;
+    g_variant_builder_init(&input_source_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&input_source_builder, "{sv}", "type", g_variant_new_string("xkb"));
+    g_variant_builder_add(&input_source_builder, "{sv}", "id", g_variant_new_string("us"));
+    GVariantBuilder input_sources_builder;
+    g_variant_builder_init(&input_sources_builder, G_VARIANT_TYPE("av"));
+    g_variant_builder_add(&input_sources_builder, "v",
+                          g_variant_builder_end(&input_source_builder));
+    GVariantBuilder input_snapshot_builder;
+    g_variant_builder_init(&input_snapshot_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&input_snapshot_builder, "{sv}", "sources",
+                          g_variant_builder_end(&input_sources_builder));
+    GVariantBuilder current_input_builder;
+    g_variant_builder_init(&current_input_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&current_input_builder, "{sv}", "type", g_variant_new_string("xkb"));
+    g_variant_builder_add(&current_input_builder, "{sv}", "id", g_variant_new_string("us"));
+    g_variant_builder_add(&input_snapshot_builder, "{sv}", "current",
+                          g_variant_builder_end(&current_input_builder));
+    g_autoptr(GVariant) input_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&input_snapshot_builder));
+    gnoblin_config_update_input_source_snapshot(input_snapshot, 7);
+
     const char* privacy_source =
         "local g=require('gnoblin')\n"
         "local state=g.privacy.state()\n"
@@ -865,6 +888,11 @@ int main(void) {
         "  assert(event.window:set_above(true).method=='window.set_above')\n"
         "end)\n"
         "g.on('test.snapshot_methods', function()\n"
+        "  local sources=g.input.sources()\n"
+        "  local legacy_sources=g.input.list()\n"
+        "  assert(sources[1].id=='us' and legacy_sources[1].id=='us')\n"
+        "  assert(sources[1].revision==7 and legacy_sources[1].revision==7)\n"
+        "  assert(g.input.current_source().id=='us' and g.input.current().id=='us')\n"
         "  local window=assert(g.windows.by_id('window-1'))\n"
         "  assert(window:set_above(true).method=='window.set_above')\n"
         "  local workspace=assert(g.workspaces.active())\n"

@@ -4691,6 +4691,9 @@ static void install_api(lua_State* state, LuaConfig* config) {
             continue; /* Lua exposes window operations on Window snapshots. */
         if (g_str_equal(api_methods[i], "input.select"))
             continue; /* Lua exposes source selection as input.select_source(). */
+        if (g_str_equal(api_methods[i], "input.list") ||
+            g_str_equal(api_methods[i], "input.current"))
+            continue; /* These legacy names are snapshot reads, not operations. */
         if (g_str_equal(api_methods[i], "shortcut.capture") ||
             g_str_equal(api_methods[i], "shortcut.bind") ||
             g_str_equal(api_methods[i], "shortcut.unbind"))
@@ -4843,6 +4846,10 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_input_current_source, 1);
     lua_setfield(state, -2, "current_source");
+    lua_getfield(state, -1, "sources");
+    lua_setfield(state, -2, "list");
+    lua_getfield(state, -1, "current_source");
+    lua_setfield(state, -2, "current");
     lua_pop(state, 1);
     lua_newtable(state);
     lua_pushcfunction(state, lua_shortcut_actions);
