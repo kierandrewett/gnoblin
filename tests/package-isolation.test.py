@@ -208,6 +208,7 @@ class IsolationTests(unittest.TestCase):
                 self.assertIn("--libdir=/usr/lib/gnoblin/lib64", expanded)
             elif project == "gnoblin":
                 self.assertIn("-DGNOBLIN_PREFIX=/usr/lib/gnoblin", expanded)
+
                 self.assertIn("-DGNOBLIN_LIBDIR=lib64", expanded)
             if project != "gnoblin":
                 self.assertNotRegex(expanded, r"(?m)^(?:Conflicts|Obsoletes):")
@@ -223,6 +224,13 @@ class IsolationTests(unittest.TestCase):
                 self.assertNotIn("GNOBLIN_INSTALL_GNOME_COMPAT", expanded)
                 self.assertIn("cmake --build build/session --target gnoblin gnoblin-idle gnoblinctl", expanded)
                 self.assertIn("Exec=/usr/lib/gnoblin/bin/gnoblin", expanded)
+
+    def test_portal_rpm_requires_gtk_422_for_build_and_runtime(self):
+        expanded = subprocess.check_output(
+            ["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin-portal.spec")], text=True
+        )
+        self.assertIn("BuildRequires:  pkgconfig(gtk4) >= 4.22.0", expanded)
+        self.assertIn("Requires:       gtk4 >= 4.22.0", expanded)
 
     def test_nix_package_has_no_gnome_shell_runtime_path(self):
         package = (ROOT / "nix/package.nix").read_text()
