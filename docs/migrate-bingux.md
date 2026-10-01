@@ -5,9 +5,9 @@ panels, dock, launcher, notifications, popups, and other visible shell UI.
 Gnoblin owns the compositor and session services. Connect the two through the
 Gnoblin compositor socket, standard Wayland protocols, and desktop portals.
 
-Keep GNOME Shell compatibility separate. A GNOME login can continue to use its
-GJS bridge, but the standalone login does not start GNOME Shell or provide its
-private D-Bus services.
+This guide covers Bingux in a standalone Gnoblin session. Gnoblin does not
+start GNOME Shell or provide GNOME Shell's private D-Bus services. Any
+GNOME-specific integration belongs to Bingux and is separate from this path.
 
 ## What already uses Gnoblin
 
@@ -57,13 +57,11 @@ inside the GNOME compatibility path only. Remove the standalone dependency on
 
 ### Compatibility GJS modules
 
-Keep `shell/gnoblin/bingux-text-input.js` and other GJS adapters available only
-to the GNOME compatibility session. The standalone path uses Gnoblin's native
-text-input API and must not import `Main`, `Meta`, or `global` from GJS.
-
-If Bingux retains GNOME compatibility, select its adapters based on the session
-it is running in. Do not start the adapters just because a Gnoblin process or
-configuration exists; the standalone session has no GNOME Shell runtime.
+Keep any GNOME-specific adapters in Bingux's own GNOME integration. The
+standalone path uses Gnoblin's native text-input API and must not import
+`Main`, `Meta`, or `global` from GJS. Do not start GNOME adapters because a
+Gnoblin process or configuration exists; the standalone session has no GNOME
+Shell runtime.
 
 ## Keep shell UI and app dependencies in Bingux
 
@@ -91,8 +89,7 @@ instructions, not as compositor socket features.
    Keep the GJS OSD adapter out of this startup path.
 4. Replace the calendar helper's private `CalendarServer` client or expose an
    explicit no-provider state.
-5. Keep GNOME-only GJS adapters behind a separate compatibility-session
-   startup path.
+5. Keep GNOME-specific adapters outside the standalone Gnoblin startup path.
 6. Treat desktop applications, PipeWire, WirePlumber, and portal backends as
    optional runtime dependencies. Handle missing services without crashing or
    blocking the shell.
