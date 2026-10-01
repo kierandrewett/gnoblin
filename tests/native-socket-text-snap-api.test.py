@@ -610,6 +610,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_lua_snapshot_collection_reads_require_api_137(self):
         source = CONTROL.read_text()
+        header = HEADER.read_text()
         connected = function_body(
             source,
             "static gboolean client_connected(",
@@ -629,6 +630,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "layers.list",
             "launches.list",
             "launches.snapshot",
+            "shortcuts.list",
         ):
             with self.subTest(method=method):
                 self.assertIn(f'g_str_equal(method, "{method}")', read_methods)
@@ -636,10 +638,12 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"launches.snapshot"', connected)
         self.assertIn("client->api_minor < 37", dispatcher)
         self.assertIn('g_str_equal(method, "launches.snapshot") && client->api_minor < 39', dispatcher)
+        self.assertIn('g_str_equal(method, "shortcuts.list") && client->api_minor < 40', dispatcher)
+        self.assertGreaterEqual(api_minor(header), 40)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', dispatcher)
 
         header = HEADER.read_text()
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 39", header)
+        self.assertGreaterEqual(api_minor(header), 39)
 
     def test_restore_or_minimize_is_native_and_clears_saved_frames(self):
         source = CONTROL.read_text()
