@@ -52,7 +52,7 @@ case "$HOST_WAYLAND" in
     *) HOST_WAYLAND="$HOST_RUNTIME/$HOST_WAYLAND" ;;
 esac
 DISP="gnoblin-devkit-$$"
-DEVKIT_TMP_ROOT="$ROOT/build/tmp"
+DEVKIT_TMP_ROOT="$HOST_RUNTIME"
 mkdir -p "$DEVKIT_TMP_ROOT"
 DK="$(mktemp -d "$DEVKIT_TMP_ROOT/gnoblin-devkit.XXXXXX")"
 mkdir -m 700 "$DK"/{runtime,home,config,data,cache,state}
