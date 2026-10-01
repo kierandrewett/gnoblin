@@ -314,7 +314,6 @@ static guint api_minor_for_method(const char* method) {
         {"session.lock", 21},
         {"runtime.reload_config", 20},
         {"version", 19},
-        {"window.list", 35},
         {"windows.list", 37},
         {"monitors.list", 37},
         {"capabilities.list", 19},
@@ -364,10 +363,10 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "privacy.stop_sharing") ||
         g_str_equal(method_name, "privacy.stop_recording") ||
         g_str_equal(method_name, "launch.status") ||
-        g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "window.list") ||
-        g_str_equal(method_name, "windows.list") || g_str_equal(method_name, "monitors.list") ||
-        g_str_equal(method_name, "focus.history") || g_str_equal(method_name, "focus.policy") ||
-        g_str_equal(method_name, "settings") || g_str_equal(method_name, "runtime.reload_config") ||
+        g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "windows.list") ||
+        g_str_equal(method_name, "monitors.list") || g_str_equal(method_name, "focus.history") ||
+        g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings") ||
+        g_str_equal(method_name, "runtime.reload_config") ||
         g_str_has_prefix(method_name, "animation.")) {
         json_builder_set_member_name(builder, "api_version");
         json_builder_begin_object(builder);
@@ -848,7 +847,7 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
             set_if(arguments, "title", option(cli, "title"));
             if (has(cli, "focused"))
                 set_boolean(arguments, "focused", TRUE);
-            method = "window.list";
+            method = "windows.list";
         } else if (is(action, "match")) {
             if (!require_count(cli, 0, 1, error))
                 goto invalid;
@@ -1215,6 +1214,13 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
     reply = call_compositor(cli, op, method, arguments, error);
     if (!reply)
         return NULL;
+    if (is(command, "window") && is(action, "list") && JSON_NODE_HOLDS_ARRAY(reply)) {
+        JsonObject* result = json_object_new();
+        json_object_set_member(result, "windows", json_node_copy(reply));
+        JsonNode* node = json_node_new(JSON_NODE_OBJECT);
+        json_node_take_object(node, result);
+        return node;
+    }
     if (!JSON_NODE_HOLDS_OBJECT(reply)) {
         if (is(command, "animation") && is(action, "get") && JSON_NODE_HOLDS_NULL(reply))
             return json_node_copy(reply);

@@ -119,7 +119,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(14):
+                    for _ in range(15):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -141,20 +141,6 @@ def main() -> int:
                                 result = {"monitors": [{"id": "HDMI-1", "index": 0, "primary": True}]}
                             elif request["method"] == "monitors.list":
                                 result = [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
-                            elif request["method"] == "window.list":
-                                result = {
-                                    "windows": [
-                                        {
-                                            "id": "42",
-                                            "focused": True,
-                                            "workspace": 1,
-                                            "monitor_index": 0,
-                                            "app_id": "org.example.Editor",
-                                            "title": "Notes",
-                                        }
-                                    ],
-                                    "revision": 5,
-                                }
                             elif request["method"] == "windows.list":
                                 result = [
                                     {
@@ -252,7 +238,12 @@ def main() -> int:
         assert window_list.returncode == 0, window_list.stderr
         assert "APP ID" in window_list.stdout, window_list.stdout
         assert "org.example.Editor" in window_list.stdout
-        assert "revision: 5" in window_list.stdout
+        window_list_json = run(binary, "--socket", socket_path, "--format", "json", "window", "list")
+        assert window_list_json.returncode == 0, window_list_json.stderr
+        listed_windows = json.loads(window_list_json.stdout)
+        assert listed_windows["windows"][0]["id"] == "42"
+        assert listed_windows["windows"][0]["workspace_id"] == "workspace-1"
+        assert listed_windows["windows"][0]["revision"] == 5
         animation_get = run(binary, "--socket", socket_path, "--format", "json", "animation", "get", "missing")
         assert animation_get.returncode == 0, animation_get.stderr
         assert json.loads(animation_get.stdout) is None
@@ -391,8 +382,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 14
-        assert len(subscriptions) == 14
+        assert len(received) == 15
+        assert len(subscriptions) == 15
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -407,14 +398,17 @@ def main() -> int:
         assert monitor_request["method"] == "monitor.list"
         assert monitor_request["arguments"] == {}
         window_request = received[2]
-        assert window_request["method"] == "window.list"
-        assert window_request["api_version"] == {"major": 1, "minor": 35}
+        assert window_request["method"] == "windows.list"
+        assert window_request["api_version"] == {"major": 1, "minor": 37}
         assert window_request["arguments"] == {}
-        get_request = received[3]
+        window_list_json_request = received[3]
+        assert window_list_json_request["method"] == "windows.list"
+        assert window_list_json_request["arguments"] == {}
+        get_request = received[4]
         assert get_request["method"] == "animation.get"
         assert get_request["api_version"] == {"major": 1, "minor": 18}
         assert get_request["arguments"] == {"name": "missing"}
-        preview_request = received[4]
+        preview_request = received[5]
         assert preview_request["method"] == "animation.preview"
         assert preview_request["arguments"] == {
             "name": "gnoblin-layer-open",
@@ -422,39 +416,39 @@ def main() -> int:
             "target": "panel:test",
             "autoplay": False,
         }
-        create_request = received[5]
+        create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
             "id": "codex-probe",
             "name": "Codex Probe",
             "activate": False,
         }
-        list_request = received[6]
+        list_request = received[7]
         assert list_request["method"] == "workspace.list"
         assert list_request["arguments"] == {}
-        match_request = received[7]
+        match_request = received[8]
         assert match_request["method"] == "window.match"
         assert "api_version" not in match_request
         assert match_request["arguments"] == {"window": "42"}
-        thumbnail_request = received[8]
+        thumbnail_request = received[9]
         assert thumbnail_request["method"] == "window.thumbnail"
         assert thumbnail_request["api_version"] == {"major": 1, "minor": 23}
         assert thumbnail_request["arguments"] == {"id": "42", "width": 64, "height": 64}
-        launch_status_request = received[9]
+        launch_status_request = received[10]
         assert launch_status_request["method"] == "launch.status"
         assert launch_status_request["api_version"] == {"major": 1, "minor": 8}
         assert launch_status_request["arguments"] == {}
-        assert received[10]["method"] == "windows.list"
-        assert received[10]["api_version"] == {"major": 1, "minor": 37}
-        assert received[10]["arguments"] == {"focused": True}
-        assert received[11]["method"] == "monitors.list"
+        assert received[11]["method"] == "windows.list"
         assert received[11]["api_version"] == {"major": 1, "minor": 37}
-        assert received[11]["arguments"] == {}
-        assert received[12]["method"] == "window.move_to_monitor"
-        assert received[12]["arguments"] == {"id": "42", "monitor": "HDMI-1"}
-        assert received[13]["method"] == "window.restore_or_minimize"
-        assert received[13]["api_version"] == {"major": 1, "minor": 38}
-        assert received[13]["arguments"] == {"id": "42"}
+        assert received[11]["arguments"] == {"focused": True}
+        assert received[12]["method"] == "monitors.list"
+        assert received[12]["api_version"] == {"major": 1, "minor": 37}
+        assert received[12]["arguments"] == {}
+        assert received[13]["method"] == "window.move_to_monitor"
+        assert received[13]["arguments"] == {"id": "42", "monitor": "HDMI-1"}
+        assert received[14]["method"] == "window.restore_or_minimize"
+        assert received[14]["api_version"] == {"major": 1, "minor": 38}
+        assert received[14]["arguments"] == {"id": "42"}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
