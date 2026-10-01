@@ -62,6 +62,10 @@ Native-control API 1.40 adds `shortcuts.list`, a shared read backed by
 `gnoblin.shortcuts.list()`. It returns the same shortcut records as a JSON
 array and requires the Lua supervisor.
 
+Native-control API 1.41 adds `shortcuts.actions`, a shared read backed by
+`gnoblin.shortcuts.actions(group?)`. It returns built-in action metadata from
+the installed GSettings schemas and requires the Lua supervisor.
+
 Native-control API 1.23 adds `window.thumbnail`. API 1.24 adds
 `session.activity` and its change event. API 1.26 adds pointer-drag lifecycle
 events and capability-bound `window.snap.offer`.
