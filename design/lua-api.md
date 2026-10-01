@@ -1255,11 +1255,11 @@ API 1.54 routes `launch.status` through `gnoblin.launches.snapshot()` while
 preserving launch-change event tracking. Every supported client version now
 uses this Lua-backed snapshot.
 API 1.55 routes the socket-only `shortcut.list` alias through
-`gnoblin.shortcuts.list()` while preserving its bare array result. Earlier
-clients retain the native snapshot route.
+`gnoblin.shortcuts.list()` while preserving its bare array result. Every
+supported client version now uses this Lua-backed read.
 API 1.56 routes the socket-only `shortcut.actions` alias through the shared
-`gnoblin.shortcuts.actions()` read. Earlier clients retain the native snapshot
-route.
+`gnoblin.shortcuts.actions()` read. Every supported client version now uses
+this Lua-backed read.
 API 1.57 routes the legacy `layer.list` socket method through
 `gnoblin.layers.list()`, preserving its `{surfaces = {...}}` response shape.
 Every supported client version now uses this Lua-backed response adapter.
@@ -1328,7 +1328,7 @@ compatibility path for basic actions and do not support legacy resize or move.
 | `session.lock`                                                         | `gnoblin.session.lock()`; a native request to a subscribed shell client. Completion means delivery, not lock confirmation.                                                                               |
 | `runtime.reload_config`                                                | `gnoblin.runtime.reload_config()`                                                                                                                                                                        |
 | `shortcut.list`                                                        | `gnoblin.shortcuts.list()`                                                                                                                                                                               |
-| `shortcut.actions`                                                     | CLI uses the shared Lua-backed `shortcuts.actions` read (API 1.41); socket compatibility route uses it from API 1.56.                                                                                    |
+| `shortcut.actions`                                                     | CLI and every supported socket-client version use the shared Lua-backed `shortcuts.actions` read.                                                                                                        |
 | `shortcut.capture`                                                     | `gnoblin.shortcuts.capture(options)`                                                                                                                                                                     |
 
 ## Event catalog
