@@ -11,15 +11,17 @@ Gnoblin policy and runtime behavior, not for drawing shell surfaces.
 
 Bingux is partially compatible with the standalone compositor socket.
 Workspace navigation, capture window enumeration, and shortcut registration
-now use the versioned API. A live devkit check confirmed that a modal held
-shortcut registers through `ShortcutSession.qml`. Focus, preview, snapping,
-privacy, text insertion, and OSD still need migration before the whole shell
-works in a standalone session.
+now use the versioned API. Window-switcher previews now use the native
+thumbnail API.
+
+A live devkit check confirmed that a modal held shortcut registers through
+`ShortcutSession.qml`. Focus, snapping, privacy, text insertion, and OSD still
+need migration before the whole shell works in a standalone session.
 
 - `shell/bingux/ShortcutSession.qml` uses `shortcut.bind`, `shortcut.unbind`,
   `ping`, and versioned shortcut event subscriptions when connected to
   standalone Gnoblin. It retains the compatibility protocol for GNOME sessions.
-  Its window activation, preview, drag, privacy, text input, and private
+  Its window activation, drag, privacy, text input, and private
   `bingux.*` operations still need standalone API replacements.
 - `shell/bingux/WorkspaceState.qml` now uses the versioned `workspace.list` and
   `workspace.switch` API methods. It subscribes to workspace lifecycle events
@@ -61,6 +63,9 @@ Replace these compatibility-bridge calls:
   `gnoblin.shortcut.activated`. The token belongs to its receiving connection
   and authorizes only one request.
 - **Previews:** Replace `preview` with the asynchronous `window.thumbnail` API.
+  `ShortcutSession.qml` now requests thumbnails and routes the completion event
+  back to the switcher. Requests fail while the session is locked, and a closed
+  or non-drawable window can return an error.
 - **Privacy:** Replace `privacy` with the `privacy.state` read and the
   `gnoblin.privacy.changed` event.
 - **Snapping:** Replace `window-drag` and snap events with pointer-drag event
