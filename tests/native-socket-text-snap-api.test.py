@@ -831,20 +831,45 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             'if (g_str_equal(method, "window.match")) {',
         )
 
-        self.assertEqual(api_minor(header), 61)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=61", cmake)
+        self.assertGreaterEqual(api_minor(header), 61)
+        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
         self.assertIn('gboolean resize_action = g_str_equal(action, "resize")', handler)
         self.assertIn("client->api_minor >= 61", handler)
         self.assertIn('lua_method = "window.resize"', handler)
         self.assertIn("g_variant_new_int64(json_node_get_int(width_node))", handler)
         self.assertIn("g_variant_new_int64(json_node_get_int(height_node))", handler)
         self.assertIn('"window.action resize requires integer width and height"', handler)
-        self.assertIn('"window.action resize requires integer width and height and accepts "', handler)
+        self.assertIn("window.action resize requires integer width and height", handler)
         self.assertIn('"call", action, target)', handler)
         self.assertIn(
             "meta_window_move_resize_frame (window, TRUE, frame.x, frame.y,",
             resize_patch,
         )
+
+    def test_legacy_window_move_uses_typed_lua_operation_for_api_162(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        move_patch = (
+            ROOT / "patches/mutter/99-typed-window-api/0066-native-window-move-user-operation.patch"
+        ).read_text()
+        handler = function_body(
+            source,
+            'if (g_str_equal(method, "window.action")) {',
+            'if (g_str_equal(method, "window.match")) {',
+        )
+
+        self.assertEqual(api_minor(header), 62)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=62", cmake)
+        self.assertIn('gboolean move_action = g_str_equal(action, "move")', handler)
+        self.assertIn("client->api_minor >= 62", handler)
+        self.assertIn('lua_method = "window.move"', handler)
+        self.assertIn("g_variant_new_int64(json_node_get_int(x_node))", handler)
+        self.assertIn("g_variant_new_int64(json_node_get_int(y_node))", handler)
+        self.assertIn('"window.action move requires integer x and y"', handler)
+        self.assertIn("meta_window_is_fullscreen (window)", move_patch)
+        self.assertIn("meta_window_get_maximize_flags (window) != META_MAXIMIZE_NONE", move_patch)
+        self.assertIn("meta_window_move_frame (window, TRUE, (int) x, (int) y)", move_patch)
 
     def test_portal_grants_uses_lua_at_api_145_and_keeps_native_route(self):
         source = CONTROL.read_text()
