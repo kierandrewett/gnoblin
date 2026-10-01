@@ -4292,6 +4292,17 @@ static char* ibus_engine_name_from_value(GVariant* value) {
             return g_strdup(name);
         return NULL;
     }
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_TUPLE) && g_variant_n_children(value) >= 3) {
+        g_autoptr(GVariant) type_value = g_variant_get_child_value(value, 0);
+        if (g_variant_is_of_type(type_value, G_VARIANT_TYPE_STRING) &&
+            g_str_equal(g_variant_get_string(type_value, NULL), "IBusEngineDesc")) {
+            g_autoptr(GVariant) name_value = g_variant_get_child_value(value, 2);
+            if (g_variant_is_of_type(name_value, G_VARIANT_TYPE_STRING)) {
+                const char* name = g_variant_get_string(name_value, NULL);
+                return *name ? g_strdup(name) : NULL;
+            }
+        }
+    }
     if (g_variant_is_container(value)) {
         for (gsize i = 0; i < g_variant_n_children(value); i++) {
             g_autoptr(GVariant) child = g_variant_get_child_value(value, i);
