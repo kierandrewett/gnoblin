@@ -306,6 +306,8 @@ an API version:
 
 The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 
+### API additions through 1.36
+
 | Minimum version | Added methods or events                                                                               |
 | --------------- | ----------------------------------------------------------------------------------------------------- |
 | 1.2             | `layer.list`                                                                                          |
@@ -341,29 +343,36 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.34            | `gnoblin.appearance.color-scheme-changed`                                                             |
 | 1.35            | Snake_case aliases for window snapshot fields                                                         |
 | 1.36            | `gnoblin.shortcut.binding-deactivated` for press-triggered shortcuts                                  |
-| 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches                            |
-| 1.38            | Compatibility route for `window.restore_or_minimize`                                                  |
-| 1.39            | `launches.snapshot` with collection revision                                                          |
-| 1.40            | Shared `shortcuts.list` snapshot read                                                                 |
-| 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime                                   |
-| 1.42            | Shared `permissions.list` read backed by the installed Lua runtime                                    |
-| 1.43            | Shared `permissions.check` read backed by the installed Lua runtime                                   |
-| 1.44            | Shared `permissions.policy` read backed by the installed Lua runtime                                  |
-| 1.45            | Shared `portals.grants` read backed by the installed Lua runtime                                      |
-| 1.46            | Shared input device and source reads backed by the installed Lua runtime                              |
-| 1.47            | Shared `privacy.state` read backed by the installed Lua runtime                                       |
-| 1.48            | Lua runtime operation for `window.restore_or_minimize`                                                |
-| 1.49            | Lua runtime operation for `session.lock`                                                              |
-| 1.50            | Lua operations for `launch.begin` and `launch.end`                                                    |
-| 1.51            | Lua runtime read for `session.status`                                                                 |
-| 1.52            | Lua-backed compatibility read for `workspace.list`                                                    |
-| 1.53            | Lua-backed compatibility read for `window.list`                                                       |
-| 1.54            | Lua-backed compatibility read for `launch.status`                                                     |
-| 1.55            | Lua-backed compatibility read for `shortcut.list`                                                     |
-| 1.56            | Lua-backed `shortcut.actions`; older clients use the native snapshot                                  |
-| 1.57            | Lua-backed compatibility read for `layer.list`                                                        |
-| 1.60            | Basic legacy `window.action` requests route through typed Lua window operations                       |
-| 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`                           |
+
+### API additions from 1.37
+
+| Minimum version | Added methods or events                                                         |
+| --------------- | ------------------------------------------------------------------------------- |
+| 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches      |
+| 1.38            | Compatibility route for `window.restore_or_minimize`                            |
+| 1.39            | `launches.snapshot` with collection revision                                    |
+| 1.40            | Shared `shortcuts.list` snapshot read                                           |
+| 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime             |
+| 1.42            | Shared `permissions.list` read backed by the installed Lua runtime              |
+| 1.43            | Shared `permissions.check` read backed by the installed Lua runtime             |
+| 1.44            | Shared `permissions.policy` read backed by the installed Lua runtime            |
+| 1.45            | Shared `portals.grants` read backed by the installed Lua runtime                |
+| 1.46            | Shared input device and source reads backed by the installed Lua runtime        |
+| 1.47            | Shared `privacy.state` read backed by the installed Lua runtime                 |
+| 1.48            | Lua runtime operation for `window.restore_or_minimize`                          |
+| 1.49            | Lua runtime operation for `session.lock`                                        |
+| 1.50            | Lua operations for `launch.begin` and `launch.end`                              |
+| 1.51            | Lua runtime read for `session.status`                                           |
+| 1.52            | Lua-backed compatibility read for `workspace.list`                              |
+| 1.53            | Lua-backed compatibility read for `window.list`                                 |
+| 1.54            | Lua-backed compatibility read for `launch.status`                               |
+| 1.55            | Lua-backed compatibility read for `shortcut.list`                               |
+| 1.56            | Lua-backed `shortcut.actions`; older clients use the native snapshot            |
+| 1.57            | Lua-backed compatibility read for `layer.list`                                  |
+| 1.58            | Lua-backed compatibility read for `monitor.list`                                |
+| 1.59            | Lua-backed compatibility read for `window.match`                                |
+| 1.60            | Basic legacy `window.action` requests route through typed Lua window operations |
+| 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`     |
 
 ### API 1.27: shell presentation requests
 
