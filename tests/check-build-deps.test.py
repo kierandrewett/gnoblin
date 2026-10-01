@@ -19,6 +19,8 @@ class BuildRequirements(unittest.TestCase):
         source = """
 wayland_server_req = '>= 1.26'
 wayland_server_dep = dependency('wayland-server', version: wayland_server_req)
+libinput_req = '>= 1.31.0'
+libinput_dep = dependency('libinput', version: libinput_req)
 libpipewire_req = '>= 1.6.0'
 libpipewire_dep = dependency('libpipewire-0.3', version: libpipewire_req)
 """
@@ -27,7 +29,11 @@ libpipewire_dep = dependency('libpipewire-0.3', version: libpipewire_req)
 
         self.assertEqual(
             list(checker.requirements(patched)),
-            [("wayland-server", ">= 1.25"), ("libpipewire-0.3", ">= 1.4.11")],
+            [
+                ("wayland-server", ">= 1.25"),
+                ("libinput", ">= 1.30.0"),
+                ("libpipewire-0.3", ">= 1.4.11"),
+            ],
         )
 
     def test_requirement_extraction_includes_required_unversioned_dependencies(self):
