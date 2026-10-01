@@ -90,8 +90,9 @@ The `match` object contains `type`, `app_id`, `title`, and `focused`. Use its
 raw `app_id` and `title` values in a rule. The `APP ID` column in `window list`
 shows a desktop-entry ID, which can differ.
 
-`restore` removes minimisation and maximization. `restore-or-minimize` restores
-a minimized, maximized, or snapped window; otherwise it minimizes the window.
+`restore` removes minimisation and maximization. `restore-or-minimize`
+unmaximizes a maximized window, restores its saved pre-snap frame, or minimizes
+it when neither state applies.
 
 `toggle-minimize` restores a minimized window or minimizes any other window.
 Use `unmaximize` and `unfullscreen` to clear those states directly. `close`
@@ -295,21 +296,21 @@ Most actions without extra arguments accept an optional window ID; they use
 operation. `toggle-minimize` and geometry actions require the ID and numbers
 shown.
 
-| Action                                   | Arguments after action                           | Effect                                                  |
-| ---------------------------------------- | ------------------------------------------------ | ------------------------------------------------------- |
-| `interactive-move`, `interactive-resize` | `[ID]`                                           | Begin pointer-driven move or resize                     |
-| `above`, `unabove`                       | `[ID]`                                           | Set or clear always-on-top                              |
-| `stick`, `unstick`                       | `[ID]`                                           | Show on all workspaces or only its own                  |
-| `focus`                                  | `[ID]`                                           | Rejected; focusing requires a one-use trusted context   |
-| `close`, `minimize`                      | `[ID]`                                           | Request close or minimize                               |
-| `restore-or-minimize`                    | `[ID]`                                           | Restore minimized/maximized/snapped; otherwise minimize |
-| `toggle-minimize`                        | `ID`                                             | Restore if minimized; otherwise minimize                |
-| `restore`, `maximize`, `unmaximize`      | `[ID]`                                           | Change minimization or maximization                     |
-| `fullscreen`, `unfullscreen`             | `[ID]`                                           | Enter or leave fullscreen                               |
-| `move`                                   | `ID X Y`                                         | Set frame position; each coordinate: −100000–100000     |
-| `resize`                                 | `ID WIDTH HEIGHT`                                | Set frame size; each dimension: 1–32768                 |
-| `workspace`                              | `ID [WORKSPACE]`, `--number NUMBER` or `--id ID` | Move to an existing workspace                           |
-| `monitor`                                | `WINDOW MONITOR`                                 | Connector ID for a window ID; index for `active`        |
+| Action                                   | Arguments after action                           | Effect                                                |
+| ---------------------------------------- | ------------------------------------------------ | ----------------------------------------------------- |
+| `interactive-move`, `interactive-resize` | `[ID]`                                           | Begin pointer-driven move or resize                   |
+| `above`, `unabove`                       | `[ID]`                                           | Set or clear always-on-top                            |
+| `stick`, `unstick`                       | `[ID]`                                           | Show on all workspaces or only its own                |
+| `focus`                                  | `[ID]`                                           | Rejected; focusing requires a one-use trusted context |
+| `close`, `minimize`                      | `[ID]`                                           | Request close or minimize                             |
+| `restore-or-minimize`                    | `[ID]`                                           | Unmaximize, restore a saved snap frame, or minimize   |
+| `toggle-minimize`                        | `ID`                                             | Restore if minimized; otherwise minimize              |
+| `restore`, `maximize`, `unmaximize`      | `[ID]`                                           | Change minimization or maximization                   |
+| `fullscreen`, `unfullscreen`             | `[ID]`                                           | Enter or leave fullscreen                             |
+| `move`                                   | `ID X Y`                                         | Set frame position; each coordinate: −100000–100000   |
+| `resize`                                 | `ID WIDTH HEIGHT`                                | Set frame size; each dimension: 1–32768               |
+| `workspace`                              | `ID [WORKSPACE]`, `--number NUMBER` or `--id ID` | Move to an existing workspace                         |
+| `monitor`                                | `WINDOW MONITOR`                                 | Connector ID for a window ID; index for `active`      |
 
 The CLI uses typed native methods for actions with a typed equivalent, including
 when `active` is resolved to a stable ID. Menu and interactive actions remain

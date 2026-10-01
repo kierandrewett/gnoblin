@@ -301,6 +301,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.35            | Snake_case aliases for window snapshot fields                                                         |
 | 1.36            | `gnoblin.shortcut.binding-deactivated` for press-triggered shortcuts                                  |
 | 1.37            | Lua snapshot reads for workspaces, monitors, layers, and launches                                     |
+| 1.38            | Native `window.restore_or_minimize` and saved pre-snap frame restoration                              |
 
 ### API 1.27: shell presentation requests
 
@@ -418,6 +419,25 @@ with a frame inside the selected monitor's work area:
 
 `window.snap` checks the monitor and work-area bounds before moving the window.
 Success returns `committed: true`, `window_id`, and `monitor_id`.
+
+### API 1.38: restore a snapped window
+
+Call `window.restore_or_minimize` with a stable window ID:
+
+```json
+{
+    "op": "api",
+    "api_version": { "major": 1, "minor": 38 },
+    "id": "restore-window-1",
+    "method": "window.restore_or_minimize",
+    "arguments": { "id": "42" }
+}
+```
+
+Mutter unmaximizes a maximized window, restores its saved pre-snap frame when
+available, or minimizes it. The response includes `id` and `action`, whose
+value is `unmaximize`, `restore`, or `minimize`. The operation fails while the
+session is locked or if the target window is no longer available.
 
 Targets and contexts belong to the connection that created them:
 
