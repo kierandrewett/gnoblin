@@ -8,6 +8,14 @@ mkdir -p "$fixture_root/gnoblin"
 trap 'rm -rf -- "$fixture_root"' EXIT
 cat >"$fixture_root/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {window_management = {focus_mode = "click"}}
+gnoblin.events.once("gnoblin.config.reloaded", function()
+    assert(type(gnoblin.settings) == "table")
+    assert(type(gnoblin.windows.list()) == "table")
+    assert(type(gnoblin.workspaces.list()) == "table")
+    assert(type(gnoblin.monitors.list()) == "table")
+    assert(type(gnoblin.focus.history()) == "table")
+    print("LUA_API:snapshots")
+end)
 LUA
 
 devkit_exec=$(
@@ -32,6 +40,7 @@ def contains_click(value):
 assert contains_click(config), config
 print("CONFIG:click")
 PY
+gnoblinctl config reload > "$XDG_RUNTIME_DIR/config-reload.txt"
 gnoblinctl --json window list > "$XDG_RUNTIME_DIR/windows.json"
 python3 - "$XDG_RUNTIME_DIR/windows.json" <<'PY'
 import json
@@ -53,7 +62,7 @@ PY
 SCRIPT
 )
 
-output="$(GNOBLIN_STATE_DIR="$ROOT/build/logs/devkit-state" \
+output="$(GNOBLIN_STATE_DIR="$fixture_root/state" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$fixture_root" \
     GNOBLIN_DEVKIT_EXEC="$devkit_exec" \
     timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1)" || {
@@ -65,4 +74,8 @@ grep -q 'PING:pong' <<<"$output"
 grep -q 'CONFIG:click' <<<"$output"
 grep -q 'WINDOWS:json' <<<"$output"
 grep -q 'WORKSPACE:next' <<<"$output"
+if ! grep -q 'LUA_API:snapshots' "$fixture_root/state/devkit-last.log"; then
+    tail -n 60 "$fixture_root/state/devkit-last.log" >&2
+    exit 1
+fi
 printf '%s\n' 'PASS: Lua config and native control API work in the supervised nested runtime'
