@@ -2,6 +2,7 @@
 """Guard connection ownership for native text and keyboard-snap methods."""
 
 from pathlib import Path
+import re
 import unittest
 
 
@@ -14,6 +15,13 @@ def function_body(source: str, signature: str, end_marker: str) -> str:
     start = source.index(signature)
     end = source.index(end_marker, start)
     return source[start:end]
+
+
+def api_minor(header: str) -> int:
+    match = re.search(r"GNOBLIN_NATIVE_CONTROL_API_MINOR (\d+)", header)
+    if not match:
+        raise AssertionError("native-control API minor is missing")
+    return int(match.group(1))
 
 
 class NativeSocketTextSnapTests(unittest.TestCase):
@@ -105,8 +113,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static const char native_policy_introspection[]",
         )
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=38", cmake)
+        self.assertGreaterEqual(api_minor(header), 38)
+        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
         self.assertIn('"gnoblin.appearance.color-scheme-changed"', events)
         self.assertIn("client->api_minor < 34", subscription)
         self.assertIn('"org.gnome.desktop.interface"', startup)
@@ -142,7 +150,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             'if (g_str_equal(op, "windows"))',
         )
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
+        self.assertGreaterEqual(api_minor(header), 38)
         self.assertIn('"gnoblin.capability.changed"', source)
         self.assertIn("client->api_minor < 33", subscription)
         self.assertIn('g_str_equal(native_capability->id, "microphone-monitor")', capability)
@@ -235,7 +243,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         direct = dispatcher.split('if (g_str_equal(method, "input.text_target") ||', 1)[1]
         direct = direct.split('if (g_str_equal(method, "window.snap.offer"))', 1)[0]
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
+        self.assertGreaterEqual(api_minor(header), 38)
         for method in (
             "input.text_target",
             "input.insert_text",
@@ -277,8 +285,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "void gnoblin_native_control_revoke_focus_contexts(",
         )
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=38", cmake)
+        self.assertGreaterEqual(api_minor(header), 38)
+        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
         self.assertIn("menu == META_WINDOW_MENU_WM", menu_emit)
         self.assertIn("client->event_api_minor >= 30", socket_issue)
         self.assertNotIn("client->api_minor >= 30", socket_issue)
@@ -314,7 +322,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         patch = (ROOT / "patches/mutter/99-typed-window-api/0050-focus-with-xdg-activation-token.patch").read_text()
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
+        self.assertGreaterEqual(api_minor(header), 38)
         self.assertIn('g_str_equal(method, "window.focus") && client->api_minor < 10', dispatcher)
         self.assertIn("XDG Activation window focus requires API version 1.32", focus)
         self.assertIn("client->peer_pid <= 0", focus)
@@ -615,12 +623,17 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "monitors.list",
             "layers.list",
             "launches.list",
+            "launches.snapshot",
         ):
             with self.subTest(method=method):
                 self.assertIn(f'g_str_equal(method, "{method}")', read_methods)
                 self.assertIn(f'g_str_equal(method, "{method}")', dispatcher)
         self.assertIn("client->api_minor < 37", dispatcher)
+        self.assertIn('g_str_equal(method, "launches.snapshot") && client->api_minor < 39', dispatcher)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', dispatcher)
+
+        header = HEADER.read_text()
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 39", header)
 
     def test_restore_or_minimize_is_native_and_clears_saved_frames(self):
         source = CONTROL.read_text()
@@ -656,7 +669,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "GVariant* gnoblin_native_control_focus_window(",
         )
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
+        self.assertGreaterEqual(api_minor(header), 38)
         self.assertIn("window.restore_or_minimize", source)
         self.assertIn("client->api_minor < 38", dispatcher)
         self.assertIn("gnoblin_native_control_restore_or_minimize_window", dispatcher)
