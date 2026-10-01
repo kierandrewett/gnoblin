@@ -26,7 +26,7 @@ Requires:       gsettings-desktop-schemas >= 51.0
 Requires:       json-glib
 Requires:       libinput >= 1.30.0
 Requires:       lua-libs >= 5.4
-Requires:       pipewire >= 1.4.11
+Requires:       pipewire >= 1.6.0
 Requires:       systemd
 Requires:       libwayland-client >= 1.25
 Requires:       wireplumber
