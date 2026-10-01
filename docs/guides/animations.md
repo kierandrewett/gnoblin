@@ -1,7 +1,8 @@
 # Animation guide
 
 Register a named animation once. The first registration for an event becomes
-its default. Shell settings and window rules can select a different name.
+its default. A window rule can select a different registered animation for
+matching windows or layer surfaces.
 
 The shared registry drives compositor-owned motion for windows, layer-shell
 surfaces, shadows, resizing and workspaces. Window and layer-shell surfaces use
@@ -13,7 +14,8 @@ Put declarations in `~/.config/gnoblin/init.lua` or in a file loaded with
 `gnoblin.load`.
 
 Each `gnoblin.animation { ... }` call registers one event under a reusable
-name. Select that name in a shell setting or window rule to use it.
+name. The first declaration for that event supplies its default; use a window
+rule to select another registration for matching windows or surfaces.
 
 ```lua
 gnoblin.animation {
@@ -167,7 +169,7 @@ gnoblin.animation {
 }
 
 gnoblin.window_rule {
-    match = {type = "window", app_id = "^org.example.Editor$"},
+    match = {type = "window", app_id = "^org%.example%.Editor$"},
     animation = {open = "my-open", close = "my-close"},
 }
 ```
@@ -220,39 +222,27 @@ completes immediately. `fade` changes opacity only. `zoom` minimizes toward the
 dock target. `slide` uses the layer's anchor-derived offset; it is the default
 policy for layer surfaces.
 
-Implementation references:
-
-- Gnoblin's animation definitions are in
-  [`gnoblinAnimation.js`](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-shell-overlay/js/ui/components/gnoblinAnimation.js).
-- Configuration validation and animation selection are in
-  [`gnoblinConfig.js`](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js).
-- GNOME Shell's window and workspace transitions are in
-  [`windowManager.js`](https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/cbc0ba9afaf26c0f579da87aca3de6be7ba5d914/js/ui/windowManager.js)
-  and [`workspacesView.js`](https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/cbc0ba9afaf26c0f579da87aca3de6be7ba5d914/js/ui/workspacesView.js).
-
 ## Select animations
 
 ```lua
-gnoblin.configure {
-    shell = {
-        minimize_animation = {minimize = "gnome-minimize", restore = "gnome-restore"},
-        layer_animation = {["layer-open"] = "gnoblin-layer-open", ["layer-close"] = "gnoblin-layer-close"},
-    },
+gnoblin.animation {
+    name = "soft-minimize",
+    event = "minimize",
+    duration = 250,
+    ease = "ease-out-cubic",
+    from = {scale = 1, opacity = 1},
+    to = {scale = 0.85, opacity = 0},
 }
 
 gnoblin.window_rule {
     match = {type = "window", app_id = "^org.example.Editor$"},
-    animation = {open = "gnome-open"},
+    animation = {minimize = "soft-minimize"},
 }
 ```
 
-`minimize_animation` selects minimize and restore transitions.
-`layer_animation` selects layer-shell entry and exit. Each accepts one built-in
-name or an event map when the two phases need different names.
-
-Window rules select registered animations by event. For a layer rule, match
-the animation events to the layer's entry and exit. Set a rule to `"none"` when
-the shell already animates that surface.
+The first registered animation for an event is its default. A window rule
+overrides that choice for matching windows or layer surfaces. Set a rule to
+`"none"` when the client already animates its own contents.
 
 For shadow transitions, select a `shadow-change` animation in the corner
 configuration:
