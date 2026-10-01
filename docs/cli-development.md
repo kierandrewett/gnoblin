@@ -122,9 +122,11 @@ and `height`.
 Workspace moves take a `workspace` selector with either an `id` or `number`.
 Typed monitor moves take the connector ID from `monitor.list()`.
 
-For `active`, the CLI accepts the numeric monitor index and maps it to the
-connector ID before sending the typed request. Raw socket clients can continue
-using the numeric index with `window.action`.
+For `active`, the CLI reads `windows.list` from the shared Lua runtime and
+resolves the focused window's stable ID before sending the typed request. This
+read requires compositor API 1.37. For monitor moves, the CLI accepts the
+numeric monitor index and maps it to the connector ID. Raw socket clients can
+continue using the numeric index with `window.action`.
 
 `window.action` remains the compatibility route for focus, menu, and interactive
 move or resize. Typed methods require an ID and do not provide the verified
