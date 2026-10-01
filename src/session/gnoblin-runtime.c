@@ -27,6 +27,9 @@ extern char** environ;
 #define WORKER_MAX_RESTARTS 5
 #define WORKER_STABLE_RESET_MS 60000
 #define EXIT_RESUME_REJECTED 75
+#define SESSION_SUPERVISOR_BUS_NAME "org.gnoblin.SessionSupervisor"
+#define PORTAL_BACKEND_BUS_NAME "org.freedesktop.impl.portal.desktop.gnoblin"
+#define PORTAL_LIFECYCLE_INTERFACE "org.gnoblin.Portal.InhibitLifecycle"
 #ifndef GNOBLIN_DEFAULT_COMPOSITOR
 #define GNOBLIN_DEFAULT_COMPOSITOR "/usr/libexec/gnoblin-mutter"
 #endif
@@ -88,6 +91,46 @@ typedef struct {
 static char* session_prefix;
 
 static gboolean send_initial_autostart(int fd, GVariant* document, GVariant* hello, GError** error);
+
+static GDBusConnection* claim_session_lifecycle_bus(void) {
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GDBusConnection) connection = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+    if (!connection) {
+        g_debug("gnoblin: portal end-session notifications unavailable: %s", error->message);
+        return NULL;
+    }
+
+    g_autoptr(GVariant) reply = g_dbus_connection_call_sync(
+        connection, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+        "RequestName", g_variant_new("(su)", SESSION_SUPERVISOR_BUS_NAME, 4u),
+        G_VARIANT_TYPE("(u)"), G_DBUS_CALL_FLAGS_NONE, 2000, NULL, &error);
+    if (!reply) {
+        g_debug("gnoblin: portal end-session notifications unavailable: %s", error->message);
+        return NULL;
+    }
+
+    guint32 result = 0;
+    g_variant_get(reply, "(u)", &result);
+    if (result != 1) {
+        g_debug("gnoblin: another session owns %s", SESSION_SUPERVISOR_BUS_NAME);
+        return NULL;
+    }
+
+    return g_steal_pointer(&connection);
+}
+
+static void notify_portal_session_ending(GDBusConnection* connection) {
+    if (!connection)
+        return;
+
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) reply = g_dbus_connection_call_sync(
+        connection, PORTAL_BACKEND_BUS_NAME, "/org/freedesktop/portal/desktop",
+        PORTAL_LIFECYCLE_INTERFACE, "PrepareForEnd", NULL, G_VARIANT_TYPE("()"),
+        G_DBUS_CALL_FLAGS_NONE, 2000, NULL, &error);
+    if (!reply)
+        g_debug("gnoblin: portal end-session notification was not completed: %s", error->message);
+}
 
 static gboolean run_command(const char* const argv[], gboolean required) {
     g_autoptr(GError) error = NULL;
@@ -2063,6 +2106,11 @@ static int session_host_main(int argc, char** argv) {
     if (!devkit && !activate_session())
         return EXIT_FAILURE;
 
+    /* Hold this name for the session lifetime. The portal backend accepts
+     * end-session requests only from its current owner, so ordinary session
+     * clients cannot make monitored applications believe logout is underway. */
+    g_autoptr(GDBusConnection) lifecycle_bus = claim_session_lifecycle_bus();
+
     struct sigaction action = {.sa_handler = host_signal_handler};
     sigemptyset(&action.sa_mask);
     sigaction(SIGTERM, &action, NULL);
@@ -2289,6 +2337,8 @@ static int session_host_main(int argc, char** argv) {
         host.exit_status = 128 + host_signal_number;
         stop_session = TRUE;
     }
+    if (stop_session && worker_ready)
+        notify_portal_session_ending(lifecycle_bus);
     if (worker_pid) {
         kill(worker_pid, SIGTERM);
         while (waitpid(worker_pid, NULL, 0) < 0 && errno == EINTR) {

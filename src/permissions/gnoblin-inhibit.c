@@ -15,6 +15,12 @@
 #define INHIBIT_SUSPEND (1u << 2)
 #define INHIBIT_IDLE (1u << 3)
 #define INHIBIT_ALL ((1u << 4) - 1)
+#define SESSION_SUPERVISOR_BUS_NAME "org.gnoblin.SessionSupervisor"
+#define SESSION_STATE_RUNNING 1u
+#define SESSION_STATE_QUERY_END 2u
+#define SESSION_STATE_ENDING 3u
+#define QUERY_END_TIMEOUT_MS 1000
+#define LIFECYCLE_INTERFACE "org.gnoblin.Portal.InhibitLifecycle"
 
 typedef struct {
     GDBusConnection* session_bus;
@@ -29,6 +35,48 @@ static GDBusInterfaceSkeleton* inhibit;
 static GDBusConnection* portal_bus;
 static GList* monitors;
 static gboolean screensaver_active;
+static guint32 session_state = SESSION_STATE_RUNNING;
+static GHashTable* awaiting_end_responses;
+static GDBusMethodInvocation* end_invocation;
+static guint end_timeout_id;
+static guint lifecycle_registration_id;
+
+static const char lifecycle_introspection_xml[] = "<node>"
+                                                  "<interface name='" LIFECYCLE_INTERFACE "'>"
+                                                  "<method name='PrepareForEnd'/>"
+                                                  "</interface>"
+                                                  "</node>";
+
+static const GDBusInterfaceVTable lifecycle_vtable;
+static void emit_monitor_state(Session* session);
+
+static void finish_end_query(void) {
+    if (session_state != SESSION_STATE_QUERY_END ||
+        (awaiting_end_responses && g_hash_table_size(awaiting_end_responses) > 0))
+        return;
+
+    if (end_timeout_id) {
+        g_source_remove(end_timeout_id);
+        end_timeout_id = 0;
+    }
+
+    session_state = SESSION_STATE_ENDING;
+    for (GList* item = monitors; item; item = item->next)
+        emit_monitor_state(item->data);
+
+    if (end_invocation) {
+        g_autoptr(GDBusMethodInvocation) invocation = g_steal_pointer(&end_invocation);
+        g_dbus_method_invocation_return_value(invocation, g_variant_new("()"));
+    }
+}
+
+static gboolean end_query_timed_out(gpointer data) {
+    end_timeout_id = 0;
+    if (awaiting_end_responses)
+        g_hash_table_remove_all(awaiting_end_responses);
+    finish_end_query();
+    return G_SOURCE_REMOVE;
+}
 
 typedef struct {
     Session parent;
@@ -42,6 +90,9 @@ G_DEFINE_TYPE(InhibitMonitor, inhibit_monitor, session_get_type())
 
 static void inhibit_monitor_close(Session* session) {
     monitors = g_list_remove(monitors, session);
+    if (awaiting_end_responses)
+        g_hash_table_remove(awaiting_end_responses, session->id);
+    finish_end_query();
 }
 
 static void inhibit_monitor_class_init(InhibitMonitorClass* klass) {
@@ -56,7 +107,7 @@ static void emit_monitor_state(Session* session) {
     g_variant_builder_init(&state, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&state, "{sv}", "screensaver-active",
                           g_variant_new_boolean(screensaver_active));
-    g_variant_builder_add(&state, "{sv}", "session-state", g_variant_new_uint32(1));
+    g_variant_builder_add(&state, "{sv}", "session-state", g_variant_new_uint32(session_state));
     xdp_impl_inhibit_emit_state_changed(XDP_IMPL_INHIBIT(inhibit), session->id,
                                         g_variant_builder_end(&state));
 }
@@ -83,6 +134,56 @@ static void on_screensaver_signal(GDBusConnection* connection, const char* sende
     for (item = monitors; item; item = item->next)
         emit_monitor_state(item->data);
 }
+
+static gboolean is_session_supervisor(const char* sender) {
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) reply = g_dbus_connection_call_sync(
+        portal_bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+        "GetNameOwner", g_variant_new("(s)", SESSION_SUPERVISOR_BUS_NAME), G_VARIANT_TYPE("(s)"),
+        G_DBUS_CALL_FLAGS_NONE, 1000, NULL, &error);
+    if (!reply)
+        return FALSE;
+
+    const char* owner = NULL;
+    g_variant_get(reply, "(&s)", &owner);
+    return g_strcmp0(sender, owner) == 0;
+}
+
+static void handle_prepare_for_end(GDBusConnection* connection, const char* sender,
+                                   const char* object_path, const char* interface_name,
+                                   const char* method_name, GVariant* parameters,
+                                   GDBusMethodInvocation* invocation, gpointer user_data) {
+    if (!is_session_supervisor(sender)) {
+        g_dbus_method_invocation_return_error_literal(
+            invocation, G_DBUS_ERROR, G_DBUS_ERROR_ACCESS_DENIED,
+            "Only the Gnoblin session supervisor may end the session");
+        return;
+    }
+
+    if (session_state != SESSION_STATE_RUNNING || end_invocation) {
+        g_dbus_method_invocation_return_error_literal(invocation, G_IO_ERROR, G_IO_ERROR_PENDING,
+                                                      "The session is already ending");
+        return;
+    }
+
+    session_state = SESSION_STATE_QUERY_END;
+    g_clear_pointer(&awaiting_end_responses, g_hash_table_unref);
+    awaiting_end_responses = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    for (GList* item = monitors; item; item = item->next) {
+        Session* session = item->data;
+        g_hash_table_add(awaiting_end_responses, g_strdup(session->id));
+        emit_monitor_state(session);
+    }
+
+    end_invocation = g_object_ref(invocation);
+    if (g_hash_table_size(awaiting_end_responses) > 0)
+        end_timeout_id = g_timeout_add(QUERY_END_TIMEOUT_MS, end_query_timed_out, NULL);
+    finish_end_query();
+}
+
+static const GDBusInterfaceVTable lifecycle_vtable = {
+    .method_call = handle_prepare_for_end,
+};
 
 static void lease_free(gpointer data) {
     InhibitLease* lease = data;
@@ -227,6 +328,11 @@ static gboolean handle_create_monitor(XdpImplInhibit* object, GDBusMethodInvocat
     g_autoptr(GError) error = NULL;
     Session* session;
 
+    if (session_state != SESSION_STATE_RUNNING) {
+        xdp_impl_inhibit_complete_create_monitor(object, invocation, 2);
+        return TRUE;
+    }
+
     if (!read_screensaver_active(&error)) {
         g_warning("Could not read screen saver state: %s", error->message);
         xdp_impl_inhibit_complete_create_monitor(object, invocation, 2);
@@ -256,7 +362,15 @@ static gboolean handle_query_end_response(XdpImplInhibit* object, GDBusMethodInv
             invocation, G_DBUS_ERROR, G_DBUS_ERROR_ACCESS_DENIED, "Unknown inhibit monitor");
         return TRUE;
     }
+    if (session_state != SESSION_STATE_QUERY_END || !awaiting_end_responses ||
+        !g_hash_table_remove(awaiting_end_responses, session_handle)) {
+        g_dbus_method_invocation_return_error_literal(
+            invocation, G_DBUS_ERROR, G_DBUS_ERROR_ACCESS_DENIED,
+            "No end-session query is pending for this monitor");
+        return TRUE;
+    }
     xdp_impl_inhibit_complete_query_end_response(object, invocation);
+    finish_end_query();
     return TRUE;
 }
 
@@ -323,6 +437,8 @@ failed:
 }
 
 gboolean gnoblin_inhibit_init(GDBusConnection* connection, GError** error) {
+    g_autoptr(GDBusNodeInfo) lifecycle_info = NULL;
+
     portal_bus = g_object_ref(connection);
     inhibit = G_DBUS_INTERFACE_SKELETON(xdp_impl_inhibit_skeleton_new());
     g_signal_connect(inhibit, "handle-inhibit", G_CALLBACK(handle_inhibit), NULL);
@@ -331,6 +447,14 @@ gboolean gnoblin_inhibit_init(GDBusConnection* connection, GError** error) {
                      NULL);
     if (!g_dbus_interface_skeleton_export(inhibit, connection, "/org/freedesktop/portal/desktop",
                                           error))
+        return FALSE;
+    lifecycle_info = g_dbus_node_info_new_for_xml(lifecycle_introspection_xml, error);
+    if (!lifecycle_info)
+        return FALSE;
+    lifecycle_registration_id = g_dbus_connection_register_object(
+        connection, "/org/freedesktop/portal/desktop", lifecycle_info->interfaces[0],
+        &lifecycle_vtable, NULL, NULL, error);
+    if (!lifecycle_registration_id)
         return FALSE;
     g_dbus_connection_signal_subscribe(connection, "org.freedesktop.ScreenSaver",
                                        "org.freedesktop.ScreenSaver", "ActiveChanged",
