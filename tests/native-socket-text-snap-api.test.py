@@ -31,6 +31,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "privacy.stop_recording",
             "session.activity",
             "layer.animation_policy",
+            "windows.list",
             "workspaces.list",
             "monitors.list",
             "layers.list",
@@ -609,6 +610,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
 
         for method in (
+            "windows.list",
             "workspaces.list",
             "monitors.list",
             "layers.list",
