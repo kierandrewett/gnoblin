@@ -6349,6 +6349,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "permissions.policy",
         "permissions.check",
         "portals.grants",
+        "privacy.state",
         "input.devices",
         "input.sources",
         "input.current_source",
@@ -6523,6 +6524,11 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "portals.grants")) {
         lua_getfield(state, -1, "portals");
         lua_getfield(state, -1, "grants");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "privacy.state")) {
+        lua_getfield(state, -1, "privacy");
+        lua_getfield(state, -1, "state");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "input.devices") || g_str_equal(method, "input.sources") ||
