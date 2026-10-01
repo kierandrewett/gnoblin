@@ -265,6 +265,12 @@ remains: its PipeWire state feeds `cameraInUse` in the compositor bridge.
    Gnoblin socket responses, then remove the GJS bridge, its resource patches,
    and Shell-only build and test paths. Track the remaining retirement in
    `gnoblin-0zx`.
+   The tracked GNOME Shell corner and border geometry helpers and their
+   JavaScript-only unit fixtures have been removed. Lua owns the window-rule
+   policy, Mutter owns clipping and effects, and the standalone devkit keeps
+   native border, shadow, and CSD reconstruction checks. Other historical
+   Shell patches and test fixtures still need an operation-by-operation audit
+   before they can be retired.
 4. **Verify session supervision and recovery.** `gnoblin` starts Mutter as its
    compositor child, supervises the Lua worker, and owns readiness, environment
    handoff, failure reporting, and cleanup. Shell projects such as Bingux
