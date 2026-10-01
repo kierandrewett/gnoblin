@@ -1154,6 +1154,10 @@ method, which requires a one-use context from that event.
 and newer serve it from Lua and preserve its JSON array result; earlier API
 versions use the native snapshot.
 
+The legacy `shortcut.actions` socket method is also retained. API 1.56 and
+newer serve it from the shared `shortcuts.actions` Lua read; earlier API
+versions use the native snapshot.
+
 API 1.12 adds `window.begin_move` and `window.begin_resize`; both consume the
 same connection-bound token. See the
 [compositor bridge](/compositor-bridge#api-version-110-shortcut-focus-grants)

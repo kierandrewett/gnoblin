@@ -354,6 +354,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.53            | Lua-backed compatibility read for `window.list`                                                       |
 | 1.54            | Lua-backed compatibility read for `launch.status`                                                     |
 | 1.55            | Lua-backed compatibility read for `shortcut.list`                                                     |
+| 1.56            | Lua-backed `shortcut.actions`; older clients use the native snapshot                                  |
 
 ### API 1.27: shell presentation requests
 
