@@ -362,6 +362,8 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.55            | Lua-backed compatibility read for `shortcut.list`                                                     |
 | 1.56            | Lua-backed `shortcut.actions`; older clients use the native snapshot                                  |
 | 1.57            | Lua-backed compatibility read for `layer.list`                                                        |
+| 1.60            | Basic legacy `window.action` requests route through typed Lua window operations                       |
+| 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`                           |
 
 ### API 1.27: shell presentation requests
 
