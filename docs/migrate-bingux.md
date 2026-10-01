@@ -9,61 +9,36 @@ Gnoblin policy and runtime behavior, not for drawing shell surfaces.
 
 ## Readiness
 
-Bingux has migrated several high-traffic paths to the standalone API:
-workspace navigation, window enumeration, shortcut registration, switcher
-previews and focus, privacy state and stop requests, window snapping, and
-emoji insertion. Capture pixels still come from the ScreenCast portal.
+Bingux already uses standalone Gnoblin APIs for workspace navigation, window
+enumeration, shortcuts, switcher previews and focus, privacy state, snapping,
+and emoji insertion. Screen capture still uses the ScreenCast portal.
 
 A live devkit check confirmed that a modal held shortcut registers through
 `ShortcutSession.qml`. Native API smoke checks exercised privacy calls,
 thumbnail completion handling, and snap subscriptions. A full real-window
 preview and actual pointer or keyboard snap are not yet verified end to end.
 
-Application-launch focus and OSD still need migration before the whole shell
-works in a standalone session. The new emoji insertion path has not yet been
-verified end to end in a fresh standalone session.
+Application-launch focus and OSD still need standalone implementations. A
+fresh standalone-session check is also needed for emoji insertion, full window
+previews, and pointer and keyboard snapping.
 
-- `shell/bingux/ShortcutSession.qml` negotiates the native API, restores
-  connection-owned subscriptions and bindings after reconnect, and routes
-  supported shortcut, switcher, privacy, and snapping operations through
-  native methods/events. It retains the compatibility protocol for GNOME
-  sessions. App-launch activation, text input, and any remaining private
-  `bingux.*` operations still need standalone replacements.
-- `shell/bingux/SnapAssist.qml` uses drag lifecycle events, capability-bound
-  snap offers, and one-use keyboard snap contexts in standalone Gnoblin.
-- `shell/bingux/PrivacyState.qml` reads standalone screen-sharing and recording
-  state through `privacy.state` and `gnoblin.privacy.changed`, and uses native
-  stop methods. Its existing camera and location probes remain because the
-  native API does not report those sources. The GNOME session keeps its
-  compatibility operations.
-- `shell/bingux/WorkspaceState.qml` now uses the versioned `workspace.list` and
-  `workspace.switch` API methods. It subscribes to workspace lifecycle events
-  on `op: "windows"` and polls only when connected to an older API version.
-- `shell/bingux/capture_backend.py` uses `window.list` for window metadata and
-  keeps image capture on the ScreenCast portal.
-- `shell/bingux/EmojiPicker.qml` stages an emoji in a standalone session and
-  closes before insertion. A second Super+Period press obtains a fresh
-  shortcut focus context, then calls `input.text_target` and `input.insert_text`
-  immediately while the application remains focused. This preserves Gnoblin's
-  focus and one-use target checks. Insertion requires an active Wayland
-  text-input-v3 session; X11 and the previous clipboard-paste fallback are not
-  supported on this path. GNOME session compatibility retains its separate
-  text-input implementation.
-- `shell/bingux/osd-bridge.js` patches GNOME Shell's OSD manager and calls
-  `org.gnoblin.Shell`. Subscribe to `gnoblin.osd.requested` and draw the OSD in
-  Bingux.
+In `ShortcutSession.qml`, the private `bingux.input-anchor` and
+`bingux.type-text` calls remain only for GNOME compatibility. Standalone emoji
+insertion uses Gnoblin's text-target API. It needs a fresh Super+Period press
+after the picker closes, and a focused Wayland client with an active
+text-input-v3 session. X11 and clipboard fallback are unsupported.
+
+`osd-bridge.js` patches GNOME Shell's OSD manager and calls
+`org.gnoblin.Shell`. Remove it from the standalone launch path and render OSDs
+in Bingux from `gnoblin.osd.requested`.
 
 The standalone session has no `org.gnome.Shell` service or GJS bridge. Keep any
 GNOME-session compatibility path separate from the standalone path.
 
-## Replace the legacy bridge calls
+## Use the standalone APIs
 
-The compositor socket protocol used by the GNOME Shell compatibility bridge
-accepts several short operations that the standalone Gnoblin socket does not.
-Do not use those compatibility calls on Bingux's standalone path. The status
-notes below distinguish migrations already present from work that remains.
-
-Replace these compatibility-bridge calls:
+The GNOME compatibility bridge accepts operations that the standalone Gnoblin
+socket does not. Keep those calls out of Bingux's standalone launch path.
 
 - **Shortcuts:** `ShortcutSession.qml` now negotiates the API from `hello`,
   registers connection-owned bindings with `shortcut.bind`, removes stale
@@ -148,30 +123,26 @@ interfaces for screen sharing, remote desktop, and other application requests.
 Gnoblin's Lua API controls compositor and session behavior; it does not create
 or render Bingux UI.
 
-## Migration order
+## Finish the remaining migration
 
-1. Keep a single persistent socket client and reconnect with backoff. After a
-   reconnect, read fresh snapshots, restore subscriptions, and re-register
-   every shortcut owned by that connection.
-2. Replace the compatibility operations with the calls listed above. Match
-   replies by request ID. For asynchronous methods, also handle
-   `gnoblin.operation.completed`; report failures instead of treating an
-   accepted request as a completed compositor action. Use a fresh XDG
-   Activation token for pointer-driven focus or the one-use shortcut context
-   for keyboard-driven focus. A window ID by itself cannot authorize focus.
-3. Remove the OSD bridge shim and subscribe to `gnoblin.osd.requested`. Keep
-   LaunchFeedback on its documented D-Bus API.
-4. Remove GNOME Shell D-Bus calls and compatibility-only socket commands from
-   the standalone launch path. Do not remove GNOME-session support from a
-   separate compatibility package as part of this change.
+1. Replace app-launch focus calls with XDG Activation tokens created from the
+   launching user action. Keep the token and request on the same connection.
+2. Remove the OSD bridge shim from standalone startup. Subscribe to
+   `gnoblin.osd.requested` and draw the OSD in Bingux. Keep LaunchFeedback on
+   its documented D-Bus API.
+3. Keep GNOME Shell D-Bus calls and compatibility-only socket operations out
+   of standalone startup. Preserve them in the separate GNOME compatibility
+   path if Bingux continues to support GNOME sessions.
+4. Verify the standalone path in a fresh session, including shortcut
+   reconnects, activation, previews, snapping, emoji insertion, OSD, launch
+   feedback, and portal capture.
 
 ## Check the migration
 
 Run Bingux's QML checks and tests, then verify it in a fresh standalone Gnoblin
 session. Check shortcut registration after startup and reconnect, workspace
-switching, and window events. Verify focus transfer after user input, thumbnails,
-privacy changes, snapping, and text insertion. Check launch feedback, OSD
-requests, and screen capture through the portal.
+switching, and window events. Verify focus transfer, thumbnails, privacy
+changes, snapping, text insertion, launch feedback, OSD, and portal capture.
 
 If Bingux still supports GNOME sessions, confirm that path separately.
 
