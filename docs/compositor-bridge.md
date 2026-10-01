@@ -131,6 +131,11 @@ It keeps the JSON array and optional `kind` filter and requires the Lua
 supervisor. Clients requesting API 1.44 or earlier keep the native
 compatibility route.
 
+API 1.46 routes `input.devices`, `input.sources`, and `input.current_source`
+through their shared Lua reads. Their response objects and revision fields stay
+the same. These reads require the Lua supervisor; clients requesting API 1.45
+or earlier keep the native compatibility route.
+
 ### API version 1.9: configured shortcuts
 
 API version 1.9 adds `shortcut.list`. It takes no arguments and returns named
@@ -331,6 +336,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.43            | Shared `permissions.check` read backed by the installed Lua runtime                                   |
 | 1.44            | Shared `permissions.policy` read backed by the installed Lua runtime                                  |
 | 1.45            | Shared `portals.grants` read backed by the installed Lua runtime                                      |
+| 1.46            | Shared input device and source reads backed by the installed Lua runtime                              |
 
 ### API 1.27: shell presentation requests
 

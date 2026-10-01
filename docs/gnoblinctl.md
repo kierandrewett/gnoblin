@@ -133,14 +133,16 @@ gnoblinctl input devices
 
 Each record reports the device name and type, seat, available capabilities,
 and vendor or product IDs when the compositor provides them. Device IDs last
-only for the current compositor session. The command returns a one-time snapshot.
+only for the current compositor session. The command returns a one-time
+snapshot through the shared Lua read introduced in API 1.46. This read requires
+the Lua supervisor.
 
-API 1.4 socket clients can also subscribe to device add and removal events. The
-`gnoblinctl input list` reads the API 1.6 `input.sources` snapshot. It prints
-the configured XKB sources.
+API 1.4 socket clients can also subscribe to device add and removal events.
+`gnoblinctl input list` reads the API 1.6 `input.sources` snapshot through the
+shared Lua read introduced in API 1.46. It prints the configured XKB sources.
 
-`gnoblinctl input current` reads `input.current_source`. Its JSON record
-includes `available` and, when known, `source`.
+`gnoblinctl input current` reads `input.current_source` through the same API
+1.46 Lua route. Its JSON record includes `available` and, when known, `source`.
 
 `gnoblinctl input select TYPE ID` calls `input.select_source`. It waits for
 Mutter to confirm the layout change.
