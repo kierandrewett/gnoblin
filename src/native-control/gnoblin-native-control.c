@@ -6103,6 +6103,185 @@ static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
     return TRUE;
 }
 
+static void native_shadow_layer_defaults(MetaGnoblinWindowShadowLayer* layer) {
+    *layer = (MetaGnoblinWindowShadowLayer){
+        .x = 0.,
+        .y = 4.,
+        .blur = 28.,
+        .spread = 4.,
+        .opacity = .6,
+        .color = {0., 0., 0., 1.},
+    };
+}
+
+static gboolean native_shadow_layer_parse(GVariant* value, MetaGnoblinWindowShadowLayer* layer,
+                                          gboolean initialize) {
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_VARIANT)) {
+        g_autoptr(GVariant) unboxed = g_variant_get_variant(value);
+        return native_shadow_layer_parse(unboxed, layer, initialize);
+    }
+    if (!g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT))
+        return FALSE;
+    if (initialize)
+        native_shadow_layer_defaults(layer);
+    double number;
+    if (native_rule_get_number(value, "x", &number))
+        layer->x = number;
+    if (native_rule_get_number(value, "y", &number))
+        layer->y = number;
+    if (native_rule_get_number(value, "blur", &number))
+        layer->blur = number;
+    if (native_rule_get_number(value, "spread", &number))
+        layer->spread = number;
+    if (native_rule_get_number(value, "opacity", &number))
+        layer->opacity = number;
+    double color[4];
+    if (native_rule_get_color(value, "color", color))
+        memcpy(layer->color, color, sizeof(color));
+    return TRUE;
+}
+
+static gboolean native_shadow_layers_parse(GVariant* value, MetaGnoblinWindowShadowLayer layers[4],
+                                           guint* n_layers, gboolean merge_single_layer) {
+    *n_layers = 0;
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_VARIANT)) {
+        g_autoptr(GVariant) unboxed = g_variant_get_variant(value);
+        return native_shadow_layers_parse(unboxed, layers, n_layers, merge_single_layer);
+    }
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN)) {
+        if (g_variant_get_boolean(value)) {
+            native_shadow_layer_defaults(&layers[0]);
+            *n_layers = 1;
+        }
+        return TRUE;
+    }
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
+        if (!native_shadow_layer_parse(value, &layers[0], !merge_single_layer))
+            return FALSE;
+        *n_layers = 1;
+        return TRUE;
+    }
+    if (!g_variant_is_of_type(value, G_VARIANT_TYPE("av")) || g_variant_n_children(value) == 0 ||
+        g_variant_n_children(value) > 4)
+        return FALSE;
+    for (gsize i = 0; i < g_variant_n_children(value); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+        if (!native_shadow_layer_parse(boxed, &layers[i], TRUE))
+            return FALSE;
+        (*n_layers)++;
+    }
+    return TRUE;
+}
+
+static void native_shadow_transition_set_easing(GVariant* record, const char* key,
+                                                MetaGnoblinWindowShadowTransition* transition) {
+    g_autoptr(GVariant) value = g_variant_lookup_value(record, key, NULL);
+    if (!value)
+        return;
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+        transition->easing = g_variant_get_string(value, NULL);
+        transition->has_bezier = FALSE;
+        return;
+    }
+    const char* type = NULL;
+    if (!g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT) ||
+        !g_variant_lookup(value, "type", "&s", &type) || !g_str_equal(type, "cubic-bezier"))
+        return;
+    const char* names[] = {"x1", "y1", "x2", "y2"};
+    double points[4];
+    for (guint i = 0; i < G_N_ELEMENTS(points); i++)
+        if (!native_rule_get_number(value, names[i], &points[i]) || points[i] < -2. ||
+            points[i] > 2.)
+            return;
+    if (points[0] > 1. || points[0] < 0. || points[2] > 1. || points[2] < 0.)
+        return;
+    memcpy(transition->bezier, points, sizeof(points));
+    transition->has_bezier = TRUE;
+}
+
+static GVariant* native_shadow_animation_merge(GVariant* previous, GVariant* corners) {
+    g_autoptr(GVariant) next = g_variant_lookup_value(corners, "shadow_animation", NULL);
+    if (!next)
+        next = g_variant_lookup_value(corners, "shadow-animation", NULL);
+    if (!next)
+        return previous ? g_variant_ref(previous) : NULL;
+    g_autoptr(GVariant) unboxed = NULL;
+    GVariant* next_value = next;
+    if (g_variant_is_of_type(next_value, G_VARIANT_TYPE_VARIANT)) {
+        unboxed = g_variant_get_variant(next_value);
+        next_value = unboxed;
+    }
+    if (!g_variant_is_of_type(next_value, G_VARIANT_TYPE_VARDICT))
+        return previous ? g_variant_ref(previous) : NULL;
+
+    GVariantDict merged;
+    g_variant_dict_init(&merged, previous && g_variant_is_of_type(previous, G_VARIANT_TYPE_VARDICT)
+                                     ? previous
+                                     : NULL);
+    GVariantIter iter;
+    const char* key;
+    GVariant* value;
+    g_variant_iter_init(&iter, next_value);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+        g_variant_dict_insert_value(&merged, key, value);
+        g_variant_unref(value);
+    }
+    return g_variant_ref_sink(g_variant_dict_end(&merged));
+}
+
+static void native_shadow_animation_resolve(GVariant* document, GVariant* animation,
+                                            MetaGnoblinWindowShadowTransition* transition) {
+    transition->duration_ms = 0;
+    transition->easing = "ease-out-cubic";
+    transition->has_bezier = FALSE;
+    const char* selected_name = NULL;
+    if (animation && g_variant_is_of_type(animation, G_VARIANT_TYPE_VARDICT)) {
+        g_variant_lookup(animation, "animation", "&s", &selected_name);
+    }
+
+    g_autoptr(GVariant) registrations =
+        document ? g_variant_lookup_value(document, "animations", NULL) : NULL;
+    gboolean selected_found = !selected_name || g_str_equal(selected_name, "none") ||
+                              g_str_equal(selected_name, "gnoblin-shadow-change");
+    for (gsize i = 0; registrations && i < g_variant_n_children(registrations); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(registrations, i);
+        g_autoptr(GVariant) registration = g_variant_is_of_type(boxed, G_VARIANT_TYPE_VARIANT)
+                                               ? g_variant_get_variant(boxed)
+                                               : g_variant_ref(boxed);
+        const char* name = NULL;
+        const char* event = NULL;
+        gboolean enabled = TRUE;
+        if (!g_variant_is_of_type(registration, G_VARIANT_TYPE_VARDICT) ||
+            !g_variant_lookup(registration, "event", "&s", &event) ||
+            !g_str_equal(event, "shadow-change"))
+            continue;
+        g_variant_lookup(registration, "name", "&s", &name);
+        g_variant_lookup(registration, "enable", "b", &enabled);
+        if (!enabled || (selected_name && g_strcmp0(selected_name, name) != 0))
+            continue;
+        selected_found = TRUE;
+        double duration = 0;
+        native_rule_get_number(registration, "duration", &duration);
+        if (duration >= 0 && duration <= 2000)
+            transition->duration_ms = (guint)duration;
+        native_shadow_transition_set_easing(registration, "ease", transition);
+        native_shadow_transition_set_easing(registration, "easing", transition);
+        break;
+    }
+    if (!selected_found) {
+        transition->duration_ms = 0;
+        transition->easing = "ease-out-cubic";
+    }
+    if (animation) {
+        double duration = transition->duration_ms;
+        if (native_rule_get_number(animation, "duration", &duration) && duration >= 0 &&
+            duration <= 2000)
+            transition->duration_ms = (guint)duration;
+        native_shadow_transition_set_easing(animation, "ease", transition);
+        native_shadow_transition_set_easing(animation, "easing", transition);
+    }
+}
+
 static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow* window) {
     if (!control || !window)
         return;
@@ -6122,6 +6301,15 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     gboolean skip_libadwaita = TRUE;
     gboolean skip_libhandy = FALSE;
     gboolean remove_csd = FALSE;
+    gboolean keep_shadow = FALSE;
+    gboolean shadow_is_single_layer = FALSE;
+    MetaGnoblinWindowShadowLayer shadow_layers[META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS] = {0};
+    guint n_shadow_layers = 0;
+    MetaGnoblinWindowShadowTransition shadow_transition = {
+        .duration_ms = 0,
+        .easing = "ease-out-cubic",
+    };
+    g_autoptr(GVariant) shadow_animation_config = NULL;
     g_autofree char* mode = g_strdup("auto");
     g_autoptr(GVariant) document = native_config_document(control);
     g_autoptr(GVariant) rules =
@@ -6154,6 +6342,34 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         native_rule_get_boolean(corners, "skip_libadwaita", "skip-libadwaita", &skip_libadwaita);
         native_rule_get_boolean(corners, "skip_libhandy", "skip-libhandy", &skip_libhandy);
         native_rule_get_boolean(corners, "remove_csd", "remove-csd", &remove_csd);
+        native_rule_get_boolean(corners, "keep_shadow", "keep-shadow", &keep_shadow);
+        g_autoptr(GVariant) shadow = g_variant_lookup_value(corners, "shadow", NULL);
+        if (shadow) {
+            g_autoptr(GVariant) shadow_unboxed = NULL;
+            GVariant* shadow_value = shadow;
+            if (g_variant_is_of_type(shadow_value, G_VARIANT_TYPE_VARIANT)) {
+                shadow_unboxed = g_variant_get_variant(shadow_value);
+                shadow_value = shadow_unboxed;
+            }
+            const gboolean is_single_layer =
+                g_variant_is_of_type(shadow_value, G_VARIANT_TYPE_VARDICT);
+            const gboolean merge_single_layer =
+                shadow_is_single_layer && is_single_layer && n_shadow_layers > 0;
+            MetaGnoblinWindowShadowLayer parsed[META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS] = {0};
+            MetaGnoblinWindowShadowLayer* target = merge_single_layer ? shadow_layers : parsed;
+            guint parsed_count = 0;
+            if (native_shadow_layers_parse(shadow_value, target, &parsed_count,
+                                           merge_single_layer)) {
+                if (!merge_single_layer)
+                    memcpy(shadow_layers, parsed, sizeof(shadow_layers));
+                n_shadow_layers = parsed_count;
+                shadow_is_single_layer = is_single_layer;
+            }
+        }
+        GVariant* merged_animation =
+            native_shadow_animation_merge(shadow_animation_config, corners);
+        g_clear_pointer(&shadow_animation_config, g_variant_unref);
+        shadow_animation_config = merged_animation;
         g_autoptr(GVariant) mode_value = g_variant_lookup_value(corners, "mode", NULL);
         if (mode_value && g_variant_is_of_type(mode_value, G_VARIANT_TYPE_STRING)) {
             g_free(mode);
@@ -6161,11 +6377,17 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         }
     }
 
+    native_shadow_animation_resolve(document, shadow_animation_config, &shadow_transition);
+
     const MetaMaximizeFlags maximize_flags = meta_window_get_maximize_flags(window);
     const gboolean partially_maximized = !!(maximize_flags & META_MAXIMIZE_HORIZONTAL) !=
                                          !!(maximize_flags & META_MAXIMIZE_VERTICAL);
     const gboolean tiled = meta_window_is_tiled_side_by_side(window) || partially_maximized;
-    const gboolean normal = meta_window_get_window_type(window) == META_WINDOW_NORMAL;
+    const MetaWindowType window_type = meta_window_get_window_type(window);
+    const gboolean normal =
+        (window_type == META_WINDOW_NORMAL || window_type == META_WINDOW_DIALOG ||
+         window_type == META_WINDOW_MODAL_DIALOG) &&
+        !meta_window_is_override_redirect(window);
     const gboolean allowed = normal && !g_str_equal(mode, "off") &&
                              (!meta_window_is_maximized(window) || keep_maximized) &&
                              (!meta_window_is_fullscreen(window) || keep_fullscreen) &&
@@ -6194,6 +6416,36 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                                                padding);
     meta_gnoblin_window_effects_set_rounded_border(CLUTTER_ACTOR(actor),
                                                    effect_enabled ? border_width : 0, border_color);
+    const gboolean shadow_state_allowed =
+        normal && !g_str_equal(mode, "off") && (!meta_window_is_maximized(window) || keep_shadow) &&
+        (!meta_window_is_fullscreen(window) || keep_shadow) && (!tiled || keep_shadow);
+    const double actor_width = clutter_actor_get_width(CLUTTER_ACTOR(actor));
+    const double actor_height = clutter_actor_get_height(CLUTTER_ACTOR(actor));
+    double shadow_geometry[4] = {0., 0., actor_width, actor_height};
+    guint shadow_child_index = 0;
+    if (META_IS_WINDOW_ACTOR_WAYLAND(actor)) {
+        meta_window_actor_wayland_get_surface_container_bounds(actor, shadow_geometry);
+        shadow_child_index = meta_window_actor_wayland_get_shadow_child_index(actor);
+    } else {
+        MetaSurfaceActor* surface = meta_window_actor_get_surface(actor);
+        if (surface && clutter_actor_has_allocation(CLUTTER_ACTOR(surface))) {
+            ClutterActorBox surface_box;
+            clutter_actor_get_allocation_box(CLUTTER_ACTOR(surface), &surface_box);
+            shadow_geometry[0] = surface_box.x1;
+            shadow_geometry[1] = surface_box.y1;
+            shadow_geometry[2] = surface_box.x2;
+            shadow_geometry[3] = surface_box.y2;
+        }
+    }
+    double shadow_bounds[4] = {
+        CLAMP(shadow_geometry[0] + padding[3], 0., actor_width),
+        CLAMP(shadow_geometry[1] + padding[0], 0., actor_height),
+        CLAMP(shadow_geometry[2] - padding[1], 0., actor_width),
+        CLAMP(shadow_geometry[3] - padding[2], 0., actor_height),
+    };
+    meta_gnoblin_window_effects_set_window_shadow(
+        CLUTTER_ACTOR(actor), shadow_state_allowed && n_shadow_layers > 0, shadow_bounds, radius,
+        exponent, shadow_layers, n_shadow_layers, &shadow_transition, shadow_child_index);
     if (META_IS_WINDOW_ACTOR_WAYLAND(actor))
         meta_window_actor_wayland_set_csd_reconstruction(actor, clip_enabled && csd_detected,
                                                          csd_insets);
@@ -10673,6 +10925,7 @@ static void schedule_windows(GnoblinNativeControl* control) {
 }
 
 static void window_changed(MetaWindow* window, gpointer user_data) {
+    native_apply_window_rules(user_data, window);
     schedule_windows(user_data);
 }
 
