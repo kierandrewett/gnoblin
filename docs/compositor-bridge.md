@@ -146,6 +146,10 @@ API version 1.9 adds `shortcut.list`. It takes no arguments and returns named
 shortcuts configured for the native compositor. Each record contains `name`,
 `binding`, `enabled`, `trigger`, and `revision`.
 
+API 1.55 and newer serve this method from `gnoblin.shortcuts.list()` while
+keeping the same bare array result. Earlier API versions use the native
+snapshot.
+
 A record also contains a `command` argument array or an `action` identifier.
 One binding is returned as a string; multiple bindings are returned as an
 array. A built-in action with no bindings has `enabled: false`. Disabled
@@ -349,6 +353,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.52            | Lua-backed compatibility read for `workspace.list`                                                    |
 | 1.53            | Lua-backed compatibility read for `window.list`                                                       |
 | 1.54            | Lua-backed compatibility read for `launch.status`                                                     |
+| 1.55            | Lua-backed compatibility read for `shortcut.list`                                                     |
 
 ### API 1.27: shell presentation requests
 

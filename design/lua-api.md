@@ -1251,6 +1251,9 @@ route.
 API 1.54 routes `launch.status` through `gnoblin.launches.snapshot()` while
 preserving launch-change event tracking. Earlier clients retain the native
 snapshot route.
+API 1.55 routes the socket-only `shortcut.list` alias through
+`gnoblin.shortcuts.list()` while preserving its bare array result. Earlier
+clients retain the native snapshot route.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
