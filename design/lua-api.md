@@ -1531,26 +1531,23 @@ attention state, capability flags, optional `role`, and `type`.
 `rule_app_id`, plus a `match` table with `type`, `title`, `focused`,
 and optional `app_id`.
 
-The raw compositor socket retains `window.action({action, window?, ...})` for
+The raw compositor socket retains `window.action({action, window?})` for
 compatibility; the standalone Lua runtime does not expose
-`gnoblin.window.action`. Lua callers use the typed `Window` methods above.
-The socket operation defaults its target to `"active"`. Its current action
-strings are `menu`, `interactive-move`,
-`interactive-resize`, `above`, `unabove`, `stick`, `unstick`,
-`focus`, `close`, `minimize`, `restore-or-minimize`, `restore`,
-`maximize`, `unmaximize`, `fullscreen`, `unfullscreen`, `move`,
-`resize`, `workspace`, and `monitor`.
+`gnoblin.window.action`. Native socket clients can use `above`, `unabove`,
+`stick`, `unstick`, `close`, `minimize`, `restore`, `maximize`, `unmaximize`,
+`fullscreen`, and `unfullscreen`. The target is a stable window ID or
+`"active"`; it defaults to `"active"`. Focus, menu, interactive move or
+resize, geometry, workspace, monitor, and restore-or-minimize requests are not
+accepted by this compatibility method. Lua callers use the typed `Window`
+methods above. Focus and interactive actions require a trusted one-use
+context.
 
-Only `move` accepts `x` and `y` (integers from −100000 to 100000); only
-`resize` accepts `width` and `height` (integers from 1 to 32768).
-`monitor` uses a numeric index in the compatibility action. The typed
-`window.move_to_monitor` method accepts the stable connector ID as a string or
-`{id = string}`; cloned outputs use the lexicographically first active
-connector. A disconnected or no-longer-canonical ID fails with `not_found`.
-The `workspace` action
-accepts `{id = string}` or `{number = integer}`. A target is a stable window
-ID or `"active"`. The target API replaces these strings with typed methods
-and idempotent property setters.
+The typed `window.move_to_monitor` method accepts a stable connector ID as a
+string or `{id = string}`; cloned outputs use the lexicographically first
+active connector. A disconnected or no-longer-canonical ID fails with
+`not_found`. Typed workspace selection accepts `{id = string}` or
+`{number = integer}`. The typed API uses stable IDs, explicit selectors, and
+idempotent property setters.
 
 Current Lua runtime callback calls return an `Operation` handle. Native API
 1.11 completion updates its `status`, `value`, and structured `Error` fields,
