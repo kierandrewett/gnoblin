@@ -8033,8 +8033,8 @@ static GVariant* native_commit_snap_context_owned(MetaDisplay* display, GVariant
                             "snap frame falls outside the target work area");
         return NULL;
     }
-    if (meta_window_is_maximized(window))
-        meta_window_unmaximize(window);
+    if (meta_window_get_maximize_flags(window) != 0)
+        meta_window_set_unmaximize_flags(window, META_MAXIMIZE_BOTH);
     if (!g_hash_table_contains(control->snap_restore_frames, window)) {
         MtkRectangle* original_frame = g_new(MtkRectangle, 1);
         *original_frame = context.original_frame;

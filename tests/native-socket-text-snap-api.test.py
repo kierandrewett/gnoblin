@@ -656,6 +656,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("meta_window_move_resize_frame", helper)
         self.assertIn("g_hash_table_remove(control->snap_restore_frames, window)", unmanaged)
         self.assertIn("context.original_frame", snap)
+        self.assertIn("meta_window_set_unmaximize_flags", snap)
         self.assertIn("g_hash_table_contains(control->snap_restore_frames, window)", snap)
 
 
