@@ -741,6 +741,46 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('lua_getfield(state, -1, "grants")', lua_read)
         self.assertGreaterEqual(api_minor(header), 45)
 
+    def test_input_snapshots_use_lua_at_api_146_and_keep_legacy_routes(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        lua_source = LUA.read_text()
+        devices = function_body(
+            source,
+            'if (g_str_equal(method, "input.devices")) {',
+            'if (g_str_equal(method, "input.sources") ||',
+        )
+        sources = function_body(
+            source,
+            'if (g_str_equal(method, "input.sources") || g_str_equal(method, "input.current_source")) {',
+            'if (g_str_equal(method, "shortcut.actions")) {',
+        )
+        lua_read = function_body(
+            lua_source,
+            "GVariant* gnoblin_config_read_api(",
+            "GVariant* gnoblin_config_current_document(",
+        )
+
+        for method in ("input.devices", "input.sources", "input.current_source"):
+            with self.subTest(method=method):
+                self.assertIn(f'"{method}"', lua_read)
+                self.assertIn(f'g_str_equal(method, "{method}")', lua_source)
+
+        self.assertIn("client->api_minor >= 46", devices)
+        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', devices)
+        self.assertIn("client->api_minor >= 46", sources)
+        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', sources)
+        self.assertLess(sources.index("publish_input_source_changes"), sources.index("client->api_minor >= 46"))
+        self.assertIn("input_device_snapshot(client->control)", devices)
+        self.assertIn("input_source_snapshot(client->control)", sources)
+        self.assertIn('g_str_equal(method, "input.devices") ? "devices" : "sources"', lua_source)
+        self.assertIn('g_str_equal(method, "input.current_source") && lua_isnil(state, -1)', lua_source)
+        self.assertIn("gnoblin_config_update_input_device_snapshot", lua_source)
+        self.assertIn("gnoblin_config_update_input_source_snapshot", lua_source)
+        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertEqual(api_minor(header), 46)
+
     def test_restore_or_minimize_is_native_and_clears_saved_frames(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
