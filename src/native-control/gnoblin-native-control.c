@@ -88,6 +88,7 @@
 typedef struct _NativeDynamicShortcut NativeDynamicShortcut;
 typedef struct _NativeMutterSignalWatch NativeMutterSignalWatch;
 typedef struct _NativeCornerToolkitCache NativeCornerToolkitCache;
+typedef struct _NativeWindowShaderFile NativeWindowShaderFile;
 
 struct _NativeCornerToolkitCache {
     gint ref_count;
@@ -102,6 +103,14 @@ struct _NativeMutterSignalWatch {
     char* source;
     char* signal;
     guint signal_id;
+};
+
+struct _NativeWindowShaderFile {
+    GnoblinNativeControl* control;
+    char* path;
+    char* source;
+    GFileMonitor* monitor;
+    guint reload_timeout_id;
 };
 
 struct _GnoblinNativeControl {
@@ -133,6 +142,7 @@ struct _GnoblinNativeControl {
     GHashTable* window_drags;
     GHashTable* snap_contexts;
     GHashTable* snap_restore_frames;
+    GHashTable* window_shader_files;
     MetaDisplay* display;
     MetaWaylandCompositor* wayland_compositor;
     MetaWorkspaceManager* workspace_manager;
@@ -279,6 +289,7 @@ static void native_runtime_abort(GnoblinNativeControl* control) {
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session, "runtime_stopped");
     clear_runtime_dynamic_shortcuts(control, "runtime_stopped");
+    g_clear_pointer(&control->window_shader_files, g_hash_table_unref);
     stop_native_shortcut_capture(control, FALSE, FALSE, NULL, NULL, NULL);
     native_cancel_window_drags(control, "runtime_stopped");
     revoke_text_targets(control);
@@ -6420,6 +6431,7 @@ static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
     const char* title = meta_window_get_title(window);
     const char* gtk_app_id = meta_window_get_gtk_application_id(window);
     const char* wm_class = meta_window_get_wm_class(window);
+    const char* layer_namespace = g_object_get_data(G_OBJECT(window), "gnoblin-layer-namespace");
     const char* rule_app_id = gtk_app_id && *gtk_app_id ? gtk_app_id : (wm_class ? wm_class : "");
     MetaWorkspace* workspace = meta_window_get_workspace(window);
     const char* workspace_id =
@@ -6438,8 +6450,21 @@ static gboolean native_window_rule_matches(GVariant* match, MetaWindow* window,
         gboolean matched = FALSE;
 
         if (g_str_equal(key, "type")) {
-            matched = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
-                      g_str_equal(g_variant_get_string(value, NULL), "window");
+            if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+                const char* type = g_variant_get_string(value, NULL);
+                matched = (g_str_equal(type, "window") && !layer_namespace) ||
+                          (g_str_equal(type, "layer") && layer_namespace);
+            }
+        } else if (g_str_equal(key, "layer")) {
+            const char* pattern = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)
+                                      ? g_variant_get_string(value, NULL)
+                                      : NULL;
+            g_autoptr(GError) error = NULL;
+            gboolean pattern_matched = FALSE;
+            matched =
+                pattern && layer_namespace &&
+                gnoblin_lua_pattern_match(pattern, layer_namespace, &pattern_matched, &error) &&
+                pattern_matched;
         } else if (g_str_equal(key, "focused")) {
             matched = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN) &&
                       g_variant_get_boolean(value) == focused;
@@ -6657,6 +6682,126 @@ static void native_shadow_animation_resolve(GVariant* document, GVariant* animat
     }
 }
 
+static void native_window_shader_file_free(gpointer data) {
+    NativeWindowShaderFile* file = data;
+    if (!file)
+        return;
+    if (file->reload_timeout_id)
+        g_source_remove(file->reload_timeout_id);
+    g_clear_object(&file->monitor);
+    g_free(file->path);
+    g_free(file->source);
+    g_free(file);
+}
+
+static gboolean native_window_shader_file_reload(NativeWindowShaderFile* file, GError** error) {
+    g_autofree char* contents = NULL;
+    gsize length = 0;
+    if (!g_file_get_contents(file->path, &contents, &length, error))
+        return FALSE;
+    if (length > 64 * 1024) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "shader exceeds 64 KiB");
+        return FALSE;
+    }
+    if (!g_utf8_validate(contents, (gssize)length, NULL)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "shader is not valid UTF-8");
+        return FALSE;
+    }
+    if (!strstr(contents, "gnoblin_effect")) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "shader must define gnoblin_effect");
+        return FALSE;
+    }
+    g_free(file->source);
+    file->source = g_steal_pointer(&contents);
+    return TRUE;
+}
+
+static gboolean native_window_shader_file_reload_timeout(gpointer user_data) {
+    NativeWindowShaderFile* file = user_data;
+    GnoblinNativeControl* control = file->control;
+    file->reload_timeout_id = 0;
+    if (!control || control->stopping)
+        return G_SOURCE_REMOVE;
+    g_autoptr(GError) error = NULL;
+    if (native_window_shader_file_reload(file, &error))
+        native_apply_all_window_rules(control);
+    else
+        g_warning("gnoblin-shader: keeping previous effect for %s: %s", file->path,
+                  error ? error->message : "could not read shader");
+    return G_SOURCE_REMOVE;
+}
+
+static void native_window_shader_file_changed(GFileMonitor* monitor, GFile* changed_file,
+                                              GFile* other_file, GFileMonitorEvent event_type,
+                                              gpointer user_data) {
+    NativeWindowShaderFile* file = user_data;
+    (void)monitor;
+    (void)event_type;
+    g_autofree char* changed_path = changed_file ? g_file_get_path(changed_file) : NULL;
+    g_autofree char* other_path = other_file ? g_file_get_path(other_file) : NULL;
+    if (g_strcmp0(changed_path, file->path) != 0 && g_strcmp0(other_path, file->path) != 0)
+        return;
+    if (!file->control || file->control->stopping)
+        return;
+    if (file->reload_timeout_id)
+        g_source_remove(file->reload_timeout_id);
+    file->reload_timeout_id = g_timeout_add(100, native_window_shader_file_reload_timeout, file);
+}
+
+static char* native_window_shader_resolve_path(const char* shader) {
+    if (!shader || !*shader)
+        return NULL;
+    if (g_str_has_prefix(shader, "~/")) {
+        g_autofree char* expanded = g_build_filename(g_get_home_dir(), shader + 2, NULL);
+        return g_canonicalize_filename(expanded, NULL);
+    }
+    if (g_path_is_absolute(shader))
+        return g_canonicalize_filename(shader, NULL);
+    g_autofree char* config = NULL;
+    const char* configured_path = g_getenv("GNOBLIN_CONFIG");
+    if (configured_path && *configured_path)
+        config = g_strdup(configured_path);
+    else
+        config = g_build_filename(g_get_user_config_dir(), "gnoblin", "init.lua", NULL);
+    g_autofree char* directory = g_path_get_dirname(config);
+    return g_canonicalize_filename(shader, directory);
+}
+
+static NativeWindowShaderFile* native_window_shader_file_get(GnoblinNativeControl* control,
+                                                             const char* path) {
+    NativeWindowShaderFile* file = g_hash_table_lookup(control->window_shader_files, path);
+    if (file)
+        return file;
+    if (g_hash_table_size(control->window_shader_files) >= 128) {
+        g_warning("gnoblin-shader: refusing more than 128 shader files in one session");
+        return NULL;
+    }
+    file = g_new0(NativeWindowShaderFile, 1);
+    file->control = control;
+    file->path = g_strdup(path);
+    g_hash_table_insert(control->window_shader_files, g_strdup(path), file);
+    g_autoptr(GFile) shader_file = g_file_new_for_path(path);
+    g_autoptr(GFile) parent = g_file_get_parent(shader_file);
+    if (parent) {
+        g_autoptr(GError) monitor_error = NULL;
+        file->monitor =
+            g_file_monitor_directory(parent, G_FILE_MONITOR_WATCH_MOVES, NULL, &monitor_error);
+        if (file->monitor)
+            g_signal_connect(file->monitor, "changed",
+                             G_CALLBACK(native_window_shader_file_changed), file);
+        else
+            g_warning("gnoblin-shader: cannot watch %s: %s", path,
+                      monitor_error ? monitor_error->message : "monitor unavailable");
+    }
+    g_autoptr(GError) error = NULL;
+    if (!native_window_shader_file_reload(file, &error))
+        g_warning("gnoblin-shader: keeping previous effect for %s: %s", path,
+                  error ? error->message : "could not read shader");
+    return file;
+}
+
 static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow* window) {
     if (!control || !window)
         return;
@@ -6686,6 +6831,9 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     };
     g_autoptr(GVariant) shadow_animation_config = NULL;
     g_autofree char* mode = g_strdup("auto");
+    g_autofree char* shader_path = NULL;
+    g_autoptr(GVariant) shader_uniforms = NULL;
+    gboolean shader_selected = FALSE;
     g_autoptr(GVariant) document = native_config_document(control);
     g_autoptr(GVariant) rules =
         document ? g_variant_lookup_value(document, "window-rules", NULL) : NULL;
@@ -6698,6 +6846,21 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
         if (!match || !native_window_rule_matches(match, window, control))
             continue;
+
+        g_autoptr(GVariant) shader = g_variant_lookup_value(rule, "shader", NULL);
+        if (shader && g_variant_is_of_type(shader, G_VARIANT_TYPE_STRING)) {
+            shader_selected = TRUE;
+            g_free(shader_path);
+            const char* configured_shader = g_variant_get_string(shader, NULL);
+            shader_path =
+                *configured_shader ? native_window_shader_resolve_path(configured_shader) : NULL;
+        }
+        g_autoptr(GVariant) configured_uniforms =
+            g_variant_lookup_value(rule, "shader-uniforms", NULL);
+        if (configured_uniforms) {
+            g_clear_pointer(&shader_uniforms, g_variant_unref);
+            shader_uniforms = g_variant_ref(configured_uniforms);
+        }
 
         g_autoptr(GVariant) corners = g_variant_lookup_value(rule, "corners", NULL);
         if (!corners || !g_variant_is_of_type(corners, G_VARIANT_TYPE_VARDICT))
@@ -6752,6 +6915,65 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         }
     }
 
+    MetaSurfaceActor* surface = meta_window_actor_get_surface(actor);
+    if (surface) {
+        if (!shader_selected || !shader_path) {
+            meta_gnoblin_window_effects_clear_shader(CLUTTER_ACTOR(surface));
+        } else {
+            NativeWindowShaderFile* shader_file =
+                native_window_shader_file_get(control, shader_path);
+            if (shader_file && shader_file->source) {
+                MetaGnoblinWindowShaderUniform uniforms[64] = {0};
+                guint n_uniforms = 0;
+                gboolean uniforms_valid = TRUE;
+                if (shader_uniforms &&
+                    g_variant_is_of_type(shader_uniforms, G_VARIANT_TYPE_VARDICT)) {
+                    GVariantIter iter;
+                    const char* name = NULL;
+                    GVariant* boxed_value = NULL;
+                    g_variant_iter_init(&iter, shader_uniforms);
+                    while (g_variant_iter_next(&iter, "{&sv}", &name, &boxed_value)) {
+                        g_autoptr(GVariant) value = g_variant_get_variant(boxed_value);
+                        g_variant_unref(boxed_value);
+                        double number = 0;
+                        if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
+                            number = g_variant_get_double(value);
+                        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
+                            number = (double)g_variant_get_int64(value);
+                        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32))
+                            number = (double)g_variant_get_int32(value);
+                        else
+                            uniforms_valid = FALSE;
+                        uniforms_valid &= isfinite(number);
+                        if (n_uniforms < G_N_ELEMENTS(uniforms)) {
+                            uniforms[n_uniforms].name = name;
+                            uniforms[n_uniforms].value = number;
+                            n_uniforms++;
+                        } else {
+                            uniforms_valid = FALSE;
+                        }
+                    }
+                } else if (shader_uniforms) {
+                    uniforms_valid = FALSE;
+                }
+                if (!uniforms_valid) {
+                    g_warning(
+                        "gnoblin-shader: keeping previous effect for %s: invalid uniform table",
+                        shader_path);
+                } else {
+                    const double surface_width = clutter_actor_get_width(CLUTTER_ACTOR(surface));
+                    const double surface_height = clutter_actor_get_height(CLUTTER_ACTOR(surface));
+                    g_autoptr(GError) shader_error = NULL;
+                    if (!meta_gnoblin_window_effects_set_shader(
+                            CLUTTER_ACTOR(surface), shader_file->source, uniforms, n_uniforms,
+                            surface_width, surface_height, &shader_error))
+                        g_warning("gnoblin-shader: keeping previous effect for %s: %s", shader_path,
+                                  shader_error ? shader_error->message : "could not apply shader");
+                }
+            }
+        }
+    }
+
     native_shadow_animation_resolve(document, shadow_animation_config, &shadow_transition);
 
     const MetaMaximizeFlags maximize_flags = meta_window_get_maximize_flags(window);
@@ -6802,7 +7024,6 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         meta_window_actor_wayland_get_surface_container_bounds(actor, shadow_geometry);
         shadow_child_index = meta_window_actor_wayland_get_shadow_child_index(actor);
     } else {
-        MetaSurfaceActor* surface = meta_window_actor_get_surface(actor);
         if (surface && clutter_actor_has_allocation(CLUTTER_ACTOR(surface))) {
             ClutterActorBox surface_box;
             clutter_actor_get_allocation_box(CLUTTER_ACTOR(surface), &surface_box);
@@ -13386,6 +13607,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         return NULL;
     }
     control->clients = g_hash_table_new(g_direct_hash, g_direct_equal);
+    control->window_shader_files =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_window_shader_file_free);
     control->pending_runtime_requests =
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, pending_runtime_request_free);
     control->runtime_operation_ids =
