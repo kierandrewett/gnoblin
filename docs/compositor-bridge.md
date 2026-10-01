@@ -114,9 +114,7 @@ bindings. Request API version 1.5:
 }
 ```
 
-API 1.41 adds `shortcuts.actions`, which reads the same records through the
-shared Lua runtime. The API 1.5 `shortcut.actions` method remains available to
-existing clients.
+The API 1.5 socket method uses the same Lua read as `shortcuts.actions`.
 
 API 1.42 routes `permissions.list` through `gnoblin.permissions.list()` and
 preserves its existing response shape. This version requires the Lua supervisor
@@ -151,9 +149,7 @@ API version 1.9 adds `shortcut.list`. It takes no arguments and returns named
 shortcuts configured for the native compositor. Each record contains `name`,
 `binding`, `enabled`, `trigger`, and `revision`.
 
-API 1.55 and newer serve this method from `gnoblin.shortcuts.list()` while
-keeping the same bare array result. Earlier API versions use the native
-snapshot.
+The socket method uses `gnoblin.shortcuts.list()`.
 
 A record also contains a `command` argument array or an `action` identifier.
 One binding is returned as a string; multiple bindings are returned as an
@@ -365,8 +361,8 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.52            | Adds Lua-backed `workspace.list`; all client versions now use it                |
 | 1.53            | Adds Lua-backed `window.list`; all client versions now use it                   |
 | 1.54            | Adds Lua-backed `launch.status`; all client versions now use it                 |
-| 1.55            | Lua-backed compatibility read for `shortcut.list`                               |
-| 1.56            | Lua-backed `shortcut.actions`; older clients use the native snapshot            |
+| 1.55            | Lua-backed `shortcut.list` read                                                 |
+| 1.56            | Lua-backed `shortcut.actions` read                                              |
 | 1.57            | Adds Lua-backed `layer.list`; all client versions now use it                    |
 | 1.58            | Adds Lua-backed `monitor.list`; all client versions now use it                  |
 | 1.59            | Adds the Lua-backed `window.match` read; all client versions now use it         |
