@@ -37,6 +37,11 @@ def main() -> int:
     assert help_result.returncode == 0, help_result.stderr
     assert "Usage: gnoblinctl" in help_result.stdout
 
+    interactive_result = run(binary, "window", "interactive-move")
+    assert interactive_result.returncode != 0
+    assert "require a trusted shell input context" in interactive_result.stderr
+    assert "cannot create one" in interactive_result.stderr
+
     version_result = run(binary, "--version", "--format", "json")
     assert version_result.returncode == 0, version_result.stderr
     identity = json.loads(version_result.stdout)

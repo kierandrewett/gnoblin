@@ -979,6 +979,13 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                                     "activation token; gnoblinctl cannot create either");
                 goto invalid;
             }
+            if (word_in("menu interactive-move interactive-resize", action)) {
+                g_set_error_literal(
+                    error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                    "window menu and interactive actions require a trusted shell input context; "
+                    "gnoblinctl cannot create one");
+                goto invalid;
+            }
             if (is(action, "toggle-minimize") && is(window, "active")) {
                 g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
                                     "window toggle-minimize requires a stable window ID");
