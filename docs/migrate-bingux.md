@@ -22,6 +22,12 @@ Application-launch focus and OSD still need standalone implementations. A
 fresh standalone-session check is also needed for emoji insertion, full window
 previews, and pointer and keyboard snapping.
 
+The calendar helper also calls GNOME Shell's private
+`org.gnome.Shell.CalendarServer` service. That service is absent when GNOME
+Shell is not running. Replace it with a Bingux-owned Evolution Data Server
+provider, or make calendar events an optional integration with a clear
+unavailable state. Keep this out of Gnoblin's compositor API.
+
 In `ShortcutSession.qml`, the private `bingux.input-anchor` and
 `bingux.type-text` calls remain only for GNOME compatibility. Standalone emoji
 insertion uses Gnoblin's text-target API. It needs a fresh Super+Period press
@@ -133,9 +139,12 @@ or render Bingux UI.
 3. Keep GNOME Shell D-Bus calls and compatibility-only socket operations out
    of standalone startup. Preserve them in the separate GNOME compatibility
    path if Bingux continues to support GNOME sessions.
-4. Verify the standalone path in a fresh session, including shortcut
+4. Replace the calendar helper's GNOME Shell CalendarServer dependency with a
+   Bingux-owned provider, or disable event loading cleanly when that optional
+   provider is unavailable.
+5. Verify the standalone path in a fresh session, including shortcut
    reconnects, activation, previews, snapping, emoji insertion, OSD, launch
-   feedback, and portal capture.
+   feedback, calendar availability, and portal capture.
 
 ## Check the migration
 
