@@ -71,6 +71,11 @@ Native-control API 1.42 routes `permissions.list` through
 capabilities, levels, and configuration path, and requires the Lua supervisor.
 Older socket clients keep the native compatibility route.
 
+Native-control API 1.43 routes `permissions.check` through
+`gnoblin.permissions.check(args)`. It returns the same decision record and
+requires the Lua supervisor. Older socket clients keep the native
+compatibility route.
+
 Native-control API 1.23 adds `window.thumbnail`. API 1.24 adds
 `session.activity` and its change event. API 1.26 adds pointer-drag lifecycle
 events and capability-bound `window.snap.offer`.
