@@ -9,12 +9,12 @@ as supported until its graphical-session gate has passed.
 
 ## Package layout
 
-Gnoblin must install alongside GNOME.
+Gnoblin installs as its own session and can coexist with GNOME.
 
-- RPM names: `gnoblin-mutter`, `gnoblin-shell`, `gnoblin-portal`, `gnoblin-session`,
-  and the optional `gnoblin-gnome-integration` subpackage.
-- The `gnoblin` package is the install entry point. `gnoblin-session` owns the
-  login command and session files; its package name does not change the command.
+- RPM names: `gnoblin`, `gnoblin-mutter`, `gnoblin-portal`, and the optional
+  `gnoblin-gnome-integration` subpackage.
+- The `gnoblin` package owns the supervisor, login entry, Lua runtime, and
+  session services.
 - Private runtime: `/usr/lib/gnoblin`.
 - Public files: login entry, control tool, service units and named policy files.
 - Private libraries must not satisfy stock GNOME dependencies.
@@ -60,7 +60,7 @@ From a clean release checkout, build the source assets first:
 ```
 
 The `gnoblin-*-source.tar.xz` file contains Gnoblin and its patched, pinned
-Mutter, Shell, and portal sources. Extract it and run `./build.sh` to check the
+Mutter and portal sources. Extract it and run `./build.sh` to check the
 same source route users receive. The command also writes component archives,
 an Arch recipe, and checksums into `dist/release`.
 GitHub publishes the complete source tarball first, then the companion source

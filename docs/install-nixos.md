@@ -1,17 +1,19 @@
 # NixOS
 
-The flake evaluates compatibility for **x86_64 Linux**. It exposes a package
-only when the pinned channel supplies the required GNOME development libraries.
-If that channel has older desktop schemas, the Nix build uses the pinned GNOME
-51 source for that one dependency. No NixOS channel has
-completed the full support gate. See
-[platform support](platform-support.md) before installing.
+The flake evaluates compatibility for **x86_64 Linux**. It builds Gnoblin's
+standalone supervisor, patched Mutter compositor, and portal backend without
+building or depending on GNOME Shell or GJS. If the selected channel has older
+desktop schemas, the Nix build uses the pinned GNOME 51 source for that one
+dependency.
+
+No NixOS channel has completed the full support gate. See [platform
+support](platform-support.md) before installing.
 
 ## Stable channels
 
-The default flake package follows Nixpkgs unstable when that input is compatible. The
-`lib.nixChannelPackages` entries use each named channel and require that
-channel's libraries to meet the pinned GNOME source requirements. Desktop
+The default flake package follows Nixpkgs unstable when that input is compatible.
+The `lib.nixChannelPackages` entries use each named channel and require its
+libraries to meet the pinned Mutter and portal source requirements. Desktop
 schemas are the one source fallback; the remaining libraries come from Nixpkgs.
 
 The flake exposes the exact pinned-channel assessment for integrators:
@@ -84,16 +86,15 @@ sudo nixos-rebuild switch --flake .
 
 Run `gnoblin --version` to read the installed Gnoblin release, GNOME component
 versions, and source revision; use `gnoblin --version --json` for the full record.
-The Git remote may show as `unknown` because Nix does not pass the flake's
-original URL to the package build.
 
-The NixOS path has not passed login, coexistence or removal, so return to your
-existing session if it does not start. Continue with [configuration](/config)
-only after it reaches a usable desktop.
+The NixOS path has not passed login, coexistence or removal. Keep your existing
+session available while trying it. Continue with [configuration](/config) only
+after Gnoblin reaches a usable desktop.
 
 ## Update or remove
 
 Update the flake input and rebuild to update Gnoblin. Log out and in afterward.
 
 To remove it, remove the Gnoblin module and enable option, then rebuild.
-Gnoblin's private runtime does not replace the GNOME packages in your system.
+Gnoblin does not replace the GNOME packages in your system. It starts its own
+Mutter compositor and can share the host's GNOME applications and services.
