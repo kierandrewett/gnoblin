@@ -83,7 +83,7 @@ identity = {
     "version": release["version"],
     "gnomeVersion": components["mutter"]["version"],
     "mutterApi": components["mutter"]["api"],
-    "luaVersion": package_version("lua5.4", "lua-5.4", "lua54", "lua"),
+    "luaVersion": None,
     "apiVersion": native_api_version(),
     "buildId": build_id,
     "components": {name: value["version"] for name, value in shipped_components.items()},
@@ -106,8 +106,10 @@ def key_file_value(value):
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("output", help="write the existing JSON build identity here")
+parser.add_argument("--lua-version", help="Lua version resolved by the build system")
 parser.add_argument("--ini-output", help="also write GLib KeyFile runtime metadata here")
 arguments = parser.parse_args()
+identity["luaVersion"] = arguments.lua_version or package_version("lua5.4", "lua-5.4", "lua54", "lua")
 Path(arguments.output).write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
 
 if arguments.ini_output:

@@ -105,6 +105,7 @@ add_test(NAME permission-contract
 add_custom_target(gnoblinctl-identity
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/build-identity.py"
     "${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
+    --lua-version "${GNOBLIN_LUA_VERSION}"
     --ini-output "${CMAKE_BINARY_DIR}/gnoblin-version.ini"
   BYPRODUCTS "${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
     "${CMAKE_BINARY_DIR}/gnoblin-version.ini")
