@@ -18,11 +18,6 @@
       flake = false;
     };
 
-    gnome-shell-src = {
-      url = "git+https://gitlab.gnome.org/GNOME/gnome-shell.git?rev=2177bdf9624b2d285de7c1d34274073d3769d6b8";
-      flake = false;
-    };
-
     gsettings-desktop-schemas-src = {
       url = "git+https://gitlab.gnome.org/GNOME/gsettings-desktop-schemas.git?rev=1db238b6a349ea7fae6f1c0713afe04d1bb7ea5c";
       flake = false;
@@ -40,21 +35,6 @@
 
     gvdb = {
       url = "git+https://gitlab.gnome.org/GNOME/gvdb.git?rev=b54bc5da25127ef416858a3ad92e57159ff565b3";
-      flake = false;
-    };
-
-    gvc = {
-      url = "git+https://gitlab.gnome.org/GNOME/libgnome-volume-control.git?rev=d2442f455844e5292cb4a74ffc66ecc8d7595a9f";
-      flake = false;
-    };
-
-    libshew = {
-      url = "git+https://gitlab.gnome.org/GNOME/libshew.git?rev=ed782477cb5164320ae4f731d49bc5d475ab2a52";
-      flake = false;
-    };
-
-    jasmineGjs = {
-      url = "github:ptomato/jasmine-gjs/856465dddbd92e82e574891e1ebc79e17d7b708a";
       flake = false;
     };
 
@@ -103,17 +83,11 @@
             gnoblinSourceModified = self ? dirtyRev;
             gnoblinRemote = if self ? original && self.original ? url then self.original.url else null;
             mutterSrc = inputs.mutter-src.outPath;
-            gnomeShellSrc = inputs.gnome-shell-src.outPath;
             gsettingsDesktopSchemasSrc = inputs.gsettings-desktop-schemas-src.outPath;
             portalSrc = inputs.portal-src.outPath;
             gxdpSrc = inputs.gxdp-src.outPath;
             gnomePortal = pkgs.xdg-desktop-portal-gnome;
             gvdbSrc = inputs.gvdb.outPath;
-            gvcSrc = inputs.gvc.outPath;
-            libshewSrc = inputs.libshew.outPath;
-            jasmineGjsSrc = inputs.jasmineGjs.outPath;
-            gnomeShell = pkgs.gnome-shell;
-            gnomeSession = pkgs.gnome-session;
           }
           // overrides
         );
@@ -126,7 +100,6 @@
           buildBlockers =
             nixpkgs.lib.optional (!hasLibglycin) "missing-libglycin"
             ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.glib.version "2.86.0") "glib-below-2.86"
-            ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.gjs.version "1.87.1") "gjs-below-1.87.1"
             ++ nixpkgs.lib.optional (
               !nixpkgs.lib.versionAtLeast pkgs.wayland.version "1.25"
             ) "wayland-below-1.25"
@@ -225,7 +198,7 @@
         if assessment.buildBlockers == [ ] then
           rec {
             gnoblin = mkGnoblin assessment.pkgs { };
-            gnoblin-runtime = gnoblin.runtime;
+            gnoblin-runtime = gnoblin;
             default = gnoblin;
           }
         else
@@ -238,15 +211,6 @@
           assessment = assessChannel system nixpkgsChannels.nixos_unstable;
           pkgs = import nixpkgs { inherit system; };
           gnoblin = if assessment.buildBlockers == [ ] then self.packages.${system}.gnoblin else null;
-          combinedProfile = pkgs.buildEnv {
-            name = "gnome-and-gnoblin";
-            paths = [
-              pkgs.gnome-shell
-              pkgs.mutter
-              gnoblin
-            ];
-            ignoreCollisions = false;
-          };
           moduleTest = nixpkgs.lib.nixosSystem {
             inherit system;
             modules = [
@@ -267,40 +231,22 @@
               test "${toString (builtins.head moduleTest.config.services.displayManager.sessionPackages)}" = "${gnoblin}"
               test "${toString (builtins.head moduleTest.config.systemd.packages)}" = "${gnoblin}"
               test ! -e "${gnoblin}/bin/gnome-shell"
-              test ! -e "${gnoblin}/bin/mutter"
-              test ! -e "${gnoblin}/share/glib-2.0/schemas"
-              test ! -e "${gnoblin}/share/dbus-1"
+              test ! -e "${gnoblin}/bin/gnoblin-shell-service"
               test -x "${gnoblin}/bin/gnoblinctl"
-              test -x "${gnoblin.runtime}/bin/gnome-shell"
-              test -x "${gnoblin.runtime}/bin/gnoblin"
-              test -x "${gnoblin.runtime}/bin/gnoblin-shell-service"
-              test "$(readlink -f ${combinedProfile}/bin/gnome-shell)" = "$(readlink -f ${pkgs.gnome-shell}/bin/gnome-shell)"
-              test "$(readlink -f ${combinedProfile}/bin/mutter)" = "$(readlink -f ${pkgs.mutter}/bin/mutter)"
+              test -x "${gnoblin}/bin/gnoblin"
+              test -x "${gnoblin}/bin/gnoblin-mutter"
               test -f "${gnoblin}/share/wayland-sessions/gnoblin.desktop"
-              test -f "${gnoblin}/lib/systemd/user/org.gnoblin.Shell@wayland.service"
-              test -f "${pkgs.gnome-session}/share/systemd/user/gnome-session.target"
-              test -f "${pkgs.gnome-session}/share/systemd/user/gnome-session@.target"
-              test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
-              test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell.target"
-              test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell@wayland.service"
-              bash -n "${gnoblin.runtime}/bin/gnoblin" "${gnoblin.runtime}/bin/gnoblin-shell-service"
-              case "$(<"${gnoblin.runtime}/bin/gnoblin")" in
-                  *"--no-reexec"*) ;;
-                  *) exit 1 ;;
-              esac
-              schema_directory="${gnoblin.runtime}/share/glib-2.0/schemas"
+              test -f "${gnoblin}/lib/systemd/user/gnoblin-session.target"
+              test -f "${gnoblin}/lib/systemd/user/gnoblin-idle.service"
+              test -f "${gnoblin}/share/xdg-desktop-portal/portals/gnoblin.portal"
+              test ! -e "${gnoblin}/share/glib-2.0/schemas/org.gnome.shell.gschema.xml"
+              schema_directory="${gnoblin}/share/glib-2.0/schemas"
               test -f "$schema_directory/org.gnome.mutter.gschema.xml"
-              test -f "$schema_directory/org.gnome.shell.gschema.xml"
-              test -f "$schema_directory/org.gnoblin.shell.gschema.xml"
               test -f "$schema_directory/gschemas.compiled"
               test "$(
                   GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
                       get org.gnome.mutter overlay-key
               )" = "'Super'"
-              GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
-                  get org.gnome.shell enabled-extensions >/dev/null
-              GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
-                  get org.gnoblin.shell disabled-features >/dev/null
               touch "$out"
             '';
           }

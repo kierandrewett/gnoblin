@@ -1,22 +1,5 @@
 {
   "nodes": {
-    "gnome-shell-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1789401501,
-        "narHash": "sha256-mjC4IDakKmh/PZVRMw5u7nRop985ssqFL9Kq0d6s67k=",
-        "ref": "refs/heads/main",
-        "rev": "2177bdf9624b2d285de7c1d34274073d3769d6b8",
-        "revCount": 20861,
-        "type": "git",
-        "url": "https://gitlab.gnome.org/GNOME/gnome-shell.git"
-      },
-      "original": {
-        "rev": "2177bdf9624b2d285de7c1d34274073d3769d6b8",
-        "type": "git",
-        "url": "https://gitlab.gnome.org/GNOME/gnome-shell.git"
-      }
-    },
     "gsettings-desktop-schemas-src": {
       "flake": false,
       "locked": {
@@ -32,23 +15,6 @@
         "rev": "1db238b6a349ea7fae6f1c0713afe04d1bb7ea5c",
         "type": "git",
         "url": "https://gitlab.gnome.org/GNOME/gsettings-desktop-schemas.git"
-      }
-    },
-    "gvc": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1770829861,
-        "narHash": "sha256-10n441b7m/mvQRdrmEsxGxqjKUWzjGvnzJy256NZN5s=",
-        "ref": "refs/heads/master",
-        "rev": "d2442f455844e5292cb4a74ffc66ecc8d7595a9f",
-        "revCount": 120,
-        "type": "git",
-        "url": "https://gitlab.gnome.org/GNOME/libgnome-volume-control.git"
-      },
-      "original": {
-        "rev": "d2442f455844e5292cb4a74ffc66ecc8d7595a9f",
-        "type": "git",
-        "url": "https://gitlab.gnome.org/GNOME/libgnome-volume-control.git"
       }
     },
     "gvdb": {
@@ -83,40 +49,6 @@
         "rev": "df896e3412b749947bc6f62a91a1aac8e6b6d19b",
         "type": "git",
         "url": "https://gitlab.gnome.org/GNOME/libgxdp.git"
-      }
-    },
-    "jasmineGjs": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1736969202,
-        "narHash": "sha256-oXX6gURacmkMZ7h/NkNXhH1UTo7Jq8OyMP7ETtZx/NY=",
-        "owner": "ptomato",
-        "repo": "jasmine-gjs",
-        "rev": "856465dddbd92e82e574891e1ebc79e17d7b708a",
-        "type": "github"
-      },
-      "original": {
-        "owner": "ptomato",
-        "repo": "jasmine-gjs",
-        "rev": "856465dddbd92e82e574891e1ebc79e17d7b708a",
-        "type": "github"
-      }
-    },
-    "libshew": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1749568263,
-        "narHash": "sha256-auv5JsQUkytLLAAJzZlCDw4+v9/JfsCV1hKTa3Ku/Jg=",
-        "ref": "refs/heads/main",
-        "rev": "ed782477cb5164320ae4f731d49bc5d475ab2a52",
-        "revCount": 89,
-        "type": "git",
-        "url": "https://gitlab.gnome.org/GNOME/libshew.git"
-      },
-      "original": {
-        "rev": "ed782477cb5164320ae4f731d49bc5d475ab2a52",
-        "type": "git",
-        "url": "https://gitlab.gnome.org/GNOME/libshew.git"
       }
     },
     "mutter-src": {
@@ -219,13 +151,9 @@
     },
     "root": {
       "inputs": {
-        "gnome-shell-src": "gnome-shell-src",
         "gsettings-desktop-schemas-src": "gsettings-desktop-schemas-src",
-        "gvc": "gvc",
         "gvdb": "gvdb",
         "gxdp-src": "gxdp-src",
-        "jasmineGjs": "jasmineGjs",
-        "libshew": "libshew",
         "mutter-src": "mutter-src",
         "nixpkgs": "nixpkgs",
         "nixpkgs_25_05": "nixpkgs_25_05",
