@@ -23,6 +23,7 @@ Requires:       dbus-tools
 Requires:       dconf
 Requires:       glib2 >= 2.86.0
 Requires:       gsettings-desktop-schemas >= 51.0
+Requires:       gtk4 >= 4.22.0
 Requires:       json-glib
 Requires:       libinput >= 1.30.0
 Requires:       lua-libs >= 5.4
