@@ -357,7 +357,7 @@ clicked window with an XDG Activation token through the
 | `permissions policy`                                              | Read the committed policy and its revision (native-control API 1.16+)                    |
 | `permissions check CAPABILITY IDENTITY`                           | Explain a decision for `app-id:…` or `host-exe:…`                                        |
 | `grant list`, `grant revoke KIND ID`                              | List or revoke persistent portal grants; kind is `screen-cast` or `remote-desktop`       |
-| `launch status`                                                   | List pending launch feedback                                                             |
+| `launch status`                                                   | List pending launch feedback and its revision (API 1.39+)                                |
 | `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN`       | Start or end busy-cursor feedback; duration defaults to 3000 ms, clamped to 100–10000 ms |
 | `shortcut capture`                                                | Briefly grab the keyboard and print a GTK accelerator or `Super` binding                 |
 

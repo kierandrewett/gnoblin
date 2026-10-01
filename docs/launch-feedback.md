@@ -24,6 +24,8 @@ busy cursor; they do not open Files.
 
 Wait for `begin` to return before launching the app.
 Use a unique token for each launch and call `end` if launch fails.
+`launch status` returns the launch records and collection revision from the
+shared Lua snapshot (native-control API 1.39+).
 
 Requests end when a matching window appears or gains focus, on explicit end,
 or after the timeout. Overlapping requests keep the cursor busy until all end.
