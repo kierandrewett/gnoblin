@@ -18,10 +18,9 @@ for focus and text insertion; changing the socket path alone is not sufficient.
   `activate`, `preview`, `window-drag`, `privacy`, and private `bingux.*`
   operations. Replace these with versioned API calls and event subscriptions.
   Recreate connection-owned bindings and subscriptions after reconnecting.
-- `shell/bingux/WorkspaceState.qml` sends `op: "command"` with
-  `workspace-list` and `workspace-switch`, then polls every five seconds. Use
-  `workspace.list`, `workspace.switch`, and the live events on an
-  `op: "windows"` subscription.
+- `shell/bingux/WorkspaceState.qml` now uses the versioned `workspace.list` and
+  `workspace.switch` API methods. It subscribes to workspace lifecycle events
+  on `op: "windows"` and polls only when connected to an older API version.
 - `shell/bingux/capture_backend.py` sends the private `capture-windows`
   command. Use `window.list` for metadata and keep image capture on the
   ScreenCast portal.
@@ -47,9 +46,6 @@ Replace these compatibility-bridge calls:
   `shortcut.unbind`, and the `gnoblin.shortcut.binding-activated` event. Negotiate
   the API version from `hello`. Bindings belong to the connection; register them
   again after reconnecting.
-- **Workspaces:** Replace `workspace-list` and `workspace-switch` with
-  `workspace.list` and `workspace.switch`. Subscribe to workspace events or
-  refresh the snapshot after a change.
 - **Windows:** Subscribe with `op: "windows"` for the initial snapshot and live
   window and workspace events. Use `window.list` for filtered socket reads or
   `windows.list` when using the newer Lua-backed snapshot method.
