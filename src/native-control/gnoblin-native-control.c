@@ -10583,9 +10583,16 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                                    "window.restore_or_minimize requires only a stable window id");
         g_autoptr(JsonNode) arguments_object = json_node_new(JSON_NODE_OBJECT);
         json_node_set_object(arguments_object, json_object_ref(json_arguments));
-        g_autoptr(GVariant) native_arguments = variant_from_json(arguments_object);
+        g_autoptr(GVariant) operation_arguments = variant_from_json(arguments_object);
+        if (!operation_arguments)
+            return encode_response(id, NULL, "window.restore_or_minimize arguments are invalid");
+        if (client->api_minor >= 48) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            return queue_runtime_api_request(client, id, method, operation_arguments, "call");
+        }
         g_autoptr(GVariant) result = gnoblin_native_control_restore_or_minimize_window(
-            client->control->display, native_arguments, &error);
+            client->control->display, operation_arguments, &error);
         if (!result)
             return encode_response(id, NULL,
                                    error ? error->message : "window restore-or-minimize failed");
