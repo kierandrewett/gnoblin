@@ -477,23 +477,24 @@ compositor changes.
 
 #### Window methods
 
-| Lua method                             | Arguments                      | Canonical operation        | Effect                                                                                                            |
-| -------------------------------------- | ------------------------------ | -------------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `:focus(context)`                      | `FocusContext`                 | `window.focus`             | Restore and raise the window, activate its workspace, and request keyboard focus for an explicit shell selection. |
-| `:close()`                             | none                           | `window.close`             | Ask the client to close using the normal protocol.                                                                |
-| `:minimize()`                          | none                           | `window.minimize`          | Minimize if supported.                                                                                            |
-| `:toggle_minimize()`                   | none                           | `window.toggle_minimize`   | Minimize a normal window or restore a minimized one.                                                              |
-| `:restore()`                           | none                           | `window.restore`           | Unminimize and unmaximize as needed to show the window.                                                           |
-| `:set_above(enabled)`                  | boolean                        | `window.set_above`         | Set the above state idempotently.                                                                                 |
-| `:set_sticky(enabled)`                 | boolean                        | `window.set_sticky`        | Set visibility across workspaces idempotently.                                                                    |
-| `:set_maximized(enabled)`              | boolean                        | `window.set_maximized`     | Set the maximized state idempotently.                                                                             |
-| `:set_fullscreen(enabled)`             | boolean                        | `window.set_fullscreen`    | Set the fullscreen state idempotently.                                                                            |
-| `:move(position)`                      | `{x, y}`                       | `window.move`              | Move the frame in logical compositor coordinates.                                                                 |
-| `:resize(size)`                        | `{width, height}`              | `window.resize`            | Request a size in logical pixels, respecting client constraints.                                                  |
-| `:move_to_workspace(target, options?)` | `WorkspaceSelector`; `follow?` | `window.move_to_workspace` | Move this window; optionally activate the destination.                                                            |
-| `:move_to_monitor(target)`             | `MonitorSelector`              | `window.move_to_monitor`   | Move this window to a monitor.                                                                                    |
-| `:begin_move(context)`                 | `FocusContext`                 | `window.begin_move`        | Start Mutter's keyboard move grab with a trusted shortcut context.                                                |
-| `:begin_resize(edge, context)`         | `ResizeEdge`, `FocusContext`   | `window.begin_resize`      | Start Mutter's keyboard resize grab at the selected edge.                                                         |
+| Lua method                             | Arguments                      | Canonical operation          | Effect                                                                                                            |
+| -------------------------------------- | ------------------------------ | ---------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `:focus(context)`                      | `FocusContext`                 | `window.focus`               | Restore and raise the window, activate its workspace, and request keyboard focus for an explicit shell selection. |
+| `:close()`                             | none                           | `window.close`               | Ask the client to close using the normal protocol.                                                                |
+| `:minimize()`                          | none                           | `window.minimize`            | Minimize if supported.                                                                                            |
+| `:toggle_minimize()`                   | none                           | `window.toggle_minimize`     | Minimize a normal window or restore a minimized one.                                                              |
+| `:restore()`                           | none                           | `window.restore`             | Unminimize and unmaximize as needed to show the window.                                                           |
+| `:restore_or_minimize()`               | none                           | `window.restore_or_minimize` | Unmaximize, restore the saved pre-snap frame, or minimize when no frame is saved.                                 |
+| `:set_above(enabled)`                  | boolean                        | `window.set_above`           | Set the above state idempotently.                                                                                 |
+| `:set_sticky(enabled)`                 | boolean                        | `window.set_sticky`          | Set visibility across workspaces idempotently.                                                                    |
+| `:set_maximized(enabled)`              | boolean                        | `window.set_maximized`       | Set the maximized state idempotently.                                                                             |
+| `:set_fullscreen(enabled)`             | boolean                        | `window.set_fullscreen`      | Set the fullscreen state idempotently.                                                                            |
+| `:move(position)`                      | `{x, y}`                       | `window.move`                | Move the frame in logical compositor coordinates.                                                                 |
+| `:resize(size)`                        | `{width, height}`              | `window.resize`              | Request a size in logical pixels, respecting client constraints.                                                  |
+| `:move_to_workspace(target, options?)` | `WorkspaceSelector`; `follow?` | `window.move_to_workspace`   | Move this window; optionally activate the destination.                                                            |
+| `:move_to_monitor(target)`             | `MonitorSelector`              | `window.move_to_monitor`     | Move this window to a monitor.                                                                                    |
+| `:begin_move(context)`                 | `FocusContext`                 | `window.begin_move`          | Start Mutter's keyboard move grab with a trusted shortcut context.                                                |
+| `:begin_resize(edge, context)`         | `ResizeEdge`, `FocusContext`   | `window.begin_resize`        | Start Mutter's keyboard resize grab at the selected edge.                                                         |
 
 `move` and `resize` are programmatic placement requests. Interactive
 movement is separate and lets Mutter apply pointer constraints, grabs, and

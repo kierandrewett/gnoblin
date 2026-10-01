@@ -47,6 +47,12 @@ Native-control API 1.37 adds four snapshot collection reads. They return JSON
 arrays, including when a collection is empty. `layers.list` accepts the same
 optional filters as `gnoblin.layers.list()`.
 
+Native-control API 1.38 adds `window.restore_or_minimize`. It unmaximizes a
+maximized window, restores its saved pre-snap frame, or minimizes it. Its result
+contains the stable `id` and the action performed. The [bridge
+reference](/compositor-bridge#api-138-restore-a-snapped-window) lists the
+possible actions.
+
 Native-control API 1.23 adds `window.thumbnail`. API 1.24 adds
 `session.activity` and its change event. API 1.26 adds pointer-drag lifecycle
 events and capability-bound `window.snap.offer`.
@@ -774,26 +780,28 @@ state.
 ### Typed window operations
 
 Typed operations take the stable string `id` returned by `window.list`. They
-reject unknown argument fields. Each successful operation returns `{id}` as
-its completed value. Window operations fail while the session is locked.
+reject unknown argument fields. Most successful operations return `{id}` as
+their completed value. `window.restore_or_minimize` also returns the selected
+`action`. Window operations fail while the session is locked.
 
-| Method                           | Arguments                                                                                                                                    | Effect                                                                     |
-| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `window.close(args)`             | `id`                                                                                                                                         | Requests a normal close; the application can show an unsaved-work prompt.  |
-| `window.minimize(args)`          | `id`                                                                                                                                         | Minimizes the window.                                                      |
-| `window.toggle_minimize(args)`   | `id`                                                                                                                                         | Restores a minimized window; otherwise minimizes it.                       |
-| `window.restore(args)`           | `id`                                                                                                                                         | Removes minimization and maximization. It does not leave fullscreen.       |
-| `window.set_maximized(args)`     | `id`, `enabled` boolean                                                                                                                      | Sets maximization on or off.                                               |
-| `window.set_fullscreen(args)`    | `id`, `enabled` boolean                                                                                                                      | Sets fullscreen on or off.                                                 |
-| `window.set_above(args)`         | `id`, `enabled` boolean                                                                                                                      | Sets always-on-top on or off.                                              |
-| `window.set_sticky(args)`        | `id`, `enabled` boolean                                                                                                                      | Shows the window on all workspaces or only its own.                        |
-| `window.move(args)`              | `id`, integer `x`, integer `y` from −100000 to 100000                                                                                        | Sets the frame position in logical desktop pixels.                         |
-| `window.resize(args)`            | `id`, integer `width`, integer `height` from 1 to 32768                                                                                      | Sets the outer frame size in logical pixels.                               |
-| `window.move_to_workspace(args)` | `id`, `workspace` selector; optional `follow` boolean                                                                                        | Moves the window; `follow = true` also activates that workspace.           |
-| `window.move_to_monitor(args)`   | `id`, `monitor` connector ID or `{id = connector ID}`                                                                                        | Moves the window to that active monitor.                                   |
-| `window.focus(args)`             | Lua: `Window:focus(FocusContext)`; socket 1.10: `id` + `focus_context`; socket 1.32: `id` + `activation_token`                               | Focuses a listed window with one-use focus proof.                          |
-| `window.begin_move(args)`        | Native Lua: `Window:begin_move(FocusContext)`; socket API 1.12: `id`, `focus_context`; menu API 1.30: `menu_context`                         | Starts a keyboard move grab with one-use shortcut or WM-menu authority.    |
-| `window.begin_resize(args)`      | Native Lua: `Window:begin_resize(edge, FocusContext)`; socket API 1.12: `id`, `edge`, `focus_context`; menu API 1.30: `menu_context`, `edge` | Starts a keyboard resize grab at the selected edge with one-use authority. |
+| Method                             | Arguments                                                                                                                                    | Effect                                                                     |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `window.close(args)`               | `id`                                                                                                                                         | Requests a normal close; the application can show an unsaved-work prompt.  |
+| `window.minimize(args)`            | `id`                                                                                                                                         | Minimizes the window.                                                      |
+| `window.toggle_minimize(args)`     | `id`                                                                                                                                         | Restores a minimized window; otherwise minimizes it.                       |
+| `window.restore(args)`             | `id`                                                                                                                                         | Removes minimization and maximization. It does not leave fullscreen.       |
+| `window.restore_or_minimize(args)` | `id`                                                                                                                                         | Unmaximizes, restores the saved pre-snap frame, or minimizes the window.   |
+| `window.set_maximized(args)`       | `id`, `enabled` boolean                                                                                                                      | Sets maximization on or off.                                               |
+| `window.set_fullscreen(args)`      | `id`, `enabled` boolean                                                                                                                      | Sets fullscreen on or off.                                                 |
+| `window.set_above(args)`           | `id`, `enabled` boolean                                                                                                                      | Sets always-on-top on or off.                                              |
+| `window.set_sticky(args)`          | `id`, `enabled` boolean                                                                                                                      | Shows the window on all workspaces or only its own.                        |
+| `window.move(args)`                | `id`, integer `x`, integer `y` from −100000 to 100000                                                                                        | Sets the frame position in logical desktop pixels.                         |
+| `window.resize(args)`              | `id`, integer `width`, integer `height` from 1 to 32768                                                                                      | Sets the outer frame size in logical pixels.                               |
+| `window.move_to_workspace(args)`   | `id`, `workspace` selector; optional `follow` boolean                                                                                        | Moves the window; `follow = true` also activates that workspace.           |
+| `window.move_to_monitor(args)`     | `id`, `monitor` connector ID or `{id = connector ID}`                                                                                        | Moves the window to that active monitor.                                   |
+| `window.focus(args)`               | Lua: `Window:focus(FocusContext)`; socket 1.10: `id` + `focus_context`; socket 1.32: `id` + `activation_token`                               | Focuses a listed window with one-use focus proof.                          |
+| `window.begin_move(args)`          | Native Lua: `Window:begin_move(FocusContext)`; socket API 1.12: `id`, `focus_context`; menu API 1.30: `menu_context`                         | Starts a keyboard move grab with one-use shortcut or WM-menu authority.    |
+| `window.begin_resize(args)`        | Native Lua: `Window:begin_resize(edge, FocusContext)`; socket API 1.12: `id`, `edge`, `focus_context`; menu API 1.30: `menu_context`, `edge` | Starts a keyboard resize grab at the selected edge with one-use authority. |
 
 Resize edges are:
 
