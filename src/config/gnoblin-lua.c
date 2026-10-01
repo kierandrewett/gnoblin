@@ -1444,6 +1444,19 @@ static int lua_gnoblin_index(lua_State* state) {
         return 1;
     }
     const char* property = lua_tostring(state, 2);
+    static const struct {
+        const char* name;
+        const char* replacement;
+    } removed_apis[] = {
+        {"shortcut", "use gnoblin.configure.shortcuts.name = {binding = ..., command = ...}"},
+        {"autostart", "use gnoblin.configure.autostart.name = {command = ...}"},
+        {"remove_shortcut", "set gnoblin.configure.shortcuts.name.enable = false"},
+        {"remove_autostart", "set gnoblin.configure.autostart.name.enable = false"},
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(removed_apis); i++)
+        if (g_str_equal(property, removed_apis[i].name))
+            return luaL_error(state, "gnoblin.%s was removed; %s", removed_apis[i].name,
+                              removed_apis[i].replacement);
     if (g_str_equal(property, "focus")) {
         if (!config || !config->settings_document) {
             return luaL_error(state,

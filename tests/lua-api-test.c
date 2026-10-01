@@ -158,6 +158,27 @@ int main(void) {
         g_assert_nonnull(error);
         g_clear_error(&error);
     }
+    const char* removed_api_calls[] = {
+        "gnoblin.shortcut {name='terminal',command={'foot'}}",
+        "gnoblin.autostart {name='bar',command={'waybar'}}",
+        "gnoblin.remove_shortcut('terminal')",
+        "gnoblin.remove_autostart('bar')",
+        NULL,
+    };
+    const char* migration_hints[] = {
+        "gnoblin.configure.shortcuts.name",
+        "gnoblin.configure.autostart.name",
+        "gnoblin.configure.shortcuts.name.enable = false",
+        "gnoblin.configure.autostart.name.enable = false",
+    };
+    for (guint i = 0; removed_api_calls[i]; i++) {
+        g_assert_true(g_file_set_contents(root, removed_api_calls[i], -1, &error));
+        g_autoptr(GVariant) failed = gnoblin_config_load_document(root, NULL, NULL, &error);
+        g_assert_null(failed);
+        g_assert_nonnull(error);
+        g_assert_nonnull(strstr(error->message, migration_hints[i]));
+        g_clear_error(&error);
+    }
 
     const char* menu_runtime_source =
         "local g=require('gnoblin')\n"
