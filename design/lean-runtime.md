@@ -346,6 +346,19 @@ remains: its PipeWire state feeds `cameraInUse` in the compositor bridge.
    explicit Shell-required error. The full login still requires Shell while
    its UI, capture-input shortcuts, and services are being replaced.
    The full login still requires Shell while those capabilities are moved.
+   On Fedora 43, a clean permanent worktree completed the full source build
+   with GCC 15.3.1. Host versions of GNOME schemas (49.1), xdg-desktop-portal
+   (1.20.4), and GTK (4.20.4) were below the pinned GNOME 51 build floors, so
+   matching schemas, portal, and GTK sources were built in a private prefix;
+   Lua and PipeWire came from an existing private dependency prefix, and
+   fuse3 development headers were staged from Fedora's RPM without installing
+   packages on the host. A fresh devkit session answered `gnoblinctl ping`,
+   listed workspaces, and moved a live Foot window to workspace 2 through
+   `gnoblinctl window workspace`; the window snapshot reported
+   `workspace_id: "@session-2"`. The devkit now supplies a 1280×720 virtual
+   output. This verifies the native build and nested control path, not a real
+   login on a seat; GJS compatibility handlers and the standalone login
+   lifecycle remain open.
 5. **Narrow the remaining forks.** Keep the portal frontend protocol and
    backend selection standard. Move Gnoblin's portal implementation out of the
    GNOME backend fork only after its dialogs, capture, permissions, and GNOME
