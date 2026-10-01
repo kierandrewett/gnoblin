@@ -1150,7 +1150,9 @@ accepts no arguments and returns the same records as a JSON array. API version
 method, which requires a one-use context from that event.
 
 `gnoblinctl shortcut list` uses the API 1.40 `shortcuts.list` read. The older
-`shortcut.list` socket method remains available to existing clients.
+`shortcut.list` socket method remains available to existing clients. API 1.55
+and newer serve it from Lua and preserve its JSON array result; earlier API
+versions use the native snapshot.
 
 API 1.12 adds `window.begin_move` and `window.begin_resize`; both consume the
 same connection-bound token. See the
