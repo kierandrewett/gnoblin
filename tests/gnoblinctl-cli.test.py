@@ -119,7 +119,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(21):
+                    for _ in range(22):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -221,6 +221,13 @@ def main() -> int:
                                         "default_bindings": ["<Alt>F4"],
                                     }
                                 ]
+                            elif request["method"] == "permissions.list":
+                                result = {
+                                    "policy": {"default": "deny", "rules": []},
+                                    "capabilities": ["screen-cast", "remote-desktop"],
+                                    "levels": ["deny", "ask", "allow"],
+                                    "path": "/tmp/gnoblin-permissions.json",
+                                }
                             elif request["method"] == "window.move_to_monitor":
                                 result = {"id": "42", "monitor_id": "HDMI-1"}
                             elif request["method"] == "window.restore_or_minimize":
@@ -498,11 +505,19 @@ def main() -> int:
                 "default_bindings": ["<Alt>F4"],
             }
         ]
+        permissions_list = run(binary, "--socket", socket_path, "--format", "json", "permissions", "list")
+        assert permissions_list.returncode == 0, permissions_list.stderr
+        assert json.loads(permissions_list.stdout) == {
+            "policy": {"default": "deny", "rules": []},
+            "capabilities": ["screen-cast", "remote-desktop"],
+            "levels": ["deny", "ask", "allow"],
+            "path": "/tmp/gnoblin-permissions.json",
+        }
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 21
-        assert len(subscriptions) == 21
+        assert len(received) == 22
+        assert len(subscriptions) == 22
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -588,6 +603,9 @@ def main() -> int:
         assert received[20]["method"] == "shortcuts.actions"
         assert received[20]["api_version"] == {"major": 1, "minor": 41}
         assert received[20]["arguments"] == {"group": "wm"}
+        assert received[21]["method"] == "permissions.list"
+        assert received[21]["api_version"] == {"major": 1, "minor": 42}
+        assert received[21]["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
