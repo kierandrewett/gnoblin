@@ -1252,8 +1252,8 @@ API 1.53 routes the socket-only `window.list` alias through
 names, and filter behavior. Every negotiated client version now uses this
 Lua-backed adapter.
 API 1.54 routes `launch.status` through `gnoblin.launches.snapshot()` while
-preserving launch-change event tracking. Earlier clients retain the native
-snapshot route.
+preserving launch-change event tracking. Every supported client version now
+uses this Lua-backed snapshot.
 API 1.55 routes the socket-only `shortcut.list` alias through
 `gnoblin.shortcuts.list()` while preserving its bare array result. Earlier
 clients retain the native snapshot route.
