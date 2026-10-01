@@ -9969,6 +9969,7 @@ static gboolean native_api_read_method(const char* method) {
             g_str_equal(method, "version") || g_str_equal(method, "capabilities.list") ||
             g_str_equal(method, "focus.history") || g_str_equal(method, "settings") ||
             g_str_equal(method, "focus.policy") || g_str_equal(method, "session.activity") ||
+            g_str_equal(method, "session.status") ||
             g_str_equal(method, "layer.animation_policy") ||
             g_str_equal(method, "workspaces.list") || g_str_equal(method, "monitors.list") ||
             g_str_equal(method, "layers.list") || g_str_equal(method, "launches.list") ||
@@ -10565,6 +10566,14 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "session.status")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "session.status does not accept arguments");
+        if (client->api_minor >= 51) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            GVariantBuilder empty;
+            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+            g_autoptr(GVariant) arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+            return queue_runtime_api_request(client, id, method, arguments, "read");
+        }
         g_autoptr(JsonNode) status =
             native_session_status_json(client->control->wayland_compositor);
         if (!status)

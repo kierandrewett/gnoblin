@@ -434,7 +434,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("native_menu_context_revoke_client(control, client->client_id)", socket_revoke)
         self.assertIn("revoke_menu_contexts(control)", source)
 
-    def test_status_socket_read_uses_native_state_without_supervisor(self):
+    def test_status_socket_read_uses_lua_for_current_clients_and_keeps_legacy_path(self):
         source = CONTROL.read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         status = function_body(
@@ -448,10 +448,12 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean runtime_reload_document_supported(",
         )
 
+        self.assertIn("client->api_minor >= 51", status)
+        self.assertIn("supervised_runtime", status)
+        self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', status)
         self.assertIn("native_session_status_json", status)
-        self.assertNotIn("supervised_runtime", status)
         self.assertIn('"session.status"', status)
-        self.assertNotIn("session.status", reads)
+        self.assertIn('g_str_equal(method, "session.status")', reads)
 
     def test_layer_animation_policy_socket_read_uses_supervised_lua_read(self):
         source = CONTROL.read_text()
@@ -907,7 +909,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean native_runtime_fd_ready(",
         )
 
-        self.assertEqual(api_minor(header), 50)
+        self.assertEqual(api_minor(header), 51)
         self.assertIn("client->track_launches = TRUE", launch)
         self.assertIn("client->launch_api_minor = client->api_minor", launch)
         self.assertLess(launch.index("client->track_launches = TRUE"), launch.index("client->api_minor >= 50"))
