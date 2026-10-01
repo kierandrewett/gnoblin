@@ -869,7 +869,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("meta_window_get_maximize_flags (window) != META_MAXIMIZE_NONE", move_patch)
         self.assertIn("meta_window_move_frame (window, TRUE, (int) x, (int) y)", move_patch)
 
-    def test_portal_grants_uses_lua_at_api_145_and_keeps_native_route(self):
+    def test_portal_grants_always_uses_lua(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         lua_source = LUA.read_text()
@@ -884,9 +884,9 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "void gnoblin_config_finish_load(",
         )
 
-        self.assertIn("client->api_minor >= 45", grant_handler)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', grant_handler)
-        self.assertIn("client->control->portal_grant_snapshot", grant_handler)
+        self.assertNotIn("client->api_minor >= 45", grant_handler)
+        self.assertNotIn("client->control->portal_grant_snapshot", grant_handler)
         self.assertIn('"portals.grants"', lua_read)
         self.assertIn('g_str_equal(method, "portals.grants")', lua_read)
         self.assertIn('lua_getfield(state, -1, "grants")', lua_read)

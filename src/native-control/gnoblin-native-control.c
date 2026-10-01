@@ -10604,38 +10604,16 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 return encode_response(id, NULL,
                                        "portal grant kind must be screen-cast or remote-desktop");
         }
-        if (client->api_minor >= 45) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            GVariantBuilder empty;
-            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-            g_autoptr(GVariant) read_arguments =
-                arguments_node ? variant_from_json(arguments_node)
-                               : g_variant_ref_sink(g_variant_builder_end(&empty));
-            if (!read_arguments)
-                return encode_response(id, NULL, "portals.grants arguments are invalid");
-            return queue_runtime_api_request(client, id, method, read_arguments, "read");
-        }
-        if (!client->control->portal_grant_snapshot)
-            return encode_response(id, NULL, "native portal grant snapshot is unavailable");
-        g_autoptr(GVariant) grants = g_variant_lookup_value(client->control->portal_grant_snapshot,
-                                                            "grants", G_VARIANT_TYPE("aa{sv}"));
-        g_autoptr(JsonNode) json = grants ? json_from_variant(grants) : NULL;
-        if (!JSON_NODE_HOLDS_ARRAY(json))
-            return encode_response(id, NULL, "native portal grant snapshot is invalid");
-        JsonArray* result_array = json_array_new();
-        JsonArray* source = json_node_get_array(json);
-        for (guint i = 0; i < json_array_get_length(source); i++) {
-            JsonNode* record = json_array_get_element(source, i);
-            if (kind_filter &&
-                !g_str_equal(kind_filter, json_object_get_string_member_with_default(
-                                              json_node_get_object(record), "kind", "")))
-                continue;
-            json_array_add_element(result_array, json_node_copy(record));
-        }
-        g_autoptr(JsonNode) result_array_node = json_node_new(JSON_NODE_ARRAY);
-        json_node_take_array(result_array_node, result_array);
-        return encode_response(id, result_array_node, NULL);
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) read_arguments =
+            arguments_node ? variant_from_json(arguments_node)
+                           : g_variant_ref_sink(g_variant_builder_end(&empty));
+        if (!read_arguments)
+            return encode_response(id, NULL, "portals.grants arguments are invalid");
+        return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
     if (g_str_equal(method, "permissions.list")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
