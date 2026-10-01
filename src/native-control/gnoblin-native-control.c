@@ -10676,80 +10676,67 @@ static char* handle_request(Client* client, const char* data, gsize length) {
             !(resize_action && client->api_minor >= 61) &&
             !(move_action && client->api_minor >= 62))
             return encode_response(
-                id, NULL,
-                "unsupported native window.action; use a typed window operation when available");
+                id, NULL, "unsupported window.action; use a typed window operation when available");
 
-        if (client->api_minor >= 60) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
 
-            const char* target = window_node ? json_node_get_string(window_node) : "active";
-            g_autofree char* active_window_id = NULL;
-            if (g_str_equal(target, "active")) {
-                MetaWindow* active_window = meta_display_get_focus_window(client->control->display);
-                if (!active_window)
-                    return encode_response(id, NULL, "there is no active window");
-                active_window_id = native_window_id(active_window);
-                target = active_window_id;
-            }
-
-            const char* lua_method = method;
-            gboolean enabled = TRUE;
-            if (g_str_equal(action, "above") || g_str_equal(action, "unabove")) {
-                lua_method = "window.set_above";
-                enabled = g_str_equal(action, "above");
-            } else if (g_str_equal(action, "stick") || g_str_equal(action, "unstick")) {
-                lua_method = "window.set_sticky";
-                enabled = g_str_equal(action, "stick");
-            } else if (g_str_equal(action, "maximize") || g_str_equal(action, "unmaximize")) {
-                lua_method = "window.set_maximized";
-                enabled = g_str_equal(action, "maximize");
-            } else if (g_str_equal(action, "fullscreen") || g_str_equal(action, "unfullscreen")) {
-                lua_method = "window.set_fullscreen";
-                enabled = g_str_equal(action, "fullscreen");
-            } else if (resize_action) {
-                lua_method = "window.resize";
-            } else if (move_action) {
-                lua_method = "window.move";
-            } else {
-                lua_method = g_str_equal(action, "close")      ? "window.close"
-                             : g_str_equal(action, "minimize") ? "window.minimize"
-                                                               : "window.unminimize";
-            }
-
-            GVariantBuilder typed_arguments;
-            g_variant_builder_init(&typed_arguments, G_VARIANT_TYPE_VARDICT);
-            g_variant_builder_add(&typed_arguments, "{sv}", "id", g_variant_new_string(target));
-            if (g_str_has_prefix(lua_method, "window.set_"))
-                g_variant_builder_add(&typed_arguments, "{sv}", "enabled",
-                                      g_variant_new_boolean(enabled));
-            if (resize_action) {
-                g_variant_builder_add(&typed_arguments, "{sv}", "width",
-                                      g_variant_new_int64(json_node_get_int(width_node)));
-                g_variant_builder_add(&typed_arguments, "{sv}", "height",
-                                      g_variant_new_int64(json_node_get_int(height_node)));
-            }
-            if (move_action) {
-                g_variant_builder_add(&typed_arguments, "{sv}", "x",
-                                      g_variant_new_int64(json_node_get_int(x_node)));
-                g_variant_builder_add(&typed_arguments, "{sv}", "y",
-                                      g_variant_new_int64(json_node_get_int(y_node)));
-            }
-            g_autoptr(GVariant) operation_arguments =
-                g_variant_ref_sink(g_variant_builder_end(&typed_arguments));
-            return queue_runtime_api_request_internal(client, id, lua_method, operation_arguments,
-                                                      "call", action, target);
+        const char* target = window_node ? json_node_get_string(window_node) : "active";
+        g_autofree char* active_window_id = NULL;
+        if (g_str_equal(target, "active")) {
+            MetaWindow* active_window = meta_display_get_focus_window(client->control->display);
+            if (!active_window)
+                return encode_response(id, NULL, "there is no active window");
+            active_window_id = native_window_id(active_window);
+            target = active_window_id;
         }
 
-        g_autoptr(GVariant) native_arguments = variant_from_json(arguments_node);
-        if (!native_arguments)
-            return encode_response(id, NULL, "window.action arguments are invalid");
-        g_autoptr(GVariant) result = meta_gnoblin_dispatch_native_api(
-            client->control->display, method, native_arguments, &error);
-        if (!result)
-            return encode_response(id, NULL, error ? error->message : "window action failed");
-        g_autoptr(JsonNode) json = json_from_variant(result);
-        return encode_response(id, json, NULL);
+        const char* lua_method = method;
+        gboolean enabled = TRUE;
+        if (g_str_equal(action, "above") || g_str_equal(action, "unabove")) {
+            lua_method = "window.set_above";
+            enabled = g_str_equal(action, "above");
+        } else if (g_str_equal(action, "stick") || g_str_equal(action, "unstick")) {
+            lua_method = "window.set_sticky";
+            enabled = g_str_equal(action, "stick");
+        } else if (g_str_equal(action, "maximize") || g_str_equal(action, "unmaximize")) {
+            lua_method = "window.set_maximized";
+            enabled = g_str_equal(action, "maximize");
+        } else if (g_str_equal(action, "fullscreen") || g_str_equal(action, "unfullscreen")) {
+            lua_method = "window.set_fullscreen";
+            enabled = g_str_equal(action, "fullscreen");
+        } else if (resize_action) {
+            lua_method = "window.resize";
+        } else if (move_action) {
+            lua_method = "window.move";
+        } else {
+            lua_method = g_str_equal(action, "close")      ? "window.close"
+                         : g_str_equal(action, "minimize") ? "window.minimize"
+                                                           : "window.unminimize";
+        }
+
+        GVariantBuilder typed_arguments;
+        g_variant_builder_init(&typed_arguments, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&typed_arguments, "{sv}", "id", g_variant_new_string(target));
+        if (g_str_has_prefix(lua_method, "window.set_"))
+            g_variant_builder_add(&typed_arguments, "{sv}", "enabled",
+                                  g_variant_new_boolean(enabled));
+        if (resize_action) {
+            g_variant_builder_add(&typed_arguments, "{sv}", "width",
+                                  g_variant_new_int64(json_node_get_int(width_node)));
+            g_variant_builder_add(&typed_arguments, "{sv}", "height",
+                                  g_variant_new_int64(json_node_get_int(height_node)));
+        }
+        if (move_action) {
+            g_variant_builder_add(&typed_arguments, "{sv}", "x",
+                                  g_variant_new_int64(json_node_get_int(x_node)));
+            g_variant_builder_add(&typed_arguments, "{sv}", "y",
+                                  g_variant_new_int64(json_node_get_int(y_node)));
+        }
+        g_autoptr(GVariant) operation_arguments =
+            g_variant_ref_sink(g_variant_builder_end(&typed_arguments));
+        return queue_runtime_api_request_internal(client, id, lua_method, operation_arguments,
+                                                  "call", action, target);
     }
     if (g_str_equal(method, "window.match")) {
         JsonObject* arguments_object = arguments_node && JSON_NODE_HOLDS_OBJECT(arguments_node)

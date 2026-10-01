@@ -732,7 +732,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("client->api_minor >= 44", permission_policy)
         self.assertNotIn("native_config_document(client->control)", permission_policy)
 
-    def test_legacy_window_actions_use_typed_lua_operations_for_api_160(self):
+    def test_legacy_window_actions_use_typed_lua_operations_for_all_api_versions(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
@@ -754,8 +754,9 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(json_node_get_string(action_node), "focus")', handler)
         self.assertIn("arguments_node ? json_node_get_object(arguments_node) : NULL", handler)
         self.assertIn('const char* action_fields[] = {"action", "window"}', handler)
-        self.assertIn('"unsupported native window.action; use a typed window operation when available"', handler)
-        self.assertIn("client->api_minor >= 60", handler)
+        self.assertIn('"unsupported window.action; use a typed window operation when available"', handler)
+        self.assertNotIn("client->api_minor >= 60", handler)
+        self.assertNotIn("meta_gnoblin_dispatch_native_api(", handler)
         self.assertIn('const char* target = window_node ? json_node_get_string(window_node) : "active"', handler)
         self.assertIn("native_window_id(active_window)", handler)
         for lua_method in (
@@ -776,8 +777,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"call", action, target)', handler)
         self.assertIn('"window.unminimize"', lua)
         self.assertIn('"window.unminimize"', mutter_patch)
-        self.assertIn("meta_gnoblin_dispatch_native_api(", handler)
-        self.assertIn("client->control->display, method, native_arguments", handler)
+        self.assertIn("return queue_runtime_api_request_internal(client, id, lua_method, operation_arguments,", handler)
 
         request_queue = function_body(
             source,
