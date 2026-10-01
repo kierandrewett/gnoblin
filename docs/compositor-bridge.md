@@ -348,6 +348,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.51            | Lua runtime read for `session.status`                                                                 |
 | 1.52            | Lua-backed compatibility read for `workspace.list`                                                    |
 | 1.53            | Lua-backed compatibility read for `window.list`                                                       |
+| 1.54            | Lua-backed compatibility read for `launch.status`                                                     |
 
 ### API 1.27: shell presentation requests
 
@@ -1127,8 +1128,11 @@ Launch feedback uses Gnoblin's native controller.
 API 1.50 routes `launch.begin` and `launch.end` through the Lua runtime. These
 calls return an operation descriptor and complete through
 `gnoblin.operation.completed`; subscribe to that event to receive the result.
-Earlier API versions keep the synchronous native route. `launch.status` remains
-a direct snapshot read and enables launch-change events for the connection.
+Earlier API versions keep the synchronous native route.
+
+API 1.54 and newer read `launch.status` through
+`gnoblin.launches.snapshot()`. The request still enables launch-change events
+for the connection. Earlier API versions use the native snapshot route.
 
 API 1.51 reads `session.status` through Lua. The response contains `state`,
 `lock_available`, and `lock_state` when locking is available. Earlier versions
