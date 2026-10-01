@@ -733,17 +733,17 @@ Lua configuration changes windows through typed methods on `Window` snapshots.
 
 The raw compositor socket exposes the operations below to clients such as
 `gnoblinctl`. The legacy `window.action` method accepts basic compositor
-actions, a resize request from API 1.61, and a move request from API 1.62. Lua
-configuration uses typed window methods instead.
+actions, resize from API 1.61, move from API 1.62, and workspace and monitor
+moves from API 1.63. Lua configuration uses typed window methods instead.
 
-| Method                   | Arguments                                                                                       | Successful result                                            |
-| ------------------------ | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| `window.list(args)`      | Optional `app_id`, `title`, `focused` filters                                                   | `{windows = {Window, ...}}`                                  |
-| `window.match(args)`     | Optional string `window` ID; defaults to `"active"`                                             | Window identity and a `match` rule table                     |
-| `window.action(args)`    | `action`; optional `window` ID or `"active"`; resize takes `width`/`height`; move takes `x`/`y` | `{ok, pending, window, action}`                              |
-| `window.thumbnail(args)` | Stable window `id`; integer `width` and `height` up to 480 by 320                               | Asynchronous operation with actual dimensions and base64 PNG |
-| `layer.list()`           | None                                                                                            | `{surfaces = {Surface, ...}}`                                |
-| `monitor.list()`         | None                                                                                            | `{monitors = {Monitor, ...}}`                                |
+| Method                   | Arguments                                                         | Successful result                                            |
+| ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------ |
+| `window.list(args)`      | Optional `app_id`, `title`, `focused` filters                     | `{windows = {Window, ...}}`                                  |
+| `window.match(args)`     | Optional string `window` ID; defaults to `"active"`               | Window identity and a `match` rule table                     |
+| `window.action(args)`    | `action`; optional `window`; action-specific fields below         | `{ok, pending, window, action}`                              |
+| `window.thumbnail(args)` | Stable window `id`; integer `width` and `height` up to 480 by 320 | Asynchronous operation with actual dimensions and base64 PNG |
+| `layer.list()`           | None                                                              | `{surfaces = {Surface, ...}}`                                |
+| `monitor.list()`         | None                                                              | `{monitors = {Monitor, ...}}`                                |
 
 `layer.list` and `monitor.list` use the Lua snapshots for every client
 version. Their socket adapters preserve the existing response wrappers.
@@ -754,14 +754,25 @@ down to fit while preserving aspect ratio.
 
 Every supported socket client routes basic `window.action` requests through
 the Lua runtime. API 1.61 adds resize through `window.resize`; API 1.62 adds
-move through `window.move`.
+move through `window.move`. API 1.63 adds workspace and monitor moves through
+`window.move_to_workspace` and `window.move_to_monitor`.
 
 Resize accepts integer dimensions from 1 to 32768 logical pixels. Move accepts
 integer coordinates from −100000 to 100000 logical pixels.
 
+The workspace action accepts a `workspace` selector with exactly one `id` or
+one-based `number` field. The monitor action accepts the current zero-based
+monitor `index`; Gnoblin resolves it to the stable connector ID before calling
+the typed operation. Both actions require API 1.63.
+
 The response acknowledges that Lua queued the typed operation. The compositor
-applies it asynchronously. Resize and move remain unavailable through
-`window.action` to clients below API 1.61 and 1.62 respectively.
+applies it asynchronously. Action availability is:
+
+- `resize`: API 1.61.
+- `move`: API 1.62.
+- `workspace` and `monitor`: API 1.63.
+
+Basic actions remain available to older clients.
 
 The operation returns the stable `window_id`, actual dimensions, and `data` as
 a base64-encoded PNG. Encoded PNG output is limited to 512 KiB.
@@ -815,15 +826,21 @@ keep the same response fields.
 WindowAction = "above" | "unabove" | "stick" | "unstick" | "close"
              | "minimize" | "restore" | "maximize" | "unmaximize"
              | "fullscreen" | "unfullscreen" | "resize" | "move"
+             | "workspace" | "monitor"
 ```
 
 The optional `window` is a stable ID from `window.list`. When omitted, the
-focused window is used. The `resize` and `move` actions require API 1.61 and
-1.62 respectively; their dimensions and coordinate limits are listed above.
+focused window is used.
 
-This legacy method does not accept focus, menus, interactive moves or resizes,
-workspace moves, or monitor moves. Use the typed methods below for those
-operations. Focus and interactive operations require a trusted context.
+Action availability:
+
+- `resize` requires API 1.61.
+- `move` requires API 1.62.
+- `workspace` and `monitor` require API 1.63.
+
+This legacy method does not accept focus, menus, or interactive moves and
+resizes. Use the typed methods below for those operations. Focus and
+interactive operations require a trusted context.
 
 The result reports that the compositor accepted the action for the selected
 window. The change may complete asynchronously. Requests fail while the session

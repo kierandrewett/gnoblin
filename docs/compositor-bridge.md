@@ -365,6 +365,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.60            | Basic legacy `window.action` requests use typed Lua operations for all supported client versions |
 | 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`                      |
 | 1.62            | Legacy `window.action` maps move to `window.move`                                                |
+| 1.63            | Adds `workspace` and `monitor` actions to `window.action`                                        |
 
 ### API 1.27: shell presentation requests
 
