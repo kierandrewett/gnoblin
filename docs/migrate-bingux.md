@@ -16,14 +16,16 @@ thumbnail API.
 
 A live devkit check confirmed that a modal held shortcut registers through
 `ShortcutSession.qml`. Window-switcher focus also uses the native focus API.
-Application-launch focus, snapping, text insertion, and OSD still need
-migration before the whole shell works in a standalone session.
+Application-launch focus, text insertion, and OSD still need migration before
+the whole shell works in a standalone session.
 
 - `shell/bingux/ShortcutSession.qml` uses `shortcut.bind`, `shortcut.unbind`,
   `ping`, and versioned shortcut event subscriptions when connected to
   standalone Gnoblin. It retains the compatibility protocol for GNOME sessions.
-  Its app-launch activation, drag, text input, and private
+  Its app-launch activation, text input, and private
   `bingux.*` operations still need standalone API replacements.
+- `shell/bingux/SnapAssist.qml` uses drag lifecycle events, capability-bound
+  snap offers, and one-use keyboard snap contexts in standalone Gnoblin.
 - `shell/bingux/PrivacyState.qml` reads standalone screen-sharing and recording
   state through `privacy.state` and `gnoblin.privacy.changed`, and uses native
   stop methods. Its existing camera and location probes remain in place
@@ -75,9 +77,11 @@ Replace these compatibility-bridge calls:
   `gnoblin.privacy.changed` event, `privacy.stop_sharing`, and
   `privacy.stop_recording` in the standalone session. Stop methods require API
   1.31. The native API does not report camera or location activity.
-- **Snapping:** Replace `window-drag` and snap events with pointer-drag event
-  subscriptions and `window.snap.offer` on the connection that received the
-  drag token.
+- **Snapping:** `SnapAssist.qml` now subscribes to pointer-drag events and
+  submits work-area-bounded snap targets through `window.snap.offer` on the
+  connection that received the drag token. Its keyboard layout uses
+  `window.snap_context` and `window.snap` with the shortcut's one-use focus
+  context.
 - **Text insertion:** Replace `bingux.input-anchor` and `bingux.type-text` with
   the standalone text-target methods. Pass the one-use focus context from a
   shortcut activation to `input.text_target`; it returns an opaque target.
@@ -102,7 +106,8 @@ versions used by this migration are:
 
 - dynamic shortcut binding: 1.11; held or modal bindings: 1.22;
 - shortcut focus contexts: 1.11; XDG Activation focus: 1.32;
-- window thumbnails: 1.23; text targets and keyboard snapping: 1.28;
+- pointer drag snapping: 1.26; keyboard snapping: 1.28;
+- window thumbnails: 1.23; text targets: 1.28;
 - privacy state: 1.17; privacy stop actions: 1.31;
 - OSD requests: 1.27.
 
