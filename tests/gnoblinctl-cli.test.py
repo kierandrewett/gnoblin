@@ -119,7 +119,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(20):
+                    for _ in range(21):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -210,6 +210,15 @@ def main() -> int:
                                         "trigger": "press",
                                         "action": "test.action",
                                         "revision": 6,
+                                    }
+                                ]
+                            elif request["method"] == "shortcuts.actions":
+                                result = [
+                                    {
+                                        "id": "wm.close",
+                                        "group": "wm",
+                                        "key": "close",
+                                        "default_bindings": ["<Alt>F4"],
                                     }
                                 ]
                             elif request["method"] == "window.move_to_monitor":
@@ -470,11 +479,30 @@ def main() -> int:
                 "revision": 6,
             }
         ]
+        shortcut_actions = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "shortcut",
+            "actions",
+            "wm",
+        )
+        assert shortcut_actions.returncode == 0, shortcut_actions.stderr
+        assert json.loads(shortcut_actions.stdout) == [
+            {
+                "id": "wm.close",
+                "group": "wm",
+                "key": "close",
+                "default_bindings": ["<Alt>F4"],
+            }
+        ]
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 20
-        assert len(subscriptions) == 20
+        assert len(received) == 21
+        assert len(subscriptions) == 21
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -557,6 +585,9 @@ def main() -> int:
         assert received[19]["method"] == "shortcuts.list"
         assert received[19]["api_version"] == {"major": 1, "minor": 40}
         assert received[19]["arguments"] == {}
+        assert received[20]["method"] == "shortcuts.actions"
+        assert received[20]["api_version"] == {"major": 1, "minor": 41}
+        assert received[20]["arguments"] == {"group": "wm"}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
