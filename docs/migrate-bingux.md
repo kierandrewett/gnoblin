@@ -9,28 +9,32 @@ Gnoblin policy and runtime behavior, not for drawing shell surfaces.
 
 ## Readiness
 
-Bingux is partially compatible with the standalone compositor socket.
-Workspace navigation, capture window enumeration, and shortcut registration
-now use the versioned API. Window-switcher previews now use the native
-thumbnail API.
+Bingux has migrated several high-traffic paths to the standalone API:
+workspace navigation, window enumeration, shortcut registration, switcher
+previews and focus, privacy state and stop requests, and window snapping.
+Capture pixels still come from the ScreenCast portal.
 
 A live devkit check confirmed that a modal held shortcut registers through
-`ShortcutSession.qml`. Window-switcher focus also uses the native focus API.
+`ShortcutSession.qml`. Native API smoke checks exercised privacy calls,
+thumbnail completion handling, and snap subscriptions. A full real-window
+preview and actual pointer or keyboard snap are not yet verified end to end.
+
 Application-launch focus, text insertion, and OSD still need migration before
 the whole shell works in a standalone session.
 
-- `shell/bingux/ShortcutSession.qml` uses `shortcut.bind`, `shortcut.unbind`,
-  `ping`, and versioned shortcut event subscriptions when connected to
-  standalone Gnoblin. It retains the compatibility protocol for GNOME sessions.
-  Its app-launch activation, text input, and private
-  `bingux.*` operations still need standalone API replacements.
+- `shell/bingux/ShortcutSession.qml` negotiates the native API, restores
+  connection-owned subscriptions and bindings after reconnect, and routes
+  supported shortcut, switcher, privacy, and snapping operations through
+  native methods/events. It retains the compatibility protocol for GNOME
+  sessions. App-launch activation, text input, and any remaining private
+  `bingux.*` operations still need standalone replacements.
 - `shell/bingux/SnapAssist.qml` uses drag lifecycle events, capability-bound
   snap offers, and one-use keyboard snap contexts in standalone Gnoblin.
 - `shell/bingux/PrivacyState.qml` reads standalone screen-sharing and recording
   state through `privacy.state` and `gnoblin.privacy.changed`, and uses native
-  stop methods. Its existing camera and location probes remain in place
-  because the native API does not report those sources. The GNOME session keeps
-  its compatibility operations.
+  stop methods. Its existing camera and location probes remain because the
+  native API does not report those sources. The GNOME session keeps its
+  compatibility operations.
 - `shell/bingux/WorkspaceState.qml` now uses the versioned `workspace.list` and
   `workspace.switch` API methods. It subscribes to workspace lifecycle events
   on `op: "windows"` and polls only when connected to an older API version.
@@ -50,7 +54,8 @@ GNOME-session compatibility path separate from the standalone path.
 
 The compositor socket protocol used by the GNOME Shell compatibility bridge
 accepts several short operations that the standalone Gnoblin socket does not.
-Migrate those calls before running Bingux in a standalone session.
+Do not use those compatibility calls on Bingux's standalone path. The status
+notes below distinguish migrations already present from work that remains.
 
 Replace these compatibility-bridge calls:
 
