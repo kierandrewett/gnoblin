@@ -1231,8 +1231,8 @@ shared Lua window snapshot.
 Native-control API 1.46 routes `input.devices`, `input.sources`, and
 `input.current_source` through their shared Lua methods; earlier clients retain
 the native compatibility route. API 1.47 routes `privacy.state` through
-`gnoblin.privacy.state()`; earlier clients retain the native compatibility
-route. API 1.48 routes `window.restore_or_minimize` through the Lua runtime;
+`gnoblin.privacy.state()`; every supported client version now uses the Lua
+read. API 1.48 routes `window.restore_or_minimize` through the Lua runtime;
 earlier clients retain the native compatibility route. API 1.49 routes
 `session.lock` through the Lua runtime; earlier clients retain the native
 compatibility route. The compositor still validates lock capability and state,
@@ -1241,8 +1241,8 @@ API 1.50 routes socket `launch.begin` and `launch.end` calls through Lua while
 preserving connection-owned launch event tracking. Earlier clients keep the
 synchronous route. `launch.status` continues to enable connection-owned launch
 event tracking.
-API 1.51 routes `session.status` through the shared Lua read method; earlier
-clients retain the native compatibility route.
+API 1.51 routes `session.status` through the shared Lua read method. Every
+supported client version now uses this Lua read.
 API 1.52 routes the socket-only `workspace.list` alias through
 `gnoblin.workspaces.list()` while preserving its legacy object wrapper and
 `windows` count field. Every negotiated client version now uses this Lua-backed
