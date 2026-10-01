@@ -1254,6 +1254,9 @@ snapshot route.
 API 1.55 routes the socket-only `shortcut.list` alias through
 `gnoblin.shortcuts.list()` while preserving its bare array result. Earlier
 clients retain the native snapshot route.
+API 1.56 routes the socket-only `shortcut.actions` alias through the shared
+`gnoblin.shortcuts.actions()` read. Earlier clients retain the native snapshot
+route.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1303,7 +1306,7 @@ clients retain the native snapshot route.
 | `session.lock`                                                         | `gnoblin.session.lock()`; a native request to a subscribed shell client. Completion means delivery, not lock confirmation.                              |
 | `runtime.reload_config`                                                | `gnoblin.runtime.reload_config()`                                                                                                                       |
 | `shortcut.list`                                                        | `gnoblin.shortcuts.list()`                                                                                                                              |
-| `shortcut.actions`                                                     | CLI uses the shared Lua-backed `shortcuts.actions` read (API 1.41); retain the raw method for compatibility.                                            |
+| `shortcut.actions`                                                     | CLI uses the shared Lua-backed `shortcuts.actions` read (API 1.41); socket compatibility route uses it from API 1.56.                                   |
 | `shortcut.capture`                                                     | `gnoblin.shortcuts.capture(options)`                                                                                                                    |
 
 ## Event catalog
