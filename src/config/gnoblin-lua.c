@@ -6344,6 +6344,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "launches.list",
         "launches.snapshot",
         "shortcuts.list",
+        "permissions.list",
         NULL,
     };
     gboolean known = FALSE;
@@ -6457,6 +6458,11 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
     } else if (g_str_equal(method, "shortcuts.list")) {
         lua_getfield(state, -1, "shortcuts");
+        lua_getfield(state, -1, "list");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "permissions.list")) {
+        lua_getfield(state, -1, "permissions");
         lua_getfield(state, -1, "list");
         lua_remove(state, -2);
         lua_remove(state, -2);

@@ -1118,6 +1118,17 @@ int main(void) {
     g_assert_true(g_variant_lookup(capability, "id", "&s", &capability_id));
     g_assert_cmpstr(capability_id, ==, "window-list");
 
+    g_autoptr(GVariant) permission_list =
+        gnoblin_config_read_api("permissions.list", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(permission_list, G_VARIANT_TYPE_VARDICT));
+    g_autoptr(GVariant) permission_policy =
+        g_variant_lookup_value(permission_list, "policy", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(permission_policy);
+    g_autoptr(GVariant) permission_capabilities =
+        g_variant_lookup_value(permission_list, "capabilities", NULL);
+    g_assert_nonnull(permission_capabilities);
+
     g_autoptr(GVariant) focus_history =
         gnoblin_config_read_api("focus.history", read_filter, &error);
     g_assert_no_error(error);
