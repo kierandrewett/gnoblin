@@ -299,6 +299,8 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.33            | `microphone-monitor` availability and `gnoblin.capability.changed`                                    |
 | 1.34            | `gnoblin.appearance.color-scheme-changed`                                                             |
 | 1.35            | Snake_case aliases for window snapshot fields                                                         |
+| 1.36            | `gnoblin.shortcut.binding-deactivated` for press-triggered shortcuts                                  |
+| 1.37            | Lua snapshot reads for workspaces, monitors, layers, and launches                                     |
 
 ### API 1.27: shell presentation requests
 
