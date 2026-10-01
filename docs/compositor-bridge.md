@@ -373,6 +373,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.59            | Lua-backed compatibility read for `window.match`                                |
 | 1.60            | Basic legacy `window.action` requests route through typed Lua window operations |
 | 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`     |
+| 1.62            | Legacy `window.action` maps move to `window.move`                               |
 
 ### API 1.27: shell presentation requests
 

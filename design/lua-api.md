@@ -1272,60 +1272,62 @@ Earlier clients retain the existing native compatibility path.
 API 1.60 routes the basic legacy `window.action` requests through the
 corresponding typed Lua window operation. API 1.61 adds `action: "resize"`,
 which routes to `window.resize` with its integer `width` and `height` fields.
-Both versions resolve the legacy `"active"` target to the focused window's
-stable ID before dispatch. Earlier clients retain the native compatibility
-path for basic actions and do not support legacy resize.
+API 1.62 adds `action: "move"`, which routes to `window.move` with integer
+`x` and `y` coordinates from −100000 to 100000 logical pixels.
+API 1.60, 1.61, and 1.62 resolve the legacy `"active"` target to the focused
+window's stable ID before dispatch. Earlier clients retain the native
+compatibility path for basic actions and do not support legacy resize or move.
 
-| Compositor operation                                                   | Lua API method or decision                                                                                                                                                          |
-| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workspace.create`                                                     | `gnoblin.workspaces.create(options)`                                                                                                                                                |
-| `workspace.rename`                                                     | `workspace:rename(name)`                                                                                                                                                            |
-| `workspace.remove`                                                     | `workspace:remove()`                                                                                                                                                                |
-| `workspace.switch`                                                     | `workspace:activate()`                                                                                                                                                              |
-| `workspace.next`                                                       | `gnoblin.workspaces.next()`                                                                                                                                                         |
-| `workspace.previous`                                                   | `gnoblin.workspaces.previous()`                                                                                                                                                     |
-| `workspace.move_active`                                                | `gnoblin.workspaces.active():move_here(window, options)`                                                                                                                            |
-| `workspace.move_window`                                                | `window:move_to_workspace(target, options)`                                                                                                                                         |
-| `window.match`                                                         | CLI formats its result from `windows.list`; Lua reads identity and rule fields from `Window` snapshots. The raw socket query remains for compatibility.                             |
-| `window.action`                                                        | Removed from the standalone Lua API. Socket API 1.60 maps basic actions and API 1.61 maps resize to typed Lua window operations; earlier clients use the native compatibility path. |
-| `layer.list`                                                           | `gnoblin.layers.list(filter)`                                                                                                                                                       |
-| `monitor.list`                                                         | `gnoblin.monitors.list()`                                                                                                                                                           |
-| `animation.list`                                                       | `gnoblin.animations.list()`                                                                                                                                                         |
-| `animation.surfaces`                                                   | `gnoblin.animations.surfaces()`                                                                                                                                                     |
-| `animation.inspect`                                                    | `gnoblin.animations.inspect(args)`                                                                                                                                                  |
-| `animation.preview`                                                    | `gnoblin.animations.preview(spec)`                                                                                                                                                  |
-| `animation.seek`                                                       | `gnoblin.animations.seek(args)` or `preview:seek(progress)`                                                                                                                         |
-| `animation.step`                                                       | `gnoblin.animations.step(args)` or `preview:step(milliseconds)`                                                                                                                     |
-| `animation.play`                                                       | `gnoblin.animations.play(args)` or `preview:play()`                                                                                                                                 |
-| `animation.pause`                                                      | `gnoblin.animations.pause(args)` or `preview:pause()`                                                                                                                               |
-| `animation.stop`                                                       | `gnoblin.animations.stop(args)` or `preview:stop()`                                                                                                                                 |
-| `feature.list` / `feature.show` / `feature.enable` / `feature.disable` | Removed; these toggled GNOME Shell-owned behavior and have no standalone target.                                                                                                    |
-| `script.list`                                                          | Removed. The GNOME Shell script manager does not exist in the standalone session; Lua files are loaded through `gnoblin.load` and `require`.                                        |
-| `input.devices`                                                        | `gnoblin.input.devices()`; physical devices are listed separately.                                                                                                                  |
-| `input.list`                                                           | `gnoblin.input.sources()`                                                                                                                                                           |
-| `input.current`                                                        | `gnoblin.input.current_source()`                                                                                                                                                    |
-| `input.select`                                                         | `gnoblin.input.select_source({type, id})`                                                                                                                                           |
-| `privacy.get`                                                          | `gnoblin.privacy.state()`                                                                                                                                                           |
-| `privacy.stop_sharing`                                                 | `gnoblin.privacy.stop_sharing()`; Native-control API 1.31                                                                                                                           |
-| `privacy.stop_recording`                                               | `gnoblin.privacy.stop_recording()`; Native-control API 1.31                                                                                                                         |
-| `permissions.list`                                                     | `gnoblin.permissions.list()`; shared Lua read from native-control API 1.42, with the native route retained for older clients.                                                       |
-| `permissions.policy`                                                   | `gnoblin.permissions.policy()`; shared Lua read from native-control API 1.44, with the native route retained for older clients.                                                     |
-| `permissions.check`                                                    | `gnoblin.permissions.check(capability, identity)`; shared Lua read from native-control API 1.43, with the native route retained for older clients.                                  |
-| `grant.list`                                                           | `gnoblin.portals.grants()`; shared Lua read from native-control API 1.45, with the native route retained for older clients.                                                         |
-| `grant.revoke`                                                         | `grant:revoke()`                                                                                                                                                                    |
-| `launch.status`                                                        | CLI uses `gnoblin.launches.snapshot()` to preserve the collection revision; retain the raw socket method for compatibility.                                                         |
-| `launch.begin`                                                         | `gnoblin.launches.begin(options)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                                             |
-| `launch.end`                                                           | `gnoblin.launches.end(token)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                                                 |
-| `session.status`                                                       | `gnoblin.session.status()` in Lua; socket API 1.51 routes through the shared Lua runtime.                                                                                           |
-| `shell.ping`                                                           | Removed; use the unversioned socket transport operation `op = "ping"`.                                                                                                              |
-| `shell.version`                                                        | `gnoblin.version()`                                                                                                                                                                 |
-| `shell.status`                                                         | `gnoblin.session.status()`                                                                                                                                                          |
-| `shell.reload`                                                         | Removed from the core API; reload the Lua runtime or restart a selected shell client through its own lifecycle.                                                                     |
-| `session.lock`                                                         | `gnoblin.session.lock()`; a native request to a subscribed shell client. Completion means delivery, not lock confirmation.                                                          |
-| `runtime.reload_config`                                                | `gnoblin.runtime.reload_config()`                                                                                                                                                   |
-| `shortcut.list`                                                        | `gnoblin.shortcuts.list()`                                                                                                                                                          |
-| `shortcut.actions`                                                     | CLI uses the shared Lua-backed `shortcuts.actions` read (API 1.41); socket compatibility route uses it from API 1.56.                                                               |
-| `shortcut.capture`                                                     | `gnoblin.shortcuts.capture(options)`                                                                                                                                                |
+| Compositor operation                                                   | Lua API method or decision                                                                                                                                                                               |
+| ---------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspace.create`                                                     | `gnoblin.workspaces.create(options)`                                                                                                                                                                     |
+| `workspace.rename`                                                     | `workspace:rename(name)`                                                                                                                                                                                 |
+| `workspace.remove`                                                     | `workspace:remove()`                                                                                                                                                                                     |
+| `workspace.switch`                                                     | `workspace:activate()`                                                                                                                                                                                   |
+| `workspace.next`                                                       | `gnoblin.workspaces.next()`                                                                                                                                                                              |
+| `workspace.previous`                                                   | `gnoblin.workspaces.previous()`                                                                                                                                                                          |
+| `workspace.move_active`                                                | `gnoblin.workspaces.active():move_here(window, options)`                                                                                                                                                 |
+| `workspace.move_window`                                                | `window:move_to_workspace(target, options)`                                                                                                                                                              |
+| `window.match`                                                         | CLI formats its result from `windows.list`; Lua reads identity and rule fields from `Window` snapshots. The raw socket query remains for compatibility.                                                  |
+| `window.action`                                                        | Removed from the standalone Lua API. Socket API 1.60 maps basic actions, API 1.61 maps resize, and API 1.62 maps move to typed Lua window operations; earlier clients use the native compatibility path. |
+| `layer.list`                                                           | `gnoblin.layers.list(filter)`                                                                                                                                                                            |
+| `monitor.list`                                                         | `gnoblin.monitors.list()`                                                                                                                                                                                |
+| `animation.list`                                                       | `gnoblin.animations.list()`                                                                                                                                                                              |
+| `animation.surfaces`                                                   | `gnoblin.animations.surfaces()`                                                                                                                                                                          |
+| `animation.inspect`                                                    | `gnoblin.animations.inspect(args)`                                                                                                                                                                       |
+| `animation.preview`                                                    | `gnoblin.animations.preview(spec)`                                                                                                                                                                       |
+| `animation.seek`                                                       | `gnoblin.animations.seek(args)` or `preview:seek(progress)`                                                                                                                                              |
+| `animation.step`                                                       | `gnoblin.animations.step(args)` or `preview:step(milliseconds)`                                                                                                                                          |
+| `animation.play`                                                       | `gnoblin.animations.play(args)` or `preview:play()`                                                                                                                                                      |
+| `animation.pause`                                                      | `gnoblin.animations.pause(args)` or `preview:pause()`                                                                                                                                                    |
+| `animation.stop`                                                       | `gnoblin.animations.stop(args)` or `preview:stop()`                                                                                                                                                      |
+| `feature.list` / `feature.show` / `feature.enable` / `feature.disable` | Removed; these toggled GNOME Shell-owned behavior and have no standalone target.                                                                                                                         |
+| `script.list`                                                          | Removed. The GNOME Shell script manager does not exist in the standalone session; Lua files are loaded through `gnoblin.load` and `require`.                                                             |
+| `input.devices`                                                        | `gnoblin.input.devices()`; physical devices are listed separately.                                                                                                                                       |
+| `input.list`                                                           | `gnoblin.input.sources()`                                                                                                                                                                                |
+| `input.current`                                                        | `gnoblin.input.current_source()`                                                                                                                                                                         |
+| `input.select`                                                         | `gnoblin.input.select_source({type, id})`                                                                                                                                                                |
+| `privacy.get`                                                          | `gnoblin.privacy.state()`                                                                                                                                                                                |
+| `privacy.stop_sharing`                                                 | `gnoblin.privacy.stop_sharing()`; Native-control API 1.31                                                                                                                                                |
+| `privacy.stop_recording`                                               | `gnoblin.privacy.stop_recording()`; Native-control API 1.31                                                                                                                                              |
+| `permissions.list`                                                     | `gnoblin.permissions.list()`; shared Lua read from native-control API 1.42, with the native route retained for older clients.                                                                            |
+| `permissions.policy`                                                   | `gnoblin.permissions.policy()`; shared Lua read from native-control API 1.44, with the native route retained for older clients.                                                                          |
+| `permissions.check`                                                    | `gnoblin.permissions.check(capability, identity)`; shared Lua read from native-control API 1.43, with the native route retained for older clients.                                                       |
+| `grant.list`                                                           | `gnoblin.portals.grants()`; shared Lua read from native-control API 1.45, with the native route retained for older clients.                                                                              |
+| `grant.revoke`                                                         | `grant:revoke()`                                                                                                                                                                                         |
+| `launch.status`                                                        | CLI uses `gnoblin.launches.snapshot()` to preserve the collection revision; retain the raw socket method for compatibility.                                                                              |
+| `launch.begin`                                                         | `gnoblin.launches.begin(options)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                                                                  |
+| `launch.end`                                                           | `gnoblin.launches.end(token)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                                                                      |
+| `session.status`                                                       | `gnoblin.session.status()` in Lua; socket API 1.51 routes through the shared Lua runtime.                                                                                                                |
+| `shell.ping`                                                           | Removed; use the unversioned socket transport operation `op = "ping"`.                                                                                                                                   |
+| `shell.version`                                                        | `gnoblin.version()`                                                                                                                                                                                      |
+| `shell.status`                                                         | `gnoblin.session.status()`                                                                                                                                                                               |
+| `shell.reload`                                                         | Removed from the core API; reload the Lua runtime or restart a selected shell client through its own lifecycle.                                                                                          |
+| `session.lock`                                                         | `gnoblin.session.lock()`; a native request to a subscribed shell client. Completion means delivery, not lock confirmation.                                                                               |
+| `runtime.reload_config`                                                | `gnoblin.runtime.reload_config()`                                                                                                                                                                        |
+| `shortcut.list`                                                        | `gnoblin.shortcuts.list()`                                                                                                                                                                               |
+| `shortcut.actions`                                                     | CLI uses the shared Lua-backed `shortcuts.actions` read (API 1.41); socket compatibility route uses it from API 1.56.                                                                                    |
+| `shortcut.capture`                                                     | `gnoblin.shortcuts.capture(options)`                                                                                                                                                                     |
 
 ## Event catalog
 
@@ -1512,10 +1514,10 @@ operation methods listed above.
 
 `window.action` remains a socket protocol operation for existing socket
 clients, but it is not installed as a Lua method. API 1.60 routes basic actions
-to typed Lua window operations, and API 1.61 adds resize; earlier clients use
-the native compatibility path for basic actions. Pointer snapping is provided
-by the compositor's `WindowDrag:offer_targets()` hook and the native
-`window.snap.offer` operation; Lua keyboard snapping uses
+to typed Lua window operations, API 1.61 adds resize, and API 1.62 adds move;
+earlier clients use the native compatibility path for basic actions. Pointer
+snapping is provided by the compositor's `WindowDrag:offer_targets()` hook and
+the native `window.snap.offer` operation; Lua keyboard snapping uses
 `gnoblin.windows.snap_context(context)`.
 
 Lua event registrations use `gnoblin.events.on` and `gnoblin.events.once`; the
@@ -1580,12 +1582,13 @@ attention state, capability flags, optional `role`, and `type`.
 `rule_app_id`, plus a `match` table with `type`, `title`, `focused`,
 and optional `app_id`.
 
-The raw compositor socket retains `window.action({action, window?})` for
-compatibility; the standalone Lua runtime does not expose
-`gnoblin.window.action`. API 1.60 and later map supported requests to typed Lua
-operations. API 1.61 adds `resize`, which requires integer `width` and `height`
-values from 1 to 32768. Earlier clients use the native compatibility path for
-basic actions and do not support resize through this method. Native socket
+The raw compositor socket retains `window.action` for compatibility; the
+standalone Lua runtime does not expose `gnoblin.window.action`. API 1.60 and
+later map supported requests to typed Lua operations. API 1.61 adds `resize`,
+which requires integer dimensions from 1 to 32768. API 1.62 adds `move`, which
+requires integer coordinates from −100000 to 100000 logical pixels. Earlier
+clients use the native compatibility path for basic actions and do not support
+resize or move through this method. Native socket
 clients can use `above`, `unabove`,
 `stick`, `unstick`, `close`, `minimize`, `restore`, `maximize`, `unmaximize`,
 `fullscreen`, and `unfullscreen`. The target is a stable window ID or
