@@ -21,6 +21,8 @@ typedef struct {
     double exponent;
     gboolean automatic;
     double padding[4];
+    double border_width;
+    double border_color[4];
     gboolean csd_reconstruction;
     double csd_insets[4];
 } MetaGnoblinRoundedClip;
@@ -241,6 +243,8 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
         "uniform float gnoblin_rounded_clip_automatic;"
         "uniform float gnoblin_rounded_clip_csd;"
         "uniform vec4 gnoblin_rounded_clip_csd_insets;"
+        "uniform float gnoblin_rounded_clip_border_width;"
+        "uniform vec4 gnoblin_rounded_clip_border_color;"
         "float sourceAlpha(vec2 point){"
         "vec2 uv=(point-gnoblin_rounded_clip_bounds.xy)/"
         "(gnoblin_rounded_clip_bounds.zw-gnoblin_rounded_clip_bounds.xy);"
@@ -250,6 +254,15 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
         "(gnoblin_rounded_clip_bounds.zw-gnoblin_rounded_clip_bounds.xy);"
         "vec4 pixel=texture2D(cogl_sampler0,clamp(uv,vec2(0.0),vec2(1.0)));"
         "return vec4(pixel.rgb/max(pixel.a,0.00001),pixel.a);}"
+        "float roundedCoverage(vec2 point,vec4 box,float radius,float exponent){"
+        "if(point.x<box.x||point.y<box.y||point.x>box.z||point.y>box.w)return 0.0;"
+        "vec2 halfSize=(box.zw-box.xy)*0.5;"
+        "radius=min(radius,min(halfSize.x,halfSize.y));"
+        "if(radius<0.5)return 1.0;"
+        "vec2 q=max(abs(point-(box.xy+halfSize))-(halfSize-vec2(radius)),vec2(0.0));"
+        "float distance=pow(pow(q.x/max(radius,0.001),exponent)+"
+        "pow(q.y/max(radius,0.001),exponent),1.0/exponent)*radius;"
+        "return 1.0-smoothstep(radius-0.5,radius+0.5,distance);}"
         "vec4 flatPatch(vec2 point){"
         "vec4 a=sourcePixel(point+vec2(-1.0,-1.0));"
         "vec4 b=sourcePixel(point+vec2(1.0,-1.0));"
@@ -331,7 +344,27 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
         "bool preserve=gnoblin_rounded_clip_automatic>0.5&&corner&&"
         "!squareCorner(p,radius)&&!csdCorner;"
         "float coverage=preserve?1.0:1.0-smoothstep(radius-0.5,radius+0.5,distance);"
-        "cogl_color_out*=coverage;} ");
+        "float borderWidth=gnoblin_rounded_clip_border_width;"
+        "if(abs(borderWidth)>0.01){"
+        "float borderCoverage;"
+        "if(borderWidth>0.0){"
+        "vec4 innerBounds=gnoblin_rounded_clip_bounds+"
+        "vec4(borderWidth,borderWidth,-borderWidth,-borderWidth);"
+        "float innerRadius=max(0.0,radius-borderWidth);"
+        "borderCoverage=max(0.0,coverage-roundedCoverage(p,innerBounds,innerRadius,"
+        "gnoblin_rounded_clip_exponent));}"
+        "else{"
+        "float outsideWidth=-borderWidth;"
+        "vec4 outerBounds=gnoblin_rounded_clip_bounds+"
+        "vec4(-outsideWidth,-outsideWidth,outsideWidth,outsideWidth);"
+        "float outerCoverage=roundedCoverage(p,outerBounds,radius+outsideWidth,"
+        "gnoblin_rounded_clip_exponent);"
+        "borderCoverage=max(0.0,outerCoverage-coverage);}"
+        "float borderAlpha=borderCoverage*gnoblin_rounded_clip_border_color.a;"
+        "vec4 border=vec4(gnoblin_rounded_clip_border_color.rgb*borderAlpha,borderAlpha);"
+        "cogl_color_out=border*cogl_color_in+"
+        "cogl_color_out*coverage*(1.0-borderAlpha);}"
+        "else cogl_color_out*=coverage;} ");
     cogl_pipeline_add_snippet(pipeline, snippet);
     g_object_unref(snippet);
     return pipeline;
@@ -347,6 +380,8 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     float scale_x;
     float scale_y;
     float radius;
+    float border_width;
+    float border_color[4];
     float padding_top;
     float padding_right;
     float padding_bottom;
@@ -356,6 +391,9 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
         scale_x = target.size.width / MAX(clutter_actor_get_width(actor), 1.f);
         scale_y = target.size.height / MAX(clutter_actor_get_height(actor), 1.f);
         radius = (float)(clip->radius * MIN(scale_x, scale_y));
+        border_width = (float)(clip->border_width * MIN(scale_x, scale_y));
+        for (guint i = 0; i < G_N_ELEMENTS(border_color); i++)
+            border_color[i] = (float)clip->border_color[i];
         padding_top = (float)(clip->padding[0] * scale_y);
         padding_right = (float)(clip->padding[1] * scale_x);
         padding_bottom = (float)(clip->padding[2] * scale_y);
@@ -392,6 +430,14 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
             pipeline,
             cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_csd_insets"), 4, 1,
             csd_insets);
+        cogl_pipeline_set_uniform_1f(
+            pipeline,
+            cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_border_width"),
+            border_width);
+        cogl_pipeline_set_uniform_float(
+            pipeline,
+            cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_border_color"), 4, 1,
+            border_color);
     } else {
         /* Uniforms persist on a pipeline. Force the fragment's no-op branch
          * while an actor is being detached or has no offscreen target. */
@@ -411,6 +457,54 @@ static void meta_gnoblin_rounded_clip_class_init(MetaGnoblinRoundedClipClass* kl
 
 static void meta_gnoblin_rounded_clip_init(MetaGnoblinRoundedClip* clip) {
     clip->exponent = 2;
+    clip->border_color[0] = 128. / 255.;
+    clip->border_color[1] = 128. / 255.;
+    clip->border_color[2] = 128. / 255.;
+    clip->border_color[3] = 1.;
+}
+
+static MetaGnoblinRoundedClip* find_rounded_clip(ClutterActor* actor) {
+    ClutterEffect* effect = clutter_actor_get_effect(actor, ROUNDED_CLIP_EFFECT_NAME);
+    if (effect && META_IS_GNOBLIN_ROUNDED_CLIP(effect))
+        return META_GNOBLIN_ROUNDED_CLIP(effect);
+
+    for (ClutterActor* child = clutter_actor_get_first_child(actor); child;
+         child = clutter_actor_get_next_sibling(child)) {
+        MetaGnoblinRoundedClip* clip = find_rounded_clip(child);
+        if (clip)
+            return clip;
+    }
+    return NULL;
+}
+
+void meta_gnoblin_window_effects_set_rounded_border(ClutterActor* actor, double width,
+                                                    const double color[4]) {
+    MetaGnoblinRoundedClip* clip;
+
+    g_return_if_fail(CLUTTER_IS_ACTOR(actor));
+    g_return_if_fail(color != NULL);
+    if (!isfinite(width))
+        return;
+    for (guint i = 0; i < 4; i++) {
+        if (!isfinite(color[i]))
+            return;
+    }
+
+    clip = find_rounded_clip(actor);
+    if (!clip)
+        return;
+
+    width = CLAMP(width, -40., 40.);
+    double clamped_color[4];
+    for (guint i = 0; i < G_N_ELEMENTS(clamped_color); i++)
+        clamped_color[i] = CLAMP(color[i], 0., 1.);
+    if (clip->border_width == width &&
+        memcmp(clip->border_color, clamped_color, sizeof(clamped_color)) == 0)
+        return;
+
+    clip->border_width = width;
+    memcpy(clip->border_color, clamped_color, sizeof(clamped_color));
+    clutter_effect_queue_repaint(CLUTTER_EFFECT(clip));
 }
 
 void meta_gnoblin_window_effects_clear_rounded_clip(ClutterActor* actor) {

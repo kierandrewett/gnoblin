@@ -25,6 +25,12 @@ void meta_gnoblin_window_effects_set_rounded_clip(ClutterActor* actor, double ra
 /* Remove the rounded alpha clip, if this module added one. */
 void meta_gnoblin_window_effects_clear_rounded_clip(ClutterActor* actor);
 
+/* Configure the signed inner/outer border on an existing rounded clip below
+ * @actor. Width is in logical actor units and clamped to -40..40; @color is
+ * finite, normalized RGBA. */
+void meta_gnoblin_window_effects_set_rounded_border(ClutterActor* actor, double width,
+                                                    const double color[4]);
+
 /*
  * Detect client-rendered rounded corner cutouts from the shaped texture. The
  * returned insets use logical actor units and are ordered top, right, bottom,
