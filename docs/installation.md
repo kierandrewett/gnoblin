@@ -24,9 +24,8 @@ versions, component versions, and source Git remote and commit. Distribution
 packages also expose this command as `gnoblin --version`.
 Add `--json` after `--version` for a machine-readable build identity.
 
-`gnoblin` is the login command and the package to install. RPMs split the login
-files into a `gnoblin-session` package, but its login executable is `gnoblin`.
-The `gnoblin-session` systemd target names the running session.
+`gnoblin` is both the login command and the package to install. Its
+`gnoblin-session` systemd target groups services used during the session.
 
 ## Distribution packages
 
