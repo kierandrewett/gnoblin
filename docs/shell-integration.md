@@ -3,6 +3,8 @@
 These APIs are for shell authors. The
 [compositor bridge](/compositor-bridge) provides live compositor state and
 operations. Desktop configuration starts with [the configuration guide](/config).
+For the Bingux-specific transition from the compatibility bridge, see the
+[standalone migration guide](/migrate-bingux).
 
 ## Dock animation targets
 
