@@ -12,6 +12,7 @@ nested preview, and real login each verify a different part of the session.
 | `just test-all`            | Builds the standalone session, then runs the native runtime checks             | Installed source-build dependencies                                |
 | `just test-preview`        | Config and native control behavior in a fresh nested Gnoblin session           | A working Wayland desktop                                          |
 | `just test-window-csd`     | Lua `remove_csd` pixel behavior in a fresh nested Gnoblin session              | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
+| `just test-window-borders` | Lua border rule pixels in a fresh nested Gnoblin session                       | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
 | `just test-window-manager` | Mutter unit, Wayland, backend, and focus tests                                 | A working seat and file-monitoring support                         |
 | `just test-release`        | Build and run the native release verification checks                           | Source dependencies and test tools                                 |
 
