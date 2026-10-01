@@ -455,7 +455,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"session.status"', status)
         self.assertIn('g_str_equal(method, "session.status")', reads)
 
-    def test_workspace_list_uses_lua_snapshot_for_api_152_and_keeps_legacy_path(self):
+    def test_workspace_list_always_uses_lua_snapshot_and_preserves_legacy_shape(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
@@ -474,13 +474,13 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
         self.assertGreaterEqual(api_minor(header), 59)
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
-        self.assertIn("client->api_minor >= 52", workspace_list)
         self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', workspace_list)
-        self.assertIn("meta_gnoblin_dispatch_native_api", workspace_list)
+        self.assertIn("if (!client->control->supervised_runtime)", workspace_list)
+        self.assertNotIn("meta_gnoblin_dispatch_native_api", workspace_list)
         self.assertIn('"workspace.list"', read_api)
         self.assertIn("legacy_workspace_list_from_lua(value, error)", read_api)
 
-    def test_window_list_uses_lua_snapshot_for_api_153_and_keeps_legacy_path(self):
+    def test_window_list_always_uses_lua_snapshot_and_preserves_legacy_shape(self):
         source = CONTROL.read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         window_list = function_body(
@@ -495,9 +495,9 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "void gnoblin_config_finish_load(gboolean commit)",
         )
 
-        self.assertIn("client->api_minor >= 53", window_list)
         self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', window_list)
-        self.assertIn("meta_gnoblin_dispatch_native_api", window_list)
+        self.assertIn("if (!client->control->supervised_runtime)", window_list)
+        self.assertNotIn("meta_gnoblin_dispatch_native_api", window_list)
         self.assertIn('"window.list"', read_api)
         self.assertIn("legacy_window_list_from_lua(value, error)", read_api)
 

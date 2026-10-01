@@ -10565,27 +10565,9 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                                       : "workspace.list arguments are invalid";
             return encode_response(id, NULL, message);
         }
-        if (g_str_equal(method, "window.list") && client->api_minor >= 53) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            return queue_runtime_api_request(client, id, method, arguments, "read");
-        }
-        if (g_str_equal(method, "workspace.list") && client->api_minor >= 52) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            return queue_runtime_api_request(client, id, method, arguments, "read");
-        }
-        g_autoptr(GVariant) result =
-            meta_gnoblin_dispatch_native_api(client->control->display, method, arguments, &error);
-        if (!result) {
-            const char* message = error ? error->message
-                                  : g_str_equal(method, "window.list")
-                                      ? "window listing unavailable"
-                                      : "workspace listing unavailable";
-            return encode_response(id, NULL, message);
-        }
-        g_autoptr(JsonNode) json = json_from_variant(result);
-        return encode_response(id, json, NULL);
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        return queue_runtime_api_request(client, id, method, arguments, "read");
     }
     if (g_str_equal(method, "session.status")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
