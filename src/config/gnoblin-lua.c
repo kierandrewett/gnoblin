@@ -6591,7 +6591,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
             if (g_str_equal(method, "input.devices") || g_str_equal(method, "input.sources")) {
                 g_variant_builder_add(&response, "{sv}",
                                       g_str_equal(method, "input.devices") ? "devices" : "sources",
-                                      value);
+                                      g_variant_ref(value));
                 guint64 revision = g_str_equal(method, "input.devices")
                                        ? config->input_device_revision
                                        : config->input_source_revision;
@@ -6599,7 +6599,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
                                       g_variant_new_int64((gint64)revision));
             } else {
                 g_variant_builder_add(&response, "{sv}", "available", g_variant_new_boolean(TRUE));
-                g_variant_builder_add(&response, "{sv}", "source", value);
+                g_variant_builder_add(&response, "{sv}", "source", g_variant_ref(value));
                 g_variant_builder_add(&response, "{sv}", "revision",
                                       g_variant_new_int64((gint64)config->input_source_revision));
             }
