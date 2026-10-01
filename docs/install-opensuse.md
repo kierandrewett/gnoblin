@@ -6,9 +6,9 @@ repositories provide those versions, including the required desktop-schema
 major version. Check [source build prerequisites](install-source.md) before
 choosing a release asset.
 
-The packages are designed to install beside stock GNOME. The revised package
-set, including Gnoblin's portal backend, still needs build, co-installation,
-removal, and graphical login checks. Keep a working session available. See
+The RPM set contains `gnoblin`, `gnoblin-mutter`, and `gnoblin-portal`.
+Gnoblin runs as a standalone Lua session and does not install GNOME Shell or
+GJS. Keep a working session available while installing. See
 [platform support](platform-support.md).
 
 ## Install
@@ -24,9 +24,7 @@ gh release download --repo kierandrewett/gnoblin --pattern 'opensuse-*.rpm' --di
 sudo zypper install --allow-unsigned-rpm \
   ./gnoblin-rpms/opensuse-gnoblin-[0-9]*.rpm \
   ./gnoblin-rpms/opensuse-gnoblin-mutter-[0-9]*.rpm \
-  ./gnoblin-rpms/opensuse-gnoblin-shell-[0-9]*.rpm \
-  ./gnoblin-rpms/opensuse-gnoblin-portal-[0-9]*.rpm \
-  ./gnoblin-rpms/opensuse-gnoblin-session-[0-9]*.rpm
+  ./gnoblin-rpms/opensuse-gnoblin-portal-[0-9]*.rpm
 ```
 
 Install a desktop shell such as [Bingux](bring-your-own-shell.md), log out, and
@@ -45,7 +43,7 @@ Then remove the Gnoblin runtime packages:
 
 ```sh
 sudo zypper remove \
-  gnoblin gnoblin-session gnoblin-portal gnoblin-shell gnoblin-mutter
+  gnoblin gnoblin-portal gnoblin-mutter
 ```
 
 Your existing GNOME packages remain installed.

@@ -1,10 +1,10 @@
 # openSUSE Tumbleweed RPM adapter
 
-These recipes package Gnoblin's GNOME 51 stack under `/usr/lib/gnoblin` on
-Tumbleweed. The only shared paths are the `gnoblin` display-manager entry,
-Gnoblin-named systemd user units, `gnoblinctl`, and the distinct Gnoblin polkit
-action. The recipes do not replace, conflict with, obsolete, or provide stock
-GNOME packages.
+These recipes package Gnoblin's standalone session and GNOME 51 compositor
+stack under `/usr/lib/gnoblin` on Tumbleweed. The only shared paths are the
+`gnoblin` display-manager entry, Gnoblin-named systemd user units, `gnoblinctl`,
+and the distinct Gnoblin polkit action. The recipes do not replace, conflict
+with, obsolete, or provide stock GNOME packages.
 
 `check-buildrequires.sh` runs `rpmspec` and asks Zypper to resolve the host
 dependencies in a clean Tumbleweed image. It deliberately omits the internal

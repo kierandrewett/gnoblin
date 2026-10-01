@@ -37,6 +37,6 @@ Also test installation alongside stock GNOME on a clean Fedora host, log in
 to each session, and remove Gnoblin. Stock GNOME files must remain unchanged.
 The local installer runs the isolation check before invoking DNF.
 
-Old experimental RPMs named `mutter` and `gnome-shell` are replacement builds.
-Do not distribute or install them. The new installer refuses those artifacts
-and does not automatically undo an earlier replacement installation.
+The current package build no longer produces the experimental `mutter` or
+`gnome-shell` replacement RPMs. Gnoblin uses its own private Mutter runtime;
+the host's GNOME packages remain separate.
