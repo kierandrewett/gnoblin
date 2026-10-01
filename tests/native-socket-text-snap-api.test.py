@@ -455,6 +455,31 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"session.status"', status)
         self.assertIn('g_str_equal(method, "session.status")', reads)
 
+    def test_workspace_list_uses_lua_snapshot_for_api_152_and_keeps_legacy_path(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        workspace_list = function_body(
+            dispatcher,
+            'if (g_str_equal(method, "window.list") || g_str_equal(method, "workspace.list")) {',
+            'if (g_str_equal(method, "session.status")) {',
+        )
+        lua = LUA.read_text()
+        read_api = function_body(
+            lua,
+            "GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {",
+            "void gnoblin_config_finish_load(gboolean commit)",
+        )
+
+        self.assertEqual(api_minor(header), 52)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=52", cmake)
+        self.assertIn("client->api_minor >= 52", workspace_list)
+        self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', workspace_list)
+        self.assertIn("meta_gnoblin_dispatch_native_api", workspace_list)
+        self.assertIn('"workspace.list"', read_api)
+        self.assertIn("legacy_workspace_list_from_lua(value, error)", read_api)
+
     def test_layer_animation_policy_socket_read_uses_supervised_lua_read(self):
         source = CONTROL.read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
@@ -909,7 +934,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean native_runtime_fd_ready(",
         )
 
-        self.assertEqual(api_minor(header), 51)
+        self.assertEqual(api_minor(header), 52)
         self.assertIn("client->track_launches = TRUE", launch)
         self.assertIn("client->launch_api_minor = client->api_minor", launch)
         self.assertLess(launch.index("client->track_launches = TRUE"), launch.index("client->api_minor >= 50"))

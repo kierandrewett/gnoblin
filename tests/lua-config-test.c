@@ -1001,6 +1001,11 @@ int main(void) {
     g_variant_builder_add(&workspace_record_builder, "{sv}", "name", g_variant_new_string("Main"));
     g_variant_builder_add(&workspace_record_builder, "{sv}", "number", g_variant_new_int64(1));
     g_variant_builder_add(&workspace_record_builder, "{sv}", "active", g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&workspace_record_builder, "{sv}", "window_count",
+                          g_variant_new_int64(3));
+    g_variant_builder_add(&workspace_record_builder, "{sv}", "persistent",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&workspace_record_builder, "{sv}", "revision", g_variant_new_int64(17));
     GVariantBuilder workspaces_builder;
     g_variant_builder_init(&workspaces_builder, G_VARIANT_TYPE("av"));
     g_variant_builder_add(&workspaces_builder, "v",
@@ -1089,6 +1094,28 @@ int main(void) {
     const char* workspace_read_id = NULL;
     g_assert_true(g_variant_lookup(workspace_read_record, "id", "&s", &workspace_read_id));
     g_assert_cmpstr(workspace_read_id, ==, "workspace-1");
+    gint64 workspace_count = 0;
+    g_assert_true(g_variant_lookup(workspace_read_record, "window_count", "x", &workspace_count));
+    g_assert_cmpint(workspace_count, ==, 3);
+    gint64 workspace_revision = 0;
+    g_assert_true(g_variant_lookup(workspace_read_record, "revision", "x", &workspace_revision));
+    g_assert_cmpint(workspace_revision, ==, 17);
+    g_autoptr(GVariant) legacy_workspace_read =
+        gnoblin_config_read_api("workspace.list", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(legacy_workspace_read, G_VARIANT_TYPE_VARDICT));
+    g_autoptr(GVariant) legacy_workspace_records =
+        g_variant_lookup_value(legacy_workspace_read, "workspaces", G_VARIANT_TYPE("aa{sv}"));
+    g_assert_nonnull(legacy_workspace_records);
+    g_assert_cmpuint(g_variant_n_children(legacy_workspace_records), ==, 1);
+    g_autoptr(GVariant) legacy_workspace_record =
+        g_variant_get_child_value(legacy_workspace_records, 0);
+    gint64 legacy_workspace_count = 0;
+    g_assert_true(
+        g_variant_lookup(legacy_workspace_record, "windows", "x", &legacy_workspace_count));
+    g_assert_cmpint(legacy_workspace_count, ==, 3);
+    g_assert_null(g_variant_lookup_value(legacy_workspace_record, "window_count", NULL));
+    g_assert_null(g_variant_lookup_value(legacy_workspace_record, "revision", NULL));
     g_autoptr(GVariant) windows_read =
         gnoblin_config_read_api("windows.list", empty_read_arguments, &error);
     g_assert_no_error(error);
