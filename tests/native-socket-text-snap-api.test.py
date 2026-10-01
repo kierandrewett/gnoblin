@@ -882,7 +882,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean native_runtime_fd_ready(",
         )
 
-        self.assertEqual(api_minor(header), 49)
+        self.assertGreaterEqual(api_minor(header), 49)
         self.assertIn("client->api_minor >= 49", dispatcher)
         self.assertIn('queue_runtime_api_request(client, id, method, arguments, "call")', dispatcher)
         self.assertIn("client->control->supervised_runtime", dispatcher)
@@ -890,6 +890,34 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("gnoblin_native_control_request_session_lock", dispatcher)
         self.assertIn('g_str_equal(method, "session.lock")', operation_dispatch)
         self.assertIn("gnoblin_native_control_request_session_lock", operation_dispatch)
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+
+    def test_launch_mutations_use_lua_for_api_150_and_keep_legacy_route(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        launch = function_body(
+            source,
+            'if (g_str_has_prefix(method, "launch.")) {',
+            'if (g_str_equal(method, "input.devices")) {',
+        )
+        operation = function_body(
+            source,
+            "static gboolean native_runtime_handle_operation(",
+            "static gboolean native_runtime_fd_ready(",
+        )
+
+        self.assertEqual(api_minor(header), 50)
+        self.assertIn("client->track_launches = TRUE", launch)
+        self.assertIn("client->launch_api_minor = client->api_minor", launch)
+        self.assertLess(launch.index("client->track_launches = TRUE"), launch.index("client->api_minor >= 50"))
+        self.assertIn('g_str_equal(method, "launch.begin")', launch)
+        self.assertIn('g_str_equal(method, "launch.end")', launch)
+        self.assertIn('queue_runtime_api_request(client, id, method, launch_arguments, "call")', launch)
+        self.assertIn("client->control->supervised_runtime", launch)
+        self.assertIn("gnoblin_native_control_dispatch_launch", launch)
+        self.assertIn('g_str_has_prefix(method, "launch.")', operation)
+        self.assertIn("gnoblin_native_control_dispatch_launch", operation)
         cmake = (ROOT / "CMakeLists.txt").read_text()
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
 
