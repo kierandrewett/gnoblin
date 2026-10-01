@@ -9,6 +9,47 @@ does not claim that Bingux has already completed them. Keep panel, dock,
 launcher, notification, and popup UI in Bingux. Use Lua for Gnoblin policy and
 runtime behavior, not for drawing shell surfaces.
 
+## Current integration gaps
+
+Bingux still has standalone-session code that speaks the older Gnoblin Shell
+bridge protocol. The relevant call sites are in `ShortcutSession.qml`,
+`WorkspaceState.qml`, and `capture_backend.py`. The standalone compositor
+socket is a different, versioned API; pointing those clients at its socket is
+not enough to make them compatible.
+
+- `shell/bingux/ShortcutSession.qml` sends the old `bind`, `clear`, `status`,
+  `activate`, `preview`, `window-drag`, `privacy`, `bingux.input-anchor`, and
+  `bingux.type-text` requests. Negotiate `hello`; use `shortcut.bind`,
+  `shortcut.unbind`, versioned window methods, snapshots, and events. Register
+  connection-owned shortcuts again after reconnecting.
+- `shell/bingux/WorkspaceState.qml` sends `op: "command"` with
+  `workspace-list` and `workspace-switch`. Use `workspace.list` and
+  `workspace.switch` through `op: "api"`. Refresh on workspace events or after
+  a switch instead of polling every five seconds.
+- `shell/bingux/capture_backend.py` sends the private `capture-windows`
+  command. Use the versioned `window.list` method to enumerate windows. Keep
+  image and video capture on the ScreenCast portal; a `window.thumbnail` is a
+  bounded preview, not a capture stream.
+- `shell/gnoblin/bingux-text-input.js` reads GNOME Shell input-method state and
+  uses clipboard/paste handling for caret placement and text insertion. The
+  standalone `input.text_target` and `input.insert_text` methods work only with
+  the active Wayland text-input-v3 client. Bingux must handle unsupported
+  clients or make the unsupported state clear.
+- `shell/bingux/osd-bridge.js` patches GNOME Shell's private OSD manager and
+  emits `org.gnoblin.Shell.OsdRequested`. In standalone mode, subscribe to
+  `gnoblin.osd.requested` and draw the OSD in Bingux. Keep the patch only in a
+  GNOME compatibility path that still needs it.
+- The `ui-state` and `ui-command` handlers receive compatibility-bridge
+  callbacks for Bingux UI state and commands. Keep this state and presentation
+  in Bingux; these callbacks are not compositor APIs and should not be
+  recreated in Lua.
+
+The text-input row is a functional gap, not just a protocol rename. The
+standalone method requires the same focused Wayland surface to have an active
+text-input-v3 session. It rejects X11 clients. Do not report the old
+clipboard-based fallback as migrated until Bingux has an equivalent supported
+path or intentionally disables the action for unsupported clients.
+
 ## Replace the legacy bridge calls
 
 The compositor socket protocol used by the GNOME Shell compatibility bridge
@@ -25,7 +66,8 @@ Replace these compatibility-bridge calls:
   `workspace.list` and `workspace.switch`. Subscribe to workspace events or
   refresh the snapshot after a change.
 - **Windows:** Subscribe with `op: "windows"` for the initial snapshot and live
-  window and workspace events. Use `windows.list` for filtered reads.
+  window and workspace events. Use `window.list` for filtered socket reads or
+  `windows.list` when using the newer Lua-backed snapshot method.
 - **Focus:** Replace `activate` with `window.focus` using an XDG Activation token
   created from user input on the same socket connection. A window ID alone
   cannot take focus.
@@ -37,9 +79,10 @@ Replace these compatibility-bridge calls:
   drag token.
 - **Text insertion:** Replace `bingux.input-anchor` and `bingux.type-text` with
   `input.text_target` and `input.insert_text`, using the one-use focus context
-  from a shortcut activation. These methods require the active text-input-v3
-  client.
-- **Capture:** Replace `capture-windows` with `windows.list` for enumeration and
+  from a shortcut activation. These methods work only for the same focused
+  Wayland surface with an active text-input-v3 session. They do not support
+  X11 or provide the old clipboard/paste fallback.
+- **Capture:** Replace `capture-windows` with `window.list` for enumeration and
   `window.thumbnail` for bounded previews. Continue using the ScreenCast portal
   for screen capture and recording.
 
@@ -81,9 +124,12 @@ or render Bingux UI.
 1. Keep a single persistent socket client and reconnect with backoff. After a
    reconnect, read fresh snapshots, restore subscriptions, and re-register
    every shortcut owned by that connection.
-2. Replace the compatibility operations with the API calls in the table. Handle
-   asynchronous operation completion and errors instead of assuming a command
-   reply means a compositor action succeeded.
+2. Replace the compatibility operations with the calls listed above. Use the
+   operation ID and `gnoblin.operation.completed` for asynchronous methods;
+   report failures instead of treating an accepted request as a completed
+   compositor action. Use `window.focus` with the one-use XDG Activation token
+   created by the user's selection. A window ID by itself cannot authorize
+   focus.
 3. Remove the OSD bridge shim and subscribe to `gnoblin.osd.requested`. Keep
    LaunchFeedback on its documented D-Bus API.
 4. Remove GNOME Shell D-Bus calls and compatibility-only socket commands from
