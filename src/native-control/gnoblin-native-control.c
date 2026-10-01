@@ -10618,42 +10618,22 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "permissions.list")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "permissions.list does not accept arguments");
-        if (client->api_minor >= 42) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            GVariantBuilder empty;
-            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-            g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
-            return queue_runtime_api_request(client, id, method, read_arguments, "read");
-        }
-        g_autoptr(GVariant) document = native_config_document(client->control);
-        if (!document)
-            return encode_response(id, NULL, "committed permission policy is unavailable");
-        g_autofree char* config_path = native_configuration_path();
-        g_autoptr(GVariant) snapshot = gnoblin_permission_policy_list(document, config_path);
-        g_autoptr(JsonNode) json = json_from_variant(snapshot);
-        return encode_response(id, json, NULL);
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+        return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
     if (g_str_equal(method, "permissions.policy")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "permissions.policy does not accept arguments");
-        if (client->api_minor >= 44) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            GVariantBuilder empty;
-            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-            g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
-            return queue_runtime_api_request(client, id, method, read_arguments, "read");
-        }
-        g_autoptr(GVariant) document = native_config_document(client->control);
-        if (!document)
-            return encode_response(id, NULL, "committed permission policy is unavailable");
-        g_autoptr(GVariant) snapshot =
-            gnoblin_permission_policy_snapshot(document, native_config_revision(client->control));
-        g_autoptr(JsonNode) json = snapshot ? json_from_variant(snapshot) : NULL;
-        if (!json)
-            return encode_response(id, NULL, "committed permission policy is unavailable");
-        return encode_response(id, json, NULL);
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+        return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
     if (g_str_equal(method, "permissions.check")) {
         JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
@@ -10668,28 +10648,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 G_TYPE_STRING)
             return encode_response(id, NULL,
                                    "permissions.check requires string capability and identity");
-        const char* capability =
-            json_node_get_string(json_object_get_member(arguments, "capability"));
-        const char* identity = json_node_get_string(json_object_get_member(arguments, "identity"));
-        if (client->api_minor >= 43) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            g_autoptr(GVariant) read_arguments = variant_from_json(arguments_node);
-            if (!read_arguments)
-                return encode_response(id, NULL, "permissions.check arguments are invalid");
-            return queue_runtime_api_request(client, id, method, read_arguments, "read");
-        }
-        g_autoptr(GVariant) document = native_config_document(client->control);
-        if (!document)
-            return encode_response(id, NULL, "committed permission policy is unavailable");
-        g_autoptr(GError) permission_error = NULL;
-        g_autoptr(JsonNode) result =
-            permission_decision_json(document, capability, identity,
-                                     native_config_revision(client->control), &permission_error);
-        if (!result)
-            return encode_response(
-                id, NULL, permission_error ? permission_error->message : "permission check failed");
-        return encode_response(id, result, NULL);
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        g_autoptr(GVariant) read_arguments = variant_from_json(arguments_node);
+        if (!read_arguments)
+            return encode_response(id, NULL, "permissions.check arguments are invalid");
+        return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
     if (g_str_equal(method, "window.action")) {
         JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;

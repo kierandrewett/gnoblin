@@ -696,60 +696,41 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = HEADER.read_text()
         self.assertGreaterEqual(api_minor(header), 39)
 
-    def test_permissions_list_uses_lua_at_api_142_and_keeps_legacy_route(self):
+    def test_permissions_list_always_uses_lua(self):
         source = CONTROL.read_text()
-        header = HEADER.read_text()
         permission_list = function_body(
             source,
             'if (g_str_equal(method, "permissions.list")) {',
             'if (g_str_equal(method, "permissions.policy")) {',
         )
 
-        self.assertIn("client->api_minor >= 42", permission_list)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', permission_list)
-        self.assertIn("native_config_document(client->control)", permission_list)
-        self.assertIn("gnoblin_permission_policy_list(document, config_path)", permission_list)
-        self.assertLess(
-            permission_list.index("client->api_minor >= 42"),
-            permission_list.index("native_config_document(client->control)"),
-        )
-        self.assertGreaterEqual(api_minor(header), 42)
+        self.assertNotIn("client->api_minor >= 42", permission_list)
+        self.assertNotIn("native_config_document(client->control)", permission_list)
 
-    def test_permissions_check_uses_lua_at_api_143_and_keeps_legacy_route(self):
+    def test_permissions_check_always_uses_lua(self):
         source = CONTROL.read_text()
-        header = HEADER.read_text()
         permission_check = function_body(
             source,
             'if (g_str_equal(method, "permissions.check")) {',
             'if (g_str_equal(method, "window.action")) {',
         )
 
-        self.assertIn("client->api_minor >= 43", permission_check)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', permission_check)
-        self.assertIn("permission_decision_json(document, capability, identity", permission_check)
-        self.assertLess(
-            permission_check.index("client->api_minor >= 43"),
-            permission_check.index("permission_decision_json(document, capability, identity"),
-        )
-        self.assertGreaterEqual(api_minor(header), 43)
+        self.assertNotIn("client->api_minor >= 43", permission_check)
+        self.assertNotIn("native_config_document(client->control)", permission_check)
 
-    def test_permissions_policy_uses_lua_at_api_144_and_keeps_legacy_route(self):
+    def test_permissions_policy_always_uses_lua(self):
         source = CONTROL.read_text()
-        header = HEADER.read_text()
         permission_policy = function_body(
             source,
             'if (g_str_equal(method, "permissions.policy")) {',
             'if (g_str_equal(method, "permissions.check")) {',
         )
 
-        self.assertIn("client->api_minor >= 44", permission_policy)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', permission_policy)
-        self.assertIn("gnoblin_permission_policy_snapshot(document", permission_policy)
-        self.assertLess(
-            permission_policy.index("client->api_minor >= 44"),
-            permission_policy.index("gnoblin_permission_policy_snapshot(document"),
-        )
-        self.assertGreaterEqual(api_minor(header), 44)
+        self.assertNotIn("client->api_minor >= 44", permission_policy)
+        self.assertNotIn("native_config_document(client->control)", permission_policy)
 
     def test_legacy_window_actions_use_typed_lua_operations_for_api_160(self):
         source = CONTROL.read_text()
