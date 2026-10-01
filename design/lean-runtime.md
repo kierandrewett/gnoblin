@@ -364,7 +364,9 @@ remains: its PipeWire state feeds `cameraInUse` in the compositor bridge.
    configured `us` and `gb` XKB sources. It selected `gb` with
    `gnoblinctl input select` and confirmed it active. Fedora's installed schema
    version remained 49.1, so this does not establish an unassisted stock-host
-   build.
+   build. The same session verified both CLI version forms; they reported the
+   Git remote and full SHA alongside the Gnoblin, GNOME, Mutter, portal, Lua,
+   native API, and build-ID versions.
 5. **Narrow the remaining forks.** Keep the portal frontend protocol and
    backend selection standard. Move Gnoblin's portal implementation out of the
    GNOME backend fork only after its dialogs, capture, permissions, and GNOME
