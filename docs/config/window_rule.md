@@ -70,20 +70,20 @@ with their parent. See the [workspaces section of the window rules guide](/guide
 
 ## Corners
 
-| Field                           | Default          | Values                                                         |
-| ------------------------------- | ---------------- | -------------------------------------------------------------- |
-| `radius`                        | `0`              | 0–200 logical pixels                                           |
-| `smoothing`                     | `0`              | 0–1; circular to a squarer curve                               |
-| `mode`                          | `"auto"`         | `auto`, `force`, `off`                                         |
-| `padding`                       | `{0, 0, 0, 0}`   | Top/right/bottom/left inset, −128–128 logical pixels           |
-| `keep_maximized`                | `true`           | Keep rounding when maximised                                   |
-| `keep_fullscreen`, `keep_tiled` | `false`          | Keep rounding in those states                                  |
-| `skip_libadwaita`               | `true`           | Preserve libadwaita corners in auto mode                       |
-| `skip_libhandy`                 | `false`          | Skip libhandy windows in auto mode                             |
-| `remove_csd`                    | `false`          | [Detect and replace client-drawn rounded corners](#remove-csd) |
-| `border_width`, `border_color`  | `0`, `#808080ff` | Single native outline; width −40–40 logical pixels             |
-| `shadow`                        | `false`          | A shadow table or 1–4 shadow layers                            |
-| `keep_shadow`                   | `false`          | Keep replacement shadows in maximised/fullscreen/tiled states  |
+| Field                           | Default          | Values                                                                    |
+| ------------------------------- | ---------------- | ------------------------------------------------------------------------- |
+| `radius`                        | `0`              | 0–200 logical pixels                                                      |
+| `smoothing`                     | `0`              | 0–1; circular to a squarer curve                                          |
+| `mode`                          | `"auto"`         | `auto`, `force`, `off`; `off` disables corner, border, and shadow effects |
+| `padding`                       | `{0, 0, 0, 0}`   | Top/right/bottom/left inset, −128–128 logical pixels                      |
+| `keep_maximized`                | `true`           | Keep rounding when maximised                                              |
+| `keep_fullscreen`, `keep_tiled` | `false`          | Keep rounding in those states                                             |
+| `skip_libadwaita`               | `true`           | Preserve libadwaita corners in auto mode                                  |
+| `skip_libhandy`                 | `false`          | Skip libhandy windows in auto mode                                        |
+| `remove_csd`                    | `false`          | [Detect and replace client-drawn rounded corners](#remove-csd)            |
+| `border_width`, `border_color`  | `0`, `#808080ff` | Single native outline; width −40–40 logical pixels                        |
+| `shadow`                        | `false`          | `true` for the default shadow, one table, or a list of 1–4 layers         |
+| `keep_shadow`                   | `false`          | Keep replacement shadows in maximised/fullscreen/tiled states             |
 
 ## Borders and shadows
 
@@ -98,11 +98,11 @@ widths draw outward where the client's existing buffer has room.
 | `borders.inner_color`, `borders.outer_color`                              | `#RRGGBB` or `#RRGGBBAA`                                   |
 | `borders.radius`, `borders.smoothing`, `borders.padding`                  | Inherit corners; same ranges                               |
 | `borders.keep_maximized`, `borders.keep_fullscreen`, `borders.keep_tiled` | Boolean; `false` hides borders in that state               |
-| `corners.shadow`                                                          | One table or a list of 1–4 layer tables                    |
-| `corners.shadow.{x, y, spread}`                                           | −100–100                                                   |
-| `corners.shadow.blur`                                                     | 0–100                                                      |
-| `corners.shadow.opacity`                                                  | 0–1                                                        |
-| `corners.shadow.color`                                                    | Optional `#RRGGBB` or `#RRGGBBAA`                          |
+| `corners.shadow`                                                          | `false`, `true`, one table, or a list of 1–4 layer tables  |
+| `corners.shadow.{x, y, spread}`                                           | Defaults `0`, `4`, `4`; −100–100                           |
+| `corners.shadow.blur`                                                     | Default `28`; 0–100                                        |
+| `corners.shadow.opacity`                                                  | Default `0.6`; 0–1                                         |
+| `corners.shadow.color`                                                    | Default `#000000ff`; `#RRGGBB` or `#RRGGBBAA`              |
 | `corners.shadow_animation.animation`                                      | Animation name that supports the `shadow-change` event     |
 | `corners.shadow_animation.duration`                                       | 0–2000 ms; default 0                                       |
 | `corners.shadow_animation.easing`                                         | Same easing values as `gnoblin.configure` shell animations |
