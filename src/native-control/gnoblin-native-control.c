@@ -10873,25 +10873,52 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 id, NULL,
                 "native window.action focus is denied; use window.focus with a live focus_context");
 
-        const char* fields[] = {"action", "window"};
         if (!action_node || !JSON_NODE_HOLDS_VALUE(action_node) ||
-            json_node_get_value_type(action_node) != G_TYPE_STRING ||
-            (json_object_get_size(arguments) != 1 &&
-             !native_socket_has_exact_fields(arguments, fields, G_N_ELEMENTS(fields))))
-            return encode_response(id, NULL,
-                                   "window.action requires a string action and accepts only an "
-                                   "optional string window");
+            json_node_get_value_type(action_node) != G_TYPE_STRING)
+            return encode_response(id, NULL, "window.action requires a string action");
+
+        const char* action = json_node_get_string(action_node);
+        gboolean resize_action = g_str_equal(action, "resize");
+        const char* action_fields[] = {"action", "window"};
+        const char* resize_fields[] = {"action", "window", "width", "height"};
+        const char* resize_fields_without_window[] = {"action", "width", "height"};
+        gboolean valid_fields =
+            resize_action
+                ? native_socket_has_exact_fields(arguments, resize_fields,
+                                                 G_N_ELEMENTS(resize_fields)) ||
+                      native_socket_has_exact_fields(arguments, resize_fields_without_window,
+                                                     G_N_ELEMENTS(resize_fields_without_window))
+                : json_object_get_size(arguments) == 1 ||
+                      native_socket_has_exact_fields(arguments, action_fields,
+                                                     G_N_ELEMENTS(action_fields));
+        if (!valid_fields)
+            return encode_response(
+                id, NULL,
+                resize_action
+                    ? "window.action resize requires integer width and height and accepts "
+                      "an optional string window"
+                    : "window.action accepts only an optional string window");
 
         JsonNode* window_node = json_object_get_member(arguments, "window");
         if (window_node && (!JSON_NODE_HOLDS_VALUE(window_node) ||
                             json_node_get_value_type(window_node) != G_TYPE_STRING))
             return encode_response(id, NULL, "window.action window must be a stable ID string");
 
-        const char* action = json_node_get_string(action_node);
+        JsonNode* width_node = resize_action ? json_object_get_member(arguments, "width") : NULL;
+        JsonNode* height_node = resize_action ? json_object_get_member(arguments, "height") : NULL;
+        if (resize_action && (!width_node || !JSON_NODE_HOLDS_VALUE(width_node) ||
+                              (json_node_get_value_type(width_node) != G_TYPE_INT &&
+                               json_node_get_value_type(width_node) != G_TYPE_INT64) ||
+                              !height_node || !JSON_NODE_HOLDS_VALUE(height_node) ||
+                              (json_node_get_value_type(height_node) != G_TYPE_INT &&
+                               json_node_get_value_type(height_node) != G_TYPE_INT64)))
+            return encode_response(id, NULL,
+                                   "window.action resize requires integer width and height");
+
         static const char* const native_actions[] = {
             "above",   "unabove",  "stick",      "unstick",    "close",        "minimize",
             "restore", "maximize", "unmaximize", "fullscreen", "unfullscreen", NULL};
-        if (!g_strv_contains(native_actions, action))
+        if (!g_strv_contains(native_actions, action) && !(resize_action && client->api_minor >= 61))
             return encode_response(
                 id, NULL,
                 "unsupported native window.action; use a typed window operation when available");
@@ -10924,6 +10951,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
             } else if (g_str_equal(action, "fullscreen") || g_str_equal(action, "unfullscreen")) {
                 lua_method = "window.set_fullscreen";
                 enabled = g_str_equal(action, "fullscreen");
+            } else if (resize_action) {
+                lua_method = "window.resize";
             } else {
                 lua_method = g_str_equal(action, "close")      ? "window.close"
                              : g_str_equal(action, "minimize") ? "window.minimize"
@@ -10936,6 +10965,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
             if (g_str_has_prefix(lua_method, "window.set_"))
                 g_variant_builder_add(&typed_arguments, "{sv}", "enabled",
                                       g_variant_new_boolean(enabled));
+            if (resize_action) {
+                g_variant_builder_add(&typed_arguments, "{sv}", "width",
+                                      g_variant_new_int64(json_node_get_int(width_node)));
+                g_variant_builder_add(&typed_arguments, "{sv}", "height",
+                                      g_variant_new_int64(json_node_get_int(height_node)));
+            }
             g_autoptr(GVariant) operation_arguments =
                 g_variant_ref_sink(g_variant_builder_end(&typed_arguments));
             return queue_runtime_api_request_internal(client, id, lua_method, operation_arguments,
