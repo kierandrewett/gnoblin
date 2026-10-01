@@ -23,7 +23,7 @@
       "version": "51.0"
     },
     "gnoblin-portal": {
-      "requires": ["xdg-desktop-portal"],
+      "requires": ["gtk4", "xdg-desktop-portal"],
       "source": "xdg-desktop-portal-gnome",
       "version": "51.0"
     }
@@ -65,6 +65,13 @@
       "names": {
         "arch": "glib2",
         "rpm": "glib2"
+      }
+    },
+    "gtk4": {
+      "minVersion": "4.22.0",
+      "names": {
+        "arch": "gtk4",
+        "rpm": "gtk4"
       }
     },
     "gnome-keyring": {
