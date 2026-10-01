@@ -474,8 +474,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "void gnoblin_config_finish_load(gboolean commit)",
         )
 
-        self.assertEqual(api_minor(header), 59)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=59", cmake)
+        self.assertGreaterEqual(api_minor(header), 59)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=60", cmake)
         self.assertIn("client->api_minor >= 52", workspace_list)
         self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', workspace_list)
         self.assertIn("meta_gnoblin_dispatch_native_api", workspace_list)
@@ -753,18 +753,37 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         self.assertGreaterEqual(api_minor(header), 44)
 
-    def test_legacy_window_actions_dispatch_natively(self):
+    def test_legacy_window_actions_use_typed_lua_operations_for_api_160(self):
         source = CONTROL.read_text()
+        header = HEADER.read_text()
+        cmake = (ROOT / "CMakeLists.txt").read_text()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
             'if (g_str_equal(method, "window.match")) {',
         )
 
+        self.assertEqual(api_minor(header), 60)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=60", cmake)
         self.assertIn('g_str_equal(json_node_get_string(action_node), "focus")', handler)
         self.assertIn("arguments_node ? json_node_get_object(arguments_node) : NULL", handler)
         self.assertIn("native_socket_has_exact_fields(arguments, fields, G_N_ELEMENTS(fields))", handler)
         self.assertIn('"unsupported native window.action; use a typed window operation when available"', handler)
+        self.assertIn("client->api_minor >= 60", handler)
+        self.assertIn('const char* target = window_node ? json_node_get_string(window_node) : "active"', handler)
+        self.assertIn("native_window_id(active_window)", handler)
+        for lua_method in (
+            '"window.set_above"',
+            '"window.set_sticky"',
+            '"window.set_maximized"',
+            '"window.set_fullscreen"',
+            '"window.close"',
+            '"window.minimize"',
+            '"window.restore"',
+        ):
+            with self.subTest(lua_method=lua_method):
+                self.assertIn(lua_method, handler)
+        self.assertIn('queue_runtime_api_request(client, id, lua_method, operation_arguments, "call")', handler)
         self.assertIn("meta_gnoblin_dispatch_native_api(", handler)
         self.assertIn("client->control->display, method, native_arguments", handler)
 
@@ -957,7 +976,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean native_runtime_fd_ready(",
         )
 
-        self.assertEqual(api_minor(header), 59)
+        self.assertGreaterEqual(api_minor(header), 59)
         self.assertIn("client->track_launches = TRUE", launch)
         self.assertIn("client->launch_api_minor = client->api_minor", launch)
         self.assertLess(launch.index("client->track_launches = TRUE"), launch.index("client->api_minor >= 50"))
@@ -988,8 +1007,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "void gnoblin_config_finish_load(gboolean commit)",
         )
 
-        self.assertEqual(api_minor(header), 59)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=59", cmake)
+        self.assertGreaterEqual(api_minor(header), 59)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=60", cmake)
         self.assertIn('g_str_equal(method, "launch.status") && client->api_minor >= 54', launch)
         self.assertLess(
             launch.index("client->track_launches = TRUE"),
@@ -1011,8 +1030,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             'if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind")) {',
         )
 
-        self.assertEqual(api_minor(header), 59)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=59", cmake)
+        self.assertGreaterEqual(api_minor(header), 59)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=60", cmake)
         self.assertIn("client->api_minor >= 55", shortcut_list)
         self.assertIn("client->control->supervised_runtime", shortcut_list)
         self.assertIn('queue_runtime_api_request(client, id, "shortcuts.list", read_arguments, "read")', shortcut_list)
@@ -1029,8 +1048,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "    GVariantBuilder empty;\n    g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);\n    g_autoptr(GVariant) arguments",
         )
 
-        self.assertEqual(api_minor(header), 59)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=59", cmake)
+        self.assertGreaterEqual(api_minor(header), 59)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=60", cmake)
         self.assertIn("client->api_minor >= 56", shortcut_actions)
         self.assertIn("client->control->supervised_runtime", shortcut_actions)
         self.assertIn('queue_runtime_api_request(client, id, "shortcuts.actions", read_arguments,', shortcut_actions)
@@ -1053,8 +1072,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "GVariant* gnoblin_config_current_document(",
         )
 
-        self.assertEqual(api_minor(header), 59)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=59", cmake)
+        self.assertGreaterEqual(api_minor(header), 59)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=60", cmake)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', layer_list)
         self.assertIn('"layer.list"', read_api)
         self.assertIn("legacy_layer_list_from_lua", read_api)
@@ -1077,8 +1096,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "GVariant* gnoblin_config_current_document(",
         )
 
-        self.assertEqual(api_minor(header), 59)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=59", cmake)
+        self.assertGreaterEqual(api_minor(header), 59)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=60", cmake)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', monitor_list)
         self.assertIn('g_str_equal(method, "monitor.list")', read_api)
         self.assertIn("Lua monitor record has no integer index", read_api)
@@ -1101,8 +1120,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "GVariant* gnoblin_config_current_document(",
         )
 
-        self.assertEqual(api_minor(header), 59)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=59", cmake)
+        self.assertGreaterEqual(api_minor(header), 59)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=60", cmake)
         self.assertIn("client->api_minor >= 59", window_match)
         self.assertIn('g_str_equal(method, "window.match")', read_api)
         self.assertIn("legacy_window_match_arguments_valid", read_api)
