@@ -10658,6 +10658,14 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "privacy.state")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "privacy.state does not accept arguments");
+        if (client->api_minor >= 47) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            GVariantBuilder empty;
+            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+            g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+            return queue_runtime_api_request(client, id, method, read_arguments, "read");
+        }
         if (!client->control->privacy_snapshot)
             return encode_response(id, NULL, "native privacy snapshot is unavailable");
         g_autoptr(JsonNode) json = json_from_variant(client->control->privacy_snapshot);
