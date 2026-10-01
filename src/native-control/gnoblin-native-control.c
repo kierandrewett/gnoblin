@@ -11043,6 +11043,19 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         return encode_response(id, sources, NULL);
     }
     if (g_str_equal(method, "shortcut.actions")) {
+        if (client->api_minor >= 56) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            GVariantBuilder empty;
+            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+            g_autoptr(GVariant) read_arguments =
+                arguments_node ? variant_from_json(arguments_node)
+                               : g_variant_ref_sink(g_variant_builder_end(&empty));
+            if (!read_arguments)
+                return encode_response(id, NULL, "shortcut.actions arguments are invalid");
+            return queue_runtime_api_request(client, id, "shortcuts.actions", read_arguments,
+                                             "read");
+        }
         g_autoptr(JsonNode) json = shortcut_actions_snapshot(
             arguments_node ? json_node_get_object(arguments_node) : NULL, &error);
         if (!json)

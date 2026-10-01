@@ -472,8 +472,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "void gnoblin_config_finish_load(gboolean commit)",
         )
 
-        self.assertEqual(api_minor(header), 55)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=55", cmake)
+        self.assertEqual(api_minor(header), 56)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=56", cmake)
         self.assertIn("client->api_minor >= 52", workspace_list)
         self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', workspace_list)
         self.assertIn("meta_gnoblin_dispatch_native_api", workspace_list)
@@ -955,7 +955,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean native_runtime_fd_ready(",
         )
 
-        self.assertEqual(api_minor(header), 55)
+        self.assertEqual(api_minor(header), 56)
         self.assertIn("client->track_launches = TRUE", launch)
         self.assertIn("client->launch_api_minor = client->api_minor", launch)
         self.assertLess(launch.index("client->track_launches = TRUE"), launch.index("client->api_minor >= 50"))
@@ -986,8 +986,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "void gnoblin_config_finish_load(gboolean commit)",
         )
 
-        self.assertEqual(api_minor(header), 55)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=55", cmake)
+        self.assertEqual(api_minor(header), 56)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=56", cmake)
         self.assertIn('g_str_equal(method, "launch.status") && client->api_minor >= 54', launch)
         self.assertLess(
             launch.index("client->track_launches = TRUE"),
@@ -1009,12 +1009,30 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             'if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind")) {',
         )
 
-        self.assertEqual(api_minor(header), 55)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=55", cmake)
+        self.assertEqual(api_minor(header), 56)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=56", cmake)
         self.assertIn("client->api_minor >= 55", shortcut_list)
         self.assertIn("client->control->supervised_runtime", shortcut_list)
         self.assertIn('queue_runtime_api_request(client, id, "shortcuts.list", read_arguments, "read")', shortcut_list)
         self.assertIn("native_shortcut_snapshot", shortcut_list)
+
+    def test_legacy_shortcut_actions_use_lua_for_api_156(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        shortcut_actions = function_body(
+            dispatcher,
+            'if (g_str_equal(method, "shortcut.actions")) {',
+            "    GVariantBuilder empty;\n    g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);\n    g_autoptr(GVariant) arguments",
+        )
+
+        self.assertEqual(api_minor(header), 56)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=56", cmake)
+        self.assertIn("client->api_minor >= 56", shortcut_actions)
+        self.assertIn("client->control->supervised_runtime", shortcut_actions)
+        self.assertIn('queue_runtime_api_request(client, id, "shortcuts.actions", read_arguments,', shortcut_actions)
+        self.assertIn("shortcut_actions_snapshot", shortcut_actions)
 
 
 if __name__ == "__main__":
