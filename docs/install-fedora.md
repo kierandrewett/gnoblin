@@ -13,9 +13,10 @@ sudo dnf copr enable kierandrewett/gnoblin
 sudo dnf --setopt=install_weak_deps=False install --refresh gnoblin
 ```
 
-`gnoblin` pulls in the session, Mutter, Shell, portal, and their runtime services.
-This command skips packages recommended by those dependencies. Install any
-optional services you need using the commands below.
+`gnoblin` installs the Lua-supervised session and pulls in its private Mutter
+runtime and portal backend. Gnoblin does not install GNOME Shell or GJS. This
+command skips packages recommended by those dependencies. Install any optional
+services you need using the commands below.
 
 The Gnoblin session selects its own portal backend. If GNOME is also installed,
 that session keeps using its own portal configuration and backend.
@@ -56,7 +57,7 @@ Continue with [configuration](/config).
 ## Update
 
 ```sh
-sudo dnf upgrade --refresh gnoblin gnoblin-session gnoblin-shell gnoblin-mutter gnoblin-portal
+sudo dnf upgrade --refresh gnoblin gnoblin-mutter gnoblin-portal
 ```
 
 Log out and back in to load the updated compositor.
@@ -69,7 +70,7 @@ If you installed the optional integration package, remove it with
 `sudo dnf remove gnoblin-gnome-integration` before removing the session.
 
 ```sh
-sudo dnf remove gnoblin gnoblin-session gnoblin-shell gnoblin-mutter gnoblin-portal
+sudo dnf remove gnoblin gnoblin-mutter gnoblin-portal
 ```
 
 Your shell and personal configuration are separate. Remove your desktop shell separately if you no longer want it.

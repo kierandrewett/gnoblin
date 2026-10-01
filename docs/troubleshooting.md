@@ -8,7 +8,7 @@ when reporting a problem.
 For Fedora, check the session package:
 
 ```sh
-rpm -q gnoblin-session
+rpm -q gnoblin
 ```
 
 For source builds, run `./build.sh --register-session` after building.
@@ -22,10 +22,9 @@ Log into another session and read the session journal:
 journalctl --user -b --no-pager
 ```
 
-If it reports a missing
-`libshell-*.so` library or `Shell-*.typelib`, rebuild from the current source
-tarball and register that build again. Gnoblin's launcher must find Shell's
-private libraries and typelibs in the build prefix.
+If it reports a missing Gnoblin or Mutter library, rebuild from the current
+source tarball and register that build again. The session launcher uses the
+private runtime installed in the build prefix.
 
 Keep the extracted source directory after registration; the login entry runs
 its private binaries from that directory.
