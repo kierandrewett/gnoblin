@@ -724,14 +724,15 @@ snapshots share a revision that advances when any of those states changes.
 Lua configuration changes windows through typed methods on `Window` snapshots.
 
 The raw compositor socket exposes the operations below to clients such as
-`gnoblinctl`. It keeps the generic `window.action` operation for compatibility.
-Lua configuration has no direct window-operation namespace.
+`gnoblinctl`. The legacy `window.action` method accepts only the basic
+compositor actions listed below. Lua configuration uses typed window methods
+instead.
 
 | Method                   | Arguments                                                         | Successful result                                            |
 | ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------ |
 | `window.list(args)`      | Optional `app_id`, `title`, `focused` filters                     | `{windows = {Window, ...}}`                                  |
 | `window.match(args)`     | Optional string `window` ID; defaults to `"active"`               | Window identity and a `match` rule table                     |
-| `window.action(args)`    | `action`; optional `window`, geometry, `monitor`, `workspace`     | Action result                                                |
+| `window.action(args)`    | `action`; optional stable window `window` ID                      | `{ok, pending, window, action}`                              |
 | `window.thumbnail(args)` | Stable window `id`; integer `width` and `height` up to 480 by 320 | Asynchronous operation with actual dimensions and base64 PNG |
 | `layer.list()`           | None                                                              | `{surfaces = {Surface, ...}}`                                |
 | `monitor.list()`         | None                                                              | `{monitors = {Monitor, ...}}`                                |
@@ -768,7 +769,7 @@ In the standalone runtime, each monitor has these fields:
 | `make`, `model`, `serial`   | Optional physical display details supplied by Mutter.                                                              |
 | `refresh_rate`              | Optional current refresh rate in Hz for the connector used as `id`.                                                |
 
-Use `id` for typed moves and `index` only with the legacy `window.action` call.
+Use the connector `id` for typed monitor moves.
 When outputs are cloned, the refresh rate comes from the lexicographically
 first active connector used as the monitor ID. The native result does not
 include inactive physical outputs.
@@ -784,24 +785,23 @@ include inactive physical outputs.
 WM class, and a rule `match` table containing type, title, focus state, and the
 rule app ID when available.
 
-`window.action` accepts this action set:
+`window.action` accepts these actions:
 
 ```lua
-WindowAction = "menu" | "interactive-move" | "interactive-resize" | "above"
-             | "unabove" | "stick" | "unstick" | "focus" | "close"
-             | "minimize" | "restore-or-minimize" | "restore" | "maximize"
-             | "unmaximize" | "fullscreen" | "unfullscreen" | "move"
-             | "resize" | "workspace" | "monitor"
+WindowAction = "above" | "unabove" | "stick" | "unstick" | "close"
+             | "minimize" | "restore" | "maximize" | "unmaximize"
+             | "fullscreen" | "unfullscreen"
 ```
 
-| Action fields                  | Accepted value                   | Meaning                                                  |
-| ------------------------------ | -------------------------------- | -------------------------------------------------------- |
-| `x`, `y` for `move`            | Integers from −100000 to 100000  | Window position.                                         |
-| `width`, `height` for `resize` | Integers from 1 to 32768         | Window size.                                             |
-| `monitor`                      | Current zero-based index         | Destination monitor for the legacy `window.action` call. |
-| `workspace`                    | `{id = ...}` or `{number = ...}` | Destination workspace for the `workspace` action.        |
+The optional `window` is a stable ID from `window.list`; when omitted, the
+currently focused window is used. `focus`, menu, interactive move or resize,
+geometry changes, workspace moves, and monitor moves are not accepted by this
+legacy method. Use the typed methods below for those operations. Focus and
+interactive operations require a trusted context and fail without one.
 
-Mutter rejects actions that the target window cannot perform in its current
+The result reports that the compositor accepted the action for the selected
+window. The change may complete asynchronously. Requests fail while the session
+is locked or when the target window cannot perform the action in its current
 state.
 
 ### Typed window operations
@@ -859,9 +859,8 @@ or `eDP-1` as string IDs. For cloned outputs, it selects the first active
 connector alphabetically.
 
 A typed move fails with `not_found` if its connector ID is no longer listed.
-The legacy `window.action` monitor action still takes the current numeric
-index. Native `window.action` with `action: "focus"` is denied; use
-`window.focus` with a verified context instead.
+Native `window.action` with `action: "focus"` is denied; use `window.focus`
+with a verified context instead.
 
 ## Animations
 
