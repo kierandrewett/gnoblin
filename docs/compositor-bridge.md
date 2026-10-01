@@ -142,8 +142,8 @@ the same. These reads require the Lua supervisor; clients requesting API 1.45
 or earlier keep the native compatibility route.
 
 API 1.47 routes `privacy.state` through `gnoblin.privacy.state()`. The privacy
-fields and revision stay the same. The read requires the Lua supervisor;
-clients requesting API 1.46 or earlier keep the native compatibility route.
+fields and revision stay the same. Every supported client version now reads
+through Lua and requires the supervisor.
 
 ### API version 1.9: configured shortcuts
 
@@ -357,11 +357,11 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.44            | Shared `permissions.policy` read backed by the installed Lua runtime            |
 | 1.45            | Shared `portals.grants` read backed by the installed Lua runtime                |
 | 1.46            | Shared input device and source reads backed by the installed Lua runtime        |
-| 1.47            | Shared `privacy.state` read backed by the installed Lua runtime                 |
+| 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                 |
 | 1.48            | Lua runtime operation for `window.restore_or_minimize`                          |
 | 1.49            | Lua runtime operation for `session.lock`                                        |
 | 1.50            | Lua operations for `launch.begin` and `launch.end`                              |
-| 1.51            | Lua runtime read for `session.status`                                           |
+| 1.51            | Adds Lua-backed `session.status`; all client versions now use it                |
 | 1.52            | Adds Lua-backed `workspace.list`; all client versions now use it                |
 | 1.53            | Adds Lua-backed `window.list`; all client versions now use it                   |
 | 1.54            | Lua-backed compatibility read for `launch.status`                               |
@@ -1158,9 +1158,9 @@ API 1.54 and newer read `launch.status` through
 `gnoblin.launches.snapshot()`. The request still enables launch-change events
 for the connection. Earlier API versions use the native snapshot route.
 
-API 1.51 reads `session.status` through Lua. The response contains `state`,
-`lock_available`, and `lock_state` when locking is available. Earlier versions
-use the native route.
+API 1.51 adds the Lua-backed `session.status` route. Every supported client
+version now reads through Lua. The response contains `state`,
+`lock_available`, and `lock_state` when locking is available.
 
 API 1.52 and newer serve `workspace.list` from the Lua workspace snapshot.
 The reply keeps the `{ "workspaces": [...] }` wrapper and `windows` count.

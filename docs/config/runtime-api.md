@@ -115,8 +115,8 @@ When lock state is unavailable, the record omits `lock_state`; unavailable does
 not mean unlocked.
 
 The read cannot report why a stopped session exited. The socket is unavailable
-after the compositor stops. The socket read is served directly by Mutter and
-does not require the Lua supervisor; it reports compositor availability, not
+after the compositor stops. Socket clients of every supported API version get
+this record through the Lua supervisor; it reports compositor state, not
 supervisor health. Subscribe to
 `gnoblin.session.lock-state-changed` for lock transitions.
 
@@ -999,6 +999,9 @@ The revision identifies the committed permission-policy snapshot.
 
 `gnoblin.privacy.state()` returns an immutable `PrivacyState` record with an
 `available` field and a `revision`.
+
+Socket clients of every supported API version read this state through the
+shared Lua runtime.
 
 The `available` record uses `screen_sharing`, `recording`,
 `microphone_in_use`, `camera_in_use`, and `location_in_use`. Gnoblin omits an
