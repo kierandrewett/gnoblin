@@ -10670,7 +10670,9 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "portals.grants")) {
         JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
         const char* kind_filter = NULL;
-        if (arguments && json_object_get_size(arguments) > 1)
+        if (arguments &&
+            (json_object_get_size(arguments) > 1 ||
+             (json_object_get_size(arguments) == 1 && !json_object_has_member(arguments, "kind"))))
             return encode_response(id, NULL, "portals.grants accepts only an optional kind");
         if (arguments && json_object_has_member(arguments, "kind")) {
             JsonNode* kind_node = json_object_get_member(arguments, "kind");
@@ -10682,6 +10684,18 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 !g_str_equal(kind_filter, "remote-desktop"))
                 return encode_response(id, NULL,
                                        "portal grant kind must be screen-cast or remote-desktop");
+        }
+        if (client->api_minor >= 45) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            GVariantBuilder empty;
+            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+            g_autoptr(GVariant) read_arguments =
+                arguments_node ? variant_from_json(arguments_node)
+                               : g_variant_ref_sink(g_variant_builder_end(&empty));
+            if (!read_arguments)
+                return encode_response(id, NULL, "portals.grants arguments are invalid");
+            return queue_runtime_api_request(client, id, method, read_arguments, "read");
         }
         if (!client->control->portal_grant_snapshot)
             return encode_response(id, NULL, "native portal grant snapshot is unavailable");
