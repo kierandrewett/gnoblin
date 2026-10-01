@@ -50,30 +50,42 @@ GNOME-session compatibility path separate from the standalone path.
 The GNOME compatibility bridge accepts operations that the standalone Gnoblin
 socket does not. Keep those calls out of Bingux's standalone launch path.
 
+The remaining compatibility calls are concentrated in
+`shell/bingux/ShortcutSession.qml`, with UI consumers in the switcher, privacy
+indicator, snap assist, and emoji picker. `shell/bingux/WorkspaceState.qml`
+also still uses the legacy workspace commands in the primary Bingux checkout.
+Treat each UI as migrated only after its transport uses the standalone API and
+the interaction works in a fresh Gnoblin session.
+
 - **Shortcuts:** Migrate `ShortcutSession.qml` from its compatibility command
-  stream to version-negotiated `shortcut.bind`, `shortcut.unbind`, and event
-  subscriptions. Bindings belong to the connection; register them again after
-  reconnecting. Keep the compatibility path for GNOME sessions separate.
-- **Windows:** Subscribe with `op: "windows"` for the initial snapshot and live
-  window and workspace events. Use `window.list` for filtered socket reads or
-  `windows.list` when using the newer Lua-backed snapshot method.
-- **Focus:** `WindowSwitcher.qml` still uses the compatibility
-  `activateWindow` request. Replace it with `window.focus`, passing the one-use
-  `focus_context` from shortcut activation. For pointer-driven focus, use an
-  XDG Activation token created from user input on the same socket connection.
-  A window ID alone cannot take focus. Shortcut focus contexts require API
-  1.11; XDG Activation focus requires API 1.32.
-- **Previews:** `WindowSwitcher.qml` still uses `preview`. Replace it with the
-  asynchronous `window.thumbnail` API and route the completion event back to
-  the switcher. Requests fail while the session is locked, and a closed or
-  non-drawable window can return an error.
+  stream (`clear`, `bind`, and `status`) to version-negotiated
+  `shortcut.bind`, `shortcut.unbind`, and event subscriptions. Bindings belong
+  to the connection; register them again after reconnecting. Keep the
+  compatibility path for GNOME sessions separate.
+- **Window state:** `ShortcutSession.qml` requests the legacy `windows` stream
+  and emits snapshots to `WindowSwitcher.qml`. Replace it with a
+  `windows.list` snapshot and subscriptions to window and workspace events.
+  Use `window.list` for filtered socket reads where needed.
+- **Focus:** `ShortcutSession.qml` sends the legacy `activate` operation for
+  `WindowSwitcher.qml` and the application launcher. Replace it with
+  `window.focus`, passing the one-use `focus_context` from shortcut
+  activation. For pointer-driven focus, use an XDG Activation token created
+  from user input on the same socket connection. A window ID alone cannot take
+  focus. Shortcut focus contexts require API 1.11; XDG Activation focus
+  requires API 1.32.
+- **Previews:** `ShortcutSession.qml` sends the legacy `preview` operation for
+  `WindowSwitcher.qml`. Replace it with the asynchronous `window.thumbnail`
+  API and route the completion event back to the switcher. Requests fail while
+  the session is locked, and a closed or non-drawable window can return an
+  error.
 - **Privacy:** `PrivacyState.qml` still sends `privacy`, `stop-sharing`, and
   `stop-recording` compatibility operations. Use `privacy.state`, the
   `gnoblin.privacy.changed` event, `privacy.stop_sharing`, and
   `privacy.stop_recording`. Stop methods require API 1.31. The native API does
   not report camera or location activity.
-- **Snapping:** `SnapAssist.qml` still uses `snap-offer`, `snap-window`, and
-  `snap-context`. Replace them with pointer-drag events and work-area-bounded
+- **Snapping:** `ShortcutSession.qml` and `SnapAssist.qml` still use
+  compatibility messages for drag tracking, snap offers, and keyboard snaps.
+  Replace them with pointer-drag events and work-area-bounded
   `window.snap.offer` requests on the connection that received the drag token.
   Use `window.snap_context` and `window.snap` for keyboard snapping with the
   shortcut's one-use focus context.
