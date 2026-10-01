@@ -15,7 +15,8 @@ From the extracted source tarball or a checkout:
 ```
 
 A desktop viewer and terminal open. Programs started from that terminal connect
-to the nested compositor.
+to the nested compositor. The devkit provides a 1280×720 output inside the
+viewer.
 
 ![GNOME Settings in a Gnoblin devkit desktop with Waybar](images/gnoblin-waybar-settings.png)
 
