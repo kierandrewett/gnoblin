@@ -639,7 +639,7 @@ must retain its validation and rollback semantics.
 | `gnoblin.input.text_target(context)`    | live `FocusContext` from shortcut event            | `Operation<TextTarget>`       | Lua wrapper for `input.text_target`; socket counterpart is API 1.28 |
 | `target:insert_text(text)`              | UTF-8 text from 1 to 256 bytes, without controls   | `Operation<{inserted}>`       | Lua wrapper for `input.insert_text`; socket counterpart is API 1.28 |
 | `gnoblin.shortcuts.list()`              | none                                               | `ShortcutState[]`             | `shortcut.list`                                                     |
-| `gnoblin.shortcuts.actions(group?)`     | optional group: `"wm"`, `"mutter"`, or `"wayland"` | `ShortcutAction[]`            | state read                                                          |
+| `gnoblin.shortcuts.actions(group?)`     | optional group: `"wm"`, `"mutter"`, or `"wayland"` | `ShortcutAction[]`            | socket read `shortcuts.actions` (API 1.41)                          |
 | `gnoblin.shortcuts.capture(options?)`   | `timeout?` seconds                                 | `Operation<CapturedShortcut>` | `shortcut.capture`                                                  |
 
 `InputDevice` fields: string `id`, `name`, and `device_type`; optional string
@@ -1276,6 +1276,7 @@ for compatibility; Lua callers inspect and filter `gnoblin.windows.list()`.
 | `session.lock`                                                         | `gnoblin.session.lock()`; a native request to a subscribed shell client. Completion means delivery, not lock confirmation.                              |
 | `runtime.reload_config`                                                | `gnoblin.runtime.reload_config()`                                                                                                                       |
 | `shortcut.list`                                                        | `gnoblin.shortcuts.list()`                                                                                                                              |
+| `shortcut.actions`                                                     | CLI uses the shared Lua-backed `shortcuts.actions` read (API 1.41); retain the raw method for compatibility.                                            |
 | `shortcut.capture`                                                     | `gnoblin.shortcuts.capture(options)`                                                                                                                    |
 
 ## Event catalog
