@@ -9,22 +9,21 @@ Gnoblin policy and runtime behavior, not for drawing shell surfaces.
 
 ## Readiness
 
-Bingux is not yet compatible with the standalone compositor socket. Several
-clients connect to the right socket path but still send the retired `command`
-and Shell bridge messages. They need a protocol migration and behavior changes
-for focus and text insertion; changing the socket path alone is not sufficient.
+Bingux is not yet compatible with the standalone compositor socket. Workspace
+navigation and capture window enumeration now use the versioned API, but the
+shortcut session, text insertion, focus, preview, snapping, privacy, and OSD
+paths still depend on compatibility bridge messages. Changing the socket path
+alone is not sufficient.
 
 - `shell/bingux/ShortcutSession.qml` sends `bind`, `clear`, `status`,
   `activate`, `preview`, `window-drag`, `privacy`, and private `bingux.*`
   operations. Replace these with versioned API calls and event subscriptions.
   Recreate connection-owned bindings and subscriptions after reconnecting.
-- `shell/bingux/WorkspaceState.qml` sends `op: "command"` with
-  `workspace-list` and `workspace-switch`, then polls every five seconds. Use
-  `workspace.list`, `workspace.switch`, and the live events on an
-  `op: "windows"` subscription.
-- `shell/bingux/capture_backend.py` sends the private `capture-windows`
-  command. Use `window.list` for metadata and keep image capture on the
-  ScreenCast portal.
+- `shell/bingux/WorkspaceState.qml` now uses the versioned `workspace.list` and
+  `workspace.switch` API methods. It subscribes to workspace lifecycle events
+  on `op: "windows"` and polls only when connected to an older API version.
+- `shell/bingux/capture_backend.py` uses `window.list` for window metadata and
+  keeps image capture on the ScreenCast portal.
 - `shell/gnoblin/bingux-text-input.js` and `shell/bingux/EmojiPicker.qml` use
   GNOME Shell text-input state, clipboard fallback, and caret placement. Use
   the standalone text-target methods for focused Wayland text-input-v3 clients.
@@ -47,9 +46,6 @@ Replace these compatibility-bridge calls:
   `shortcut.unbind`, and the `gnoblin.shortcut.binding-activated` event. Negotiate
   the API version from `hello`. Bindings belong to the connection; register them
   again after reconnecting.
-- **Workspaces:** Replace `workspace-list` and `workspace-switch` with
-  `workspace.list` and `workspace.switch`. Subscribe to workspace events or
-  refresh the snapshot after a change.
 - **Windows:** Subscribe with `op: "windows"` for the initial snapshot and live
   window and workspace events. Use `window.list` for filtered socket reads or
   `windows.list` when using the newer Lua-backed snapshot method.
@@ -75,9 +71,8 @@ Replace these compatibility-bridge calls:
     and the old clipboard fallback are unsupported. Keep Emoji insertion
     unavailable or explain the failure when the compositor rejects a request.
 
-- **Capture:** Replace `capture-windows` with `window.list` for enumeration and
-  `window.thumbnail` for bounded previews. Continue using the ScreenCast portal
-  for screen capture and recording.
+- **Capture:** Window enumeration now uses `window.list`. Continue using the
+  ScreenCast portal for screen capture and recording.
 
 The standalone socket accepts these top-level operations:
 
