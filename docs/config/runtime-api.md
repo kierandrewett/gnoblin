@@ -906,16 +906,23 @@ end)
 
 ## Input sources
 
-| Method               | Arguments    | Successful result                                           |
-| -------------------- | ------------ | ----------------------------------------------------------- |
-| `input.list()`       | None         | Input-source records with `type`, `id`, `shortName`, `name` |
-| `input.current()`    | None         | Current input-source record                                 |
-| `input.select(args)` | `type`, `id` | `{ok, type, id}`                                            |
+| Lua method                                | Arguments       | Successful result                       |
+| ----------------------------------------- | --------------- | --------------------------------------- |
+| `gnoblin.input.devices()`                 | None            | Physical input-device records           |
+| `gnoblin.input.sources()`                 | None            | Configured XKB input-source records     |
+| `gnoblin.input.current_source()`          | None            | Current XKB source, or `nil`            |
+| `gnoblin.input.select_source({type, id})` | Source selector | Operation returning the selected source |
 
-Use IDs returned by `input.list()` to select a source. `type` and `id` depend
-on the sources available in your session. The immediate read methods
-`gnoblin.input.sources()` and `gnoblin.input.current_source()` return native
-XKB snapshots; see the input details below.
+Pass a source's `type` and `id` from `gnoblin.input.sources()` to
+`gnoblin.input.select_source()`.
+
+Lua also retains two read aliases: `gnoblin.input.list()` matches
+`gnoblin.input.sources()`, and `gnoblin.input.current()` matches
+`gnoblin.input.current_source()`. The socket operation `input.select` is
+exposed in Lua as `gnoblin.input.select_source()`.
+
+These aliases are Lua-only. `gnoblinctl` and socket clients use the method
+names documented for their interfaces.
 
 ## Privacy and permissions
 
