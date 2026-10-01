@@ -358,7 +358,13 @@ remains: its PipeWire state feeds `cameraInUse` in the compositor bridge.
    `workspace_id: "@session-2"`. The devkit now supplies a 1280×720 virtual
    output. This verifies the native build and nested control path, not a real
    login on a seat; GJS compatibility handlers and the standalone login
-   lifecycle remain open.
+   lifecycle remain open. On October 1, 2026, a clean worktree at `6415a974`
+   rebuilt the complete session on Fedora 43 with GCC 15.3.1 and the existing
+   local GNOME 51 and Lua development prefixes. A fresh devkit session listed
+   configured `us` and `gb` XKB sources. It selected `gb` with
+   `gnoblinctl input select` and confirmed it active. Fedora's installed schema
+   version remained 49.1, so this does not establish an unassisted stock-host
+   build.
 5. **Narrow the remaining forks.** Keep the portal frontend protocol and
    backend selection standard. Move Gnoblin's portal implementation out of the
    GNOME backend fork only after its dialogs, capture, permissions, and GNOME
