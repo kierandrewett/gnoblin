@@ -212,7 +212,7 @@ def main() -> int:
                                     "recording": False,
                                     "revision": 42,
                                 }
-                            elif request["method"] == "input.select_source":
+                            elif request["method"] == "input.select":
                                 result = {"request_id": 23, "method": "input.select"}
                             elif request["method"] == "window.thumbnail":
                                 result = {"request_id": 20, "method": "window.thumbnail"}
@@ -277,7 +277,7 @@ def main() -> int:
                                 "animation.preview",
                                 "workspace.create",
                                 "window.thumbnail",
-                                "input.select_source",
+                                "input.select",
                             }:
                                 operation_id = result["request_id"]
                                 method = result["method"]
@@ -676,7 +676,7 @@ def main() -> int:
         assert received[17]["method"] == "input.current_source"
         assert received[17]["api_version"] == {"major": 1, "minor": 46}
         assert received[17]["arguments"] == {}
-        assert received[18]["method"] == "input.select_source"
+        assert received[18]["method"] == "input.select"
         assert received[18]["api_version"] == {"major": 1, "minor": 6}
         assert received[18]["arguments"] == {"type": "xkb", "id": "us"}
         assert received[19]["method"] == "shortcuts.list"

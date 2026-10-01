@@ -335,7 +335,7 @@ static guint api_minor_for_method(const char* method) {
         {"input.devices", 46},
         {"input.sources", 46},
         {"input.current_source", 46},
-        {"input.select_source", 6},
+        {"input.select", 6},
         {"launch.status", 8},
     };
 
@@ -347,23 +347,10 @@ static guint api_minor_for_method(const char* method) {
     return 8;
 }
 
-static const char* wire_operation_method(const char* method) {
-    static const struct {
-        const char* public_method;
-        const char* wire_method;
-    } aliases[] = {
-        {"input.select_source", "input.select"},
-    };
-    for (guint i = 0; i < G_N_ELEMENTS(aliases); i++)
-        if (g_str_equal(method, aliases[i].public_method))
-            return aliases[i].wire_method;
-    return method;
-}
-
 static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                                  JsonObject* arguments, GError** error) {
     const char* method_name = method ? method : "";
-    const char* operation_method = wire_operation_method(method_name);
+    const char* operation_method = method_name;
     g_autofree char* id = g_uuid_string_random();
     g_autoptr(JsonBuilder) builder = json_builder_new();
     json_builder_begin_object(builder);
@@ -379,8 +366,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "window.restore_or_minimize") ||
         g_str_equal(method_name, "input.devices") || g_str_equal(method_name, "input.sources") ||
         g_str_equal(method_name, "input.current_source") ||
-        g_str_equal(method_name, "input.select_source") ||
-        g_str_equal(method_name, "shortcut.actions") ||
+        g_str_equal(method_name, "input.select") || g_str_equal(method_name, "shortcut.actions") ||
         g_str_equal(method_name, "shortcuts.actions") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "shortcut.list") ||
         g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke") ||
@@ -446,8 +432,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
     }
 
     gboolean waits_for_operation =
-        g_str_equal(method_name, "window.thumbnail") ||
-        g_str_equal(method_name, "input.select_source") ||
+        g_str_equal(method_name, "window.thumbnail") || g_str_equal(method_name, "input.select") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "grant.list") ||
         g_str_equal(method_name, "grant.revoke") || g_str_equal(method_name, "animation.preview");
     guint wait_timeout = cli->timeout + (g_str_equal(method_name, "shortcut.capture") ? 2
@@ -1182,7 +1167,7 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                 goto invalid;
             set_string(arguments, "type", arg(cli, 0));
             set_string(arguments, "id", arg(cli, 1));
-            method = "input.select_source";
+            method = "input.select";
         } else if (action) {
             method = owned_method = g_strdup_printf("input.%s", action);
         }
