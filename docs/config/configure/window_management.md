@@ -59,6 +59,9 @@ Declare named workspaces in the top-level `workspaces` field of
 `gnoblin.configure`; workspace declarations do not belong in
 `window_management`. Declared workspaces remain available even when empty.
 
+The legacy `workspace_ids`, `workspace_names`, and `num_workspaces` fields are
+rejected; put IDs and names in top-level `workspaces` entries.
+
 Each entry has a required `id` and `name`. Names must be nonempty and no longer
 than 80 characters. IDs must be unique and match
 `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`.

@@ -49,34 +49,34 @@ int main(void) {
         "return {shortcuts={{name='terminal',binding='<Super>Return',command={'old','arg'}},"
         "{name='keep',binding='<Super>k',command={'keep'}}},"
         "['window-rules']={{match={type='window'},opacity=1}}}\n");
-    const char* source =
-        "assert(require('gnoblin') == gnoblin)\n"
-        "gnoblin.load('component.lua')\n"
-        "gnoblin.configure {layer_shell={preserve_active_window=true},"
-        "window_management={constrain_drag_to_work_area=true,workspace_names={'Main','Chat'}},"
-        "compositor={enable_animations=false,visual_bell=true},"
-        "input={orientation_lock=true,keyboard={xkb_options={'caps:escape'}}},"
-        "input_sources={sources={{type='xkb',id='us'}},per_window=false},"
-        "frame_renderers={my_frame={'my_renderer'}}}\n"
-        "gnoblin.configure {shortcuts={terminal={command={'new'}},"
-        "temporary={command={'unused'}}}}\n"
-        "gnoblin.configure.shortcuts.temporary.enable=false\n"
-        "gnoblin.configure {autostart={bar={command={'old'}}}}\n"
-        "gnoblin.configure {autostart={bar={command={'waybar'}},"
-        "remove={command={'unused'}}}}\n"
-        "gnoblin.configure.autostart.remove.enable=false\n"
-        "local rule={match={app_id='my_app',focused=false},opacity=0.95,"
-        "shader_uniforms={my_strength=0.5},corners={keep_maximized=true}}\n"
-        "gnoblin.window_rule(rule)\n"
-        "rule.opacity=0.1\n"
-        "assert(rule.match.app_id == 'my_app')\n"
-        "gnoblin.permission_rule {name='capture',match='^app%-id:my_app$',"
-        "capabilities={'screen-cast'},level='ask'}\n";
+    const char* source = "assert(require('gnoblin') == gnoblin)\n"
+                         "gnoblin.load('component.lua')\n"
+                         "gnoblin.configure {layer_shell={preserve_active_window=true},"
+                         "window_management={constrain_drag_to_work_area=true},"
+                         "workspaces={{id='main',name='Main'},{id='chat',name='Chat'}},"
+                         "compositor={enable_animations=false,visual_bell=true},"
+                         "input={orientation_lock=true,keyboard={xkb_options={'caps:escape'}}},"
+                         "input_sources={sources={{type='xkb',id='us'}},per_window=false},"
+                         "frame_renderers={my_frame={'my_renderer'}}}\n"
+                         "gnoblin.configure {shortcuts={terminal={command={'new'}},"
+                         "temporary={command={'unused'}}}}\n"
+                         "gnoblin.configure.shortcuts.temporary.enable=false\n"
+                         "gnoblin.configure {autostart={bar={command={'old'}}}}\n"
+                         "gnoblin.configure {autostart={bar={command={'waybar'}},"
+                         "remove={command={'unused'}}}}\n"
+                         "gnoblin.configure.autostart.remove.enable=false\n"
+                         "local rule={match={app_id='my_app',focused=false},opacity=0.95,"
+                         "shader_uniforms={my_strength=0.5},corners={keep_maximized=true}}\n"
+                         "gnoblin.window_rule(rule)\n"
+                         "rule.opacity=0.1\n"
+                         "assert(rule.match.app_id == 'my_app')\n"
+                         "gnoblin.permission_rule {name='capture',match='^app%-id:my_app$',"
+                         "capabilities={'screen-cast'},level='ask'}\n";
     g_autoptr(GVariant) actual = evaluate(root, source);
     g_autoptr(GVariant) expected = evaluate(
         root, "return {['layer-shell']={['preserve-active-window']=true},"
-              "['window-management']={['constrain-drag-to-work-area']=true,"
-              "['workspace-names']={'Main','Chat'}},"
+              "['window-management']={['constrain-drag-to-work-area']=true},"
+              "workspaces={{id='main',name='Main'},{id='chat',name='Chat'}},"
               "compositor={['enable-animations']=false,['visual-bell']=true},"
               "input={['orientation-lock']=true,keyboard={['xkb-options']={'caps:escape'}}},"
               "['input-sources']={sources={{type='xkb',id='us'}},['per-window']=false},"
@@ -138,7 +138,11 @@ int main(void) {
         "gnoblin.shell.reload()",
         "gnoblin.set {window_management={focus_mode='click'}}",
         "gnoblin.window_rule(false)",
-        "gnoblin.config=false; gnoblin.configure {window_management={workspace_names={'x'}}}",
+        "gnoblin.configure {window_management={workspace_names={'x'}}}",
+        "gnoblin.configure {window_management={workspace_ids={'main'}}}",
+        "gnoblin.configure {window_management={num_workspaces=2}}",
+        "gnoblin.configure {window_management={dynamic_workspaces=true},"
+        "workspaces={{id='main',name='Main'}}}",
         "gnoblin.shortcut {command={'x'}}",
         "gnoblin.autostart {name=4}",
         "gnoblin.configure {window_management={constrain_drag_to_work_area=true,"
