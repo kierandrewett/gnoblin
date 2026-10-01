@@ -18,8 +18,8 @@ gnoblinctl = os.environ.get("GNOBLINCTL") or shutil.which("gnoblinctl") or "gnob
 title = "Native shadow fixture"
 
 
-def configure(shadow):
-    corners = 'radius = 24, mode = "force"'
+def configure(shadow, mode="force"):
+    corners = f'radius = 24, mode = "{mode}"'
     if shadow:
         corners += ', shadow = {x = 0, y = 4, blur = 20, spread = 0, opacity = 0.8, color = "#000000"}'
     config.write_text(
@@ -94,6 +94,15 @@ with (root / "native-shadow-client.log").open("w") as log:
         )
         body_point = (box[0] + 160, box[1] + 120)
         rounded_corner = (box[0] + 2, box[1] + 2)
+
+        configure(True, mode="off")
+        time.sleep(0.2)
+        disabled = capture()
+        difference = ImageChops.difference(baseline.crop(shadow_region), disabled.crop(shadow_region))
+        assert sum(ImageStat.Stat(difference).sum) < 20, (
+            'corners.mode = "off" did not suppress the replacement shadow',
+            ImageStat.Stat(difference).sum,
+        )
 
         configure(True)
         shadowed = None
