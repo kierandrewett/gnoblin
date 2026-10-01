@@ -23,10 +23,21 @@ GLib/GIO program.
 The installed `gsettings-desktop-schemas` development package must be at least
 the version pinned in `gnome-versions.json`.
 
+Mutter uses the shared schemas for settings such as keyboard, pointer, and
+accessibility behavior. The package also supplies enum headers used while
+building Mutter. This does not install or start GNOME Shell.
+
 Gnoblin builds its runtime, patched Mutter, and portal backend into a separate
 prefix. It uses the pinned sources and your installed development libraries;
 you do not need the distribution's `gnome-shell` or `mutter` packages to build
 or run Gnoblin.
+
+The `xdg-desktop-portal` development package supplies the D-Bus interface
+definitions used to generate the Gnoblin backend's bindings. At runtime,
+applications call the standard portal frontend, which routes requests to
+Gnoblin's backend for dialogs, screen sharing, and other desktop services.
+Install the frontend as a session service; Gnoblin builds and selects its own
+backend.
 
 Mutter reads monitor vendor names from the system's udev hardware database.
 Gnoblin builds without the gnome-desktop development package. The portal's

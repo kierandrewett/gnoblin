@@ -1,142 +1,110 @@
 # Migrate Bingux to standalone Gnoblin
 
-Bingux remains a Quickshell application. The standalone Gnoblin session does
-not start GNOME Shell or its GJS bridge, so Bingux must use Gnoblin's public
-compositor socket, `gnoblinctl`, Wayland protocols, and desktop portals.
+Bingux is a Quickshell shell. In a standalone Gnoblin session, it owns the
+panels, dock, launcher, notifications, popups, and other visible shell UI.
+Gnoblin owns the compositor and session services. Connect the two through the
+Gnoblin compositor socket, standard Wayland protocols, and desktop portals.
 
-Keep panel, dock, launcher, notification, and popup UI in Bingux. Use Lua for
-Gnoblin policy and runtime behavior, not for drawing shell surfaces.
+Keep GNOME Shell compatibility separate. A GNOME login can continue to use its
+GJS bridge, but the standalone login does not start GNOME Shell or provide its
+private D-Bus services.
 
-## Readiness
+## What already uses Gnoblin
 
-Bingux's standalone transport now uses Gnoblin's negotiated Lua-backed API for
-workspace and window state, shortcuts, focus, thumbnails, privacy, snapping,
-and emoji text insertion. It keeps the older compositor messages as a
-compatibility path for sessions that do not advertise the Gnoblin API. Capture
-window enumeration also uses `window.list`; screen capture and recording still
-use the ScreenCast portal.
+Bingux's standalone path already uses the compositor socket for window and
+workspace state, dynamic shortcuts, focus, previews, snapping, privacy state,
+and emoji insertion. Capture and recording use the ScreenCast portal. Launch
+feedback uses Gnoblin's D-Bus service. Keep these responsibilities in place:
 
-Source coverage does not prove each interaction works in a running session.
-Verify shortcut reconnects, window thumbnails, focus handoff, pointer and
-keyboard snapping, privacy controls, emoji insertion, and capture in a fresh
-standalone session.
+| Bingux behavior                 | Standalone interface                                                      | Limits                                                                                                          |
+| ------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Window and workspace state      | Compositor socket snapshots and events                                    | Use stable Gnoblin IDs and refresh after reconnecting.                                                          |
+| Global shortcuts                | Connection-owned shortcut bindings and events                             | Held shortcuts need the advertised API methods. End a held session without dropping the binding when supported. |
+| Focus transfer                  | `window.focus` with a recent activation context, or normal XDG Activation | A window ID by itself does not authorize focus.                                                                 |
+| Window previews                 | Asynchronous window thumbnails                                            | Requests can fail while the session is locked or the window is gone.                                            |
+| Pointer and keyboard snapping   | Gnoblin snap operations                                                   | Requests need a valid shortcut context; keyboard snapping also needs its API method.                            |
+| Privacy indicators and controls | Privacy snapshot and stop operations                                      | Show only the activity sources returned by the compositor.                                                      |
+| Emoji insertion                 | Text-target and text-insertion operations                                 | Requires a fresh user action and an active Wayland text-input-v3 session. X11 clients are unsupported.          |
+| Screen capture and recording    | XDG ScreenCast portal                                                     | Keep selection and recording UI in Bingux; the portal handles the session.                                      |
+| App launch feedback             | `org.gnoblin.LaunchFeedback`                                              | This reports launch activity; Bingux draws the indicator.                                                       |
 
-`ApplicationLauncher.qml` no longer sends Gnoblin a focus request after
-launching the calendar. It waits for the window and lets the application's
-activation request go through Gnoblin's focus policy.
+Do not infer support from a version number alone. Read the socket's initial
+`hello` record and check its advertised API methods, events, and capabilities.
+Disable an unavailable action cleanly or provide a documented fallback. The
+[compositor bridge reference](/compositor-bridge) defines request shapes,
+versions, and errors.
 
-Verify that the calendar receives focus in a fresh session. If it does not,
-preserve a valid XDG Activation token from the launch action and send it over
-the same socket connection. A window ID alone cannot grant focus.
+## Remove the remaining GNOME Shell dependencies
 
-The calendar helper also calls GNOME Shell's private
-`org.gnome.Shell.CalendarServer` service. That service is absent when GNOME
-Shell is not running. Replace it with a Bingux-owned Evolution Data Server
-provider, or make calendar events an optional integration with a clear
-unavailable state. Keep this out of Gnoblin's compositor API.
+### Calendar events
 
-The standalone emoji path uses `input.text_target` and `input.insert_text`.
-Text insertion needs a fresh Super+Period press after the picker closes and a
-focused Wayland client with an active text-input-v3 session. X11 and clipboard
-fallback are unsupported. The older input-anchor messages remain only for the
-compatibility path.
+`shell/bingux/calendar-events.py` calls the private
+`org.gnome.Shell.CalendarServer` service. That service is not present in a
+standalone Gnoblin session, so calendar events will be unavailable there.
+Replace this provider with a Bingux-owned Evolution Data Server (EDS) client,
+or make event loading optional and show a clear unavailable state. Keep
+recurrence and calendar data in Bingux; they do not belong in the compositor
+API.
 
-`osd-bridge.js` patches GNOME Shell's OSD manager and calls
-`org.gnoblin.Shell`. Keep it inside the GNOME compatibility session. The
-standalone path should render OSDs in Bingux from `gnoblin.osd.requested`.
+### OSDs
 
-The standalone session has no `org.gnome.Shell` service or GJS bridge. Keep any
-GNOME-session compatibility path separate from the standalone path.
+The standalone shell should subscribe to `gnoblin.osd.requested` on the
+compositor socket and render the requested OSD in Bingux. The event supplies
+compositor state, not a popup or a prescribed appearance. Keep
+`shell/bingux/osd-bridge.js`, which patches GNOME Shell's private OSD manager,
+inside the GNOME compatibility path only. Remove the standalone dependency on
+`org.gnoblin.Shell` OSD forwarding once the socket event is wired up.
 
-## Use the standalone APIs
+### Compatibility GJS modules
 
-The compatibility bridge accepts operations that the standalone Gnoblin
-socket does not. Keep those operations in the fallback path only. In the
-standalone path, `ShortcutSession.qml` negotiates methods and events, owns
-shortcut bindings for one connection, and re-registers them after reconnecting.
+Keep `shell/gnoblin/bingux-text-input.js` and other GJS adapters available only
+to the GNOME compatibility session. The standalone path uses Gnoblin's native
+text-input API and must not import `Main`, `Meta`, or `global` from GJS.
 
-Workspace state subscribes to workspace events. It polls only when an older
-server does not provide those events.
+If Bingux retains GNOME compatibility, select its adapters based on the session
+it is running in. Do not start the adapters just because a Gnoblin process or
+configuration exists; the standalone session has no GNOME Shell runtime.
 
-The remaining API constraints are:
+## Keep shell UI and app dependencies in Bingux
 
-- Window focus and snapping require short-lived user contexts.
-- Thumbnail requests complete asynchronously and fail while the session is
-  locked.
-- Privacy stop methods require API 1.31. The native privacy snapshot does not
-  report camera or location activity.
-- Text insertion requires API 1.28 and an active Wayland text-input-v3 session.
-  X11 and clipboard fallback are unsupported.
+Gnoblin does not draw Bingux panels, menus, launchers, notifications, or OSDs.
+Use Quickshell layer surfaces for those interfaces. Use standard Wayland
+protocols for portable window listing and control, the Gnoblin socket for
+Gnoblin-specific compositor behavior, and portals for capture and other
+application requests.
 
-The standalone socket accepts these top-level operations:
+Users may run Gnoblin without GNOME applications or services installed. Bingux
+must handle optional applications and providers being absent: for example,
+opening GNOME Calendar should offer an unavailable or install action instead
+of assuming the application exists. Document runtime packages such as
+PipeWire/WirePlumber and portal implementations with Bingux's install
+instructions, not as compositor socket features.
 
-- `api` for a versioned method call;
-- `events` for event subscriptions;
-- `windows` and `monitors` for snapshots and change events;
-- `ping` to check the connection.
+## Migration steps
 
-Negotiate the API version from the initial `hello` event. The minimum
-versions used by this migration are:
+1. Run Bingux in a standalone Gnoblin login and confirm it connects to the
+   compositor socket. Check the `hello` record before enabling each feature.
+2. Keep socket subscriptions on a persistent connection. On disconnect, clear
+   connection-owned shortcut and focus contexts, reconnect, request fresh
+   snapshots, and register bindings again.
+3. Route OSD events from `gnoblin.osd.requested` to Bingux's own OSD surfaces.
+   Keep the GJS OSD adapter out of this startup path.
+4. Replace the calendar helper's private `CalendarServer` client or expose an
+   explicit no-provider state.
+5. Keep GNOME-only GJS adapters behind a separate compatibility-session
+   startup path.
+6. Treat desktop applications, PipeWire, WirePlumber, and portal backends as
+   optional runtime dependencies. Handle missing services without crashing or
+   blocking the shell.
 
-- dynamic shortcut binding: 1.11; held or modal bindings: 1.22;
-- shortcut focus contexts: 1.11; XDG Activation focus: 1.32;
-- pointer drag snapping: 1.26; keyboard snapping: 1.28;
-- window thumbnails: 1.23; text targets: 1.28;
-- privacy state: 1.17; privacy stop actions: 1.31;
-- OSD requests: 1.27.
+## Verify the standalone path
 
-`workspace.list` and `window.list` are Lua-backed from API 1.52 and 1.53. The
-[compositor bridge reference](compositor-bridge.md) lists every version,
-argument, response, event, and capability.
+Test in a fresh standalone session, not only inside GNOME Shell. Verify
+window/workspace updates, shortcut registration after reconnect, focus handoff,
+previews, both snapping modes, privacy controls, emoji insertion, OSDs, launch
+feedback, calendar availability, and portal capture. Repeat relevant checks in
+a GNOME login if Bingux still supports that compatibility path.
 
-For one-off reads and actions, prefer `gnoblinctl`; it handles API negotiation
-and socket requests. A long-running shell component should keep one connection
-open for its subscriptions and connection-owned capabilities.
-
-## Keep shell presentation in Bingux
-
-The compatibility bridge also exposes `ui-state` and `ui-command` callbacks.
-Those are shell-specific state and presentation, so Bingux should own them in
-its QML state rather than replace them with new Gnoblin APIs.
-
-The `org.gnoblin.LaunchFeedback` D-Bus service is available in the standalone
-session. Bingux can keep using it to show the busy cursor while an app starts.
-For OSDs, subscribe to `gnoblin.osd.requested` and draw the OSD in Bingux. The
-event reports compositor state; it does not provide a popup or prescribe its
-appearance. Keep OSD rendering independent of GNOME Shell monkey-patches and
-`org.gnoblin.Shell`.
-
-Use standard Wayland protocols for Bingux's own windows and the portal
-interfaces for screen sharing, remote desktop, and other application requests.
-Gnoblin's Lua API controls compositor and session behavior; it does not create
-or render Bingux UI.
-
-## Finish the remaining work
-
-1. Verify that a launched calendar window receives focus through its normal
-   activation request. If it does not, pass a valid XDG Activation token on
-   the same socket connection.
-2. Subscribe to `gnoblin.osd.requested` and draw OSDs in Bingux. Keep the
-   GNOME Shell OSD shim in the compatibility session and keep LaunchFeedback
-   on its documented D-Bus API.
-3. Replace the calendar helper's GNOME Shell CalendarServer dependency with a
-   Bingux-owned provider, or disable event loading cleanly when that optional
-   provider is unavailable.
-4. Verify the standalone path in a fresh session, including shortcut
-   reconnects, workspace and window events, focus, previews, snapping, emoji
-   insertion, OSD, launch feedback, calendar availability, and portal capture.
-   Check the GNOME compatibility path separately if Bingux continues to
-   support it.
-
-## Check the migration
-
-Run Bingux's QML checks and tests, then verify it in a fresh standalone Gnoblin
-session. Check shortcut registration after startup and reconnect, workspace
-switching, and window events. Verify focus transfer, thumbnails, privacy
-changes, snapping, text insertion, launch feedback, OSD, and portal capture.
-
-If Bingux still supports GNOME sessions, confirm that path separately.
-
-The [shell integration guide](shell-integration.md) and
-[bridge examples](bridge-examples.md) describe the public integration
-interfaces.
+The [shell integration guide](/shell-integration) describes the public shell
+interfaces. The [Gnoblin Apps guide](/gnome-apps) explains which GNOME
+applications and services are optional.
