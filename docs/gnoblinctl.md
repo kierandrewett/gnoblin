@@ -315,7 +315,8 @@ shown.
 
 | Action                                   | Arguments after action                           | Effect                                                |
 | ---------------------------------------- | ------------------------------------------------ | ----------------------------------------------------- |
-| `interactive-move`, `interactive-resize` | `[ID]`                                           | Begin pointer-driven move or resize                   |
+| `menu`                                   | `[ID]`                                           | Rejected; requires a trusted shell input context      |
+| `interactive-move`, `interactive-resize` | `[ID]`                                           | Rejected; requires a trusted shell input context      |
 | `above`, `unabove`                       | `[ID]`                                           | Set or clear always-on-top                            |
 | `stick`, `unstick`                       | `[ID]`                                           | Show on all workspaces or only its own                |
 | `focus`                                  | `[ID]`                                           | Rejected; focusing requires a one-use trusted context |
@@ -328,6 +329,11 @@ shown.
 | `resize`                                 | `ID WIDTH HEIGHT`                                | Set frame size; each dimension: 1–32768               |
 | `workspace`                              | `ID [WORKSPACE]`, `--number NUMBER` or `--id ID` | Move to an existing workspace                         |
 | `monitor`                                | `WINDOW MONITOR`                                 | Connector ID for a window ID; index for `active`      |
+
+`gnoblinctl` cannot create the one-use input context required by `menu` and
+interactive move or resize. These commands fail locally without sending a
+request. Start them from a shell input binding that receives the trusted
+context.
 
 The CLI uses typed native methods for actions with a typed equivalent, including
 when `active` is resolved to a stable ID. Menu and interactive actions remain
