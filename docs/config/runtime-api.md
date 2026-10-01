@@ -43,6 +43,10 @@ Native-control API 1.19 exposes these reads to local clients:
 - `capabilities.list` and `focus.history` return arrays.
 - `settings` and `focus.policy` return committed settings snapshots.
 
+Native-control API 1.37 adds four snapshot collection reads. They return JSON
+arrays, including when a collection is empty. `layers.list` accepts the same
+optional filters as `gnoblin.layers.list()`.
+
 Native-control API 1.23 adds `window.thumbnail`. API 1.24 adds
 `session.activity` and its change event. API 1.26 adds pointer-drag lifecycle
 events and capability-bound `window.snap.offer`.

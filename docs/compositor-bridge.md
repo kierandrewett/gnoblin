@@ -463,10 +463,14 @@ The socket exposes these reads at the listed API versions:
 | 1.19        | `focus.history`     | `gnoblin.focus.history(filter)` | `workspace_id`, `monitor_id`, `limit` |
 | 1.19        | `settings`          | `gnoblin.settings`              | None                                  |
 | 1.19        | `focus.policy`      | `gnoblin.focus.policy`          | None                                  |
+| 1.37        | `workspaces.list`   | `gnoblin.workspaces.list()`     | None                                  |
+| 1.37        | `monitors.list`     | `gnoblin.monitors.list()`       | None                                  |
+| 1.37        | `layers.list`       | `gnoblin.layers.list(filter)`   | `monitor_id`, `namespace`, `layer`    |
+| 1.37        | `launches.list`     | `gnoblin.launches.list()`       | None                                  |
 | 1.24        | `session.activity`  | `gnoblin.session.activity()`    | None                                  |
 | 1.29        | `session.status`    | `gnoblin.session.status()`      | None                                  |
 
-The result includes:
+`session.status` returns:
 
 - `state: "running"` when the compositor answers the request.
 - `lock_available`, plus `lock_state` when that value is true.
@@ -619,7 +623,8 @@ uses the same filter values and defaults as the Lua method. The response
 contains the snapshot directly in `result`; list reads return JSON arrays,
 including an empty array when there are no records.
 
-These reads are available after native control seeds their snapshots.
+Snapshot reads are available after native control seeds their state. API 1.37
+collection reads also require a connected Lua supervisor.
 
 For example, request the committed settings snapshot with:
 
