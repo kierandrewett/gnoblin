@@ -31,6 +31,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "privacy.stop_recording",
             "session.activity",
             "layer.animation_policy",
+            "workspaces.list",
+            "monitors.list",
+            "layers.list",
+            "launches.list",
         ):
             with self.subTest(method=method):
                 self.assertIn(f'"{method}"', methods)
