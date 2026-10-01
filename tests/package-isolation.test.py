@@ -233,7 +233,7 @@ class IsolationTests(unittest.TestCase):
                 self.assertNotIn(obsolete, package)
         self.assertNotIn('"gnome-shell-src"', flake)
         self.assertNotIn('"gnome-shell-src"', lock)
-        self.assertEqual(flake.count("pkgs.gnome-shell"), 2)
+        self.assertNotIn("pkgs.gnome-shell", flake)
 
     def test_system_schemas_are_required_before_the_compositor(self):
         mutter = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/mutter.spec")], text=True)
@@ -244,10 +244,11 @@ class IsolationTests(unittest.TestCase):
         self.assertIn("GI_GIR_PATH=/usr/lib/gnoblin/share/gir-1.0", mutter)
         runtime_env = (ROOT / "src/tools/gnoblin-env.sh").read_text()
         self.assertNotIn("GI_TYPELIB_PATH", runtime_env)
-        self.assertLess(
-            publisher.index('build_in_supported_fedora_chroots "$mutter_srpm"'),
-            publisher.index('build_in_supported_fedora_chroots "$gnoblin_srpm"'),
-        )
+        build_order = [
+            publisher.index(f'build_in_supported_fedora_chroots "${name}_srpm"')
+            for name in ("mutter", "portal", "meta")
+        ]
+        self.assertEqual(build_order, sorted(build_order))
 
     def test_lua_build_dependency_belongs_to_the_gnoblin_runtime(self):
         gnoblin = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin.spec")], text=True)
@@ -259,13 +260,13 @@ class IsolationTests(unittest.TestCase):
         self.assertIn("SOURCE=copr", installer)
         self.assertIn('dnf copr enable -y "$copr"', installer)
         self.assertIn('dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"', installer)
-        self.assertIn('packages=("gnoblin:$GNOBLIN_VERSION"', installer)
+        self.assertIn('packages=("gnoblin:$META_VERSION"', installer)
         self.assertIn("gnoblin) project=gnoblin", installer)
         self.assertIn("install --refresh gnoblin", (ROOT / ".github/workflows/verify.yml").read_text())
         self.assertIn("install-fedora:", justfile)
         self.assertIn("./scripts/install-system.sh", justfile)
         self.assertNotIn('"--local-rpms"', justfile)
-        self.assertNotIn("gnome-session@gnoblin.target.d.conf", installer)
+        self.assertIn("gnome-session@gnoblin.target.d/gnoblin.conf", installer)
 
 
 if __name__ == "__main__":
