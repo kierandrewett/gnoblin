@@ -10139,6 +10139,42 @@ static char* dynamic_shortcut_unbind(Client* client, const char* request_id,
     return encode_response(request_id, result, NULL);
 }
 
+static char* dynamic_shortcut_request_end_session(Client* client, const char* request_id,
+                                                  JsonObject* arguments) {
+    if (!client || client->closing || !client->control || !arguments)
+        return encode_response(request_id, NULL, "shortcut.session.end requires a live connection");
+    if (json_object_get_size(arguments) != 2 || !json_object_has_member(arguments, "id") ||
+        !json_object_has_member(arguments, "session_id"))
+        return encode_response(request_id, NULL,
+                               "shortcut.session.end accepts only id and session_id");
+    JsonNode* id_node = json_object_get_member(arguments, "id");
+    JsonNode* session_node = json_object_get_member(arguments, "session_id");
+    if (!id_node || !JSON_NODE_HOLDS_VALUE(id_node) ||
+        json_node_get_value_type(id_node) != G_TYPE_STRING ||
+        !dynamic_shortcut_id_valid(json_node_get_string(id_node)) || !session_node ||
+        !JSON_NODE_HOLDS_VALUE(session_node) ||
+        json_node_get_value_type(session_node) != G_TYPE_INT64 ||
+        json_node_get_int(session_node) <= 0)
+        return encode_response(request_id, NULL,
+                               "shortcut.session.end requires a valid id and positive session_id");
+
+    const char* binding_id = json_node_get_string(id_node);
+    guint64 session_id = (guint64)json_node_get_int(session_node);
+    NativeDynamicShortcut* shortcut = find_dynamic_shortcut(client, binding_id);
+    if (!shortcut || !shortcut->active || shortcut->session_id != session_id)
+        return encode_response(request_id, NULL,
+                               "shortcut.session.end session is no longer active for this binding");
+
+    dynamic_shortcut_end_session(client->control, shortcut, "cancelled");
+    JsonObject* result_object = json_object_new();
+    json_object_set_string_member(result_object, "id", binding_id);
+    json_object_set_int_member(result_object, "session_id", (gint64)session_id);
+    json_object_set_boolean_member(result_object, "ended", TRUE);
+    g_autoptr(JsonNode) result = json_node_new(JSON_NODE_OBJECT);
+    json_node_take_object(result, result_object);
+    return encode_response(request_id, result, NULL);
+}
+
 static gboolean native_api_read_method(const char* method) {
     return method &&
            (g_str_equal(method, "window.list") || g_str_equal(method, "windows.list") ||
@@ -10666,6 +10702,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if ((g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind")) &&
         client->api_minor < 11)
         return encode_response(id, NULL, "dynamic shortcut methods require API version 1.11");
+    if (g_str_equal(method, "shortcut.session.end") && client->api_minor < 64)
+        return encode_response(id, NULL, "shortcut.session.end requires API version 1.64");
     if ((g_str_equal(method, "grant.list") || g_str_equal(method, "grant.revoke")) &&
         client->api_minor < 14)
         return encode_response(id, NULL, "portal grant methods require API version 1.14");
@@ -11236,6 +11274,10 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         return g_str_equal(method, "shortcut.bind")
                    ? dynamic_shortcut_bind(client, id, arguments)
                    : dynamic_shortcut_unbind(client, id, arguments);
+    }
+    if (g_str_equal(method, "shortcut.session.end")) {
+        JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
+        return dynamic_shortcut_request_end_session(client, id, arguments);
     }
     if (g_str_has_prefix(method, "launch.")) {
         client->track_launches = TRUE;
@@ -11961,6 +12003,7 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         "shortcut.bind",
         "shortcut.capture",
         "shortcut.list",
+        "shortcut.session.end",
         "shortcut.unbind",
         "permissions.list",
         "permissions.policy",
@@ -12282,6 +12325,32 @@ static GVariant* native_runtime_shortcut_operation(GnoblinNativeControl* control
                                                    const char* method, GVariant* arguments,
                                                    gint64 operation_id, GError** error) {
     const char* id = NULL;
+    if (g_str_equal(method, "shortcut.session.end")) {
+        gint64 signed_session_id = 0;
+        if (!g_variant_lookup(arguments, "id", "&s", &id) || !dynamic_shortcut_id_valid(id) ||
+            !g_variant_lookup(arguments, "session_id", "x", &signed_session_id) ||
+            signed_session_id <= 0) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "shortcut.session.end requires a valid id and positive session_id");
+            return NULL;
+        }
+        guint64 session_id = (guint64)signed_session_id;
+        guint64 generation = native_config_generation(control);
+        g_autofree char* owner_id = g_strdup_printf("lua:%" G_GUINT64_FORMAT, generation);
+        NativeDynamicShortcut* shortcut = find_runtime_dynamic_shortcut(control, owner_id, id);
+        if (!shortcut || !shortcut->active || shortcut->session_id != session_id) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                                "shortcut session is no longer active for this Lua binding");
+            return NULL;
+        }
+        dynamic_shortcut_end_session(control, shortcut, "cancelled");
+        GVariantBuilder result;
+        g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&result, "{sv}", "id", g_variant_new_string(id));
+        g_variant_builder_add(&result, "{sv}", "session_id", g_variant_new_uint64(session_id));
+        g_variant_builder_add(&result, "{sv}", "ended", g_variant_new_boolean(TRUE));
+        return g_variant_ref_sink(g_variant_builder_end(&result));
+    }
     if (g_str_equal(method, "shortcut.unbind")) {
         if (!g_variant_lookup(arguments, "id", "&s", &id) || !dynamic_shortcut_id_valid(id)) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -12831,7 +12900,8 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
                 result = g_variant_ref_sink(g_variant_builder_end(&armed_result));
             }
         }
-    } else if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind")) {
+    } else if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind") ||
+               g_str_equal(method, "shortcut.session.end")) {
         result = native_runtime_shortcut_operation(control, method, arguments, operation_id,
                                                    &operation_error);
     } else if (g_str_has_prefix(method, "launch.")) {

@@ -508,6 +508,9 @@ int main(void) {
         "g.on('test.shortcut.register', function()\n"
         "  g.shortcuts.bind {id='test-switcher', accelerator='<Super>space', hold='super', "
         "mode='modal'}\n"
+        "end)\n"
+        "g.on('test.shortcut.end', function()\n"
+        "  g.shortcuts.end_session {id='test-switcher', session_id=9}\n"
         "end)\n";
     g_assert_true(g_file_set_contents(explicit_root, event_config_source, -1, &error));
     g_autoptr(GVariant) runtime_document =
@@ -539,6 +542,25 @@ int main(void) {
     g_autoptr(GVariant) bind_hold =
         g_variant_lookup_value(bind_operation_args, "hold", G_VARIANT_TYPE_STRING);
     g_assert_cmpstr(g_variant_get_string(bind_hold, NULL), ==, "super");
+    gnoblin_config_finish_event(TRUE);
+
+    g_autoptr(GVariant) end_session_result =
+        gnoblin_config_dispatch_event("test.shortcut.end", bind_event_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(end_session_result);
+    g_autoptr(GVariant) end_session_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(end_session_operations), ==, 1);
+    g_autoptr(GVariant) end_session_operation =
+        g_variant_get_child_value(end_session_operations, 0);
+    g_autoptr(GVariant) end_session_method =
+        g_variant_lookup_value(end_session_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(end_session_method, NULL), ==, "shortcut.session.end");
+    g_autoptr(GVariant) end_session_arguments =
+        g_variant_lookup_value(end_session_operation, "arguments", G_VARIANT_TYPE_VARDICT);
+    gint64 requested_session_id = 0;
+    g_assert_true(
+        g_variant_lookup(end_session_arguments, "session_id", "x", &requested_session_id));
+    g_assert_cmpint(requested_session_id, ==, 9);
     gnoblin_config_finish_event(TRUE);
 
     GVariantBuilder trusted_shortcut;

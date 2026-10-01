@@ -306,6 +306,7 @@ static const char* api_methods[] = {
     "shortcut.capture",
     "shortcut.bind",
     "shortcut.unbind",
+    "shortcut.session.end",
     NULL,
 };
 
@@ -2193,7 +2194,8 @@ static int lua_generic_api_action(lua_State* state) {
 
     GVariant* arguments = NULL;
     if (lua_gettop(state) == 0) {
-        if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind"))
+        if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind") ||
+            g_str_equal(method, "shortcut.session.end"))
             return luaL_error(state, "%s requires an argument table", method);
         if (g_str_has_prefix(method, "window.") && !g_str_equal(method, "window.match"))
             return luaL_error(state, "%s requires an argument table", method);
@@ -2269,6 +2271,22 @@ static int lua_generic_api_action(lua_State* state) {
             static const char* const fields[] = {"id", NULL};
             if (!table_fields_allowed(state, 1, fields))
                 return luaL_error(state, "shortcut.unbind accepts only id");
+        }
+        if (g_str_equal(method, "shortcut.session.end")) {
+            static const char* const fields[] = {"id", "session_id", NULL};
+            if (!table_fields_allowed(state, 1, fields))
+                return luaL_error(state, "shortcut.session.end accepts only id and session_id");
+            lua_getfield(state, 1, "id");
+            gboolean valid_id =
+                lua_type(state, -1) == LUA_TSTRING && strlen(lua_tostring(state, -1)) <= 64 &&
+                g_regex_match_simple("^[A-Za-z0-9_-]+$", lua_tostring(state, -1), 0, 0);
+            lua_pop(state, 1);
+            lua_getfield(state, 1, "session_id");
+            gboolean valid_session = lua_isinteger(state, -1) && lua_tointeger(state, -1) > 0;
+            lua_pop(state, 1);
+            if (!valid_id || !valid_session)
+                return luaL_error(
+                    state, "shortcut.session.end requires a valid id and positive session_id");
         }
         GError* error = NULL;
         arguments = variant_from_lua(state, 1, 0, FALSE, 0, &error);
@@ -4703,7 +4721,8 @@ static void install_api(lua_State* state, LuaConfig* config) {
             continue; /* These legacy names are snapshot reads, not operations. */
         if (g_str_equal(api_methods[i], "shortcut.capture") ||
             g_str_equal(api_methods[i], "shortcut.bind") ||
-            g_str_equal(api_methods[i], "shortcut.unbind"))
+            g_str_equal(api_methods[i], "shortcut.unbind") ||
+            g_str_equal(api_methods[i], "shortcut.session.end"))
             continue; /* Public collection API is gnoblin.shortcuts.capture. */
         if (g_str_equal(api_methods[i], "privacy.get"))
             continue; /* Exposed as the native snapshot read gnoblin.privacy.state(). */
@@ -4876,6 +4895,10 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushliteral(state, "shortcut.unbind");
     lua_pushcclosure(state, lua_generic_api_action, 2);
     lua_setfield(state, -2, "unbind");
+    lua_pushlightuserdata(state, config);
+    lua_pushliteral(state, "shortcut.session.end");
+    lua_pushcclosure(state, lua_generic_api_action, 2);
+    lua_setfield(state, -2, "end_session");
     lua_setfield(state, -2, "shortcuts");
     lua_newtable(state);
     lua_pushlightuserdata(state, config);
@@ -6243,6 +6266,9 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind")) {
         domain = g_strdup("shortcuts");
         operation = g_str_equal(method, "shortcut.bind") ? "bind" : "unbind";
+    } else if (g_str_equal(method, "shortcut.session.end")) {
+        domain = g_strdup("shortcuts");
+        operation = "end_session";
     } else {
         domain = g_strndup(method, separator - method);
         operation = separator + 1;

@@ -1228,6 +1228,12 @@ API 1.22 adds held and modal dynamic shortcut bindings. `shortcut.bind` accepts
 
 `shortcut.unbind` accepts only the binding `id`.
 
+API 1.64 adds `shortcut.session.end`. It accepts the binding `id` and the
+`session_id` from that binding's `gnoblin.shortcut.session.activated` event.
+Ending a session releases its keyboard capture while keeping the binding
+registered. A stale session ID or a binding owned by another connection is
+rejected. The matching ended event uses reason `cancelled`.
+
 ```json
 {
     "op": "api",
@@ -1236,6 +1242,26 @@ API 1.22 adds held and modal dynamic shortcut bindings. `shortcut.bind` accepts
     "method": "shortcut.bind",
     "arguments": { "id": "search", "accelerator": "Super", "trigger": "release", "capture_input": true }
 }
+```
+
+Lua uses the same operation as `gnoblin.shortcuts.end_session`:
+
+```lua
+gnoblin.shortcuts.bind {
+    id = "switcher",
+    accelerator = "<Alt>Tab",
+    hold = "alt",
+    mode = "modal",
+}
+
+gnoblin.events.on("gnoblin.shortcut.session.activated", function(event)
+    if event.id == "switcher" then
+        gnoblin.shortcuts.end_session {
+            id = event.id,
+            session_id = event.session_id,
+        }
+    end
+end)
 ```
 
 Registrations belong to the socket connection that created them. Disconnecting
@@ -1250,7 +1276,8 @@ Socket clients can subscribe to the following API 1.22 events:
   `keyval`, `keycode`, `modifiers`, `phase` (`press` or `release`), and `time`.
 - `gnoblin.shortcut.session.ended` when a session ends. Reasons are `released`,
   `unbound`, `owner_disconnected`, `config_changed`, `locked`, `preempted`,
-  `timed_out`, `compositor_stopped`, and `runtime_stopped`. The last reason is
+  `timed_out`, `cancelled`, `compositor_stopped`, and `runtime_stopped`. The
+  `cancelled` reason is used by `shortcut.session.end`. `runtime_stopped` is
   sent to a socket client when the Lua runtime stops while that client owns the
   active session.
 

@@ -366,6 +366,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`                      |
 | 1.62            | Legacy `window.action` maps move to `window.move`                                                |
 | 1.63            | Adds `workspace` and `monitor` actions to `window.action`                                        |
+| 1.64            | `shortcut.session.end` ends an owned active session without removing its binding                 |
 
 ### API 1.27: shell presentation requests
 
@@ -855,6 +856,23 @@ Use `shortcut.bind` to register a connection-owned global accelerator. The
 
 Use `shortcut.unbind` with the same ID to release a binding. A client can remove
 only its own IDs. Disconnecting the client releases all its bindings.
+
+To keep a binding registered after its held session ends, use
+`shortcut.session.end` with the binding ID and active session ID. This works
+only for a session owned by the current connection. The ended event reports
+reason `cancelled`.
+
+Send the `session_id` from `gnoblin.shortcut.session.activated`:
+
+```json
+{
+    "op": "api",
+    "id": "end-switcher-session",
+    "api_version": { "major": 1, "minor": 64 },
+    "method": "shortcut.session.end",
+    "arguments": { "id": "switcher", "session_id": 42 }
+}
+```
 
 #### Receive activations
 

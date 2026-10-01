@@ -207,6 +207,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.shortcuts.list()`                      | `() -> ShortcutState[]`                                     | **Current; native runtime.** Read the configured shortcuts registered by the compositor.                                                                                                    |
 | `gnoblin.shortcuts.capture(options?)`           | `({timeout?: integer 1–60}) -> Operation<CapturedShortcut>` | **Current; native runtime only.** Capture one normalized accelerator; default timeout is 30 seconds and Escape cancels.                                                                     |
 | `gnoblin.shortcuts.bind(args)` / `unbind(args)` | `(table) -> Operation<Result>`                              | **Current; native runtime.** Bind or remove a Gnoblin shortcut.                                                                                                                             |
+| `gnoblin.shortcuts.end_session(args)`           | `({id: string, session_id: integer}) -> Operation<Result>`  | **Current; native runtime.** End the matching active session while keeping its binding registered.                                                                                          |
 
 | `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current; native runtime only.** Read-only revisioned window snapshots and a one-use context for keyboard snapping. |
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current; native runtime only.** Read-only revisioned workspace snapshots and typed workspace operations. |
@@ -627,17 +628,18 @@ must retain its validation and rollback semantics.
 
 ### Input and shortcuts
 
-| Lua call                                | Arguments                                          | Result                        | Canonical operation                                                 |
-| --------------------------------------- | -------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------- |
-| `gnoblin.input.devices()`               | none                                               | `InputDevice[]`               | `input.devices`                                                     |
-| `gnoblin.input.sources()`               | none                                               | `InputSource[]`               | `input.sources`                                                     |
-| `gnoblin.input.current_source()`        | none                                               | `InputSource or nil`          | state read                                                          |
-| `gnoblin.input.select_source(selector)` | `{type, id}` source selector                       | `Operation<InputSource>`      | `input.select`                                                      |
-| `gnoblin.input.text_target(context)`    | live `FocusContext` from shortcut event            | `Operation<TextTarget>`       | Lua wrapper for `input.text_target`; socket counterpart is API 1.28 |
-| `target:insert_text(text)`              | UTF-8 text from 1 to 256 bytes, without controls   | `Operation<{inserted}>`       | Lua wrapper for `input.insert_text`; socket counterpart is API 1.28 |
-| `gnoblin.shortcuts.list()`              | none                                               | `ShortcutState[]`             | `shortcut.list`                                                     |
-| `gnoblin.shortcuts.actions(group?)`     | optional group: `"wm"`, `"mutter"`, or `"wayland"` | `ShortcutAction[]`            | socket read `shortcuts.actions` (API 1.41)                          |
-| `gnoblin.shortcuts.capture(options?)`   | `timeout?` seconds                                 | `Operation<CapturedShortcut>` | `shortcut.capture`                                                  |
+| Lua call                                | Arguments                                          | Result                               | Canonical operation                                                 |
+| --------------------------------------- | -------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------- |
+| `gnoblin.input.devices()`               | none                                               | `InputDevice[]`                      | `input.devices`                                                     |
+| `gnoblin.input.sources()`               | none                                               | `InputSource[]`                      | `input.sources`                                                     |
+| `gnoblin.input.current_source()`        | none                                               | `InputSource or nil`                 | state read                                                          |
+| `gnoblin.input.select_source(selector)` | `{type, id}` source selector                       | `Operation<InputSource>`             | `input.select`                                                      |
+| `gnoblin.input.text_target(context)`    | live `FocusContext` from shortcut event            | `Operation<TextTarget>`              | Lua wrapper for `input.text_target`; socket counterpart is API 1.28 |
+| `target:insert_text(text)`              | UTF-8 text from 1 to 256 bytes, without controls   | `Operation<{inserted}>`              | Lua wrapper for `input.insert_text`; socket counterpart is API 1.28 |
+| `gnoblin.shortcuts.list()`              | none                                               | `ShortcutState[]`                    | `shortcut.list`                                                     |
+| `gnoblin.shortcuts.actions(group?)`     | optional group: `"wm"`, `"mutter"`, or `"wayland"` | `ShortcutAction[]`                   | socket read `shortcuts.actions` (API 1.41)                          |
+| `gnoblin.shortcuts.capture(options?)`   | `timeout?` seconds                                 | `Operation<CapturedShortcut>`        | `shortcut.capture`                                                  |
+| `gnoblin.shortcuts.end_session(args)`   | binding `id` and active `session_id`               | `Operation<{id, session_id, ended}>` | `shortcut.session.end` (socket API 1.64)                            |
 
 `InputDevice` fields: string `id`, `name`, and `device_type`; optional string
 `seat` when Mutter provides a seat name;
@@ -772,6 +774,11 @@ binding requires `capture_input = true`, `trigger = "release"`, and
 `hold = "none"`. Registration fails with `unsupported` when the Mutter early
 modifier hook is unavailable.
 
+`gnoblin.shortcuts.end_session {id = ..., session_id = ...}` ends the matching
+active session but keeps its binding registered. Pass the session ID from the
+activation event. Stale IDs and bindings owned by another runtime or socket
+connection are rejected. The ended event uses reason `cancelled`.
+
 Passive bindings leave keyboard input with applications. Modal bindings use
 Mutter's native keyboard capture while the held modifier remains down. The
 session ends when that modifier is released, the binding is unbound, its owner
@@ -780,19 +787,20 @@ over, or ten seconds elapse. A session cannot outlive its Lua runtime
 generation or socket connection. The shell owns pointer input and UI; Gnoblin
 does not capture pointer events for shortcut sessions.
 
-Lua calls and native-control socket calls use the same `shortcut.bind` and
-`shortcut.unbind` operation schemas. Lua registrations belong to the active
-runtime generation. Socket registrations belong to the authenticated client
-connection. Both are removed with their owner. Socket clients need API 1.22 to
-request held or modal options and to subscribe to the session events below.
+Lua calls and native-control socket calls use the same `shortcut.bind`,
+`shortcut.unbind`, and `shortcut.session.end` operation schemas. Lua
+registrations belong to the active runtime generation. Socket registrations
+belong to the authenticated client connection. Both are removed with their
+owner. Socket clients need API 1.22 to request held or modal options and to
+subscribe to the session events below.
 
-| Event                                  | Fields                                                                                                                       | Meaning                                                                                                                                                                                                                                                                                                               |
-| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gnoblin.shortcut.binding-activated`   | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `input_time`, `session_id` when held, optional `focus_context` | A compositor-verified first activation. Only this first activation can carry focus authority.                                                                                                                                                                                                                         |
-| `gnoblin.shortcut.binding-deactivated` | `id`, `accelerator`, `input_time`                                                                                            | The physical accelerator was released after a press-triggered activation. Socket clients need native-control API 1.36.                                                                                                                                                                                                |
-| `gnoblin.shortcut.session.activated`   | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                                                                  | A held binding activated. `first` is false for repeated accelerator activations in the same session.                                                                                                                                                                                                                  |
-| `gnoblin.shortcut.session.key`         | `id`, `session_id`, `keyval`, `keycode`, `modifiers`, `phase`, `time`                                                        | A modal keyboard event. `phase` is `"press"` or `"release"`.                                                                                                                                                                                                                                                          |
-| `gnoblin.shortcut.session.ended`       | `id`, `session_id`, `reason`, `time`                                                                                         | The session ended. `reason` is `"released"`, `"unbound"`, `"owner_disconnected"`, `"config_changed"`, `"locked"`, `"preempted"`, `"timed_out"`, `"compositor_stopped"`, or `"runtime_stopped"`. `runtime_stopped` is socket-only and occurs when the Lua runtime stops while a socket client owns the active session. |
+| Event                                  | Fields                                                                                                                       | Meaning                                                                                                                                                                                                            |
+| -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gnoblin.shortcut.binding-activated`   | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `input_time`, `session_id` when held, optional `focus_context` | A compositor-verified first activation. Only this first activation can carry focus authority.                                                                                                                      |
+| `gnoblin.shortcut.binding-deactivated` | `id`, `accelerator`, `input_time`                                                                                            | The physical accelerator was released after a press-triggered activation. Socket clients need native-control API 1.36.                                                                                             |
+| `gnoblin.shortcut.session.activated`   | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                                                                  | A held binding activated. `first` is false for repeated accelerator activations in the same session.                                                                                                               |
+| `gnoblin.shortcut.session.key`         | `id`, `session_id`, `keyval`, `keycode`, `modifiers`, `phase`, `time`                                                        | A modal keyboard event. `phase` is `"press"` or `"release"`.                                                                                                                                                       |
+| `gnoblin.shortcut.session.ended`       | `id`, `session_id`, `reason`, `time`                                                                                         | The session ended. `reason` can also be `"cancelled"` when `shortcut.session.end` is called. `runtime_stopped` is socket-only and occurs when the Lua runtime stops while a socket client owns the active session. |
 
 `binding-deactivated` pairs with `binding-activated` for press-triggered
 socket bindings. Release-triggered bindings activate on release and do not emit
@@ -1499,20 +1507,20 @@ below. Lua callers do not get the generic `window.action()` dispatcher. The
 socket protocol's singular `window.*` and `workspace.*` names are not Lua
 namespaces.
 
-| Lua namespace            | Current methods                                                                                                                                                                                                 |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workspaces`             | Snapshots: `list()`, `active()`, `by_id(id)`. Mutations: `create`, `rename`, `remove`, `activate`, `next`, `previous`, `move_active`, `move_window`.                                                            |
-| `windows`                | Snapshots: `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)`. `Window` records expose typed close, state, geometry, focus, interactive move/resize, workspace, monitor, and thumbnail methods. |
-| `layer` / `monitor`      | `layer.list()`, `monitor.list()`; snapshot aliases `layers.list(filter?)`, `monitors.list()`, `monitors.primary()`, and `layers.animation_policy(namespace)`.                                                   |
-| `animations`             | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)`. Configuration declarations use `gnoblin.animation(entry)`.        |
-| `input`                  | `list()`, `current()`, `sources()`, `current_source()`, `text_target(context)`, `devices()`, `select_source(selector)`. `text_target()` returns a trusted target with `insert_text(text)`.                      |
-| `privacy`                | `stop_sharing()`, `stop_recording()`; read-only `state()` snapshot.                                                                                                                                             |
-| `permissions` / `grant`  | `permissions.list()`, `permissions.policy()`, `permissions.check(args)`, `grant.list()`, `grant.revoke(args)`, and read-only `portals.grants()`.                                                                |
-| `launch` / `launches`    | `launch.status()`, `launch.begin(args)`, `launch.end(args)`; `launches.list()`, `launches.snapshot()`, `launches.begin(args)`, and `launches.end(args)`.                                                        |
-| `session`                | `lock()`, `activity()`, `status()`, `logout()`.                                                                                                                                                                 |
-| `runtime`                | `reload_config()`                                                                                                                                                                                               |
-| `shortcut` / `shortcuts` | Registered operations: `shortcut.capture(args)`, `shortcut.bind(args)`, `shortcut.unbind(args)`. Public API: `shortcuts.actions(group?)`, `list()`, `capture(options?)`, `bind(args)`, and `unbind(args)`.      |
-| `capabilities` / `focus` | `capabilities.list()`, `focus.history(filter?)`, and the read-only `focus.policy` property.                                                                                                                     |
+| Lua namespace            | Current methods                                                                                                                                                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `workspaces`             | Snapshots: `list()`, `active()`, `by_id(id)`. Mutations: `create`, `rename`, `remove`, `activate`, `next`, `previous`, `move_active`, `move_window`.                                                                                                          |
+| `windows`                | Snapshots: `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)`. `Window` records expose typed close, state, geometry, focus, interactive move/resize, workspace, monitor, and thumbnail methods.                                               |
+| `layer` / `monitor`      | `layer.list()`, `monitor.list()`; snapshot aliases `layers.list(filter?)`, `monitors.list()`, `monitors.primary()`, and `layers.animation_policy(namespace)`.                                                                                                 |
+| `animations`             | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)`. Configuration declarations use `gnoblin.animation(entry)`.                                                      |
+| `input`                  | `list()`, `current()`, `sources()`, `current_source()`, `text_target(context)`, `devices()`, `select_source(selector)`. `text_target()` returns a trusted target with `insert_text(text)`.                                                                    |
+| `privacy`                | `stop_sharing()`, `stop_recording()`; read-only `state()` snapshot.                                                                                                                                                                                           |
+| `permissions` / `grant`  | `permissions.list()`, `permissions.policy()`, `permissions.check(args)`, `grant.list()`, `grant.revoke(args)`, and read-only `portals.grants()`.                                                                                                              |
+| `launch` / `launches`    | `launch.status()`, `launch.begin(args)`, `launch.end(args)`; `launches.list()`, `launches.snapshot()`, `launches.begin(args)`, and `launches.end(args)`.                                                                                                      |
+| `session`                | `lock()`, `activity()`, `status()`, `logout()`.                                                                                                                                                                                                               |
+| `runtime`                | `reload_config()`                                                                                                                                                                                                                                             |
+| `shortcut` / `shortcuts` | Registered operations: `shortcut.capture(args)`, `shortcut.bind(args)`, `shortcut.unbind(args)`, `shortcut.session.end(args)`. Public API: `shortcuts.actions(group?)`, `list()`, `capture(options?)`, `bind(args)`, `unbind(args)`, and `end_session(args)`. |
+| `capabilities` / `focus` | `capabilities.list()`, `focus.history(filter?)`, and the read-only `focus.policy` property.                                                                                                                                                                   |
 
 `gnoblin.version()` reports Gnoblin, GNOME, Mutter, Lua, API, Git remote, Git
 SHA, and build ID. `gnoblin.settings` and `gnoblin.focus.policy` are immutable

@@ -860,8 +860,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             'if (g_str_equal(method, "window.match")) {',
         )
 
-        self.assertEqual(api_minor(header), 63)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=63", cmake)
+        self.assertGreaterEqual(api_minor(header), 63)
+        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
         self.assertIn('gboolean workspace_action = g_str_equal(action, "workspace")', handler)
         self.assertIn('gboolean monitor_action = g_str_equal(action, "monitor")', handler)
         self.assertIn("client->api_minor < 63", handler)
@@ -871,6 +871,43 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"workspace"', handler)
         self.assertIn('"monitor"', handler)
         self.assertIn('"call", action, target)', handler)
+
+    def test_shortcut_session_end_preserves_owner_binding(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        lua = LUA.read_text()
+        connected = function_body(
+            source,
+            "static gboolean client_connected(",
+            "GVariant* gnoblin_native_control_receive_runtime_config(",
+        )
+        methods = connected.split("static const char* methods[] = {", 1)[1].split("NULL,", 1)[0]
+        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        socket_method = function_body(
+            dispatcher,
+            'if (g_str_equal(method, "shortcut.session.end")) {',
+            'if (g_str_has_prefix(method, "launch.")) {',
+        )
+        runtime_method = function_body(
+            source,
+            "static GVariant* native_runtime_shortcut_operation(",
+            "static gboolean native_runtime_flush_state_snapshots(",
+        )
+
+        self.assertEqual(api_minor(header), 64)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=64", cmake)
+        self.assertIn('"shortcut.session.end"', methods)
+        self.assertIn("client->api_minor < 64", dispatcher)
+        self.assertIn("dynamic_shortcut_request_end_session(client, id, arguments)", socket_method)
+        self.assertIn("find_dynamic_shortcut(client, binding_id)", source)
+        self.assertIn("shortcut->session_id != session_id", source)
+        self.assertIn('"cancelled"', source)
+        self.assertIn('"shortcut.session.end"', runtime_method)
+        self.assertIn("find_runtime_dynamic_shortcut(control, owner_id, id)", runtime_method)
+        self.assertIn('"shortcut.session.end"', lua)
+        self.assertIn('lua_setfield(state, -2, "end_session")', lua)
+        self.assertIn('operation = "end_session"', lua)
 
     def test_portal_grants_always_uses_lua(self):
         source = CONTROL.read_text()
