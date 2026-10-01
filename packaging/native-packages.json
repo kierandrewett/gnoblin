@@ -117,7 +117,7 @@
       }
     },
     "pipewire": {
-      "minVersion": "1.4.11",
+      "minVersion": "1.6.0",
       "names": {
         "arch": "pipewire",
         "rpm": "pipewire"
