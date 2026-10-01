@@ -19,7 +19,7 @@ should use `init.lua`; any selected file without a `.lua` suffix is parsed as TO
 
 For packaged logins, `gnoblin` copies
 `/usr/share/gnoblin/init.lua.example` to `init.lua` when no user config exists.
-The shell loads that file when its config starts.
+The session supervisor loads that file when the compositor starts.
 
 If the example is unavailable, or you run a build directly, Gnoblin uses its
 defaults. Setting `GNOBLIN_CONFIG` in a terminal does not change the
@@ -36,7 +36,7 @@ The included file uses the same API:
 
 ```lua
 gnoblin.configure {
-    shell = {minimize_duration = 150},
+    window_management = {focus_mode = "sloppy"},
 }
 ```
 
@@ -65,12 +65,12 @@ are applied last.
 Repeated `gnoblin.configure` calls keep settings you have not changed:
 
 ```lua
-gnoblin.configure {shell = {minimize_animation = "fade", minimize_duration = 200}}
-gnoblin.configure {shell = {minimize_duration = 150}}
+gnoblin.configure {window_management = {focus_mode = "sloppy"}}
+gnoblin.configure {window_management = {raise_on_click = true}}
 ```
 
-The result is a fade lasting 150 milliseconds. Changing the duration does not
-remove the animation choice.
+The result keeps sloppy focus and raises windows when clicked. The second call
+does not remove settings that it does not mention.
 
 Lists replace earlier values. This applies to `window_rules`, `shortcuts`,
 `autostart` and permission `rules`.
@@ -105,7 +105,7 @@ For ordinary config files, `gnoblin.load` is enough.
 In `appearance.lua`:
 
 ```lua
-return {shell = {minimize_duration = 150}}
+return {window_management = {focus_mode = "sloppy"}}
 ```
 
 In `init.lua`:
