@@ -6371,6 +6371,28 @@ invalid:
     return FALSE;
 }
 
+static gboolean legacy_window_match_arguments_valid(GVariant* arguments, GError** error) {
+    if (!arguments || !g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT) ||
+        g_variant_n_children(arguments) > 1) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "window.match accepts only an optional string window selector");
+        return FALSE;
+    }
+    GVariantIter iter;
+    const char* key;
+    GVariant* value;
+    g_variant_iter_init(&iter, arguments);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+        g_autoptr(GVariant) field = value;
+        if (!g_str_equal(key, "window") || !g_variant_is_of_type(field, G_VARIANT_TYPE_STRING)) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "window.match accepts only an optional string window selector");
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
 static GVariant* legacy_window_list_arguments_for_lua(GVariant* arguments) {
     gboolean focused = TRUE;
     if (!g_variant_lookup(arguments, "focused", "b", &focused) || focused)
@@ -6456,6 +6478,86 @@ static GVariant* legacy_window_list_from_lua(GVariant* windows, GError** error) 
     return g_variant_ref_sink(g_variant_builder_end(&result));
 }
 
+static GVariant* legacy_window_match_from_lua(GVariant* windows, GVariant* arguments,
+                                              GError** error) {
+    if (!windows || !g_variant_is_of_type(windows, G_VARIANT_TYPE("av"))) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Lua window snapshot is invalid");
+        return NULL;
+    }
+    const char* selector = "active";
+    g_variant_lookup(arguments, "window", "&s", &selector);
+    GVariant* selected = NULL;
+    for (gsize i = 0; i < g_variant_n_children(windows); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(windows, i);
+        g_autoptr(GVariant) window = g_variant_get_variant(boxed);
+        if (!g_variant_is_of_type(window, G_VARIANT_TYPE_VARDICT)) {
+            g_clear_pointer(&selected, g_variant_unref);
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "Lua window record is invalid");
+            return NULL;
+        }
+        const char* id = NULL;
+        gboolean focused = FALSE;
+        g_variant_lookup(window, "id", "&s", &id);
+        g_variant_lookup(window, "focused", "b", &focused);
+        if ((g_str_equal(selector, "active") && focused) ||
+            (!g_str_equal(selector, "active") && id && g_str_equal(selector, id))) {
+            selected = g_variant_ref(window);
+            break;
+        }
+    }
+    if (!selected) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_NOENT, "window not found");
+        return NULL;
+    }
+
+    const char* id = NULL;
+    const char* title = "";
+    const char* desktop_app_id = "";
+    const char* gtk_app_id = "";
+    const char* wm_class = "";
+    const char* rule_app_id = "";
+    gboolean focused = FALSE;
+    g_variant_lookup(selected, "id", "&s", &id);
+    g_variant_lookup(selected, "title", "&s", &title);
+    g_variant_lookup(selected, "app_id", "&s", &desktop_app_id);
+    g_variant_lookup(selected, "gtk_app_id", "&s", &gtk_app_id);
+    g_variant_lookup(selected, "wm_class", "&s", &wm_class);
+    g_variant_lookup(selected, "rule_app_id", "&s", &rule_app_id);
+    g_variant_lookup(selected, "focused", "b", &focused);
+    if (!id || !*id) {
+        g_variant_unref(selected);
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Lua window record has no stable ID");
+        return NULL;
+    }
+
+    GVariantBuilder identity;
+    g_variant_builder_init(&identity, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&identity, "{sv}", "desktop_app_id",
+                          g_variant_new_string(desktop_app_id));
+    g_variant_builder_add(&identity, "{sv}", "gtk_app_id", g_variant_new_string(gtk_app_id));
+    g_variant_builder_add(&identity, "{sv}", "wm_class", g_variant_new_string(wm_class));
+    g_variant_builder_add(&identity, "{sv}", "rule_app_id", g_variant_new_string(rule_app_id));
+
+    GVariantBuilder match;
+    g_variant_builder_init(&match, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&match, "{sv}", "type", g_variant_new_string("window"));
+    g_variant_builder_add(&match, "{sv}", "title", g_variant_new_string(title));
+    g_variant_builder_add(&match, "{sv}", "focused", g_variant_new_boolean(focused));
+    if (*rule_app_id)
+        g_variant_builder_add(&match, "{sv}", "app_id", g_variant_new_string(rule_app_id));
+
+    GVariantBuilder result;
+    g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&result, "{sv}", "id", g_variant_new_string(id));
+    g_variant_builder_add(&result, "{sv}", "identity", g_variant_builder_end(&identity));
+    g_variant_builder_add(&result, "{sv}", "match", g_variant_builder_end(&match));
+    g_variant_unref(selected);
+    return g_variant_ref_sink(g_variant_builder_end(&result));
+}
+
 static GVariant* legacy_layer_list_from_lua(GVariant* layers, GError** error) {
     if (!layers || !g_variant_is_of_type(layers, G_VARIANT_TYPE("av"))) {
         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
@@ -6512,6 +6614,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "session.activity",
         "session.status",
         "launch.status",
+        "window.match",
         "workspace.list",
         "layer.list",
         "monitor.list",
@@ -6550,8 +6653,9 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     gboolean accepts_arguments =
         g_str_equal(method, "focus.history") || g_str_equal(method, "windows.list") ||
         g_str_equal(method, "window.list") || g_str_equal(method, "layer.animation_policy") ||
-        g_str_equal(method, "layers.list") || g_str_equal(method, "shortcuts.actions") ||
-        g_str_equal(method, "permissions.check") || g_str_equal(method, "portals.grants");
+        g_str_equal(method, "window.match") || g_str_equal(method, "layers.list") ||
+        g_str_equal(method, "shortcuts.actions") || g_str_equal(method, "permissions.check") ||
+        g_str_equal(method, "portals.grants");
     if (!accepts_arguments && g_variant_n_children(arguments) != 0) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                     "Lua API read '%s' does not accept arguments", method);
@@ -6606,6 +6710,9 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     }
     if (g_str_equal(method, "window.list") && !legacy_window_list_arguments_valid(arguments, error))
         return NULL;
+    if (g_str_equal(method, "window.match") &&
+        !legacy_window_match_arguments_valid(arguments, error))
+        return NULL;
 
     LuaConfig* config = &active_runtime->config;
     if (config->dispatching || config->api_calling) {
@@ -6633,7 +6740,8 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_getfield(state, -1, "history");
         lua_remove(state, -2);
         lua_remove(state, -2);
-    } else if (g_str_equal(method, "windows.list") || g_str_equal(method, "window.list")) {
+    } else if (g_str_equal(method, "windows.list") || g_str_equal(method, "window.list") ||
+               g_str_equal(method, "window.match")) {
         lua_getfield(state, -1, "windows");
         lua_getfield(state, -1, "list");
         lua_remove(state, -2);
@@ -6745,7 +6853,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         } else if (g_str_equal(method, "shortcuts.actions") && shortcut_action_group) {
             lua_pushstring(state, shortcut_action_group);
             argument_count = 1;
-        } else if (g_variant_n_children(arguments) > 0) {
+        } else if (g_variant_n_children(arguments) > 0 && !g_str_equal(method, "window.match")) {
             g_autoptr(GVariant) legacy_window_arguments =
                 g_str_equal(method, "window.list") ? legacy_window_list_arguments_for_lua(arguments)
                                                    : NULL;
@@ -6778,6 +6886,8 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
             result = legacy_workspace_list_from_lua(value, error);
         } else if (value && g_str_equal(method, "window.list")) {
             result = legacy_window_list_from_lua(value, error);
+        } else if (value && g_str_equal(method, "window.match")) {
+            result = legacy_window_match_from_lua(value, arguments, error);
         } else if (value && g_str_equal(method, "layer.list")) {
             result = legacy_layer_list_from_lua(value, error);
         } else if (value && g_str_equal(method, "monitor.list")) {
