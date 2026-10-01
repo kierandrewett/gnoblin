@@ -328,6 +328,15 @@ int main(void) {
         g_clear_error(&error);
     }
 
+    g_assert_true(g_file_set_contents(
+        explicit_root, "gnoblin.configure {shell = {notifications = true}}\n", -1, &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_null(document);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_assert_nonnull(strstr(error->message, "shell settings are no longer supported"));
+    g_clear_error(&error);
+
     const char* touchpad_gesture_source =
         "gnoblin.configure {touchpad_gestures = {"
         " {name = 'workspace-next', gesture = 'swipe', fingers = 3,"

@@ -669,6 +669,14 @@ static gboolean validate_window_rule_patterns(GVariant* document, GError** error
 }
 
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
+    g_autoptr(GVariant) shell = g_variant_lookup_value(document, "shell", NULL);
+    if (shell) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "shell settings are no longer supported; configure shell UI in the "
+                            "shell client, and use gnoblin.animation and window rules for "
+                            "compositor animations");
+        return FALSE;
+    }
     if (!gnoblin_permission_policy_validate(document, error))
         return FALSE;
     if (!validate_window_rule_patterns(document, error))
