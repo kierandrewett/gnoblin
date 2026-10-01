@@ -1235,6 +1235,9 @@ earlier clients retain the native compatibility route. API 1.49 routes
 `session.lock` through the Lua runtime; earlier clients retain the native
 compatibility route. The compositor still validates lock capability and state,
 checks for subscribed lock clients, and dispatches the event.
+API 1.50 routes socket `launch.begin` and `launch.end` calls through Lua while
+preserving connection-owned launch event tracking. Earlier clients keep the
+synchronous route, and `launch.status` remains a direct snapshot read.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1274,8 +1277,8 @@ checks for subscribed lock clients, and dispatches the event.
 | `grant.list`                                                           | `gnoblin.portals.grants()`; shared Lua read from native-control API 1.45, with the native route retained for older clients.                             |
 | `grant.revoke`                                                         | `grant:revoke()`                                                                                                                                        |
 | `launch.status`                                                        | CLI uses `gnoblin.launches.snapshot()` to preserve the collection revision; retain the raw socket method for compatibility.                             |
-| `launch.begin`                                                         | `gnoblin.launches.begin(options)` in a standalone native session.                                                                                       |
-| `launch.end`                                                           | `gnoblin.launches.end(token)` in a standalone native session.                                                                                           |
+| `launch.begin`                                                         | `gnoblin.launches.begin(options)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                 |
+| `launch.end`                                                           | `gnoblin.launches.end(token)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                     |
 | `shell.ping`                                                           | Removed; use the unversioned socket transport operation `op = "ping"`.                                                                                  |
 | `shell.version`                                                        | `gnoblin.version()`                                                                                                                                     |
 | `shell.status`                                                         | `gnoblin.session.status()`                                                                                                                              |

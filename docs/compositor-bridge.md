@@ -344,6 +344,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.47            | Shared `privacy.state` read backed by the installed Lua runtime                                       |
 | 1.48            | Lua runtime operation for `window.restore_or_minimize`                                                |
 | 1.49            | Lua runtime operation for `session.lock`                                                              |
+| 1.50            | Lua operations for `launch.begin` and `launch.end`                                                    |
 
 ### API 1.27: shell presentation requests
 
@@ -1119,6 +1120,12 @@ Call `launch.status` to read current records and enable launch-change events on
 the connection.
 
 Launch feedback uses Gnoblin's native controller.
+
+API 1.50 routes `launch.begin` and `launch.end` through the Lua runtime. These
+calls return an operation descriptor and complete through
+`gnoblin.operation.completed`; subscribe to that event to receive the result.
+Earlier API versions keep the synchronous native route. `launch.status` remains
+a direct snapshot read and enables launch-change events for the connection.
 
 `launch.begin` requests cursor feedback for an application hint. It does not
 start a process. Mutter reports `started` when a matching mapped window appears
