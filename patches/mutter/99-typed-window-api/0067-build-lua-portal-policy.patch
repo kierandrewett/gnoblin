@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] Build native Lua portal policy into Mutter
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index 8a31d5b84..4a3b93b55 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -599,6 +599,8 @@ mutter_sources += [
+   'wayland/gnoblin-config.c',
+   'wayland/gnoblin-lua.c',
+   'wayland/gnoblin-glob.c',
++  'wayland/gnoblin-portal-policy.c',
++  'wayland/gnoblin-portal-identity.c',
+   'wayland/meta-gnoblin-window-frame.c',
+   'wayland/meta-gnoblin-window-frame.h',
+   'wayland/meta-gnoblin-frame-renderer.c',
