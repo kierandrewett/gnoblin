@@ -370,7 +370,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.56            | Lua-backed `shortcut.actions`; older clients use the native snapshot            |
 | 1.57            | Lua-backed compatibility read for `layer.list`                                  |
 | 1.58            | Lua-backed compatibility read for `monitor.list`                                |
-| 1.59            | Lua-backed compatibility read for `window.match`                                |
+| 1.59            | Adds the Lua-backed `window.match` read; all client versions now use it         |
 | 1.60            | Basic legacy `window.action` requests route through typed Lua window operations |
 | 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`     |
 | 1.62            | Legacy `window.action` maps move to `window.move`                               |

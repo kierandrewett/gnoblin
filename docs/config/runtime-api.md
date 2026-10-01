@@ -805,6 +805,8 @@ include inactive physical outputs.
 `window.match` returns the stable window ID, desktop and GTK application IDs,
 WM class, and a rule `match` table containing type, title, focus state, and the
 rule app ID when available.
+All socket clients get this record from the shared Lua snapshot. Older clients
+keep the same response fields.
 
 `window.action` accepts these actions:
 
