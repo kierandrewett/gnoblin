@@ -58,6 +58,10 @@ records and their collection revision together. It requires a connected Lua
 supervisor and keeps the collection revision available when there are no
 launch records.
 
+Native-control API 1.40 adds `shortcuts.list`, a shared read backed by
+`gnoblin.shortcuts.list()`. It returns the same shortcut records as a JSON
+array and requires the Lua supervisor.
+
 Native-control API 1.23 adds `window.thumbnail`. API 1.24 adds
 `session.activity` and its change event. API 1.26 adds pointer-drag lifecycle
 events and capability-bound `window.snap.offer`.
@@ -1118,6 +1122,9 @@ Native-control API version 1.9 adds the read-only `shortcut.list` method. It
 accepts no arguments and returns the same records as a JSON array. API version
 1.10 adds the socket event `gnoblin.shortcut.activated` and the `window.focus`
 method, which requires a one-use context from that event.
+
+`gnoblinctl shortcut list` uses the API 1.40 `shortcuts.list` read. The older
+`shortcut.list` socket method remains available to existing clients.
 
 API 1.12 adds `window.begin_move` and `window.begin_resize`; both consume the
 same connection-bound token. See the

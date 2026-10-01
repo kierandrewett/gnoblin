@@ -302,6 +302,8 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.36            | `gnoblin.shortcut.binding-deactivated` for press-triggered shortcuts                                  |
 | 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches                            |
 | 1.38            | Native `window.restore_or_minimize` and saved pre-snap frame restoration                              |
+| 1.39            | `launches.snapshot` with collection revision                                                          |
+| 1.40            | Shared `shortcuts.list` snapshot read                                                                 |
 
 ### API 1.27: shell presentation requests
 
@@ -491,6 +493,7 @@ The socket exposes these reads at the listed API versions:
 | 1.37        | `layers.list`       | `gnoblin.layers.list(filter)`   | `monitor_id`, `namespace`, `layer`                         |
 | 1.37        | `launches.list`     | `gnoblin.launches.list()`       | None                                                       |
 | 1.39        | `launches.snapshot` | `gnoblin.launches.snapshot()`   | None                                                       |
+| 1.40        | `shortcuts.list`    | `gnoblin.shortcuts.list()`      | None                                                       |
 | 1.24        | `session.activity`  | `gnoblin.session.activity()`    | None                                                       |
 | 1.29        | `session.status`    | `gnoblin.session.status()`      | None                                                       |
 
@@ -653,6 +656,9 @@ returns the same filtered, read-only window records as the Lua API.
 
 `launches.snapshot` keeps the collection revision available when the array is
 empty.
+
+Older clients can continue to call `shortcut.list`; new clients should use
+`shortcuts.list`.
 
 For example, request the committed settings snapshot with:
 
