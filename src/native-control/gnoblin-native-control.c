@@ -9972,7 +9972,8 @@ static gboolean native_api_read_method(const char* method) {
             g_str_equal(method, "layer.animation_policy") ||
             g_str_equal(method, "workspaces.list") || g_str_equal(method, "monitors.list") ||
             g_str_equal(method, "layers.list") || g_str_equal(method, "launches.list") ||
-            g_str_equal(method, "launches.snapshot") || g_str_equal(method, "shortcuts.list"));
+            g_str_equal(method, "launches.snapshot") || g_str_equal(method, "shortcuts.list") ||
+            g_str_equal(method, "shortcuts.actions"));
 }
 
 static gboolean runtime_reload_document_supported(GVariant* current, GVariant* candidate) {
@@ -10501,6 +10502,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         return encode_response(id, NULL, "launches.snapshot requires API version 1.39");
     if (g_str_equal(method, "shortcuts.list") && client->api_minor < 40)
         return encode_response(id, NULL, "shortcuts.list requires API version 1.40");
+    if (g_str_equal(method, "shortcuts.actions") && client->api_minor < 41)
+        return encode_response(id, NULL, "shortcuts.actions requires API version 1.41");
     if ((g_str_equal(method, "privacy.stop_sharing") ||
          g_str_equal(method, "privacy.stop_recording")) &&
         client->api_minor < 31)
@@ -11542,6 +11545,7 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         "launches.list",
         "launches.snapshot",
         "shortcuts.list",
+        "shortcuts.actions",
         "layer.list",
         "layers.list",
         "monitor.list",

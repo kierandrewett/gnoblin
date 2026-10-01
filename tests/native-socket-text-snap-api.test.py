@@ -631,6 +631,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "launches.list",
             "launches.snapshot",
             "shortcuts.list",
+            "shortcuts.actions",
         ):
             with self.subTest(method=method):
                 self.assertIn(f'g_str_equal(method, "{method}")', read_methods)
@@ -639,7 +640,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("client->api_minor < 37", dispatcher)
         self.assertIn('g_str_equal(method, "launches.snapshot") && client->api_minor < 39', dispatcher)
         self.assertIn('g_str_equal(method, "shortcuts.list") && client->api_minor < 40', dispatcher)
-        self.assertGreaterEqual(api_minor(header), 40)
+        self.assertIn('g_str_equal(method, "shortcuts.actions") && client->api_minor < 41', dispatcher)
+        self.assertGreaterEqual(api_minor(header), 41)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', dispatcher)
 
         header = HEADER.read_text()
