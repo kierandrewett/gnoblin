@@ -339,7 +339,8 @@ static gboolean handle_create_monitor(XdpImplInhibit* object, GDBusMethodInvocat
         return TRUE;
     }
 
-    session = g_object_new(inhibit_monitor_get_type(), "id", session_handle, NULL);
+    session = g_object_new(inhibit_monitor_get_type(), "id", session_handle, "peer-name",
+                           g_dbus_method_invocation_get_sender(invocation), NULL);
     if (!session_export(session, g_dbus_method_invocation_get_connection(invocation), &error)) {
         g_warning("Could not create inhibit monitor: %s", error->message);
         g_object_unref(session);
@@ -356,10 +357,17 @@ static gboolean handle_create_monitor(XdpImplInhibit* object, GDBusMethodInvocat
 static gboolean handle_query_end_response(XdpImplInhibit* object, GDBusMethodInvocation* invocation,
                                           const char* session_handle) {
     Session* session = lookup_session(session_handle);
+    const char* sender = g_dbus_method_invocation_get_sender(invocation);
 
     if (!session || !G_TYPE_CHECK_INSTANCE_TYPE(session, inhibit_monitor_get_type())) {
         g_dbus_method_invocation_return_error_literal(
             invocation, G_DBUS_ERROR, G_DBUS_ERROR_ACCESS_DENIED, "Unknown inhibit monitor");
+        return TRUE;
+    }
+    if (g_strcmp0(session_get_peer_name(session), sender) != 0) {
+        g_dbus_method_invocation_return_error_literal(
+            invocation, G_DBUS_ERROR, G_DBUS_ERROR_ACCESS_DENIED,
+            "Only the client that created this inhibit monitor may acknowledge session end");
         return TRUE;
     }
     if (session_state != SESSION_STATE_QUERY_END || !awaiting_end_responses ||

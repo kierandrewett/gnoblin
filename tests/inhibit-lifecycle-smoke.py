@@ -44,6 +44,20 @@ def request_name(conn, name):
         raise RuntimeError(f"could not own {name}: {result}")
 
 
+def query_end_response(conn, session_handle):
+    return conn.call_sync(
+        "org.freedesktop.impl.portal.desktop.gnoblin",
+        "/org/freedesktop/portal/desktop",
+        "org.freedesktop.impl.portal.Inhibit",
+        "QueryEndResponse",
+        GLib.Variant("(o)", (session_handle,)),
+        GLib.VariantType.new("()"),
+        Gio.DBusCallFlags.NONE,
+        1000,
+        None,
+    )
+
+
 service = connection()
 request_name(service, "org.freedesktop.ScreenSaver")
 xml = "<node><interface name='org.freedesktop.ScreenSaver'><method name='GetActive'><arg type='b' direction='out'/></method></interface></node>"
@@ -73,17 +87,7 @@ def state_changed(conn, sender, path, iface, signal, params, data):
     value = state.get("session-state")
     states.append((session_handle, value))
     if value == 2 and os.environ.get("TEST_ACK") == "1":
-        conn.call_sync(
-            "org.freedesktop.impl.portal.desktop.gnoblin",
-            "/org/freedesktop/portal/desktop",
-            "org.freedesktop.impl.portal.Inhibit",
-            "QueryEndResponse",
-            GLib.Variant("(o)", (session_handle,)),
-            GLib.VariantType.new("()"),
-            Gio.DBusCallFlags.NONE,
-            1000,
-            None,
-        )
+        query_end_response(conn, session_handle)
 
 
 observer.signal_subscribe(
@@ -120,7 +124,8 @@ try:
         time.sleep(0.05)
     else:
         raise RuntimeError("portal backend did not acquire its D-Bus name")
-    result = owner.call_sync(
+    session_handle = "/org/freedesktop/portal/desktop/session/test/monitor"
+    result = observer.call_sync(
         "org.freedesktop.impl.portal.desktop.gnoblin",
         "/org/freedesktop/portal/desktop",
         "org.freedesktop.impl.portal.Inhibit",
@@ -129,7 +134,7 @@ try:
             "(ooss)",
             (
                 "/org/freedesktop/portal/desktop/request/test/monitor",
-                "/org/freedesktop/portal/desktop/session/test/monitor",
+                session_handle,
                 "org.test.App",
                 "",
             ),
@@ -141,6 +146,12 @@ try:
     ).unpack()[0]
     if result != 0:
         raise RuntimeError(f"monitor creation returned {result}")
+    try:
+        query_end_response(attacker, session_handle)
+        raise RuntimeError("unrelated sender was allowed to acknowledge a monitor")
+    except GLib.Error as error:
+        if "AccessDenied" not in error.message and "access denied" not in error.message.lower():
+            raise
     try:
         attacker.call_sync(
             "org.freedesktop.impl.portal.desktop.gnoblin",
