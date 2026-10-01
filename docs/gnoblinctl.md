@@ -420,6 +420,9 @@ inactive or unavailable. Unavailable sources have no activity value. Add
 availability flag for each source, and an activity value only when that source
 is available.
 
+The command uses the shared Lua read in API 1.47 and requires the Lua
+supervisor.
+
 | Source         | Availability field            | Optional activity field |
 | -------------- | ----------------------------- | ----------------------- |
 | Screen sharing | `available.screen_sharing`    | `screen_sharing`        |
