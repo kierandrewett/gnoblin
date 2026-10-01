@@ -240,8 +240,10 @@ Server build requirement. These changes reduce the install and build graph;
 they do not make the compositor independent of GNOME Shell or Mutter.
 Shell's native code no longer calls libxml2. The source patch stack removes its
 remaining Meson links, and the source-build dependency installer and Fedora
-Shell recipe no longer request its development package. The camera monitor
-remains: its PipeWire state feeds `cameraInUse` in the compositor bridge.
+Shell recipe no longer request its development package. That Shell build
+retained its camera monitor because its PipeWire state fed `cameraInUse` in the
+compositor bridge. The standalone session has no such bridge or camera monitor;
+its native privacy snapshot currently reports camera activity as unavailable.
 
 ## Replacement order
 
