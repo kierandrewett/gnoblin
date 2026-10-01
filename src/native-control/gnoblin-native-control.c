@@ -4340,11 +4340,18 @@ static char* ibus_bus_address(void) {
     if (!*machine_id)
         return NULL;
     g_autofree char* filename = g_strdup_printf("%s-unix-%s", machine_id, display_name);
-    g_autofree char* path =
-        g_build_filename(g_get_user_config_dir(), "ibus", "bus", filename, NULL);
+    const char* config_dir = g_getenv("XDG_CONFIG_HOME");
+    g_autofree char* default_config_dir = NULL;
+    if (!config_dir || !*config_dir) {
+        default_config_dir = g_build_filename(g_get_home_dir(), ".config", NULL);
+        config_dir = default_config_dir;
+    }
+    g_autofree char* path = g_build_filename(config_dir, "ibus", "bus", filename, NULL);
     g_autofree char* contents = NULL;
-    if (!g_file_get_contents(path, &contents, NULL, NULL))
+    if (!g_file_get_contents(path, &contents, NULL, NULL)) {
+        g_debug("gnoblin-native-control: IBus address file was not found at %s", path);
         return NULL;
+    }
 
     g_auto(GStrv) lines = g_strsplit(contents, "\n", -1);
     for (char** line = lines; *line; line++) {
