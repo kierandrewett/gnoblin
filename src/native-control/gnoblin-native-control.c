@@ -10644,6 +10644,11 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                                             : g_variant_ref_sink(g_variant_builder_end(&empty));
         if (!arguments)
             return encode_response(id, NULL, "session.lock arguments are invalid");
+        if (client->api_minor >= 49) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            return queue_runtime_api_request(client, id, method, arguments, "call");
+        }
         g_autoptr(GVariant) result = gnoblin_native_control_request_session_lock(
             client->control->display, arguments, &error);
         if (!result)
@@ -12483,6 +12488,9 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
             result = native_stop_privacy_sessions(
                 control, g_str_equal(method, "privacy.stop_recording"), &operation_error);
         }
+    } else if (g_str_equal(method, "session.lock")) {
+        result = gnoblin_native_control_request_session_lock(control->display, arguments,
+                                                             &operation_error);
     } else if (g_str_equal(method, "session.logout")) {
         if (g_variant_n_children(arguments) != 0) {
             g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,

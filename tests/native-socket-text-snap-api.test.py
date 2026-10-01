@@ -846,7 +846,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "GVariant* gnoblin_native_control_focus_window(",
         )
 
-        self.assertEqual(api_minor(header), 48)
+        self.assertGreaterEqual(api_minor(header), 48)
         self.assertIn("client->api_minor >= 48", dispatcher)
         self.assertIn('queue_runtime_api_request(client, id, method, operation_arguments, "call")', dispatcher)
         self.assertIn("client->control->supervised_runtime", dispatcher)
@@ -865,6 +865,31 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("g_hash_table_contains(control->snap_restore_frames, window)", snap)
         self.assertIn("drag->original_frame = drag->frame", drag_begin)
         self.assertIn("*original_frame = drag->original_frame", drag_snap)
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+
+    def test_session_lock_uses_lua_for_api_149_and_keeps_legacy_route(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        dispatcher = function_body(
+            source,
+            "static char* handle_request(",
+            "static void process_buffer(",
+        )
+        operation_dispatch = function_body(
+            source,
+            "static gboolean native_runtime_handle_operation(",
+            "static gboolean native_runtime_fd_ready(",
+        )
+
+        self.assertEqual(api_minor(header), 49)
+        self.assertIn("client->api_minor >= 49", dispatcher)
+        self.assertIn('queue_runtime_api_request(client, id, method, arguments, "call")', dispatcher)
+        self.assertIn("client->control->supervised_runtime", dispatcher)
+        self.assertIn("client->api_minor < 21", dispatcher)
+        self.assertIn("gnoblin_native_control_request_session_lock", dispatcher)
+        self.assertIn('g_str_equal(method, "session.lock")', operation_dispatch)
+        self.assertIn("gnoblin_native_control_request_session_lock", operation_dispatch)
         cmake = (ROOT / "CMakeLists.txt").read_text()
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
 
