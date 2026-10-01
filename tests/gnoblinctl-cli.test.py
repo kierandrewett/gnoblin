@@ -153,6 +153,17 @@ def main() -> int:
                                     ],
                                     "revision": 5,
                                 }
+                            elif request["method"] == "windows.list":
+                                result = [
+                                    {
+                                        "id": "42",
+                                        "focused": True,
+                                        "workspace_id": "workspace-1",
+                                        "app_id": "org.example.Editor",
+                                        "title": "Notes",
+                                        "revision": 5,
+                                    }
+                                ]
                             elif request["method"] == "animation.get":
                                 result = None
                             elif request["method"] == "workspace.create":
@@ -431,7 +442,8 @@ def main() -> int:
         assert launch_status_request["method"] == "launch.status"
         assert launch_status_request["api_version"] == {"major": 1, "minor": 8}
         assert launch_status_request["arguments"] == {}
-        assert received[10]["method"] == "window.list"
+        assert received[10]["method"] == "windows.list"
+        assert received[10]["api_version"] == {"major": 1, "minor": 37}
         assert received[10]["arguments"] == {"focused": True}
         assert received[11]["method"] == "monitor.list"
         assert received[11]["arguments"] == {}
