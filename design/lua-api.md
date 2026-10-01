@@ -1225,7 +1225,8 @@ differ or which remain socket-only.
 
 `gnoblinctl window match` selects from `windows.list` and formats the snapshot
 as the established CLI result. The raw socket `window.match` request remains
-for compatibility; Lua callers inspect and filter `gnoblin.windows.list()`.
+for compatibility with existing clients; new clients route it through the
+shared Lua window snapshot.
 Native-control API 1.46 routes `input.devices`, `input.sources`, and
 `input.current_source` through their shared Lua methods; earlier clients retain
 the native compatibility route. API 1.47 routes `privacy.state` through
@@ -1264,6 +1265,9 @@ API 1.58 routes the legacy `monitor.list` socket method through
 `gnoblin.monitors.list()`, preserving the `{monitors = [...]}` response and
 the legacy integer monitor IDs. Earlier clients retain the existing native
 compatibility path.
+API 1.59 routes the legacy `window.match` socket method through
+`gnoblin.windows.list()`, preserving its `{id, identity, match}` response.
+Earlier clients retain the existing native compatibility path.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
