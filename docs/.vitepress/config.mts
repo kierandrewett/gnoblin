@@ -149,7 +149,6 @@ export default defineConfig({
                     { text: "Lua event handlers", link: "/user-scripts" },
                     { text: "Background blur", link: "/background-effects" },
                     { text: "Blur fades", link: "/blur-fades" },
-                    { text: "Effect rendering", link: "/effects-rendering" },
                     { text: "Activation", link: "/focus-transfer" },
                     { text: "Launch feedback", link: "/launch-feedback" },
                     { text: "Frame architecture", link: "/window-frame-renderers" },
