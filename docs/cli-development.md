@@ -33,23 +33,23 @@ are dispatched by Mutter; each requires the stable window `id` returned by
 [runtime API reference](/config/runtime-api) for each method's arguments,
 accepted values, results, and compatibility limits.
 
-| Group         | Methods                                                                                                                                                                                                       |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `workspace`   | `list`, `create`, `rename`, `remove`, `switch`, `next`, `previous`, `move_active`, `move_window`                                                                                                              |
-| `window`      | `list`, `match`, `action`, `close`, `minimize`, `toggle_minimize`, `restore`, `set_maximized`, `set_fullscreen`, `set_above`, `set_sticky`, `move`, `resize`, `move_to_workspace`, `move_to_monitor`, `focus` |
-| `layer`       | `list`                                                                                                                                                                                                        |
-| `monitor`     | `list`                                                                                                                                                                                                        |
-| `animation`   | `list`, `surfaces`, `inspect`, `preview`, `seek`, `step`, `play`, `pause`, `stop`                                                                                                                             |
-| `feature`     | `list`, `show`, `enable`, `disable`                                                                                                                                                                           |
-| `script`      | `list`                                                                                                                                                                                                        |
-| `input`       | `list`, `current`, `select`                                                                                                                                                                                   |
-| `privacy`     | `get`                                                                                                                                                                                                         |
-| `permissions` | `list`, `check`                                                                                                                                                                                               |
-| `grant`       | `list`, `revoke`                                                                                                                                                                                              |
-| `launch`      | `status`, `begin`, `end`                                                                                                                                                                                      |
-| `shell`       | `ping`, `version`, `status`, `reload`                                                                                                                                                                         |
-| `config`      | `reload`                                                                                                                                                                                                      |
-| `shortcut`    | `list`, `capture`                                                                                                                                                                                             |
+| Group         | Methods                                                                                                                                                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `workspace`   | `list`, `create`, `rename`, `remove`, `switch`, `next`, `previous`, `move_active`, `move_window`                                                                                                                                     |
+| `window`      | `list`, `match`, `action`, `close`, `minimize`, `toggle_minimize`, `restore`, `restore_or_minimize`, `set_maximized`, `set_fullscreen`, `set_above`, `set_sticky`, `move`, `resize`, `move_to_workspace`, `move_to_monitor`, `focus` |
+| `layer`       | `list`                                                                                                                                                                                                                               |
+| `monitor`     | `list`                                                                                                                                                                                                                               |
+| `animation`   | `list`, `surfaces`, `inspect`, `preview`, `seek`, `step`, `play`, `pause`, `stop`                                                                                                                                                    |
+| `feature`     | `list`, `show`, `enable`, `disable`                                                                                                                                                                                                  |
+| `script`      | `list`                                                                                                                                                                                                                               |
+| `input`       | `list`, `current`, `select`                                                                                                                                                                                                          |
+| `privacy`     | `get`                                                                                                                                                                                                                                |
+| `permissions` | `list`, `check`                                                                                                                                                                                                                      |
+| `grant`       | `list`, `revoke`                                                                                                                                                                                                                     |
+| `launch`      | `status`, `begin`, `end`                                                                                                                                                                                                             |
+| `shell`       | `ping`, `version`, `status`, `reload`                                                                                                                                                                                                |
+| `config`      | `reload`                                                                                                                                                                                                                             |
+| `shortcut`    | `list`, `capture`                                                                                                                                                                                                                    |
 
 `shortcut.capture` options:
 
@@ -111,11 +111,10 @@ payload fields and selector values.
 
 ## Change a window
 
-For a typed native operation, call its canonical `window.*` method and pass a
-stable string `id`. The CLI maps each supported action to its canonical method,
-including `toggle-minimize` to `toggle_minimize`. `restore-or-minimize` stays
-on the legacy action route because it also restores maximized or snapped
-windows.
+For a typed native operation, call its canonical method with a stable window
+ID. The CLI maps each supported action to its typed method. The
+`restore-or-minimize` action is handled natively and restores a saved snap frame
+when one exists.
 
 Setters take an `enabled` boolean. Move takes `x` and `y`; resize takes `width`
 and `height`.
