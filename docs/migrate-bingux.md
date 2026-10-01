@@ -9,18 +9,22 @@ Gnoblin policy and runtime behavior, not for drawing shell surfaces.
 
 ## Readiness
 
-Bingux already uses standalone Gnoblin APIs for workspace navigation, window
-enumeration, shortcuts, switcher previews and focus, privacy state, snapping,
-and emoji insertion. Screen capture still uses the ScreenCast portal.
+Bingux has not completed the standalone client migration. Gnoblin provides
+Lua-backed APIs for workspaces, window snapshots and actions, connection-bound
+shortcuts, focus, thumbnails, privacy, snapping, text insertion, and OSD
+requests. Bingux still uses compatibility socket operations for several of
+these paths, so API availability does not prove that the standalone client
+uses them. Screen capture remains on the ScreenCast portal.
 
 A live devkit check confirmed that a modal held shortcut registers through
 `ShortcutSession.qml`. Native API smoke checks exercised privacy calls,
 thumbnail completion handling, and snap subscriptions. A full real-window
 preview and actual pointer or keyboard snap are not yet verified end to end.
 
-Application-launch focus and OSD still need standalone implementations. A
-fresh standalone-session check is also needed for emoji insertion, full window
-previews, and pointer and keyboard snapping.
+Application-launch focus and OSD already have standalone Gnoblin interfaces.
+Bingux still needs to connect its client paths to them. A fresh standalone
+session check is also needed for emoji insertion, full window previews, and
+pointer and keyboard snapping.
 
 The calendar helper also calls GNOME Shell's private
 `org.gnome.Shell.CalendarServer` service. That service is absent when GNOME
@@ -29,10 +33,10 @@ provider, or make calendar events an optional integration with a clear
 unavailable state. Keep this out of Gnoblin's compositor API.
 
 In `ShortcutSession.qml`, the private `bingux.input-anchor` and
-`bingux.type-text` calls remain only for GNOME compatibility. Standalone emoji
-insertion uses Gnoblin's text-target API. It needs a fresh Super+Period press
-after the picker closes, and a focused Wayland client with an active
-text-input-v3 session. X11 and clipboard fallback are unsupported.
+`bingux.type-text` calls are still used by the emoji path. Replace them with
+Gnoblin's text-target API for the standalone session. It needs a fresh
+Super+Period press after the picker closes and a focused Wayland client with an
+active text-input-v3 session. X11 and clipboard fallback are unsupported.
 
 `osd-bridge.js` patches GNOME Shell's OSD manager and calls
 `org.gnoblin.Shell`. Remove it from the standalone launch path and render OSDs
@@ -46,38 +50,38 @@ GNOME-session compatibility path separate from the standalone path.
 The GNOME compatibility bridge accepts operations that the standalone Gnoblin
 socket does not. Keep those calls out of Bingux's standalone launch path.
 
-- **Shortcuts:** `ShortcutSession.qml` now negotiates the API from `hello`,
-  registers connection-owned bindings with `shortcut.bind`, removes stale
-  bindings with `shortcut.unbind`, checks liveness with `ping`, and subscribes
-  to shortcut activation and held-session events. Bindings belong to the
-  connection; register them again after reconnecting. Keep the compatibility
-  path for GNOME sessions until the standalone path is fully migrated.
+- **Shortcuts:** Migrate `ShortcutSession.qml` from its compatibility command
+  stream to version-negotiated `shortcut.bind`, `shortcut.unbind`, and event
+  subscriptions. Bindings belong to the connection; register them again after
+  reconnecting. Keep the compatibility path for GNOME sessions separate.
 - **Windows:** Subscribe with `op: "windows"` for the initial snapshot and live
   window and workspace events. Use `window.list` for filtered socket reads or
   `windows.list` when using the newer Lua-backed snapshot method.
-- **Focus:** `WindowSwitcher.qml` now passes the one-use `focus_context` from
-  `gnoblin.shortcut.binding-activated` to `window.focus`. For other
-  pointer-driven focus, use an XDG Activation token created from user input on
-  the same socket connection. A window ID alone cannot take focus. The token
-  belongs to its receiving connection and authorizes one request. Shortcut
-  focus contexts require API 1.11; XDG Activation focus requires API 1.32.
-- **Previews:** Replace `preview` with the asynchronous `window.thumbnail` API.
-  `ShortcutSession.qml` now requests thumbnails and routes the completion event
-  back to the switcher. Requests fail while the session is locked, and a closed
-  or non-drawable window can return an error.
-- **Privacy:** `PrivacyState.qml` uses `privacy.state`, the
+- **Focus:** `WindowSwitcher.qml` still uses the compatibility
+  `activateWindow` request. Replace it with `window.focus`, passing the one-use
+  `focus_context` from shortcut activation. For pointer-driven focus, use an
+  XDG Activation token created from user input on the same socket connection.
+  A window ID alone cannot take focus. Shortcut focus contexts require API
+  1.11; XDG Activation focus requires API 1.32.
+- **Previews:** `WindowSwitcher.qml` still uses `preview`. Replace it with the
+  asynchronous `window.thumbnail` API and route the completion event back to
+  the switcher. Requests fail while the session is locked, and a closed or
+  non-drawable window can return an error.
+- **Privacy:** `PrivacyState.qml` still sends `privacy`, `stop-sharing`, and
+  `stop-recording` compatibility operations. Use `privacy.state`, the
   `gnoblin.privacy.changed` event, `privacy.stop_sharing`, and
-  `privacy.stop_recording` in the standalone session. Stop methods require API
-  1.31. The native API does not report camera or location activity.
-- **Snapping:** `SnapAssist.qml` now subscribes to pointer-drag events and
-  submits work-area-bounded snap targets through `window.snap.offer` on the
-  connection that received the drag token. Its keyboard layout uses
-  `window.snap_context` and `window.snap` with the shortcut's one-use focus
-  context.
-- **Text insertion:** Replace `bingux.input-anchor` and `bingux.type-text` with
-  the standalone text-target methods. Pass the one-use focus context from a
-  shortcut activation to `input.text_target`; it returns an opaque target.
-  Send that target and the text to `input.insert_text` on the same connection.
+  `privacy.stop_recording`. Stop methods require API 1.31. The native API does
+  not report camera or location activity.
+- **Snapping:** `SnapAssist.qml` still uses `snap-offer`, `snap-window`, and
+  `snap-context`. Replace them with pointer-drag events and work-area-bounded
+  `window.snap.offer` requests on the connection that received the drag token.
+  Use `window.snap_context` and `window.snap` for keyboard snapping with the
+  shortcut's one-use focus context.
+- **Text insertion:** The active emoji path still requests caret data through
+  the private `bingux.input-anchor` bridge. Replace `bingux.input-anchor` and
+  `bingux.type-text` with the standalone text-target methods. Pass the one-use
+  focus context from a shortcut activation to `input.text_target`; send the
+  returned target and text to `input.insert_text` on the same connection.
 
     The focused Wayland surface must keep an active text-input-v3 session. X11
     and the old clipboard fallback are unsupported. Keep Emoji insertion
@@ -131,8 +135,9 @@ or render Bingux UI.
 
 ## Finish the remaining migration
 
-1. Replace app-launch focus calls with XDG Activation tokens created from the
-   launching user action. Keep the token and request on the same connection.
+1. Replace switcher, dock, notification, and app-launch focus calls with
+   shortcut focus contexts or XDG Activation tokens created from the relevant
+   user action. Keep each token and request on the same connection.
 2. Remove the OSD bridge shim from standalone startup. Subscribe to
    `gnoblin.osd.requested` and draw the OSD in Bingux. Keep LaunchFeedback on
    its documented D-Bus API.
@@ -142,8 +147,9 @@ or render Bingux UI.
 4. Replace the calendar helper's GNOME Shell CalendarServer dependency with a
    Bingux-owned provider, or disable event loading cleanly when that optional
    provider is unavailable.
-5. Verify the standalone path in a fresh session, including shortcut
-   reconnects, activation, previews, snapping, emoji insertion, OSD, launch
+5. Replace workspace polling with workspace snapshots and lifecycle events,
+   then verify the standalone path in a fresh session, including shortcut
+   reconnects, focus, previews, snapping, emoji insertion, OSD, launch
    feedback, calendar availability, and portal capture.
 
 ## Check the migration
