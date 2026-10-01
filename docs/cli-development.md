@@ -49,6 +49,10 @@ The monitor and layer list commands also use their API 1.37 snapshot methods,
 `monitors.list` and `layers.list`; the CLI wraps each returned array under its
 existing `monitors` or `layers` key.
 
+The input commands use `input.sources`, `input.current_source`, and
+`input.select_source` at API 1.6. Source selection returns an operation that
+completes after Mutter confirms the selected keyboard layout.
+
 | Group         | Methods                                                                                                                                                                                                                              |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `workspace`   | `list`, `create`, `rename`, `remove`, `switch`, `next`, `previous`, `move_active`, `move_window`                                                                                                                                     |

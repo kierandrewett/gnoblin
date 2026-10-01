@@ -136,8 +136,17 @@ and vendor or product IDs when the compositor provides them. Device IDs last
 only for the current compositor session. The command returns a one-time snapshot.
 
 API 1.4 socket clients can also subscribe to device add and removal events. The
-`input list`, `input current`, and `input select` commands inspect and select
-keyboard sources in the standalone runtime.
+`gnoblinctl input list` reads the API 1.6 `input.sources` snapshot. It prints
+the configured XKB sources.
+
+`gnoblinctl input current` reads `input.current_source`. Its JSON record
+includes `available` and, when known, `source`.
+
+`gnoblinctl input select TYPE ID` calls `input.select_source`. It waits for
+Mutter to confirm the layout change.
+
+The Lua-only aliases `gnoblin.input.list()` and `gnoblin.input.current()` are
+not socket methods. Socket clients use the names above.
 
 ## Animations
 
