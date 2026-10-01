@@ -11042,17 +11042,11 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         g_autoptr(GVariant) arguments = arguments_node
                                             ? variant_from_json(arguments_node)
                                             : g_variant_ref_sink(g_variant_builder_end(&empty));
-        if (client->api_minor >= 59) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            return queue_runtime_api_request(client, id, method, arguments, "read");
-        }
-        g_autoptr(GVariant) result =
-            meta_gnoblin_dispatch_native_api(client->control->display, method, arguments, &error);
-        if (!result)
-            return encode_response(id, NULL, error ? error->message : "window match failed");
-        g_autoptr(JsonNode) json = json_from_variant(result);
-        return encode_response(id, json, NULL);
+        if (!arguments)
+            return encode_response(id, NULL, "window.match arguments are invalid");
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        return queue_runtime_api_request(client, id, method, arguments, "read");
     }
     if (g_str_equal(method, "window.focus")) {
         JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;

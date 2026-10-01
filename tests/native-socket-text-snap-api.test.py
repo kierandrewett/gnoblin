@@ -50,7 +50,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             with self.subTest(method=method):
                 self.assertIn(f'"{method}"', methods)
 
-    def test_window_match_uses_native_query_and_is_advertised(self):
+    def test_window_match_uses_lua_query_and_is_advertised(self):
         source = CONTROL.read_text()
         connected = function_body(
             source,
@@ -65,11 +65,9 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertIn('"window.match"', methods)
-        self.assertIn("meta_gnoblin_dispatch_native_api", dispatcher)
-        self.assertIn("client->control->display, method, arguments, &error", dispatcher)
-        self.assertIn("client->api_minor >= 59", dispatcher)
         self.assertIn("queue_runtime_api_request", dispatcher)
-        self.assertIn("meta_gnoblin_dispatch_native_api", dispatcher)
+        self.assertNotIn("meta_gnoblin_dispatch_native_api", dispatcher)
+        self.assertNotIn("client->api_minor >= 59", dispatcher)
 
     def test_window_socket_events_keep_legacy_field_aliases(self):
         source = CONTROL.read_text()
@@ -1187,7 +1185,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("Lua monitor record has no integer index", read_api)
         self.assertIn('"monitors"', lua)
 
-    def test_legacy_window_match_uses_lua_for_api_159(self):
+    def test_legacy_window_match_always_uses_lua_and_preserves_compatibility(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
@@ -1206,7 +1204,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
         self.assertGreaterEqual(api_minor(header), 59)
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
-        self.assertIn("client->api_minor >= 59", window_match)
+        self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', window_match)
+        self.assertNotIn("meta_gnoblin_dispatch_native_api", window_match)
         self.assertIn('g_str_equal(method, "window.match")', read_api)
         self.assertIn("legacy_window_match_arguments_valid", read_api)
         self.assertIn("legacy_window_match_from_lua", read_api)
