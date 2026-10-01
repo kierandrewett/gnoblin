@@ -347,6 +347,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.50            | Lua operations for `launch.begin` and `launch.end`                                                    |
 | 1.51            | Lua runtime read for `session.status`                                                                 |
 | 1.52            | Lua-backed compatibility read for `workspace.list`                                                    |
+| 1.53            | Lua-backed compatibility read for `window.list`                                                       |
 
 ### API 1.27: shell presentation requests
 
@@ -1137,6 +1138,11 @@ API 1.52 and newer serve `workspace.list` from the Lua workspace snapshot.
 The reply keeps the `{ "workspaces": [...] }` wrapper and `windows` count.
 Earlier API versions use the native route. Lua callers use
 `gnoblin.workspaces.list()`.
+
+API 1.53 and newer serve `window.list` from the Lua window snapshot. The reply
+keeps its `{ "windows": [...] }` wrapper and fields such as `appId` and
+`geometry`. Older API versions use Mutter's native route. Lua callers use
+`gnoblin.windows.list()`.
 
 `launch.begin` requests cursor feedback for an application hint. It does not
 start a process. Mutter reports `started` when a matching mapped window appears
