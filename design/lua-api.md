@@ -223,11 +223,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.listeners` | map of event names to callback arrays | **Current; inspect only.** Do not edit this table directly. |
 | `gnoblin.window_rule(rule)` | `(WindowRule) -> nil` | **Current and retained.** Append a window or layer matching rule. |
 | `gnoblin.permission_rule(rule)` | `(PermissionRule) -> nil` | **Current and retained.** Append a portal permission rule. |
-| `gnoblin.shortcut(entry)` | `(Shortcut) -> nil` | **Current compatibility helper.** Prefer `gnoblin.configure {shortcuts = {...}}`. |
 | `gnoblin.animation(entry)` | `(Animation) -> nil` | **Current and retained.** Declare a named compositor animation; runtime controls are under `gnoblin.animations`. |
-| `gnoblin.autostart(entry)` | `(Autostart) -> nil` | **Current compatibility helper.** Prefer `gnoblin.configure {autostart = {...}}`. |
-| `gnoblin.remove_shortcut(name)` | `(string) -> nil` | **Current compatibility helper.** Prefer an entry with `enable = false`. |
-| `gnoblin.remove_autostart(name)` | `(string) -> nil` | **Current compatibility helper.** Prefer an entry with `enable = false`. |
 | global `require(name)` | `(string) -> any` | **Current custom loader.** Loads a local module beside the calling file or under its `lua/` directory; it is not Lua's installed-module search path. |
 
 `CapturedShortcut` contains the normalized GTK accelerator string in

@@ -16,9 +16,8 @@ they need conversion instead of silently creating a new default config.
 | `gnoblin.animation { ... }`       | Name, event, timing, and keyframes | Registers a named transition. See the [animation guide](../../docs/guides/animations.md). |
 
 Use `gnoblin.configure.shortcuts` and `gnoblin.configure.autostart` for named
-entries. The older `gnoblin.shortcut`, `gnoblin.autostart`,
-`gnoblin.remove_shortcut`, and `gnoblin.remove_autostart` functions remain for
-compatibility and are deprecated.
+entries. Set an entry's `enable` field to `false` to remove it from the
+configuration.
 
 The first animation registered for an event supplies its default. Settings and
 window rules can select another registered name. Set `enable = false` on a
