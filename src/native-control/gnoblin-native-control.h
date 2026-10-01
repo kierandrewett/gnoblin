@@ -11,7 +11,7 @@
 #include "core/gnoblin-runtime-cache.h"
 
 #define GNOBLIN_NATIVE_CONTROL_API_MAJOR 1
-#define GNOBLIN_NATIVE_CONTROL_API_MINOR 61
+#define GNOBLIN_NATIVE_CONTROL_API_MINOR 62
 
 typedef struct _GnoblinNativeControl GnoblinNativeControl;
 
