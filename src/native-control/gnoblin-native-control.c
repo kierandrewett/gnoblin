@@ -10916,6 +10916,11 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         g_autoptr(GVariant) arguments = arguments_node
                                             ? variant_from_json(arguments_node)
                                             : g_variant_ref_sink(g_variant_builder_end(&empty));
+        if (client->api_minor >= 59) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            return queue_runtime_api_request(client, id, method, arguments, "read");
+        }
         g_autoptr(GVariant) result =
             meta_gnoblin_dispatch_native_api(client->control->display, method, arguments, &error);
         if (!result)
