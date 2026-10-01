@@ -1228,9 +1228,9 @@ differ or which remain socket-only.
 as the established CLI result. The raw socket `window.match` request remains
 for compatibility with existing clients; new clients route it through the
 shared Lua window snapshot.
-Native-control API 1.46 routes `input.devices`, `input.sources`, and
-`input.current_source` through their shared Lua methods; earlier clients retain
-the native compatibility route. API 1.47 routes `privacy.state` through
+Native-control API 1.46 introduced shared Lua reads for `input.devices`,
+`input.sources`, and `input.current_source`. All supported client versions now
+use these reads. API 1.47 routes `privacy.state` through
 `gnoblin.privacy.state()`; every supported client version now uses the Lua
 read. API 1.48 routes `window.restore_or_minimize` through the Lua runtime;
 earlier clients retain the native compatibility route. API 1.49 routes
