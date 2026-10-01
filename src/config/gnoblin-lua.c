@@ -5651,15 +5651,6 @@ static void fail_dropped_operation(LuaRuntime* runtime, GVariant* operation, con
     g_variant_builder_add(&completion, "{sv}", "error", g_variant_builder_end(&error_record));
     g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&completion));
     dispatch_rejected_operation_event(state, payload, "gnoblin.operation.completed");
-
-    GVariantBuilder legacy;
-    g_variant_builder_init(&legacy, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&legacy, "{sv}", "request_id", g_variant_new_int64(request_id));
-    g_variant_builder_add(&legacy, "{sv}", "method", g_variant_new_string(method));
-    g_variant_builder_add(&legacy, "{sv}", "ok", g_variant_new_boolean(FALSE));
-    g_variant_builder_add(&legacy, "{sv}", "error", g_variant_new_string(reason));
-    g_autoptr(GVariant) legacy_payload = g_variant_ref_sink(g_variant_builder_end(&legacy));
-    dispatch_rejected_operation_event(state, legacy_payload, "gnoblin.api.operation-completed");
 }
 
 static void schedule_deferred_callbacks(LuaConfig* config) {
@@ -5836,13 +5827,10 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
     memcpy(lua_getextraspace(state), &steps, sizeof steps);
     gboolean operation_completed = FALSE;
     gboolean callback_failed = FALSE;
-    gboolean canonical_operation_event = g_str_equal(event, "gnoblin.operation.completed");
-    if (g_str_equal(event, "gnoblin.api.operation-completed") || canonical_operation_event) {
+    if (g_str_equal(event, "gnoblin.operation.completed")) {
         gint64 request_id = 0;
         gboolean ok = FALSE;
-        const char* id_field = canonical_operation_event ? "operation_id" : "request_id";
-        const char* value_field = canonical_operation_event ? "value" : "result";
-        if (g_variant_lookup(payload, id_field, "x", &request_id) && request_id > 0) {
+        if (g_variant_lookup(payload, "operation_id", "x", &request_id) && request_id > 0) {
             g_autofree char* key = g_strdup_printf("%" G_GINT64_FORMAT, request_id);
             gpointer reference = g_hash_table_lookup(active_runtime->config.operations, key);
             if (reference) {
@@ -5852,7 +5840,7 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
                 g_variant_lookup(payload, "ok", "b", &ok);
                 lua_pushstring(state, ok ? "succeeded" : "failed");
                 lua_setfield(state, handle, "status");
-                GVariant* result = g_variant_lookup_value(payload, value_field, NULL);
+                GVariant* result = g_variant_lookup_value(payload, "value", NULL);
                 GVariant* failure = g_variant_lookup_value(payload, "error", NULL);
                 if (result) {
                     lua_getfield(state, handle, "method");
