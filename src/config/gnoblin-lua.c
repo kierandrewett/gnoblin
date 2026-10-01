@@ -3348,15 +3348,6 @@ static void finish_named_entries(lua_State* state, int config, const char* key) 
 
 /* Named commands merge in place; ordered rules always append. */
 static int lua_declare(lua_State* state) {
-    const char* api = lua_tostring(state, lua_upvalueindex(4));
-    if (api && (!strcmp(api, "gnoblin.shortcut") || !strcmp(api, "gnoblin.autostart"))) {
-        const char* migration = !strcmp(api, "gnoblin.shortcut")
-                                    ? "migrate to gnoblin.configure {shortcuts = {[\"<name>\"] = "
-                                      "{binding = ..., command = ...}}}"
-                                    : "migrate to gnoblin.configure {autostart = {[\"<name>\"] = "
-                                      "{command = ...}}}";
-        g_warning("%s is deprecated and may be removed at any time; %s", api, migration);
-    }
     luaL_checktype(state, 1, LUA_TTABLE);
     push_settings(state, 1, NULL, 0, 0);
     int entry = lua_gettop(state);
@@ -3398,26 +3389,6 @@ static int lua_declare(lua_State* state) {
     }
     lua_pushvalue(state, entry);
     lua_rawseti(state, list, count + 1);
-    return 0;
-}
-
-static int lua_remove_declaration(lua_State* state) {
-    const char* name = luaL_checkstring(state, 1);
-    const char* api = lua_tostring(state, lua_upvalueindex(4));
-    if (api && *api) {
-        if (!strcmp(api, "gnoblin.remove_shortcut"))
-            g_warning("%s is deprecated and may be removed at any time; remove key \"%s\" from "
-                      "gnoblin.configure.shortcuts or set "
-                      "gnoblin.configure.shortcuts[\"%s\"].enable = false",
-                      api, name, name);
-        else if (!strcmp(api, "gnoblin.remove_autostart"))
-            g_warning("%s is deprecated and may be removed at any time; remove key \"%s\" from "
-                      "gnoblin.configure.autostart or set "
-                      "gnoblin.configure.autostart[\"%s\"].enable = false",
-                      api, name, name);
-    }
-    push_config_list(state);
-    remove_named_entry(state, -1, name);
     return 0;
 }
 
@@ -4939,28 +4910,17 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_setfield(state, -2, "snapshot");
     const struct {
         const char *name, *section, *key;
-        gboolean named, remove;
+        gboolean named;
     } declarations[] = {
-        {"window_rule", "", "window-rules", FALSE, FALSE},
-        {"permission_rule", "permissions", "rules", FALSE, FALSE},
-        {"shortcut", "", "shortcuts", TRUE, FALSE},
-        {"animation", "", "animations", TRUE, FALSE},
-        {"autostart", "", "autostart", TRUE, FALSE},
-        {"remove_shortcut", "", "shortcuts", TRUE, TRUE},
-        {"remove_autostart", "", "autostart", TRUE, TRUE},
+        {"window_rule", "", "window-rules", FALSE},
+        {"permission_rule", "permissions", "rules", FALSE},
+        {"animation", "", "animations", TRUE},
     };
     for (guint i = 0; i < G_N_ELEMENTS(declarations); i++) {
         lua_pushstring(state, declarations[i].section);
         lua_pushstring(state, declarations[i].key);
         lua_pushboolean(state, declarations[i].named);
-        lua_pushstring(
-            state, !strcmp(declarations[i].name, "shortcut")           ? "gnoblin.shortcut"
-                   : !strcmp(declarations[i].name, "autostart")        ? "gnoblin.autostart"
-                   : !strcmp(declarations[i].name, "animation")        ? "gnoblin.animation"
-                   : !strcmp(declarations[i].name, "remove_shortcut")  ? "gnoblin.remove_shortcut"
-                   : !strcmp(declarations[i].name, "remove_autostart") ? "gnoblin.remove_autostart"
-                                                                       : "");
-        lua_pushcclosure(state, declarations[i].remove ? lua_remove_declaration : lua_declare, 4);
+        lua_pushcclosure(state, lua_declare, 3);
         lua_setfield(state, -2, declarations[i].name);
     }
     lua_pushlightuserdata(state, config);
