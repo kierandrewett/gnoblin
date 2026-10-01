@@ -10429,18 +10429,9 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         g_autoptr(GVariant) operation_arguments = variant_from_json(arguments_object);
         if (!operation_arguments)
             return encode_response(id, NULL, "window.restore_or_minimize arguments are invalid");
-        if (client->api_minor >= 48) {
-            if (!client->control->supervised_runtime)
-                return encode_response(id, NULL, "Lua supervisor is not connected");
-            return queue_runtime_api_request(client, id, method, operation_arguments, "call");
-        }
-        g_autoptr(GVariant) result = gnoblin_native_control_restore_or_minimize_window(
-            client->control->display, operation_arguments, &error);
-        if (!result)
-            return encode_response(id, NULL,
-                                   error ? error->message : "window restore-or-minimize failed");
-        g_autoptr(JsonNode) json = json_from_variant(result);
-        return encode_response(id, json, NULL);
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        return queue_runtime_api_request(client, id, method, operation_arguments, "call");
     }
     if (g_str_equal(method, "input.text_target") || g_str_equal(method, "input.insert_text") ||
         g_str_equal(method, "window.snap_context") || g_str_equal(method, "window.snap")) {

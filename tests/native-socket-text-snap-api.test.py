@@ -943,7 +943,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertGreaterEqual(api_minor(header), 47)
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
 
-    def test_restore_or_minimize_uses_lua_for_api_148_and_keeps_legacy_route(self):
+    def test_restore_or_minimize_always_uses_lua_operation(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         helper = function_body(
@@ -978,12 +978,12 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 48)
-        self.assertIn("client->api_minor >= 48", dispatcher)
+        self.assertNotIn("client->api_minor >= 48", dispatcher)
         self.assertIn('queue_runtime_api_request(client, id, method, operation_arguments, "call")', dispatcher)
         self.assertIn("client->control->supervised_runtime", dispatcher)
         self.assertIn("window.restore_or_minimize", source)
         self.assertIn("client->api_minor < 38", dispatcher)
-        self.assertIn("gnoblin_native_control_restore_or_minimize_window", dispatcher)
+        self.assertNotIn("gnoblin_native_control_restore_or_minimize_window", dispatcher)
         self.assertIn("meta_wayland_session_lock_is_active", helper)
         self.assertLess(
             helper.index("meta_window_get_maximize_flags"),
