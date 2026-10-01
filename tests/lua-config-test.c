@@ -864,6 +864,23 @@ int main(void) {
         g_variant_ref_sink(g_variant_builder_end(&input_snapshot_builder));
     gnoblin_config_update_input_source_snapshot(input_snapshot, 7);
 
+    GVariantBuilder input_device_builder;
+    g_variant_builder_init(&input_device_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&input_device_builder, "{sv}", "id", g_variant_new_string("input:1"));
+    g_variant_builder_add(&input_device_builder, "{sv}", "name",
+                          g_variant_new_string("Test keyboard"));
+    GVariantBuilder input_devices_builder;
+    g_variant_builder_init(&input_devices_builder, G_VARIANT_TYPE("av"));
+    g_variant_builder_add(&input_devices_builder, "v",
+                          g_variant_builder_end(&input_device_builder));
+    GVariantBuilder input_devices_snapshot_builder;
+    g_variant_builder_init(&input_devices_snapshot_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&input_devices_snapshot_builder, "{sv}", "devices",
+                          g_variant_builder_end(&input_devices_builder));
+    g_autoptr(GVariant) input_devices_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&input_devices_snapshot_builder));
+    gnoblin_config_update_input_device_snapshot(input_devices_snapshot, 11);
+
     const char* privacy_source =
         "local g=require('gnoblin')\n"
         "local state=g.privacy.state()\n"
@@ -1201,6 +1218,53 @@ int main(void) {
     g_assert_no_error(error);
     g_assert_true(g_variant_is_of_type(filtered_portal_grants, G_VARIANT_TYPE("av")));
     g_assert_cmpuint(g_variant_n_children(filtered_portal_grants), ==, 0);
+
+    g_autoptr(GVariant) input_devices_read =
+        gnoblin_config_read_api("input.devices", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(input_devices_read, G_VARIANT_TYPE_VARDICT));
+    g_autoptr(GVariant) input_devices_array =
+        g_variant_lookup_value(input_devices_read, "devices", G_VARIANT_TYPE("av"));
+    g_assert_nonnull(input_devices_array);
+    g_assert_cmpuint(g_variant_n_children(input_devices_array), ==, 1);
+    gint64 input_devices_revision = 0;
+    g_assert_true(g_variant_lookup(input_devices_read, "revision", "x", &input_devices_revision));
+    g_assert_cmpint(input_devices_revision, ==, 11);
+
+    g_autoptr(GVariant) input_sources_read =
+        gnoblin_config_read_api("input.sources", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(input_sources_read, G_VARIANT_TYPE_VARDICT));
+    g_autoptr(GVariant) input_sources_array =
+        g_variant_lookup_value(input_sources_read, "sources", G_VARIANT_TYPE("av"));
+    g_assert_nonnull(input_sources_array);
+    g_assert_cmpuint(g_variant_n_children(input_sources_array), ==, 1);
+
+    g_autoptr(GVariant) input_current_source_read =
+        gnoblin_config_read_api("input.current_source", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    gboolean input_current_source_available = FALSE;
+    g_assert_true(g_variant_lookup(input_current_source_read, "available", "b",
+                                   &input_current_source_available));
+    g_assert_true(input_current_source_available);
+    g_autoptr(GVariant) input_current_source =
+        g_variant_lookup_value(input_current_source_read, "source", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(input_current_source);
+
+    GVariantBuilder input_sources_without_current_builder;
+    g_variant_builder_init(&input_sources_without_current_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&input_sources_without_current_builder, "{sv}", "sources",
+                          g_variant_new_array(G_VARIANT_TYPE_VARIANT, NULL, 0));
+    g_autoptr(GVariant) input_sources_without_current =
+        g_variant_ref_sink(g_variant_builder_end(&input_sources_without_current_builder));
+    gnoblin_config_update_input_source_snapshot(input_sources_without_current, 12);
+    g_autoptr(GVariant) unavailable_input_current_source =
+        gnoblin_config_read_api("input.current_source", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    input_current_source_available = TRUE;
+    g_assert_true(g_variant_lookup(unavailable_input_current_source, "available", "b",
+                                   &input_current_source_available));
+    g_assert_false(input_current_source_available);
 
     g_autoptr(GVariant) shortcut_actions =
         gnoblin_config_read_api("shortcuts.actions", empty_read_arguments, &error);
