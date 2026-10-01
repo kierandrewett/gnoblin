@@ -303,6 +303,7 @@ static guint api_minor_for_method(const char* method) {
         guint minor;
     } methods[] = {
         {"session.logout", 32},
+        {"window.restore_or_minimize", 38},
         {"privacy.stop_sharing", 31},
         {"privacy.stop_recording", 31},
         {"window.thumbnail", 23},
@@ -921,8 +922,7 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                 goto invalid;
             }
             gboolean active_window = is(window, "active");
-            gboolean typed = !word_in(
-                "focus menu interactive-move interactive-resize restore-or-minimize", action);
+            gboolean typed = !word_in("focus menu interactive-move interactive-resize", action);
             g_autofree char* resolved_window = NULL;
             if (typed && is(window, "active")) {
                 resolved_window = focused_window_id(cli, error);
@@ -942,6 +942,8 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                     method = "window.minimize";
                 else if (is(action, "restore"))
                     method = "window.restore";
+                else if (is(action, "restore-or-minimize"))
+                    method = "window.restore_or_minimize";
                 else if (is(action, "toggle-minimize"))
                     method = "window.toggle_minimize";
                 else if (word_in("maximize unmaximize", action)) {
