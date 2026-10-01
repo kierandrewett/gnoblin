@@ -1230,6 +1230,9 @@ differ or which remain socket-only.
 `gnoblinctl window match` selects from `windows.list` and formats the snapshot
 as the established CLI result. The raw socket `window.match` request remains
 for compatibility; Lua callers inspect and filter `gnoblin.windows.list()`.
+Native-control API 1.46 routes `input.devices`, `input.sources`, and
+`input.current_source` through their shared Lua methods; earlier clients retain
+the native compatibility route.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1256,7 +1259,8 @@ for compatibility; Lua callers inspect and filter `gnoblin.windows.list()`.
 | `animation.stop`                                                       | `gnoblin.animations.stop(args)` or `preview:stop()`                                                                                                     |
 | `feature.list` / `feature.show` / `feature.enable` / `feature.disable` | Removed; these toggled GNOME Shell-owned behavior and have no standalone target.                                                                        |
 | `script.list`                                                          | Removed. The GNOME Shell script manager does not exist in the standalone session; Lua files are loaded through `gnoblin.load` and `require`.            |
-| `input.list`                                                           | `gnoblin.input.sources()`; physical devices are listed separately.                                                                                      |
+| `input.devices`                                                        | `gnoblin.input.devices()`; physical devices are listed separately.                                                                                      |
+| `input.list`                                                           | `gnoblin.input.sources()`                                                                                                                               |
 | `input.current`                                                        | `gnoblin.input.current_source()`                                                                                                                        |
 | `input.select`                                                         | `gnoblin.input.select_source({type, id})`                                                                                                               |
 | `privacy.get`                                                          | `gnoblin.privacy.state()`                                                                                                                               |
