@@ -351,6 +351,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         json_builder_add_string_value(builder, method_name);
     }
     if (g_str_equal(method_name, "window.thumbnail") || g_str_equal(method_name, "layer.list") ||
+        g_str_equal(method_name, "window.restore_or_minimize") ||
         g_str_equal(method_name, "input.devices") || g_str_equal(method_name, "shortcut.actions") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "shortcut.list") ||
         g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke") ||
