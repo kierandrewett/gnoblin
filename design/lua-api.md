@@ -1304,7 +1304,6 @@ legacy. Mutter signal coverage can change with the pinned upstream version.
 | Native `gnoblin.window.attention-changed`     | `window_id`, `window`, `demands_attention`, event metadata                                             | Mutter's attention state changes.                                                                        |
 | Native `gnoblin.window.closed`                | `window_id`, `last`, event metadata                                                                    | Native runtime removes a managed window.                                                                 |
 | `gnoblin.operation.completed`                 | `operation_id`, `method`, `ok`, then `value` or an `Error` record                                      | Native API 1.11 completion event.                                                                        |
-| `gnoblin.api.operation-completed`             | `request_id`, `method`, `ok`, then `result` or string `error`                                          | Legacy completion event with the older payload shape.                                                    |
 | `gnoblin.feature.changed`                     | `feature`, `enabled`                                                                                   | A feature changes after initial setup.                                                                   |
 | `gnoblin.scripts.loaded`                      | `scripts`: comma-separated loaded script filenames                                                     | Current user-script loading pass ends.                                                                   |
 | `gnoblin.scripts.load_failed`                 | `script`, `error`                                                                                      | Current user script fails to load.                                                                       |
@@ -1393,8 +1392,8 @@ record also includes `name`, monotonic `sequence`, and monotonic-clock
 The standalone implementation forwards open-ended Mutter GObject signals
 through the explicitly unstable `gnoblin.events.mutter.on(...)` namespace. It
 does not forward GNOME Shell events or feature/script event streams. The
-legacy `gnoblin.api.operation-completed` event remains available with its
-older payload fields for existing config listeners.
+compositor socket retains its legacy operation event for external clients; Lua
+config listeners use `gnoblin.operation.completed`.
 
 General session lifecycle events, including `gnoblin.session.state-changed`,
 remain proposed. The compositor socket closes when the compositor stops, so a
@@ -1549,9 +1548,7 @@ Current Lua runtime callback calls return an `Operation` handle. Native API
 1.11 completion updates its `status`, `value`, and structured `Error` fields,
 invokes callbacks registered while the operation was pending, and dispatches
 `gnoblin.operation.completed` with `operation_id`, `method`, `ok`, and either
-`value` or `error`. It also dispatches the legacy
-`gnoblin.api.operation-completed` event with `request_id`, `result`, and a
-string `error`. If `on_complete` is registered after completion, Gnoblin
+`value` or `error`. If `on_complete` is registered after completion, Gnoblin
 queues it for the next main-loop turn. The host dispatches that callback through
 the same config validation and operation drain path used for runtime events;
 operations requested by the callback are applied after it returns. Queued

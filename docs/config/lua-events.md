@@ -173,7 +173,6 @@ event revision.
 | `gnoblin.animation.started`               | `animation`, `target`, `event`                                                     | A configured lifecycle animation or preview begins playback; socket subscription requires API 1.18. |
 | `gnoblin.animation.finished`              | `animation`, `target`, `event`, `cancelled`                                        | A configured lifecycle animation or preview completes or is interrupted; API 1.18.                  |
 | `gnoblin.operation.completed`             | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | Native API 1.11 completion event; `error` is an `Error` record.                                     |
-| `gnoblin.api.operation-completed`         | `request_id`, `method`, `ok`, `result` or string `error`                           | Legacy completion event retained during migration.                                                  |
 
 Structured event values are read-only snapshots. Call methods on a lifecycle
 event's `window` record to act on that window:
@@ -255,12 +254,6 @@ Use `gnoblin.operation.completed` to observe asynchronous operations:
 - `operation_id`, `method`, and `ok`.
 - `value` on success, or an `Error` record with `code` and `message` on failure.
 
-The compatibility event `gnoblin.api.operation-completed` uses `request_id`,
-`result`, and a string error.
-
-When a wildcard listener handles both names, filter by `event.name` to avoid
-processing a completion twice.
-
 In Lua, `operation_id` matches the returned operation handle's `id`.
 
 ### Portal events
@@ -306,10 +299,8 @@ Shortcut capture also completes through `gnoblin.operation.completed`:
 - Success returns the accelerator in `value.accelerator`.
 - Cancellation, timeout, a locked session, or an input grab returns an `Error` record.
 
-The compatibility event `gnoblin.api.operation-completed` uses
-`result.accelerator` and a string error. The capture hook consumes key events
-while active, then cancels and releases the hook if the session locks or
-another input grab starts.
+The capture hook consumes key events while active, then cancels and releases
+the hook if the session locks or another input grab starts.
 
 ### Monitor and workspace records
 

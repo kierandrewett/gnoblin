@@ -224,10 +224,6 @@ Its payload contains an operation ID, method, and success flag. Success has a
 `value`; failure has an `Error` record with a stable code and human-readable
 message.
 
-During migration, Gnoblin also sends the legacy
-`gnoblin.api.operation-completed` event with a request ID, result, and string
-error.
-
 Native `Error.code` values are:
 
 | Code               | Meaning                                                          |
