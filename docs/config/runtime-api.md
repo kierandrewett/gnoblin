@@ -53,6 +53,11 @@ contains the stable `id` and the action performed. The [bridge
 reference](/compositor-bridge#api-138-restore-a-snapped-window) lists the
 possible actions.
 
+Native-control API 1.39 adds `launches.snapshot`, which returns the launch
+records and their collection revision together. It requires a connected Lua
+supervisor and keeps the collection revision available when there are no
+launch records.
+
 Native-control API 1.23 adds `window.thumbnail`. API 1.24 adds
 `session.activity` and its change event. API 1.26 adds pointer-drag lifecycle
 events and capability-bound `window.snap.offer`.
@@ -1029,13 +1034,16 @@ API 1.15 clients can subscribe to `gnoblin.portal.grant-added` and
 
 Use `gnoblin.launches` to read launch feedback and track a launch request.
 `list()` returns the latest cached native snapshot as immutable `Launch`
-records. The native controller seeds an empty snapshot during startup and
-refreshes it before dispatching launch-change events. The method is unavailable
-before native startup completes.
+records. `snapshot()` returns those records together with the collection
+revision, including when the collection is empty. The native controller seeds
+an empty snapshot during startup and refreshes it before dispatching
+launch-change events. Both methods are unavailable before native startup
+completes.
 
 | Method                            | Arguments                                     | Result                                          |
 | --------------------------------- | --------------------------------------------- | ----------------------------------------------- |
 | `gnoblin.launches.list()`         | None                                          | `Launch[]` snapshot                             |
+| `gnoblin.launches.snapshot()`     | None                                          | `{launches, revision}` snapshot                 |
 | `gnoblin.launches.begin(options)` | `token`, `application`; optional `timeout_ms` | An `Operation` whose value is a `Launch` record |
 | `gnoblin.launches.end(token)`     | Launch token string                           | An `Operation` whose value is `{ok, token}`     |
 

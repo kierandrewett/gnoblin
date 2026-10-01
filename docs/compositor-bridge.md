@@ -490,6 +490,7 @@ The socket exposes these reads at the listed API versions:
 | 1.37        | `monitors.list`     | `gnoblin.monitors.list()`       | None                                                       |
 | 1.37        | `layers.list`       | `gnoblin.layers.list(filter)`   | `monitor_id`, `namespace`, `layer`                         |
 | 1.37        | `launches.list`     | `gnoblin.launches.list()`       | None                                                       |
+| 1.39        | `launches.snapshot` | `gnoblin.launches.snapshot()`   | None                                                       |
 | 1.24        | `session.activity`  | `gnoblin.session.activity()`    | None                                                       |
 | 1.29        | `session.status`    | `gnoblin.session.status()`      | None                                                       |
 
@@ -649,6 +650,9 @@ including an empty array when there are no records.
 Snapshot reads are available after native control seeds their state. API 1.37
 collection reads also require a connected Lua supervisor. `windows.list`
 returns the same filtered, read-only window records as the Lua API.
+
+`launches.snapshot` keeps the collection revision available when the array is
+empty.
 
 For example, request the committed settings snapshot with:
 
