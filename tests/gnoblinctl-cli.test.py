@@ -119,7 +119,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(16):
+                    for _ in range(19):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -176,6 +176,21 @@ def main() -> int:
                                         "revision": 5,
                                     }
                                 ]
+                            elif request["method"] == "input.sources":
+                                result = {
+                                    "sources": [
+                                        {"type": "xkb", "id": "us", "short_name": "en", "name": "English (US)"}
+                                    ],
+                                    "revision": 5,
+                                }
+                            elif request["method"] == "input.current_source":
+                                result = {
+                                    "available": True,
+                                    "source": {"type": "xkb", "id": "us", "short_name": "en", "name": "English (US)"},
+                                    "revision": 5,
+                                }
+                            elif request["method"] == "input.select_source":
+                                result = {"request_id": 23, "method": "input.select_source"}
                             elif request["method"] == "window.thumbnail":
                                 result = {"request_id": 20, "method": "window.thumbnail"}
                             elif request["method"] == "window.match":
@@ -215,6 +230,7 @@ def main() -> int:
                                 "animation.preview",
                                 "workspace.create",
                                 "window.thumbnail",
+                                "input.select_source",
                             }:
                                 operation_id = result["request_id"]
                                 method = request["method"]
@@ -229,6 +245,8 @@ def main() -> int:
                                         "height": 1,
                                         "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p1sAAAAASUVORK5CYII=",
                                     }
+                                elif method == "input.select_source":
+                                    value = {"type": "xkb", "id": "us"}
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
@@ -424,11 +442,27 @@ def main() -> int:
                 }
             ]
         }
+        input_list = run(binary, "--socket", socket_path, "--format", "json", "input", "list")
+        assert input_list.returncode == 0, input_list.stderr
+        assert json.loads(input_list.stdout) == {
+            "sources": [{"type": "xkb", "id": "us", "short_name": "en", "name": "English (US)"}],
+            "revision": 5,
+        }
+        input_current = run(binary, "--socket", socket_path, "--format", "json", "input", "current")
+        assert input_current.returncode == 0, input_current.stderr
+        assert json.loads(input_current.stdout) == {
+            "available": True,
+            "source": {"type": "xkb", "id": "us", "short_name": "en", "name": "English (US)"},
+            "revision": 5,
+        }
+        input_select = run(binary, "--socket", socket_path, "--format", "json", "input", "select", "xkb", "us")
+        assert input_select.returncode == 0, input_select.stderr
+        assert json.loads(input_select.stdout) == {"type": "xkb", "id": "us"}
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 16
-        assert len(subscriptions) == 16
+        assert len(received) == 19
+        assert len(subscriptions) == 19
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -499,6 +533,15 @@ def main() -> int:
         assert received[15]["method"] == "layers.list"
         assert received[15]["api_version"] == {"major": 1, "minor": 37}
         assert received[15]["arguments"] == {}
+        assert received[16]["method"] == "input.sources"
+        assert received[16]["api_version"] == {"major": 1, "minor": 6}
+        assert received[16]["arguments"] == {}
+        assert received[17]["method"] == "input.current_source"
+        assert received[17]["api_version"] == {"major": 1, "minor": 6}
+        assert received[17]["arguments"] == {}
+        assert received[18]["method"] == "input.select_source"
+        assert received[18]["api_version"] == {"major": 1, "minor": 6}
+        assert received[18]["arguments"] == {"type": "xkb", "id": "us"}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0

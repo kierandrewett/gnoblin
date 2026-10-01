@@ -328,6 +328,9 @@ static guint api_minor_for_method(const char* method) {
         {"grant.revoke", 14},
         {"layer.list", 2},
         {"input.devices", 3},
+        {"input.sources", 6},
+        {"input.current_source", 6},
+        {"input.select_source", 6},
         {"launch.status", 8},
     };
 
@@ -355,7 +358,10 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
     }
     if (g_str_equal(method_name, "window.thumbnail") || g_str_equal(method_name, "layer.list") ||
         g_str_equal(method_name, "window.restore_or_minimize") ||
-        g_str_equal(method_name, "input.devices") || g_str_equal(method_name, "shortcut.actions") ||
+        g_str_equal(method_name, "input.devices") || g_str_equal(method_name, "input.sources") ||
+        g_str_equal(method_name, "input.current_source") ||
+        g_str_equal(method_name, "input.select_source") ||
+        g_str_equal(method_name, "shortcut.actions") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "shortcut.list") ||
         g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke") ||
         g_str_equal(method_name, "permissions.policy") ||
@@ -416,6 +422,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
 
     gboolean waits_for_operation =
         g_str_equal(method_name, "window.thumbnail") ||
+        g_str_equal(method_name, "input.select_source") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "grant.list") ||
         g_str_equal(method_name, "grant.revoke") || g_str_equal(method_name, "animation.preview");
     guint wait_timeout = cli->timeout + (g_str_equal(method_name, "shortcut.capture") ? 2
@@ -1088,12 +1095,16 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
             if (!require_count(cli, 0, 0, error))
                 goto invalid;
             method = "input.devices";
+        } else if (is(action, "list")) {
+            method = "input.sources";
+        } else if (is(action, "current")) {
+            method = "input.current_source";
         } else if (is(action, "select")) {
             if (!require_count(cli, 2, 2, error))
                 goto invalid;
             set_string(arguments, "type", arg(cli, 0));
             set_string(arguments, "id", arg(cli, 1));
-            method = owned_method = g_strdup_printf("input.%s", action);
+            method = "input.select_source";
         } else if (action) {
             method = owned_method = g_strdup_printf("input.%s", action);
         }
