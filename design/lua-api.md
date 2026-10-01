@@ -1117,6 +1117,7 @@ record from the current session; stale grants fail with `not_found`.
 | `gnoblin.session.restart_compositor(reason?)` | optional reason string, at most 256 characters | `Operation<nil>`          | `session.restart_compositor` |
 | `gnoblin.runtime.reload_config()`             | none                                           | `Operation<ReloadResult>` | `runtime.reload_config`      |
 | `gnoblin.launches.list()`                     | none                                           | `Launch[]`                | native launch snapshot       |
+| `gnoblin.launches.snapshot()`                 | none                                           | `{launches, revision}`    | collection snapshot          |
 | `gnoblin.launches.begin(options)`             | `token`, `application`, optional `timeout_ms`  | `Operation<Launch>`       | `launch.begin`               |
 | `gnoblin.launches.end(token)`                 | launch token                                   | `Operation<{ok, token}>`  | `launch.end`                 |
 
@@ -1265,7 +1266,7 @@ for compatibility; Lua callers inspect and filter `gnoblin.windows.list()`.
 | `permissions.check`                                                    | `gnoblin.permissions.check(capability, identity)`                                                                                                       |
 | `grant.list`                                                           | `gnoblin.portals.grants()`                                                                                                                              |
 | `grant.revoke`                                                         | `grant:revoke()`                                                                                                                                        |
-| `launch.status`                                                        | `gnoblin.launches.list()` in a standalone native session.                                                                                               |
+| `launch.status`                                                        | CLI uses `gnoblin.launches.snapshot()` to preserve the collection revision; retain the raw socket method for compatibility.                             |
 | `launch.begin`                                                         | `gnoblin.launches.begin(options)` in a standalone native session.                                                                                       |
 | `launch.end`                                                           | `gnoblin.launches.end(token)` in a standalone native session.                                                                                           |
 | `shell.ping`                                                           | Removed; use the unversioned socket transport operation `op = "ping"`.                                                                                  |
@@ -1446,7 +1447,7 @@ namespaces.
 | `input`                  | `list()`, `current()`, `sources()`, `current_source()`, `text_target(context)`, `devices()`, `select_source(selector)`. `text_target()` returns a trusted target with `insert_text(text)`.                      |
 | `privacy`                | `stop_sharing()`, `stop_recording()`; read-only `state()` snapshot.                                                                                                                                             |
 | `permissions` / `grant`  | `permissions.list()`, `permissions.policy()`, `permissions.check(args)`, `grant.list()`, `grant.revoke(args)`, and read-only `portals.grants()`.                                                                |
-| `launch` / `launches`    | `launch.status()`, `launch.begin(args)`, `launch.end(args)`; `launches.list()`, `launches.begin(args)`, and `launches.end(args)`.                                                                               |
+| `launch` / `launches`    | `launch.status()`, `launch.begin(args)`, `launch.end(args)`; `launches.list()`, `launches.snapshot()`, `launches.begin(args)`, and `launches.end(args)`.                                                        |
 | `session`                | `lock()`, `activity()`, `status()`, `logout()`.                                                                                                                                                                 |
 | `runtime`                | `reload_config()`                                                                                                                                                                                               |
 | `shortcut` / `shortcuts` | Registered operations: `shortcut.capture(args)`, `shortcut.bind(args)`, `shortcut.unbind(args)`. Public API: `shortcuts.actions(group?)`, `list()`, `capture(options?)`, `bind(args)`, and `unbind(args)`.      |
