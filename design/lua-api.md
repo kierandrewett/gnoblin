@@ -1238,6 +1238,8 @@ checks for subscribed lock clients, and dispatches the event.
 API 1.50 routes socket `launch.begin` and `launch.end` calls through Lua while
 preserving connection-owned launch event tracking. Earlier clients keep the
 synchronous route, and `launch.status` remains a direct snapshot read.
+API 1.51 routes `session.status` through the shared Lua read method; earlier
+clients retain the native compatibility route.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1279,6 +1281,7 @@ synchronous route, and `launch.status` remains a direct snapshot read.
 | `launch.status`                                                        | CLI uses `gnoblin.launches.snapshot()` to preserve the collection revision; retain the raw socket method for compatibility.                             |
 | `launch.begin`                                                         | `gnoblin.launches.begin(options)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                 |
 | `launch.end`                                                           | `gnoblin.launches.end(token)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                     |
+| `session.status`                                                       | `gnoblin.session.status()` in Lua; socket API 1.51 routes through the shared Lua runtime.                                                               |
 | `shell.ping`                                                           | Removed; use the unversioned socket transport operation `op = "ping"`.                                                                                  |
 | `shell.version`                                                        | `gnoblin.version()`                                                                                                                                     |
 | `shell.status`                                                         | `gnoblin.session.status()`                                                                                                                              |
