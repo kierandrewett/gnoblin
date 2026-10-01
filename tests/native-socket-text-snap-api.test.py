@@ -9,6 +9,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 CONTROL = ROOT / "src/native-control/gnoblin-native-control.c"
 HEADER = ROOT / "src/native-control/gnoblin-native-control.h"
+LUA = ROOT / "src/config/gnoblin-lua.c"
 
 
 def function_body(source: str, signature: str, end_marker: str) -> str:
@@ -716,6 +717,29 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"unsupported native window.action; use a typed window operation when available"', handler)
         self.assertIn("meta_gnoblin_dispatch_native_api(", handler)
         self.assertIn("client->control->display, method, native_arguments", handler)
+
+    def test_portal_grants_uses_lua_at_api_145_and_keeps_native_route(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        lua_source = LUA.read_text()
+        grant_handler = function_body(
+            source,
+            'if (g_str_equal(method, "portals.grants")) {',
+            'if (g_str_equal(method, "permissions.list")) {',
+        )
+        lua_read = function_body(
+            lua_source,
+            "GVariant* gnoblin_config_read_api(",
+            "void gnoblin_config_finish_load(",
+        )
+
+        self.assertIn("client->api_minor >= 45", grant_handler)
+        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', grant_handler)
+        self.assertIn("client->control->portal_grant_snapshot", grant_handler)
+        self.assertIn('"portals.grants"', lua_read)
+        self.assertIn('g_str_equal(method, "portals.grants")', lua_read)
+        self.assertIn('lua_getfield(state, -1, "grants")', lua_read)
+        self.assertGreaterEqual(api_minor(header), 45)
 
     def test_restore_or_minimize_is_native_and_clears_saved_frames(self):
         source = CONTROL.read_text()

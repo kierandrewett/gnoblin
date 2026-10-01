@@ -1159,6 +1159,49 @@ int main(void) {
     g_assert_cmpstr(permission_level, ==, "default");
     g_assert_cmpstr(permission_rule, ==, "");
 
+    GVariantBuilder portal_grant_builder;
+    g_variant_builder_init(&portal_grant_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&portal_grant_builder, "{sv}", "id", g_variant_new_string("grant-1"));
+    g_variant_builder_add(&portal_grant_builder, "{sv}", "kind",
+                          g_variant_new_string("screen-cast"));
+    GVariantBuilder portal_grants_builder;
+    g_variant_builder_init(&portal_grants_builder, G_VARIANT_TYPE("aa{sv}"));
+    g_variant_builder_add_value(&portal_grants_builder,
+                                g_variant_builder_end(&portal_grant_builder));
+    GVariantBuilder portal_snapshot_builder;
+    g_variant_builder_init(&portal_snapshot_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&portal_snapshot_builder, "{sv}", "grants",
+                          g_variant_builder_end(&portal_grants_builder));
+    g_variant_builder_add(&portal_snapshot_builder, "{sv}", "revision", g_variant_new_int64(23));
+    g_autoptr(GVariant) portal_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&portal_snapshot_builder));
+    gnoblin_config_update_portal_grant_snapshot(portal_snapshot, 23);
+    g_autoptr(GVariant) portal_grants =
+        gnoblin_config_read_api("portals.grants", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(portal_grants, G_VARIANT_TYPE("av")));
+    g_assert_cmpuint(g_variant_n_children(portal_grants), ==, 1);
+    g_autoptr(GVariant) portal_grant_box = g_variant_get_child_value(portal_grants, 0);
+    g_autoptr(GVariant) portal_grant = g_variant_get_variant(portal_grant_box);
+    const char* portal_grant_kind = NULL;
+    g_assert_true(g_variant_lookup(portal_grant, "kind", "&s", &portal_grant_kind));
+    g_assert_cmpstr(portal_grant_kind, ==, "screen-cast");
+    gint64 portal_grant_revision = 0;
+    g_assert_true(g_variant_lookup(portal_grant, "revision", "x", &portal_grant_revision));
+    g_assert_cmpint(portal_grant_revision, ==, 23);
+
+    GVariantBuilder portal_filter_builder;
+    g_variant_builder_init(&portal_filter_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&portal_filter_builder, "{sv}", "kind",
+                          g_variant_new_string("remote-desktop"));
+    g_autoptr(GVariant) portal_filter =
+        g_variant_ref_sink(g_variant_builder_end(&portal_filter_builder));
+    g_autoptr(GVariant) filtered_portal_grants =
+        gnoblin_config_read_api("portals.grants", portal_filter, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(filtered_portal_grants, G_VARIANT_TYPE("av")));
+    g_assert_cmpuint(g_variant_n_children(filtered_portal_grants), ==, 0);
+
     g_autoptr(GVariant) shortcut_actions =
         gnoblin_config_read_api("shortcuts.actions", empty_read_arguments, &error);
     g_assert_no_error(error);
