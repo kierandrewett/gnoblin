@@ -117,6 +117,9 @@ List current layer-shell surfaces and their namespaces with:
 gnoblinctl layer list
 ```
 
+The command reads the API 1.37 `layers.list` snapshot and keeps the `layers`
+object in JSON output. Records include a state revision.
+
 Use a surface's `namespace` as the `layer` value in a window rule. The
 `animation surfaces` command reports the same surfaces for animation previews.
 

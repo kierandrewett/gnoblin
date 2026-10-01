@@ -45,6 +45,10 @@ accepted values, results, and compatibility limits.
 JSON wrapper. It maps each snapshot's `window_count` to the CLI's `windows`
 field. Raw socket clients can continue using the older `workspace.list` method.
 
+The monitor and layer list commands also use their API 1.37 snapshot methods,
+`monitors.list` and `layers.list`; the CLI wraps each returned array under its
+existing `monitors` or `layers` key.
+
 | Group         | Methods                                                                                                                                                                                                                              |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `workspace`   | `list`, `create`, `rename`, `remove`, `switch`, `next`, `previous`, `move_active`, `move_window`                                                                                                                                     |
