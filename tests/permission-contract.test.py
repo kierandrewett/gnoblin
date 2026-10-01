@@ -8,17 +8,17 @@ CONTROL = (ROOT / "src/native-control/gnoblin-native-control.c").read_text()
 
 
 class PermissionContractTest(unittest.TestCase):
-    def test_socket_decision_uses_public_string_arrays_and_revision(self):
-        start = CONTROL.index("static JsonNode* permission_decision_json(")
-        end = CONTROL.index("static gboolean native_api_read_method(", start)
+    def test_permission_decisions_are_confined_to_the_portal_backend(self):
+        start = CONTROL.index("static void native_policy_method_call(")
+        end = CONTROL.index("static const GDBusInterfaceVTable native_policy_vtable", start)
         implementation = CONTROL[start:end]
 
-        self.assertIn('json_array_add_string_element(devices, "keyboard")', implementation)
-        self.assertIn('json_array_add_string_element(devices, "pointer")', implementation)
-        self.assertIn('json_array_add_string_element(devices, "touchscreen")', implementation)
-        self.assertIn('json_object_set_array_member(object, "devices", devices)', implementation)
-        self.assertIn('json_object_set_int_member(object, "revision", (gint64)revision)', implementation)
-        self.assertNotIn('json_object_set_int_member(object, "devices"', implementation)
+        self.assertIn("native_policy_requester_is_portal_backend(connection, sender)", implementation)
+        self.assertIn("permission decisions are available only to the Gnoblin portal backend", implementation)
+        self.assertIn("native_config_document(control)", implementation)
+        self.assertIn("gnoblin_permission_policy_evaluate(document, capability, identity)", implementation)
+        self.assertIn('g_variant_new("(ss@asub)"', implementation)
+        self.assertIn("decision.devices", implementation)
 
     def test_native_privacy_reports_only_observable_microphone_state(self):
         start = CONTROL.index("static GVariant* privacy_snapshot_new(")
