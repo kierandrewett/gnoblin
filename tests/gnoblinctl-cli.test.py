@@ -196,7 +196,7 @@ def main() -> int:
                                 result = {"request_id": 23, "method": "input.select_source"}
                             elif request["method"] == "window.thumbnail":
                                 result = {"request_id": 20, "method": "window.thumbnail"}
-                            elif request["method"] == "launch.status":
+                            elif request["method"] == "launches.snapshot":
                                 result = {
                                     "launches": [{"token": "one", "application": "app", "state": "pending"}],
                                     "revision": 4,
@@ -505,8 +505,8 @@ def main() -> int:
         assert thumbnail_request["api_version"] == {"major": 1, "minor": 23}
         assert thumbnail_request["arguments"] == {"id": "42", "width": 64, "height": 64}
         launch_status_request = received[10]
-        assert launch_status_request["method"] == "launch.status"
-        assert launch_status_request["api_version"] == {"major": 1, "minor": 8}
+        assert launch_status_request["method"] == "launches.snapshot"
+        assert launch_status_request["api_version"] == {"major": 1, "minor": 39}
         assert launch_status_request["arguments"] == {}
         assert received[11]["method"] == "windows.list"
         assert received[11]["api_version"] == {"major": 1, "minor": 37}

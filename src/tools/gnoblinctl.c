@@ -318,6 +318,7 @@ static guint api_minor_for_method(const char* method) {
         {"workspaces.list", 37},
         {"monitors.list", 37},
         {"layers.list", 37},
+        {"launches.snapshot", 39},
         {"capabilities.list", 19},
         {"focus.history", 19},
         {"focus.policy", 19},
@@ -371,6 +372,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "privacy.stop_sharing") ||
         g_str_equal(method_name, "privacy.stop_recording") ||
         g_str_equal(method_name, "launch.status") ||
+        g_str_equal(method_name, "launches.snapshot") ||
         g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "windows.list") ||
         g_str_equal(method_name, "workspaces.list") || g_str_equal(method_name, "monitors.list") ||
         g_str_equal(method_name, "layers.list") || g_str_equal(method_name, "focus.history") ||
@@ -517,8 +519,9 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
             if (g_str_equal(event, "reply")) {
                 JsonNode* result_node = json_object_get_member(response, "result");
                 JsonObject* result = member_object(response, "result");
-                gboolean read_method = word_in(
-                    "version capabilities.list focus.history settings focus.policy", method_name);
+                gboolean read_method = word_in("version capabilities.list focus.history settings "
+                                               "focus.policy launches.snapshot",
+                                               method_name);
                 gboolean operation_descriptor = result &&
                                                 json_object_has_member(result, "request_id") &&
                                                 json_object_has_member(result, "method");
@@ -1193,7 +1196,7 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         if (is(action, "status")) {
             if (!require_count(cli, 0, 0, error))
                 goto invalid;
-            method = "launch.status";
+            method = "launches.snapshot";
         } else if (is(action, "begin")) {
             if (!require_count(cli, 2, 3, error))
                 goto invalid;
@@ -1208,7 +1211,7 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                 goto invalid;
             set_string(arguments, "token", arg(cli, 0));
         }
-        if (action)
+        if (action && !is(action, "status"))
             method = owned_method = g_strdup_printf("launch.%s", action);
     } else if (is(command, "layer") && is(action, "list"))
         method = "layers.list";
