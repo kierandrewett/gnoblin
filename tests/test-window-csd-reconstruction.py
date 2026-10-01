@@ -113,6 +113,13 @@ with (root / "csd-reconstruction-client.log").open("w") as log:
         )
         assert restored.getpixel((1, 1)) == background, "configured compositor corner was not clipped"
         assert restored.getpixel((160, 120)) == (255, 255, 255), "reconstruction changed the window body"
+
+        configure(False)
+        preserved = capture(box)
+        assert preserved.getpixel((8, 8)) == background, (
+            "disabling remove_csd did not restore the client corner",
+            preserved.getpixel((8, 8)),
+        )
         print("PASS: Lua remove_csd restores client corner pixels before native rounding")
     finally:
         process.terminate()
