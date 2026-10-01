@@ -286,6 +286,7 @@ compositor. External clients' shortcuts and disabled declarations are not
 included. Each record includes its name, binding, enabled state, trigger,
 revision, and either a command or built-in action. A binding with multiple
 accelerators is shown as a JSON array in the table.
+The command reads the shared Lua snapshot through API 1.40.
 
 Use `--json` for structured output in a terminal or pipe:
 
