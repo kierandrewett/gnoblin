@@ -10925,12 +10925,20 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "input.devices")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "input.devices does not accept arguments");
-        g_autoptr(GVariant) snapshot = input_device_snapshot(client->control);
-        g_autoptr(JsonNode) json = json_from_variant(snapshot);
         if (client->api_minor >= 4) {
             client->track_input_devices = TRUE;
             client->input_devices_api_minor = client->api_minor;
         }
+        if (client->api_minor >= 46) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            GVariantBuilder empty;
+            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+            g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+            return queue_runtime_api_request(client, id, method, read_arguments, "read");
+        }
+        g_autoptr(GVariant) snapshot = input_device_snapshot(client->control);
+        g_autoptr(JsonNode) json = json_from_variant(snapshot);
         return encode_response(id, json, NULL);
     }
     if (g_str_equal(method, "input.sources") || g_str_equal(method, "input.current_source")) {
@@ -10939,6 +10947,14 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         client->track_input_sources = TRUE;
         client->input_sources_api_minor = client->api_minor;
         publish_input_source_changes(client->control, client->control->state_revision);
+        if (client->api_minor >= 46) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            GVariantBuilder empty;
+            g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+            g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+            return queue_runtime_api_request(client, id, method, read_arguments, "read");
+        }
         g_autoptr(GVariant) snapshot = input_source_snapshot(client->control);
         g_autoptr(JsonNode) json = json_from_variant(snapshot);
         if (g_str_equal(method, "input.current_source")) {

@@ -6329,13 +6329,30 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
 
 GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {
     static const char* read_methods[] = {
-        "version",           "windows.list",      "capabilities.list",
-        "focus.history",     "settings",          "focus.policy",
-        "session.activity",  "session.status",    "layer.animation_policy",
-        "workspaces.list",   "monitors.list",     "layers.list",
-        "launches.list",     "launches.snapshot", "shortcuts.list",
-        "shortcuts.actions", "permissions.list",  "permissions.policy",
-        "permissions.check", "portals.grants",    NULL,
+        "version",
+        "windows.list",
+        "capabilities.list",
+        "focus.history",
+        "settings",
+        "focus.policy",
+        "session.activity",
+        "session.status",
+        "layer.animation_policy",
+        "workspaces.list",
+        "monitors.list",
+        "layers.list",
+        "launches.list",
+        "launches.snapshot",
+        "shortcuts.list",
+        "shortcuts.actions",
+        "permissions.list",
+        "permissions.policy",
+        "permissions.check",
+        "portals.grants",
+        "input.devices",
+        "input.sources",
+        "input.current_source",
+        NULL,
     };
     gboolean known = FALSE;
     for (guint i = 0; method && read_methods[i]; i++)
@@ -6508,6 +6525,15 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_getfield(state, -1, "grants");
         lua_remove(state, -2);
         lua_remove(state, -2);
+    } else if (g_str_equal(method, "input.devices") || g_str_equal(method, "input.sources") ||
+               g_str_equal(method, "input.current_source")) {
+        lua_getfield(state, -1, "input");
+        const char* field = g_str_equal(method, "input.devices")   ? "devices"
+                            : g_str_equal(method, "input.sources") ? "sources"
+                                                                   : "current_source";
+        lua_getfield(state, -1, field);
+        lua_remove(state, -2);
+        lua_remove(state, -2);
     } else { /* focus.policy */
         lua_getfield(state, -1, "focus");
         lua_getfield(state, -1, "policy");
@@ -6547,7 +6573,41 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         }
     }
 
-    GVariant* result = variant_from_lua(state, -1, 0, FALSE, 0, error);
+    GVariant* result = NULL;
+    if (g_str_equal(method, "input.current_source") && lua_isnil(state, -1)) {
+        GVariantBuilder response;
+        g_variant_builder_init(&response, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&response, "{sv}", "available", g_variant_new_boolean(FALSE));
+        g_variant_builder_add(&response, "{sv}", "revision",
+                              g_variant_new_int64((gint64)config->input_source_revision));
+        result = g_variant_ref_sink(g_variant_builder_end(&response));
+    } else {
+        gboolean force_array =
+            g_str_equal(method, "input.devices") || g_str_equal(method, "input.sources");
+        g_autoptr(GVariant) value = variant_from_lua(state, -1, 0, force_array, 0, error);
+        if (value && (force_array || g_str_equal(method, "input.current_source"))) {
+            GVariantBuilder response;
+            g_variant_builder_init(&response, G_VARIANT_TYPE_VARDICT);
+            if (g_str_equal(method, "input.devices") || g_str_equal(method, "input.sources")) {
+                g_variant_builder_add(&response, "{sv}",
+                                      g_str_equal(method, "input.devices") ? "devices" : "sources",
+                                      value);
+                guint64 revision = g_str_equal(method, "input.devices")
+                                       ? config->input_device_revision
+                                       : config->input_source_revision;
+                g_variant_builder_add(&response, "{sv}", "revision",
+                                      g_variant_new_int64((gint64)revision));
+            } else {
+                g_variant_builder_add(&response, "{sv}", "available", g_variant_new_boolean(TRUE));
+                g_variant_builder_add(&response, "{sv}", "source", value);
+                g_variant_builder_add(&response, "{sv}", "revision",
+                                      g_variant_new_int64((gint64)config->input_source_revision));
+            }
+            result = g_variant_ref_sink(g_variant_builder_end(&response));
+        } else if (value) {
+            result = g_variant_ref(value);
+        }
+    }
     lua_settop(state, base);
     config->api_calling = FALSE;
     if (config->runtime_actions->len != action_start) {
