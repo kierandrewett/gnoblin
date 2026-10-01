@@ -21,10 +21,11 @@ BuildRequires:  pkgconfig(gio-unix-2.0)
 BuildRequires:  pkgconfig(glib-2.0) >= 2.76
 BuildRequires:  pkgconfig(glycin-2)
 BuildRequires:  pkgconfig(gsettings-desktop-schemas)
-BuildRequires:  pkgconfig(gtk4)
+BuildRequires:  pkgconfig(gtk4) >= 4.22.0
 BuildRequires:  pkgconfig(gtk4-unix-print)
 BuildRequires:  pkgconfig(libadwaita-1) >= 1.7
 BuildRequires:  pkgconfig(xdg-desktop-portal) >= 1.21.1
+Requires:       gtk4 >= 4.22.0
 Requires:       xdg-desktop-portal >= 1.21.1
 
 %description
