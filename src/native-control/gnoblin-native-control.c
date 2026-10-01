@@ -9894,7 +9894,9 @@ static gboolean native_api_read_method(const char* method) {
             g_str_equal(method, "capabilities.list") || g_str_equal(method, "focus.history") ||
             g_str_equal(method, "settings") || g_str_equal(method, "focus.policy") ||
             g_str_equal(method, "session.activity") ||
-            g_str_equal(method, "layer.animation_policy"));
+            g_str_equal(method, "layer.animation_policy") ||
+            g_str_equal(method, "workspaces.list") || g_str_equal(method, "monitors.list") ||
+            g_str_equal(method, "layers.list") || g_str_equal(method, "launches.list"));
 }
 
 static gboolean runtime_reload_document_supported(GVariant* current, GVariant* candidate) {
@@ -10423,6 +10425,10 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         return encode_response(id, NULL, "privacy stop methods require API version 1.31");
     if (g_str_equal(method, "layer.animation_policy") && client->api_minor < 31)
         return encode_response(id, NULL, "layer.animation_policy requires API version 1.31");
+    if ((g_str_equal(method, "workspaces.list") || g_str_equal(method, "monitors.list") ||
+         g_str_equal(method, "layers.list") || g_str_equal(method, "launches.list")) &&
+        client->api_minor < 37)
+        return encode_response(id, NULL, "Lua snapshot collection reads require API version 1.37");
     if (g_str_equal(method, "window.thumbnail") && client->api_minor < 23)
         return encode_response(id, NULL, "window.thumbnail requires API version 1.23");
     if (g_str_equal(method, "window.snap.offer") && client->api_minor < 26)
