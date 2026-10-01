@@ -16,8 +16,8 @@ thumbnail API.
 
 A live devkit check confirmed that a modal held shortcut registers through
 `ShortcutSession.qml`. Window-switcher focus also uses the native focus API.
-Application-launch focus, snapping, privacy stop controls, text insertion, and
-OSD still need migration before the whole shell works in a standalone session.
+Application-launch focus, snapping, text insertion, and OSD still need
+migration before the whole shell works in a standalone session.
 
 - `shell/bingux/ShortcutSession.qml` uses `shortcut.bind`, `shortcut.unbind`,
   `ping`, and versioned shortcut event subscriptions when connected to
@@ -25,9 +25,10 @@ OSD still need migration before the whole shell works in a standalone session.
   Its app-launch activation, drag, text input, and private
   `bingux.*` operations still need standalone API replacements.
 - `shell/bingux/PrivacyState.qml` reads standalone screen-sharing and recording
-  state through `privacy.state` and `gnoblin.privacy.changed`. Its existing
-  camera and location probes remain in place because the native API does not
-  report those sources. Stop controls still use compatibility operations.
+  state through `privacy.state` and `gnoblin.privacy.changed`, and uses native
+  stop methods. Its existing camera and location probes remain in place
+  because the native API does not report those sources. The GNOME session keeps
+  its compatibility operations.
 - `shell/bingux/WorkspaceState.qml` now uses the versioned `workspace.list` and
   `workspace.switch` API methods. It subscribes to workspace lifecycle events
   on `op: "windows"` and polls only when connected to an older API version.
@@ -70,9 +71,10 @@ Replace these compatibility-bridge calls:
   `ShortcutSession.qml` now requests thumbnails and routes the completion event
   back to the switcher. Requests fail while the session is locked, and a closed
   or non-drawable window can return an error.
-- **Privacy:** `PrivacyState.qml` now uses the `privacy.state` read and the
-  `gnoblin.privacy.changed` event. Replace its stop-sharing and stop-recording
-  calls with `privacy.stop_sharing` and `privacy.stop_recording` (API 1.31).
+- **Privacy:** `PrivacyState.qml` uses `privacy.state`, the
+  `gnoblin.privacy.changed` event, `privacy.stop_sharing`, and
+  `privacy.stop_recording` in the standalone session. Stop methods require API
+  1.31. The native API does not report camera or location activity.
 - **Snapping:** Replace `window-drag` and snap events with pointer-drag event
   subscriptions and `window.snap.offer` on the connection that received the
   drag token.
