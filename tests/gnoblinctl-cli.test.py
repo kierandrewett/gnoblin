@@ -119,7 +119,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(15):
+                    for _ in range(16):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -162,6 +162,17 @@ def main() -> int:
                                         "name": "Codex Probe",
                                         "active": True,
                                         "window_count": 2,
+                                        "revision": 5,
+                                    }
+                                ]
+                            elif request["method"] == "layers.list":
+                                result = [
+                                    {
+                                        "id": "surface-1",
+                                        "title": "Panel",
+                                        "namespace": "panel:top",
+                                        "layer": "top",
+                                        "monitor_id": "HDMI-1",
                                         "revision": 5,
                                     }
                                 ]
@@ -399,11 +410,25 @@ def main() -> int:
         )
         assert restore_or_minimize.returncode == 0, restore_or_minimize.stderr
         assert json.loads(restore_or_minimize.stdout) == {"id": "42", "action": "restore"}
+        layer_list = run(binary, "--socket", socket_path, "--format", "json", "layer", "list")
+        assert layer_list.returncode == 0, layer_list.stderr
+        assert json.loads(layer_list.stdout) == {
+            "layers": [
+                {
+                    "id": "surface-1",
+                    "title": "Panel",
+                    "namespace": "panel:top",
+                    "layer": "top",
+                    "monitor_id": "HDMI-1",
+                    "revision": 5,
+                }
+            ]
+        }
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 15
-        assert len(subscriptions) == 15
+        assert len(received) == 16
+        assert len(subscriptions) == 16
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -471,6 +496,9 @@ def main() -> int:
         assert received[14]["method"] == "window.restore_or_minimize"
         assert received[14]["api_version"] == {"major": 1, "minor": 38}
         assert received[14]["arguments"] == {"id": "42"}
+        assert received[15]["method"] == "layers.list"
+        assert received[15]["api_version"] == {"major": 1, "minor": 37}
+        assert received[15]["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0

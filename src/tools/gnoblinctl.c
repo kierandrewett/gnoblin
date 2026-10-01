@@ -317,6 +317,7 @@ static guint api_minor_for_method(const char* method) {
         {"windows.list", 37},
         {"workspaces.list", 37},
         {"monitors.list", 37},
+        {"layers.list", 37},
         {"capabilities.list", 19},
         {"focus.history", 19},
         {"focus.policy", 19},
@@ -366,8 +367,9 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "launch.status") ||
         g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "windows.list") ||
         g_str_equal(method_name, "workspaces.list") || g_str_equal(method_name, "monitors.list") ||
-        g_str_equal(method_name, "focus.history") || g_str_equal(method_name, "focus.policy") ||
-        g_str_equal(method_name, "settings") || g_str_equal(method_name, "runtime.reload_config") ||
+        g_str_equal(method_name, "layers.list") || g_str_equal(method_name, "focus.history") ||
+        g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings") ||
+        g_str_equal(method_name, "runtime.reload_config") ||
         g_str_has_prefix(method_name, "animation.")) {
         json_builder_set_member_name(builder, "api_version");
         json_builder_begin_object(builder);
@@ -515,7 +517,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                                                 json_object_has_member(result, "method");
                 gboolean array_result = result_node && JSON_NODE_HOLDS_ARRAY(result_node) &&
                                         word_in("capabilities.list focus.history windows.list "
-                                                "workspaces.list monitors.list "
+                                                "workspaces.list monitors.list layers.list "
                                                 "shortcut.actions shortcut.list",
                                                 method_name);
                 gboolean null_result = result_node && JSON_NODE_HOLDS_NULL(result_node) &&
@@ -1145,7 +1147,7 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         if (action)
             method = owned_method = g_strdup_printf("launch.%s", action);
     } else if (is(command, "layer") && is(action, "list"))
-        method = "layer.list";
+        method = "layers.list";
     else if (is(command, "monitor") && is(action, "list"))
         method = "monitors.list";
     else if (is(command, "focus") && is(action, "history")) {
@@ -1245,6 +1247,13 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         }
         JsonObject* result = json_object_new();
         json_object_set_member(result, "workspaces", workspaces_node);
+        JsonNode* node = json_node_new(JSON_NODE_OBJECT);
+        json_node_take_object(node, result);
+        return node;
+    }
+    if (is(command, "layer") && is(action, "list") && JSON_NODE_HOLDS_ARRAY(reply)) {
+        JsonObject* result = json_object_new();
+        json_object_set_member(result, "layers", json_node_copy(reply));
         JsonNode* node = json_node_new(JSON_NODE_OBJECT);
         json_node_take_object(node, result);
         return node;
