@@ -779,7 +779,38 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("gnoblin_config_update_input_device_snapshot", lua_source)
         self.assertIn("gnoblin_config_update_input_source_snapshot", lua_source)
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
-        self.assertEqual(api_minor(header), 46)
+        self.assertGreaterEqual(api_minor(header), 46)
+
+    def test_privacy_state_uses_lua_at_api_147_and_keeps_native_route(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        lua_source = LUA.read_text()
+        handler = function_body(
+            source,
+            'if (g_str_equal(method, "privacy.state")) {',
+            'if (g_str_equal(method, "portals.grants")) {',
+        )
+        reads = function_body(
+            source,
+            "static gboolean native_api_read_method(",
+            "static gboolean runtime_reload_document_supported(",
+        )
+        lua_read = function_body(
+            lua_source,
+            "GVariant* gnoblin_config_read_api(",
+            "GVariant* gnoblin_config_current_document(",
+        )
+
+        self.assertIn("client->api_minor >= 47", handler)
+        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', handler)
+        self.assertIn("client->control->privacy_snapshot", handler)
+        self.assertNotIn('g_str_equal(method, "privacy.state")', reads)
+        self.assertIn('"privacy.state"', lua_read)
+        self.assertIn('g_str_equal(method, "privacy.state")', lua_read)
+        self.assertIn('lua_getfield(state, -1, "state")', lua_read)
+        self.assertEqual(api_minor(header), 47)
+        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
 
     def test_restore_or_minimize_is_native_and_clears_saved_frames(self):
         source = CONTROL.read_text()
