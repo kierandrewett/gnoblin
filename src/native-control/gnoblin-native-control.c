@@ -6383,23 +6383,31 @@ static void native_native_event(MetaDisplay* display, const char* event, GVarian
         !payload || !g_variant_is_of_type(payload, G_VARIANT_TYPE_VARDICT))
         return;
 
-    g_autoptr(JsonNode) root = json_node_new(JSON_NODE_OBJECT);
-    JsonObject* object = json_object_new();
-    json_node_take_object(root, object);
-    json_object_set_string_member(object, "name", event);
+    GVariantBuilder enriched;
+    g_variant_builder_init(&enriched, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&enriched, "{sv}", "name", g_variant_new_string(event));
+    g_variant_builder_add(&enriched, "{sv}", "sequence",
+                          g_variant_new_int64(++control->event_sequence));
+    g_variant_builder_add(&enriched, "{sv}", "time", g_variant_new_int64(g_get_monotonic_time()));
     GVariantIter iterator;
     const char* key;
     GVariant* value;
     g_variant_iter_init(&iterator, payload);
     while (g_variant_iter_next(&iterator, "{&sv}", &key, &value)) {
-        /* The socket envelope uses its top-level `event` for the event name. */
-        const char* socket_key = g_str_equal(key, "event") ? "animation_event" : key;
-        json_object_set_member(object, socket_key, json_from_variant(value));
+        g_variant_builder_add(&enriched, "{sv}", key, value);
         g_variant_unref(value);
     }
-    json_object_set_int_member(object, "sequence", ++control->event_sequence);
-    json_object_set_int_member(object, "time", g_get_monotonic_time());
+    g_autoptr(GVariant) event_payload = g_variant_ref_sink(g_variant_builder_end(&enriched));
+    g_autoptr(JsonNode) root = json_from_variant(event_payload);
+    JsonObject* object = json_node_get_object(root);
+    /* Keep the animation's event field distinct from the socket event name. */
+    JsonNode* animation_event = json_object_get_member(object, "event");
+    if (animation_event) {
+        json_object_set_member(object, "animation_event", json_node_copy(animation_event));
+        json_object_remove_member(object, "event");
+    }
     publish_native_socket_event(control, root);
+    native_runtime_dispatch_event(control, event, event_payload);
 }
 
 static gboolean focus_token_has_valid_shape(const char* token) {

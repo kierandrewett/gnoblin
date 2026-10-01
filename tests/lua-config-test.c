@@ -442,6 +442,19 @@ int main(void) {
         "g.on('mutter.touchpad.gesture', function(event)\n"
         "  if event.phase == 'begin' then g.workspaces.next() end\n"
         "end)\n"
+        "g.on('gnoblin.animation.started', function(event)\n"
+        "  assert(event.name == 'gnoblin.animation.started')\n"
+        "  assert(event.animation == 'test-open' and event.target == 'window-1')\n"
+        "  assert(event.event == 'open' and event.sequence > 0 and event.time > 0)\n"
+        "  g.workspaces.next()\n"
+        "end)\n"
+        "g.on('gnoblin.animation.finished', function(event)\n"
+        "  assert(event.name == 'gnoblin.animation.finished')\n"
+        "  assert(event.animation == 'test-open' and event.target == 'window-1')\n"
+        "  assert(event.event == 'open' and event.cancelled == true)\n"
+        "  assert(event.sequence > 0 and event.time > 0)\n"
+        "  g.workspaces.previous()\n"
+        "end)\n"
         "g.on('test.animation', function()\n"
         "  local animations=g.animations.list()\n"
         "  assert(animations ~= nil, 'g.animations.list() returned nil')\n"
@@ -666,6 +679,62 @@ int main(void) {
     g_autoptr(GVariant) operation = g_variant_get_child_value(operations, 0);
     g_autoptr(GVariant) method = g_variant_lookup_value(operation, "method", G_VARIANT_TYPE_STRING);
     g_assert_cmpstr(g_variant_get_string(method, NULL), ==, "workspace.next");
+    gnoblin_config_finish_event(TRUE);
+
+    GVariantBuilder animation_event_builder;
+    g_variant_builder_init(&animation_event_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&animation_event_builder, "{sv}", "name",
+                          g_variant_new_string("gnoblin.animation.started"));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "animation",
+                          g_variant_new_string("test-open"));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "target",
+                          g_variant_new_string("window-1"));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "event", g_variant_new_string("open"));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "sequence", g_variant_new_int64(1));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "time", g_variant_new_int64(1));
+    g_autoptr(GVariant) animation_started_payload =
+        g_variant_ref_sink(g_variant_builder_end(&animation_event_builder));
+    dispatched_document = gnoblin_config_dispatch_event("gnoblin.animation.started",
+                                                        animation_started_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(dispatched_document);
+    g_clear_pointer(&operations, g_variant_unref);
+    operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(operations), ==, 1);
+    g_clear_pointer(&operation, g_variant_unref);
+    operation = g_variant_get_child_value(operations, 0);
+    g_clear_pointer(&method, g_variant_unref);
+    method = g_variant_lookup_value(operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(method, NULL), ==, "workspace.next");
+    gnoblin_config_finish_event(TRUE);
+
+    g_variant_builder_init(&animation_event_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&animation_event_builder, "{sv}", "name",
+                          g_variant_new_string("gnoblin.animation.finished"));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "animation",
+                          g_variant_new_string("test-open"));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "target",
+                          g_variant_new_string("window-1"));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "event", g_variant_new_string("open"));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "cancelled",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "sequence", g_variant_new_int64(2));
+    g_variant_builder_add(&animation_event_builder, "{sv}", "time", g_variant_new_int64(2));
+    g_clear_pointer(&animation_started_payload, g_variant_unref);
+    animation_started_payload = g_variant_ref_sink(g_variant_builder_end(&animation_event_builder));
+    g_clear_pointer(&dispatched_document, g_variant_unref);
+    dispatched_document = gnoblin_config_dispatch_event("gnoblin.animation.finished",
+                                                        animation_started_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(dispatched_document);
+    g_clear_pointer(&operations, g_variant_unref);
+    operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(operations), ==, 1);
+    g_clear_pointer(&operation, g_variant_unref);
+    operation = g_variant_get_child_value(operations, 0);
+    g_clear_pointer(&method, g_variant_unref);
+    method = g_variant_lookup_value(operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(method, NULL), ==, "workspace.previous");
     gnoblin_config_finish_event(TRUE);
 
     g_variant_builder_init(&payload_builder, G_VARIANT_TYPE_VARDICT);
