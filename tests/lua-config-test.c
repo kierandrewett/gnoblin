@@ -1124,6 +1124,23 @@ int main(void) {
     g_assert_true(g_variant_lookup(focus_policy, "focus_new_windows", "&s", &focus_new_windows));
     g_assert_cmpstr(focus_new_windows, ==, "strict");
 
+    g_autoptr(GVariant) privacy_state =
+        gnoblin_config_read_api("privacy.state", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(privacy_state, G_VARIANT_TYPE_VARDICT));
+    gint64 privacy_state_revision = 0;
+    g_assert_true(g_variant_lookup(privacy_state, "revision", "x", &privacy_state_revision));
+    g_assert_cmpint(privacy_state_revision, ==, 42);
+    gboolean privacy_screen_sharing = TRUE;
+    g_assert_true(g_variant_lookup(privacy_state, "screen_sharing", "b", &privacy_screen_sharing));
+    g_assert_false(privacy_screen_sharing);
+    g_autoptr(GVariant) privacy_availability =
+        g_variant_lookup_value(privacy_state, "available", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(privacy_availability);
+    g_autoptr(GVariant) unavailable_microphone =
+        g_variant_lookup_value(privacy_state, "microphone_in_use", NULL);
+    g_assert_null(unavailable_microphone);
+
     g_autoptr(GVariant) capabilities =
         gnoblin_config_read_api("capabilities.list", empty_read_arguments, &error);
     g_assert_no_error(error);
