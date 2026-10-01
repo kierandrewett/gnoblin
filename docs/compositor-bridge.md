@@ -136,8 +136,8 @@ compatibility route.
 
 API 1.46 routes `input.devices`, `input.sources`, and `input.current_source`
 through their shared Lua reads. Their response objects and revision fields stay
-the same. These reads require the Lua supervisor; clients requesting API 1.45
-or earlier keep the native compatibility route.
+the same. Every supported client version uses these reads, which require the Lua
+supervisor.
 
 API 1.47 routes `privacy.state` through `gnoblin.privacy.state()`. The privacy
 fields and revision stay the same. Every supported client version now reads
@@ -352,7 +352,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.43            | Shared `permissions.check` read backed by the installed Lua runtime             |
 | 1.44            | Shared `permissions.policy` read backed by the installed Lua runtime            |
 | 1.45            | Shared `portals.grants` read backed by the installed Lua runtime                |
-| 1.46            | Shared input device and source reads backed by the installed Lua runtime        |
+| 1.46            | Adds shared Lua input reads; all client versions now use them                   |
 | 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                 |
 | 1.48            | Lua runtime operation for `window.restore_or_minimize`                          |
 | 1.49            | Lua runtime operation for `session.lock`                                        |
