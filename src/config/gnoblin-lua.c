@@ -6346,6 +6346,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "shortcuts.list",
         "shortcuts.actions",
         "permissions.list",
+        "permissions.policy",
         "permissions.check",
         NULL,
     };
@@ -6492,6 +6493,11 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "permissions.list")) {
         lua_getfield(state, -1, "permissions");
         lua_getfield(state, -1, "list");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "permissions.policy")) {
+        lua_getfield(state, -1, "permissions");
+        lua_getfield(state, -1, "policy");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "permissions.check")) {

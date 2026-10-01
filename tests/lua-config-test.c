@@ -1129,6 +1129,17 @@ int main(void) {
         g_variant_lookup_value(permission_list, "capabilities", NULL);
     g_assert_nonnull(permission_capabilities);
 
+    g_autoptr(GVariant) permission_policy_read =
+        gnoblin_config_read_api("permissions.policy", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(permission_policy_read, G_VARIANT_TYPE_VARDICT));
+    const char* policy_default = NULL;
+    g_assert_true(g_variant_lookup(permission_policy_read, "default", "&s", &policy_default));
+    g_assert_cmpstr(policy_default, ==, "default");
+    gint64 permission_policy_revision = 0;
+    g_assert_true(
+        g_variant_lookup(permission_policy_read, "revision", "x", &permission_policy_revision));
+
     GVariantBuilder permission_check_arguments_builder;
     g_variant_builder_init(&permission_check_arguments_builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&permission_check_arguments_builder, "{sv}", "capability",
