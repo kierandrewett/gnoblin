@@ -672,7 +672,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         permission_check = function_body(
             source,
             'if (g_str_equal(method, "permissions.check")) {',
-            'if (g_str_equal(method, "window.action") && arguments_node) {',
+            'if (g_str_equal(method, "window.action")) {',
         )
 
         self.assertIn("client->api_minor >= 43", permission_check)
@@ -701,6 +701,21 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             permission_policy.index("gnoblin_permission_policy_snapshot(document"),
         )
         self.assertGreaterEqual(api_minor(header), 44)
+
+    def test_legacy_window_actions_dispatch_natively(self):
+        source = CONTROL.read_text()
+        handler = function_body(
+            source,
+            'if (g_str_equal(method, "window.action")) {',
+            'if (g_str_equal(method, "window.match")) {',
+        )
+
+        self.assertIn('g_str_equal(json_node_get_string(action_node), "focus")', handler)
+        self.assertIn("arguments_node ? json_node_get_object(arguments_node) : NULL", handler)
+        self.assertIn("native_socket_has_exact_fields(arguments, fields, G_N_ELEMENTS(fields))", handler)
+        self.assertIn('"unsupported native window.action; use a typed window operation when available"', handler)
+        self.assertIn("meta_gnoblin_dispatch_native_api(", handler)
+        self.assertIn("client->control->display, method, native_arguments", handler)
 
     def test_restore_or_minimize_is_native_and_clears_saved_frames(self):
         source = CONTROL.read_text()

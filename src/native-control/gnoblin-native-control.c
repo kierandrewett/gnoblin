@@ -10780,15 +10780,48 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 id, NULL, permission_error ? permission_error->message : "permission check failed");
         return encode_response(id, result, NULL);
     }
-    if (g_str_equal(method, "window.action") && arguments_node) {
-        JsonNode* action_node =
-            json_object_get_member(json_node_get_object(arguments_node), "action");
+    if (g_str_equal(method, "window.action")) {
+        JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
+        JsonNode* action_node = arguments ? json_object_get_member(arguments, "action") : NULL;
         if (action_node && JSON_NODE_HOLDS_VALUE(action_node) &&
             json_node_get_value_type(action_node) == G_TYPE_STRING &&
             g_str_equal(json_node_get_string(action_node), "focus"))
             return encode_response(
                 id, NULL,
                 "native window.action focus is denied; use window.focus with a live focus_context");
+
+        const char* fields[] = {"action", "window"};
+        if (!action_node || !JSON_NODE_HOLDS_VALUE(action_node) ||
+            json_node_get_value_type(action_node) != G_TYPE_STRING ||
+            (json_object_get_size(arguments) != 1 &&
+             !native_socket_has_exact_fields(arguments, fields, G_N_ELEMENTS(fields))))
+            return encode_response(id, NULL,
+                                   "window.action requires a string action and accepts only an "
+                                   "optional string window");
+
+        JsonNode* window_node = json_object_get_member(arguments, "window");
+        if (window_node && (!JSON_NODE_HOLDS_VALUE(window_node) ||
+                            json_node_get_value_type(window_node) != G_TYPE_STRING))
+            return encode_response(id, NULL, "window.action window must be a stable ID string");
+
+        const char* action = json_node_get_string(action_node);
+        static const char* const native_actions[] = {
+            "above",   "unabove",  "stick",      "unstick",    "close",        "minimize",
+            "restore", "maximize", "unmaximize", "fullscreen", "unfullscreen", NULL};
+        if (!g_strv_contains(native_actions, action))
+            return encode_response(
+                id, NULL,
+                "unsupported native window.action; use a typed window operation when available");
+
+        g_autoptr(GVariant) native_arguments = variant_from_json(arguments_node);
+        if (!native_arguments)
+            return encode_response(id, NULL, "window.action arguments are invalid");
+        g_autoptr(GVariant) result = meta_gnoblin_dispatch_native_api(
+            client->control->display, method, native_arguments, &error);
+        if (!result)
+            return encode_response(id, NULL, error ? error->message : "window action failed");
+        g_autoptr(JsonNode) json = json_from_variant(result);
+        return encode_response(id, json, NULL);
     }
     if (g_str_equal(method, "window.match")) {
         JsonObject* arguments_object = arguments_node && JSON_NODE_HOLDS_OBJECT(arguments_node)
