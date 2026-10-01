@@ -16,14 +16,18 @@ thumbnail API.
 
 A live devkit check confirmed that a modal held shortcut registers through
 `ShortcutSession.qml`. Window-switcher focus also uses the native focus API.
-Application-launch focus, snapping, privacy, text insertion, and OSD still
-need migration before the whole shell works in a standalone session.
+Application-launch focus, snapping, privacy stop controls, text insertion, and
+OSD still need migration before the whole shell works in a standalone session.
 
 - `shell/bingux/ShortcutSession.qml` uses `shortcut.bind`, `shortcut.unbind`,
   `ping`, and versioned shortcut event subscriptions when connected to
   standalone Gnoblin. It retains the compatibility protocol for GNOME sessions.
-  Its app-launch activation, drag, privacy, text input, and private
+  Its app-launch activation, drag, text input, and private
   `bingux.*` operations still need standalone API replacements.
+- `shell/bingux/PrivacyState.qml` reads standalone screen-sharing and recording
+  state through `privacy.state` and `gnoblin.privacy.changed`. Its existing
+  camera and location probes remain in place because the native API does not
+  report those sources. Stop controls still use compatibility operations.
 - `shell/bingux/WorkspaceState.qml` now uses the versioned `workspace.list` and
   `workspace.switch` API methods. It subscribes to workspace lifecycle events
   on `op: "windows"` and polls only when connected to an older API version.
@@ -60,13 +64,15 @@ Replace these compatibility-bridge calls:
   `gnoblin.shortcut.binding-activated` to `window.focus`. For other
   pointer-driven focus, use an XDG Activation token created from user input on
   the same socket connection. A window ID alone cannot take focus. The token
-  belongs to its receiving connection and authorizes one request.
+  belongs to its receiving connection and authorizes one request. Shortcut
+  focus contexts require API 1.11; XDG Activation focus requires API 1.32.
 - **Previews:** Replace `preview` with the asynchronous `window.thumbnail` API.
   `ShortcutSession.qml` now requests thumbnails and routes the completion event
   back to the switcher. Requests fail while the session is locked, and a closed
   or non-drawable window can return an error.
-- **Privacy:** Replace `privacy` with the `privacy.state` read and the
-  `gnoblin.privacy.changed` event.
+- **Privacy:** `PrivacyState.qml` now uses the `privacy.state` read and the
+  `gnoblin.privacy.changed` event. Replace its stop-sharing and stop-recording
+  calls with `privacy.stop_sharing` and `privacy.stop_recording` (API 1.31).
 - **Snapping:** Replace `window-drag` and snap events with pointer-drag event
   subscriptions and `window.snap.offer` on the connection that received the
   drag token.
@@ -89,11 +95,14 @@ The standalone socket accepts these top-level operations:
 - `windows` and `monitors` for snapshots and change events;
 - `ping` to check the connection.
 
-Negotiate the API version from the initial `hello` event and use the minimum
-version documented for each method. Basic dynamic shortcut binding requires
-API 1.11; held or modal bindings require API 1.22. Thumbnails require 1.23;
-text targets and keyboard snapping require
-1.28; privacy state requires 1.17; and OSD requests require 1.27.
+Negotiate the API version from the initial `hello` event. The minimum
+versions used by this migration are:
+
+- dynamic shortcut binding: 1.11; held or modal bindings: 1.22;
+- shortcut focus contexts: 1.11; XDG Activation focus: 1.32;
+- window thumbnails: 1.23; text targets and keyboard snapping: 1.28;
+- privacy state: 1.17; privacy stop actions: 1.31;
+- OSD requests: 1.27.
 
 `workspace.list` and `window.list` are Lua-backed from API 1.52 and 1.53. The
 [compositor bridge reference](compositor-bridge.md) lists every version,
