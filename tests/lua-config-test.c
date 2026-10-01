@@ -1141,6 +1141,34 @@ int main(void) {
         g_variant_lookup_value(privacy_state, "microphone_in_use", NULL);
     g_assert_null(unavailable_microphone);
 
+    g_autoptr(GVariant) session_status =
+        gnoblin_config_read_api("session.status", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    const char* session_state = NULL;
+    gboolean lock_available = TRUE;
+    g_assert_true(g_variant_lookup(session_status, "state", "&s", &session_state));
+    g_assert_cmpstr(session_state, ==, "running");
+    g_assert_true(g_variant_lookup(session_status, "lock_available", "b", &lock_available));
+    g_assert_false(lock_available);
+    g_assert_null(g_variant_lookup_value(session_status, "lock_state", NULL));
+
+    GVariantBuilder session_lock_builder;
+    g_variant_builder_init(&session_lock_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&session_lock_builder, "{sv}", "lock_available",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&session_lock_builder, "{sv}", "lock_state",
+                          g_variant_new_string("locked"));
+    g_autoptr(GVariant) session_lock_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&session_lock_builder));
+    gnoblin_config_update_session_lock_snapshot(session_lock_snapshot, 43);
+    g_clear_pointer(&session_status, g_variant_unref);
+    session_status = gnoblin_config_read_api("session.status", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_lookup(session_status, "lock_available", "b", &lock_available));
+    g_assert_true(lock_available);
+    g_assert_true(g_variant_lookup(session_status, "lock_state", "&s", &session_state));
+    g_assert_cmpstr(session_state, ==, "locked");
+
     g_autoptr(GVariant) capabilities =
         gnoblin_config_read_api("capabilities.list", empty_read_arguments, &error);
     g_assert_no_error(error);
