@@ -788,9 +788,31 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         ):
             with self.subTest(lua_method=lua_method):
                 self.assertIn(lua_method, handler)
-        self.assertIn('queue_runtime_api_request(client, id, lua_method, operation_arguments, "call")', handler)
+        self.assertIn(
+            "queue_runtime_api_request_internal(client, id, lua_method, operation_arguments,",
+            handler,
+        )
+        self.assertIn('"call", action, target)', handler)
         self.assertIn("meta_gnoblin_dispatch_native_api(", handler)
         self.assertIn("client->control->display, method, native_arguments", handler)
+
+        request_queue = function_body(
+            source,
+            "static char* queue_runtime_api_request_internal(",
+            "static char* queue_runtime_api_request(",
+        )
+        self.assertIn("pending->legacy_window_action = g_strdup(legacy_window_action)", request_queue)
+        self.assertIn("pending->legacy_window_id = g_strdup(legacy_window_id)", request_queue)
+
+        response = function_body(
+            source,
+            "else if (packet.type == GNOBLIN_RUNTIME_PACKET_API_RESPONSE && packet.request_id > 0)",
+            "else if (packet.type == GNOBLIN_RUNTIME_PACKET_CONFIG)",
+        )
+        for field in ('"ok"', '"pending"', '"window"', '"action"'):
+            with self.subTest(response_field=field):
+                self.assertIn(field, response)
+        self.assertIn('"Lua returned an invalid window action operation"', response)
 
     def test_portal_grants_uses_lua_at_api_145_and_keeps_native_route(self):
         source = CONTROL.read_text()

@@ -424,6 +424,8 @@ typedef struct {
 typedef struct {
     Client* client;
     char* request_id;
+    char* legacy_window_action;
+    char* legacy_window_id;
 } PendingRuntimeRequest;
 
 typedef struct {
@@ -3464,6 +3466,8 @@ static void pending_runtime_request_free(gpointer data) {
     if (!pending)
         return;
     g_free(pending->request_id);
+    g_free(pending->legacy_window_action);
+    g_free(pending->legacy_window_id);
     g_free(pending);
 }
 
@@ -10016,8 +10020,10 @@ static gboolean runtime_reload_document_supported(GVariant* current, GVariant* c
     return TRUE;
 }
 
-static char* queue_runtime_api_request(Client* client, const char* request_id, const char* method,
-                                       GVariant* arguments, const char* kind) {
+static char* queue_runtime_api_request_internal(Client* client, const char* request_id,
+                                                const char* method, GVariant* arguments,
+                                                const char* kind, const char* legacy_window_action,
+                                                const char* legacy_window_id) {
     GnoblinNativeControl* control = client->control;
     if (control->runtime_worker_suspended)
         return encode_response(request_id, NULL, "Lua worker is restarting");
@@ -10029,6 +10035,8 @@ static char* queue_runtime_api_request(Client* client, const char* request_id, c
     PendingRuntimeRequest* pending = g_new0(PendingRuntimeRequest, 1);
     pending->client = client;
     pending->request_id = g_strdup(request_id);
+    pending->legacy_window_action = g_strdup(legacy_window_action);
+    pending->legacy_window_id = g_strdup(legacy_window_id);
     g_hash_table_insert(control->pending_runtime_requests, key, pending);
     client->pending_deferred_requests++;
 
@@ -10051,6 +10059,12 @@ static char* queue_runtime_api_request(Client* client, const char* request_id, c
     client_maybe_free(client);
     return encode_response(request_id, NULL,
                            error ? error->message : "could not queue runtime API request");
+}
+
+static char* queue_runtime_api_request(Client* client, const char* request_id, const char* method,
+                                       GVariant* arguments, const char* kind) {
+    return queue_runtime_api_request_internal(client, request_id, method, arguments, kind, NULL,
+                                              NULL);
 }
 
 static gboolean json_integer(JsonNode* node, gint64* value) {
@@ -10924,7 +10938,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                                       g_variant_new_boolean(enabled));
             g_autoptr(GVariant) operation_arguments =
                 g_variant_ref_sink(g_variant_builder_end(&typed_arguments));
-            return queue_runtime_api_request(client, id, lua_method, operation_arguments, "call");
+            return queue_runtime_api_request_internal(client, id, lua_method, operation_arguments,
+                                                      "call", action, target);
         }
 
         g_autoptr(GVariant) native_arguments = variant_from_json(arguments_node);
@@ -12824,7 +12839,36 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                 g_set_error_literal(&error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                                     "supervisor sent an invalid API response");
             } else {
-                if (!ok)
+                if (ok && pending->legacy_window_action) {
+                    gint64 operation_id = 0;
+                    if (!pending->legacy_window_id ||
+                        !g_variant_is_of_type(result, G_VARIANT_TYPE_INT64) ||
+                        !g_variant_get_int64(result)) {
+                        ok = FALSE;
+                        message = "Lua returned an invalid window action operation";
+                    } else {
+                        operation_id = g_variant_get_int64(result);
+                        if (operation_id < 0) {
+                            ok = FALSE;
+                            message = "Lua returned an invalid window action operation";
+                        } else {
+                            GVariantBuilder legacy_result;
+                            g_variant_builder_init(&legacy_result, G_VARIANT_TYPE_VARDICT);
+                            g_variant_builder_add(&legacy_result, "{sv}", "ok",
+                                                  g_variant_new_boolean(TRUE));
+                            g_variant_builder_add(&legacy_result, "{sv}", "pending",
+                                                  g_variant_new_boolean(TRUE));
+                            g_variant_builder_add(&legacy_result, "{sv}", "window",
+                                                  g_variant_new_string(pending->legacy_window_id));
+                            g_variant_builder_add(
+                                &legacy_result, "{sv}", "action",
+                                g_variant_new_string(pending->legacy_window_action));
+                            g_clear_pointer(&result, g_variant_unref);
+                            result = g_variant_ref_sink(g_variant_builder_end(&legacy_result));
+                        }
+                    }
+                }
+                if (!ok && !message)
                     g_variant_lookup(packet.payload, "error", "&s", &message);
                 Client* client = pending->client;
                 if (!client->closing) {
