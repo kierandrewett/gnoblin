@@ -384,6 +384,12 @@ and `layer`. Unknown fields and non-string values raise a Lua error. The read
 is available only in the native Mutter runtime and raises a Lua error while its
 snapshot is unavailable.
 
+The legacy `layer.list` socket method remains available. API 1.57 and newer
+serve it from this Lua snapshot and preserve its `{surfaces: [...]}` response.
+Earlier clients use the existing compatibility path. See the
+[compositor bridge](/compositor-bridge#api-version-12-layer-surfaces) for the
+socket request format.
+
 Layer records expose these fields:
 
 | Field                              | Type and values                                                                |

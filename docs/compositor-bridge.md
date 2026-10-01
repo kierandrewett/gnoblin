@@ -45,10 +45,16 @@ lifecycle messages. `hello.events` lists available messages, and
 `hello.capabilities` includes `window-lifecycle-events`,
 `workspace-lifecycle-events`, and `monitor-lifecycle-events`.
 
+### API version 1.2: layer surfaces
+
 API 1.2 adds `layer.list` and the `layer-list` capability. The method accepts
 exact-string filters for `monitor_id`, `namespace`, and `layer`. Its snapshots
 share the state revision used by windows, workspaces, and monitors. The bridge
 does not send layer lifecycle events.
+
+API 1.57 and newer serve `layer.list` from the shared Lua layer snapshot while
+preserving the `{surfaces: [...]}` response. Older clients use the existing
+compatibility path.
 
 Request API 1.2 or newer; older and versionless requests receive an
 unsupported-version error:
@@ -355,6 +361,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.54            | Lua-backed compatibility read for `launch.status`                                                     |
 | 1.55            | Lua-backed compatibility read for `shortcut.list`                                                     |
 | 1.56            | Lua-backed `shortcut.actions`; older clients use the native snapshot                                  |
+| 1.57            | Lua-backed compatibility read for `layer.list`                                                        |
 
 ### API 1.27: shell presentation requests
 
