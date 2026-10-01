@@ -50,6 +50,10 @@ API 1.52 and newer serve that compatibility method from the Lua snapshot while
 keeping its original wrapper and `windows` count; earlier API versions use the
 native route.
 
+Raw socket clients can also use `window.list`. API 1.53 and newer serve it from
+the Lua snapshot while keeping its original wrapper and field names; earlier
+API versions use the native route.
+
 The monitor and layer list commands also use their API 1.37 snapshot methods,
 `monitors.list` and `layers.list`; the CLI wraps each returned array under its
 existing `monitors` or `layers` key.
