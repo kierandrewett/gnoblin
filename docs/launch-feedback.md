@@ -63,11 +63,3 @@ ID, WM class, WM class instance, desktop ID or desktop name. A trailing
 
 Requests expire even if a launcher exits before sending `End`. The cursor
 override is also released when the Gnoblin session shuts down.
-
-## Test
-
-```sh
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-launch-feedback.py" scripts/run-gnome-shell.sh
-```
-
-Checks pointer output, overlapping requests, expiry, reload and window-map completion.
