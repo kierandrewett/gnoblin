@@ -66,6 +66,11 @@ Native-control API 1.41 adds `shortcuts.actions`, a shared read backed by
 `gnoblin.shortcuts.actions(group?)`. It returns built-in action metadata from
 the installed GSettings schemas and requires the Lua supervisor.
 
+Native-control API 1.42 routes `permissions.list` through
+`gnoblin.permissions.list()`. It returns the committed permission policy,
+capabilities, levels, and configuration path, and requires the Lua supervisor.
+Older socket clients keep the native compatibility route.
+
 Native-control API 1.23 adds `window.thumbnail`. API 1.24 adds
 `session.activity` and its change event. API 1.26 adds pointer-drag lifecycle
 events and capability-bound `window.snap.offer`.
@@ -944,7 +949,7 @@ names documented for their interfaces.
 | `gnoblin.privacy.state()`          | None                     | Read-only `PrivacyState` snapshot                        |
 | `gnoblin.privacy.stop_sharing()`   | None                     | `Operation<{requested: integer}>`                        |
 | `gnoblin.privacy.stop_recording()` | None                     | `Operation<{requested: integer}>`                        |
-| `permissions.list()`               | None                     | Current permission policy                                |
+| `permissions.list()`               | None                     | Policy, capabilities, permission levels, and config path |
 | `permissions.policy()`             | None                     | Immutable policy with `default`, `rules`, and `revision` |
 | `permissions.check(args)`          | `capability`, `identity` | Permission decision with scope details                   |
 | `grant.list()`                     | None                     | `{grants = {Grant, ...}}`                                |
@@ -984,10 +989,13 @@ count confirms that the calls were issued, not that a session has already
 closed. Mutter reports closure later through `gnoblin.privacy.changed`; these
 methods do not revoke a saved portal grant.
 
-`permissions.policy()` returns the committed Gnoblin policy directly.
-Native-control API 1.16 adds the matching socket method and
-`gnoblin.permission.changed` event. `permissions.list()` is the operation-based policy read; use
-`permissions.policy()` for the immutable native snapshot.
+`permissions.policy()` returns the committed Gnoblin policy. The record has a
+default level, ordered rules, and revision. Native-control API 1.16 adds the
+matching socket method and `gnoblin.permission.changed` event.
+
+`permissions.list()` returns that policy with capability names, supported
+levels, and the configuration path. Its socket method uses the Lua runtime
+starting at API 1.42.
 
 Use `grant.revoke` with the `kind` and `id` from a listed portal grant.
 
