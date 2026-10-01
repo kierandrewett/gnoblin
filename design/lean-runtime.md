@@ -122,9 +122,12 @@ unsupported in the lean login; GNOME Session login forwards all flags to
 GNOME SessionManager only when the active desktop identifies as GNOME. A
 manager process left on a shared user bus does not change the standalone
 session's inhibitor route. Monitor sessions report screen saver activity and a
-running session, but standalone session-end query and ending states are not yet
-reported. That lifecycle integration and real-seat native and Flatpak probes
-remain work before full portal Inhibit parity.
+running session. When the standalone session supervisor begins teardown, it
+reports the portal's session-end query state, waits for active monitor
+responses for up to one second, then reports that the session is ending. An
+isolated D-Bus integration check covers acknowledged and timed-out responses
+and rejects calls from senders that do not own the session-supervisor name.
+Real-seat native and Flatpak probes remain before full portal Inhibit parity.
 Mutter's `idle-inhibit-unstable-v1` handler also calls
 `org.freedesktop.ScreenSaver.Inhibit` and `UnInhibit`. The standalone session
 therefore needs one owned screen saver/inhibitor service shared by Wayland
