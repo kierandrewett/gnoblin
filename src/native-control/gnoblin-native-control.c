@@ -153,6 +153,7 @@ struct _GnoblinNativeControl {
     MetaKeymapDescription* input_keymap_description;
     GSettings* input_source_settings;
     GSettings* appearance_settings;
+    GDBusConnection* ibus_bus;
     char* last_published_input_source;
     char* current_ibus_source_id;
     guint64 next_input_device_id;
@@ -1489,12 +1490,12 @@ static void stop_native_policy_dbus(GnoblinNativeControl* control) {
         control->portal_owner_subscription_id = 0;
     }
     if (control->ibus_signal_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->session_bus,
+        g_dbus_connection_signal_unsubscribe(control->ibus_bus,
                                              control->ibus_signal_subscription_id);
         control->ibus_signal_subscription_id = 0;
     }
     if (control->ibus_owner_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->session_bus,
+        g_dbus_connection_signal_unsubscribe(control->ibus_bus,
                                              control->ibus_owner_subscription_id);
         control->ibus_owner_subscription_id = 0;
     }
@@ -1521,6 +1522,7 @@ static void stop_native_policy_dbus(GnoblinNativeControl* control) {
         control->policy_bus_name_owned = FALSE;
     }
     g_clear_object(&control->session_bus);
+    g_clear_object(&control->ibus_bus);
     g_clear_pointer(&control->portal_grant_snapshot, g_variant_unref);
     native_publish_runtime_snapshot(control, "portal-grants", NULL, control->portal_grant_revision);
     g_clear_pointer(&control->session_activity_snapshot, g_variant_unref);
@@ -4314,6 +4316,62 @@ static char* ibus_engine_name_from_value(GVariant* value) {
     return NULL;
 }
 
+static char* ibus_bus_address(void) {
+    const char* address = g_getenv("IBUS_ADDRESS");
+    if (address && *address)
+        return g_strdup(address);
+
+    const char* display = g_getenv("WAYLAND_DISPLAY");
+    if (!display || !*display)
+        display = g_getenv("DISPLAY");
+    if (!display || !*display)
+        return NULL;
+
+    g_autofree char* display_name = g_path_get_basename(display);
+    if (display_name[0] == ':')
+        memmove(display_name, display_name + 1, strlen(display_name));
+    g_autofree char* machine_id = NULL;
+    if (!g_file_get_contents("/etc/machine-id", &machine_id, NULL, NULL) || !machine_id) {
+        g_clear_pointer(&machine_id, g_free);
+        if (!g_file_get_contents("/var/lib/dbus/machine-id", &machine_id, NULL, NULL))
+            return NULL;
+    }
+    g_strstrip(machine_id);
+    if (!*machine_id)
+        return NULL;
+    g_autofree char* filename = g_strdup_printf("%s-unix-%s", machine_id, display_name);
+    g_autofree char* path =
+        g_build_filename(g_get_user_config_dir(), "ibus", "bus", filename, NULL);
+    g_autofree char* contents = NULL;
+    if (!g_file_get_contents(path, &contents, NULL, NULL))
+        return NULL;
+
+    g_auto(GStrv) lines = g_strsplit(contents, "\n", -1);
+    for (char** line = lines; *line; line++) {
+        if (!g_str_has_prefix(*line, "IBUS_ADDRESS="))
+            continue;
+        const char* value = *line + strlen("IBUS_ADDRESS=");
+        return *value ? g_strdup(value) : NULL;
+    }
+    return NULL;
+}
+
+static GDBusConnection* connect_ibus_bus(void) {
+    g_autofree char* address = ibus_bus_address();
+    if (!address)
+        return NULL;
+
+    g_autoptr(GError) error = NULL;
+    GDBusConnection* connection =
+        g_dbus_connection_new_for_address_sync(address,
+                                               G_DBUS_CONNECTION_FLAGS_AUTHENTICATION_CLIENT |
+                                                   G_DBUS_CONNECTION_FLAGS_MESSAGE_BUS_CONNECTION,
+                                               NULL, NULL, &error);
+    if (!connection)
+        g_debug("gnoblin-native-control: IBus is unavailable: %s", error->message);
+    return connection;
+}
+
 static void ibus_global_engine_query_done(GObject* source_object, GAsyncResult* result,
                                           gpointer user_data) {
     GnoblinNativeControl* control = user_data;
@@ -4331,10 +4389,10 @@ static void ibus_global_engine_query_done(GObject* source_object, GAsyncResult* 
 }
 
 static void query_ibus_global_engine(GnoblinNativeControl* control) {
-    if (!control || control->stopping || !control->session_bus)
+    if (!control || control->stopping || !control->ibus_bus)
         return;
     control->pending_ibus_queries++;
-    g_dbus_connection_call(control->session_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
+    g_dbus_connection_call(control->ibus_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
                            "GetGlobalEngine", NULL, G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE,
                            1000, NULL, ibus_global_engine_query_done, control);
 }
@@ -4373,20 +4431,20 @@ static void ibus_name_owner_changed(GDBusConnection* connection, const char* sen
 }
 
 static void start_ibus_input_source_tracking(GnoblinNativeControl* control) {
-    if (!control->session_bus)
+    control->ibus_bus = connect_ibus_bus();
+    if (!control->ibus_bus)
         return;
     control->ibus_signal_subscription_id = g_dbus_connection_signal_subscribe(
-        control->session_bus, IBUS_BUS_NAME, IBUS_INTERFACE, "GlobalEngineChanged",
-        IBUS_OBJECT_PATH, NULL, G_DBUS_SIGNAL_FLAGS_NONE, ibus_global_engine_changed, control,
-        NULL);
+        control->ibus_bus, IBUS_BUS_NAME, IBUS_INTERFACE, "GlobalEngineChanged", IBUS_OBJECT_PATH,
+        NULL, G_DBUS_SIGNAL_FLAGS_NONE, ibus_global_engine_changed, control, NULL);
     control->ibus_owner_subscription_id = g_dbus_connection_signal_subscribe(
-        control->session_bus, "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
+        control->ibus_bus, "org.freedesktop.DBus", "org.freedesktop.DBus", "NameOwnerChanged",
         "/org/freedesktop/DBus", IBUS_BUS_NAME, G_DBUS_SIGNAL_FLAGS_NONE, ibus_name_owner_changed,
         control, NULL);
     g_autoptr(GVariant) owner = g_dbus_connection_call_sync(
-        control->session_bus, "org.freedesktop.DBus", "/org/freedesktop/DBus",
-        "org.freedesktop.DBus", "GetNameOwner", g_variant_new("(s)", IBUS_BUS_NAME),
-        G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 250, NULL, NULL);
+        control->ibus_bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+        "GetNameOwner", g_variant_new("(s)", IBUS_BUS_NAME), G_VARIANT_TYPE("(s)"),
+        G_DBUS_CALL_FLAGS_NONE, 250, NULL, NULL);
     if (owner)
         query_ibus_global_engine(control);
 }
@@ -5291,9 +5349,9 @@ static gboolean select_ibus_source(GnoblinNativeControl* control, const char* id
                             "another input source selection is still pending");
         return FALSE;
     }
-    if (!control->session_bus) {
+    if (!control->ibus_bus) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
-                            "the session bus is unavailable");
+                            "the IBus service is unavailable");
         return FALSE;
     }
     PendingInputSource* pending = g_new0(PendingInputSource, 1);
@@ -5303,7 +5361,7 @@ static gboolean select_ibus_source(GnoblinNativeControl* control, const char* id
     pending->request_id = request_id;
     pending->method = g_strdup(method);
     control->pending_input_source_ops++;
-    g_dbus_connection_call(control->session_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
+    g_dbus_connection_call(control->ibus_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
                            "SetGlobalEngine", g_variant_new("(s)", id), G_VARIANT_TYPE_UNIT,
                            G_DBUS_CALL_FLAGS_NONE, 5000, NULL, ibus_input_source_set_done, pending);
     return TRUE;
