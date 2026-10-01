@@ -1268,7 +1268,8 @@ the legacy integer monitor IDs. Earlier clients retain the existing native
 compatibility path.
 API 1.59 routes the legacy `window.match` socket method through
 `gnoblin.windows.list()`, preserving its `{id, identity, match}` response.
-Earlier clients retain the existing native compatibility path.
+Every negotiated client version now uses this Lua-backed response adapter;
+the socket fields remain unchanged for older clients.
 API 1.60 routes the basic legacy `window.action` requests through the
 corresponding typed Lua window operation. API 1.61 adds `action: "resize"`,
 which routes to `window.resize` with its integer `width` and `height` fields.
