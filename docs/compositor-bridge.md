@@ -343,6 +343,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.46            | Shared input device and source reads backed by the installed Lua runtime                              |
 | 1.47            | Shared `privacy.state` read backed by the installed Lua runtime                                       |
 | 1.48            | Lua runtime operation for `window.restore_or_minimize`                                                |
+| 1.49            | Lua runtime operation for `session.lock`                                                              |
 
 ### API 1.27: shell presentation requests
 
