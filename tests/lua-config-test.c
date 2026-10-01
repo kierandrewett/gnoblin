@@ -1489,6 +1489,40 @@ int main(void) {
     g_assert_nonnull(legacy_layer_surfaces);
     g_assert_cmpuint(g_variant_n_children(legacy_layer_surfaces), ==, 0);
 
+    GVariantBuilder layer_record;
+    g_variant_builder_init(&layer_record, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&layer_record, "{sv}", "id", g_variant_new_string("surface-1"));
+    g_variant_builder_add(&layer_record, "{sv}", "namespace", g_variant_new_string("test-panel"));
+    g_variant_builder_add(&layer_record, "{sv}", "title", g_variant_new_string("Panel"));
+    GVariantBuilder layer_array;
+    g_variant_builder_init(&layer_array, G_VARIANT_TYPE("av"));
+    g_variant_builder_add_value(&layer_array,
+                                g_variant_new_variant(g_variant_builder_end(&layer_record)));
+    GVariantBuilder layer_snapshot;
+    g_variant_builder_init(&layer_snapshot, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&layer_snapshot, "{sv}", "layers", g_variant_builder_end(&layer_array));
+    g_autoptr(GVariant) populated_layer_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&layer_snapshot));
+    gnoblin_config_update_layer_snapshot(populated_layer_snapshot, 20);
+    g_clear_pointer(&legacy_layer_list, g_variant_unref);
+    legacy_layer_list = gnoblin_config_read_api("layer.list", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_clear_pointer(&legacy_layer_surfaces, g_variant_unref);
+    legacy_layer_surfaces =
+        g_variant_lookup_value(legacy_layer_list, "surfaces", G_VARIANT_TYPE("aa{sv}"));
+    g_assert_nonnull(legacy_layer_surfaces);
+    g_assert_cmpuint(g_variant_n_children(legacy_layer_surfaces), ==, 1);
+    g_autoptr(GVariant) legacy_surface = g_variant_get_child_value(legacy_layer_surfaces, 0);
+    const char* legacy_surface_id = NULL;
+    const char* legacy_surface_namespace = NULL;
+    const char* legacy_surface_title = NULL;
+    g_assert_true(g_variant_lookup(legacy_surface, "id", "&s", &legacy_surface_id));
+    g_assert_true(g_variant_lookup(legacy_surface, "namespace", "&s", &legacy_surface_namespace));
+    g_assert_true(g_variant_lookup(legacy_surface, "title", "&s", &legacy_surface_title));
+    g_assert_cmpstr(legacy_surface_id, ==, "surface-1");
+    g_assert_cmpstr(legacy_surface_namespace, ==, "test-panel");
+    g_assert_cmpstr(legacy_surface_title, ==, "Panel");
+
     g_unlink(fragment);
     g_unlink(malformed_patterns);
     g_unlink(nested);
