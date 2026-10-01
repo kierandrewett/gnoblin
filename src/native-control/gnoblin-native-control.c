@@ -10752,6 +10752,14 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         const char* capability =
             json_node_get_string(json_object_get_member(arguments, "capability"));
         const char* identity = json_node_get_string(json_object_get_member(arguments, "identity"));
+        if (client->api_minor >= 43) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            g_autoptr(GVariant) read_arguments = variant_from_json(arguments_node);
+            if (!read_arguments)
+                return encode_response(id, NULL, "permissions.check arguments are invalid");
+            return queue_runtime_api_request(client, id, method, read_arguments, "read");
+        }
         g_autoptr(GVariant) document = native_config_document(client->control);
         if (!document)
             return encode_response(id, NULL, "committed permission policy is unavailable");
