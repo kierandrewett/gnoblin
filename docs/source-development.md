@@ -78,5 +78,5 @@ verify login on a real seat; see [hardware verification](real-hardware-verificat
 Keep upstream submodules at their pinned commits. Put Gnoblin-owned behavior in
 `src/`, protocol changes in `src/protocols/`, and narrow upstream fixes in
 `patches/`. Export committed subproject changes with
-[`scripts/manage-patches.py`](../scripts/manage-patches.py) so patch identity
-and headers stay consistent.
+[`scripts/manage-patches.py`](https://github.com/kierandrewett/gnoblin/blob/main/scripts/manage-patches.py)
+so patch identity and headers stay consistent.
