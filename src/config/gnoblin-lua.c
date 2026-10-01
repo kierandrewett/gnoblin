@@ -3735,6 +3735,7 @@ static int lua_windows_list(lua_State* state) {
 
     g_autoptr(GVariant) windows = lua_window_array(config);
     lua_newtable(state);
+    mark_array_table(state, -1);
     if (!windows)
         return 1;
     guint result_index = 1;
@@ -3821,6 +3822,7 @@ static int lua_workspaces_list(lua_State* state) {
 
     g_autoptr(GVariant) workspaces = lua_workspace_array(config);
     lua_newtable(state);
+    mark_array_table(state, -1);
     if (!workspaces)
         return 1;
     for (gsize i = 0; i < g_variant_n_children(workspaces); i++) {
@@ -3907,6 +3909,7 @@ static int lua_monitors_list(lua_State* state) {
 
     g_autoptr(GVariant) monitors = lua_monitor_array(config);
     lua_newtable(state);
+    mark_array_table(state, -1);
     for (gsize i = 0; monitors && i < g_variant_n_children(monitors); i++) {
         g_autoptr(GVariant) wrapped = g_variant_get_child_value(monitors, i);
         g_autoptr(GVariant) monitor = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
@@ -3993,6 +3996,7 @@ static int lua_layers_list(lua_State* state) {
 
     g_autoptr(GVariant) layers = lua_layer_array(config);
     lua_newtable(state);
+    mark_array_table(state, -1);
     guint result_index = 1;
     for (gsize i = 0; layers && i < g_variant_n_children(layers); i++) {
         g_autoptr(GVariant) wrapped = g_variant_get_child_value(layers, i);
@@ -4333,6 +4337,7 @@ static int lua_launches_list(lua_State* state) {
     g_autoptr(GVariant) launches =
         g_variant_lookup_value(config->launch_snapshot, "launches", G_VARIANT_TYPE("av"));
     lua_newtable(state);
+    mark_array_table(state, -1);
     for (gsize i = 0; launches && i < g_variant_n_children(launches); i++) {
         g_autoptr(GVariant) wrapped = g_variant_get_child_value(launches, i);
         g_autoptr(GVariant) launch = g_variant_get_variant(wrapped);
@@ -4368,6 +4373,7 @@ static int lua_portal_grants(lua_State* state) {
     g_autoptr(GVariant) grants =
         g_variant_lookup_value(config->portal_grant_snapshot, "grants", G_VARIANT_TYPE("aa{sv}"));
     lua_newtable(state);
+    mark_array_table(state, -1);
     for (gsize i = 0; grants && i < g_variant_n_children(grants); i++) {
         g_autoptr(GVariant) grant = g_variant_get_child_value(grants, i);
         const char* kind = NULL;
