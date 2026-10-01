@@ -288,7 +288,7 @@ gnoblin.configure {
 -- gnoblin.configure(require("bindings"))
 
 -- React to the application under the pointer, even if it is not focused:
--- gnoblin.on("mutter.wayland.pointer-window-changed", function(event)
+-- gnoblin.events.on("mutter.wayland.pointer-window-changed", function(event)
 --     local speed = event.app_id == "org.chromium.Chromium" and 0.3 or 1.0
 --     gnoblin.configure {input = {touchpad = {scroll_speed = speed}}}
 -- end)
