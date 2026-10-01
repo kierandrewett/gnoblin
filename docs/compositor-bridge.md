@@ -113,6 +113,11 @@ API 1.41 adds `shortcuts.actions`, which reads the same records through the
 shared Lua runtime. The API 1.5 `shortcut.actions` method remains available to
 existing clients.
 
+API 1.42 routes `permissions.list` through `gnoblin.permissions.list()` and
+preserves its existing response shape. This version requires the Lua supervisor
+to be connected. Clients requesting API 1.41 or earlier keep the native
+compatibility route.
+
 ### API version 1.9: configured shortcuts
 
 API version 1.9 adds `shortcut.list`. It takes no arguments and returns named
@@ -309,6 +314,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.39            | `launches.snapshot` with collection revision                                                          |
 | 1.40            | Shared `shortcuts.list` snapshot read                                                                 |
 | 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime                                   |
+| 1.42            | Shared `permissions.list` read backed by the installed Lua runtime                                    |
 
 ### API 1.27: shell presentation requests
 
@@ -500,6 +506,7 @@ The socket exposes these reads at the listed API versions:
 | 1.39        | `launches.snapshot` | `gnoblin.launches.snapshot()`       | None                                                       |
 | 1.40        | `shortcuts.list`    | `gnoblin.shortcuts.list()`          | None                                                       |
 | 1.41        | `shortcuts.actions` | `gnoblin.shortcuts.actions(group?)` | Optional `group`: `wm`, `mutter`, or `wayland`             |
+| 1.42        | `permissions.list`  | `gnoblin.permissions.list()`        | None                                                       |
 | 1.24        | `session.activity`  | `gnoblin.session.activity()`        | None                                                       |
 | 1.29        | `session.status`    | `gnoblin.session.status()`          | None                                                       |
 
