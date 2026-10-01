@@ -1007,51 +1007,44 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                 goto invalid;
             }
             gboolean active_window = is(window, "active");
-            gboolean typed = !word_in("focus menu interactive-move interactive-resize", action);
             g_autofree char* resolved_window = NULL;
-            if (typed && is(window, "active")) {
+            if (is(window, "active")) {
                 resolved_window = focused_window_id(cli, error);
                 if (!resolved_window)
                     goto invalid;
                 window = resolved_window;
             }
-            if (!typed) {
-                set_string(arguments, "action", action);
-                set_string(arguments, "window", window);
-                method = "window.action";
-            } else {
-                set_string(arguments, "id", window);
-                if (is(action, "close"))
-                    method = "window.close";
-                else if (is(action, "minimize"))
-                    method = "window.minimize";
-                else if (is(action, "restore"))
-                    method = "window.restore";
-                else if (is(action, "restore-or-minimize"))
-                    method = "window.restore_or_minimize";
-                else if (is(action, "toggle-minimize"))
-                    method = "window.toggle_minimize";
-                else if (word_in("maximize unmaximize", action)) {
-                    method = "window.set_maximized";
-                    set_boolean(arguments, "enabled", is(action, "maximize"));
-                } else if (word_in("fullscreen unfullscreen", action)) {
-                    method = "window.set_fullscreen";
-                    set_boolean(arguments, "enabled", is(action, "fullscreen"));
-                } else if (word_in("above unabove", action)) {
-                    method = "window.set_above";
-                    set_boolean(arguments, "enabled", is(action, "above"));
-                } else if (word_in("stick unstick", action)) {
-                    method = "window.set_sticky";
-                    set_boolean(arguments, "enabled", is(action, "stick"));
-                } else if (is(action, "move"))
-                    method = "window.move";
-                else if (is(action, "resize"))
-                    method = "window.resize";
-                else if (is(action, "monitor"))
-                    method = "window.move_to_monitor";
-            }
+            set_string(arguments, "id", window);
+            if (is(action, "close"))
+                method = "window.close";
+            else if (is(action, "minimize"))
+                method = "window.minimize";
+            else if (is(action, "restore"))
+                method = "window.restore";
+            else if (is(action, "restore-or-minimize"))
+                method = "window.restore_or_minimize";
+            else if (is(action, "toggle-minimize"))
+                method = "window.toggle_minimize";
+            else if (word_in("maximize unmaximize", action)) {
+                method = "window.set_maximized";
+                set_boolean(arguments, "enabled", is(action, "maximize"));
+            } else if (word_in("fullscreen unfullscreen", action)) {
+                method = "window.set_fullscreen";
+                set_boolean(arguments, "enabled", is(action, "fullscreen"));
+            } else if (word_in("above unabove", action)) {
+                method = "window.set_above";
+                set_boolean(arguments, "enabled", is(action, "above"));
+            } else if (word_in("stick unstick", action)) {
+                method = "window.set_sticky";
+                set_boolean(arguments, "enabled", is(action, "stick"));
+            } else if (is(action, "move"))
+                method = "window.move";
+            else if (is(action, "resize"))
+                method = "window.resize";
+            else if (is(action, "monitor"))
+                method = "window.move_to_monitor";
             if (is(action, "move") || is(action, "resize") || is(action, "monitor")) {
-                if (is(action, "monitor") && typed) {
+                if (is(action, "monitor")) {
                     g_autofree char* indexed_monitor_id = NULL;
                     const char* monitor_id = arg(cli, 1);
                     if (active_window) {
@@ -1076,13 +1069,11 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                     }
                     set_string(arguments, "monitor", monitor_id);
                 } else {
-                    const char* first = is(action, "move")     ? "x"
-                                        : is(action, "resize") ? "width"
-                                                               : "monitor";
+                    const char* first = is(action, "move") ? "x" : "width";
                     const char* second = is(action, "move") ? "y" : "height";
                     gint value;
-                    gint low = is(action, "move") ? -100000 : is(action, "monitor") ? 0 : 1;
-                    gint high = is(action, "move") ? 100000 : is(action, "monitor") ? 1024 : 32768;
+                    gint low = is(action, "move") ? -100000 : 1;
+                    gint high = is(action, "move") ? 100000 : 32768;
                     if (!number_arg(cli, 1, first, low, high, &value, error))
                         goto invalid;
                     set_number(arguments, first, value);

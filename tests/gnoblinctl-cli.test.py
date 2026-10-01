@@ -213,7 +213,7 @@ def main() -> int:
                                     "revision": 42,
                                 }
                             elif request["method"] == "input.select_source":
-                                result = {"request_id": 23, "method": "input.select_source"}
+                                result = {"request_id": 23, "method": "input.select"}
                             elif request["method"] == "window.thumbnail":
                                 result = {"request_id": 20, "method": "window.thumbnail"}
                             elif request["method"] == "launches.snapshot":
@@ -280,7 +280,7 @@ def main() -> int:
                                 "input.select_source",
                             }:
                                 operation_id = result["request_id"]
-                                method = request["method"]
+                                method = result["method"]
                                 if method == "animation.preview":
                                     value = {"session": "preview-17"}
                                 elif method == "workspace.create":
@@ -292,7 +292,7 @@ def main() -> int:
                                         "height": 1,
                                         "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p1sAAAAASUVORK5CYII=",
                                     }
-                                elif method == "input.select_source":
+                                elif method == "input.select":
                                     value = {"type": "xkb", "id": "us"}
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
@@ -600,7 +600,10 @@ def main() -> int:
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
-            assert subscription["events"] == ["gnoblin.operation.completed"]
+            assert subscription["events"] == [
+                "gnoblin.operation.completed",
+                "gnoblin.api.operation-completed",
+            ]
         request = received[0]
         assert request["op"] == "api"
         assert request["method"] == "session.status"
