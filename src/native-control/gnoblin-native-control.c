@@ -10597,7 +10597,9 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
     if (g_str_equal(method, "window.action")) {
-        JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
+        JsonObject* arguments = arguments_node && JSON_NODE_HOLDS_OBJECT(arguments_node)
+                                    ? json_node_get_object(arguments_node)
+                                    : NULL;
         JsonNode* action_node = arguments ? json_object_get_member(arguments, "action") : NULL;
         if (action_node && JSON_NODE_HOLDS_VALUE(action_node) &&
             json_node_get_value_type(action_node) == G_TYPE_STRING &&
@@ -10613,13 +10615,20 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         const char* action = json_node_get_string(action_node);
         gboolean move_action = g_str_equal(action, "move");
         gboolean resize_action = g_str_equal(action, "resize");
+        gboolean workspace_action = g_str_equal(action, "workspace");
+        gboolean monitor_action = g_str_equal(action, "monitor");
         const char* action_fields[] = {"action", "window"};
         const char* move_fields[] = {"action", "window", "x", "y"};
         const char* move_fields_without_window[] = {"action", "x", "y"};
         const char* resize_fields[] = {"action", "window", "width", "height"};
         const char* resize_fields_without_window[] = {"action", "width", "height"};
+        const char* workspace_fields[] = {"action", "window", "workspace"};
+        const char* workspace_fields_without_window[] = {"action", "workspace"};
+        const char* monitor_fields[] = {"action", "window", "monitor"};
+        const char* monitor_fields_without_window[] = {"action", "monitor"};
         gboolean valid_fields =
-            move_action
+            !arguments ? FALSE
+            : move_action
                 ? native_socket_has_exact_fields(arguments, move_fields,
                                                  G_N_ELEMENTS(move_fields)) ||
                       native_socket_has_exact_fields(arguments, move_fields_without_window,
@@ -10629,6 +10638,16 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                                                  G_N_ELEMENTS(resize_fields)) ||
                       native_socket_has_exact_fields(arguments, resize_fields_without_window,
                                                      G_N_ELEMENTS(resize_fields_without_window))
+            : workspace_action
+                ? native_socket_has_exact_fields(arguments, workspace_fields,
+                                                 G_N_ELEMENTS(workspace_fields)) ||
+                      native_socket_has_exact_fields(arguments, workspace_fields_without_window,
+                                                     G_N_ELEMENTS(workspace_fields_without_window))
+            : monitor_action
+                ? native_socket_has_exact_fields(arguments, monitor_fields,
+                                                 G_N_ELEMENTS(monitor_fields)) ||
+                      native_socket_has_exact_fields(arguments, monitor_fields_without_window,
+                                                     G_N_ELEMENTS(monitor_fields_without_window))
                 : json_object_get_size(arguments) == 1 ||
                       native_socket_has_exact_fields(arguments, action_fields,
                                                      G_N_ELEMENTS(action_fields));
@@ -10640,6 +10659,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                       "window"
                 : resize_action
                     ? "window.action resize requires integer width and height and accepts an "
+                      "optional string window"
+                : workspace_action
+                    ? "window.action workspace requires one workspace selector and accepts an "
+                      "optional string window"
+                : monitor_action
+                    ? "window.action monitor requires an integer monitor index and accepts an "
                       "optional string window"
                     : "window.action accepts only an optional string window");
 
@@ -10669,12 +10694,53 @@ static char* handle_request(Client* client, const char* data, gsize length) {
             return encode_response(id, NULL,
                                    "window.action resize requires integer width and height");
 
+        JsonNode* workspace_node =
+            workspace_action ? json_object_get_member(arguments, "workspace") : NULL;
+        JsonObject* workspace_selector = workspace_node && JSON_NODE_HOLDS_OBJECT(workspace_node)
+                                             ? json_node_get_object(workspace_node)
+                                             : NULL;
+        const char* workspace_selector_fields[] = {"id", "number"};
+        JsonNode* workspace_id_node =
+            workspace_selector ? json_object_get_member(workspace_selector, "id") : NULL;
+        JsonNode* workspace_number_node =
+            workspace_selector ? json_object_get_member(workspace_selector, "number") : NULL;
+        gboolean workspace_id = workspace_id_node && JSON_NODE_HOLDS_VALUE(workspace_id_node) &&
+                                json_node_get_value_type(workspace_id_node) == G_TYPE_STRING &&
+                                json_node_get_string(workspace_id_node) &&
+                                *json_node_get_string(workspace_id_node);
+        gboolean workspace_number =
+            workspace_number_node && JSON_NODE_HOLDS_VALUE(workspace_number_node) &&
+            (json_node_get_value_type(workspace_number_node) == G_TYPE_INT ||
+             json_node_get_value_type(workspace_number_node) == G_TYPE_INT64) &&
+            json_node_get_int(workspace_number_node) > 0;
+        if (workspace_action &&
+            (!workspace_selector || json_object_get_size(workspace_selector) != 1 ||
+             !native_socket_has_exact_fields(workspace_selector, workspace_selector_fields,
+                                             G_N_ELEMENTS(workspace_selector_fields)) ||
+             workspace_id == workspace_number))
+            return encode_response(id, NULL, "window.action workspace requires {id} or {number}");
+
+        JsonNode* monitor_node =
+            monitor_action ? json_object_get_member(arguments, "monitor") : NULL;
+        if (monitor_action &&
+            (!monitor_node || !JSON_NODE_HOLDS_VALUE(monitor_node) ||
+             (json_node_get_value_type(monitor_node) != G_TYPE_INT &&
+              json_node_get_value_type(monitor_node) != G_TYPE_INT64) ||
+             json_node_get_int(monitor_node) < 0 || json_node_get_int(monitor_node) > G_MAXINT))
+            return encode_response(id, NULL,
+                                   "window.action monitor requires a nonnegative integer index");
+
+        if ((workspace_action || monitor_action) && client->api_minor < 63)
+            return encode_response(id, NULL,
+                                   "window.action workspace and monitor require API version 1.63");
+
         static const char* const native_actions[] = {
             "above",   "unabove",  "stick",      "unstick",    "close",        "minimize",
             "restore", "maximize", "unmaximize", "fullscreen", "unfullscreen", NULL};
         if (!g_strv_contains(native_actions, action) &&
             !(resize_action && client->api_minor >= 61) &&
-            !(move_action && client->api_minor >= 62))
+            !(move_action && client->api_minor >= 62) &&
+            !((workspace_action || monitor_action) && client->api_minor >= 63))
             return encode_response(
                 id, NULL, "unsupported window.action; use a typed window operation when available");
 
@@ -10732,6 +10798,34 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                                   g_variant_new_int64(json_node_get_int(x_node)));
             g_variant_builder_add(&typed_arguments, "{sv}", "y",
                                   g_variant_new_int64(json_node_get_int(y_node)));
+        }
+        if (workspace_action) {
+            GVariantBuilder selector;
+            g_variant_builder_init(&selector, G_VARIANT_TYPE_VARDICT);
+            if (workspace_id)
+                g_variant_builder_add(
+                    &selector, "{sv}", "id",
+                    g_variant_new_string(json_node_get_string(workspace_id_node)));
+            else
+                g_variant_builder_add(
+                    &selector, "{sv}", "number",
+                    g_variant_new_int64(json_node_get_int(workspace_number_node)));
+            g_variant_builder_add(&typed_arguments, "{sv}", "workspace",
+                                  g_variant_builder_end(&selector));
+            lua_method = "window.move_to_workspace";
+        }
+        if (monitor_action) {
+            g_autoptr(GError) monitor_error = NULL;
+            g_autoptr(JsonNode) snapshot =
+                monitor_snapshot_json(client->control, FALSE, &monitor_error);
+            g_autofree char* monitor_id =
+                native_monitor_id_for_index(snapshot, (int)json_node_get_int(monitor_node));
+            if (!monitor_id)
+                return encode_response(
+                    id, NULL, monitor_error ? monitor_error->message : "monitor not found");
+            g_variant_builder_add(&typed_arguments, "{sv}", "monitor",
+                                  g_variant_new_string(monitor_id));
+            lua_method = "window.move_to_monitor";
         }
         g_autoptr(GVariant) operation_arguments =
             g_variant_ref_sink(g_variant_builder_end(&typed_arguments));
