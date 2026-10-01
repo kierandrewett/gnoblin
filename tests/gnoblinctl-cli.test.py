@@ -154,8 +154,17 @@ def main() -> int:
                                 result = None
                             elif request["method"] == "workspace.create":
                                 result = {"request_id": 18, "method": "workspace.create"}
-                            elif request["method"] == "workspace.list":
-                                result = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
+                            elif request["method"] == "workspaces.list":
+                                result = [
+                                    {
+                                        "id": "codex-probe",
+                                        "number": 1,
+                                        "name": "Codex Probe",
+                                        "active": True,
+                                        "window_count": 2,
+                                        "revision": 5,
+                                    }
+                                ]
                             elif request["method"] == "window.thumbnail":
                                 result = {"request_id": 20, "method": "window.thumbnail"}
                             elif request["method"] == "window.match":
@@ -289,7 +298,18 @@ def main() -> int:
             "list",
         )
         assert workspace_list.returncode == 0, workspace_list.stderr
-        assert json.loads(workspace_list.stdout) == {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
+        assert json.loads(workspace_list.stdout) == {
+            "workspaces": [
+                {
+                    "id": "codex-probe",
+                    "number": 1,
+                    "name": "Codex Probe",
+                    "active": True,
+                    "windows": 2,
+                    "revision": 5,
+                }
+            ]
+        }
         window_match = run(
             binary,
             "--socket",
@@ -425,7 +445,8 @@ def main() -> int:
             "activate": False,
         }
         list_request = received[7]
-        assert list_request["method"] == "workspace.list"
+        assert list_request["method"] == "workspaces.list"
+        assert list_request["api_version"] == {"major": 1, "minor": 37}
         assert list_request["arguments"] == {}
         match_request = received[8]
         assert match_request["method"] == "window.match"

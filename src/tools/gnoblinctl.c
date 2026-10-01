@@ -315,6 +315,7 @@ static guint api_minor_for_method(const char* method) {
         {"runtime.reload_config", 20},
         {"version", 19},
         {"windows.list", 37},
+        {"workspaces.list", 37},
         {"monitors.list", 37},
         {"capabilities.list", 19},
         {"focus.history", 19},
@@ -364,9 +365,9 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "privacy.stop_recording") ||
         g_str_equal(method_name, "launch.status") ||
         g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "windows.list") ||
-        g_str_equal(method_name, "monitors.list") || g_str_equal(method_name, "focus.history") ||
-        g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings") ||
-        g_str_equal(method_name, "runtime.reload_config") ||
+        g_str_equal(method_name, "workspaces.list") || g_str_equal(method_name, "monitors.list") ||
+        g_str_equal(method_name, "focus.history") || g_str_equal(method_name, "focus.policy") ||
+        g_str_equal(method_name, "settings") || g_str_equal(method_name, "runtime.reload_config") ||
         g_str_has_prefix(method_name, "animation.")) {
         json_builder_set_member_name(builder, "api_version");
         json_builder_begin_object(builder);
@@ -512,11 +513,11 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                 gboolean operation_descriptor = result &&
                                                 json_object_has_member(result, "request_id") &&
                                                 json_object_has_member(result, "method");
-                gboolean array_result =
-                    result_node && JSON_NODE_HOLDS_ARRAY(result_node) &&
-                    word_in("capabilities.list focus.history windows.list monitors.list "
-                            "shortcut.actions shortcut.list",
-                            method_name);
+                gboolean array_result = result_node && JSON_NODE_HOLDS_ARRAY(result_node) &&
+                                        word_in("capabilities.list focus.history windows.list "
+                                                "workspaces.list monitors.list "
+                                                "shortcut.actions shortcut.list",
+                                                method_name);
                 gboolean null_result = result_node && JSON_NODE_HOLDS_NULL(result_node) &&
                                        (read_method || g_str_equal(method_name, "animation.get"));
                 if (!result && !array_result && !null_result) {
@@ -998,7 +999,9 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
             }
         }
     } else if (is(command, "workspace")) {
-        if (is(action, "list") || is(action, "next") || is(action, "previous"))
+        if (is(action, "list"))
+            method = "workspaces.list";
+        else if (is(action, "next") || is(action, "previous"))
             method = owned_method = g_strdup_printf("workspace.%s", action);
         else if (is(action, "create")) {
             if (!require_count(cli, 0, 0, error))
@@ -1224,6 +1227,24 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
     if (is(command, "monitor") && is(action, "list") && JSON_NODE_HOLDS_ARRAY(reply)) {
         JsonObject* result = json_object_new();
         json_object_set_member(result, "monitors", json_node_copy(reply));
+        JsonNode* node = json_node_new(JSON_NODE_OBJECT);
+        json_node_take_object(node, result);
+        return node;
+    }
+    if (is(command, "workspace") && is(action, "list") && JSON_NODE_HOLDS_ARRAY(reply)) {
+        JsonNode* workspaces_node = json_node_copy(reply);
+        JsonArray* workspaces = json_node_get_array(workspaces_node);
+        for (guint i = 0; i < json_array_get_length(workspaces); i++) {
+            JsonObject* workspace = json_array_get_object_element(workspaces, i);
+            JsonNode* window_count =
+                workspace ? json_object_get_member(workspace, "window_count") : NULL;
+            if (window_count) {
+                json_object_set_member(workspace, "windows", json_node_copy(window_count));
+                json_object_remove_member(workspace, "window_count");
+            }
+        }
+        JsonObject* result = json_object_new();
+        json_object_set_member(result, "workspaces", workspaces_node);
         JsonNode* node = json_node_new(JSON_NODE_OBJECT);
         json_node_take_object(node, result);
         return node;
