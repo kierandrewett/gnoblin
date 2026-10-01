@@ -1268,6 +1268,9 @@ compatibility path.
 API 1.59 routes the legacy `window.match` socket method through
 `gnoblin.windows.list()`, preserving its `{id, identity, match}` response.
 Earlier clients retain the existing native compatibility path.
+API 1.59 routes the legacy `window.match` socket method through
+`gnoblin.windows.list()`, preserving its `{id, identity, match}` response.
+Earlier clients retain the existing native compatibility path.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
