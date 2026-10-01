@@ -1268,9 +1268,10 @@ compatibility path.
 API 1.59 routes the legacy `window.match` socket method through
 `gnoblin.windows.list()`, preserving its `{id, identity, match}` response.
 Earlier clients retain the existing native compatibility path.
-API 1.59 routes the legacy `window.match` socket method through
-`gnoblin.windows.list()`, preserving its `{id, identity, match}` response.
-Earlier clients retain the existing native compatibility path.
+API 1.60 routes legacy `window.action` requests through the corresponding typed
+Lua window operation. It resolves the legacy `"active"` target to the focused
+window's stable ID before dispatch. Earlier clients retain the native
+compatibility path.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1283,7 +1284,7 @@ Earlier clients retain the existing native compatibility path.
 | `workspace.move_active`                                                | `gnoblin.workspaces.active():move_here(window, options)`                                                                                                |
 | `workspace.move_window`                                                | `window:move_to_workspace(target, options)`                                                                                                             |
 | `window.match`                                                         | CLI formats its result from `windows.list`; Lua reads identity and rule fields from `Window` snapshots. The raw socket query remains for compatibility. |
-| `window.action`                                                        | Removed from the standalone Lua API; the raw compositor-socket operation remains for compatibility. Lua uses the typed `Window` methods above.          |
+| `window.action`                                                        | Removed from the standalone Lua API. Socket API 1.60 maps it to typed Lua window operations; earlier socket clients use the native compatibility path.  |
 | `layer.list`                                                           | `gnoblin.layers.list(filter)`                                                                                                                           |
 | `monitor.list`                                                         | `gnoblin.monitors.list()`                                                                                                                               |
 | `animation.list`                                                       | `gnoblin.animations.list()`                                                                                                                             |
@@ -1506,9 +1507,10 @@ supervisor state directly. `gnoblin.windows`, `workspaces`, `monitors`,
 `layers`, and `animations` expose snapshot helpers in addition to the typed
 operation methods listed above.
 
-`window.action` remains a native socket protocol operation for existing socket
-clients, but it is not installed as a Lua method. Pointer snapping is provided
-by the compositor's `WindowDrag:offer_targets()` hook and the native
+`window.action` remains a socket protocol operation for existing socket
+clients, but it is not installed as a Lua method. API 1.60 and later translate
+it to typed Lua window operations; earlier clients use the native compatibility
+path. Pointer snapping is provided by the compositor's `WindowDrag:offer_targets()` hook and the native
 `window.snap.offer` operation; Lua keyboard snapping uses
 `gnoblin.windows.snap_context(context)`.
 
@@ -1576,7 +1578,9 @@ and optional `app_id`.
 
 The raw compositor socket retains `window.action({action, window?})` for
 compatibility; the standalone Lua runtime does not expose
-`gnoblin.window.action`. Native socket clients can use `above`, `unabove`,
+`gnoblin.window.action`. API 1.60 and later map these requests to typed Lua
+operations; earlier clients use the native compatibility path. Native socket
+clients can use `above`, `unabove`,
 `stick`, `unstick`, `close`, `minimize`, `restore`, `maximize`, `unmaximize`,
 `fullscreen`, and `unfullscreen`. The target is a stable window ID or
 `"active"`; it defaults to `"active"`. Focus, menu, interactive move or
