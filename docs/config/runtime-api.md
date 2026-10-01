@@ -1126,6 +1126,10 @@ established field names and argument-table shape.
 to 512 characters. `milliseconds` defaults to 3000 and is clamped to 100–10000
 ms.
 
+The legacy socket `launch.status` method reads this snapshot through Lua for
+every supported client version and enables launch-change events on that
+connection.
+
 The native runtime retains at most 64 records. It evicts the oldest completed
 record when needed and rejects a new launch if all retained records are pending.
 

@@ -364,7 +364,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.51            | Adds Lua-backed `session.status`; all client versions now use it                |
 | 1.52            | Adds Lua-backed `workspace.list`; all client versions now use it                |
 | 1.53            | Adds Lua-backed `window.list`; all client versions now use it                   |
-| 1.54            | Lua-backed compatibility read for `launch.status`                               |
+| 1.54            | Adds Lua-backed `launch.status`; all client versions now use it                 |
 | 1.55            | Lua-backed compatibility read for `shortcut.list`                               |
 | 1.56            | Lua-backed `shortcut.actions`; older clients use the native snapshot            |
 | 1.57            | Adds Lua-backed `layer.list`; all client versions now use it                    |
@@ -1154,9 +1154,9 @@ calls return an operation descriptor and complete through
 `gnoblin.operation.completed`; subscribe to that event to receive the result.
 Earlier API versions keep the synchronous native route.
 
-API 1.54 and newer read `launch.status` through
-`gnoblin.launches.snapshot()`. The request still enables launch-change events
-for the connection. Earlier API versions use the native snapshot route.
+API 1.54 adds the Lua-backed `launch.status` route. Every supported client
+version now reads through `gnoblin.launches.snapshot()`. The request still
+enables launch-change events for the connection.
 
 API 1.51 adds the Lua-backed `session.status` route. Every supported client
 version now reads through Lua. The response contains `state`,
