@@ -145,7 +145,10 @@ def main() -> int:
                                         "id": "42",
                                         "focused": True,
                                         "workspace_id": "workspace-1",
-                                        "app_id": "org.example.Editor",
+                                        "app_id": "org.example.Editor.desktop",
+                                        "gtk_app_id": "org.example.Editor",
+                                        "wm_class": "Editor",
+                                        "rule_app_id": "org.example.Editor",
                                         "title": "Notes",
                                         "revision": 5,
                                     }
@@ -193,20 +196,6 @@ def main() -> int:
                                 result = {"request_id": 23, "method": "input.select_source"}
                             elif request["method"] == "window.thumbnail":
                                 result = {"request_id": 20, "method": "window.thumbnail"}
-                            elif request["method"] == "window.match":
-                                result = {
-                                    "id": "42",
-                                    "app_id": "org.example.Editor.desktop",
-                                    "gtk_app_id": "org.example.Editor",
-                                    "wm_class": "Editor",
-                                    "rule_app_id": "org.example.Editor",
-                                    "match": {
-                                        "type": "window",
-                                        "app_id": "org.example.Editor",
-                                        "title": "Notes",
-                                        "focused": True,
-                                    },
-                                }
                             elif request["method"] == "launch.status":
                                 result = {
                                     "launches": [{"token": "one", "application": "app", "state": "pending"}],
@@ -508,9 +497,9 @@ def main() -> int:
         assert list_request["api_version"] == {"major": 1, "minor": 37}
         assert list_request["arguments"] == {}
         match_request = received[8]
-        assert match_request["method"] == "window.match"
-        assert "api_version" not in match_request
-        assert match_request["arguments"] == {"window": "42"}
+        assert match_request["method"] == "windows.list"
+        assert match_request["api_version"] == {"major": 1, "minor": 37}
+        assert match_request["arguments"] == {}
         thumbnail_request = received[9]
         assert thumbnail_request["method"] == "window.thumbnail"
         assert thumbnail_request["api_version"] == {"major": 1, "minor": 23}

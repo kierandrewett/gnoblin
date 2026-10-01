@@ -589,6 +589,58 @@ static char* focused_window_id(Cli* cli, GError** error) {
     return NULL;
 }
 
+static JsonNode* window_match_from_snapshot(JsonArray* windows, const char* selector,
+                                            GError** error) {
+    JsonObject* selected = NULL;
+    for (guint i = 0; i < json_array_get_length(windows); i++) {
+        JsonObject* window = json_array_get_object_element(windows, i);
+        if (!window)
+            continue;
+        if (g_str_equal(selector, "active")) {
+            JsonNode* focused = json_object_get_member(window, "focused");
+            if (focused && JSON_NODE_HOLDS_VALUE(focused) &&
+                json_node_get_value_type(focused) == G_TYPE_BOOLEAN &&
+                json_node_get_boolean(focused)) {
+                selected = window;
+                break;
+            }
+        } else if (g_str_equal(member_string(window, "id", ""), selector)) {
+            selected = window;
+            break;
+        }
+    }
+    if (!selected) {
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                    "Window '%s' is not available in the current snapshot", selector);
+        return NULL;
+    }
+
+    JsonObject* result = json_object_new();
+    const char* identity_fields[] = {"id", "app_id", "gtk_app_id", "wm_class", "rule_app_id"};
+    for (guint i = 0; i < G_N_ELEMENTS(identity_fields); i++) {
+        JsonNode* value = json_object_get_member(selected, identity_fields[i]);
+        if (value)
+            json_object_set_member(result, identity_fields[i], json_node_copy(value));
+    }
+
+    JsonObject* match = json_object_new();
+    json_object_set_string_member(match, "type", "window");
+    JsonNode* rule_app_id = json_object_get_member(selected, "rule_app_id");
+    JsonNode* title = json_object_get_member(selected, "title");
+    JsonNode* focused = json_object_get_member(selected, "focused");
+    if (rule_app_id)
+        json_object_set_member(match, "app_id", json_node_copy(rule_app_id));
+    if (title)
+        json_object_set_member(match, "title", json_node_copy(title));
+    if (focused)
+        json_object_set_member(match, "focused", json_node_copy(focused));
+    json_object_set_object_member(result, "match", match);
+
+    JsonNode* node = json_node_new(JSON_NODE_OBJECT);
+    json_node_take_object(node, result);
+    return node;
+}
+
 static char* monitor_id_for_index(Cli* cli, guint monitor_index, GError** error) {
     g_autoptr(JsonObject) arguments = json_object_new();
     g_autoptr(JsonNode) snapshot = call_compositor(cli, "api", "monitors.list", arguments, error);
@@ -861,8 +913,9 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         } else if (is(action, "match")) {
             if (!require_count(cli, 0, 1, error))
                 goto invalid;
-            set_string(arguments, "window", arg(cli, 0) ? arg(cli, 0) : "active");
-            method = "window.match";
+            if (!arg(cli, 0) || is(arg(cli, 0), "active"))
+                set_boolean(arguments, "focused", TRUE);
+            method = "windows.list";
         } else if (is(action, "workspace")) {
             if (!require_count(cli, 1, 2, error))
                 goto invalid;
@@ -1236,6 +1289,11 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
         JsonNode* node = json_node_new(JSON_NODE_OBJECT);
         json_node_take_object(node, result);
         return node;
+    }
+    if (is(command, "window") && is(action, "match") && JSON_NODE_HOLDS_ARRAY(reply)) {
+        g_autoptr(JsonNode) result = window_match_from_snapshot(
+            json_node_get_array(reply), arg(cli, 0) ? arg(cli, 0) : "active", error);
+        return result ? json_node_copy(result) : NULL;
     }
     if (is(command, "monitor") && is(action, "list") && JSON_NODE_HOLDS_ARRAY(reply)) {
         JsonObject* result = json_object_new();
