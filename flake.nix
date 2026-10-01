@@ -240,7 +240,7 @@
               test -f "${gnoblin}/lib/systemd/user/gnoblin-idle.service"
               test -f "${gnoblin}/share/xdg-desktop-portal/portals/gnoblin.portal"
               test ! -e "${gnoblin}/share/glib-2.0/schemas/org.gnome.shell.gschema.xml"
-              schema_directory="${gnoblin}/share/glib-2.0/schemas"
+              schema_directory="${gnoblin}/share/gsettings-schemas/gnoblin-${gnoblin.version}/glib-2.0/schemas"
               test -f "$schema_directory/org.gnome.mutter.gschema.xml"
               test -f "$schema_directory/gschemas.compiled"
               test "$(
