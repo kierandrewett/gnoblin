@@ -32,6 +32,7 @@
 #include "compositor/meta-window-actor-private.h"
 #include "compositor/meta-window-actor-x11.h"
 #include "compositor/meta-window-actor-wayland.h"
+#include "compositor/meta-gnoblin-window-effects.h"
 #include "core/display-private.h"
 #include "core/events.h"
 #include "core/util-private.h"
@@ -6137,16 +6138,27 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                        (!meta_window_is_maximized(window) || keep_maximized) &&
                        (!meta_window_is_fullscreen(window) || keep_fullscreen) &&
                        (!tiled || keep_tiled);
-    if (enabled && g_str_equal(mode, "auto") && !remove_csd &&
+    gboolean has_padding = FALSE;
+    for (guint i = 0; i < G_N_ELEMENTS(padding); i++)
+        has_padding |= fabs(padding[i]) > 0.001;
+    double csd_insets[4] = {0, 0, 0, 0};
+    gboolean csd_detected =
+        enabled && remove_csd && !has_padding && !window->minimized &&
+        meta_gnoblin_window_effects_detect_csd(CLUTTER_ACTOR(actor), csd_insets);
+    if (enabled && g_str_equal(mode, "auto") && !csd_detected &&
         native_corner_toolkit_should_skip(control, window, skip_libadwaita, skip_libhandy))
         enabled = FALSE;
     const double exponent = 2 + CLAMP(smoothing, 0, 1) * 4;
     if (META_IS_WINDOW_ACTOR_WAYLAND(actor))
         meta_window_actor_wayland_set_rounded_clip(actor, enabled ? radius : 0, exponent,
-                                                   g_str_equal(mode, "auto"), padding);
+                                                   g_str_equal(mode, "auto") && !csd_detected,
+                                                   padding);
     else if (META_IS_WINDOW_ACTOR_X11(actor))
         meta_window_actor_x11_set_rounded_clip(META_WINDOW_ACTOR_X11(actor), enabled ? radius : 0,
-                                               exponent, g_str_equal(mode, "auto"), padding);
+                                               exponent, g_str_equal(mode, "auto") && !csd_detected,
+                                               padding);
+    meta_gnoblin_window_effects_set_csd_reconstruction(CLUTTER_ACTOR(actor),
+                                                       enabled && csd_detected, csd_insets);
 }
 
 static void native_apply_all_window_rules(GnoblinNativeControl* control) {
