@@ -752,7 +752,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             overlay_manifest,
         )
         self.assertIn('g_str_equal(json_node_get_string(action_node), "focus")', handler)
-        self.assertIn("arguments_node ? json_node_get_object(arguments_node) : NULL", handler)
+        self.assertIn("arguments_node && JSON_NODE_HOLDS_OBJECT(arguments_node)", handler)
         self.assertIn('const char* action_fields[] = {"action", "window"}', handler)
         self.assertIn('"unsupported window.action; use a typed window operation when available"', handler)
         self.assertNotIn("client->api_minor >= 60", handler)
@@ -838,8 +838,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             'if (g_str_equal(method, "window.match")) {',
         )
 
-        self.assertEqual(api_minor(header), 62)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=62", cmake)
+        self.assertGreaterEqual(api_minor(header), 62)
+        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
         self.assertIn('gboolean move_action = g_str_equal(action, "move")', handler)
         self.assertIn("client->api_minor >= 62", handler)
         self.assertIn('lua_method = "window.move"', handler)
@@ -849,6 +849,28 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("meta_window_is_fullscreen (window)", move_patch)
         self.assertIn("meta_window_get_maximize_flags (window) != META_MAXIMIZE_NONE", move_patch)
         self.assertIn("meta_window_move_frame (window, TRUE, (int) x, (int) y)", move_patch)
+
+    def test_legacy_workspace_and_monitor_actions_use_typed_lua_operations(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        handler = function_body(
+            source,
+            'if (g_str_equal(method, "window.action")) {',
+            'if (g_str_equal(method, "window.match")) {',
+        )
+
+        self.assertEqual(api_minor(header), 63)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=63", cmake)
+        self.assertIn('gboolean workspace_action = g_str_equal(action, "workspace")', handler)
+        self.assertIn('gboolean monitor_action = g_str_equal(action, "monitor")', handler)
+        self.assertIn("client->api_minor < 63", handler)
+        self.assertIn('lua_method = "window.move_to_workspace"', handler)
+        self.assertIn('lua_method = "window.move_to_monitor"', handler)
+        self.assertIn("native_monitor_id_for_index(", handler)
+        self.assertIn('"workspace"', handler)
+        self.assertIn('"monitor"', handler)
+        self.assertIn('"call", action, target)', handler)
 
     def test_portal_grants_always_uses_lua(self):
         source = CONTROL.read_text()
