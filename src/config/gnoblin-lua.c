@@ -6456,6 +6456,50 @@ static GVariant* legacy_window_list_from_lua(GVariant* windows, GError** error) 
     return g_variant_ref_sink(g_variant_builder_end(&result));
 }
 
+static GVariant* legacy_layer_list_from_lua(GVariant* layers, GError** error) {
+    if (!layers || !g_variant_is_of_type(layers, G_VARIANT_TYPE("av"))) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Lua layer snapshot is invalid");
+        return NULL;
+    }
+
+    GVariantBuilder surfaces;
+    g_variant_builder_init(&surfaces, G_VARIANT_TYPE("aa{sv}"));
+    for (gsize i = 0; i < g_variant_n_children(layers); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(layers, i);
+        g_autoptr(GVariant) layer = g_variant_get_variant(boxed);
+        if (!g_variant_is_of_type(layer, G_VARIANT_TYPE_VARDICT)) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "Lua layer record is invalid");
+            return NULL;
+        }
+
+        g_autoptr(GVariant) id = g_variant_lookup_value(layer, "id", G_VARIANT_TYPE_STRING);
+        g_autoptr(GVariant) namespace =
+            g_variant_lookup_value(layer, "namespace", G_VARIANT_TYPE_STRING);
+        if (!namespace)
+            continue;
+        if (!id) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "Lua layer record has no string ID");
+            return NULL;
+        }
+
+        GVariantBuilder surface;
+        g_variant_builder_init(&surface, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&surface, "{sv}", "id", id);
+        g_variant_builder_add(&surface, "{sv}", "namespace", namespace);
+        g_autoptr(GVariant) title = g_variant_lookup_value(layer, "title", G_VARIANT_TYPE_STRING);
+        g_variant_builder_add(&surface, "{sv}", "title", title ? title : g_variant_new_string(""));
+        g_variant_builder_add_value(&surfaces, g_variant_builder_end(&surface));
+    }
+
+    GVariantBuilder result;
+    g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&result, "{sv}", "surfaces", g_variant_builder_end(&surfaces));
+    return g_variant_ref_sink(g_variant_builder_end(&result));
+}
+
 GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {
     static const char* read_methods[] = {
         "version",
@@ -6469,6 +6513,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "session.status",
         "launch.status",
         "workspace.list",
+        "layer.list",
         "layer.animation_policy",
         "workspaces.list",
         "monitors.list",
@@ -6615,7 +6660,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_getfield(state, -1, "list");
         lua_remove(state, -2);
         lua_remove(state, -2);
-    } else if (g_str_equal(method, "layers.list")) {
+    } else if (g_str_equal(method, "layers.list") || g_str_equal(method, "layer.list")) {
         lua_getfield(state, -1, "layers");
         lua_getfield(state, -1, "list");
         lua_remove(state, -2);
@@ -6732,6 +6777,8 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
             result = legacy_workspace_list_from_lua(value, error);
         } else if (value && g_str_equal(method, "window.list")) {
             result = legacy_window_list_from_lua(value, error);
+        } else if (value && g_str_equal(method, "layer.list")) {
+            result = legacy_layer_list_from_lua(value, error);
         } else if (value && (force_array || g_str_equal(method, "input.current_source"))) {
             GVariantBuilder response;
             g_variant_builder_init(&response, G_VARIANT_TYPE_VARDICT);
