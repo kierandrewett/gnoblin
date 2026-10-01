@@ -169,6 +169,8 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* actor, double inse
     height = meta_shaped_texture_get_height(texture);
     if (width < 16 || height < 16 || (gint64)width * height > CSD_MAX_PIXELS)
         return FALSE;
+    if (clutter_actor_get_width(actor) <= 0 || clutter_actor_get_height(actor) <= 0)
+        return FALSE;
 
     cache = g_object_get_data(G_OBJECT(actor), CSD_PROBE_CACHE_KEY);
     if (cache && cache->width == width && cache->height == height) {
@@ -182,11 +184,23 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* actor, double inse
     }
 
     pixels_bytes = meta_shaped_texture_get_pixels(texture, &width, &height, &error);
-    if (!pixels_bytes || width < 16 || height < 16 || (gint64)width * height > CSD_MAX_PIXELS)
+    if (!pixels_bytes || width < 16 || height < 16 || (gint64)width * height > CSD_MAX_PIXELS) {
+        cache = g_new0(CsdProbeCache, 1);
+        cache->width = meta_shaped_texture_get_width(texture);
+        cache->height = meta_shaped_texture_get_height(texture);
+        cache->attempts = attempts;
+        g_object_set_data_full(G_OBJECT(actor), CSD_PROBE_CACHE_KEY, cache, g_free);
         return FALSE;
+    }
     pixels = g_bytes_get_data(pixels_bytes, &size);
-    if (size < (gsize)width * height * 4)
+    if (size < (gsize)width * height * 4) {
+        cache = g_new0(CsdProbeCache, 1);
+        cache->width = width;
+        cache->height = height;
+        cache->attempts = attempts;
+        g_object_set_data_full(G_OBJECT(actor), CSD_PROBE_CACHE_KEY, cache, g_free);
         return FALSE;
+    }
 
     detected = detect_csd_insets(pixels, width, height, pixel_insets);
     cache = g_new0(CsdProbeCache, 1);
