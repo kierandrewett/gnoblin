@@ -1360,6 +1360,8 @@ static GPid spawn_compositor(const char* path, const char* plugin, int parent_fd
     g_ptr_array_add(argv, g_strdup(path));
     g_ptr_array_add(argv, g_strdup("--wayland"));
     if (devkit) {
+        g_ptr_array_add(argv, g_strdup("--virtual-monitor"));
+        g_ptr_array_add(argv, g_strdup("1280x720@60"));
         g_ptr_array_add(argv, g_strdup("--devkit"));
         g_ptr_array_add(argv, g_strdup("--wayland-display"));
         g_ptr_array_add(argv, g_strdup(wayland_display));
