@@ -751,25 +751,29 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     g_autoptr(GVariant) window = g_variant_lookup_value(document, "window-management", NULL);
     if (window) {
         if (g_variant_is_of_type(window, G_VARIANT_TYPE_VARDICT)) {
-            g_autoptr(GVariant) legacy_ids = g_variant_lookup_value(window, "workspace-ids", NULL);
-            g_autoptr(GVariant) legacy_names =
-                g_variant_lookup_value(window, "workspace-names", NULL);
-            g_autoptr(GVariant) legacy_dynamic =
+            const char* removed_workspace_fields[] = {"workspace-ids", "workspace-names",
+                                                      "num-workspaces", NULL};
+            for (guint i = 0; removed_workspace_fields[i]; i++) {
+                g_autoptr(GVariant) legacy =
+                    g_variant_lookup_value(window, removed_workspace_fields[i], NULL);
+                if (legacy) {
+                    g_set_error_literal(
+                        error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "window-management workspace-ids, workspace-names, and num-workspaces "
+                        "are no longer supported; declare named workspaces in the top-level "
+                        "workspaces field");
+                    return FALSE;
+                }
+            }
+            g_autoptr(GVariant) dynamic_workspaces =
                 g_variant_lookup_value(window, "dynamic-workspaces", NULL);
-            g_autoptr(GVariant) legacy_count =
-                g_variant_lookup_value(window, "num-workspaces", NULL);
-            gboolean has_legacy_workspaces =
-                legacy_ids || legacy_names || legacy_dynamic || legacy_count;
-            if (workspaces && has_legacy_workspaces) {
+            if (workspaces && dynamic_workspaces) {
                 g_set_error_literal(
                     error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                    "use top-level workspaces without window-management workspace-ids, "
-                    "workspace-names, dynamic-workspaces, or num-workspaces");
+                    "top-level workspaces cannot be combined with window-management "
+                    "dynamic-workspaces");
                 return FALSE;
             }
-            if (!workspaces && has_legacy_workspaces)
-                g_warning("gnoblin-config: window-management workspace settings are deprecated; "
-                          "use top-level workspaces = {{id = \"...\", name = \"...\"}, ...}");
         }
         static const char* booleans[] = {
             "constrain-drag-to-work-area",
@@ -805,40 +809,12 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
                 known_boolean |= g_str_equal(name, booleans[i]);
             if (known_boolean) {
                 valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
-            } else if (g_str_equal(name, "workspace-names")) {
-                valid = g_variant_is_of_type(value, G_VARIANT_TYPE("av")) &&
-                        g_variant_n_children(value) <= 36;
-                for (gsize i = 0; valid && i < g_variant_n_children(value); i++) {
-                    g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
-                    g_autoptr(GVariant) item = g_variant_get_variant(boxed);
-                    valid = g_variant_is_of_type(item, G_VARIANT_TYPE_STRING) &&
-                            g_utf8_strlen(g_variant_get_string(item, NULL), -1) <= 80;
-                }
-            } else if (g_str_equal(name, "workspace-ids")) {
-                valid = g_variant_is_of_type(value, G_VARIANT_TYPE("av")) &&
-                        g_variant_n_children(value) <= 36;
-                GHashTable* ids = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-                for (gsize i = 0; valid && i < g_variant_n_children(value); i++) {
-                    g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
-                    g_autoptr(GVariant) item = g_variant_get_variant(boxed);
-                    const char* id = g_variant_is_of_type(item, G_VARIANT_TYPE_STRING)
-                                         ? g_variant_get_string(item, NULL)
-                                         : "";
-                    valid = g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", id,
-                                                 G_REGEX_OPTIMIZE, G_REGEX_MATCH_NOTEMPTY) &&
-                            !g_hash_table_contains(ids, id);
-                    if (valid)
-                        g_hash_table_add(ids, g_strdup(id));
-                }
-                g_hash_table_unref(ids);
-            } else if (g_str_equal(name, "auto-raise-delay") ||
-                       g_str_equal(name, "num-workspaces")) {
+            } else if (g_str_equal(name, "auto-raise-delay")) {
                 gint64 number =
                     g_variant_is_of_type(value, G_VARIANT_TYPE_INT32)   ? g_variant_get_int32(value)
                     : g_variant_is_of_type(value, G_VARIANT_TYPE_INT64) ? g_variant_get_int64(value)
                                                                         : -1;
-                valid = g_str_equal(name, "auto-raise-delay") ? number >= 0 && number <= 10000
-                                                              : number >= 1 && number <= 36;
+                valid = number >= 0 && number <= 10000;
             } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
                 const char* string = g_variant_get_string(value, NULL);
                 if (g_str_equal(name, "focus-mode"))

@@ -335,11 +335,10 @@ static const struct {
 };
 
 static gboolean append_array_key(const char* key) {
-    return key && (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
-                   !strcmp(key, "shortcuts") || !strcmp(key, "animations") ||
-                   !strcmp(key, "rules") || !strcmp(key, "workspaces") ||
-                   !strcmp(key, "workspace-names") || !strcmp(key, "workspace-ids") ||
-                   !strcmp(key, "xkb-options") || !strcmp(key, "sources"));
+    return key &&
+           (!strcmp(key, "autostart") || !strcmp(key, "window-rules") ||
+            !strcmp(key, "shortcuts") || !strcmp(key, "animations") || !strcmp(key, "rules") ||
+            !strcmp(key, "workspaces") || !strcmp(key, "xkb-options") || !strcmp(key, "sources"));
 }
 
 static void* limited_alloc(void* opaque, void* pointer, size_t old, size_t size) {
