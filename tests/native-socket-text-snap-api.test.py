@@ -472,8 +472,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "void gnoblin_config_finish_load(gboolean commit)",
         )
 
-        self.assertEqual(api_minor(header), 53)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=53", cmake)
+        self.assertEqual(api_minor(header), 54)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=54", cmake)
         self.assertIn("client->api_minor >= 52", workspace_list)
         self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', workspace_list)
         self.assertIn("meta_gnoblin_dispatch_native_api", workspace_list)
@@ -955,7 +955,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean native_runtime_fd_ready(",
         )
 
-        self.assertEqual(api_minor(header), 53)
+        self.assertEqual(api_minor(header), 54)
         self.assertIn("client->track_launches = TRUE", launch)
         self.assertIn("client->launch_api_minor = client->api_minor", launch)
         self.assertLess(launch.index("client->track_launches = TRUE"), launch.index("client->api_minor >= 50"))
@@ -968,6 +968,35 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("gnoblin_native_control_dispatch_launch", operation)
         cmake = (ROOT / "CMakeLists.txt").read_text()
         self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+
+    def test_launch_status_uses_lua_for_api_154_and_keeps_event_tracking(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        launch = function_body(
+            dispatcher,
+            'if (g_str_has_prefix(method, "launch.")) {',
+            'if (g_str_equal(method, "input.devices")) {',
+        )
+        lua = LUA.read_text()
+        read_api = function_body(
+            lua,
+            "GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {",
+            "void gnoblin_config_finish_load(gboolean commit)",
+        )
+
+        self.assertEqual(api_minor(header), 54)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=54", cmake)
+        self.assertIn('g_str_equal(method, "launch.status") && client->api_minor >= 54', launch)
+        self.assertLess(
+            launch.index("client->track_launches = TRUE"),
+            launch.index('g_str_equal(method, "launch.status")'),
+        )
+        self.assertIn('queue_runtime_api_request(client, id, method, launch_arguments, "read")', launch)
+        self.assertIn("gnoblin_native_control_dispatch_launch", launch)
+        self.assertIn('"launch.status"', read_api)
+        self.assertIn('g_str_equal(method, "launches.snapshot") || g_str_equal(method, "launch.status")', read_api)
 
 
 if __name__ == "__main__":

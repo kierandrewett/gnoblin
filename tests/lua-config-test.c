@@ -1468,6 +1468,10 @@ int main(void) {
     gint64 launch_revision = 0;
     g_assert_true(g_variant_lookup(launch_snapshot, "revision", "x", &launch_revision));
     g_assert_cmpuint(launch_revision, ==, 19);
+    g_autoptr(GVariant) legacy_launch_snapshot =
+        gnoblin_config_read_api("launch.status", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_equal(launch_snapshot, legacy_launch_snapshot));
 
     GVariantBuilder empty_layer_filter_builder;
     g_variant_builder_init(&empty_layer_filter_builder, G_VARIANT_TYPE_VARDICT);
