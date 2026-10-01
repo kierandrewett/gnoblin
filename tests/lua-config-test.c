@@ -974,6 +974,12 @@ int main(void) {
                           g_variant_new_string("Example Window"));
     g_variant_builder_add(&window_record_builder, "{sv}", "app_id",
                           g_variant_new_string("org.example.App"));
+    g_variant_builder_add(&window_record_builder, "{sv}", "gtk_app_id",
+                          g_variant_new_string("org.example.GtkApp"));
+    g_variant_builder_add(&window_record_builder, "{sv}", "wm_class",
+                          g_variant_new_string("ExampleWindow"));
+    g_variant_builder_add(&window_record_builder, "{sv}", "rule_app_id",
+                          g_variant_new_string("org.example.App"));
     g_variant_builder_add(&window_record_builder, "{sv}", "focused", g_variant_new_boolean(TRUE));
     g_variant_builder_add(&window_record_builder, "{sv}", "revision", g_variant_new_int64(17));
     g_variant_builder_add(&window_record_builder, "{sv}", "modal", g_variant_new_boolean(FALSE));
@@ -1157,6 +1163,46 @@ int main(void) {
     g_assert_null(g_variant_lookup_value(legacy_window_record, "app_id", NULL));
     g_assert_null(g_variant_lookup_value(legacy_window_record, "revision", NULL));
     g_assert_null(g_variant_lookup_value(legacy_window_record, "modal", NULL));
+    g_autoptr(GVariant) legacy_window_match =
+        gnoblin_config_read_api("window.match", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(legacy_window_match, G_VARIANT_TYPE_VARDICT));
+    const char* matched_window_id = NULL;
+    g_assert_true(g_variant_lookup(legacy_window_match, "id", "&s", &matched_window_id));
+    g_assert_cmpstr(matched_window_id, ==, "window-1");
+    g_autoptr(GVariant) match_identity =
+        g_variant_lookup_value(legacy_window_match, "identity", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(match_identity);
+    const char* matched_desktop_app_id = NULL;
+    g_assert_true(
+        g_variant_lookup(match_identity, "desktop_app_id", "&s", &matched_desktop_app_id));
+    g_assert_cmpstr(matched_desktop_app_id, ==, "org.example.App");
+    const char* matched_gtk_app_id = NULL;
+    g_assert_true(g_variant_lookup(match_identity, "gtk_app_id", "&s", &matched_gtk_app_id));
+    g_assert_cmpstr(matched_gtk_app_id, ==, "org.example.GtkApp");
+    const char* matched_wm_class = NULL;
+    g_assert_true(g_variant_lookup(match_identity, "wm_class", "&s", &matched_wm_class));
+    g_assert_cmpstr(matched_wm_class, ==, "ExampleWindow");
+    g_autoptr(GVariant) match_details =
+        g_variant_lookup_value(legacy_window_match, "match", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(match_details);
+    const char* matched_title = NULL;
+    g_assert_true(g_variant_lookup(match_details, "title", "&s", &matched_title));
+    g_assert_cmpstr(matched_title, ==, "Example Window");
+    const char* matched_rule_app_id = NULL;
+    g_assert_true(g_variant_lookup(match_details, "app_id", "&s", &matched_rule_app_id));
+    g_assert_cmpstr(matched_rule_app_id, ==, "org.example.App");
+    GVariantBuilder match_selector_builder;
+    g_variant_builder_init(&match_selector_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&match_selector_builder, "{sv}", "window",
+                          g_variant_new_string("window-1"));
+    g_autoptr(GVariant) match_selector =
+        g_variant_ref_sink(g_variant_builder_end(&match_selector_builder));
+    g_autoptr(GVariant) selected_window_match =
+        gnoblin_config_read_api("window.match", match_selector, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_lookup(selected_window_match, "id", "&s", &matched_window_id));
+    g_assert_cmpstr(matched_window_id, ==, "window-1");
     g_autoptr(GVariant) version_snapshot =
         gnoblin_config_read_api("version", empty_read_arguments, &error);
     g_assert_no_error(error);
