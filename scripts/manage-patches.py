@@ -22,7 +22,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 PATCH_ROOT = ROOT / "patches"
 AUTHOR = "kierandrewett <kieran@drewett.dev>"
-PROJECTS = ("mutter", "xdg-desktop-portal-gnome")
+PROJECTS = ("mutter", "xdg-desktop-portal-gnome", "gnome-shell")
 AUTHOR_LINE = re.compile(r"(?m)^From: [^\r\n]+$")
 
 
