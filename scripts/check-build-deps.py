@@ -12,6 +12,12 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 MESON_ASSIGNMENT = re.compile(r"^([a-zA-Z0-9_]+)\s*=\s*'([^']+)'$", re.MULTILINE)
 
+# The pinned portal build pulls libgxdp through a Meson wrap, so its gtk4
+# requirement is not visible in the portal's root Meson files.
+WRAPPED_PROJECT_REQUIREMENTS = {
+    "xdg-desktop-portal-gnome": (("gtk4", ">= 4.22.0"),),
+}
+
 
 def bundled_subprojects(source):
     return set(re.findall(r"\bsubproject\(\s*['\"]([^'\"]+)", source))
@@ -203,6 +209,11 @@ def check(mode="checkout", project=None, xwayland=True, vector_cursors=False):
             if subprocess.run(["pkg-config", "--exists", expression]).returncode:
                 version = subprocess.run(["pkg-config", "--modversion", module], capture_output=True, text=True)
                 missing.add((module, minimum or "required", version.stdout.strip() or "not installed"))
+        for module, minimum in WRAPPED_PROJECT_REQUIREMENTS.get(source_project, ()):
+            expression = f"{module} {minimum}"
+            if subprocess.run(["pkg-config", "--exists", expression]).returncode:
+                version = subprocess.run(["pkg-config", "--modversion", module], capture_output=True, text=True)
+                missing.add((module, minimum, version.stdout.strip() or "not installed"))
         if source_project == "mutter":
             if subprocess.run(["pkg-config", "--exists", "xkeyboard-config"]).returncode:
                 version = subprocess.run(

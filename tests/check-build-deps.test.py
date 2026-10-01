@@ -108,6 +108,12 @@ bundled_dep = dependency('bundled-lib')
         self.assertIn("gnome-desktop-4", modules)
         self.assertIn("gnome-bg-4", modules)
 
+    def test_pinned_portal_wrap_includes_gtk4_minimum(self):
+        self.assertEqual(
+            checker.WRAPPED_PROJECT_REQUIREMENTS["xdg-desktop-portal-gnome"],
+            (("gtk4", ">= 4.22.0"),),
+        )
+
     def test_current_build_dry_run_reports_options_without_provisioning(self):
         with tempfile.TemporaryDirectory() as directory:
             output_dir = Path(directory) / "prefix"
