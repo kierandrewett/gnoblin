@@ -41,8 +41,8 @@ scripts/manage-patches.py export mutter HEAD \
   patches/mutter/90-example/0001-example.patch
 ```
 
-Use `gnome-shell` or `xdg-desktop-portal-gnome` in place of `mutter` for those
-subprojects. For uncommitted tracked changes, use
+The source build patches Mutter and `xdg-desktop-portal-gnome`; it does not
+build or patch GNOME Shell. For uncommitted tracked changes, use
 `scripts/manage-patches.py export-worktree PROJECT OUTPUT --subject "..."`.
 For a patch that follows existing patches on the same lines, use a temporary
 subproject worktree. Apply the earlier patches, stage that state as the baseline,
