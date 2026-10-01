@@ -304,6 +304,7 @@ gnoblinctl shortcut actions wm
 ```
 
 Use `--json` to preserve the complete action records in a pipe.
+The command reads the shared Lua API through `shortcuts.actions` (API 1.41).
 
 ## Window actions
 

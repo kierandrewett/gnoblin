@@ -53,6 +53,10 @@ The input commands use `input.sources`, `input.current_source`, and
 `input.select_source` at API 1.6. Source selection returns an operation that
 completes after Mutter confirms the selected keyboard layout.
 
+`gnoblinctl shortcut actions` reads `shortcuts.actions` from the shared Lua
+runtime at API 1.41. Its optional group filter and action records match
+`gnoblin.shortcuts.actions(group?)`.
+
 | Group         | Methods                                                                                                                                                                                                                              |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `workspace`   | `list`, `create`, `rename`, `remove`, `switch`, `next`, `previous`, `move_active`, `move_window`                                                                                                                                     |
@@ -69,7 +73,7 @@ completes after Mutter confirms the selected keyboard layout.
 | `launch`      | `status`, `begin`, `end`                                                                                                                                                                                                             |
 | `shell`       | `ping`, `version`, `status`, `reload`                                                                                                                                                                                                |
 | `config`      | `reload`                                                                                                                                                                                                                             |
-| `shortcut`    | `list`, `capture`                                                                                                                                                                                                                    |
+| `shortcut`    | `list`, `actions`, `capture`                                                                                                                                                                                                         |
 
 `shortcut.capture` options:
 
