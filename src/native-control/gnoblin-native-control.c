@@ -11058,7 +11058,7 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         g_autoptr(GVariant) launch_arguments =
             arguments_node ? variant_from_json(arguments_node)
                            : g_variant_ref_sink(g_variant_builder_end(&empty));
-        if (g_str_equal(method, "launch.status") && client->api_minor >= 54) {
+        if (g_str_equal(method, "launch.status")) {
             if (!launch_arguments)
                 return encode_response(id, NULL, "launch arguments are invalid");
             if (!client->control->supervised_runtime)
