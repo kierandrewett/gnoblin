@@ -327,7 +327,7 @@ static guint api_minor_for_method(const char* method) {
         {"focus.history", 19},
         {"focus.policy", 19},
         {"settings", 19},
-        {"privacy.state", 17},
+        {"privacy.state", 47},
         {"permissions.policy", 44},
         {"grant.list", 14},
         {"grant.revoke", 14},
@@ -1890,7 +1890,8 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (cli.help || !cli.command ||
-        (find_command(cli.command) && find_command(cli.command)->actions && !cli.action)) {
+        (find_command(cli.command) && find_command(cli.command)->actions && !cli.action &&
+         !g_str_equal(cli.command, "privacy"))) {
         print_help(cli.command, cli.action);
         return 0;
     }

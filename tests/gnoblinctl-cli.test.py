@@ -124,7 +124,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(25):
+                    for _ in range(26):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -199,6 +199,19 @@ def main() -> int:
                                 }
                             elif request["method"] == "input.devices":
                                 result = {"devices": [{"id": "input:1", "name": "Test keyboard"}], "revision": 11}
+                            elif request["method"] == "privacy.state":
+                                result = {
+                                    "available": {
+                                        "screen_sharing": True,
+                                        "recording": True,
+                                        "microphone_in_use": False,
+                                        "camera_in_use": False,
+                                        "location_in_use": False,
+                                    },
+                                    "screen_sharing": True,
+                                    "recording": False,
+                                    "revision": 42,
+                                }
                             elif request["method"] == "input.select_source":
                                 result = {"request_id": 23, "method": "input.select_source"}
                             elif request["method"] == "window.thumbnail":
@@ -564,11 +577,26 @@ def main() -> int:
             "devices": [{"id": "input:1", "name": "Test keyboard"}],
             "revision": 11,
         }
+        privacy = run(binary, "--socket", socket_path, "--format", "json", "privacy")
+        assert privacy.returncode == 0, privacy.stderr
+        assert privacy.stdout, (privacy.returncode, privacy.stderr)
+        assert json.loads(privacy.stdout) == {
+            "available": {
+                "screen_sharing": True,
+                "recording": True,
+                "microphone_in_use": False,
+                "camera_in_use": False,
+                "location_in_use": False,
+            },
+            "screen_sharing": True,
+            "recording": False,
+            "revision": 42,
+        }
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 25
-        assert len(subscriptions) == 25
+        assert len(received) == 26
+        assert len(subscriptions) == 26
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -669,6 +697,9 @@ def main() -> int:
         assert received[24]["method"] == "input.devices"
         assert received[24]["api_version"] == {"major": 1, "minor": 46}
         assert received[24]["arguments"] == {}
+        assert received[25]["method"] == "privacy.state"
+        assert received[25]["api_version"] == {"major": 1, "minor": 47}
+        assert received[25]["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
