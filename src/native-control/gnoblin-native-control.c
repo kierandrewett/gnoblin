@@ -10882,6 +10882,51 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 id, NULL,
                 "unsupported native window.action; use a typed window operation when available");
 
+        if (client->api_minor >= 60) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+
+            const char* target = window_node ? json_node_get_string(window_node) : "active";
+            g_autofree char* active_window_id = NULL;
+            if (g_str_equal(target, "active")) {
+                MetaWindow* active_window = meta_display_get_focus_window(client->control->display);
+                if (!active_window)
+                    return encode_response(id, NULL, "there is no active window");
+                active_window_id = native_window_id(active_window);
+                target = active_window_id;
+            }
+
+            const char* lua_method = method;
+            gboolean enabled = TRUE;
+            if (g_str_equal(action, "above") || g_str_equal(action, "unabove")) {
+                lua_method = "window.set_above";
+                enabled = g_str_equal(action, "above");
+            } else if (g_str_equal(action, "stick") || g_str_equal(action, "unstick")) {
+                lua_method = "window.set_sticky";
+                enabled = g_str_equal(action, "stick");
+            } else if (g_str_equal(action, "maximize") || g_str_equal(action, "unmaximize")) {
+                lua_method = "window.set_maximized";
+                enabled = g_str_equal(action, "maximize");
+            } else if (g_str_equal(action, "fullscreen") || g_str_equal(action, "unfullscreen")) {
+                lua_method = "window.set_fullscreen";
+                enabled = g_str_equal(action, "fullscreen");
+            } else {
+                lua_method = g_str_equal(action, "close")      ? "window.close"
+                             : g_str_equal(action, "minimize") ? "window.minimize"
+                                                               : "window.restore";
+            }
+
+            GVariantBuilder typed_arguments;
+            g_variant_builder_init(&typed_arguments, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&typed_arguments, "{sv}", "id", g_variant_new_string(target));
+            if (g_str_has_prefix(lua_method, "window.set_"))
+                g_variant_builder_add(&typed_arguments, "{sv}", "enabled",
+                                      g_variant_new_boolean(enabled));
+            g_autoptr(GVariant) operation_arguments =
+                g_variant_ref_sink(g_variant_builder_end(&typed_arguments));
+            return queue_runtime_api_request(client, id, lua_method, operation_arguments, "call");
+        }
+
         g_autoptr(GVariant) native_arguments = variant_from_json(arguments_node);
         if (!native_arguments)
             return encode_response(id, NULL, "window.action arguments are invalid");
