@@ -6299,6 +6299,7 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
 GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {
     static const char* read_methods[] = {
         "version",
+        "windows.list",
         "capabilities.list",
         "focus.history",
         "settings",
@@ -6326,9 +6327,9 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         return NULL;
     }
 
-    gboolean accepts_arguments = g_str_equal(method, "focus.history") ||
-                                 g_str_equal(method, "layer.animation_policy") ||
-                                 g_str_equal(method, "layers.list");
+    gboolean accepts_arguments =
+        g_str_equal(method, "focus.history") || g_str_equal(method, "windows.list") ||
+        g_str_equal(method, "layer.animation_policy") || g_str_equal(method, "layers.list");
     if (!accepts_arguments && g_variant_n_children(arguments) != 0) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                     "Lua API read '%s' does not accept arguments", method);
@@ -6376,6 +6377,11 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "focus.history")) {
         lua_getfield(state, -1, "focus");
         lua_getfield(state, -1, "history");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "windows.list")) {
+        lua_getfield(state, -1, "windows");
+        lua_getfield(state, -1, "list");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "settings")) {

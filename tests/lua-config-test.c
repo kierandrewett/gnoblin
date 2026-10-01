@@ -1044,6 +1044,16 @@ int main(void) {
     const char* workspace_read_id = NULL;
     g_assert_true(g_variant_lookup(workspace_read_record, "id", "&s", &workspace_read_id));
     g_assert_cmpstr(workspace_read_id, ==, "workspace-1");
+    g_autoptr(GVariant) windows_read =
+        gnoblin_config_read_api("windows.list", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(windows_read, G_VARIANT_TYPE("av")));
+    g_assert_cmpuint(g_variant_n_children(windows_read), ==, 1);
+    g_autoptr(GVariant) window_read_box = g_variant_get_child_value(windows_read, 0);
+    g_autoptr(GVariant) window_read_record = g_variant_get_variant(window_read_box);
+    const char* window_read_id = NULL;
+    g_assert_true(g_variant_lookup(window_read_record, "id", "&s", &window_read_id));
+    g_assert_cmpstr(window_read_id, ==, "window-1");
     g_autoptr(GVariant) version_snapshot =
         gnoblin_config_read_api("version", empty_read_arguments, &error);
     g_assert_no_error(error);
@@ -1098,6 +1108,7 @@ int main(void) {
     g_clear_pointer(&window_snapshot, g_variant_unref);
     window_snapshot = g_variant_ref_sink(g_variant_builder_end(&empty_windows_snapshot_builder));
     gnoblin_config_update_window_snapshot(window_snapshot, 18);
+    assert_empty_api_array("windows.list", empty_read_arguments);
     g_clear_pointer(&focus_history, g_variant_unref);
     focus_history = gnoblin_config_read_api("focus.history", empty_read_arguments, &error);
     g_assert_no_error(error);
