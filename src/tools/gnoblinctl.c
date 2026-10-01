@@ -320,6 +320,7 @@ static guint api_minor_for_method(const char* method) {
         {"layers.list", 37},
         {"launches.snapshot", 39},
         {"shortcuts.list", 40},
+        {"shortcuts.actions", 41},
         {"capabilities.list", 19},
         {"focus.history", 19},
         {"focus.policy", 19},
@@ -364,6 +365,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "input.current_source") ||
         g_str_equal(method_name, "input.select_source") ||
         g_str_equal(method_name, "shortcut.actions") ||
+        g_str_equal(method_name, "shortcuts.actions") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "shortcut.list") ||
         g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke") ||
         g_str_equal(method_name, "permissions.policy") ||
@@ -374,6 +376,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "privacy.stop_recording") ||
         g_str_equal(method_name, "launch.status") ||
         g_str_equal(method_name, "launches.snapshot") ||
+        g_str_equal(method_name, "shortcuts.actions") ||
         g_str_equal(method_name, "shortcuts.list") ||
         g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "windows.list") ||
         g_str_equal(method_name, "workspaces.list") || g_str_equal(method_name, "monitors.list") ||
@@ -530,7 +533,8 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                 gboolean array_result = result_node && JSON_NODE_HOLDS_ARRAY(result_node) &&
                                         word_in("capabilities.list focus.history windows.list "
                                                 "workspaces.list monitors.list layers.list "
-                                                "shortcut.actions shortcut.list shortcuts.list",
+                                                "shortcuts.actions shortcut.actions shortcut.list "
+                                                "shortcuts.list",
                                                 method_name);
                 gboolean null_result = result_node && JSON_NODE_HOLDS_NULL(result_node) &&
                                        (read_method || g_str_equal(method_name, "animation.get"));
@@ -1272,7 +1276,7 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
             }
             set_string(arguments, "group", arg(cli, 0));
         }
-        method = "shortcut.actions";
+        method = "shortcuts.actions";
     } else if (is(command, "shortcut") && is(action, "capture")) {
         g_printerr("Press a shortcut now; Escape cancels.\n");
         set_number(arguments, "timeout", cli->timeout);
