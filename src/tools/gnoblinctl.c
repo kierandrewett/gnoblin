@@ -332,9 +332,9 @@ static guint api_minor_for_method(const char* method) {
         {"grant.list", 14},
         {"grant.revoke", 14},
         {"layer.list", 2},
-        {"input.devices", 3},
-        {"input.sources", 6},
-        {"input.current_source", 6},
+        {"input.devices", 46},
+        {"input.sources", 46},
+        {"input.current_source", 46},
         {"input.select_source", 6},
         {"launch.status", 8},
     };

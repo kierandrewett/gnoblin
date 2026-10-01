@@ -124,7 +124,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(24):
+                    for _ in range(25):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -197,6 +197,8 @@ def main() -> int:
                                     "source": {"type": "xkb", "id": "us", "short_name": "en", "name": "English (US)"},
                                     "revision": 5,
                                 }
+                            elif request["method"] == "input.devices":
+                                result = {"devices": [{"id": "input:1", "name": "Test keyboard"}], "revision": 11}
                             elif request["method"] == "input.select_source":
                                 result = {"request_id": 23, "method": "input.select_source"}
                             elif request["method"] == "window.thumbnail":
@@ -556,11 +558,17 @@ def main() -> int:
             "rules": [],
             "revision": 9,
         }
+        input_devices = run(binary, "--socket", socket_path, "--format", "json", "input", "devices")
+        assert input_devices.returncode == 0, input_devices.stderr
+        assert json.loads(input_devices.stdout) == {
+            "devices": [{"id": "input:1", "name": "Test keyboard"}],
+            "revision": 11,
+        }
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 24
-        assert len(subscriptions) == 24
+        assert len(received) == 25
+        assert len(subscriptions) == 25
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -632,10 +640,10 @@ def main() -> int:
         assert received[15]["api_version"] == {"major": 1, "minor": 37}
         assert received[15]["arguments"] == {}
         assert received[16]["method"] == "input.sources"
-        assert received[16]["api_version"] == {"major": 1, "minor": 6}
+        assert received[16]["api_version"] == {"major": 1, "minor": 46}
         assert received[16]["arguments"] == {}
         assert received[17]["method"] == "input.current_source"
-        assert received[17]["api_version"] == {"major": 1, "minor": 6}
+        assert received[17]["api_version"] == {"major": 1, "minor": 46}
         assert received[17]["arguments"] == {}
         assert received[18]["method"] == "input.select_source"
         assert received[18]["api_version"] == {"major": 1, "minor": 6}
@@ -658,6 +666,9 @@ def main() -> int:
         assert received[23]["method"] == "permissions.policy"
         assert received[23]["api_version"] == {"major": 1, "minor": 44}
         assert received[23]["arguments"] == {}
+        assert received[24]["method"] == "input.devices"
+        assert received[24]["api_version"] == {"major": 1, "minor": 46}
+        assert received[24]["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
