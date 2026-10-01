@@ -643,6 +643,16 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static GVariant* native_commit_snap_context_owned(",
             "GVariant* gnoblin_native_control_commit_snap_context(",
         )
+        drag_begin = function_body(
+            source,
+            "guint64 gnoblin_native_control_window_drag_begin(",
+            "void gnoblin_native_control_window_drag_update(",
+        )
+        drag_snap = function_body(
+            source,
+            "gboolean gnoblin_native_control_take_window_drag_snap(",
+            "GVariant* gnoblin_native_control_focus_window(",
+        )
 
         self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
         self.assertIn("window.restore_or_minimize", source)
@@ -658,6 +668,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("context.original_frame", snap)
         self.assertIn("meta_window_set_unmaximize_flags", snap)
         self.assertIn("g_hash_table_contains(control->snap_restore_frames, window)", snap)
+        self.assertIn("drag->original_frame = drag->frame", drag_begin)
+        self.assertIn("*original_frame = drag->original_frame", drag_snap)
 
 
 if __name__ == "__main__":

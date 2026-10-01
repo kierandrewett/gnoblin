@@ -1573,6 +1573,7 @@ typedef struct {
     MtkRectangle monitor;
     MtkRectangle work_area;
     MtkRectangle frame;
+    MtkRectangle original_frame;
     int pointer_x;
     int pointer_y;
     guint32 modifiers;
@@ -7476,6 +7477,7 @@ guint64 gnoblin_native_control_window_drag_begin(MetaDisplay* display, MetaWindo
         native_window_drag_free(drag);
         return 0;
     }
+    drag->original_frame = drag->frame;
     guint token_count = 0;
     GHashTableIter clients_iter;
     gpointer client_value;
@@ -7580,7 +7582,7 @@ gboolean gnoblin_native_control_take_window_drag_snap(MetaDisplay* display, guin
             g_hash_table_remove(control->snap_restore_frames, window);
         } else if (!g_hash_table_contains(control->snap_restore_frames, window)) {
             MtkRectangle* original_frame = g_new(MtkRectangle, 1);
-            *original_frame = drag->frame;
+            *original_frame = drag->original_frame;
             g_hash_table_insert(control->snap_restore_frames, window, original_frame);
         }
         g_free(drag->committed_target_id);
