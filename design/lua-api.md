@@ -1235,8 +1235,8 @@ Native-control API 1.46 introduced shared Lua reads for `input.devices`,
 `input.sources`, and `input.current_source`. All supported client versions now
 use these reads. API 1.47 routes `privacy.state` through
 `gnoblin.privacy.state()`; every supported client version now uses the Lua
-read. API 1.48 routes `window.restore_or_minimize` through the Lua runtime;
-earlier clients retain the native compatibility route. API 1.49 routes
+read. API 1.48 introduced the Lua operation for `window.restore_or_minimize`;
+every supported client version now uses it. API 1.49 routes
 `session.lock` through the Lua runtime; earlier clients retain the native
 compatibility route. The compositor still validates lock capability and state,
 checks for subscribed lock clients, and dispatches the event.
