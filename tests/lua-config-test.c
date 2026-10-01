@@ -970,7 +970,13 @@ int main(void) {
     GVariantBuilder window_record_builder;
     g_variant_builder_init(&window_record_builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&window_record_builder, "{sv}", "id", g_variant_new_string("window-1"));
+    g_variant_builder_add(&window_record_builder, "{sv}", "title",
+                          g_variant_new_string("Example Window"));
+    g_variant_builder_add(&window_record_builder, "{sv}", "app_id",
+                          g_variant_new_string("org.example.App"));
     g_variant_builder_add(&window_record_builder, "{sv}", "focused", g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&window_record_builder, "{sv}", "revision", g_variant_new_int64(17));
+    g_variant_builder_add(&window_record_builder, "{sv}", "modal", g_variant_new_boolean(FALSE));
     g_variant_builder_add(&window_record_builder, "{sv}", "workspace_id",
                           g_variant_new_string("workspace-1"));
     g_variant_builder_add(&window_record_builder, "{sv}", "monitor_id",
@@ -1126,6 +1132,31 @@ int main(void) {
     const char* window_read_id = NULL;
     g_assert_true(g_variant_lookup(window_read_record, "id", "&s", &window_read_id));
     g_assert_cmpstr(window_read_id, ==, "window-1");
+    GVariantBuilder legacy_window_filter_builder;
+    g_variant_builder_init(&legacy_window_filter_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&legacy_window_filter_builder, "{sv}", "app_id",
+                          g_variant_new_string("org.example.App"));
+    g_variant_builder_add(&legacy_window_filter_builder, "{sv}", "focused",
+                          g_variant_new_boolean(FALSE));
+    g_autoptr(GVariant) legacy_window_filter =
+        g_variant_ref_sink(g_variant_builder_end(&legacy_window_filter_builder));
+    g_autoptr(GVariant) legacy_window_read =
+        gnoblin_config_read_api("window.list", legacy_window_filter, &error);
+    g_assert_no_error(error);
+    g_autoptr(GVariant) legacy_window_records =
+        g_variant_lookup_value(legacy_window_read, "windows", G_VARIANT_TYPE("aa{sv}"));
+    g_assert_nonnull(legacy_window_records);
+    g_assert_cmpuint(g_variant_n_children(legacy_window_records), ==, 1);
+    g_autoptr(GVariant) legacy_window_record = g_variant_get_child_value(legacy_window_records, 0);
+    const char* legacy_window_app_id = NULL;
+    g_assert_true(g_variant_lookup(legacy_window_record, "appId", "&s", &legacy_window_app_id));
+    g_assert_cmpstr(legacy_window_app_id, ==, "org.example.App");
+    g_autoptr(GVariant) legacy_window_geometry =
+        g_variant_lookup_value(legacy_window_record, "geometry", NULL);
+    g_assert_nonnull(legacy_window_geometry);
+    g_assert_null(g_variant_lookup_value(legacy_window_record, "app_id", NULL));
+    g_assert_null(g_variant_lookup_value(legacy_window_record, "revision", NULL));
+    g_assert_null(g_variant_lookup_value(legacy_window_record, "modal", NULL));
     g_autoptr(GVariant) version_snapshot =
         gnoblin_config_read_api("version", empty_read_arguments, &error);
     g_assert_no_error(error);
