@@ -892,7 +892,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('lua_getfield(state, -1, "grants")', lua_read)
         self.assertGreaterEqual(api_minor(header), 45)
 
-    def test_input_snapshots_use_lua_at_api_146_and_keep_legacy_routes(self):
+    def test_input_snapshots_always_use_lua(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
@@ -918,13 +918,12 @@ class NativeSocketTextSnapTests(unittest.TestCase):
                 self.assertIn(f'"{method}"', lua_read)
                 self.assertIn(f'g_str_equal(method, "{method}")', lua_source)
 
-        self.assertIn("client->api_minor >= 46", devices)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', devices)
-        self.assertIn("client->api_minor >= 46", sources)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', sources)
-        self.assertLess(sources.index("publish_input_source_changes"), sources.index("client->api_minor >= 46"))
-        self.assertIn("input_device_snapshot(client->control)", devices)
-        self.assertIn("input_source_snapshot(client->control)", sources)
+        self.assertLess(sources.index("publish_input_source_changes"), sources.index("queue_runtime_api_request"))
+        self.assertNotIn("input_device_snapshot(client->control)", devices)
+        self.assertNotIn("input_source_snapshot(client->control)", sources)
+        self.assertNotIn("client->api_minor >= 46", devices + sources)
         self.assertIn('g_str_equal(method, "input.devices") ? "devices" : "sources"', lua_source)
         self.assertIn('g_str_equal(method, "input.current_source") && lua_isnil(state, -1)', lua_source)
         self.assertIn("gnoblin_config_update_input_device_snapshot", lua_source)
