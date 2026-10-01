@@ -1257,6 +1257,9 @@ clients retain the native snapshot route.
 API 1.56 routes the socket-only `shortcut.actions` alias through the shared
 `gnoblin.shortcuts.actions()` read. Earlier clients retain the native snapshot
 route.
+API 1.57 routes the legacy `layer.list` socket method through
+`gnoblin.layers.list()`, preserving its `{surfaces = {...}}` response shape.
+Earlier clients retain the existing compatibility path.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
