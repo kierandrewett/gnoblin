@@ -43,4 +43,35 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* actor, double inse
 void meta_gnoblin_window_effects_set_csd_reconstruction(ClutterActor* actor, gboolean enabled,
                                                         const double insets[4]);
 
+#define META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS 4
+
+typedef struct {
+    double x;
+    double y;
+    double blur;
+    double spread;
+    double opacity;
+    double color[4];
+} MetaGnoblinWindowShadowLayer;
+
+typedef struct {
+    guint duration_ms;
+    const char* easing;
+    gboolean has_bezier;
+    /* Cubic Bézier control points x1, y1, x2, y2. */
+    double bezier[4];
+} MetaGnoblinWindowShadowTransition;
+
+/* Set or remove a compositor-owned shadow child below @window_actor's client
+ * content. @bounds is left, top, right, bottom in the window actor's logical
+ * coordinates. Layer geometry is in logical pixels; colors are normalized
+ * RGBA. A changed layer set crossfades using @transition. */
+void meta_gnoblin_window_effects_set_window_shadow(
+    ClutterActor* window_actor, gboolean enabled, const double bounds[4], double radius,
+    double exponent, const MetaGnoblinWindowShadowLayer* layers, guint n_layers,
+    const MetaGnoblinWindowShadowTransition* transition, guint child_index);
+
+/* Used by Mutter's X11 scanout path to avoid bypassing a visible shadow. */
+gboolean meta_gnoblin_window_effects_has_window_shadow(ClutterActor* window_actor);
+
 G_END_DECLS
