@@ -1262,11 +1262,11 @@ API 1.56 routes the socket-only `shortcut.actions` alias through the shared
 route.
 API 1.57 routes the legacy `layer.list` socket method through
 `gnoblin.layers.list()`, preserving its `{surfaces = {...}}` response shape.
-Earlier clients retain the existing compatibility path.
+Every supported client version now uses this Lua-backed response adapter.
 API 1.58 routes the legacy `monitor.list` socket method through
 `gnoblin.monitors.list()`, preserving the `{monitors = [...]}` response and
-the legacy integer monitor IDs. Earlier clients retain the existing native
-compatibility path.
+the legacy integer monitor IDs. Every supported client version now uses this
+Lua-backed response adapter.
 API 1.59 routes the legacy `window.match` socket method through
 `gnoblin.windows.list()`, preserving its `{id, identity, match}` response.
 Every negotiated client version now uses this Lua-backed response adapter;
