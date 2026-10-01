@@ -44,6 +44,8 @@ Gnoblin builds without the gnome-desktop development package. The portal's
 wallpaper preview uses Glycin.
 
 The portal also needs GTK4 and libadwaita for its dialogs and capture features.
+The pinned `libgxdp` source requires GTK4 development files version 4.22.0 or
+newer.
 Mutter's development viewer is built only for `./build.sh --preview`.
 
 ### Optional features
