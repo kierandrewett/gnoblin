@@ -417,52 +417,38 @@ Structured results use tables in a terminal and JSON in a pipe.
 `--json` forces JSON. Options work before or after the command.
 
 For example, `gnoblinctl window list --focused --json` returns this shape.
-IDs, titles and geometry below are illustrative:
+The CLI keeps the `windows` object for compatibility. Each record comes from
+the API 1.37 window snapshot and uses the Lua API's snake_case fields:
 
 ```json
 {
     "windows": [
         {
             "id": "42",
+            "revision": 123,
             "title": "Notes",
             "app_id": "org.example.Editor.desktop",
-            "appId": "org.example.Editor.desktop",
             "focused": true,
             "minimized": false,
-            "workspace": 1,
-            "workspace_id": "code",
+            "workspace_id": "workspace-1",
             "workspace_number": 1,
-            "workspaceId": "code",
-            "workspaceNumber": 1,
             "monitor_id": "DP-1",
-            "monitorIndex": 0,
-            "monitor_index": 0,
-            "monitorId": "DP-1",
-            "maximized": false,
-            "fullscreen": false,
-            "frame": { "x": 100, "y": 80, "width": 900, "height": 600 },
-            "geometry": { "x": 100, "y": 80, "width": 900, "height": 600 },
-            "last_user_time": 123456,
-            "lastUserTime": 123456,
-            "parent": null,
-            "monitor": { "x": 0, "y": 0 }
+            "frame": { "x": 100, "y": 80, "width": 900, "height": 600 }
         }
     ]
 }
 ```
 
-Window JSON records use snake_case names such as `app_id`, `workspace_id`,
-`monitor_id`, and `last_user_time`, matching the Lua window API. The older
-camelCase names remain as compatibility aliases for API 1.x clients; use the
-snake_case names in new scripts.
+Each record's `revision` identifies the compositor state represented by that
+record. Optional fields are omitted when Mutter does not provide them. Use
+`jq -r '.windows[].id'` to print the listed IDs.
 
-The standalone compositor returns window fields from Mutter:
-ID, title and app identity, focus, minimize, workspace and monitor state,
-maximization, fullscreen state, geometry, last user time, and an optional
-transient parent ID. It also returns stacking and attention state, operation
-capabilities, optional role, and `MetaWindowType`.
+The snapshot includes window identity, focus and state, workspace and monitor
+location, geometry, and operation capabilities. See the [runtime API
+reference](/config/runtime-api#immediate-window-snapshots) for the fields and
+their availability.
 
-In the standalone session, `appId` comes from the GTK app ID or WM class.
+In the standalone session, `app_id` comes from the GTK app ID or WM class.
 
 With `jq` installed, print just the focused window ID:
 

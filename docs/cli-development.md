@@ -27,10 +27,12 @@ and a JSON object of arguments:
 ```
 
 Lua and CLI calls share the method registry. The CLI maps its actions and
-arguments to canonical methods before dispatch. Typed native window operations
-are dispatched by Mutter; each requires the stable window `id` returned by
-`window.list`. The list below is a method-name index. See the
-[runtime API reference](/config/runtime-api) for each method's arguments,
+arguments to canonical methods before dispatch. Mutter handles typed window
+operations, which require the stable ID printed by `gnoblinctl window list`.
+
+`gnoblinctl window list` reads the API 1.37 `windows.list` snapshot and keeps
+the CLI's `windows` JSON wrapper. The list below is a method-name index. See
+the [runtime API reference](/config/runtime-api) for method arguments,
 accepted values, results, and compatibility limits.
 
 | Group         | Methods                                                                                                                                                                                                                              |
