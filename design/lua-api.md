@@ -1234,7 +1234,8 @@ Native-control API 1.46 routes `input.devices`, `input.sources`, and
 `input.current_source` through their shared Lua methods; earlier clients retain
 the native compatibility route. API 1.47 routes `privacy.state` through
 `gnoblin.privacy.state()`; earlier clients retain the native compatibility
-route.
+route. API 1.48 routes `window.restore_or_minimize` through the Lua runtime;
+earlier clients retain the native compatibility route.
 
 | Compositor operation                                                   | Lua API method or decision                                                                                                                              |
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |

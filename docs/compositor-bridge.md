@@ -332,7 +332,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.35            | Snake_case aliases for window snapshot fields                                                         |
 | 1.36            | `gnoblin.shortcut.binding-deactivated` for press-triggered shortcuts                                  |
 | 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches                            |
-| 1.38            | Native `window.restore_or_minimize` and saved pre-snap frame restoration                              |
+| 1.38            | Compatibility route for `window.restore_or_minimize`                                                  |
 | 1.39            | `launches.snapshot` with collection revision                                                          |
 | 1.40            | Shared `shortcuts.list` snapshot read                                                                 |
 | 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime                                   |
@@ -342,6 +342,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.45            | Shared `portals.grants` read backed by the installed Lua runtime                                      |
 | 1.46            | Shared input device and source reads backed by the installed Lua runtime                              |
 | 1.47            | Shared `privacy.state` read backed by the installed Lua runtime                                       |
+| 1.48            | Lua runtime operation for `window.restore_or_minimize`                                                |
 
 ### API 1.27: shell presentation requests
 
