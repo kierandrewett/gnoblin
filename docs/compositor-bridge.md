@@ -337,34 +337,34 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 
 ### API additions from 1.37
 
-| Minimum version | Added methods or events                                                         |
-| --------------- | ------------------------------------------------------------------------------- |
-| 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches      |
-| 1.38            | Adds `window.restore_or_minimize`; all supported clients use the Lua operation  |
-| 1.39            | `launches.snapshot` with collection revision                                    |
-| 1.40            | Shared `shortcuts.list` snapshot read                                           |
-| 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime             |
-| 1.42            | Adds Lua-backed `permissions.list`; all client versions now use it              |
-| 1.43            | Adds Lua-backed `permissions.check`; all client versions now use it             |
-| 1.44            | Adds Lua-backed `permissions.policy`; all client versions now use it            |
-| 1.45            | Adds the Lua-backed `portals.grants` read; all client versions now use it       |
-| 1.46            | Adds shared Lua input reads; all client versions now use them                   |
-| 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                 |
-| 1.48            | Adds Lua operation for `window.restore_or_minimize`; all clients now use it     |
-| 1.49            | Lua runtime operation for `session.lock`                                        |
-| 1.50            | Lua operations for `launch.begin` and `launch.end`                              |
-| 1.51            | Adds Lua-backed `session.status`; all client versions now use it                |
-| 1.52            | Adds Lua-backed `workspace.list`; all client versions now use it                |
-| 1.53            | Adds Lua-backed `window.list`; all client versions now use it                   |
-| 1.54            | Adds Lua-backed `launch.status`; all client versions now use it                 |
-| 1.55            | Lua-backed `shortcut.list` read                                                 |
-| 1.56            | Lua-backed `shortcut.actions` read                                              |
-| 1.57            | Adds Lua-backed `layer.list`; all client versions now use it                    |
-| 1.58            | Adds Lua-backed `monitor.list`; all client versions now use it                  |
-| 1.59            | Adds the Lua-backed `window.match` read; all client versions now use it         |
-| 1.60            | Basic legacy `window.action` requests route through typed Lua window operations |
-| 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`     |
-| 1.62            | Legacy `window.action` maps move to `window.move`                               |
+| Minimum version | Added methods or events                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------ |
+| 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches                       |
+| 1.38            | Adds `window.restore_or_minimize`; all supported clients use the Lua operation                   |
+| 1.39            | `launches.snapshot` with collection revision                                                     |
+| 1.40            | Shared `shortcuts.list` snapshot read                                                            |
+| 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime                              |
+| 1.42            | Adds Lua-backed `permissions.list`; all client versions now use it                               |
+| 1.43            | Adds Lua-backed `permissions.check`; all client versions now use it                              |
+| 1.44            | Adds Lua-backed `permissions.policy`; all client versions now use it                             |
+| 1.45            | Adds the Lua-backed `portals.grants` read; all client versions now use it                        |
+| 1.46            | Adds shared Lua input reads; all client versions now use them                                    |
+| 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                                  |
+| 1.48            | Adds Lua operation for `window.restore_or_minimize`; all clients now use it                      |
+| 1.49            | Lua runtime operation for `session.lock`                                                         |
+| 1.50            | Lua operations for `launch.begin` and `launch.end`                                               |
+| 1.51            | Adds Lua-backed `session.status`; all client versions now use it                                 |
+| 1.52            | Adds Lua-backed `workspace.list`; all client versions now use it                                 |
+| 1.53            | Adds Lua-backed `window.list`; all client versions now use it                                    |
+| 1.54            | Adds Lua-backed `launch.status`; all client versions now use it                                  |
+| 1.55            | Lua-backed `shortcut.list` read                                                                  |
+| 1.56            | Lua-backed `shortcut.actions` read                                                               |
+| 1.57            | Adds Lua-backed `layer.list`; all client versions now use it                                     |
+| 1.58            | Adds Lua-backed `monitor.list`; all client versions now use it                                   |
+| 1.59            | Adds the Lua-backed `window.match` read; all client versions now use it                          |
+| 1.60            | Basic legacy `window.action` requests use typed Lua operations for all supported client versions |
+| 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`                      |
+| 1.62            | Legacy `window.action` maps move to `window.move`                                                |
 
 ### API 1.27: shell presentation requests
 

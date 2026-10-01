@@ -752,7 +752,7 @@ version. Their socket adapters preserve the existing response wrappers.
 integer `width` and `height` dimensions up to 480 by 320. The compositor scales
 down to fit while preserving aspect ratio.
 
-Native-control API 1.60 and newer route basic `window.action` requests through
+Every supported socket client routes basic `window.action` requests through
 the Lua runtime. API 1.61 adds resize through `window.resize`; API 1.62 adds
 move through `window.move`.
 
@@ -760,8 +760,8 @@ Resize accepts integer dimensions from 1 to 32768 logical pixels. Move accepts
 integer coordinates from −100000 to 100000 logical pixels.
 
 The response acknowledges that Lua queued the typed operation. The compositor
-applies it asynchronously. Earlier clients use the native compatibility route
-for basic actions and do not support resize or move through `window.action`.
+applies it asynchronously. Resize and move remain unavailable through
+`window.action` to clients below API 1.61 and 1.62 respectively.
 
 The operation returns the stable `window_id`, actual dimensions, and `data` as
 a base64-encoded PNG. Encoded PNG output is limited to 512 KiB.
