@@ -1129,6 +1129,25 @@ int main(void) {
         g_variant_lookup_value(permission_list, "capabilities", NULL);
     g_assert_nonnull(permission_capabilities);
 
+    GVariantBuilder permission_check_arguments_builder;
+    g_variant_builder_init(&permission_check_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&permission_check_arguments_builder, "{sv}", "capability",
+                          g_variant_new_string("remote-desktop"));
+    g_variant_builder_add(&permission_check_arguments_builder, "{sv}", "identity",
+                          g_variant_new_string("app-id:org.example.Remote"));
+    g_autoptr(GVariant) permission_check_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&permission_check_arguments_builder));
+    g_autoptr(GVariant) permission_check =
+        gnoblin_config_read_api("permissions.check", permission_check_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(permission_check, G_VARIANT_TYPE_VARDICT));
+    const char* permission_level = NULL;
+    const char* permission_rule = NULL;
+    g_assert_true(g_variant_lookup(permission_check, "level", "&s", &permission_level));
+    g_assert_true(g_variant_lookup(permission_check, "rule", "&s", &permission_rule));
+    g_assert_cmpstr(permission_level, ==, "default");
+    g_assert_cmpstr(permission_rule, ==, "");
+
     g_autoptr(GVariant) shortcut_actions =
         gnoblin_config_read_api("shortcuts.actions", empty_read_arguments, &error);
     g_assert_no_error(error);

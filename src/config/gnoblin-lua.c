@@ -6329,12 +6329,25 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
 
 GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {
     static const char* read_methods[] = {
-        "version",           "windows.list",      "capabilities.list",
-        "focus.history",     "settings",          "focus.policy",
-        "session.activity",  "session.status",    "layer.animation_policy",
-        "workspaces.list",   "monitors.list",     "layers.list",
-        "launches.list",     "launches.snapshot", "shortcuts.list",
-        "shortcuts.actions", "permissions.list",  NULL,
+        "version",
+        "windows.list",
+        "capabilities.list",
+        "focus.history",
+        "settings",
+        "focus.policy",
+        "session.activity",
+        "session.status",
+        "layer.animation_policy",
+        "workspaces.list",
+        "monitors.list",
+        "layers.list",
+        "launches.list",
+        "launches.snapshot",
+        "shortcuts.list",
+        "shortcuts.actions",
+        "permissions.list",
+        "permissions.check",
+        NULL,
     };
     gboolean known = FALSE;
     for (guint i = 0; method && read_methods[i]; i++)
@@ -6353,7 +6366,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     gboolean accepts_arguments =
         g_str_equal(method, "focus.history") || g_str_equal(method, "windows.list") ||
         g_str_equal(method, "layer.animation_policy") || g_str_equal(method, "layers.list") ||
-        g_str_equal(method, "shortcuts.actions");
+        g_str_equal(method, "shortcuts.actions") || g_str_equal(method, "permissions.check");
     if (!accepts_arguments && g_variant_n_children(arguments) != 0) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                     "Lua API read '%s' does not accept arguments", method);
@@ -6384,6 +6397,17 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                             "shortcuts.actions accepts an optional group string");
         return NULL;
+    }
+    if (g_str_equal(method, "permissions.check")) {
+        const char* capability = NULL;
+        const char* identity = NULL;
+        if (g_variant_n_children(arguments) != 2 ||
+            !g_variant_lookup(arguments, "capability", "&s", &capability) ||
+            !g_variant_lookup(arguments, "identity", "&s", &identity) || !capability || !identity) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "permissions.check requires string capability and identity");
+            return NULL;
+        }
     }
 
     LuaConfig* config = &active_runtime->config;
@@ -6468,6 +6492,11 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "permissions.list")) {
         lua_getfield(state, -1, "permissions");
         lua_getfield(state, -1, "list");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "permissions.check")) {
+        lua_getfield(state, -1, "permissions");
+        lua_getfield(state, -1, "check");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else { /* focus.policy */
