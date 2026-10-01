@@ -21,11 +21,13 @@ Verify shortcut reconnects, window thumbnails, focus handoff, pointer and
 keyboard snapping, privacy controls, emoji insertion, and capture in a fresh
 standalone session.
 
-`ApplicationLauncher.qml` still attempts to focus a newly launched window
-without an activation context. Gnoblin rejects focus requests without a fresh
-user or launch context. The launch path needs an XDG Activation token created
-from the initiating user action and sent over the same socket connection, or
-it must leave focus to the application's normal activation request.
+`ApplicationLauncher.qml` no longer sends Gnoblin a focus request after
+launching the calendar. It waits for the window and lets the application's
+activation request go through Gnoblin's focus policy.
+
+Verify that the calendar receives focus in a fresh session. If it does not,
+preserve a valid XDG Activation token from the launch action and send it over
+the same socket connection. A window ID alone cannot grant focus.
 
 The calendar helper also calls GNOME Shell's private
 `org.gnome.Shell.CalendarServer` service. That service is absent when GNOME
@@ -111,9 +113,9 @@ or render Bingux UI.
 
 ## Finish the remaining work
 
-1. Fix app-launch focus. Create an XDG Activation token from the initiating
-   user action and use it on the same socket connection, or leave focus to the
-   application's activation request.
+1. Verify that a launched calendar window receives focus through its normal
+   activation request. If it does not, pass a valid XDG Activation token on
+   the same socket connection.
 2. Subscribe to `gnoblin.osd.requested` and draw OSDs in Bingux. Keep the
    GNOME Shell OSD shim in the compatibility session and keep LaunchFeedback
    on its documented D-Bus API.
