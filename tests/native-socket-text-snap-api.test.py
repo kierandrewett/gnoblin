@@ -758,6 +758,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = HEADER.read_text()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         overlay_manifest = (ROOT / "src/native-control/manifest").read_text()
+        lua = LUA.read_text()
+        mutter_patch = (ROOT / "patches/mutter/99-typed-window-api/0064-native-window-unminimize.patch").read_text()
         handler = function_body(
             source,
             'if (g_str_equal(method, "window.action")) {',
@@ -784,7 +786,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             '"window.set_fullscreen"',
             '"window.close"',
             '"window.minimize"',
-            '"window.restore"',
+            '"window.unminimize"',
         ):
             with self.subTest(lua_method=lua_method):
                 self.assertIn(lua_method, handler)
@@ -793,6 +795,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             handler,
         )
         self.assertIn('"call", action, target)', handler)
+        self.assertIn('"window.unminimize"', lua)
+        self.assertIn('"window.unminimize"', mutter_patch)
         self.assertIn("meta_gnoblin_dispatch_native_api(", handler)
         self.assertIn("client->control->display, method, native_arguments", handler)
 
