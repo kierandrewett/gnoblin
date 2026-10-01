@@ -26,13 +26,10 @@ Before distributing binary packages, run:
 
 ```sh
 python3 scripts/check-rpm-isolation.py PATH_TO_RPM...
-bash tests/test-rpm-coexistence.sh MUTTER_RPM GNOBLIN_RPM
 ```
 
-The coexistence test uses disposable copies of installed GNOME files and
-requires Fakeroot. It checks payload installation, schema compilation and
-removal; it does not run RPM scriptlets or test DNF resolution or GDM login.
-
+The isolation check inspects package names, file paths and dependency metadata.
+It does not test package installation, scriptlets, DNF resolution or GDM login.
 Also test installation alongside stock GNOME on a clean Fedora host, log in
 to each session, and remove Gnoblin. Stock GNOME files must remain unchanged.
 The local installer runs the isolation check before invoking DNF.
