@@ -139,6 +139,8 @@ def main() -> int:
                                 result = {"session": "test-session", "locked": False}
                             elif request["method"] == "monitor.list":
                                 result = {"monitors": [{"id": "HDMI-1", "index": 0, "primary": True}]}
+                            elif request["method"] == "monitors.list":
+                                result = [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
                             elif request["method"] == "window.list":
                                 result = {
                                     "windows": [
@@ -445,7 +447,8 @@ def main() -> int:
         assert received[10]["method"] == "windows.list"
         assert received[10]["api_version"] == {"major": 1, "minor": 37}
         assert received[10]["arguments"] == {"focused": True}
-        assert received[11]["method"] == "monitor.list"
+        assert received[11]["method"] == "monitors.list"
+        assert received[11]["api_version"] == {"major": 1, "minor": 37}
         assert received[11]["arguments"] == {}
         assert received[12]["method"] == "window.move_to_monitor"
         assert received[12]["arguments"] == {"id": "42", "monitor": "HDMI-1"}

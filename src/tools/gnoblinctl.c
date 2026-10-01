@@ -316,6 +316,7 @@ static guint api_minor_for_method(const char* method) {
         {"version", 19},
         {"window.list", 35},
         {"windows.list", 37},
+        {"monitors.list", 37},
         {"capabilities.list", 19},
         {"focus.history", 19},
         {"focus.policy", 19},
@@ -364,9 +365,9 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "privacy.stop_recording") ||
         g_str_equal(method_name, "launch.status") ||
         g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "window.list") ||
-        g_str_equal(method_name, "windows.list") || g_str_equal(method_name, "focus.history") ||
-        g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings") ||
-        g_str_equal(method_name, "runtime.reload_config") ||
+        g_str_equal(method_name, "windows.list") || g_str_equal(method_name, "monitors.list") ||
+        g_str_equal(method_name, "focus.history") || g_str_equal(method_name, "focus.policy") ||
+        g_str_equal(method_name, "settings") || g_str_equal(method_name, "runtime.reload_config") ||
         g_str_has_prefix(method_name, "animation.")) {
         json_builder_set_member_name(builder, "api_version");
         json_builder_begin_object(builder);
@@ -512,10 +513,11 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                 gboolean operation_descriptor = result &&
                                                 json_object_has_member(result, "request_id") &&
                                                 json_object_has_member(result, "method");
-                gboolean array_result = result_node && JSON_NODE_HOLDS_ARRAY(result_node) &&
-                                        word_in("capabilities.list focus.history windows.list "
-                                                "shortcut.actions shortcut.list",
-                                                method_name);
+                gboolean array_result =
+                    result_node && JSON_NODE_HOLDS_ARRAY(result_node) &&
+                    word_in("capabilities.list focus.history windows.list monitors.list "
+                            "shortcut.actions shortcut.list",
+                            method_name);
                 gboolean null_result = result_node && JSON_NODE_HOLDS_NULL(result_node) &&
                                        (read_method || g_str_equal(method_name, "animation.get"));
                 if (!result && !array_result && !null_result) {
@@ -580,23 +582,15 @@ static char* focused_window_id(Cli* cli, GError** error) {
 
 static char* monitor_id_for_index(Cli* cli, guint monitor_index, GError** error) {
     g_autoptr(JsonObject) arguments = json_object_new();
-    g_autoptr(JsonNode) snapshot = call_compositor(cli, "api", "monitor.list", arguments, error);
+    g_autoptr(JsonNode) snapshot = call_compositor(cli, "api", "monitors.list", arguments, error);
     if (!snapshot)
         return NULL;
-    if (!JSON_NODE_HOLDS_OBJECT(snapshot)) {
+    if (!JSON_NODE_HOLDS_ARRAY(snapshot)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "Invalid monitor snapshot");
         return NULL;
     }
 
-    JsonObject* object = json_node_get_object(snapshot);
-    JsonNode* monitors_node = json_object_get_member(object, "monitors");
-    if (!monitors_node || !JSON_NODE_HOLDS_ARRAY(monitors_node)) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                            "Monitor snapshot has no monitors array");
-        return NULL;
-    }
-
-    JsonArray* monitors = json_node_get_array(monitors_node);
+    JsonArray* monitors = json_node_get_array(snapshot);
     for (guint i = 0; i < json_array_get_length(monitors); i++) {
         JsonObject* monitor = json_array_get_object_element(monitors, i);
         if (!monitor)
