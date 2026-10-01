@@ -32,6 +32,7 @@
 #include "compositor/meta-window-actor-private.h"
 #include "compositor/meta-window-actor-x11.h"
 #include "compositor/meta-window-actor-wayland.h"
+#include "compositor/meta-gnoblin-window-effects.h"
 #include "core/display-private.h"
 #include "core/events.h"
 #include "core/util-private.h"
@@ -5664,6 +5665,31 @@ static gboolean native_rule_get_padding(GVariant* record, double padding[4]) {
     return TRUE;
 }
 
+static gboolean native_rule_get_color(GVariant* record, const char* key, double color[4]) {
+    g_autoptr(GVariant) value = g_variant_lookup_value(record, key, G_VARIANT_TYPE_STRING);
+    if (!value)
+        return FALSE;
+
+    const char* text = g_variant_get_string(value, NULL);
+    gsize length = strlen(text);
+    if (length != 7 && length != 9)
+        return FALSE;
+    if (text[0] != '#')
+        return FALSE;
+
+    guint8 channels[4] = {0, 0, 0, 255};
+    for (guint i = 0; i < (length == 9 ? 4u : 3u); i++) {
+        int high = g_ascii_xdigit_value(text[1 + i * 2]);
+        int low = g_ascii_xdigit_value(text[2 + i * 2]);
+        if (high < 0 || low < 0)
+            return FALSE;
+        channels[i] = (guint8)(high * 16 + low);
+    }
+    for (guint i = 0; i < 4; i++)
+        color[i] = channels[i] / 255.;
+    return TRUE;
+}
+
 static gboolean native_rule_get_boolean(GVariant* record, const char* key, const char* legacy_key,
                                         gboolean* value) {
     return g_variant_lookup(record, key, "b", value) ||
@@ -6087,6 +6113,8 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
 
     double radius = 0;
     double smoothing = 0;
+    double border_width = 0;
+    double border_color[4] = {128. / 255., 128. / 255., 128. / 255., 1.};
     double padding[4] = {0, 0, 0, 0};
     gboolean keep_maximized = TRUE;
     gboolean keep_fullscreen = FALSE;
@@ -6114,6 +6142,11 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
 
         native_rule_get_number(corners, "radius", &radius);
         native_rule_get_number(corners, "smoothing", &smoothing);
+        if (!native_rule_get_number(corners, "border_width", &border_width))
+            native_rule_get_number(corners, "border-width", &border_width);
+        border_width = CLAMP(border_width, -40., 40.);
+        if (!native_rule_get_color(corners, "border_color", border_color))
+            native_rule_get_color(corners, "border-color", border_color);
         native_rule_get_padding(corners, padding);
         native_rule_get_boolean(corners, "keep_maximized", "keep-maximized", &keep_maximized);
         native_rule_get_boolean(corners, "keep_fullscreen", "keep-fullscreen", &keep_fullscreen);
@@ -6133,35 +6166,40 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                                          !!(maximize_flags & META_MAXIMIZE_VERTICAL);
     const gboolean tiled = meta_window_is_tiled_side_by_side(window) || partially_maximized;
     const gboolean normal = meta_window_get_window_type(window) == META_WINDOW_NORMAL;
-    gboolean enabled = normal && radius > 0 && !g_str_equal(mode, "off") &&
-                       (!meta_window_is_maximized(window) || keep_maximized) &&
-                       (!meta_window_is_fullscreen(window) || keep_fullscreen) &&
-                       (!tiled || keep_tiled);
+    const gboolean allowed = normal && !g_str_equal(mode, "off") &&
+                             (!meta_window_is_maximized(window) || keep_maximized) &&
+                             (!meta_window_is_fullscreen(window) || keep_fullscreen) &&
+                             (!tiled || keep_tiled);
+    gboolean clip_enabled = allowed && radius > 0;
+    const gboolean border_enabled = allowed && fabs(border_width) > 0.001;
     gboolean has_padding = FALSE;
     for (guint i = 0; i < G_N_ELEMENTS(padding); i++)
         has_padding |= fabs(padding[i]) > 0.001;
     double csd_insets[4] = {0, 0, 0, 0};
     gboolean csd_detected =
-        enabled && remove_csd && !has_padding && !window->minimized &&
+        clip_enabled && remove_csd && !has_padding && !window->minimized &&
         meta_gnoblin_window_effects_detect_csd(CLUTTER_ACTOR(actor), csd_insets);
-    if (enabled && g_str_equal(mode, "auto") && !csd_detected &&
+    if (clip_enabled && g_str_equal(mode, "auto") && !csd_detected &&
         native_corner_toolkit_should_skip(control, window, skip_libadwaita, skip_libhandy))
-        enabled = FALSE;
+        clip_enabled = FALSE;
+    const double effect_radius = clip_enabled ? radius : border_enabled ? 0.5 : 0;
+    const gboolean effect_enabled = clip_enabled || border_enabled;
     const double exponent = 2 + CLAMP(smoothing, 0, 1) * 4;
     if (META_IS_WINDOW_ACTOR_WAYLAND(actor))
-        meta_window_actor_wayland_set_rounded_clip(actor, enabled ? radius : 0, exponent,
-                                                   g_str_equal(mode, "auto") && !csd_detected,
-                                                   padding);
+        meta_window_actor_wayland_set_rounded_clip(
+            actor, effect_radius, exponent, g_str_equal(mode, "auto") && !csd_detected, padding);
     else if (META_IS_WINDOW_ACTOR_X11(actor))
-        meta_window_actor_x11_set_rounded_clip(META_WINDOW_ACTOR_X11(actor), enabled ? radius : 0,
+        meta_window_actor_x11_set_rounded_clip(META_WINDOW_ACTOR_X11(actor), effect_radius,
                                                exponent, g_str_equal(mode, "auto") && !csd_detected,
                                                padding);
+    meta_gnoblin_window_effects_set_rounded_border(CLUTTER_ACTOR(actor),
+                                                   effect_enabled ? border_width : 0, border_color);
     if (META_IS_WINDOW_ACTOR_WAYLAND(actor))
-        meta_window_actor_wayland_set_csd_reconstruction(actor, enabled && csd_detected,
+        meta_window_actor_wayland_set_csd_reconstruction(actor, clip_enabled && csd_detected,
                                                          csd_insets);
     else if (META_IS_WINDOW_ACTOR_X11(actor))
         meta_window_actor_x11_set_csd_reconstruction(META_WINDOW_ACTOR_X11(actor),
-                                                     enabled && csd_detected, csd_insets);
+                                                     clip_enabled && csd_detected, csd_insets);
 }
 
 static void native_apply_all_window_rules(GnoblinNativeControl* control) {
