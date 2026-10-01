@@ -19,19 +19,18 @@ if [[ -z ${WAYLAND_DISPLAY:-} ]]; then
     exit 1
 fi
 
-# The normal build omits Mutter's nested viewer. Rebuild the existing prefix
-# with the optional viewer enabled when one is requested.
-devkit_options="$ROOT/build/ninja/mutter/meson-info/intro-buildoptions.json"
-prepare_devkit=false
-if [[ ! -x "$PREFIX/libexec/mutter-devkit" ]]; then
-    prepare_devkit=true
-elif [[ -r "$devkit_options" ]] && ! python3 -c '
-import json
-import sys
-options = {item["name"]: item["value"] for item in json.load(open(sys.argv[1], encoding="utf-8"))}
-sys.exit(1 if options.get("prefix") == sys.argv[2] and options.get("devkit") != "enabled" else 0)
-' "$devkit_options" "$PREFIX"; then
-    prepare_devkit=true
+# The viewer executable alone does not prove that Gnoblin's compositor accepts
+# devkit options. Check the exact binary that the session will launch.
+source "$ROOT/src/tools/gnoblin-env.sh"
+gnoblin_env_apply "$PREFIX"
+compositor_help=''
+if [[ -x "$PREFIX/bin/gnoblin-mutter" ]]; then
+    compositor_help="$("$PREFIX/bin/gnoblin-mutter" --help 2>&1 || true)"
+fi
+prepare_devkit=true
+if [[ -x "$PREFIX/libexec/mutter-devkit" ]] &&
+    grep -Fq -- '--devkit' <<<"$compositor_help"; then
+    prepare_devkit=false
 fi
 if "$prepare_devkit"; then
     if [[ -d "$PREFIX" && ! -w "$PREFIX" ]]; then
@@ -100,8 +99,6 @@ if [[ -S "$HOST_RUNTIME/pipewire-0" ]]; then
     ln -s "$HOST_RUNTIME/pipewire-0" "$XDG_RUNTIME_DIR/pipewire-0"
 fi
 
-source "$ROOT/src/tools/gnoblin-env.sh"
-gnoblin_env_apply "$PREFIX"
 export WAYLAND_DISPLAY="$HOST_WAYLAND"
 export XDG_CURRENT_DESKTOP=Gnoblin XDG_SESSION_DESKTOP=gnoblin
 
