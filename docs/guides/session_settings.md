@@ -2,56 +2,19 @@
 
 [Configuration reference](/config/configure)
 
-Choose which GNOME controls to keep, how launchers affect window focus, and
-whether tools can use particular Wayland interfaces. Add the examples to
+Configure how layer-shell surfaces affect focus, how windows respond to
+pointer input, and which Wayland interfaces are available. Add the examples to
 `~/.config/gnoblin/init.lua`.
 
-## Native features
+## Shell UI
 
-Enable GNOME's notifications if your shell does not provide a notification
-daemon. Run only one notification service. This example enables GNOME's
-notifications and leaves its keyboard-layout and window-switching popups off:
+Panels, notifications, launchers, and keyboard-layout popups belong to the
+desktop shell you install. Configure them there. Gnoblin's Lua configuration
+controls compositor and session behavior; it does not enable GNOME Shell
+features.
 
-```lua
-gnoblin.configure {
-    shell = {
-        notifications = true,
-        input_source_switcher = false,
-        window_switcher = false,
-    },
-}
-```
-
-| Option                  | Default       | Enables                            |
-| ----------------------- | ------------- | ---------------------------------- |
-| `notifications`         | Initially off | GNOME's notification service       |
-| `input_source_switcher` | Initially off | Native keyboard-layout popup       |
-| `window_switcher`       | Off           | GNOME's app/window/group switchers |
-
-With Mako, set [`shell.notifications`](/config/configure/shell) to `false` so
-Gnoblin does not also own the notification service:
-
-```lua
-gnoblin.configure {shell = {notifications = false}}
-```
-
-![GNOME notification settings open under Waybar in a clean Gnoblin session](../images/gnoblin-waybar-notifications.png)
-
-_GNOME Settings shows per-app notification controls in this Waybar session._
-
-With Mako running, notifications appear in its own layer-shell surface. Keep
-GNOME's notification service off so only Mako handles them.
-
-Notifications and the layout-popup setting are saved in GNOME's settings
-database (GSettings). To turn them off again, set them to `false`; deleting
-the Lua lines leaves the saved values in place.
-
-Removing `window_switcher` returns it to `false`. If your shell needs the same
-switching keys, also [release or rebind the built-in shortcuts](/guides/shortcuts#avoid-conflicts).
-
-Disabling the layout popup does not disable keyboard layouts.
-Volume/brightness popups and screenshot controls come from your desktop shell;
-these options do not enable GNOME's versions.
+See [choose a shell](/bring-your-own-shell) for shell options and
+[shortcuts](/guides/shortcuts#avoid-conflicts) to resolve keybinding conflicts.
 
 ## Layer-shell keyboard focus
 
@@ -122,6 +85,10 @@ interfaces when the session starts and cannot remove them during config reload.
 | `xdg_decoration`                  | Client/server titlebar negotiation |
 | `window_frame_renderer`           | External frame renderer service    |
 | `blur_fade`                       | Per-item blur fade metadata        |
+
+Each protocol name accepts `true` or `false` and defaults to `true`. Set a
+protocol to `false` to keep Gnoblin from advertising that interface when the
+session starts.
 
 This does not block all screen sharing: apps using the desktop portal follow
 [portal permissions](/guides/permissions) instead.
