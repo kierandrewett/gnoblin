@@ -610,6 +610,11 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_lua_snapshot_collection_reads_require_api_137(self):
         source = CONTROL.read_text()
+        connected = function_body(
+            source,
+            "static gboolean client_connected(",
+            "GVariant* gnoblin_native_control_receive_runtime_config(",
+        )
         read_methods = function_body(
             source,
             "static gboolean native_api_read_method(const char* method)",
@@ -628,6 +633,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             with self.subTest(method=method):
                 self.assertIn(f'g_str_equal(method, "{method}")', read_methods)
                 self.assertIn(f'g_str_equal(method, "{method}")', dispatcher)
+        self.assertIn('"launches.snapshot"', connected)
         self.assertIn("client->api_minor < 37", dispatcher)
         self.assertIn('g_str_equal(method, "launches.snapshot") && client->api_minor < 39', dispatcher)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', dispatcher)
