@@ -1,32 +1,18 @@
 #!/usr/bin/env bash
-# Native config tests need no display or full Mutter build.
+# Build and run the config/runtime tests through the production CMake graph.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-lua_pc=''
-for candidate in lua lua5.4 lua-5.4 lua54; do
-    if pkg-config --exists "$candidate >= 5.4"; then
-        lua_pc=$candidate
-        break
-    fi
-done
-if [ -z "$lua_pc" ]; then
-    echo 'Lua 5.4 development files are required.' >&2
-    exit 1
-fi
-CFLAGS="$(pkg-config --cflags --libs glib-2.0 "$lua_pc")"
-BIN="$(mktemp -d /tmp/gnoblin-cfg.XXXXXX)"
-trap 'rm -rf "$BIN"' EXIT
+jobs="${GNOBLIN_BUILD_JOBS:-4}"
+mkdir -p "$ROOT/build/tmp"
+build="$(mktemp -d "$ROOT/build/tmp/config-tests.XXXXXX")"
+trap 'rm -rf -- "$build"' EXIT
 
-sources=(
-    "$ROOT/src/config/gnoblin-config.c"
-    "$ROOT/src/config/gnoblin-lua.c"
-    "$ROOT/src/config/gnoblin-glob.c"
-    "$ROOT/src/config/gnoblin-toml.c"
-    "$ROOT/src/config/tomlc99/toml.c"
-)
-for test in lua-config lua-api glob-config; do
-    cc "$ROOT/tests/$test-test.c" "${sources[@]}" \
-        -I "$ROOT/src/config" $CFLAGS -o "$BIN/$test-test"
-    GNOBLIN_TEST_SOURCE_ROOT="$ROOT" timeout 20 "$BIN/$test-test"
-done
+cmake -S "$ROOT" -B "$build" -G Ninja \
+    -DGNOBLIN_PREFIX="$build/install" \
+    -DGNOBLIN_BUILD_TYPE=debugoptimized
+cmake --build "$build" \
+    --target lua-config-test lua-api-test glob-config-test \
+    --parallel "$jobs"
+ctest --test-dir "$build" --output-on-failure \
+    -R '^(lua-config|lua-api|glob-config)$'
