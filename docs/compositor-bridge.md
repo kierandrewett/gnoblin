@@ -52,9 +52,8 @@ exact-string filters for `monitor_id`, `namespace`, and `layer`. Its snapshots
 share the state revision used by windows, workspaces, and monitors. The bridge
 does not send layer lifecycle events.
 
-API 1.57 and newer serve `layer.list` from the shared Lua layer snapshot while
-preserving the `{surfaces: [...]}` response. Older clients use the existing
-compatibility path.
+Every supported client version serves `layer.list` from the shared Lua layer
+snapshot while preserving the `{surfaces: [...]}` response.
 
 Request API 1.2 or newer; older and versionless requests receive an
 unsupported-version error:
@@ -368,8 +367,8 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.54            | Lua-backed compatibility read for `launch.status`                               |
 | 1.55            | Lua-backed compatibility read for `shortcut.list`                               |
 | 1.56            | Lua-backed `shortcut.actions`; older clients use the native snapshot            |
-| 1.57            | Lua-backed compatibility read for `layer.list`                                  |
-| 1.58            | Lua-backed compatibility read for `monitor.list`                                |
+| 1.57            | Adds Lua-backed `layer.list`; all client versions now use it                    |
+| 1.58            | Adds Lua-backed `monitor.list`; all client versions now use it                  |
 | 1.59            | Adds the Lua-backed `window.match` read; all client versions now use it         |
 | 1.60            | Basic legacy `window.action` requests route through typed Lua window operations |
 | 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`     |

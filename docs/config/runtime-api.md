@@ -384,9 +384,8 @@ and `layer`. Unknown fields and non-string values raise a Lua error. The read
 is available only in the native Mutter runtime and raises a Lua error while its
 snapshot is unavailable.
 
-The legacy `layer.list` socket method remains available. API 1.57 and newer
-serve it from this Lua snapshot and preserve its `{surfaces: [...]}` response.
-Earlier clients use the existing compatibility path. See the
+The legacy `layer.list` socket method remains available. Every client version
+serves it from this Lua snapshot and preserves its `{surfaces: [...]}` response. See the
 [compositor bridge](/compositor-bridge#api-version-12-layer-surfaces) for the
 socket request format.
 
@@ -745,6 +744,9 @@ configuration uses typed window methods instead.
 | `window.thumbnail(args)` | Stable window `id`; integer `width` and `height` up to 480 by 320                               | Asynchronous operation with actual dimensions and base64 PNG |
 | `layer.list()`           | None                                                                                            | `{surfaces = {Surface, ...}}`                                |
 | `monitor.list()`         | None                                                                                            | `{monitors = {Monitor, ...}}`                                |
+
+`layer.list` and `monitor.list` use the Lua snapshots for every client
+version. Their socket adapters preserve the existing response wrappers.
 
 `window.thumbnail` requires API 1.23. It accepts a stable window `id` and
 integer `width` and `height` dimensions up to 480 by 320. The compositor scales
