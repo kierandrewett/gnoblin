@@ -119,7 +119,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(23):
+                    for _ in range(24):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -237,6 +237,8 @@ def main() -> int:
                                     "clipboard": True,
                                     "revision": 9,
                                 }
+                            elif request["method"] == "permissions.policy":
+                                result = {"default": "default", "rules": [], "revision": 9}
                             elif request["method"] == "window.move_to_monitor":
                                 result = {"id": "42", "monitor_id": "HDMI-1"}
                             elif request["method"] == "window.restore_or_minimize":
@@ -542,11 +544,18 @@ def main() -> int:
             "clipboard": True,
             "revision": 9,
         }
+        permissions_policy = run(binary, "--socket", socket_path, "--format", "json", "permissions", "policy")
+        assert permissions_policy.returncode == 0, permissions_policy.stderr
+        assert json.loads(permissions_policy.stdout) == {
+            "default": "default",
+            "rules": [],
+            "revision": 9,
+        }
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 23
-        assert len(subscriptions) == 23
+        assert len(received) == 24
+        assert len(subscriptions) == 24
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -641,6 +650,9 @@ def main() -> int:
             "capability": "remote-desktop",
             "identity": "app-id:org.example.Remote",
         }
+        assert received[23]["method"] == "permissions.policy"
+        assert received[23]["api_version"] == {"major": 1, "minor": 44}
+        assert received[23]["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0

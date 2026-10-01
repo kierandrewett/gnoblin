@@ -328,7 +328,7 @@ static guint api_minor_for_method(const char* method) {
         {"focus.policy", 19},
         {"settings", 19},
         {"privacy.state", 17},
-        {"permissions.policy", 16},
+        {"permissions.policy", 44},
         {"grant.list", 14},
         {"grant.revoke", 14},
         {"layer.list", 2},
