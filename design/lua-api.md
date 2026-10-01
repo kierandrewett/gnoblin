@@ -1245,11 +1245,12 @@ API 1.51 routes `session.status` through the shared Lua read method; earlier
 clients retain the native compatibility route.
 API 1.52 routes the socket-only `workspace.list` alias through
 `gnoblin.workspaces.list()` while preserving its legacy object wrapper and
-`windows` count field. Earlier clients retain the native compatibility route.
+`windows` count field. Every negotiated client version now uses this Lua-backed
+adapter.
 API 1.53 routes the socket-only `window.list` alias through
 `gnoblin.windows.list()` while preserving its legacy object wrapper, field
-names, and filter behavior. Earlier clients retain the native compatibility
-route.
+names, and filter behavior. Every negotiated client version now uses this
+Lua-backed adapter.
 API 1.54 routes `launch.status` through `gnoblin.launches.snapshot()` while
 preserving launch-change event tracking. Earlier clients retain the native
 snapshot route.
