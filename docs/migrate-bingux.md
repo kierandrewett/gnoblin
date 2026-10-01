@@ -9,16 +9,18 @@ Gnoblin policy and runtime behavior, not for drawing shell surfaces.
 
 ## Readiness
 
-Bingux is not yet compatible with the standalone compositor socket. Workspace
-navigation and capture window enumeration now use the versioned API, but the
-shortcut session, text insertion, focus, preview, snapping, privacy, and OSD
-paths still depend on compatibility bridge messages. Changing the socket path
-alone is not sufficient.
+Bingux is partially compatible with the standalone compositor socket.
+Workspace navigation, capture window enumeration, and shortcut registration
+now use the versioned API. A live devkit check confirmed that a modal held
+shortcut registers through `ShortcutSession.qml`. Focus, preview, snapping,
+privacy, text insertion, and OSD still need migration before the whole shell
+works in a standalone session.
 
-- `shell/bingux/ShortcutSession.qml` sends `bind`, `clear`, `status`,
-  `activate`, `preview`, `window-drag`, `privacy`, and private `bingux.*`
-  operations. Replace these with versioned API calls and event subscriptions.
-  Recreate connection-owned bindings and subscriptions after reconnecting.
+- `shell/bingux/ShortcutSession.qml` uses `shortcut.bind`, `shortcut.unbind`,
+  `ping`, and versioned shortcut event subscriptions when connected to
+  standalone Gnoblin. It retains the compatibility protocol for GNOME sessions.
+  Its window activation, preview, drag, privacy, text input, and private
+  `bingux.*` operations still need standalone API replacements.
 - `shell/bingux/WorkspaceState.qml` now uses the versioned `workspace.list` and
   `workspace.switch` API methods. It subscribes to workspace lifecycle events
   on `op: "windows"` and polls only when connected to an older API version.
@@ -42,10 +44,12 @@ Migrate those calls before running Bingux in a standalone session.
 
 Replace these compatibility-bridge calls:
 
-- **Shortcuts:** Replace `bind`, `clear`, and `status` with `shortcut.bind`,
-  `shortcut.unbind`, and the `gnoblin.shortcut.binding-activated` event. Negotiate
-  the API version from `hello`. Bindings belong to the connection; register them
-  again after reconnecting.
+- **Shortcuts:** `ShortcutSession.qml` now negotiates the API from `hello`,
+  registers connection-owned bindings with `shortcut.bind`, removes stale
+  bindings with `shortcut.unbind`, checks liveness with `ping`, and subscribes
+  to shortcut activation and held-session events. Bindings belong to the
+  connection; register them again after reconnecting. Keep the compatibility
+  path for GNOME sessions until the standalone path is fully migrated.
 - **Windows:** Subscribe with `op: "windows"` for the initial snapshot and live
   window and workspace events. Use `window.list` for filtered socket reads or
   `windows.list` when using the newer Lua-backed snapshot method.
@@ -82,8 +86,9 @@ The standalone socket accepts these top-level operations:
 - `ping` to check the connection.
 
 Negotiate the API version from the initial `hello` event and use the minimum
-version documented for each method. Dynamic shortcut binding requires API
-1.11; thumbnails require 1.23; text targets and keyboard snapping require
+version documented for each method. Basic dynamic shortcut binding requires
+API 1.11; held or modal bindings require API 1.22. Thumbnails require 1.23;
+text targets and keyboard snapping require
 1.28; privacy state requires 1.17; and OSD requests require 1.27.
 
 `workspace.list` and `window.list` are Lua-backed from API 1.52 and 1.53. The
