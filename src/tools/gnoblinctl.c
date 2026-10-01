@@ -303,7 +303,7 @@ static guint api_minor_for_method(const char* method) {
         guint minor;
     } methods[] = {
         {"session.logout", 32},
-        {"window.restore_or_minimize", 38},
+        {"window.restore_or_minimize", 48},
         {"privacy.stop_sharing", 31},
         {"privacy.stop_recording", 31},
         {"window.thumbnail", 23},
