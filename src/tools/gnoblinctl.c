@@ -435,6 +435,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         json_builder_set_member_name(subscription_builder, "events");
         json_builder_begin_array(subscription_builder);
         json_builder_add_string_value(subscription_builder, "gnoblin.operation.completed");
+        json_builder_add_string_value(subscription_builder, "gnoblin.api.operation-completed");
         json_builder_end_array(subscription_builder);
         json_builder_end_object(subscription_builder);
         g_autoptr(JsonNode) subscription_request = json_builder_get_root(subscription_builder);
