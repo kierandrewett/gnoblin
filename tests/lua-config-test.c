@@ -1034,6 +1034,16 @@ int main(void) {
     g_variant_builder_init(&read_arguments_builder, G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) empty_read_arguments =
         g_variant_ref_sink(g_variant_builder_end(&read_arguments_builder));
+    g_autoptr(GVariant) workspace_read =
+        gnoblin_config_read_api("workspaces.list", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(workspace_read, G_VARIANT_TYPE("av")));
+    g_assert_cmpuint(g_variant_n_children(workspace_read), ==, 1);
+    g_autoptr(GVariant) workspace_read_box = g_variant_get_child_value(workspace_read, 0);
+    g_autoptr(GVariant) workspace_read_record = g_variant_get_variant(workspace_read_box);
+    const char* workspace_read_id = NULL;
+    g_assert_true(g_variant_lookup(workspace_read_record, "id", "&s", &workspace_read_id));
+    g_assert_cmpstr(workspace_read_id, ==, "workspace-1");
     g_autoptr(GVariant) version_snapshot =
         gnoblin_config_read_api("version", empty_read_arguments, &error);
     g_assert_no_error(error);
