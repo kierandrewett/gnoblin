@@ -300,7 +300,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.34            | `gnoblin.appearance.color-scheme-changed`                                                             |
 | 1.35            | Snake_case aliases for window snapshot fields                                                         |
 | 1.36            | `gnoblin.shortcut.binding-deactivated` for press-triggered shortcuts                                  |
-| 1.37            | Lua snapshot reads for workspaces, monitors, layers, and launches                                     |
+| 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches                            |
 | 1.38            | Native `window.restore_or_minimize` and saved pre-snap frame restoration                              |
 
 ### API 1.27: shell presentation requests
@@ -478,19 +478,20 @@ applying a match. Trusted keyboard `SnapContext` is available to Lua only.
 
 The socket exposes these reads at the listed API versions:
 
-| API version | Socket method       | Lua read                        | Arguments                             |
-| ----------- | ------------------- | ------------------------------- | ------------------------------------- |
-| 1.19        | `version`           | `gnoblin.version()`             | None                                  |
-| 1.19        | `capabilities.list` | `gnoblin.capabilities.list()`   | None                                  |
-| 1.19        | `focus.history`     | `gnoblin.focus.history(filter)` | `workspace_id`, `monitor_id`, `limit` |
-| 1.19        | `settings`          | `gnoblin.settings`              | None                                  |
-| 1.19        | `focus.policy`      | `gnoblin.focus.policy`          | None                                  |
-| 1.37        | `workspaces.list`   | `gnoblin.workspaces.list()`     | None                                  |
-| 1.37        | `monitors.list`     | `gnoblin.monitors.list()`       | None                                  |
-| 1.37        | `layers.list`       | `gnoblin.layers.list(filter)`   | `monitor_id`, `namespace`, `layer`    |
-| 1.37        | `launches.list`     | `gnoblin.launches.list()`       | None                                  |
-| 1.24        | `session.activity`  | `gnoblin.session.activity()`    | None                                  |
-| 1.29        | `session.status`    | `gnoblin.session.status()`      | None                                  |
+| API version | Socket method       | Lua read                        | Arguments                                                  |
+| ----------- | ------------------- | ------------------------------- | ---------------------------------------------------------- |
+| 1.19        | `version`           | `gnoblin.version()`             | None                                                       |
+| 1.19        | `capabilities.list` | `gnoblin.capabilities.list()`   | None                                                       |
+| 1.19        | `focus.history`     | `gnoblin.focus.history(filter)` | `workspace_id`, `monitor_id`, `limit`                      |
+| 1.19        | `settings`          | `gnoblin.settings`              | None                                                       |
+| 1.19        | `focus.policy`      | `gnoblin.focus.policy`          | None                                                       |
+| 1.37        | `windows.list`      | `gnoblin.windows.list(filter)`  | `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` |
+| 1.37        | `workspaces.list`   | `gnoblin.workspaces.list()`     | None                                                       |
+| 1.37        | `monitors.list`     | `gnoblin.monitors.list()`       | None                                                       |
+| 1.37        | `layers.list`       | `gnoblin.layers.list(filter)`   | `monitor_id`, `namespace`, `layer`                         |
+| 1.37        | `launches.list`     | `gnoblin.launches.list()`       | None                                                       |
+| 1.24        | `session.activity`  | `gnoblin.session.activity()`    | None                                                       |
+| 1.29        | `session.status`    | `gnoblin.session.status()`      | None                                                       |
 
 `session.status` returns:
 
@@ -646,7 +647,8 @@ contains the snapshot directly in `result`; list reads return JSON arrays,
 including an empty array when there are no records.
 
 Snapshot reads are available after native control seeds their state. API 1.37
-collection reads also require a connected Lua supervisor.
+collection reads also require a connected Lua supervisor. `windows.list`
+returns the same filtered, read-only window records as the Lua API.
 
 For example, request the committed settings snapshot with:
 
@@ -661,7 +663,8 @@ For example, request the committed settings snapshot with:
 ```
 
 The `reply` record returns the settings snapshot directly in its `result`
-field. Use `capabilities.list` and `focus.history` for array results.
+field. Use `capabilities.list`, `focus.history`, and `windows.list` for array
+results.
 
 ### API version 1.9: event subscriptions
 
