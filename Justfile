@@ -38,6 +38,10 @@ test-preview:
 test-window-csd:
     GNOBLIN_DEVKIT_EXEC='python3 {{justfile_directory()}}/tests/test-window-csd-reconstruction.py' ./scripts/run-gnoblin-devkit.sh
 
+# Verify Lua window rules render native borders in the standalone session.
+test-window-borders:
+    GNOBLIN_DEVKIT_EXEC='python3 {{justfile_directory()}}/tests/test-window-native-borders.py' ./scripts/run-gnoblin-devkit.sh
+
 # Install the published Fedora packages from COPR.
 install-fedora:
     ./scripts/install-system.sh
