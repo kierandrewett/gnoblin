@@ -3,6 +3,7 @@
 #include "config.h"
 #include "compositor/meta-gnoblin-window-effects.h"
 
+#include <clutter/clutter.h>
 #include <cogl/cogl.h>
 #include <math.h>
 #include <string.h>
@@ -17,6 +18,9 @@
 #define CSD_MAX_PIXELS 16000000
 #define WINDOW_SHADOW_ACTOR_KEY "gnoblin-window-shadow"
 #define WINDOW_SHADOW_EFFECT_NAME "gnoblin-window-shadow-effect"
+
+int meta_shaped_texture_get_width(MetaShapedTexture* texture);
+int meta_shaped_texture_get_height(MetaShapedTexture* texture);
 
 typedef struct {
     ClutterOffscreenEffect parent;
@@ -370,6 +374,7 @@ window_shadow_start_transition(MetaGnoblinWindowShadowEffect* effect,
                                const double color[META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS][4],
                                guint n_layers,
                                const MetaGnoblinWindowShadowTransition* transition) {
+    ClutterActor* actor = clutter_actor_meta_get_actor(CLUTTER_ACTOR_META(effect));
     memcpy(effect->from_geometry, effect->to_geometry, sizeof(effect->from_geometry));
     memcpy(effect->from_color, effect->to_color, sizeof(effect->from_color));
     effect->n_from = effect->n_to;
@@ -393,8 +398,8 @@ window_shadow_start_transition(MetaGnoblinWindowShadowEffect* effect,
         return;
     }
 
-    effect->timeline = clutter_timeline_new(effect->duration_ms);
-    clutter_timeline_set_progress_mode(effect->timeline, CLUTTER_ANIMATION_MODE_LINEAR);
+    effect->timeline = clutter_timeline_new_for_actor(actor, effect->duration_ms);
+    clutter_timeline_set_progress_mode(effect->timeline, CLUTTER_LINEAR);
     g_signal_connect(effect->timeline, "new-frame", G_CALLBACK(window_shadow_timeline_new_frame),
                      effect);
     g_signal_connect(effect->timeline, "completed", G_CALLBACK(window_shadow_timeline_completed),
@@ -477,7 +482,7 @@ void meta_gnoblin_window_effects_set_window_shadow(
     if (!shadow_actor) {
         shadow_actor = clutter_actor_new();
         clutter_actor_set_reactive(shadow_actor, FALSE);
-        clutter_actor_set_background_color(shadow_actor, &(ClutterColor){255, 255, 255, 255});
+        clutter_actor_set_background_color(shadow_actor, &COGL_COLOR_INIT(255, 255, 255, 255));
         effect = g_object_new(META_TYPE_GNOBLIN_WINDOW_SHADOW_EFFECT, NULL);
         clutter_actor_add_effect_with_name(shadow_actor, WINDOW_SHADOW_EFFECT_NAME,
                                            CLUTTER_EFFECT(effect));
