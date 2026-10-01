@@ -11,16 +11,17 @@ Gnoblin policy and runtime behavior, not for drawing shell surfaces.
 
 Bingux has migrated several high-traffic paths to the standalone API:
 workspace navigation, window enumeration, shortcut registration, switcher
-previews and focus, privacy state and stop requests, and window snapping.
-Capture pixels still come from the ScreenCast portal.
+previews and focus, privacy state and stop requests, window snapping, and
+emoji insertion. Capture pixels still come from the ScreenCast portal.
 
 A live devkit check confirmed that a modal held shortcut registers through
 `ShortcutSession.qml`. Native API smoke checks exercised privacy calls,
 thumbnail completion handling, and snap subscriptions. A full real-window
 preview and actual pointer or keyboard snap are not yet verified end to end.
 
-Application-launch focus, text insertion, and OSD still need migration before
-the whole shell works in a standalone session.
+Application-launch focus and OSD still need migration before the whole shell
+works in a standalone session. The new emoji insertion path has not yet been
+verified end to end in a fresh standalone session.
 
 - `shell/bingux/ShortcutSession.qml` negotiates the native API, restores
   connection-owned subscriptions and bindings after reconnect, and routes
@@ -40,9 +41,14 @@ the whole shell works in a standalone session.
   on `op: "windows"` and polls only when connected to an older API version.
 - `shell/bingux/capture_backend.py` uses `window.list` for window metadata and
   keeps image capture on the ScreenCast portal.
-- `shell/gnoblin/bingux-text-input.js` and `shell/bingux/EmojiPicker.qml` use
-  GNOME Shell text-input state, clipboard fallback, and caret placement. Use
-  the standalone text-target methods for focused Wayland text-input-v3 clients.
+- `shell/bingux/EmojiPicker.qml` stages an emoji in a standalone session and
+  closes before insertion. A second Super+Period press obtains a fresh
+  shortcut focus context, then calls `input.text_target` and `input.insert_text`
+  immediately while the application remains focused. This preserves Gnoblin's
+  focus and one-use target checks. Insertion requires an active Wayland
+  text-input-v3 session; X11 and the previous clipboard-paste fallback are not
+  supported on this path. GNOME session compatibility retains its separate
+  text-input implementation.
 - `shell/bingux/osd-bridge.js` patches GNOME Shell's OSD manager and calls
   `org.gnoblin.Shell`. Subscribe to `gnoblin.osd.requested` and draw the OSD in
   Bingux.
