@@ -2,7 +2,8 @@
 
 Gnoblin does not provide a `gnoblin.configure.shell` section. A shell owns its
 panels, docks, launchers, notifications, and other user interface, so configure
-those in the shell you run.
+those in the shell you run. Configs that still contain a top-level `shell`
+table are rejected instead of silently ignoring its settings.
 
 Use Gnoblin's Lua API for compositor and session behavior:
 
