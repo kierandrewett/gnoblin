@@ -129,7 +129,7 @@ if "$register_session"; then
     exec ./scripts/register-session.sh "$prefix"
 fi
 if "$preview"; then
-    if "$verbose" || "$dry_run" || [ "$target" != gnoblin ]; then
+    if "$verbose" || "$dry_run" || [ "$target" != gnoblin-session ]; then
         echo '--preview must be used on its own, optionally with --terminal NAME.' >&2
         exit 2
     fi
