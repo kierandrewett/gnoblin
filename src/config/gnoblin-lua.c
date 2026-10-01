@@ -6514,6 +6514,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "launch.status",
         "workspace.list",
         "layer.list",
+        "monitor.list",
         "layer.animation_policy",
         "workspaces.list",
         "monitors.list",
@@ -6655,7 +6656,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_getfield(state, -1, "list");
         lua_remove(state, -2);
         lua_remove(state, -2);
-    } else if (g_str_equal(method, "monitors.list")) {
+    } else if (g_str_equal(method, "monitor.list") || g_str_equal(method, "monitors.list")) {
         lua_getfield(state, -1, "monitors");
         lua_getfield(state, -1, "list");
         lua_remove(state, -2);
@@ -6779,6 +6780,72 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
             result = legacy_window_list_from_lua(value, error);
         } else if (value && g_str_equal(method, "layer.list")) {
             result = legacy_layer_list_from_lua(value, error);
+        } else if (value && g_str_equal(method, "monitor.list")) {
+            if (!g_variant_is_of_type(value, G_VARIANT_TYPE("av"))) {
+                g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                    "Lua monitor snapshot is invalid");
+            } else {
+                GVariantBuilder monitors;
+                gboolean valid_records = TRUE;
+                g_variant_builder_init(&monitors, G_VARIANT_TYPE("aa{sv}"));
+                for (gsize i = 0; i < g_variant_n_children(value); i++) {
+                    g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+                    g_autoptr(GVariant) monitor = g_variant_get_variant(boxed);
+                    if (!g_variant_is_of_type(monitor, G_VARIANT_TYPE_VARDICT)) {
+                        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                            "Lua monitor record is invalid");
+                        valid_records = FALSE;
+                        break;
+                    }
+                    GVariantBuilder record;
+                    g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+                    static const struct {
+                        const char* source;
+                        const GVariantType* type;
+                    } fields[] = {
+                        {"x", G_VARIANT_TYPE_INT32},         {"y", G_VARIANT_TYPE_INT32},
+                        {"width", G_VARIANT_TYPE_INT32},     {"height", G_VARIANT_TYPE_INT32},
+                        {"primary", G_VARIANT_TYPE_BOOLEAN}, {"scale", G_VARIANT_TYPE_DOUBLE},
+                    };
+                    g_autoptr(GVariant) index =
+                        g_variant_lookup_value(monitor, "index", G_VARIANT_TYPE_INT32);
+                    if (!index) {
+                        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                            "Lua monitor record has no integer index");
+                        g_variant_builder_clear(&record);
+                        valid_records = FALSE;
+                        break;
+                    }
+                    g_variant_builder_add(&record, "{sv}", "id", index);
+                    gboolean valid = TRUE;
+                    for (guint field = 0; field < G_N_ELEMENTS(fields); field++) {
+                        g_autoptr(GVariant) field_value = g_variant_lookup_value(
+                            monitor, fields[field].source, fields[field].type);
+                        if (!field_value) {
+                            valid = FALSE;
+                            break;
+                        }
+                        g_variant_builder_add(&record, "{sv}", fields[field].source, field_value);
+                    }
+                    if (!valid) {
+                        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                            "Lua monitor record is missing a legacy field");
+                        g_variant_builder_clear(&record);
+                        valid_records = FALSE;
+                        break;
+                    }
+                    g_variant_builder_add_value(&monitors, g_variant_builder_end(&record));
+                }
+                if (valid_records) {
+                    GVariantBuilder response;
+                    g_variant_builder_init(&response, G_VARIANT_TYPE_VARDICT);
+                    g_variant_builder_add(&response, "{sv}", "monitors",
+                                          g_variant_builder_end(&monitors));
+                    result = g_variant_ref_sink(g_variant_builder_end(&response));
+                } else {
+                    g_variant_builder_clear(&monitors);
+                }
+            }
         } else if (value && (force_array || g_str_equal(method, "input.current_source"))) {
             GVariantBuilder response;
             g_variant_builder_init(&response, G_VARIANT_TYPE_VARDICT);
