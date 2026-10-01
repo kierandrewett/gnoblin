@@ -10694,6 +10694,14 @@ static char* handle_request(Client* client, const char* data, gsize length) {
             return encode_response(id, NULL, "Lua supervisor is not connected");
         return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
+    if (g_str_equal(method, "monitor.list") && client->api_minor >= 58) {
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        return queue_runtime_api_request(client, id, method, read_arguments, "read");
+    }
     if (g_str_equal(method, "privacy.state")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "privacy.state does not accept arguments");
