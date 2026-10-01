@@ -6299,6 +6299,46 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     return operation_call;
 }
 
+static GVariant* legacy_workspace_list_from_lua(GVariant* workspaces, GError** error) {
+    if (!workspaces || !g_variant_is_of_type(workspaces, G_VARIANT_TYPE("av"))) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Lua workspace snapshot is invalid");
+        return NULL;
+    }
+
+    GVariantBuilder workspace_records;
+    g_variant_builder_init(&workspace_records, G_VARIANT_TYPE("aa{sv}"));
+    for (gsize i = 0; i < g_variant_n_children(workspaces); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(workspaces, i);
+        g_autoptr(GVariant) workspace = g_variant_get_variant(boxed);
+        if (!g_variant_is_of_type(workspace, G_VARIANT_TYPE_VARDICT)) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "Lua workspace record is invalid");
+            return NULL;
+        }
+
+        GVariantBuilder record;
+        g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+        GVariantIter iter;
+        const char* key;
+        GVariant* value;
+        g_variant_iter_init(&iter, workspace);
+        while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+            g_autoptr(GVariant) field = value;
+            if (g_str_equal(key, "revision"))
+                continue;
+            g_variant_builder_add(&record, "{sv}",
+                                  g_str_equal(key, "window_count") ? "windows" : key, field);
+        }
+        g_variant_builder_add_value(&workspace_records, g_variant_builder_end(&record));
+    }
+
+    GVariantBuilder result;
+    g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&result, "{sv}", "workspaces", g_variant_builder_end(&workspace_records));
+    return g_variant_ref_sink(g_variant_builder_end(&result));
+}
+
 GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error) {
     static const char* read_methods[] = {
         "version",
@@ -6309,6 +6349,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "focus.policy",
         "session.activity",
         "session.status",
+        "workspace.list",
         "layer.animation_policy",
         "workspaces.list",
         "monitors.list",
@@ -6443,7 +6484,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_getfield(state, -1, "animation_policy");
         lua_remove(state, -2);
         lua_remove(state, -2);
-    } else if (g_str_equal(method, "workspaces.list")) {
+    } else if (g_str_equal(method, "workspace.list") || g_str_equal(method, "workspaces.list")) {
         lua_getfield(state, -1, "workspaces");
         lua_getfield(state, -1, "list");
         lua_remove(state, -2);
@@ -6563,7 +6604,9 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         gboolean force_array =
             g_str_equal(method, "input.devices") || g_str_equal(method, "input.sources");
         g_autoptr(GVariant) value = variant_from_lua(state, -1, 0, force_array, 0, error);
-        if (value && (force_array || g_str_equal(method, "input.current_source"))) {
+        if (value && g_str_equal(method, "workspace.list")) {
+            result = legacy_workspace_list_from_lua(value, error);
+        } else if (value && (force_array || g_str_equal(method, "input.current_source"))) {
             GVariantBuilder response;
             g_variant_builder_init(&response, G_VARIANT_TYPE_VARDICT);
             if (g_str_equal(method, "input.devices") || g_str_equal(method, "input.sources")) {

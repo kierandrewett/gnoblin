@@ -10551,6 +10551,11 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                                       : "workspace.list arguments are invalid";
             return encode_response(id, NULL, message);
         }
+        if (g_str_equal(method, "workspace.list") && client->api_minor >= 52) {
+            if (!client->control->supervised_runtime)
+                return encode_response(id, NULL, "Lua supervisor is not connected");
+            return queue_runtime_api_request(client, id, method, arguments, "read");
+        }
         g_autoptr(GVariant) result =
             meta_gnoblin_dispatch_native_api(client->control->display, method, arguments, &error);
         if (!result) {
