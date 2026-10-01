@@ -34,6 +34,10 @@ preview *TERMINAL:
 test-preview:
     ./tests/test-gnoblin-devkit.sh
 
+# Verify compositor-native reconstruction of client-drawn transparent corners.
+test-window-csd:
+    GNOBLIN_DEVKIT_EXEC='python3 {{justfile_directory()}}/tests/test-window-csd-reconstruction.py' ./scripts/run-gnoblin-devkit.sh
+
 # Install the published Fedora packages from COPR.
 install-fedora:
     ./scripts/install-system.sh
