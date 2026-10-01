@@ -610,8 +610,8 @@ GVariant* gnoblin_native_control_restore_or_minimize_window(MetaDisplay* display
         return NULL;
     }
     const char* action = NULL;
-    if (meta_window_is_maximized(window)) {
-        meta_window_unmaximize(window);
+    if (meta_window_get_maximize_flags(window) != 0) {
+        meta_window_set_unmaximize_flags(window, META_MAXIMIZE_BOTH);
         g_hash_table_remove(control->snap_restore_frames, window);
         action = "unmaximize";
     } else {

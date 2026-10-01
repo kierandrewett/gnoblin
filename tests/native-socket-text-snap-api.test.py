@@ -35,6 +35,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "monitors.list",
             "layers.list",
             "launches.list",
+            "window.restore_or_minimize",
         ):
             with self.subTest(method=method):
                 self.assertIn(f'"{method}"', methods)
@@ -103,8 +104,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static const char native_policy_introspection[]",
         )
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 37", header)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=37", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=38", cmake)
         self.assertIn('"gnoblin.appearance.color-scheme-changed"', events)
         self.assertIn("client->api_minor < 34", subscription)
         self.assertIn('"org.gnome.desktop.interface"', startup)
@@ -140,7 +141,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             'if (g_str_equal(op, "windows"))',
         )
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 37", header)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
         self.assertIn('"gnoblin.capability.changed"', source)
         self.assertIn("client->api_minor < 33", subscription)
         self.assertIn('g_str_equal(native_capability->id, "microphone-monitor")', capability)
@@ -233,7 +234,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         direct = dispatcher.split('if (g_str_equal(method, "input.text_target") ||', 1)[1]
         direct = direct.split('if (g_str_equal(method, "window.snap.offer"))', 1)[0]
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 37", header)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
         for method in (
             "input.text_target",
             "input.insert_text",
@@ -275,8 +276,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "void gnoblin_native_control_revoke_focus_contexts(",
         )
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 37", header)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=37", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=38", cmake)
         self.assertIn("menu == META_WINDOW_MENU_WM", menu_emit)
         self.assertIn("client->event_api_minor >= 30", socket_issue)
         self.assertNotIn("client->api_minor >= 30", socket_issue)
@@ -312,7 +313,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         patch = (ROOT / "patches/mutter/99-typed-window-api/0050-focus-with-xdg-activation-token.patch").read_text()
 
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 37", header)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
         self.assertIn('g_str_equal(method, "window.focus") && client->api_minor < 10', dispatcher)
         self.assertIn("XDG Activation window focus requires API version 1.32", focus)
         self.assertIn("client->peer_pid <= 0", focus)
@@ -618,6 +619,44 @@ class NativeSocketTextSnapTests(unittest.TestCase):
                 self.assertIn(f'g_str_equal(method, "{method}")', dispatcher)
         self.assertIn("client->api_minor < 37", dispatcher)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', dispatcher)
+
+    def test_restore_or_minimize_is_native_and_clears_saved_frames(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        helper = function_body(
+            source,
+            "GVariant* gnoblin_native_control_restore_or_minimize_window(",
+            "static void pending_thumbnail_free(",
+        )
+        unmanaged = function_body(
+            source,
+            "static void window_unmanaged(MetaWindow* window, gpointer user_data) {",
+            "static void track_window(",
+        )
+        dispatcher = function_body(
+            source,
+            "static char* handle_request(",
+            "static void process_buffer(",
+        )
+        snap = function_body(
+            source,
+            "static GVariant* native_commit_snap_context_owned(",
+            "GVariant* gnoblin_native_control_commit_snap_context(",
+        )
+
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 38", header)
+        self.assertIn("window.restore_or_minimize", source)
+        self.assertIn("client->api_minor < 38", dispatcher)
+        self.assertIn("gnoblin_native_control_restore_or_minimize_window", dispatcher)
+        self.assertIn("meta_wayland_session_lock_is_active", helper)
+        self.assertLess(
+            helper.index("meta_window_get_maximize_flags"),
+            helper.index("meta_window_can_minimize"),
+        )
+        self.assertIn("meta_window_move_resize_frame", helper)
+        self.assertIn("g_hash_table_remove(control->snap_restore_frames, window)", unmanaged)
+        self.assertIn("context.original_frame", snap)
+        self.assertIn("g_hash_table_contains(control->snap_restore_frames, window)", snap)
 
 
 if __name__ == "__main__":
