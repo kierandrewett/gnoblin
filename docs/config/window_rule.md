@@ -81,11 +81,16 @@ with their parent. See the [workspaces section of the window rules guide](/guide
 | `skip_libadwaita`               | `true`           | Preserve libadwaita corners in auto mode                       |
 | `skip_libhandy`                 | `false`          | Skip libhandy windows in auto mode                             |
 | `remove_csd`                    | `false`          | [Detect and replace client-drawn rounded corners](#remove-csd) |
-| `border_width`, `border_color`  | `0`, `#808080ff` | Legacy border width (−40–40) and colour                        |
+| `border_width`, `border_color`  | `0`, `#808080ff` | Single native outline; width −40–40 logical pixels             |
 | `shadow`                        | `false`          | A shadow table or 1–4 shadow layers                            |
 | `keep_shadow`                   | `false`          | Keep replacement shadows in maximised/fullscreen/tiled states  |
 
 ## Borders and shadows
+
+The `borders` table is available in the optional GNOME Shell compatibility
+session. In the standalone session, use `corners.border_width` and
+`corners.border_color` for one outline. Positive widths draw inward; negative
+widths draw outward where the client's existing buffer has room.
 
 | Field                                                                     | Values / default                                           |
 | ------------------------------------------------------------------------- | ---------------------------------------------------------- |
