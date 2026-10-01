@@ -1129,6 +1129,32 @@ int main(void) {
         g_variant_lookup_value(permission_list, "capabilities", NULL);
     g_assert_nonnull(permission_capabilities);
 
+    g_autoptr(GVariant) shortcut_actions =
+        gnoblin_config_read_api("shortcuts.actions", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(shortcut_actions, G_VARIANT_TYPE("av")));
+    GVariantBuilder shortcut_action_arguments_builder;
+    g_variant_builder_init(&shortcut_action_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&shortcut_action_arguments_builder, "{sv}", "group",
+                          g_variant_new_string("wm"));
+    g_autoptr(GVariant) shortcut_action_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&shortcut_action_arguments_builder));
+    g_autoptr(GVariant) wm_shortcut_actions =
+        gnoblin_config_read_api("shortcuts.actions", shortcut_action_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(wm_shortcut_actions, G_VARIANT_TYPE("av")));
+    GVariantBuilder invalid_shortcut_action_arguments_builder;
+    g_variant_builder_init(&invalid_shortcut_action_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&invalid_shortcut_action_arguments_builder, "{sv}", "group",
+                          g_variant_new_string("invalid"));
+    g_autoptr(GVariant) invalid_shortcut_action_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&invalid_shortcut_action_arguments_builder));
+    g_autoptr(GVariant) invalid_shortcut_actions =
+        gnoblin_config_read_api("shortcuts.actions", invalid_shortcut_action_arguments, &error);
+    g_assert_null(invalid_shortcut_actions);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_clear_error(&error);
+
     g_autoptr(GVariant) focus_history =
         gnoblin_config_read_api("focus.history", read_filter, &error);
     g_assert_no_error(error);
