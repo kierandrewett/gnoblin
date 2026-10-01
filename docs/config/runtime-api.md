@@ -741,7 +741,7 @@ instead.
 | ------------------------ | ----------------------------------------------------------------- | ------------------------------------------------------------ |
 | `window.list(args)`      | Optional `app_id`, `title`, `focused` filters                     | `{windows = {Window, ...}}`                                  |
 | `window.match(args)`     | Optional string `window` ID; defaults to `"active"`               | Window identity and a `match` rule table                     |
-| `window.action(args)`    | `action`; optional stable window `window` ID                      | `{ok, pending, window, action}`                              |
+| `window.action(args)`    | `action`; optional `window` ID or `"active"`                      | `{ok, pending, window, action}`                              |
 | `window.thumbnail(args)` | Stable window `id`; integer `width` and `height` up to 480 by 320 | Asynchronous operation with actual dimensions and base64 PNG |
 | `layer.list()`           | None                                                              | `{surfaces = {Surface, ...}}`                                |
 | `monitor.list()`         | None                                                              | `{monitors = {Monitor, ...}}`                                |
@@ -749,6 +749,11 @@ instead.
 `window.thumbnail` requires API 1.23. It accepts a stable window `id` and
 integer `width` and `height` dimensions up to 480 by 320. The compositor scales
 down to fit while preserving aspect ratio.
+
+Native-control API 1.60 and newer route `window.action` through the Lua runtime
+and preserve its response fields. The response acknowledges that Lua queued the
+typed operation; the compositor applies it asynchronously. Earlier clients use
+the native compatibility route.
 
 The operation returns the stable `window_id`, actual dimensions, and `data` as
 a base64-encoded PNG. Encoded PNG output is limited to 512 KiB.
