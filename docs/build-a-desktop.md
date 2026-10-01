@@ -70,11 +70,12 @@ modules or write a module using [window data](compositor-bridge.md#windows-and-c
 
 ## Give each visible function an owner
 
-Only one notification daemon should own notifications. If your shell handles
-them, leave `shell.notifications` disabled; if it does not, you can enable
-Gnoblin's native service. The same choice applies to a window switcher and
-keyboard-layout popup. See [native features](/guides/session_settings#native-features)
-and [shortcut conflicts](/guides/shortcuts#avoid-conflicts).
+Start one notification daemon from your shell or the session's
+[autostart configuration](/config/configure/autostart). Configure window
+switchers and keyboard-layout popups in your shell. Gnoblin's input API selects
+the active input source; see [input-source settings](/config/configure/input_sources).
+Use [shortcut guidance](/guides/shortcuts#avoid-conflicts) to resolve binding
+conflicts.
 
 A dock can use the foreign toplevel protocols for basic window handles or the
 bridge for records, previews, activation and shortcut sessions. Keep window IDs
