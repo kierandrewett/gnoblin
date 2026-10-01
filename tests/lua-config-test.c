@@ -3,6 +3,23 @@
 #include <glib/gstdio.h>
 #include <string.h>
 
+static void assert_empty_api_array(const char* method, GVariant* arguments) {
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) result = gnoblin_config_read_api(method, arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(result);
+    g_assert_true(g_variant_is_of_type(result, G_VARIANT_TYPE("av")));
+    g_assert_cmpuint(g_variant_n_children(result), ==, 0);
+}
+
+static GVariant* empty_array_snapshot(const char* field) {
+    GVariantBuilder snapshot;
+    g_variant_builder_init(&snapshot, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&snapshot, "{sv}", field,
+                          g_variant_new_array(G_VARIANT_TYPE_VARIANT, NULL, 0));
+    return g_variant_ref_sink(g_variant_builder_end(&snapshot));
+}
+
 static void capture_animation_callback_warning(const gchar* domain, GLogLevelFlags level,
                                                const gchar* message, gpointer user_data) {
     gchar** warning = user_data;
@@ -1099,6 +1116,26 @@ int main(void) {
     g_assert_no_error(error);
     g_assert_true(g_variant_lookup(focus_policy, "focus_new_windows", "&s", &focus_new_windows));
     g_assert_cmpstr(focus_new_windows, ==, "smart");
+
+    g_autoptr(GVariant) empty_workspaces = empty_array_snapshot("workspaces");
+    g_autoptr(GVariant) empty_monitors = empty_array_snapshot("monitors");
+    g_autoptr(GVariant) empty_layers = empty_array_snapshot("layers");
+    g_autoptr(GVariant) empty_launches = empty_array_snapshot("launches");
+    gnoblin_config_update_workspace_snapshot(empty_workspaces, 19);
+    gnoblin_config_update_monitor_snapshot(empty_monitors, 19);
+    gnoblin_config_update_layer_snapshot(empty_layers, 19);
+    gnoblin_config_update_launch_snapshot(empty_launches, 19);
+    assert_empty_api_array("workspaces.list", empty_read_arguments);
+    assert_empty_api_array("monitors.list", empty_read_arguments);
+    assert_empty_api_array("launches.list", empty_read_arguments);
+
+    GVariantBuilder empty_layer_filter_builder;
+    g_variant_builder_init(&empty_layer_filter_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&empty_layer_filter_builder, "{sv}", "namespace",
+                          g_variant_new_string("missing-namespace"));
+    g_autoptr(GVariant) empty_layer_filter =
+        g_variant_ref_sink(g_variant_builder_end(&empty_layer_filter_builder));
+    assert_empty_api_array("layers.list", empty_layer_filter);
 
     g_unlink(fragment);
     g_unlink(malformed_patterns);
