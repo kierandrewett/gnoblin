@@ -162,13 +162,17 @@ read requires compositor API 1.37.
 For monitor moves, the CLI accepts the numeric monitor index and maps it to a
 connector ID from the shared `monitors.list` snapshot. This read uses
 compositor API 1.37.
-Raw socket clients can continue using the numeric index with `window.action`.
 
-`window.action` remains the compatibility route for focus, menu, and interactive
-move or resize. Typed methods require an ID and do not provide the verified
-activation context or pointer interaction needed by those actions.
-`toggle-minimize` also requires an ID because the compatibility route does not
-implement its semantics.
+Raw socket clients can use `window.action` for the basic actions documented in
+the runtime API. Its `window` argument is a stable ID or `"active"`.
+
+API 1.60 and newer execute it through the Lua runtime while preserving the
+response shape; earlier versions use the native compatibility route. Focus,
+menu, and interactive move or resize use their dedicated methods because they
+require verified activation or menu context.
+
+`toggle-minimize` is available through its typed method, which takes a stable
+window ID.
 See the [`gnoblinctl` window reference](/gnoblinctl#window-actions) for CLI
 arguments and ranges.
 
