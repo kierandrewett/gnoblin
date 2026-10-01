@@ -127,6 +127,7 @@ struct _GnoblinNativeControl {
     GHashTable* text_targets;
     GHashTable* window_drags;
     GHashTable* snap_contexts;
+    GHashTable* snap_restore_frames;
     MetaDisplay* display;
     MetaWaylandCompositor* wayland_compositor;
     MetaWorkspaceManager* workspace_manager;
@@ -579,6 +580,62 @@ static MetaWindow* native_window_by_stable_id(GnoblinNativeControl* control,
     }
     g_slist_free(windows);
     return match;
+}
+
+GVariant* gnoblin_native_control_restore_or_minimize_window(MetaDisplay* display,
+                                                            GVariant* arguments, GError** error) {
+    GnoblinNativeControl* control =
+        display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
+    const char* id = NULL;
+    if (!control || control->stopping || !control->snap_restore_frames ||
+        !g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT) ||
+        g_variant_n_children(arguments) != 1 || !g_variant_lookup(arguments, "id", "&s", &id) ||
+        !id || !*id) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "window.restore_or_minimize requires only a stable window id");
+        return NULL;
+    }
+    if (control->wayland_compositor &&
+        meta_wayland_session_lock_is_active(control->wayland_compositor)) {
+        g_set_error_literal(
+            error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+            "window.restore_or_minimize is unavailable while the session is locked");
+        return NULL;
+    }
+    MetaWindow* window = native_window_by_stable_id(control, id);
+    if (!window || meta_window_is_skip_taskbar(window) ||
+        meta_window_is_override_redirect(window)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                            "window.restore_or_minimize target is no longer available");
+        return NULL;
+    }
+    const char* action = NULL;
+    if (meta_window_is_maximized(window)) {
+        meta_window_unmaximize(window);
+        g_hash_table_remove(control->snap_restore_frames, window);
+        action = "unmaximize";
+    } else {
+        MtkRectangle* frame = g_hash_table_lookup(control->snap_restore_frames, window);
+        if (frame) {
+            MtkRectangle restore_frame = *frame;
+            g_hash_table_remove(control->snap_restore_frames, window);
+            meta_window_move_resize_frame(window, TRUE, restore_frame.x, restore_frame.y,
+                                          restore_frame.width, restore_frame.height);
+            action = "restore";
+        } else if (meta_window_can_minimize(window)) {
+            meta_window_minimize(window);
+            action = "minimize";
+        } else {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                                "window cannot be minimized and has no saved snap frame");
+            return NULL;
+        }
+    }
+    GVariantBuilder result;
+    g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&result, "{sv}", "id", g_variant_new_string(id));
+    g_variant_builder_add(&result, "{sv}", "action", g_variant_new_string(action));
+    return g_variant_ref_sink(g_variant_builder_end(&result));
 }
 
 static void pending_thumbnail_free(PendingThumbnail* pending) {
@@ -1533,6 +1590,7 @@ typedef struct {
     char* window_id;
     char* monitor_id;
     MtkRectangle work_area;
+    MtkRectangle original_frame;
     guint64 socket_owner_client_id;
 } NativeSnapContext;
 
@@ -7518,6 +7576,13 @@ gboolean gnoblin_native_control_take_window_drag_snap(MetaDisplay* display, guin
         *out_frame = target->frame;
         *out_target_id = g_strdup(target->id);
         *out_maximize = target->maximize;
+        if (target->maximize) {
+            g_hash_table_remove(control->snap_restore_frames, window);
+        } else if (!g_hash_table_contains(control->snap_restore_frames, window)) {
+            MtkRectangle* original_frame = g_new(MtkRectangle, 1);
+            *original_frame = drag->frame;
+            g_hash_table_insert(control->snap_restore_frames, window, original_frame);
+        }
         g_free(drag->committed_target_id);
         drag->committed_target_id = g_strdup(target->id);
         return TRUE;
@@ -7823,6 +7888,7 @@ GVariant* gnoblin_native_control_create_snap_context(MetaDisplay* display, guint
     snap->window_id = g_strdup(window_id);
     snap->monitor_id = g_strdup(monitor_id);
     snap->work_area = work_area;
+    meta_window_get_frame_rect(window, &snap->original_frame);
     g_hash_table_insert(control->snap_contexts, g_strdup(token), snap);
 
     GVariantBuilder result, monitor, area;
@@ -7966,6 +8032,13 @@ static GVariant* native_commit_snap_context_owned(MetaDisplay* display, GVariant
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "snap frame falls outside the target work area");
         return NULL;
+    }
+    if (meta_window_is_maximized(window))
+        meta_window_unmaximize(window);
+    if (!g_hash_table_contains(control->snap_restore_frames, window)) {
+        MtkRectangle* original_frame = g_new(MtkRectangle, 1);
+        *original_frame = context.original_frame;
+        g_hash_table_insert(control->snap_restore_frames, window, original_frame);
     }
     meta_window_move_resize_frame(window, TRUE, frame.x, frame.y, frame.width, frame.height);
     GVariantBuilder result;
@@ -10419,6 +10492,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         return encode_response(id, NULL, "session.status requires API version 1.29");
     if (g_str_equal(method, "session.logout") && client->api_minor < 32)
         return encode_response(id, NULL, "session.logout requires API version 1.32");
+    if (g_str_equal(method, "window.restore_or_minimize") && client->api_minor < 38)
+        return encode_response(id, NULL, "window.restore_or_minimize requires API version 1.38");
     if ((g_str_equal(method, "privacy.stop_sharing") ||
          g_str_equal(method, "privacy.stop_recording")) &&
         client->api_minor < 31)
@@ -10484,6 +10559,27 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         if (!status)
             return encode_response(id, NULL, "could not read compositor session status");
         return encode_response(id, status, NULL);
+    }
+    if (g_str_equal(method, "window.restore_or_minimize")) {
+        JsonObject* json_arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
+        const char* fields[] = {"id"};
+        JsonNode* id_node = json_arguments ? json_object_get_member(json_arguments, "id") : NULL;
+        if (!native_socket_has_exact_fields(json_arguments, fields, G_N_ELEMENTS(fields)) ||
+            !id_node || !JSON_NODE_HOLDS_VALUE(id_node) ||
+            json_node_get_value_type(id_node) != G_TYPE_STRING || !json_node_get_string(id_node) ||
+            !*json_node_get_string(id_node))
+            return encode_response(id, NULL,
+                                   "window.restore_or_minimize requires only a stable window id");
+        g_autoptr(JsonNode) arguments_object = json_node_new(JSON_NODE_OBJECT);
+        json_node_set_object(arguments_object, json_object_ref(json_arguments));
+        g_autoptr(GVariant) native_arguments = variant_from_json(arguments_object);
+        g_autoptr(GVariant) result = gnoblin_native_control_restore_or_minimize_window(
+            client->control->display, native_arguments, &error);
+        if (!result)
+            return encode_response(id, NULL,
+                                   error ? error->message : "window restore-or-minimize failed");
+        g_autoptr(JsonNode) json = json_from_variant(result);
+        return encode_response(id, json, NULL);
     }
     if (g_str_equal(method, "input.text_target") || g_str_equal(method, "input.insert_text") ||
         g_str_equal(method, "window.snap_context") || g_str_equal(method, "window.snap")) {
@@ -11286,6 +11382,7 @@ static void window_unmanaged(MetaWindow* window, gpointer user_data) {
     clear_object_signal_watches(G_OBJECT(window), handler_ids);
     g_hash_table_remove(control->window_signal_handler_ids, window);
     g_signal_handlers_disconnect_by_data(window, control);
+    g_hash_table_remove(control->snap_restore_frames, window);
     g_hash_table_remove(control->windows, window);
     schedule_windows(control);
 }
@@ -11473,6 +11570,7 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         "window.minimize",
         "window.toggle_minimize",
         "window.restore",
+        "window.restore_or_minimize",
         "window.set_maximized",
         "window.set_fullscreen",
         "window.set_above",
@@ -12191,6 +12289,9 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
             g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
             result = g_variant_ref_sink(g_variant_builder_end(&accepted));
         }
+    } else if (g_str_equal(method, "window.restore_or_minimize")) {
+        result = gnoblin_native_control_restore_or_minimize_window(control->display, arguments,
+                                                                   &operation_error);
     } else if (g_str_equal(method, "window.snap")) {
         result = gnoblin_native_control_commit_snap_context(control->display, arguments,
                                                             &operation_error);
@@ -12335,6 +12436,24 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
                                                  &operation_error);
         if (pending)
             return TRUE;
+    } else if (g_str_equal(method, "window.set_maximized")) {
+        gboolean enabled = FALSE;
+        const char* window_id = NULL;
+        if (g_variant_lookup(arguments, "enabled", "b", &enabled) && enabled &&
+            g_variant_lookup(arguments, "id", "&s", &window_id) && window_id) {
+            MetaWindow* window = native_window_by_stable_id(control, window_id);
+            if (window)
+                result = meta_gnoblin_dispatch_native_api(control->display, method, arguments,
+                                                          &operation_error);
+            else
+                g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                                    "window.set_maximized target is unavailable");
+            if (result)
+                g_hash_table_remove(control->snap_restore_frames, window);
+        } else {
+            result = meta_gnoblin_dispatch_native_api(control->display, method, arguments,
+                                                      &operation_error);
+        }
     } else {
         result =
             meta_gnoblin_dispatch_native_api(control->display, method, arguments, &operation_error);
@@ -12784,6 +12903,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, native_window_drag_free);
     control->snap_contexts =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_snap_context_free);
+    control->snap_restore_frames =
+        g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
     control->focus_context_timeout_id =
         g_timeout_add_seconds(1, focus_context_expiry_tick, control);
     control->launches = g_ptr_array_new_with_free_func(native_launch_free);
@@ -13171,6 +13292,8 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         g_hash_table_unref(control->window_drags);
     if (control->snap_contexts)
         g_hash_table_unref(control->snap_contexts);
+    if (control->snap_restore_frames)
+        g_hash_table_unref(control->snap_restore_frames);
     if (control->text_targets)
         g_hash_table_unref(control->text_targets);
     if (control->clients) {
