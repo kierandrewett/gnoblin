@@ -311,21 +311,6 @@ static guint64 native_config_revision(GnoblinNativeControl* control) {
     return 0;
 }
 
-static char* native_configuration_path(void) {
-    const char* override = g_getenv("GNOBLIN_CONFIG");
-    if (override && *override)
-        return g_canonicalize_filename(override, NULL);
-    g_autofree char* directory = g_build_filename(g_get_user_config_dir(), "gnoblin", NULL);
-    /* Detect old configs so they are reported for conversion, not shadowed. */
-    const char* names[] = {"init.lua", "gnoblin.toml", "gnoblin.conf"};
-    for (guint i = 0; i < G_N_ELEMENTS(names); i++) {
-        g_autofree char* candidate = g_build_filename(directory, names[i], NULL);
-        if (g_file_test(candidate, G_FILE_TEST_EXISTS))
-            return g_steal_pointer(&candidate);
-    }
-    return g_build_filename(directory, "init.lua", NULL);
-}
-
 GVariant* gnoblin_native_control_get_config_document(MetaDisplay* display) {
     GnoblinNativeControl* control =
         display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
@@ -9815,41 +9800,6 @@ static char* dynamic_shortcut_unbind(Client* client, const char* request_id,
     g_autoptr(JsonNode) result = json_node_new(JSON_NODE_OBJECT);
     json_node_take_object(result, result_object);
     return encode_response(request_id, result, NULL);
-}
-
-static JsonNode* permission_decision_json(GVariant* document, const char* capability,
-                                          const char* identity, guint64 revision, GError** error) {
-    if (!gnoblin_permission_capability_supported(capability)) {
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                            "unsupported permission capability");
-        return NULL;
-    }
-    g_auto(GnoblinPermission) decision =
-        gnoblin_permission_policy_evaluate(document, capability, identity);
-    JsonObject* object = json_object_new();
-    json_object_set_string_member(object, "level",
-                                  decision.level == GNOBLIN_PERMISSION_ASK     ? "ask"
-                                  : decision.level == GNOBLIN_PERMISSION_ALLOW ? "allow"
-                                  : decision.level == GNOBLIN_PERMISSION_DENY  ? "deny"
-                                                                               : "default");
-    json_object_set_string_member(object, "rule", decision.rule ? decision.rule : "");
-    JsonArray* monitors = json_array_new();
-    for (guint i = 0; decision.monitors && decision.monitors[i]; i++)
-        json_array_add_string_element(monitors, decision.monitors[i]);
-    json_object_set_array_member(object, "monitors", monitors);
-    JsonArray* devices = json_array_new();
-    if (decision.devices & 1)
-        json_array_add_string_element(devices, "keyboard");
-    if (decision.devices & 2)
-        json_array_add_string_element(devices, "pointer");
-    if (decision.devices & 4)
-        json_array_add_string_element(devices, "touchscreen");
-    json_object_set_array_member(object, "devices", devices);
-    json_object_set_boolean_member(object, "clipboard", decision.clipboard);
-    json_object_set_int_member(object, "revision", (gint64)revision);
-    JsonNode* result = json_node_new(JSON_NODE_OBJECT);
-    json_node_take_object(result, object);
-    return result;
 }
 
 static gboolean native_api_read_method(const char* method) {
