@@ -322,6 +322,7 @@ static guint api_minor_for_method(const char* method) {
         {"shortcuts.list", 40},
         {"shortcuts.actions", 41},
         {"permissions.list", 42},
+        {"permissions.check", 43},
         {"capabilities.list", 19},
         {"focus.history", 19},
         {"focus.policy", 19},
@@ -371,8 +372,8 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke") ||
         g_str_equal(method_name, "permissions.policy") ||
         g_str_equal(method_name, "permissions.list") || g_str_equal(method_name, "privacy.state") ||
-        g_str_equal(method_name, "version") || g_str_equal(method_name, "session.status") ||
-        g_str_equal(method_name, "session.logout") ||
+        g_str_equal(method_name, "permissions.check") || g_str_equal(method_name, "version") ||
+        g_str_equal(method_name, "session.status") || g_str_equal(method_name, "session.logout") ||
         g_str_equal(method_name, "session.activity") || g_str_equal(method_name, "session.lock") ||
         g_str_equal(method_name, "privacy.stop_sharing") ||
         g_str_equal(method_name, "privacy.stop_recording") ||

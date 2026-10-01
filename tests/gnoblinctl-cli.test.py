@@ -119,7 +119,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(22):
+                    for _ in range(23):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -227,6 +227,15 @@ def main() -> int:
                                     "capabilities": ["screen-cast", "remote-desktop"],
                                     "levels": ["deny", "ask", "allow"],
                                     "path": "/tmp/gnoblin-permissions.json",
+                                }
+                            elif request["method"] == "permissions.check":
+                                result = {
+                                    "level": "allow",
+                                    "rule": "remote-test",
+                                    "monitors": [],
+                                    "devices": ["keyboard"],
+                                    "clipboard": True,
+                                    "revision": 9,
                                 }
                             elif request["method"] == "window.move_to_monitor":
                                 result = {"id": "42", "monitor_id": "HDMI-1"}
@@ -513,11 +522,31 @@ def main() -> int:
             "levels": ["deny", "ask", "allow"],
             "path": "/tmp/gnoblin-permissions.json",
         }
+        permissions_check = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "permissions",
+            "check",
+            "remote-desktop",
+            "app-id:org.example.Remote",
+        )
+        assert permissions_check.returncode == 0, permissions_check.stderr
+        assert json.loads(permissions_check.stdout) == {
+            "level": "allow",
+            "rule": "remote-test",
+            "monitors": [],
+            "devices": ["keyboard"],
+            "clipboard": True,
+            "revision": 9,
+        }
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 22
-        assert len(subscriptions) == 22
+        assert len(received) == 23
+        assert len(subscriptions) == 23
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -606,6 +635,12 @@ def main() -> int:
         assert received[21]["method"] == "permissions.list"
         assert received[21]["api_version"] == {"major": 1, "minor": 42}
         assert received[21]["arguments"] == {}
+        assert received[22]["method"] == "permissions.check"
+        assert received[22]["api_version"] == {"major": 1, "minor": 43}
+        assert received[22]["arguments"] == {
+            "capability": "remote-desktop",
+            "identity": "app-id:org.example.Remote",
+        }
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
