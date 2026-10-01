@@ -684,6 +684,24 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         self.assertGreaterEqual(api_minor(header), 43)
 
+    def test_permissions_policy_uses_lua_at_api_144_and_keeps_legacy_route(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        permission_policy = function_body(
+            source,
+            'if (g_str_equal(method, "permissions.policy")) {',
+            'if (g_str_equal(method, "permissions.check")) {',
+        )
+
+        self.assertIn("client->api_minor >= 44", permission_policy)
+        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', permission_policy)
+        self.assertIn("gnoblin_permission_policy_snapshot(document", permission_policy)
+        self.assertLess(
+            permission_policy.index("client->api_minor >= 44"),
+            permission_policy.index("gnoblin_permission_policy_snapshot(document"),
+        )
+        self.assertGreaterEqual(api_minor(header), 44)
+
     def test_restore_or_minimize_is_native_and_clears_saved_frames(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
