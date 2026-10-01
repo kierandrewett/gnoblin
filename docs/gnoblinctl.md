@@ -193,8 +193,9 @@ constrain the result, and geometry operations reject states such as fullscreen
 or non-resizable windows.
 
 For a stable window ID, `window monitor` takes a connector ID from
-`gnoblinctl monitor list`. The list also shows the current numeric `index`; the
-legacy `active` window target uses that index.
+`gnoblinctl monitor list`. With the `active` window target, pass the current
+numeric `index` from that list. The CLI resolves the focused window and maps
+the index to a connector ID before sending the typed move request.
 
 ## Workspaces and monitors
 

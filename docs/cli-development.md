@@ -122,11 +122,14 @@ and `height`.
 
 Workspace moves take a `workspace` selector with either an `id` or `number`.
 Typed monitor moves take the connector ID from `monitor.list()`.
-`window.action` keeps its numeric monitor index for compatibility.
 
-`window.action` remains the compatibility route for `active`, focus, menu, and
-interactive move or resize. Typed methods require an ID and do not provide the
-verified activation context or pointer interaction needed by those actions.
+For `active`, the CLI accepts the numeric monitor index and maps it to the
+connector ID before sending the typed request. Raw socket clients can continue
+using the numeric index with `window.action`.
+
+`window.action` remains the compatibility route for focus, menu, and interactive
+move or resize. Typed methods require an ID and do not provide the verified
+activation context or pointer interaction needed by those actions.
 `toggle-minimize` also requires an ID because the compatibility route does not
 implement its semantics.
 See the [`gnoblinctl` window reference](/gnoblinctl#window-actions) for CLI
