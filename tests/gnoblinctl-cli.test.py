@@ -137,8 +137,6 @@ def main() -> int:
                             received.append(request)
                             if request["method"] == "session.status":
                                 result = {"session": "test-session", "locked": False}
-                            elif request["method"] == "monitor.list":
-                                result = {"monitors": [{"id": "HDMI-1", "index": 0, "primary": True}]}
                             elif request["method"] == "monitors.list":
                                 result = [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
                             elif request["method"] == "windows.list":
@@ -233,7 +231,9 @@ def main() -> int:
         assert json.loads(result.stdout) == {"session": "test-session", "locked": False}
         monitor_result = run(binary, "--socket", socket_path, "--format", "json", "monitor", "list")
         assert monitor_result.returncode == 0, monitor_result.stderr
-        assert json.loads(monitor_result.stdout) == {"monitors": [{"id": "HDMI-1", "index": 0, "primary": True}]}
+        assert json.loads(monitor_result.stdout) == {
+            "monitors": [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
+        }
         window_list = run(binary, "--socket", socket_path, "--format", "table", "window", "list")
         assert window_list.returncode == 0, window_list.stderr
         assert "APP ID" in window_list.stdout, window_list.stdout
@@ -395,7 +395,8 @@ def main() -> int:
         assert request["arguments"] == {}
         monitor_request = received[1]
         assert monitor_request["op"] == "api"
-        assert monitor_request["method"] == "monitor.list"
+        assert monitor_request["method"] == "monitors.list"
+        assert monitor_request["api_version"] == {"major": 1, "minor": 37}
         assert monitor_request["arguments"] == {}
         window_request = received[2]
         assert window_request["method"] == "windows.list"

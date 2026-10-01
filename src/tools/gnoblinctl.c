@@ -1144,7 +1144,7 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
     } else if (is(command, "layer") && is(action, "list"))
         method = "layer.list";
     else if (is(command, "monitor") && is(action, "list"))
-        method = "monitor.list";
+        method = "monitors.list";
     else if (is(command, "focus") && is(action, "history")) {
         set_if(arguments, "workspace_id", option(cli, "workspace-id"));
         set_if(arguments, "monitor_id", option(cli, "monitor-id"));
@@ -1217,6 +1217,13 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
     if (is(command, "window") && is(action, "list") && JSON_NODE_HOLDS_ARRAY(reply)) {
         JsonObject* result = json_object_new();
         json_object_set_member(result, "windows", json_node_copy(reply));
+        JsonNode* node = json_node_new(JSON_NODE_OBJECT);
+        json_node_take_object(node, result);
+        return node;
+    }
+    if (is(command, "monitor") && is(action, "list") && JSON_NODE_HOLDS_ARRAY(reply)) {
+        JsonObject* result = json_object_new();
+        json_object_set_member(result, "monitors", json_node_copy(reply));
         JsonNode* node = json_node_new(JSON_NODE_OBJECT);
         json_node_take_object(node, result);
         return node;
