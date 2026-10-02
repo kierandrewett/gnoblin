@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src/protocols/session-lock/meta-wayland-session-lock.c"
+NATIVE_CONTROL_SOURCE = ROOT / "src/native-control/gnoblin-native-control.c"
 SURFACE_SOURCE = ROOT / "src/protocols/session-lock/meta-wayland-session-lock-surface.c"
 XML = ROOT / "src/protocols/session-lock/ext-session-lock-v1.xml"
 MANIFEST = ROOT / "src/protocols/session-lock/manifest"
@@ -33,10 +34,14 @@ class SessionLockProtocolTests(unittest.TestCase):
         self.assertIsNotNone(interfaces["ext_session_lock_v1"].find("request[@name='unlock_and_destroy']"))
         self.assertIsNotNone(interfaces["ext_session_lock_v1"].find("event[@name='locked']"))
 
-    def test_manager_is_gnoblin_session_scoped_and_owns_its_global(self):
+    def test_manager_requires_supervised_gnoblin_session_and_owns_its_global(self):
         source = SOURCE.read_text()
-        self.assertIn('gnoblin_config_protocol_enabled ("ext-session-lock")', source)
-        self.assertIn("GNOME_SHELL_SESSION_MODE=gnoblin", source)
+        native_control = NATIVE_CONTROL_SOURCE.read_text()
+        self.assertIn('gnoblin_native_control_protocol_enabled("ext-session-lock")', source)
+        self.assertIn("gboolean gnoblin_native_control_protocol_enabled", native_control)
+        self.assertIn("gnoblin_native_control_is_session(NULL)", native_control)
+        self.assertIn("return bootstrap_runtime_cache != NULL", native_control)
+        self.assertNotIn("GNOME_SHELL_SESSION_MODE", source)
         self.assertIn("wl_global_create", source)
         self.assertIn("session_lock_manager_bind", source)
         self.assertIn("wl_global_destroy", source)
