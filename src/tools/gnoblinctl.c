@@ -47,10 +47,11 @@ static const CommandSpec commands[] = {
     {"session", "activity lock"},
     {"privacy", "stop-sharing stop-recording"},
     {"permissions", "list policy check"},
-    {"window", "list match menu interactive-move interactive-resize above unabove stick unstick "
-               "focus close minimize toggle-minimize restore-or-minimize restore maximize "
-               "unmaximize fullscreen "
-               "unfullscreen move resize monitor workspace thumbnail"},
+    {"window",
+     "list match menu interactive-move interactive-resize above unabove stick unstick "
+     "focus close minimize unminimize toggle-minimize restore-or-minimize restore maximize "
+     "unmaximize fullscreen "
+     "unfullscreen move resize monitor workspace thumbnail"},
     {"layer", "list"},
     {"completion", NULL},
     {"shortcut", "actions list capture"},
@@ -1009,6 +1010,8 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
                 method = "window.close";
             else if (is(action, "minimize"))
                 method = "window.minimize";
+            else if (is(action, "unminimize"))
+                method = "window.unminimize";
             else if (is(action, "restore"))
                 method = "window.restore";
             else if (is(action, "restore-or-minimize"))

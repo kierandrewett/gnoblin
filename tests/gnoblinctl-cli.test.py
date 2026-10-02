@@ -139,7 +139,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(27):
+                    for _ in range(28):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -278,6 +278,8 @@ def main() -> int:
                                 result = {"id": "42", "monitor_id": "HDMI-1"}
                             elif request["method"] == "window.restore_or_minimize":
                                 result = {"id": "42", "action": "restore"}
+                            elif request["method"] == "window.unminimize":
+                                result = {"id": "42"}
                             else:
                                 result = {
                                     "request_id": 17,
@@ -611,11 +613,23 @@ def main() -> int:
         lua_file.write_text('local windows = gnoblin.windows.list { focused = true }\nassert(windows[1].id == "42")\n')
         lua_api = run(binary, "--socket", socket_path, "lua", str(lua_file))
         assert lua_api.returncode == 0, lua_api.stderr
+        unminimize = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "window",
+            "unminimize",
+            "42",
+        )
+        assert unminimize.returncode == 0, unminimize.stderr
+        assert json.loads(unminimize.stdout) == {"id": "42"}
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 27
-        assert len(subscriptions) == 27
+        assert len(received) == 28
+        assert len(subscriptions) == 28
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -727,6 +741,9 @@ def main() -> int:
         assert lua_request["method"] == "windows.list"
         assert lua_request["arguments"] == {"focused": True}
         assert "source" not in lua_request and "code" not in lua_request
+        unminimize_request = received[27]
+        assert unminimize_request["method"] == "window.unminimize"
+        assert unminimize_request["arguments"] == {"id": "42"}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
