@@ -20,8 +20,8 @@ To include Gnoblin's GTK-based portal backend, use:
 ```
 
 It requires GTK4 4.22 or newer and `xdg-desktop-portal` 1.21.1 or newer. You
-can instead configure another installed backend for Gnoblin as described in
-[Choose a different portal backend](/gnome-apps#choose-a-different-portal-backend).
+can instead configure another installed backend for Gnoblin with
+[`gnoblin.configure.portals`](/config/configure/portals).
 
 To rebuild one upstream component, select its CMake target:
 
@@ -73,7 +73,7 @@ rejected. To add the built session to your login screen, run:
 The default build uses portal services already installed on the system. To
 build Gnoblin's optional backend, run `./build.sh --with-portal`. A GNOME
 session can continue using GNOME's backend. To choose another backend for
-Gnoblin, see [Choose a different portal backend](/gnome-apps#choose-a-different-portal-backend).
+Gnoblin, see [`gnoblin.configure.portals`](/config/configure/portals).
 See [permission policy](/guides/permissions) when testing remote access.
 
 ## Verify changes

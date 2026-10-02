@@ -137,5 +137,6 @@ if "$with_portal"; then
     sudo install -Dm644 "$PORTAL_CONFIG" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
     sudo install -Dm644 "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
 else
-    echo 'No Gnoblin portal backend in this build. Portal requests use your installed backend; choose one in ~/.config/xdg-desktop-portal/gnoblin-portals.conf if needed.'
+    echo 'No Gnoblin portal backend in this build; using your installed backend.'
+    echo 'To choose another, set gnoblin.configure.portals in your Lua config.'
 fi
