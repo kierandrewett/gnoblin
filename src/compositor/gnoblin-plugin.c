@@ -33,6 +33,16 @@ static void gnoblin_plugin_map(MetaPlugin* plugin, MetaWindowActor* actor) {
     meta_plugin_map_completed(plugin, actor);
 }
 
+static void gnoblin_plugin_minimize(MetaPlugin* plugin, MetaWindowActor* actor) {
+    if (!meta_gnoblin_animation_window_minimizing(plugin, actor))
+        meta_plugin_minimize_completed(plugin, actor);
+}
+
+static void gnoblin_plugin_unminimize(MetaPlugin* plugin, MetaWindowActor* actor) {
+    if (!meta_gnoblin_animation_window_restoring(plugin, actor))
+        meta_plugin_unminimize_completed(plugin, actor);
+}
+
 static void gnoblin_plugin_destroy(MetaPlugin* plugin, MetaWindowActor* actor) {
     if (!meta_gnoblin_animation_window_destroying(plugin, actor))
         meta_plugin_destroy_completed(plugin, actor);
@@ -53,6 +63,8 @@ static void meta_gnoblin_plugin_class_init(MetaGnoblinPluginClass* klass) {
 
     plugin_class->show_window_menu = gnoblin_plugin_show_window_menu;
     plugin_class->map = gnoblin_plugin_map;
+    plugin_class->minimize = gnoblin_plugin_minimize;
+    plugin_class->unminimize = gnoblin_plugin_unminimize;
     plugin_class->destroy = gnoblin_plugin_destroy;
     plugin_class->kill_window_effects = gnoblin_plugin_kill_window_effects;
 }
