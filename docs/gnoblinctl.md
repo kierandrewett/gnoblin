@@ -130,6 +130,17 @@ for _, capability in ipairs(gnoblin.capabilities.list()) do
 end
 ```
 
+`gnoblin.permissions.policy()` returns the committed permission policy as a
+deeply read-only `PermissionPolicy` record:
+
+```lua
+local policy = gnoblin.permissions.policy()
+print(policy.default, policy.revision)
+for _, rule in ipairs(policy.rules) do
+    print(rule.name, rule.level)
+end
+```
+
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
 read-only `Workspace` records. A workspace can be activated, renamed, removed,

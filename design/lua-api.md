@@ -218,7 +218,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.launches` | `list()`, `begin(args)`, `end(args)` | **Current; native runtime only.** Read and report tracked application launches. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
 | `gnoblin.privacy.state()` | `() -> PrivacyState` | **Current.** Read the immutable privacy activity snapshot in the native runtime or `gnoblinctl lua`; the console returns a deeply read-only record. |
-| `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current; native runtime only.** Inspect permission policy, check requests, list grants, and revoke grants. |
+| `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime exposes all methods; `gnoblinctl lua` returns a deeply read-only `PermissionPolicy` from `permissions.policy()`. |
 | `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current; native runtime only.** Control or read the supervised session. |
 | `gnoblin.runtime.reload_config()` | `() -> Operation<Result>` | **Current; native runtime only.** Reload the active configuration. |
 | `gnoblin.listeners` | map of event names to callback arrays | **Current; inspect only.** Do not edit this table directly. |
@@ -1677,6 +1677,9 @@ the console, preserving the shared API's MRU order and filters.
 
 `capabilities.list()` returns the shared array of read-only `Capability`
 records in the console. The no-argument call uses native-control API 1.19.
+
+`permissions.policy()` uses native-control API 1.44 and returns a deeply
+read-only `PermissionPolicy`, including its ordered rules array.
 
 The console also exposes `workspaces.list()`, `workspaces.active()`, and
 `workspaces.by_id(id)` as read-only `Workspace` records. Workspace methods
