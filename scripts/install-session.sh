@@ -126,7 +126,7 @@ install -Dm644 "$INSTALL_PREFIX/lib/systemd/user/gnoblin-idle.service.tmp" \
 rm -f "$INSTALL_PREFIX/lib/systemd/user/gnoblin-idle.service.tmp"
 # Desktop-specific schema defaults. This runs after Mutter has
 # installed their schemas, so the override is compiled into the prefix used by
-# Gnoblin's wrappers (`XDG_CURRENT_DESKTOP=GNOME:Gnoblin`).
+# Gnoblin's session (`XDG_CURRENT_DESKTOP=Gnoblin`).
 install -Dm644 "$SRC/schemas/00_org.gnoblin.mutter.gschema.override" \
     "$INSTALL_PREFIX/share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override"
 glib-compile-schemas "$INSTALL_PREFIX/share/glib-2.0/schemas"
