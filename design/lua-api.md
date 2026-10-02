@@ -218,7 +218,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.launches` | `list()`, `begin(args)`, `end(args)` | **Current; native runtime only.** Read and report tracked application launches. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
 | `gnoblin.privacy.state()` | `() -> PrivacyState` | **Current.** Read the immutable privacy activity snapshot in the native runtime or `gnoblinctl lua`; the console returns a deeply read-only record. |
-| `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime exposes all methods; `gnoblinctl lua` returns a deeply read-only `PermissionPolicy` from `permissions.policy()`. |
+| `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only `PermissionPolicy` and `PermissionDecision` records from the matching reads. |
 | `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only `SessionStatus` and `SessionActivity` records from the matching reads. |
 | `gnoblin.runtime.reload_config()` | `() -> Operation<Result>` | **Current; native runtime only.** Reload the active configuration. |
 | `gnoblin.listeners` | map of event names to callback arrays | **Current; inspect only.** Do not edit this table directly. |
@@ -1680,6 +1680,11 @@ records in the console. The no-argument call uses native-control API 1.19.
 
 `permissions.policy()` uses native-control API 1.44 and returns a deeply
 read-only `PermissionPolicy`, including its ordered rules array.
+
+`permissions.check(capability, identity)` accepts both the runtime's two
+string arguments and its `{capability, identity}` table form in the console.
+It uses native-control API 1.43 and returns a deeply read-only
+`PermissionDecision`.
 
 `session.status()` uses native-control API 1.29 and returns a deeply read-only
 `SessionStatus`. When `lock_available` is false, `lock_state` stays omitted;

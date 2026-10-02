@@ -141,6 +141,17 @@ for _, rule in ipairs(policy.rules) do
 end
 ```
 
+Check how the committed policy evaluates a capability for an application
+identity. The console accepts either two strings or a table:
+
+```lua
+local decision = gnoblin.permissions.check {
+    capability = "remote-desktop",
+    identity = "app-id:org.example.Remote",
+}
+print(decision.level, decision.rule, decision.revision)
+```
+
 `gnoblin.session.status()` returns a read-only `SessionStatus`. When lock state
 is unavailable, `lock_state` is omitted; that does not mean the session is
 unlocked:
