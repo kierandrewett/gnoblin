@@ -192,7 +192,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.config`                                | mutable config table                                        | **Current; compatibility view.** Keys use normalized internal hyphenated names. Prefer `gnoblin.configure`.                                                                                                                                                |
 | `gnoblin.settings`                              | read-only property                                          | **Current.** Detached snapshot of committed settings with public snake_case names and a non-persistent `revision`; available after the initial config commit in the standalone Lua runtime. `gnoblinctl lua` exposes a deeply read-only `Settings` record. |
 | `gnoblin.focus.policy`                          | read-only property                                          | **Current.** Immutable focus-preference snapshot with the committed settings revision in the standalone Lua runtime; `gnoblinctl lua` exposes a read-only `FocusPolicy` record.                                                                            |
-| `gnoblin.focus.history(filter?)`                | `(filter?: FocusFilter) -> Window[]`                        | **Current; native runtime.** Read windows in most-recently-focused order, with optional workspace, monitor, and limit filters.                                                                                                                             |
+| `gnoblin.focus.history(filter?)`                | `(filter?: FocusFilter) -> Window[]`                        | **Current; native runtime.** Read windows in most-recently-focused order, with optional workspace, monitor, and limit filters; `gnoblinctl lua` returns read-only `Window` records too.                                                                    |
 | `gnoblin.version()`                             | `() -> Version`                                             | **Current.** Read Gnoblin, GNOME, Mutter, Lua, API, Git remote, Git SHA, and build ID.                                                                                                                                                                     |
 | `gnoblin.capabilities.list()`                   | `() -> Capability[]`                                        | **Current; native runtime.** Read supported compositor and protocol capabilities.                                                                                                                                                                          |
 | `gnoblin.snapshot()`                            | `() -> Settings`                                            | **Current; compatibility only.** Returns a copy of the mutable config view. Prefer `gnoblin.settings` for reads.                                                                                                                                           |
@@ -1671,6 +1671,9 @@ interactive move or resize because it cannot obtain a live `FocusContext` from
 a runtime callback. Event subscriptions and callback dispatch remain exclusive
 to the supervised Lua runtime; full CLI parity with the shared API is still
 incomplete.
+
+`focus.history(filter?)` also returns those typed read-only window records in
+the console, preserving the shared API's MRU order and filters.
 
 The console also exposes `workspaces.list()`, `workspaces.active()`, and
 `workspaces.by_id(id)` as read-only `Workspace` records. Workspace methods

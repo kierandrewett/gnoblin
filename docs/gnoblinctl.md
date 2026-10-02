@@ -85,6 +85,16 @@ They do not return an asynchronous `Operation` handle. `focus`, `begin_move`,
 and `begin_resize` require a trusted `FocusContext` from a runtime callback, so
 the terminal console rejects those calls.
 
+`gnoblin.focus.history(filter?)` returns the same read-only `Window` records in
+most-recently-focused order. Its optional filter accepts `workspace_id`,
+`monitor_id`, and `limit` (1–256):
+
+```lua
+for _, window in ipairs(gnoblin.focus.history { limit = 10 }) do
+    print(window.id, window.title)
+end
+```
+
 Read the committed focus behavior through the read-only `FocusPolicy` property:
 
 ```lua
