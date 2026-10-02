@@ -1431,6 +1431,8 @@ invalid:
     return NULL;
 }
 
+#define GNOBLINCTL_READONLY_TABLE_METATABLE "gnoblinctl.ReadonlyTable"
+
 static JsonNode* lua_to_json(lua_State* state, int index, guint depth, GError** error) {
     if (depth > 64) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -1531,6 +1533,14 @@ static JsonNode* lua_to_json(lua_State* state, int index, guint depth, GError** 
         json_node_take_object(node, object);
         return node;
     }
+    case LUA_TUSERDATA: {
+        if (!luaL_testudata(state, index, GNOBLINCTL_READONLY_TABLE_METATABLE))
+            break;
+        lua_getiuservalue(state, index, 1);
+        JsonNode* node = lua_to_json(state, -1, depth + 1, error);
+        lua_pop(state, 1);
+        return node;
+    }
     default:
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "Lua API arguments must contain only JSON values");
@@ -1582,6 +1592,80 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 
 static int lua_cli_animation_preview_method(lua_State* state);
 
+/* Nested JSON values are userdata-backed proxies instead of ordinary Lua
+ * tables. An empty proxy table would still allow rawset() to shadow fields,
+ * while returning the backing table from __pairs would expose mutable state. */
+static void lua_cli_push_readonly_value(lua_State* state, int index) {
+    index = lua_absindex(state, index);
+    if (!lua_istable(state, index)) {
+        lua_pushvalue(state, index);
+        return;
+    }
+
+    lua_newuserdatauv(state, 1, 1);
+    int proxy = lua_absindex(state, -1);
+    lua_pushvalue(state, index);
+    lua_setiuservalue(state, proxy, 1);
+    luaL_getmetatable(state, GNOBLINCTL_READONLY_TABLE_METATABLE);
+    lua_setmetatable(state, proxy);
+}
+
+static int lua_cli_readonly_index(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_pushvalue(state, 2);
+    lua_gettable(state, -2);
+    lua_cli_push_readonly_value(state, -1);
+    return 1;
+}
+
+static int lua_cli_readonly_newindex(lua_State* state) {
+    return luaL_error(state, "Snapshot values are read-only");
+}
+
+static int lua_cli_readonly_len(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_pushinteger(state, (lua_Integer)lua_rawlen(state, -1));
+    return 1;
+}
+
+static int lua_cli_readonly_next(lua_State* state) {
+    lua_pushvalue(state, lua_upvalueindex(1));
+    int backing = lua_absindex(state, -1);
+    lua_pushvalue(state, 2);
+    if (!lua_next(state, backing))
+        return 0;
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    lua_remove(state, backing);
+    return 2;
+}
+
+static int lua_cli_readonly_pairs(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_pushcclosure(state, lua_cli_readonly_next, 1);
+    lua_pushnil(state);
+    lua_pushnil(state);
+    return 3;
+}
+
+static void register_lua_cli_readonly_table(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_READONLY_TABLE_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_readonly_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_readonly_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_readonly_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushliteral(state, "read-only snapshot");
+    lua_setfield(state, -2, "__metatable");
+    lua_pop(state, 1);
+}
+
 /* The console must not turn a compositor snapshot into a mutable policy object.
  * Keep the JSON fields in a private backing table and expose the same read-only
  * property/method split as the supervised runtime's Window records. */
@@ -1589,8 +1673,10 @@ static int lua_cli_window_index(lua_State* state) {
     lua_getiuservalue(state, 1, 1);
     lua_pushvalue(state, 2);
     lua_gettable(state, -2);
-    if (!lua_isnil(state, -1))
+    if (!lua_isnil(state, -1)) {
+        lua_cli_push_readonly_value(state, -1);
         return 1;
+    }
     lua_pop(state, 2);
     lua_getiuservalue(state, 1, 2);
     lua_pushvalue(state, 2);
@@ -1609,8 +1695,9 @@ static int lua_cli_window_len(lua_State* state) {
 }
 
 static int lua_cli_window_pairs(lua_State* state) {
-    lua_getglobal(state, "next");
     lua_getiuservalue(state, 1, 1);
+    lua_pushcclosure(state, lua_cli_readonly_next, 1);
+    lua_pushnil(state);
     lua_pushnil(state);
     return 3;
 }
@@ -2667,6 +2754,7 @@ static int run_lua_console(Cli* cli, const char* file) {
         return 1;
     }
     luaL_openlibs(state);
+    register_lua_cli_readonly_table(state);
     register_lua_cli_window_record(state);
     register_lua_cli_workspace_record(state);
     register_lua_cli_monitor_record(state);

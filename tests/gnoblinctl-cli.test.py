@@ -197,6 +197,7 @@ def main() -> int:
                                         "wm_class": "Editor",
                                         "rule_app_id": "org.example.Editor",
                                         "title": "Notes",
+                                        "frame": {"x": 12, "y": 24, "width": 800, "height": 600},
                                         "revision": 5,
                                     }
                                 ]
@@ -754,6 +755,16 @@ def main() -> int:
             'assert(#windows == 1 and windows[1].id == "42")\n'
             "local window = windows[1]\n"
             'assert(window.title == "Notes")\n'
+            "assert(window.frame.x == 12 and window.frame.width == 800)\n"
+            "assert(not pcall(function() window.frame.x = 99 end))\n"
+            'assert(not pcall(function() rawset(window.frame, "x", 99) end))\n'
+            "assert(window.frame.x == 12)\n"
+            "local frame_fields = {}\n"
+            "for key, value in pairs(window.frame) do frame_fields[key] = value end\n"
+            "assert(frame_fields.x == 12 and frame_fields.height == 600)\n"
+            "local window_fields = {}\n"
+            "for key, value in pairs(window) do window_fields[key] = value end\n"
+            'assert(window_fields.title == "Notes" and window_fields.frame.x == 12)\n'
             'assert(not pcall(function() window.title = "changed" end))\n'
             'assert(gnoblin.windows.focused().id == "42")\n'
             'assert(gnoblin.windows.by_id("42").title == "Notes")\n'
@@ -798,8 +809,17 @@ def main() -> int:
             'assert(layer.layer == "top" and layer.monitor_id == "HDMI-1")\n'
             'assert(layer.keyboard_interactive == "on_demand" and layer.exclusive_zone == 32)\n'
             'assert(layer.anchor[1] == "top" and layer.anchor[2] == "left" and layer.anchor[3] == "right")\n'
+            'assert(not pcall(function() layer.anchor[1] = "bottom" end))\n'
+            'assert(not pcall(function() rawset(layer.anchor, 1, "bottom") end))\n'
+            'assert(layer.anchor[1] == "top" and #layer.anchor == 3)\n'
+            "local anchors = {}\n"
+            "for index, anchor in ipairs(layer.anchor) do anchors[index] = anchor end\n"
+            'assert(anchors[1] == "top" and anchors[2] == "left" and anchors[3] == "right")\n'
             "assert(layer.geometry.x == 0 and layer.geometry.y == 0)\n"
             "assert(layer.geometry.width == 1920 and layer.geometry.height == 32)\n"
+            "assert(not pcall(function() layer.geometry.width = 1 end))\n"
+            'assert(not pcall(function() rawset(layer.geometry, "width", 1) end))\n'
+            "assert(layer.geometry.width == 1920)\n"
             "assert(layer.mapped and layer.revision == 5)\n"
             'assert(not pcall(function() layer.title = "changed" end))\n'
             "assert(not pcall(function() layer.missing = true end))\n"
