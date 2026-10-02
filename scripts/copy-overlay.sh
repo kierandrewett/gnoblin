@@ -61,7 +61,7 @@ while IFS= read -r manifest; do
         mkdir -p "$SM/$(dirname "$dest")"
         cp "$feature_dir/$src" "$SM/$dest"
         # keep the submodule's git status clean
-        excl="$SM/.git/info/exclude"
+        excl="$(git -C "$SM" rev-parse --git-path info/exclude)"
         [ -f "$excl" ] && ! grep -qxF "/$dest" "$excl" 2>/dev/null && echo "/$dest" >>"$excl"
         n=$((n + 1))
     done <"$manifest"
