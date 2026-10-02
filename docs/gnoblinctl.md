@@ -129,6 +129,22 @@ for _, surface in ipairs(gnoblin.layers.list { layer = "top" }) do
 end
 ```
 
+Animation previews return a read-only `AnimationPreview` record. Its
+`seek`, `step`, `play`, and `pause` methods return the completed updated record;
+`stop` returns its completion result:
+
+```lua
+local preview = gnoblin.animations.preview {
+    name = "gnoblin-window-open",
+    event = "open",
+    target_type = "window",
+    target = "active",
+}
+preview = preview:seek(0.5)
+print(preview.progress)
+preview:stop()
+```
+
 To run a Lua file with the same API, pass its path:
 
 ```sh

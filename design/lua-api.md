@@ -1688,6 +1688,11 @@ output-configuration methods.
 exact string filters for `monitor_id`, `namespace`, and `layer`. The console
 also maps the compatibility alias `layer.list()` to that typed snapshot.
 
+`animations.preview(spec)` returns a read-only `AnimationPreview` record with
+chained `seek`, `step`, `play`, `pause`, and `stop` methods. The console waits
+for each compositor operation and returns its completed value instead of an
+`Operation` handle. The private preview session token is not exposed as a field.
+
 Native-control API 1.17 implements `gnoblin.privacy.state()` as an immutable
 snapshot with `available`, a stable `revision`, and activity fields only for
 sources marked available. The current session reports screen-sharing and
