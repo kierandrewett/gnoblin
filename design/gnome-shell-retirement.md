@@ -65,5 +65,8 @@ The input-specific unresolved patches are listed below.
   require a supported replacement.
 
 Stale JavaScript tests that import removed Shell modules are not a migration
-target. Remove them only after confirming that the native config, compositor,
-and devkit checks cover the behavior they were intended to exercise.
+target. The unregistered `tests/gnome-shell-overlay-resources.test.py` was
+removed after confirming the standalone source no longer has a Shell resource
+manifest or build target. Remove other fixtures only after recording whether
+their behavior is implemented, delegated to a shell client, or deliberately
+dropped.
