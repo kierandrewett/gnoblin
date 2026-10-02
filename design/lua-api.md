@@ -218,7 +218,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.launches` | `list()`, `snapshot()`, `begin(args)`, `finish(token)` | **Current.** The supervised runtime and `gnoblinctl lua` support all methods. The bracket form `gnoblin.launches["end"](token)` remains as a compatibility alias because `end` is a Lua keyword. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
 | `gnoblin.privacy` | `state()`, `stop_sharing()`, `stop_recording()` | **Current.** The runtime and `gnoblinctl lua` expose the immutable activity snapshot and stop operations; the console waits for completion and returns read-only results. |
-| `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only permission-list, `PermissionPolicy`, and `PermissionDecision` snapshots from the matching reads. |
+| `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime and `gnoblinctl lua` expose these reads and grant revocation; console results are deeply read-only. |
 | `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current.** The runtime and `gnoblinctl lua` expose all methods; the console waits for lock/logout operations and returns deeply read-only results. |
 | `gnoblin.runtime.reload_config()` | `() -> Operation<Result>` | **Current.** Reload the active configuration in the supervised runtime or `gnoblinctl lua`; the console waits and returns an immutable result. |
 | `gnoblin.listeners` | map of event names to callback arrays | **Current; inspect only.** Do not edit this table directly. |
@@ -1758,6 +1758,11 @@ deeply read-only device lists. The `grant.list()` compatibility spelling uses
 the same typed snapshot. `PortalGrant:revoke()` carries the snapshot creation
 time to the compositor so stale records cannot revoke a replacement grant; the
 console waits for completion and returns the completed value.
+
+`grant.revoke({kind, id, created_at?})` is also available in the console. It
+validates the grant kind and opaque ID, waits for compositor completion, and
+returns a deeply read-only result. Supplying `created_at` enables stale-record
+protection, matching `PortalGrant:revoke()`.
 
 `input.devices()`, `input.sources()`, and `input.current_source()` expose
 read-only `InputDevice` and `InputSource` records with snapshot revisions.
