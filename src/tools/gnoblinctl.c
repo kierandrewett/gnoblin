@@ -319,6 +319,7 @@ static guint api_minor_for_method(const char* method) {
         {"session.activity", 24},
         {"session.lock", 21},
         {"runtime.reload_config", 20},
+        {"runtime.status", 67},
         {"version", 19},
         {"windows.list", 37},
         {"workspaces.list", 37},
@@ -407,7 +408,8 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings") ||
         g_str_equal(method_name, "layer.animation_policy") ||
         g_str_equal(method_name, "runtime.reload_config") ||
-        g_str_equal(method_name, "launch.begin") || g_str_equal(method_name, "launch.end") ||
+        g_str_equal(method_name, "runtime.status") || g_str_equal(method_name, "launch.begin") ||
+        g_str_equal(method_name, "launch.end") ||
         g_str_equal(method_name, "input.orientation_lock") ||
         g_str_equal(method_name, "input.set_orientation_lock") ||
         g_str_has_prefix(method_name, "window.") || g_str_has_prefix(method_name, "workspace.") ||
@@ -1663,6 +1665,7 @@ static int lua_cli_layer_animation_policy(lua_State* state);
 static int lua_cli_privacy_state(lua_State* state);
 static int lua_cli_privacy_stop(lua_State* state);
 static int lua_cli_runtime_reload_config(lua_State* state);
+static int lua_cli_runtime_status(lua_State* state);
 static int lua_cli_session_operation(lua_State* state);
 static int lua_cli_capabilities_list(lua_State* state);
 static int lua_cli_permissions_policy(lua_State* state);
@@ -3279,6 +3282,40 @@ static int lua_cli_runtime_reload_config(lua_State* state) {
     return 1;
 }
 
+static int lua_cli_runtime_status(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.runtime.status takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "runtime.status", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.runtime.status failed: %s", call_error->message);
+    JsonObject* object = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonNode* state_node = object ? json_object_get_member(object, "state") : NULL;
+    JsonNode* generation_node = object ? json_object_get_member(object, "generation") : NULL;
+    const char* runtime_state = state_node && JSON_NODE_HOLDS_VALUE(state_node) &&
+                                        json_node_get_value_type(state_node) == G_TYPE_STRING
+                                    ? json_node_get_string(state_node)
+                                    : NULL;
+    gboolean known_state =
+        runtime_state &&
+        (g_str_equal(runtime_state, "starting") || g_str_equal(runtime_state, "running") ||
+         g_str_equal(runtime_state, "restarting") || g_str_equal(runtime_state, "unavailable"));
+    gboolean generation_valid = generation_node && JSON_NODE_HOLDS_VALUE(generation_node) &&
+                                (json_node_get_value_type(generation_node) == G_TYPE_INT64 ||
+                                 json_node_get_value_type(generation_node) == G_TYPE_INT) &&
+                                json_node_get_int(generation_node) >= 0;
+    if (!known_state || !generation_valid)
+        return luaL_error(state, "gnoblin.runtime.status returned an invalid RuntimeStatus");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
 static int lua_cli_session_operation(lua_State* state) {
     const char* method = lua_tostring(state, lua_upvalueindex(2));
     if (lua_gettop(state) != 0)
@@ -4857,6 +4894,11 @@ static int lua_api_index(lua_State* state) {
     if (g_str_equal(prefix, "runtime") && g_str_equal(name, "reload_config")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_runtime_reload_config, 1);
+        return 1;
+    }
+    if (g_str_equal(prefix, "runtime") && g_str_equal(name, "status")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_runtime_status, 1);
         return 1;
     }
     if (g_str_equal(prefix, "session") &&
