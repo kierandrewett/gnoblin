@@ -27,6 +27,55 @@ def run(
     )
 
 
+def run_event_subscription(
+    binary: str,
+    build_directory: str,
+    source: str,
+    event_name: str,
+    event_values: list[int],
+) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="evt-", dir=build_directory) as temporary:
+        root = Path(temporary)
+        socket_path = str(root / "s")
+        script_path = root / "listen.lua"
+        script_path.write_text(source, encoding="utf-8")
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(1)
+                    ready.set()
+                    connection, _ = server.accept()
+                    with connection:
+                        request = json.loads(connection.makefile("rb").readline())
+                        assert request["op"] == "events", request
+                        assert request["events"] == [event_name], request
+                        assert request["api_version"]["major"] == 1, request
+                        acknowledgement = {
+                            "event": "subscribed",
+                            "events": [event_name],
+                            "api_version": request["api_version"],
+                        }
+                        frames = [acknowledgement]
+                        frames.extend({"event": event_name, "value": value} for value in event_values)
+                        connection.sendall(b"".join((json.dumps(frame) + "\n").encode() for frame in frames))
+                        connection.shutdown(socket.SHUT_WR)
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), f"event fixture did not start: {errors}"
+        result = run(binary, "--socket", socket_path, "lua", str(script_path))
+        thread.join(5)
+        assert not thread.is_alive(), "event fixture did not finish"
+        assert not errors, errors
+        return result
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         raise SystemExit("usage: gnoblinctl-cli.test.py BINARY BUILD_DIRECTORY")
@@ -132,11 +181,6 @@ def main() -> int:
         "    function() gnoblin.shortcuts.bind {} end,\n"
         "    function() gnoblin.shortcuts.unbind {} end,\n"
         "    function() gnoblin.shortcuts.end_session {} end,\n"
-        '    function() gnoblin.events.on("example", function() end) end,\n'
-        '    function() gnoblin.events.once("example", function() end) end,\n'
-        '    function() gnoblin.events.mutter.on("mutter.example", function() end) end,\n'
-        '    function() gnoblin.events.mutter.once("mutter.example", function() end) end,\n'
-        '    function() gnoblin.on("example", function() end) end,\n'
         "}\n"
         "for _, call in ipairs(calls) do\n"
         "    local ok, err = pcall(call)\n"
@@ -151,6 +195,40 @@ def main() -> int:
         str(runtime_scope_script),
     )
     assert runtime_scope_result.returncode == 0, runtime_scope_result.stderr
+
+    once_result = run_event_subscription(
+        binary,
+        build_directory,
+        'gnoblin.events.once("gnoblin.test.once", function(event) '
+        'print("ONCE:" .. event.event .. ":" .. event.value) end)\n',
+        "gnoblin.test.once",
+        [42],
+    )
+    assert once_result.returncode == 0, once_result.stderr
+    assert "ONCE:gnoblin.test.once:42" in once_result.stdout, once_result.stdout
+
+    unsubscribe_result = run_event_subscription(
+        binary,
+        build_directory,
+        "local subscription\n"
+        'subscription = gnoblin.on("gnoblin.test.unsubscribe", function(event) '
+        'print("ON:" .. event.value); subscription:unsubscribe() end)\n',
+        "gnoblin.test.unsubscribe",
+        [1, 2],
+    )
+    assert unsubscribe_result.returncode == 0, unsubscribe_result.stderr
+    assert unsubscribe_result.stdout.count("ON:1") == 1, unsubscribe_result.stdout
+    assert "ON:2" not in unsubscribe_result.stdout, unsubscribe_result.stdout
+
+    mutter_result = run_event_subscription(
+        binary,
+        build_directory,
+        'gnoblin.events.mutter.once("mutter.test.signal", function(event) print("MUTTER:" .. event.event) end)\n',
+        "mutter.test.signal",
+        [1],
+    )
+    assert mutter_result.returncode == 0, mutter_result.stderr
+    assert "MUTTER:mutter.test.signal" in mutter_result.stdout, mutter_result.stdout
 
     with tempfile.TemporaryDirectory(prefix="gnoblinctl-", dir=build_directory) as temporary:
         socket_path = str(Path(temporary) / "compositor.sock")
