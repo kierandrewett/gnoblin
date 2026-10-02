@@ -1042,8 +1042,9 @@ Lua also retains two read aliases: `gnoblin.input.list()` matches
 `gnoblin.input.current_source()`. The socket operation `input.select` is
 exposed in Lua as `gnoblin.input.select_source()`.
 
-These aliases are Lua-only. `gnoblinctl` and socket clients use the method
-names documented for their interfaces.
+These aliases are available in supervised configuration and `gnoblinctl lua`.
+The CLI maps them to the canonical socket reads. Socket clients call the
+canonical method names directly.
 
 ## Privacy and permissions
 
