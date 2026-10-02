@@ -745,7 +745,8 @@ static gboolean validate_cli(Cli* cli, GError** error) {
             return FALSE;
         }
 
-    if (!spec->actions && g_strcmp0(cli->command, "completion") != 0 && arg_count(cli) != 0) {
+    if (!spec->actions && g_strcmp0(cli->command, "completion") != 0 &&
+        g_strcmp0(cli->command, "lua") != 0 && arg_count(cli) != 0) {
         g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE, "%s takes no arguments",
                     cli->command);
         return FALSE;
