@@ -1624,6 +1624,7 @@ static int lua_cli_layer_animation_policy(lua_State* state);
 static int lua_cli_privacy_state(lua_State* state);
 static int lua_cli_capabilities_list(lua_State* state);
 static int lua_cli_permissions_policy(lua_State* state);
+static int lua_cli_permissions_list(lua_State* state);
 static int lua_cli_session_status(lua_State* state);
 static int lua_cli_session_activity(lua_State* state);
 static int lua_cli_permissions_check(lua_State* state);
@@ -2954,6 +2955,50 @@ static void register_lua_cli_permission_policy_record(lua_State* state) {
     lua_pop(state, 1);
 }
 
+static gboolean lua_cli_permission_string_array_valid(JsonArray* array) {
+    if (!array)
+        return FALSE;
+    for (guint i = 0; i < json_array_get_length(array); i++) {
+        JsonNode* value = json_array_get_element(array, i);
+        if (!value || !JSON_NODE_HOLDS_VALUE(value) ||
+            json_node_get_value_type(value) != G_TYPE_STRING || !json_node_get_string(value)[0])
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static int lua_cli_permissions_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.permissions.list takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "permissions.list", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.permissions.list failed: %s", call_error->message);
+    JsonObject* object = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonObject* policy = member_object(object, "policy");
+    const char* default_level = member_string(policy, "default", NULL);
+    JsonNode* path = object ? json_object_get_member(object, "path") : NULL;
+    if (!policy || !default_level ||
+        (!g_str_equal(default_level, "default") && !g_str_equal(default_level, "ask") &&
+         !g_str_equal(default_level, "deny")) ||
+        !json_object_get_array_member(policy, "rules") ||
+        !lua_cli_permission_string_array_valid(
+            object ? json_object_get_array_member(object, "capabilities") : NULL) ||
+        !lua_cli_permission_string_array_valid(
+            object ? json_object_get_array_member(object, "levels") : NULL) ||
+        !path || !JSON_NODE_HOLDS_VALUE(path) || json_node_get_value_type(path) != G_TYPE_STRING)
+        return luaL_error(state, "gnoblin.permissions.list returned an invalid snapshot");
+
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
 static int lua_cli_permissions_policy(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.permissions.policy takes no arguments");
@@ -4000,6 +4045,11 @@ static int lua_api_index(lua_State* state) {
     if (g_str_equal(prefix, "capabilities") && g_str_equal(name, "list")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_capabilities_list, 1);
+        return 1;
+    }
+    if (g_str_equal(prefix, "permissions") && g_str_equal(name, "list")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_permissions_list, 1);
         return 1;
     }
     if (g_str_equal(prefix, "permissions") && g_str_equal(name, "policy")) {

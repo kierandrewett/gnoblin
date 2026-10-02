@@ -142,7 +142,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(79):
+                    for _ in range(80):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -1327,11 +1327,24 @@ def main() -> int:
         )
         launches_result = run(binary, "--socket", socket_path, "lua", str(launches_file))
         assert launches_result.returncode == 0, launches_result.stderr
+        permission_list_file = Path(temporary) / "permission-list.lua"
+        permission_list_file.write_text(
+            "local permissions = gnoblin.permissions.list()\n"
+            'assert(permissions.policy.default == "deny")\n'
+            'assert(permissions.capabilities[1] == "screen-cast" and permissions.levels[2] == "ask")\n'
+            'assert(permissions.path == "/tmp/gnoblin-permissions.json")\n'
+            'assert(not pcall(function() permissions.policy.default = "allow" end))\n'
+            'assert(not pcall(function() rawset(permissions.capabilities, 1, "changed") end))\n'
+            "assert(not pcall(function() gnoblin.permissions.list(true) end))\n",
+            encoding="utf-8",
+        )
+        permission_list_result = run(binary, "--socket", socket_path, "lua", str(permission_list_file))
+        assert permission_list_result.returncode == 0, permission_list_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 79
-        assert len(subscriptions) == 79
+        assert len(received) == 80
+        assert len(subscriptions) == 80
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1388,12 +1401,16 @@ def main() -> int:
         assert animation_calls[2]["arguments"] == {"session": "preview-17", "milliseconds": 250}
         for call in animation_calls[3:]:
             assert call["arguments"] == {"session": "preview-17"}
-        launch_calls = received[-2:]
+        launch_calls = received[-3:-1]
         assert [call["method"] for call in launch_calls] == [
             "launches.snapshot",
             "launches.snapshot",
         ]
         assert all(call["api_version"] == {"major": 1, "minor": 39} for call in launch_calls)
+        permission_list_request = received[-1]
+        assert permission_list_request["method"] == "permissions.list"
+        assert permission_list_request["api_version"] == {"major": 1, "minor": 42}
+        assert permission_list_request["arguments"] == {}
         assert received[53]["method"] == "portals.grants"
         assert received[53]["api_version"] == {"major": 1, "minor": 45}
         assert received[53]["arguments"] == {}
