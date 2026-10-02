@@ -1,5 +1,5 @@
 From 21c9662d2e87ef7906784ccf9f73d8914ce5c450 Mon Sep 17 00:00:00 2001
-From: Gnoblin contributors <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 21:05:00 +0100
 Subject: [PATCH] context: prepare compositor shutdown before runtime teardown
 

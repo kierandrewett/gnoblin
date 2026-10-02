@@ -1,5 +1,5 @@
 From 1e7eb7c987b8cd7f8bea3c668295069c479c4f8d Mon Sep 17 00:00:00 2001
-From: Gnoblin contributors <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 28 Sep 2026 00:32:43 +0100
 Subject: [PATCH] brightness: follow backlight changes made outside the shell
 

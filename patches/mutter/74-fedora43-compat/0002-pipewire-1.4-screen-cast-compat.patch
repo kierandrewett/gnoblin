@@ -1,5 +1,5 @@
 From b08406a70612957d7aa9489199e5071599575729 Mon Sep 17 00:00:00 2001
-From: Gnoblin Build <build@gnoblin.local>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 09:00:00 +0100
 Subject: [PATCH] screencast: keep device negotiation optional on older PipeWire
 
