@@ -1453,6 +1453,54 @@ int main(void) {
         g_variant_lookup_value(input_current_source_read, "source", G_VARIANT_TYPE_VARDICT);
     g_assert_nonnull(input_current_source);
 
+    GVariantBuilder orientation_lock_builder;
+    g_variant_builder_init(&orientation_lock_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&orientation_lock_builder, "{sv}", "available",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&orientation_lock_builder, "{sv}", "locked",
+                          g_variant_new_boolean(FALSE));
+    g_variant_builder_add(&orientation_lock_builder, "{sv}", "orientation",
+                          g_variant_new_string("normal"));
+    g_variant_builder_add(&orientation_lock_builder, "{sv}", "source",
+                          g_variant_new_string("system"));
+    g_variant_builder_add(&orientation_lock_builder, "{sv}", "revision", g_variant_new_int64(17));
+    g_autoptr(GVariant) orientation_lock_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&orientation_lock_builder));
+    gnoblin_config_update_orientation_lock_snapshot(orientation_lock_snapshot, 17);
+    g_autoptr(GVariant) orientation_lock_read =
+        gnoblin_config_read_api("input.orientation_lock", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(orientation_lock_read);
+    gboolean orientation_locked = TRUE;
+    g_assert_true(
+        g_variant_lookup(orientation_lock_read, "available", "b", &input_current_source_available));
+    g_assert_true(input_current_source_available);
+    g_assert_true(g_variant_lookup(orientation_lock_read, "locked", "b", &orientation_locked));
+    g_assert_false(orientation_locked);
+    const char* orientation_lock_source = NULL;
+    g_assert_true(
+        g_variant_lookup(orientation_lock_read, "source", "&s", &orientation_lock_source));
+    g_assert_cmpstr(orientation_lock_source, ==, "system");
+    gint64 orientation_lock_revision = 0;
+    g_assert_true(
+        g_variant_lookup(orientation_lock_read, "revision", "x", &orientation_lock_revision));
+    g_assert_cmpint(orientation_lock_revision, ==, 17);
+
+    GVariantBuilder orientation_lock_set_arguments_builder;
+    g_variant_builder_init(&orientation_lock_set_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&orientation_lock_set_arguments_builder, "{sv}", "value",
+                          g_variant_new_boolean(TRUE));
+    g_autoptr(GVariant) orientation_lock_set_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&orientation_lock_set_arguments_builder));
+    g_autoptr(GVariant) orientation_lock_operation = gnoblin_config_call_api(
+        "input.set_orientation_lock", orientation_lock_set_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(orientation_lock_operation);
+    const char* orientation_lock_method = NULL;
+    g_assert_true(
+        g_variant_lookup(orientation_lock_operation, "method", "&s", &orientation_lock_method));
+    g_assert_cmpstr(orientation_lock_method, ==, "input.set_orientation_lock");
+
     GVariantBuilder input_sources_without_current_builder;
     g_variant_builder_init(&input_sources_without_current_builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&input_sources_without_current_builder, "{sv}", "sources",
