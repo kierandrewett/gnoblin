@@ -54,8 +54,10 @@ The input-specific unresolved patches are listed below.
   It accepts a Lua file or one-line interactive input, prints table results as
   JSON, and never sends Lua source to the compositor. Shell-owned graphical
   console presentation remains outside the compositor contract.
-- `69-desktop-recovery`: verify the shell client owns the recovery UI while
-  the supervisor recovers the Lua worker.
+- `69-desktop-recovery`: the nested devkit test kills the Lua worker, confirms
+  the supervisor starts a replacement, and checks the same Mutter process
+  remains alive and serves the config API. The recovery UI remains shell-client
+  presentation; its behavior still needs verification with an external shell.
 - `73-location-indicator`: the native GeoClue agent exposes availability,
   in-use state, and authorization requests to Lua and shell clients. The
   compositor provides data and policy; location-indicator UI belongs to shell
