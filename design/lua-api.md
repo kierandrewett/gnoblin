@@ -728,9 +728,8 @@ pair, optional string `target`, and integer `revision`. Names are 1–80 ASCII
 letters, numbers, underscores, or hyphens. Duration is an integer from 0 to
 10000 milliseconds. Events are `"minimize"`, `"restore"`, `"open"`,
 `"close"`, `"dialog-open"`, `"dialog-close"`, `"layer-open"`,
-`"layer-close"`, `"workspace-switch"`, `"shadow-change"`, `"resize"`,
-`"tile-preview-open"`, `"tile-preview-close"`, `"dialog-dim"`, and
-`"dialog-undim"`. Easing curves are `"linear"`,
+`"layer-close"`, `"workspace-switch"`, `"shadow-change"`, and `"resize"`.
+Easing curves are `"linear"`,
 `"ease-in-quad"`, `"ease-out-quad"`, `"ease-in-out-cubic"`,
 `"ease-in-cubic"`, `"ease-out-cubic"`, `"ease-out-expo"`, and
 `"ease-out-back"`, or `{type = "cubic-bezier", x1, y1, x2, y2}`.
@@ -738,9 +737,8 @@ Pivots are `"center"`, `"top-left"`, `"top-center"`, `"top-right"`,
 `"bottom-left"`, `"bottom-center"`, and `"bottom-right"`, or a normalized
 coordinate pair. Property maps vary by event: window, dialog, and layer events accept
 `x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation`, and `opacity`;
-tile-preview events accept `x`, `y`, `width`, `height`, and `opacity`;
-workspace-switch, resize, shadow-change, dialog-dim, and dialog-undim accept
-`progress`. Keyframes contain 2–128 ordered frames with endpoints at progress
+workspace-switch, resize, and shadow-change accept `progress`. Keyframes
+contain 2–128 ordered frames with endpoints at progress
 0 and 1. The target removes `console-open`, `console-close`, and
 `layer-companion-close` because those describe shell-client UI. See the
 [animation guide](../docs/guides/animations.md) for current value units and
@@ -1697,9 +1695,11 @@ rows elsewhere in this file describe migration input, not a supported runtime.
 colon methods. Window mutations wait for compositor completion and return the
 completed value instead of an `Operation` handle. The console rejects focus and
 interactive move or resize because it cannot obtain a live `FocusContext` from
-a runtime callback. Event subscriptions and callback dispatch remain exclusive
-to the supervised Lua runtime; full CLI parity with the shared API is still
-incomplete.
+a runtime callback. It supports `events.on`, `events.once`, and the matching
+Mutter subscriptions, dispatches callbacks in the local CLI process, and stays
+open while subscriptions remain active. Shortcut ownership and trusted
+`FocusContext` operations remain exclusive to the supervised runtime; full CLI
+parity with the shared API is still incomplete.
 
 `focus.history(filter?)` also returns those typed read-only window records in
 the console, preserving the shared API's MRU order and filters.

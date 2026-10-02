@@ -46,17 +46,15 @@ Animation declarations merge by `name` during one config load.
 | `target`                     | Add a label used by inspection tools.                 |
 
 Actor events accept `x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation`, and
-`opacity`. Tile-preview events also accept `width` and `height`. Workspace,
-resize, shadow, and dialog-dimming events use `progress`.
+`opacity`. Workspace, resize, and shadow events use `progress`.
 
 The supported event names are:
 
 - Window: `minimize`, `restore`, `open`, `close`.
-- Dialog: `dialog-open`, `dialog-close`, `dialog-dim`, `dialog-undim`.
+- Dialog: `dialog-open`, `dialog-close`.
 - Layer surface: `layer-open`, `layer-close`.
 - Workspace: `workspace-switch`.
-- Effects: `shadow-change`, `resize`, `tile-preview-open`,
-  `tile-preview-close`.
+- Effects: `shadow-change`, `resize`.
 
 See the [animation guide](../../docs/guides/animations.md) for presets,
 layer-shell use, and CLI preview commands.
