@@ -272,7 +272,10 @@ its native privacy snapshot currently reports camera activity as unavailable.
    policy, Mutter owns clipping and effects, and the standalone devkit keeps
    native border, shadow, and CSD reconstruction checks. Other historical
    Shell patches and test fixtures still need an operation-by-operation audit
-   before they can be retired.
+   before they can be retired. The old `52-live-shell-config` patch and its
+   private Shell D-Bus test were audited and removed in commit `4051113a`: they
+   were not part of the standalone build, and their test exercised the retired
+   Shell configuration bridge rather than Gnoblin's Lua runtime.
 4. **Verify session supervision and recovery.** `gnoblin` starts Mutter as its
    compositor child, supervises the Lua worker, and owns readiness, environment
    handoff, failure reporting, and cleanup. Shell projects such as Bingux
