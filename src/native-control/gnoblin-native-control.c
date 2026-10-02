@@ -3353,8 +3353,14 @@ static GVariant* normalize_input_value(const InputField* field, GVariant* value)
         if (isfinite(number) && number >= field->minimum && number <= field->maximum)
             return g_variant_ref_sink(g_variant_new_double(number));
     }
-    if (field->kind == INPUT_MILLISECONDS && g_variant_is_of_type(value, G_VARIANT_TYPE_INT64)) {
-        gint64 milliseconds = g_variant_get_int64(value);
+    if (field->kind == INPUT_MILLISECONDS) {
+        gint64 milliseconds;
+        if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
+            milliseconds = g_variant_get_int64(value);
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32))
+            milliseconds = g_variant_get_uint32(value);
+        else
+            return NULL;
         if (milliseconds >= 1 && milliseconds <= 10000)
             return g_variant_ref_sink(g_variant_new_uint32((guint32)milliseconds));
     }
