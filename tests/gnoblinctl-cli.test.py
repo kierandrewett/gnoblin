@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(63):
+                    for _ in range(65):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -329,6 +329,12 @@ def main() -> int:
                                     "focus_change_on_pointer_rest": True,
                                     "auto_raise_delay": 750,
                                     "revision": 42,
+                                }
+                            elif request["method"] == "settings":
+                                result = {
+                                    "revision": 43,
+                                    "window_management": {"focus_mode": "sloppy"},
+                                    "shortcuts": {"terminal": {"binding": "<Super>Return"}},
                                 }
                             elif request["method"] == "permissions.list":
                                 result = {
@@ -1037,11 +1043,25 @@ def main() -> int:
         )
         focus_policy = run(binary, "--socket", socket_path, "lua", str(focus_policy_file))
         assert focus_policy.returncode == 0, focus_policy.stderr
+        settings_file = Path(temporary) / "settings-property.lua"
+        settings_file.write_text(
+            "local settings = gnoblin.settings\n"
+            'assert(tostring(settings) == "Settings" and settings.revision == 43)\n'
+            'assert(settings.window_management.focus_mode == "sloppy")\n'
+            'assert(settings.shortcuts.terminal.binding == "<Super>Return")\n'
+            "assert(not pcall(function() settings.revision = 44 end))\n"
+            'assert(not pcall(function() settings.window_management.focus_mode = "click" end))\n'
+            'assert(not pcall(function() rawset(settings.shortcuts.terminal, "binding", "x") end))\n'
+            "assert(not pcall(function() gnoblin.settings() end))\n",
+            encoding="utf-8",
+        )
+        settings = run(binary, "--socket", socket_path, "lua", str(settings_file))
+        assert settings.returncode == 0, settings.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 63
-        assert len(subscriptions) == 63
+        assert len(received) == 65
+        assert len(subscriptions) == 65
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1132,6 +1152,12 @@ def main() -> int:
         assert received[62]["method"] == "focus.policy"
         assert received[62]["api_version"] == {"major": 1, "minor": 19}
         assert received[62]["arguments"] == {}
+        assert received[63]["method"] == "focus.policy"
+        assert received[63]["api_version"] == {"major": 1, "minor": 19}
+        assert received[63]["arguments"] == {}
+        assert received[64]["method"] == "settings"
+        assert received[64]["api_version"] == {"major": 1, "minor": 19}
+        assert received[64]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {

@@ -1598,6 +1598,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE "gnoblinctl.ShortcutState"
 #define GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE "gnoblinctl.ShortcutAction"
 #define GNOBLINCTL_FOCUS_POLICY_RECORD_METATABLE "gnoblinctl.FocusPolicy"
+#define GNOBLINCTL_SETTINGS_RECORD_METATABLE "gnoblinctl.Settings"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
@@ -1606,6 +1607,7 @@ static int lua_cli_input_select_source(lua_State* state);
 static int lua_cli_shortcuts_list(lua_State* state);
 static int lua_cli_shortcuts_actions(lua_State* state);
 static int lua_cli_focus_policy_property(lua_State* state);
+static int lua_cli_settings_property(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2446,6 +2448,60 @@ static void register_lua_cli_focus_policy_record(lua_State* state) {
     lua_pop(state, 1);
 }
 
+static int lua_cli_settings_tostring(lua_State* state) {
+    lua_pushliteral(state, "Settings");
+    return 1;
+}
+
+static void register_lua_cli_settings_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_SETTINGS_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_readonly_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_settings_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static int lua_cli_settings_property(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", "settings", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.settings failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "gnoblin.settings returned an invalid snapshot");
+
+    JsonObject* object = json_node_get_object(result);
+    JsonNode* revision = json_object_get_member(object, "revision");
+    if (!revision || !JSON_NODE_HOLDS_VALUE(revision) ||
+        (json_node_get_value_type(revision) != G_TYPE_INT64 &&
+         json_node_get_value_type(revision) != G_TYPE_INT) ||
+        json_node_get_int(revision) < 0)
+        return luaL_error(state, "gnoblin.settings returned an invalid Settings revision");
+
+    json_to_lua(state, result);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 1);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    luaL_getmetatable(state, GNOBLINCTL_SETTINGS_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+    return 1;
+}
+
 static int lua_cli_focus_policy_property(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     JsonObject* arguments = json_object_new();
@@ -3107,6 +3163,12 @@ static int lua_api_index(lua_State* state) {
     const char* prefix = lua_tostring(state, lua_upvalueindex(1));
     const char* name = luaL_checkstring(state, 2);
     if (!*prefix) {
+        if (g_str_equal(name, "settings")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state, lua_cli_settings_property, 1);
+            lua_call(state, 0, 1);
+            return 1;
+        }
         lua_newtable(state);
         lua_newtable(state);
         lua_pushstring(state, name);
@@ -3361,6 +3423,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE);
     register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE);
     register_lua_cli_focus_policy_record(state);
+    register_lua_cli_settings_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");
