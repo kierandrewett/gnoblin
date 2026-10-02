@@ -1595,11 +1595,15 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_PORTAL_GRANT_RECORD_METATABLE "gnoblinctl.PortalGrant"
 #define GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE "gnoblinctl.InputDevice"
 #define GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE "gnoblinctl.InputSource"
+#define GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE "gnoblinctl.ShortcutState"
+#define GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE "gnoblinctl.ShortcutAction"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
 static int lua_cli_input_snapshot(lua_State* state);
 static int lua_cli_input_select_source(lua_State* state);
+static int lua_cli_shortcuts_list(lua_State* state);
+static int lua_cli_shortcuts_actions(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2298,6 +2302,93 @@ static void lua_cli_push_input_record(lua_State* state, JsonObject* object, gint
                                        : GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
     lua_setmetatable(state, record);
     lua_remove(state, backing);
+}
+
+static void lua_cli_push_shortcut_record(lua_State* state, JsonObject* object, gboolean is_action) {
+    const char* identity = member_string(object, is_action ? "id" : "name", NULL);
+    if (!identity || !*identity)
+        luaL_error(state, "gnoblin.shortcuts.%s returned a record without a stable %s",
+                   is_action ? "actions" : "list", is_action ? "id" : "name");
+
+    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(node, object);
+    json_to_lua(state, node);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 1);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    luaL_getmetatable(state, is_action ? GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE
+                                       : GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+}
+
+static int lua_cli_shortcut_record_tostring(lua_State* state) {
+    gboolean is_action =
+        luaL_testudata(state, 1, GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE) != NULL;
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, is_action ? "id" : "name");
+    const char* identity = lua_tostring(state, -1);
+    lua_pushfstring(state, "%s<%s>", is_action ? "ShortcutAction" : "ShortcutState",
+                    identity ? identity : "unknown");
+    return 1;
+}
+
+static int lua_cli_shortcut_snapshot(lua_State* state, gboolean is_action) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    if (is_action && lua_gettop(state) == 1)
+        json_object_set_string_member(arguments, "group", lua_tostring(state, 1));
+    const char* method = is_action ? "shortcuts.actions" : "shortcuts.list";
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.%s failed: %s", method, call_error->message);
+    if (!JSON_NODE_HOLDS_ARRAY(result))
+        return luaL_error(state, "gnoblin.%s returned an invalid snapshot", method);
+
+    JsonArray* entries = json_node_get_array(result);
+    lua_createtable(state, json_array_get_length(entries), 0);
+    for (guint i = 0; i < json_array_get_length(entries); i++) {
+        JsonObject* entry = json_array_get_object_element(entries, i);
+        if (!entry)
+            return luaL_error(state, "gnoblin.%s returned an invalid record", method);
+        lua_cli_push_shortcut_record(state, entry, is_action);
+        lua_rawseti(state, -2, i + 1);
+    }
+    return 1;
+}
+
+static int lua_cli_shortcuts_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.shortcuts.list takes no arguments");
+    return lua_cli_shortcut_snapshot(state, FALSE);
+}
+
+static int lua_cli_shortcuts_actions(lua_State* state) {
+    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && lua_type(state, 1) != LUA_TSTRING))
+        return luaL_error(state, "gnoblin.shortcuts.actions accepts an optional group string");
+    return lua_cli_shortcut_snapshot(state, TRUE);
+}
+
+static void register_lua_cli_shortcut_record(lua_State* state, const char* metatable) {
+    if (!luaL_newmetatable(state, metatable)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_window_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_shortcut_record_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
 }
 
 static int lua_cli_input_record_tostring(lua_State* state) {
@@ -3014,6 +3105,15 @@ static int lua_api_index(lua_State* state) {
             return 1;
         }
     }
+    if (g_str_equal(prefix, "shortcuts")) {
+        if (g_str_equal(name, "list") || g_str_equal(name, "actions")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_CFunction function =
+                g_str_equal(name, "list") ? lua_cli_shortcuts_list : lua_cli_shortcuts_actions;
+            lua_pushcclosure(state, function, 1);
+            return 1;
+        }
+    }
     if (g_str_equal(prefix, "portals") && g_str_equal(name, "grants")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_portal_grants, 1);
@@ -3170,6 +3270,8 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_portal_grant_record(state);
     register_lua_cli_input_record(state, GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE);
     register_lua_cli_input_record(state, GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
+    register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE);
+    register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");

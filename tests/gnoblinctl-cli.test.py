@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(60):
+                    for _ in range(62):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -992,11 +992,31 @@ def main() -> int:
         )
         input_lua = run(binary, "--socket", socket_path, "lua", str(input_lua_file))
         assert input_lua.returncode == 0, input_lua.stderr
+        shortcuts_lua_file = Path(temporary) / "shortcut-snapshots.lua"
+        shortcuts_lua_file.write_text(
+            "local shortcuts = gnoblin.shortcuts.list()\n"
+            'assert(#shortcuts == 1 and tostring(shortcuts[1]) == "ShortcutState<test.shortcut>")\n'
+            'assert(shortcuts[1].binding == "<Super>space" and shortcuts[1].enabled)\n'
+            'assert(shortcuts[1].action == "test.action" and shortcuts[1].revision == 6)\n'
+            "assert(not pcall(function() shortcuts[1].enabled = false end))\n"
+            'local actions = gnoblin.shortcuts.actions("wm")\n'
+            'assert(#actions == 1 and tostring(actions[1]) == "ShortcutAction<wm.close>")\n'
+            'assert(actions[1].group == "wm" and actions[1].key == "close")\n'
+            'assert(actions[1].default_bindings[1] == "<Alt>F4")\n'
+            'assert(not pcall(function() actions[1].group = "wayland" end))\n'
+            'assert(not pcall(function() actions[1].default_bindings[1] = "<Alt>Tab" end))\n'
+            'assert(not pcall(function() rawset(actions[1].default_bindings, 1, "<Alt>Tab") end))\n'
+            "assert(not pcall(function() gnoblin.shortcuts.list(true) end))\n"
+            'assert(not pcall(function() gnoblin.shortcuts.actions({group = "wm"}) end))\n',
+            encoding="utf-8",
+        )
+        shortcuts_lua = run(binary, "--socket", socket_path, "lua", str(shortcuts_lua_file))
+        assert shortcuts_lua.returncode == 0, shortcuts_lua.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 60
-        assert len(subscriptions) == 60
+        assert len(received) == 62
+        assert len(subscriptions) == 62
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1078,6 +1098,12 @@ def main() -> int:
         assert received[59]["method"] == "input.select"
         assert received[59]["api_version"] == {"major": 1, "minor": 6}
         assert received[59]["arguments"] == {"type": "xkb", "id": "us"}
+        assert received[60]["method"] == "shortcuts.list"
+        assert received[60]["api_version"] == {"major": 1, "minor": 40}
+        assert received[60]["arguments"] == {}
+        assert received[61]["method"] == "shortcuts.actions"
+        assert received[61]["api_version"] == {"major": 1, "minor": 41}
+        assert received[61]["arguments"] == {"group": "wm"}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
