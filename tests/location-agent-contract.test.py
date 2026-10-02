@@ -7,6 +7,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 CONTROL = ROOT / "src/native-control/gnoblin-native-control.c"
 API_HEADER = ROOT / "src/native-control/gnoblin-native-control.h"
+BUILD = ROOT / "CMakeLists.txt"
 LUA = ROOT / "src/config/gnoblin-lua.c"
 
 
@@ -67,6 +68,10 @@ class LocationAgentContractTests(unittest.TestCase):
 
     def test_authorization_is_brokered_to_lua_with_bounded_one_use_requests(self):
         self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 65", API_HEADER.read_text())
+        build = BUILD.read_text()
+        self.assertIn("src/native-control/gnoblin-native-control.h", build)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", build)
+        self.assertNotIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=64", build)
         self.assertIn('"location.authorize_app"', self.lua)
         self.assertIn('"gnoblin.location.authorization-requested"', self.control)
         self.assertIn("MAX_PENDING_LOCATION_AUTHORIZATIONS 32", self.control)

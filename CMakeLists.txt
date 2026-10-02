@@ -19,6 +19,19 @@ if(NOT GNOBLIN_LUA_FOUND)
   message(FATAL_ERROR
     "Lua 5.4 or newer development files are required for the Gnoblin runtime. Install the development package (for example: Fedora lua-devel, Debian/Ubuntu liblua5.4-dev, or Arch lua) and make its pkg-config metadata and headers available. The Lua command-line interpreter alone is not sufficient.")
 endif()
+file(STRINGS "${PROJECT_SOURCE_DIR}/src/native-control/gnoblin-native-control.h"
+  GNOBLIN_NATIVE_CONTROL_API_MAJOR_LINE
+  REGEX "^#define GNOBLIN_NATIVE_CONTROL_API_MAJOR [0-9]+$")
+file(STRINGS "${PROJECT_SOURCE_DIR}/src/native-control/gnoblin-native-control.h"
+  GNOBLIN_NATIVE_CONTROL_API_MINOR_LINE
+  REGEX "^#define GNOBLIN_NATIVE_CONTROL_API_MINOR [0-9]+$")
+if(NOT GNOBLIN_NATIVE_CONTROL_API_MAJOR_LINE OR NOT GNOBLIN_NATIVE_CONTROL_API_MINOR_LINE)
+  message(FATAL_ERROR "Could not read the native API version from gnoblin-native-control.h")
+endif()
+string(REGEX REPLACE "^#define GNOBLIN_NATIVE_CONTROL_API_MAJOR " ""
+  GNOBLIN_NATIVE_CONTROL_API_MAJOR "${GNOBLIN_NATIVE_CONTROL_API_MAJOR_LINE}")
+string(REGEX REPLACE "^#define GNOBLIN_NATIVE_CONTROL_API_MINOR " ""
+  GNOBLIN_NATIVE_CONTROL_API_MINOR "${GNOBLIN_NATIVE_CONTROL_API_MINOR_LINE}")
 set(GNOBLIN_PREFIX "${PROJECT_SOURCE_DIR}/install" CACHE PATH "Private Gnoblin install prefix")
 set(GNOBLIN_LIBDIR "lib64" CACHE STRING "Library directory under the prefix")
 enable_testing()
@@ -68,8 +81,8 @@ if(GNOBLIN_LUA_FOUND)
   target_include_directories(gnoblin-config-core PUBLIC
     src/config src/permissions src/native-control)
   target_compile_definitions(gnoblin-config-core PUBLIC
-    GNOBLIN_NATIVE_CONTROL_API_MAJOR=1
-    GNOBLIN_NATIVE_CONTROL_API_MINOR=64)
+    GNOBLIN_NATIVE_CONTROL_API_MAJOR=${GNOBLIN_NATIVE_CONTROL_API_MAJOR}
+    GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR})
   target_link_libraries(gnoblin-config-core PUBLIC
     PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_LUA m)
 
