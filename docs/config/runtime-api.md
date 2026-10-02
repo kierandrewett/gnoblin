@@ -974,6 +974,11 @@ configuration.
 | `gnoblin.animations.pause(args)`   | `session`                                         | Updated `AnimationPreview` record            |
 | `gnoblin.animations.stop(args)`    | `session`                                         | `{ok = true, session = string}`              |
 
+`gnoblinctl lua` supports the five controls that take an explicit session
+table. Use the `id` from an `AnimationPreview` as the `session` value. The CLI
+waits for each operation and returns the updated read-only preview, or the
+stop result.
+
 | Field         | Accepted value                                  | Meaning                                       |
 | ------------- | ----------------------------------------------- | --------------------------------------------- |
 | `target_type` | `window` (default), `layer`, or `namespace`     | Selects how to resolve `target`.              |

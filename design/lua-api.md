@@ -1769,6 +1769,10 @@ read, and returns a deeply read-only `LayerAnimationPolicy` record.
 chained `seek`, `step`, `play`, `pause`, and `stop` methods. The console waits
 for each compositor operation and returns its completed value instead of an
 `Operation` handle. The private preview session token is not exposed as a field.
+The console also exposes the namespace controls `animations.seek(args)`,
+`step(args)`, `play(args)`, `pause(args)`, and `stop(args)`. They accept the
+explicit `session` and method-specific fields from the shared API; use the
+preview record's public `id` as its session selector.
 
 `portals.grants(filter?)` returns read-only `PortalGrant` records, including
 deeply read-only device lists. The `grant.list()` compatibility spelling uses
