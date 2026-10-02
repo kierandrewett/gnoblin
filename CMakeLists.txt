@@ -180,7 +180,7 @@ endfunction()
 gnoblin_component(mutter)
 gnoblin_component(xdg-desktop-portal-gnome)
 
-add_custom_target(standalone-session
+add_custom_target(standalone-session ALL
   COMMAND "${CMAKE_COMMAND}" -E env "GNOBLIN_LIBDIR=${GNOBLIN_LIBDIR}"
     "GNOBLIN_STAGE_ROOT=${GNOBLIN_STAGE_ROOT}"
     "GNOBLIN_VECTOR_CURSORS=${GNOBLIN_VECTOR_CURSORS}"
@@ -193,4 +193,3 @@ add_custom_target(standalone-session
   DEPENDS mutter xdg-desktop-portal-gnome gnoblin-idle gnoblinctl gnoblin
   USES_TERMINAL
   COMMENT "Install the standalone Gnoblin session")
-add_custom_target(gnoblin-session ALL DEPENDS standalone-session)
