@@ -15,16 +15,25 @@ the upstream compositor and window manager, with only a small integration
 surface where Wayland clients cannot provide the required capability. A new
 Gnoblin behavior is not a reason by itself to add another Mutter patch.
 
-The intended process split is:
+The target process split keeps the compositor alive when Lua or its supervisor
+must restart:
 
-- **`gnoblin`:** the session supervisor and Lua runtime. It owns config, policy,
-  session lifecycle, Gnoblin's control interface, and its child processes. It
-  does not import Mutter or GNOME Shell internals.
+- **Session guardian:** the durable `gnoblin` login process. It owns session
+  activation and teardown, Mutter's process lifetime, the private compositor
+  channel, session targets, and initial autostart. The guardian does not
+  interpret Lua configuration. It starts the restartable supervisor and keeps
+  Mutter's channel endpoint so a replacement supervisor can resume the
+  existing compositor. The guardian can be an internal mode of the `gnoblin`
+  executable rather than a separate user-facing program.
+- **Gnoblin supervisor:** a restartable internal mode of `gnoblin`. It owns Lua
+  configuration, policy, runtime API dispatch, and the Lua worker. It receives
+  the private compositor endpoint from the guardian and restores the accepted
+  configuration and operation watermark after a restart. Its death must not
+  terminate Mutter or its Wayland clients.
 - **`gnoblin-mutter`:** upstream Mutter with a small Gnoblin patch set. It runs
-  as a child of `gnoblin` and owns Wayland clients, windows, rendering, input,
-  and compositor-side protocol implementations. Patches fill compositor gaps
-  that plugins and client processes cannot cover; generic fixes should go
-  upstream.
+  under the guardian and owns Wayland clients, windows, rendering, input, and
+  compositor-side protocol implementations. Patches fill compositor gaps that
+  plugins and client processes cannot cover; generic fixes should go upstream.
 - **Shell projects:** build their own desktop interface as separate projects.
   Bingux is the example: it uses layer-shell surfaces and Gnoblin's config and
   control interfaces. Gnoblin does not ship a replacement shell UI or require
@@ -34,11 +43,14 @@ The intended process split is:
   control API from independent Wayland clients.
 
 Lua describes Gnoblin policy and behavior; it does not replace compositor
-mechanics. Keep Lua in the `gnoblin` process. It sends validated operations to
-`gnoblin-mutter` over a narrow local interface and exposes the Gnoblin control
-contract to shell clients. Use standard Wayland protocols for shell clients
-wherever possible. Keep compositor-specific operations behind a small
-versioned interface instead of exposing Mutter's private C types.
+mechanics. Keep Lua in the restartable `gnoblin` supervisor. It sends validated
+operations to `gnoblin-mutter` over the guardian-retained private channel and
+exposes the Gnoblin control contract to shell clients. Use standard Wayland
+protocols for shell clients wherever possible. Keep compositor-specific
+operations behind a small versioned interface instead of exposing Mutter's
+private C types. The guardian must not expose this channel through a
+same-user-discoverable socket; it passes the inherited endpoint only to the
+active supervisor.
 Configuration reloads should apply runtime-safe changes without restarting
 Mutter. Protocol registration and other startup-only compositor settings may
 still require a compositor restart.
@@ -54,7 +66,7 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 | Part       | Current dependency                          | Reason it remains                                                                                                                                           |
 | ---------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Compositor | Mutter 51                                   | Current patches add Gnoblin protocols, input, rendering, configuration, and native control. Target: `gnoblin-mutter`, with a small patch set over upstream. |
-| Session    | `gnoblin`, logind, systemd user targets     | Target: `gnoblin` supervises Mutter, its Lua runtime, and session tools.                                                                                    |
+| Session    | `gnoblin`, logind, systemd user targets     | Target: a durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch.                |
 | Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                     |
 | Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                               |
 | Settings   | `gsettings-desktop-schemas`                 | Mutter and Gnoblin's native control code read shared desktop setting definitions.                                                                           |

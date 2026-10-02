@@ -1242,6 +1242,19 @@ session lifecycle, and a replacement host cannot reconnect to the running
 compositor. Preserving the compositor across host restart remains tracked in
 [issue #70](https://github.com/kierandrewett/gnoblin/issues/70).
 
+The target architecture adds a durable session guardian around the restartable
+Gnoblin supervisor. The guardian owns Mutter's lifetime, session teardown, and
+the private compositor-channel endpoint. It passes that inherited endpoint to
+one supervisor at a time; it does not expose a reconnect socket to other
+same-user processes. If the supervisor exits unexpectedly, the guardian asks
+Mutter to suspend runtime operations, records the acknowledged settings
+revision, runtime generation, and operation watermark, and starts a replacement
+supervisor with those recovery values. The replacement must complete the
+existing worker-resume handshake before API operations resume. An intentional
+logout is sent to the guardian explicitly so it stops the session and Mutter;
+an unexpected supervisor exit must leave the compositor and connected clients
+alive. This process split is a target, not current behavior.
+
 `Launch` fields: `token`, `application`, `started_at`, `timeout_ms`,
 `state`, `revision`. `state` is `"pending"`, `"started"`,
 `"failed"`, `"ended"`, or `"timed_out"`. Tokens are at most 128
