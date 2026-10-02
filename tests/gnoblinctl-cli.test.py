@@ -134,6 +134,8 @@ def main() -> int:
         "    function() gnoblin.shortcuts.end_session {} end,\n"
         '    function() gnoblin.events.on("example", function() end) end,\n'
         '    function() gnoblin.events.once("example", function() end) end,\n'
+        '    function() gnoblin.events.mutter.on("mutter.example", function() end) end,\n'
+        '    function() gnoblin.events.mutter.once("mutter.example", function() end) end,\n'
         '    function() gnoblin.on("example", function() end) end,\n'
         "}\n"
         "for _, call in ipairs(calls) do\n"

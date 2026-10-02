@@ -4407,6 +4407,22 @@ static int lua_api_index(lua_State* state) {
         lua_cli_push_runtime_scope_error(state, method);
         return 1;
     }
+    if (g_str_equal(prefix, "events") && g_str_equal(name, "mutter")) {
+        lua_newtable(state);
+        lua_newtable(state);
+        lua_pushliteral(state, "events.mutter");
+        lua_pushvalue(state, lua_upvalueindex(2));
+        lua_pushcclosure(state, lua_api_index, 2);
+        lua_setfield(state, -2, "__index");
+        lua_setmetatable(state, -2);
+        return 1;
+    }
+    if (g_str_equal(prefix, "events.mutter") &&
+        (g_str_equal(name, "on") || g_str_equal(name, "once"))) {
+        g_autofree char* method = g_strdup_printf("gnoblin.events.mutter.%s", name);
+        lua_cli_push_runtime_scope_error(state, method);
+        return 1;
+    }
     if (g_str_equal(prefix, "windows")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         if (g_str_equal(name, "list"))
