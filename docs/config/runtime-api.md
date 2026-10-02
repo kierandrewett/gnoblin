@@ -1185,14 +1185,17 @@ native-control API 1.39, with deeply read-only launch records and snapshots.
 | `gnoblin.launches.list()`         | None                                          | `Launch[]` snapshot                             |
 | `gnoblin.launches.snapshot()`     | None                                          | `{launches, revision}` snapshot                 |
 | `gnoblin.launches.begin(options)` | `token`, `application`; optional `timeout_ms` | An `Operation` whose value is a `Launch` record |
-| `gnoblin.launches.end(token)`     | Launch token string                           | An `Operation` whose value is `{ok, token}`     |
+| `gnoblin.launches.finish(token)`  | Launch token string                           | An `Operation` whose value is `{ok, token}`     |
 
-`begin` uses the supplied token to identify this launch attempt. `timeout_ms`
-defaults to 3000 and is an integer from 100 through 10000. It maps to the
-native launch operation's `milliseconds` field. End a request with the same
-token when it is cancelled or the application has started. The returned
-`Operation` handle completes asynchronously, as described near the start of
-this page.
+`begin` uses a token and application to identify the launch attempt.
+`timeout_ms` defaults to 3000, accepts 100 through 10000, and maps to the
+native launch operation's `milliseconds` field.
+
+Call `finish(token)` with the same token when the launch is cancelled or the
+application has started. The bracket form `gnoblin.launches["end"](token)`
+remains as a compatibility alias because `end` is a Lua keyword. The returned
+`Operation` completes asynchronously, as described near the start of this
+page.
 
 The operation-based `launch.status()`, `launch.begin(args)`, and
 `launch.end(args)` methods remain available for generic API and bridge callers.
