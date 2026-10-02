@@ -142,7 +142,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(80):
+                    for _ in range(81):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -158,7 +158,18 @@ def main() -> int:
                                 stream.flush()
                                 request = json.loads(stream.readline())
                             received.append(request)
-                            if request["method"] == "session.status":
+                            if request["method"] == "version":
+                                result = {
+                                    "gnoblin": "0.2.0",
+                                    "gnome": "51.0",
+                                    "mutter": "51.0",
+                                    "lua": "Lua 5.4",
+                                    "api": "1.64",
+                                    "git_remote": "https://example.invalid/gnoblin.git",
+                                    "git_sha": "0123456789abcdef",
+                                    "build_id": "20261002.1",
+                                }
+                            elif request["method"] == "session.status":
                                 status_request_count += 1
                                 result = {"state": "running", "lock_available": False}
                                 if status_request_count > 2:
@@ -1340,11 +1351,24 @@ def main() -> int:
         )
         permission_list_result = run(binary, "--socket", socket_path, "lua", str(permission_list_file))
         assert permission_list_result.returncode == 0, permission_list_result.stderr
+        version_file = Path(temporary) / "version.lua"
+        version_file.write_text(
+            "local version = gnoblin.version()\n"
+            'assert(version.gnoblin == "0.2.0" and version.gnome == "51.0")\n'
+            'assert(version.mutter == "51.0" and version.lua == "Lua 5.4" and version.api == "1.64")\n'
+            'assert(version.git_remote == "https://example.invalid/gnoblin.git")\n'
+            'assert(version.git_sha == "0123456789abcdef" and version.build_id == "20261002.1")\n'
+            'assert(not pcall(function() version.git_sha = "changed" end))\n'
+            "assert(not pcall(function() gnoblin.version(true) end))\n",
+            encoding="utf-8",
+        )
+        version_result = run(binary, "--socket", socket_path, "lua", str(version_file))
+        assert version_result.returncode == 0, version_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 80
-        assert len(subscriptions) == 80
+        assert len(received) == 81
+        assert len(subscriptions) == 81
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1401,16 +1425,20 @@ def main() -> int:
         assert animation_calls[2]["arguments"] == {"session": "preview-17", "milliseconds": 250}
         for call in animation_calls[3:]:
             assert call["arguments"] == {"session": "preview-17"}
-        launch_calls = received[-3:-1]
+        launch_calls = [call for call in received if call["method"] == "launches.snapshot"][-2:]
         assert [call["method"] for call in launch_calls] == [
             "launches.snapshot",
             "launches.snapshot",
         ]
         assert all(call["api_version"] == {"major": 1, "minor": 39} for call in launch_calls)
-        permission_list_request = received[-1]
+        permission_list_request = received[-2]
         assert permission_list_request["method"] == "permissions.list"
         assert permission_list_request["api_version"] == {"major": 1, "minor": 42}
         assert permission_list_request["arguments"] == {}
+        version_request = received[-1]
+        assert version_request["method"] == "version"
+        assert version_request["api_version"] == {"major": 1, "minor": 19}
+        assert version_request["arguments"] == {}
         assert received[53]["method"] == "portals.grants"
         assert received[53]["api_version"] == {"major": 1, "minor": 45}
         assert received[53]["arguments"] == {}

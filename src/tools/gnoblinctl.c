@@ -1628,6 +1628,7 @@ static int lua_cli_permissions_list(lua_State* state);
 static int lua_cli_session_status(lua_State* state);
 static int lua_cli_session_activity(lua_State* state);
 static int lua_cli_permissions_check(lua_State* state);
+static int lua_cli_version(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2999,6 +3000,28 @@ static int lua_cli_permissions_list(lua_State* state) {
     return 1;
 }
 
+static int lua_cli_version(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.version takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", "version", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.version failed: %s", call_error->message);
+    JsonObject* object = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    static const char* const fields[] = {"gnoblin",    "gnome",   "mutter",   "lua", "api",
+                                         "git_remote", "git_sha", "build_id", NULL};
+    for (guint i = 0; fields[i]; i++)
+        if (!member_string(object, fields[i], NULL))
+            return luaL_error(state, "gnoblin.version returned an invalid Version record");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
 static int lua_cli_permissions_policy(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.permissions.policy takes no arguments");
@@ -3969,6 +3992,11 @@ static int lua_api_index(lua_State* state) {
     const char* prefix = lua_tostring(state, lua_upvalueindex(1));
     const char* name = luaL_checkstring(state, 2);
     if (!*prefix) {
+        if (g_str_equal(name, "version")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state, lua_cli_version, 1);
+            return 1;
+        }
         if (g_str_equal(name, "settings")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
             lua_pushcclosure(state, lua_cli_settings_property, 1);
