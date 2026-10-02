@@ -35,6 +35,7 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl window thumbnail ID --output PATH` | Save a window thumbnail as a PNG                           |
 | `gnoblinctl layer list`                        | Find layer-surface namespaces                              |
 | `gnoblinctl input devices`                     | List detected input devices and capabilities               |
+| `gnoblinctl input orientation-lock [VALUE]`    | Read or set the orientation lock                           |
 | `gnoblinctl workspace list`                    | Show workspace IDs, names, positions and windows           |
 | `gnoblinctl config path`                       | Find the config file your session uses                     |
 | `gnoblinctl config default`                    | Print the bundled default `init.lua`                       |
@@ -506,6 +507,17 @@ route. Its JSON record includes `available` and, when known, `source`.
 
 `gnoblinctl input select TYPE ID` calls `input.select`. It waits for
 Mutter to confirm the layout change.
+
+`gnoblinctl input orientation-lock` reads the current orientation-lock
+record through `input.orientation_lock`. Pass `on` or `off` to set the lock;
+pass `inherit` to clear the runtime override and restore the configured value
+or follow the system setting. This command does not write the config file.
+
+```sh
+gnoblinctl input orientation-lock
+gnoblinctl input orientation-lock on
+gnoblinctl input orientation-lock inherit
+```
 
 The Lua-only aliases `gnoblin.input.list()` and `gnoblin.input.current()` are
 not socket methods. Socket clients use the names above.

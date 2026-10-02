@@ -512,6 +512,38 @@ changes and `gnoblin.input.sources-changed` when the configured source list
 changes. The current-source event has `available = false` and no `source` when
 Mutter's current keymap is external or unknown.
 
+`gnoblin.input.orientation_lock()` returns an immutable `OrientationLock`
+record with boolean `available` and `locked`, string `orientation`, `source`,
+and integer `revision`. `source` is `system` when the system setting applies,
+`config` when `input.orientation_lock` supplies a boolean, and `runtime` while
+a runtime override is active.
+
+The `orientation` field is `normal`, `bottom-up`, `left-up`, `right-up`, or
+`undefined`. The last value means no orientation is available.
+
+Call one of these to request a change:
+
+- `gnoblin.input.set_orientation_lock(true)` locks the current orientation.
+- `gnoblin.input.set_orientation_lock(false)` unlocks orientation.
+- `gnoblin.input.set_orientation_lock("inherit")` clears the runtime override.
+
+Each call returns an asynchronous `Operation<OrientationLock>` and does not
+write the config file. After `inherit`, Gnoblin restores the configured boolean
+if one is set or follows the system setting otherwise.
+
+On config reload, Gnoblin applies a boolean `input.orientation_lock` value.
+When omitted or set to `"inherit"`, it clears the override and follows the
+system setting. Subscribe to `gnoblin.input.orientation-lock-changed` to
+receive the updated record, plus these event fields:
+
+- `name` identifies the event.
+- `sequence` orders events.
+- `time` is monotonic.
+
+Socket clients can use `input.orientation_lock` and
+`input.set_orientation_lock` through native-control API 1.66; see the
+[compositor bridge](/compositor-bridge#api-version-166-orientation-lock).
+
 `device_type` is `"pointer"`, `"keyboard"`, `"extension"`, `"joystick"`,
 `"tablet"`, `"touchpad"`, `"touchscreen"`, `"pen"`, `"eraser"`,
 `"cursor"`, `"pad"`, or `"unknown"`. Capabilities are zero or more of
@@ -993,12 +1025,14 @@ end)
 
 ## Input sources
 
-| Lua method                                | Arguments       | Successful result                       |
-| ----------------------------------------- | --------------- | --------------------------------------- |
-| `gnoblin.input.devices()`                 | None            | Physical input-device records           |
-| `gnoblin.input.sources()`                 | None            | Configured XKB input-source records     |
-| `gnoblin.input.current_source()`          | None            | Current XKB source, or `nil`            |
-| `gnoblin.input.select_source({type, id})` | Source selector | Operation returning the selected source |
+| Lua method                                  | Arguments                       | Successful result                       |
+| ------------------------------------------- | ------------------------------- | --------------------------------------- |
+| `gnoblin.input.devices()`                   | None                            | Physical input-device records           |
+| `gnoblin.input.sources()`                   | None                            | Configured XKB input-source records     |
+| `gnoblin.input.current_source()`            | None                            | Current XKB source, or `nil`            |
+| `gnoblin.input.select_source({type, id})`   | Source selector                 | Operation returning the selected source |
+| `gnoblin.input.orientation_lock()`          | None                            | Immutable `OrientationLock` record      |
+| `gnoblin.input.set_orientation_lock(value)` | `true`, `false`, or `"inherit"` | `Operation<OrientationLock>`            |
 
 Pass a source's `type` and `id` from `gnoblin.input.sources()` to
 `gnoblin.input.select_source()`.
