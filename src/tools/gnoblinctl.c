@@ -3078,6 +3078,34 @@ static int lua_cli_windows_list(lua_State* state) {
     return 1;
 }
 
+static int lua_cli_focus_history(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
+        return luaL_error(state, "gnoblin.focus.history accepts one optional filter table");
+    JsonObject* arguments = lua_gettop(state)
+                                ? lua_cli_table_object(state, 1, "focus history filter")
+                                : json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "focus.history", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.focus.history failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_ARRAY(result))
+        return luaL_error(state, "gnoblin.focus.history returned an invalid snapshot");
+
+    JsonArray* windows = json_node_get_array(result);
+    lua_createtable(state, json_array_get_length(windows), 0);
+    for (guint i = 0; i < json_array_get_length(windows); i++) {
+        JsonObject* window = json_array_get_object_element(windows, i);
+        if (!window || !member_string(window, "id", NULL) || !*member_string(window, "id", ""))
+            return luaL_error(state, "gnoblin.focus.history returned an invalid Window record");
+        lua_cli_push_window_record(state, cli, window);
+        lua_rawseti(state, -2, i + 1);
+    }
+    return 1;
+}
+
 static int lua_cli_windows_focused(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.windows.focused takes no arguments");
@@ -3249,11 +3277,18 @@ static int lua_api_index(lua_State* state) {
             return 1;
         }
     }
-    if (g_str_equal(prefix, "focus") && g_str_equal(name, "policy")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushcclosure(state, lua_cli_focus_policy_property, 1);
-        lua_call(state, 0, 1);
-        return 1;
+    if (g_str_equal(prefix, "focus")) {
+        if (g_str_equal(name, "policy")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state, lua_cli_focus_policy_property, 1);
+            lua_call(state, 0, 1);
+            return 1;
+        }
+        if (g_str_equal(name, "history")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state, lua_cli_focus_history, 1);
+            return 1;
+        }
     }
     if (g_str_equal(prefix, "shortcuts")) {
         if (g_str_equal(name, "list") || g_str_equal(name, "actions")) {

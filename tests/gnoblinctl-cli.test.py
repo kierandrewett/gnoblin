@@ -336,6 +336,16 @@ def main() -> int:
                                     "window_management": {"focus_mode": "sloppy"},
                                     "shortcuts": {"terminal": {"binding": "<Super>Return"}},
                                 }
+                            elif request["method"] == "focus.history":
+                                result = [
+                                    {
+                                        "id": "42",
+                                        "title": "Notes",
+                                        "app_id": "org.example.Editor",
+                                        "focused": True,
+                                        "geometry": {"x": 8, "y": 12, "width": 640, "height": 480},
+                                    }
+                                ]
                             elif request["method"] == "permissions.list":
                                 result = {
                                     "policy": {"default": "deny", "rules": []},
@@ -1038,7 +1048,7 @@ def main() -> int:
             "assert(policy.revision == 42)\n"
             'assert(not pcall(function() policy.focus_mode = "click" end))\n'
             'assert(not pcall(function() rawset(policy, "focus_mode", "click") end))\n'
-            "assert(not pcall(function() gnoblin.focus.policy() end))\n",
+            "assert(not pcall(function() policy() end))\n",
             encoding="utf-8",
         )
         focus_policy = run(binary, "--socket", socket_path, "lua", str(focus_policy_file))
@@ -1052,11 +1062,23 @@ def main() -> int:
             "assert(not pcall(function() settings.revision = 44 end))\n"
             'assert(not pcall(function() settings.window_management.focus_mode = "click" end))\n'
             'assert(not pcall(function() rawset(settings.shortcuts.terminal, "binding", "x") end))\n'
-            "assert(not pcall(function() gnoblin.settings() end))\n",
+            "assert(not pcall(function() settings() end))\n",
             encoding="utf-8",
         )
         settings = run(binary, "--socket", socket_path, "lua", str(settings_file))
         assert settings.returncode == 0, settings.stderr
+        focus_history_file = Path(temporary) / "focus-history.lua"
+        focus_history_file.write_text(
+            "local history = gnoblin.focus.history { limit = 1 }\n"
+            'assert(#history == 1 and tostring(history[1]) == "Window<42>")\n'
+            'assert(history[1].title == "Notes" and history[1].focused)\n'
+            'assert(history[1].geometry.width == 640 and type(history[1].minimize) == "function")\n'
+            'assert(not pcall(function() history[1].title = "Changed" end))\n'
+            "assert(not pcall(function() history[1].geometry.width = 1 end))\n",
+            encoding="utf-8",
+        )
+        focus_history = run(binary, "--socket", socket_path, "lua", str(focus_history_file))
+        assert focus_history.returncode == 0, focus_history.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
@@ -1152,12 +1174,12 @@ def main() -> int:
         assert received[62]["method"] == "focus.policy"
         assert received[62]["api_version"] == {"major": 1, "minor": 19}
         assert received[62]["arguments"] == {}
-        assert received[63]["method"] == "focus.policy"
+        assert received[63]["method"] == "settings"
         assert received[63]["api_version"] == {"major": 1, "minor": 19}
         assert received[63]["arguments"] == {}
-        assert received[64]["method"] == "settings"
+        assert received[64]["method"] == "focus.history"
         assert received[64]["api_version"] == {"major": 1, "minor": 19}
-        assert received[64]["arguments"] == {}
+        assert received[64]["arguments"] == {"limit": 1}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
