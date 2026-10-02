@@ -66,8 +66,9 @@ Gnoblin also exposes the Wayland pointer-window transition as
 `title`. The older `pointer_window_changed` name remains available.
 
 Touchpad swipe, pinch, and hold input is available as
-`mutter.touchpad.gesture`. Gnoblin dispatches one event for each phase before the
-frontend handles that input event.
+`mutter.touchpad.gesture`. Mutter sends each phase through Gnoblin's native
+compositor handler. That handler makes any synchronous input-claim decision and
+queues the event for the supervised Lua runtime.
 
 Each event includes its gesture type, phase, finger count, and timestamp. Swipe
 updates include unaccelerated movement deltas. Pinch updates include scale and
@@ -82,11 +83,11 @@ gnoblin.on("mutter.touchpad.gesture", function(event)
 end)
 ```
 
-This event exposes input data to the active Lua config and to external
-integrations connected to Mutter's `gnoblin-config-event` signal. Configured
-direct actions and commands in the `any` context are handled by the native
-compositor. During an active session lock, it also handles `unlock-screen`
-bindings. Other contexts do not have a Gnoblin UI handler.
+Lua callbacks receive the queued event asynchronously and cannot claim or
+consume the Mutter input event. The compositor handles configured direct
+actions and commands in the `any` context synchronously. During an active
+session lock, it also handles `unlock-screen` bindings. Other contexts do not
+have a Gnoblin UI handler.
 
 The standalone native runtime also dispatches the stable
 `gnoblin.input.gesture` event to Lua. Its payload includes:
@@ -98,9 +99,10 @@ The standalone native runtime also dispatches the stable
 Within the gesture stream, `sequence` increases and `time` uses monotonic-clock
 microseconds. Device names and input tokens are omitted.
 
-Socket clients need API 1.9 and request this event with `op: "events"`. Their
-frames use `event` instead of Lua's `name` and include socket-stream sequence
-and time. See the [compositor bridge](/compositor-bridge).
+Socket clients receive the stable `gnoblin.input.gesture` event, not Mutter's
+internal event. They need API 1.9 and request it with `op: "events"`. Frames
+use `event` instead of Lua's `name` and include socket-stream sequence and
+time. See the [compositor bridge](/compositor-bridge).
 
 ```lua
 gnoblin.events.on("gnoblin.input.gesture", function(event)
