@@ -179,6 +179,7 @@ event revision.
 | `gnoblin.shortcut.activated`               | `shortcut`, `trigger`, `focus_context`                                             | A configured native command shortcut is activated by a trusted key press in the native runtime.     |
 | `gnoblin.shortcut.binding-activated`       | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `focus_context`      | A Lua-registered dynamic shortcut activates. Only the first activation can carry focus authority.   |
 | `gnoblin.shortcut.binding-deactivated`     | `id`, `accelerator`, `input_time`                                                  | A press-triggered dynamic shortcut is physically released.                                          |
+| `gnoblin.shortcut.session.key`             | `id`, `session_id`, key fields, optional `focus_context`                           | A modal key event; real, non-repeat input may carry one-use focus authority.                        |
 | `gnoblin.animation.started`                | `animation`, `target`, `event`                                                     | A configured lifecycle animation or preview begins playback; socket subscription requires API 1.18. |
 | `gnoblin.animation.finished`               | `animation`, `target`, `event`, `cancelled`                                        | A configured lifecycle animation or preview completes or is interrupted; API 1.18.                  |
 | `gnoblin.operation.completed`              | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | Native API 1.11 completion event; `error` is an `Error` record.                                     |
@@ -246,6 +247,18 @@ receives a separate, single-use token for `window.focus`. The token expires
 five seconds after the shortcut press. It is revoked when its connection closes,
 its event subscription changes, the session locks, or the config reloads. Tokens
 never appear in Lua payloads or reach other connections.
+
+Lua listeners may receive `event.focus_context` on real, non-repeated
+`gnoblin.shortcut.session.key` events. Repeated events do not carry authority.
+Synthetic and input-method events are excluded from modal key events.
+
+The userdata expires after five seconds and authorizes one focus-sensitive
+compositor operation. The event fields are `keyval`, `keycode`, `modifiers`,
+`phase`, and `time`. Gnoblin still delivers a captured key event if it cannot
+issue a context.
+
+Socket clients receive `focus_context` as a connection-bound token starting
+with API 1.68. Only the binding owner receives it.
 
 In Lua animation events, `event` identifies the animation definition. Socket
 frames use `event` for the protocol event name and `animation_event` for the

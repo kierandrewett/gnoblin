@@ -813,10 +813,10 @@ subscribe to the session events below.
 
 | Event                                  | Fields                                                                                                                       | Meaning                                                                                                                                                                                                            |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `gnoblin.shortcut.binding-activated`   | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `input_time`, `session_id` when held, optional `focus_context` | A compositor-verified first activation. Only this first activation can carry focus authority.                                                                                                                      |
+| `gnoblin.shortcut.binding-activated`   | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `input_time`, `session_id` when held, optional `focus_context` | A compositor-verified first activation. Only this activation carries focus authority on this event.                                                                                                                |
 | `gnoblin.shortcut.binding-deactivated` | `id`, `accelerator`, `input_time`                                                                                            | The physical accelerator was released after a press-triggered activation. Socket clients need native-control API 1.36.                                                                                             |
 | `gnoblin.shortcut.session.activated`   | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                                                                  | A held binding activated. `first` is false for repeated accelerator activations in the same session.                                                                                                               |
-| `gnoblin.shortcut.session.key`         | `id`, `session_id`, `keyval`, `keycode`, `modifiers`, `phase`, `time`                                                        | A modal keyboard event. `phase` is `"press"` or `"release"`.                                                                                                                                                       |
+| `gnoblin.shortcut.session.key`         | `id`, `session_id`, `keyval`, `keycode`, `modifiers`, `phase`, `time`, optional `focus_context`                              | A modal keyboard event. Real, non-repeated input may carry one-use focus authority. `phase` is `"press"` or `"release"`.                                                                                           |
 | `gnoblin.shortcut.session.ended`       | `id`, `session_id`, `reason`, `time`                                                                                         | The session ended. `reason` can also be `"cancelled"` when `shortcut.session.end` is called. `runtime_stopped` is socket-only and occurs when the Lua runtime stops while a socket client owns the active session. |
 
 `binding-deactivated` pairs with `binding-activated` for press-triggered
@@ -825,12 +825,14 @@ a second deactivation event. `input_time` is Mutter's event timestamp in
 milliseconds and uses the same clock as the activation event's `input_time`.
 
 Only the owner receives session events. Lua receives an opaque `FocusContext`
-userdata on the first trusted `binding-activated` event. Socket clients receive
-a connection-bound one-use `focus_context` token on that event. Native handles
-and generations are private compositor metadata; they are never included in
-Lua tables or public socket events. Repeats, key events, and session-ended
-events do not carry focus authority. A binding alone never authorizes a focus
-change.
+userdata on the first trusted `binding-activated` event and may receive one on
+real, non-repeated `session.key` events. Socket clients need API 1.68 for the
+connection-bound one-use `focus_context` token on those key events. Contexts
+expire after five seconds and authorize one focus-sensitive compositor
+operation. Native handles and generations stay private to the runtime. Repeated
+keys and session-ended events do not carry authority; synthetic and
+input-method events are excluded from modal key events. A binding alone never
+authorizes a focus change.
 
 ```lua
 local binding
