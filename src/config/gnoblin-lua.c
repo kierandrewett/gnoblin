@@ -6123,13 +6123,9 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
     active_runtime->config.dispatching = FALSE;
     active_runtime->config.actions_in_dispatch = 0;
     lua_pop(state, 2);
-    // No Shell document update is needed when Lua did not handle the event.
-    // Touchpad gestures still reach the Shell router through this signal.
-    if (!dispatched) {
-        if (!g_str_equal(event, "mutter.touchpad.gesture"))
-            return NULL;
-        return g_variant_ref(active_runtime->document);
-    }
+    // Native touchpad actions are routed before this event reaches Lua.
+    if (!dispatched)
+        return NULL;
     if (callback_failed) {
         lua_getglobal(state, "gnoblin");
         push_variant(state, active_runtime->document);
