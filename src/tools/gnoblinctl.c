@@ -1593,9 +1593,13 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_LAYER_SURFACE_RECORD_METATABLE "gnoblinctl.LayerSurface"
 #define GNOBLINCTL_ANIMATION_PREVIEW_RECORD_METATABLE "gnoblinctl.AnimationPreview"
 #define GNOBLINCTL_PORTAL_GRANT_RECORD_METATABLE "gnoblinctl.PortalGrant"
+#define GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE "gnoblinctl.InputDevice"
+#define GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE "gnoblinctl.InputSource"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
+static int lua_cli_input_snapshot(lua_State* state);
+static int lua_cli_input_select_source(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2225,6 +2229,184 @@ static void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* obje
     lua_remove(state, backing);
 }
 
+static gboolean lua_cli_input_source_valid(JsonObject* object) {
+    static const char* const string_fields[] = {"id", "type", "short_name", "name"};
+    for (guint i = 0; i < G_N_ELEMENTS(string_fields); i++) {
+        JsonNode* field = json_object_get_member(object, string_fields[i]);
+        if (!field || !JSON_NODE_HOLDS_VALUE(field) ||
+            json_node_get_value_type(field) != G_TYPE_STRING)
+            return FALSE;
+    }
+    JsonNode* current = json_object_get_member(object, "current");
+    return current && JSON_NODE_HOLDS_VALUE(current) &&
+           json_node_get_value_type(current) == G_TYPE_BOOLEAN &&
+           *member_string(object, "id", "") &&
+           (g_str_equal(member_string(object, "type", ""), "xkb") ||
+            g_str_equal(member_string(object, "type", ""), "ibus"));
+}
+
+static gboolean lua_cli_input_device_valid(JsonObject* object) {
+    static const char* const string_fields[] = {"id", "name", "device_type"};
+    for (guint i = 0; i < G_N_ELEMENTS(string_fields); i++) {
+        JsonNode* field = json_object_get_member(object, string_fields[i]);
+        if (!field || !JSON_NODE_HOLDS_VALUE(field) ||
+            json_node_get_value_type(field) != G_TYPE_STRING)
+            return FALSE;
+    }
+    JsonNode* capabilities = json_object_get_member(object, "capabilities");
+    if (!capabilities || !JSON_NODE_HOLDS_ARRAY(capabilities) || !*member_string(object, "id", ""))
+        return FALSE;
+    JsonArray* capability_array = json_node_get_array(capabilities);
+    for (guint i = 0; i < json_array_get_length(capability_array); i++) {
+        JsonNode* capability = json_array_get_element(capability_array, i);
+        if (!capability || !JSON_NODE_HOLDS_VALUE(capability) ||
+            json_node_get_value_type(capability) != G_TYPE_STRING)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static void lua_cli_push_input_record(lua_State* state, JsonObject* object, gint64 revision,
+                                      gboolean is_device) {
+    gboolean valid =
+        is_device ? lua_cli_input_device_valid(object) : lua_cli_input_source_valid(object);
+    if (!valid)
+        luaL_error(state, "input snapshot returned an invalid %s",
+                   is_device ? "InputDevice" : "InputSource");
+
+    JsonObject* public_fields = json_object_new();
+    GList* members = json_object_get_members(object);
+    for (GList* item = members; item; item = item->next) {
+        const char* key = item->data;
+        if (!g_str_equal(key, "revision"))
+            json_object_set_member(public_fields, key,
+                                   json_node_copy(json_object_get_member(object, key)));
+    }
+    g_list_free(members);
+    json_object_set_int_member(public_fields, "revision", revision);
+    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
+    json_node_take_object(node, public_fields);
+    json_to_lua(state, node);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 2);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    lua_newtable(state);
+    lua_setiuservalue(state, record, 2);
+    luaL_getmetatable(state, is_device ? GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE
+                                       : GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+}
+
+static int lua_cli_input_record_tostring(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "id");
+    const char* id = lua_tostring(state, -1);
+    const char* type = luaL_testudata(state, 1, GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE)
+                           ? "InputDevice"
+                           : "InputSource";
+    lua_pushfstring(state, "%s<%s>", type, id ? id : "unknown");
+    return 1;
+}
+
+static int lua_cli_input_snapshot(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "%s takes no arguments", lua_tostring(state, lua_upvalueindex(2)));
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    g_autoptr(GError) call_error = NULL;
+    JsonObject* arguments = json_object_new();
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "%s failed: %s", method, call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "%s returned an invalid snapshot", method);
+
+    JsonObject* snapshot = json_node_get_object(result);
+    if (g_str_equal(method, "input.current_source")) {
+        JsonNode* available = json_object_get_member(snapshot, "available");
+        JsonObject* source = json_object_get_object_member(snapshot, "source");
+        if (!available || !JSON_NODE_HOLDS_VALUE(available) ||
+            json_node_get_value_type(available) != G_TYPE_BOOLEAN)
+            return luaL_error(state, "%s returned an invalid availability state", method);
+        if (!json_node_get_boolean(available)) {
+            lua_pushnil(state);
+            return 1;
+        }
+        if (!source)
+            return luaL_error(state, "%s omitted its current source", method);
+        gint64 revision = json_object_get_int_member_with_default(snapshot, "revision", -1);
+        if (revision < 0)
+            return luaL_error(state, "%s returned an invalid revision", method);
+        lua_cli_push_input_record(state, source, revision, FALSE);
+        return 1;
+    }
+
+    gboolean is_device = g_str_equal(method, "input.devices");
+    const char* records_key = is_device ? "devices" : "sources";
+    JsonArray* records = json_object_get_array_member(snapshot, records_key);
+    gint64 revision = json_object_get_int_member_with_default(snapshot, "revision", -1);
+    if (!records || revision < 0)
+        return luaL_error(state, "%s returned an invalid snapshot", method);
+    lua_createtable(state, json_array_get_length(records), 0);
+    for (guint i = 0; i < json_array_get_length(records); i++) {
+        JsonObject* record = json_array_get_object_element(records, i);
+        if (!record)
+            return luaL_error(state, "%s returned an invalid record", method);
+        lua_cli_push_input_record(state, record, revision, is_device);
+        lua_rawseti(state, -2, i + 1);
+    }
+    return 1;
+}
+
+static int lua_cli_input_select_source(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
+        return luaL_error(state, "input.select_source requires a {type, id} selector");
+    const char* type = NULL;
+    const char* id = NULL;
+    lua_pushnil(state);
+    while (lua_next(state, 1)) {
+        if (lua_type(state, -2) != LUA_TSTRING) {
+            lua_pop(state, 2);
+            return luaL_error(state, "input selector accepts only type and id strings");
+        }
+        const char* key = lua_tostring(state, -2);
+        if (g_str_equal(key, "type") && lua_type(state, -1) == LUA_TSTRING)
+            type = lua_tostring(state, -1);
+        else if (g_str_equal(key, "id") && lua_type(state, -1) == LUA_TSTRING)
+            id = lua_tostring(state, -1);
+        else {
+            lua_pop(state, 2);
+            return luaL_error(state, "input selector accepts only type and id strings");
+        }
+        lua_pop(state, 1);
+    }
+    if (!type || !*type || !id || !*id || (!g_str_equal(type, "xkb") && !g_str_equal(type, "ibus")))
+        return luaL_error(state, "input.select_source requires type xkb or ibus and a nonempty id");
+
+    JsonObject* arguments = json_object_new();
+    json_object_set_string_member(arguments, "type", type);
+    json_object_set_string_member(arguments, "id", id);
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "input.select", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "input.select_source failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "input.select_source returned an invalid InputSource");
+    JsonObject* source = json_node_get_object(result);
+    gint64 revision = json_object_get_int_member_with_default(source, "revision", -1);
+    if (revision < 0)
+        return luaL_error(state, "input.select_source returned an invalid InputSource");
+    lua_cli_push_input_record(state, source, revision, FALSE);
+    return 1;
+}
+
 static gboolean lua_cli_portal_grant_valid(JsonObject* object) {
     static const char* const string_fields[] = {"id", "kind", "requester"};
     for (guint i = 0; i < G_N_ELEMENTS(string_fields); i++) {
@@ -2491,6 +2673,24 @@ static void register_lua_cli_portal_grant_record(lua_State* state) {
     lua_pushcfunction(state, lua_cli_window_pairs);
     lua_setfield(state, -2, "__pairs");
     lua_pushcfunction(state, lua_cli_portal_grant_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static void register_lua_cli_input_record(lua_State* state, const char* metatable) {
+    if (!luaL_newmetatable(state, metatable)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_window_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_input_record_tostring);
     lua_setfield(state, -2, "__tostring");
     lua_pop(state, 1);
 }
@@ -2799,6 +2999,21 @@ static int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_cli_animations_preview, 1);
         return 1;
     }
+    if (g_str_equal(prefix, "input")) {
+        if (g_str_equal(name, "devices") || g_str_equal(name, "sources") ||
+            g_str_equal(name, "current_source")) {
+            g_autofree char* method = g_strdup_printf("input.%s", name);
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushstring(state, method);
+            lua_pushcclosure(state, lua_cli_input_snapshot, 2);
+            return 1;
+        }
+        if (g_str_equal(name, "select_source")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state, lua_cli_input_select_source, 1);
+            return 1;
+        }
+    }
     if (g_str_equal(prefix, "portals") && g_str_equal(name, "grants")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_portal_grants, 1);
@@ -2953,6 +3168,8 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_layer_surface_record(state);
     register_lua_cli_animation_preview_record(state);
     register_lua_cli_portal_grant_record(state);
+    register_lua_cli_input_record(state, GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE);
+    register_lua_cli_input_record(state, GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");

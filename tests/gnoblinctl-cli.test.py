@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(56):
+                    for _ in range(60):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -244,18 +244,40 @@ def main() -> int:
                             elif request["method"] == "input.sources":
                                 result = {
                                     "sources": [
-                                        {"type": "xkb", "id": "us", "short_name": "en", "name": "English (US)"}
+                                        {
+                                            "type": "xkb",
+                                            "id": "us",
+                                            "short_name": "en",
+                                            "name": "English (US)",
+                                            "current": True,
+                                        }
                                     ],
                                     "revision": 5,
                                 }
                             elif request["method"] == "input.current_source":
                                 result = {
                                     "available": True,
-                                    "source": {"type": "xkb", "id": "us", "short_name": "en", "name": "English (US)"},
+                                    "source": {
+                                        "type": "xkb",
+                                        "id": "us",
+                                        "short_name": "en",
+                                        "name": "English (US)",
+                                        "current": True,
+                                    },
                                     "revision": 5,
                                 }
                             elif request["method"] == "input.devices":
-                                result = {"devices": [{"id": "input:1", "name": "Test keyboard"}], "revision": 11}
+                                result = {
+                                    "devices": [
+                                        {
+                                            "id": "input:1",
+                                            "name": "Test keyboard",
+                                            "device_type": "keyboard",
+                                            "capabilities": ["keyboard"],
+                                        }
+                                    ],
+                                    "revision": 11,
+                                }
                             elif request["method"] == "privacy.state":
                                 result = {
                                     "available": {
@@ -451,7 +473,14 @@ def main() -> int:
                                         "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p1sAAAAASUVORK5CYII=",
                                     }
                                 elif method == "input.select":
-                                    value = {"type": "xkb", "id": "us"}
+                                    value = {
+                                        "type": "xkb",
+                                        "id": "us",
+                                        "short_name": "en",
+                                        "name": "English (US)",
+                                        "current": True,
+                                        "revision": 5,
+                                    }
                                 elif method == "window.minimize":
                                     value = {"id": "42"}
                                 elif method == "workspace.switch":
@@ -667,19 +696,40 @@ def main() -> int:
         input_list = run(binary, "--socket", socket_path, "--format", "json", "input", "list")
         assert input_list.returncode == 0, input_list.stderr
         assert json.loads(input_list.stdout) == {
-            "sources": [{"type": "xkb", "id": "us", "short_name": "en", "name": "English (US)"}],
+            "sources": [
+                {
+                    "type": "xkb",
+                    "id": "us",
+                    "short_name": "en",
+                    "name": "English (US)",
+                    "current": True,
+                }
+            ],
             "revision": 5,
         }
         input_current = run(binary, "--socket", socket_path, "--format", "json", "input", "current")
         assert input_current.returncode == 0, input_current.stderr
         assert json.loads(input_current.stdout) == {
             "available": True,
-            "source": {"type": "xkb", "id": "us", "short_name": "en", "name": "English (US)"},
+            "source": {
+                "type": "xkb",
+                "id": "us",
+                "short_name": "en",
+                "name": "English (US)",
+                "current": True,
+            },
             "revision": 5,
         }
         input_select = run(binary, "--socket", socket_path, "--format", "json", "input", "select", "xkb", "us")
         assert input_select.returncode == 0, input_select.stderr
-        assert json.loads(input_select.stdout) == {"type": "xkb", "id": "us"}
+        assert json.loads(input_select.stdout) == {
+            "type": "xkb",
+            "id": "us",
+            "short_name": "en",
+            "name": "English (US)",
+            "current": True,
+            "revision": 5,
+        }
         shortcut_list = run(binary, "--socket", socket_path, "--format", "json", "shortcut", "list")
         assert shortcut_list.returncode == 0, shortcut_list.stderr
         assert json.loads(shortcut_list.stdout) == [
@@ -749,7 +799,14 @@ def main() -> int:
         input_devices = run(binary, "--socket", socket_path, "--format", "json", "input", "devices")
         assert input_devices.returncode == 0, input_devices.stderr
         assert json.loads(input_devices.stdout) == {
-            "devices": [{"id": "input:1", "name": "Test keyboard"}],
+            "devices": [
+                {
+                    "id": "input:1",
+                    "name": "Test keyboard",
+                    "device_type": "keyboard",
+                    "capabilities": ["keyboard"],
+                }
+            ],
             "revision": 11,
         }
         privacy = run(binary, "--socket", socket_path, "--format", "json", "privacy")
@@ -914,11 +971,32 @@ def main() -> int:
         )
         grants_lua = run(binary, "--socket", socket_path, "lua", str(grants_lua_file))
         assert grants_lua.returncode == 0, grants_lua.stderr
+        input_lua_file = Path(temporary) / "input-snapshots.lua"
+        input_lua_file.write_text(
+            "local devices = gnoblin.input.devices()\n"
+            'assert(#devices == 1 and tostring(devices[1]) == "InputDevice<input:1>")\n'
+            'assert(devices[1].name == "Test keyboard" and devices[1].device_type == "keyboard")\n'
+            'assert(devices[1].capabilities[1] == "keyboard" and devices[1].revision == 11)\n'
+            'assert(not pcall(function() devices[1].name = "changed" end))\n'
+            'assert(not pcall(function() devices[1].capabilities[1] = "pointer" end))\n'
+            "local sources = gnoblin.input.sources()\n"
+            'assert(#sources == 1 and tostring(sources[1]) == "InputSource<us>")\n'
+            'assert(sources[1].type == "xkb" and sources[1].short_name == "en" and sources[1].current)\n'
+            "assert(sources[1].revision == 5 and not pcall(function() sources[1].current = false end))\n"
+            "local current = gnoblin.input.current_source()\n"
+            'assert(current.id == "us" and current.current and current.revision == 5)\n'
+            'local selected = gnoblin.input.select_source {type = "xkb", id = "us"}\n'
+            'assert(selected.id == "us" and selected.current and selected.revision == 5)\n'
+            'assert(not pcall(function() gnoblin.input.select_source {type = "xkb", id = "us", extra = true} end))\n',
+            encoding="utf-8",
+        )
+        input_lua = run(binary, "--socket", socket_path, "lua", str(input_lua_file))
+        assert input_lua.returncode == 0, input_lua.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 56
-        assert len(subscriptions) == 56
+        assert len(received) == 60
+        assert len(subscriptions) == 60
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -988,6 +1066,18 @@ def main() -> int:
             "kind": "remote-desktop",
             "created_at": 1720000000123,
         }
+        assert received[56]["method"] == "input.devices"
+        assert received[56]["api_version"] == {"major": 1, "minor": 46}
+        assert received[56]["arguments"] == {}
+        assert received[57]["method"] == "input.sources"
+        assert received[57]["api_version"] == {"major": 1, "minor": 46}
+        assert received[57]["arguments"] == {}
+        assert received[58]["method"] == "input.current_source"
+        assert received[58]["api_version"] == {"major": 1, "minor": 46}
+        assert received[58]["arguments"] == {}
+        assert received[59]["method"] == "input.select"
+        assert received[59]["api_version"] == {"major": 1, "minor": 6}
+        assert received[59]["arguments"] == {"type": "xkb", "id": "us"}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
