@@ -1603,6 +1603,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_SETTINGS_RECORD_METATABLE "gnoblinctl.Settings"
 #define GNOBLINCTL_LAYER_ANIMATION_POLICY_RECORD_METATABLE "gnoblinctl.LayerAnimationPolicy"
 #define GNOBLINCTL_PRIVACY_STATE_RECORD_METATABLE "gnoblinctl.PrivacyState"
+#define GNOBLINCTL_CAPABILITY_RECORD_METATABLE "gnoblinctl.Capability"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
@@ -1614,6 +1615,7 @@ static int lua_cli_focus_policy_property(lua_State* state);
 static int lua_cli_settings_property(lua_State* state);
 static int lua_cli_layer_animation_policy(lua_State* state);
 static int lua_cli_privacy_state(lua_State* state);
+static int lua_cli_capabilities_list(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2696,6 +2698,88 @@ static int lua_cli_privacy_state(lua_State* state) {
     return 1;
 }
 
+static gboolean lua_cli_capability_valid(JsonObject* object) {
+    const char* id = member_string(object, "id", NULL);
+    const char* description = member_string(object, "description", NULL);
+    JsonNode* available = json_object_get_member(object, "available");
+    JsonNode* revision = json_object_get_member(object, "revision");
+    JsonNode* reason = json_object_get_member(object, "reason");
+    return id && *id && description && *description && available &&
+           JSON_NODE_HOLDS_VALUE(available) &&
+           json_node_get_value_type(available) == G_TYPE_BOOLEAN && revision &&
+           JSON_NODE_HOLDS_VALUE(revision) &&
+           (json_node_get_value_type(revision) == G_TYPE_INT64 ||
+            json_node_get_value_type(revision) == G_TYPE_INT) &&
+           json_node_get_int(revision) >= 0 &&
+           (!reason ||
+            (JSON_NODE_HOLDS_VALUE(reason) && json_node_get_value_type(reason) == G_TYPE_STRING &&
+             *json_node_get_string(reason)));
+}
+
+static int lua_cli_capability_tostring(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "id");
+    const char* id = lua_tostring(state, -1);
+    lua_pushfstring(state, "Capability<%s>", id ? id : "unknown");
+    return 1;
+}
+
+static void register_lua_cli_capability_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_CAPABILITY_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_readonly_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_capability_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static void lua_cli_push_capability_record(lua_State* state, JsonNode* node) {
+    json_to_lua(state, node);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 1);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    luaL_getmetatable(state, GNOBLINCTL_CAPABILITY_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+}
+
+static int lua_cli_capabilities_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.capabilities.list takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "capabilities.list", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.capabilities.list failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_ARRAY(result))
+        return luaL_error(state, "gnoblin.capabilities.list returned an invalid snapshot");
+
+    JsonArray* capabilities = json_node_get_array(result);
+    guint length = json_array_get_length(capabilities);
+    lua_createtable(state, length, 0);
+    for (guint i = 0; i < length; i++) {
+        JsonNode* node = json_array_get_element(capabilities, i);
+        if (!JSON_NODE_HOLDS_OBJECT(node) || !lua_cli_capability_valid(json_node_get_object(node)))
+            return luaL_error(state,
+                              "gnoblin.capabilities.list returned an invalid Capability record");
+        lua_cli_push_capability_record(state, node);
+        lua_rawseti(state, -2, i + 1);
+    }
+    return 1;
+}
+
 static int lua_cli_focus_policy_property(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     JsonObject* arguments = json_object_new();
@@ -3458,6 +3542,11 @@ static int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_cli_privacy_state, 1);
         return 1;
     }
+    if (g_str_equal(prefix, "capabilities") && g_str_equal(name, "list")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_capabilities_list, 1);
+        return 1;
+    }
     if (g_str_equal(prefix, "animations") && g_str_equal(name, "preview")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_animations_preview, 1);
@@ -3662,6 +3751,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_settings_record(state);
     register_lua_cli_layer_animation_policy_record(state);
     register_lua_cli_privacy_state_record(state);
+    register_lua_cli_capability_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");

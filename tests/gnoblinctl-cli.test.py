@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(67):
+                    for _ in range(68):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -291,6 +291,16 @@ def main() -> int:
                                     "recording": False,
                                     "revision": 42,
                                 }
+                            elif request["method"] == "capabilities.list":
+                                result = [
+                                    {
+                                        "id": "microphone-monitor",
+                                        "description": "PipeWire microphone activity monitoring",
+                                        "available": False,
+                                        "reason": "pipewire_unavailable",
+                                        "revision": 18,
+                                    }
+                                ]
                             elif request["method"] == "input.select":
                                 result = {"request_id": 23, "method": "input.select"}
                             elif request["method"] == "window.thumbnail":
@@ -1123,11 +1133,25 @@ def main() -> int:
         )
         privacy = run(binary, "--socket", socket_path, "lua", str(privacy_file))
         assert privacy.returncode == 0, privacy.stderr
+        capabilities_file = Path(temporary) / "capabilities.lua"
+        capabilities_file.write_text(
+            "local capabilities = gnoblin.capabilities.list()\n"
+            'assert(#capabilities == 1 and tostring(capabilities[1]) == "Capability<microphone-monitor>")\n'
+            'assert(capabilities[1].description == "PipeWire microphone activity monitoring")\n'
+            'assert(not capabilities[1].available and capabilities[1].reason == "pipewire_unavailable")\n'
+            "assert(capabilities[1].revision == 18)\n"
+            "assert(not pcall(function() capabilities[1].available = true end))\n"
+            'assert(not pcall(function() rawset(capabilities[1], "reason", "changed") end))\n'
+            "assert(not pcall(function() gnoblin.capabilities.list(true) end))\n",
+            encoding="utf-8",
+        )
+        capability_result = run(binary, "--socket", socket_path, "lua", str(capabilities_file))
+        assert capability_result.returncode == 0, capability_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 67
-        assert len(subscriptions) == 67
+        assert len(received) == 68
+        assert len(subscriptions) == 68
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1230,6 +1254,9 @@ def main() -> int:
         assert received[66]["method"] == "privacy.state"
         assert received[66]["api_version"] == {"major": 1, "minor": 47}
         assert received[66]["arguments"] == {}
+        assert received[67]["method"] == "capabilities.list"
+        assert received[67]["api_version"] == {"major": 1, "minor": 19}
+        assert received[67]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
