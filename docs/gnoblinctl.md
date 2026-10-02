@@ -177,6 +177,20 @@ end
 Revocation uses the record's creation time, so a stale record cannot revoke a
 new grant that reuses its ID. The console waits for each revoke to complete.
 
+Shortcut snapshots return read-only `ShortcutState` and `ShortcutAction`
+records. `gnoblin.shortcuts.actions(group?)` accepts an optional `wm`,
+`mutter`, or `wayland` group:
+
+```lua
+for _, shortcut in ipairs(gnoblin.shortcuts.list()) do
+    print(shortcut.name, shortcut.binding, shortcut.enabled)
+end
+
+for _, action in ipairs(gnoblin.shortcuts.actions("wm")) do
+    print(action.id, action.default_bindings[1])
+end
+```
+
 To run a Lua file with the same API, pass its path:
 
 ```sh
