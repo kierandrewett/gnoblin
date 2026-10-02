@@ -1437,9 +1437,8 @@ Their window tables contain the fields supplied by the native event. Structured
 event fields are detached, read-only snapshots; window records expose the same
 methods as window query results when their fields identify them as windows.
 
-Current compatibility aliases are `pointer_window_changed`,
-`focus_changed`, `window_created`, `window_unmanaged`, and
-`input.<type>`. The `*` listener receives all forwarded events.
+`gnoblin.on` is a compatibility alias for `gnoblin.events.on`; event names use
+their registered spelling. The `*` listener receives all forwarded events.
 `gnoblin.on` accepts any nonempty UTF-8 event name up to 128 bytes; a
 callback runs only if a source actually dispatches that name. Every current
 event includes `name`. Mutter scalar arguments are named `arg0`, `arg1`,

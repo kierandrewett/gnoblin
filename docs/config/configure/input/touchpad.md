@@ -54,7 +54,7 @@ Set the initial scroll speed from the window under the pointer when the config
 loads. Keyboard focus does not affect which window the event reports:
 
 ```lua
-gnoblin.on("pointer_window_changed", function(event)
+gnoblin.on("mutter.wayland.pointer-window-changed", function(event)
     local speed = event.app_id == "org.chromium.Chromium" and 0.3 or 1.0
     gnoblin.configure {input = {touchpad = {scroll_speed = speed}}}
 end)
