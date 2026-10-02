@@ -11492,7 +11492,7 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         g_variant_builder_init(&status, G_VARIANT_TYPE_VARDICT);
         g_variant_builder_add(&status, "{sv}", "state", g_variant_new_string(state));
         g_variant_builder_add(&status, "{sv}", "generation",
-                              g_variant_new_uint64(client->control->runtime_generation));
+                              g_variant_new_int64((gint64)client->control->runtime_generation));
         g_autoptr(GVariant) result = g_variant_ref_sink(g_variant_builder_end(&status));
         g_autoptr(JsonNode) json = json_from_variant(result);
         return encode_response(id, json, NULL);

@@ -81,6 +81,11 @@ import time
 
 host_pid = int(os.environ["GNOBLIN_DEVKIT_HOST_PID"])
 gnoblinctl = os.environ["GNOBLIN_DEVKIT_CTL"]
+status_script = Path(os.environ["XDG_RUNTIME_DIR"]) / "runtime-status.lua"
+status_script.write_text(
+    'local s=gnoblin.runtime.status(); print("RUNTIME_STATUS:"..s.state..":"..s.generation)\n',
+    encoding="utf-8",
+)
 
 def children(pid):
     path = Path(f"/proc/{pid}/task/{pid}/children")
@@ -129,25 +134,52 @@ def config_snapshot():
         return None
     return json.loads(result.stdout)
 
+def runtime_status():
+    result = subprocess.run(
+        [gnoblinctl, "--timeout", "1", "lua", str(status_script)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=3,
+    )
+    if result.returncode:
+        return None
+    return next(
+        (line.removeprefix("RUNTIME_STATUS:") for line in result.stdout.splitlines()
+         if line.startswith("RUNTIME_STATUS:")),
+        None,
+    )
+
 worker_before, compositor_before = worker_and_compositor()
 assert worker_before and compositor_before, (worker_before, compositor_before)
 assert config_snapshot() is not None, "runtime config was unavailable before recovery"
+status_before = runtime_status()
+assert status_before and status_before.startswith("running:"), status_before
+generation_before = int(status_before.split(":", 1)[1])
 os.kill(worker_before, signal.SIGKILL)
 
 deadline = time.monotonic() + 20
+restart_observed = False
 while time.monotonic() < deadline:
-    worker_after, compositor_after = worker_and_compositor()
-    if worker_after and worker_after != worker_before and compositor_after == compositor_before:
+    status = runtime_status()
+    if status and status.startswith("restarting:"):
+        assert int(status.split(":", 1)[1]) == generation_before, status
+        restart_observed = True
         break
     time.sleep(0.01)
-else:
-    raise AssertionError("Lua worker did not restart with the compositor alive")
+if not restart_observed:
+    raise AssertionError("runtime.status() did not report worker recovery")
 
 deadline = time.monotonic() + 20
 while time.monotonic() < deadline:
     worker_after, compositor_after = worker_and_compositor()
-    config = config_snapshot()
-    if worker_after and worker_after != worker_before and compositor_after == compositor_before and config:
+    status = runtime_status()
+    if (
+        worker_after
+        and worker_after != worker_before
+        and compositor_after == compositor_before
+        and status == f"running:{generation_before}"
+    ):
         os.kill(compositor_before, 0)
         print("WORKER:recovered-with-compositor-alive")
         break
@@ -208,6 +240,11 @@ import time
 host_pid = int(os.environ["GNOBLIN_DEVKIT_HOST_PID"])
 gnoblinctl = os.environ["GNOBLIN_DEVKIT_CTL"]
 marker = Path(os.environ["GNOBLIN_AUTOSTART_MARKER"])
+status_script = Path(os.environ["XDG_RUNTIME_DIR"]) / "runtime-status.lua"
+status_script.write_text(
+    'local s=gnoblin.runtime.status(); print("RUNTIME_STATUS:"..s.state..":"..s.generation)\n',
+    encoding="utf-8",
+)
 
 def children(pid):
     return [int(value) for value in Path(f"/proc/{pid}/task/{pid}/children").read_text().split()]
@@ -257,6 +294,22 @@ def config_snapshot():
         return None
     return json.loads(result.stdout)
 
+def runtime_status():
+    result = subprocess.run(
+        [gnoblinctl, "--timeout", "1", "lua", str(status_script)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=3,
+    )
+    if result.returncode:
+        return None
+    return next(
+        (line.removeprefix("RUNTIME_STATUS:") for line in result.stdout.splitlines()
+         if line.startswith("RUNTIME_STATUS:")),
+        None,
+    )
+
 deadline = time.monotonic() + 15
 while time.monotonic() < deadline and (not marker.exists() or config_snapshot() is None):
     time.sleep(0.05)
@@ -266,17 +319,22 @@ config_before = config_snapshot()
 assert compositor_before and supervisor_before and config_before is not None, (
     compositor_before, supervisor_before, config_before
 )
+status_before = runtime_status()
+assert status_before and status_before.startswith("running:"), status_before
+generation_before = int(status_before.split(":", 1)[1])
 os.kill(supervisor_before, signal.SIGKILL)
 
 deadline = time.monotonic() + 30
 while time.monotonic() < deadline:
     compositor_after, supervisor_after = processes()
     config_after = config_snapshot()
+    status = runtime_status()
     if (
         supervisor_after
         and supervisor_after != supervisor_before
         and compositor_after == compositor_before
         and config_after == config_before
+        and status == f"running:{generation_before}"
     ):
         assert marker.read_text() == "x", marker.read_text()
         os.kill(compositor_before, 0)
