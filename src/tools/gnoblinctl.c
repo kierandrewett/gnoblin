@@ -1615,7 +1615,32 @@ static void print_lua_error(lua_State* state, const char* prefix) {
     lua_pop(state, 1);
 }
 
-static gboolean evaluate_lua_line(lua_State* state, const char* line, guint line_number) {
+static void print_lua_result(lua_State* state, int index) {
+    index = lua_absindex(state, index);
+    if (lua_istable(state, index)) {
+        g_autoptr(GError) error = NULL;
+        g_autoptr(JsonNode) node = lua_to_json(state, index, 0, &error);
+        if (node) {
+            g_autofree char* json = json_to_string(node, TRUE);
+            g_print("%s\n", json);
+            return;
+        }
+        g_printerr("gnoblinctl lua: cannot display result as JSON: %s\n", error->message);
+        return;
+    }
+
+    lua_getglobal(state, "tostring");
+    lua_pushvalue(state, index);
+    if (lua_pcall(state, 1, 1, 0) != LUA_OK) {
+        print_lua_error(state, "gnoblinctl lua: ");
+        return;
+    }
+    const char* value = lua_tostring(state, -1);
+    g_print("%s\n", value ? value : "nil");
+    lua_pop(state, 1);
+}
+
+static gboolean evaluate_lua_line(lua_State* state, const char* line) {
     g_autofree char* expression = NULL;
     const char* chunk = line;
     if (line[0] == '=')
@@ -1642,15 +1667,9 @@ static gboolean evaluate_lua_line(lua_State* state, const char* line, guint line
         return FALSE;
     }
     int result_count = lua_gettop(state);
-    if (result_count > 0) {
-        lua_getglobal(state, "print");
-        lua_insert(state, 1);
-        if (lua_pcall(state, result_count, 0, 0) != LUA_OK) {
-            print_lua_error(state, "gnoblinctl lua: ");
-            return FALSE;
-        }
-    }
-    (void)line_number;
+    for (int i = 1; i <= result_count; i++)
+        print_lua_result(state, i);
+    lua_settop(state, 0);
     return TRUE;
 }
 
@@ -1686,7 +1705,6 @@ static int run_lua_console(Cli* cli, const char* file) {
     char* line = NULL;
     size_t capacity = 0;
     ssize_t length;
-    guint line_number = 0;
     int exit_status = 0;
     while (TRUE) {
         if (interactive) {
@@ -1696,7 +1714,6 @@ static int run_lua_console(Cli* cli, const char* file) {
         length = getline(&line, &capacity, stdin);
         if (length < 0)
             break;
-        line_number++;
         g_strchomp(line);
         g_strstrip(line);
         if (!*line)
@@ -1710,7 +1727,7 @@ static int run_lua_console(Cli* cli, const char* file) {
                     "Calls use the running compositor's API validation. :quit exits.\n");
             continue;
         }
-        if (!evaluate_lua_line(state, line, line_number))
+        if (!evaluate_lua_line(state, line))
             exit_status = 1;
     }
     free(line);
