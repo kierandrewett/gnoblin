@@ -951,6 +951,46 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('lua_setfield(state, -2, "end_session")', lua)
         self.assertIn('operation = "end_session"', lua)
 
+    def test_modal_key_events_refresh_focus_authority_from_real_input(self):
+        source = CONTROL.read_text()
+        capture_start = source.rindex("static void native_shortcut_capture_key(")
+        capture_end = source.index("gboolean gnoblin_native_control_overlay_modifier_pressed(", capture_start)
+        capture = source[capture_start:capture_end]
+        issue_context = function_body(
+            source,
+            "static gboolean issue_focus_context_for_session_key(",
+            "static void dynamic_shortcut_end_session(",
+        )
+        runtime_event = function_body(
+            source,
+            "static gboolean native_runtime_dispatch_event(",
+            "static GVariant* native_runtime_shortcut_operation(",
+        )
+        runtime_handler = function_body(
+            SESSION.read_text(),
+            "static gboolean handle_event(",
+            "static gboolean dispatch_parent_event(",
+        )
+        lua_dispatch = function_body(
+            LUA.read_text(),
+            "static GVariant* gnoblin_config_dispatch_event_internal(",
+            "GVariant* gnoblin_config_dispatch_shortcut_event(",
+        )
+
+        self.assertIn("issue_focus_context_for_session_key", capture)
+        self.assertIn("CLUTTER_EVENT_FLAG_REPEATED", capture)
+        self.assertIn("CLUTTER_EVENT_FLAG_SYNTHETIC", issue_context)
+        self.assertIn("CLUTTER_EVENT_FLAG_INPUT_METHOD", issue_context)
+        self.assertIn("CLUTTER_EVENT_FLAG_REPEATED", issue_context)
+        self.assertIn("context->socket_owner_client_id = client ? client->client_id : 0", issue_context)
+        self.assertIn('"focus_context"', capture)
+        self.assertIn("g_variant_new_string(focus_token)", capture)
+        self.assertIn('g_str_equal(event, "gnoblin.shortcut.session.key")', runtime_event)
+        self.assertIn('g_str_equal(field_name, "focus_context_handle")', runtime_event)
+        self.assertIn('g_str_equal(event, "gnoblin.shortcut.session.key")', runtime_handler)
+        self.assertIn('g_str_equal(event_names[event_index], "gnoblin.shortcut.session.key")', lua_dispatch)
+        self.assertIn("focus_context_event && active_runtime->config.dispatch_focus_handle", lua_dispatch)
+
     def test_portal_grants_always_uses_lua(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()

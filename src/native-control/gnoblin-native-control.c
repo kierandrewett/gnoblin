@@ -2298,6 +2298,95 @@ static void dynamic_shortcut_publish_event(GnoblinNativeControl* control,
     send_response(shortcut->client, g_strconcat(encoded, "\n", NULL));
 }
 
+static gboolean issue_focus_context_for_session_key(GnoblinNativeControl* control,
+                                                    NativeDynamicShortcut* shortcut,
+                                                    const ClutterEvent* event, guint64* handle_out,
+                                                    guint64* generation_out,
+                                                    gint64* expires_at_us_out, char token_out[65]) {
+    if (handle_out)
+        *handle_out = 0;
+    if (generation_out)
+        *generation_out = 0;
+    if (expires_at_us_out)
+        *expires_at_us_out = 0;
+    if (token_out)
+        token_out[0] = '\0';
+
+    if (!control || control->stopping || !control->focus_contexts || !shortcut ||
+        !shortcut->active || control->active_shortcut_session != shortcut || !event ||
+        (clutter_event_type(event) != CLUTTER_KEY_PRESS &&
+         clutter_event_type(event) != CLUTTER_KEY_RELEASE))
+        return FALSE;
+
+    ClutterEventFlags flags = clutter_event_get_flags(event);
+    if (flags & (CLUTTER_EVENT_FLAG_SYNTHETIC | CLUTTER_EVENT_FLAG_INPUT_METHOD |
+                 CLUTTER_EVENT_FLAG_REPEATED))
+        return FALSE;
+    if (control->wayland_compositor &&
+        meta_wayland_session_lock_is_active(control->wayland_compositor))
+        return FALSE;
+
+    Client* client = shortcut->client;
+    if ((!client && (!shortcut->owner_id || !g_str_has_prefix(shortcut->owner_id, "lua:"))) ||
+        (client && (client->closing || !client->focus_grants ||
+                    g_hash_table_size(client->focus_grants) >= MAX_FOCUS_CONTEXTS)))
+        return FALSE;
+
+    guint64 generation = native_config_generation(control);
+    gint64 now = g_get_monotonic_time();
+    if (!generation)
+        return FALSE;
+    prune_focus_contexts(control, now);
+    if (g_hash_table_size(control->focus_contexts) >= MAX_FOCUS_CONTEXTS)
+        return FALSE;
+
+    char token[65] = {0};
+    if (client) {
+        gboolean unique = FALSE;
+        for (guint attempt = 0; attempt < 4; attempt++) {
+            if (!focus_token_random(token))
+                break;
+            if (!focus_token_exists(control, token)) {
+                unique = TRUE;
+                break;
+            }
+        }
+        if (!unique)
+            return FALSE;
+    }
+
+    guint64 handle = ++control->next_focus_context_handle;
+    if (handle == 0)
+        handle = ++control->next_focus_context_handle;
+    guint64* key_copy = g_new(guint64, 1);
+    *key_copy = handle;
+    NativeFocusContext* context = g_new0(NativeFocusContext, 1);
+    context->generation = generation;
+    context->expires_at_us = now + FOCUS_CONTEXT_LIFETIME_US;
+    context->timestamp = clutter_event_get_time(event);
+    context->socket_owner_client_id = client ? client->client_id : 0;
+    capture_focus_identity(control, context, event);
+    g_hash_table_insert(control->focus_contexts, key_copy, context);
+
+    if (client) {
+        NativeFocusGrant* grant = g_new0(NativeFocusGrant, 1);
+        grant->handle = handle;
+        grant->generation = generation;
+        grant->expires_at_us = context->expires_at_us;
+        g_hash_table_insert(client->focus_grants, g_strdup(token), grant);
+    }
+
+    if (handle_out)
+        *handle_out = handle;
+    if (generation_out)
+        *generation_out = generation;
+    if (expires_at_us_out)
+        *expires_at_us_out = context->expires_at_us;
+    if (token_out && client)
+        g_strlcpy(token_out, token, 65);
+    return TRUE;
+}
+
 static void dynamic_shortcut_end_session(GnoblinNativeControl* control,
                                          NativeDynamicShortcut* shortcut, const char* reason) {
     if (!control || !shortcut || !shortcut->active)
@@ -5083,6 +5172,26 @@ static void native_shortcut_capture_key(const ClutterEvent* event, gpointer user
             g_variant_new_string(type == CLUTTER_KEY_PRESS ? "press" : "release"));
         g_variant_builder_add(&builder, "{sv}", "time",
                               g_variant_new_int64(clutter_event_get_time(event)));
+        guint64 focus_handle = 0;
+        guint64 focus_generation = 0;
+        gint64 focus_expires_at_us = 0;
+        char focus_token[65] = {0};
+        if (!(flags & CLUTTER_EVENT_FLAG_REPEATED) &&
+            issue_focus_context_for_session_key(control, shortcut, event, &focus_handle,
+                                                &focus_generation, &focus_expires_at_us,
+                                                focus_token)) {
+            if (shortcut->client) {
+                g_variant_builder_add(&builder, "{sv}", "focus_context",
+                                      g_variant_new_string(focus_token));
+            } else {
+                g_variant_builder_add(&builder, "{sv}", "focus_context_handle",
+                                      g_variant_new_uint64(focus_handle));
+                g_variant_builder_add(&builder, "{sv}", "focus_context_generation",
+                                      g_variant_new_uint64(focus_generation));
+                g_variant_builder_add(&builder, "{sv}", "focus_context_expires_at_us",
+                                      g_variant_new_int64(focus_expires_at_us));
+            }
+        }
         g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&builder));
         dynamic_shortcut_publish_event(control, shortcut, "gnoblin.shortcut.session.key", payload);
         if (type == CLUTTER_KEY_RELEASE && shortcut->hold_mask &&
@@ -13046,7 +13155,8 @@ static gboolean native_runtime_dispatch_event(GnoblinNativeControl* control, con
     g_variant_builder_init(&event_packet, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&event_packet, "{sv}", "event", g_variant_new_string(event));
     gboolean trusted_binding = g_str_equal(event, "gnoblin.shortcut.binding-activated");
-    if (g_str_equal(event, "gnoblin.shortcut.activated") || trusted_binding) {
+    gboolean session_key = g_str_equal(event, "gnoblin.shortcut.session.key");
+    if (g_str_equal(event, "gnoblin.shortcut.activated") || trusted_binding || session_key) {
         gboolean first = FALSE;
         if (trusted_binding && (!g_variant_lookup(payload, "first", "b", &first) || !first))
             return FALSE;
@@ -13058,7 +13168,7 @@ static gboolean native_runtime_dispatch_event(GnoblinNativeControl* control, con
             g_variant_lookup_value(payload, "focus_context_expires_at_us", NULL);
         gboolean has_any_context = context_handle || context_generation || context_expiry;
         gboolean has_all_context = context_handle && context_generation && context_expiry;
-        if (!has_any_context && trusted_binding) {
+        if (!has_any_context && (trusted_binding || session_key)) {
             g_variant_builder_add(&event_packet, "{sv}", "payload", payload);
             g_autoptr(GVariant) packet = g_variant_ref_sink(g_variant_builder_end(&event_packet));
             return native_runtime_send_event_packet(control, event, packet);
