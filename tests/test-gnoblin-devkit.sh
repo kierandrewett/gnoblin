@@ -79,45 +79,35 @@ import signal
 import subprocess
 import time
 
-host_pid = int(os.environ["GNOBLIN_DEVKIT_HOST_PID"])
 gnoblinctl = os.environ["GNOBLIN_DEVKIT_CTL"]
+wayland_display = os.environ["WAYLAND_DISPLAY"]
 status_script = Path(os.environ["XDG_RUNTIME_DIR"]) / "runtime-status.lua"
 status_script.write_text(
     'local s=gnoblin.runtime.status(); print("RUNTIME_STATUS:"..s.state..":"..s.generation)\n',
     encoding="utf-8",
 )
 
-def children(pid):
-    path = Path(f"/proc/{pid}/task/{pid}/children")
-    return [int(child) for child in path.read_text().split()]
-
-def descendants(pid):
-    found = []
-    pending = children(pid)
-    while pending:
-        child = pending.pop()
-        found.append(child)
+def display_processes():
+    for process in Path("/proc").iterdir():
+        if not process.name.isdecimal():
+            continue
         try:
-            pending.extend(children(child))
-        except (FileNotFoundError, ProcessLookupError):
-            pass
-    return found
-
-def arguments(pid):
-    return Path(f"/proc/{pid}/cmdline").read_bytes().decode().split("\0")
+            args = [arg for arg in process.joinpath("cmdline").read_bytes().decode().split("\0") if arg]
+            executable = process.joinpath("exe").resolve(strict=True).name
+        except OSError:
+            continue
+        try:
+            display_index = args.index("--wayland-display")
+        except ValueError:
+            continue
+        if display_index + 1 < len(args) and args[display_index + 1] == wayland_display:
+            yield int(process.name), executable, args
 
 def worker_and_compositor():
     worker = compositor = None
-    direct_children = children(host_pid)
-    for pid in descendants(host_pid):
-        args = arguments(pid)
+    for pid, executable, args in display_processes():
         if "--internal-runtime-worker" in args:
             worker = pid
-    for pid in direct_children:
-        try:
-            executable = Path(f"/proc/{pid}/exe").resolve().name
-        except (FileNotFoundError, ProcessLookupError):
-            continue
         if executable in {"gnoblin-mutter", "gnome-shell"}:
             compositor = pid
     return worker, compositor
@@ -190,7 +180,11 @@ PY
 SCRIPT
 )
 
-output="$(GNOBLIN_STATE_DIR="$fixture_root/state" \
+# The headless host used by CI may not provide a PipeWire server for Mutter's
+# optional devkit viewer. Keep the nested compositor alive if that viewer exits
+# so this test isolates session-supervisor recovery.
+output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
+    GNOBLIN_STATE_DIR="$fixture_root/state" \
     GNOBLIN_PREFIX="$ROOT/install" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$fixture_root" \
     GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
@@ -237,8 +231,8 @@ import signal
 import subprocess
 import time
 
-host_pid = int(os.environ["GNOBLIN_DEVKIT_HOST_PID"])
 gnoblinctl = os.environ["GNOBLIN_DEVKIT_CTL"]
+wayland_display = os.environ["WAYLAND_DISPLAY"]
 marker = Path(os.environ["GNOBLIN_AUTOSTART_MARKER"])
 status_script = Path(os.environ["XDG_RUNTIME_DIR"]) / "runtime-status.lua"
 status_script.write_text(
@@ -246,44 +240,27 @@ status_script.write_text(
     encoding="utf-8",
 )
 
-def children(pid):
-    try:
-        path = Path(f"/proc/{pid}/task/{pid}/children")
-        return [int(value) for value in path.read_text().split()]
-    except (FileNotFoundError, ProcessLookupError):
-        # The process may exit after enumeration but before its children file
-        # is read. It no longer has descendants worth tracking.
-        return []
-
-def descendants(pid):
-    result = []
-    pending = children(pid)
-    while pending:
-        current = pending.pop()
-        result.append(current)
+def display_processes():
+    for process in Path("/proc").iterdir():
+        if not process.name.isdecimal():
+            continue
         try:
-            pending.extend(children(current))
-        except (FileNotFoundError, ProcessLookupError):
-            pass
-    return result
+            args = [arg for arg in process.joinpath("cmdline").read_bytes().decode().split("\0") if arg]
+            executable = process.joinpath("exe").resolve(strict=True).name
+        except OSError:
+            continue
+        try:
+            display_index = args.index("--wayland-display")
+        except ValueError:
+            continue
+        if display_index + 1 < len(args) and args[display_index + 1] == wayland_display:
+            yield int(process.name), executable, args
 
 def processes():
     compositor = supervisor = None
-    direct_children = children(host_pid)
-    for pid in descendants(host_pid):
-        try:
-            args = Path(f"/proc/{pid}/cmdline").read_bytes().decode().split("\0")
-        except (FileNotFoundError, ProcessLookupError):
-            continue
+    for pid, executable, args in display_processes():
         if "--internal-session-supervisor" in args:
             supervisor = pid
-    for pid in direct_children:
-        if pid == supervisor:
-            continue
-        try:
-            executable = Path(f"/proc/{pid}/exe").resolve().name
-        except (FileNotFoundError, ProcessLookupError):
-            continue
         if executable in {"gnoblin-mutter", "gnome-shell"}:
             compositor = pid
     return compositor, supervisor
@@ -354,7 +331,8 @@ PY
 SCRIPT
 )
 
-guardian_output="$(GNOBLIN_STATE_DIR="$fixture_root/guardian-state" \
+guardian_output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
+    GNOBLIN_STATE_DIR="$fixture_root/guardian-state" \
     GNOBLIN_PREFIX="$ROOT/install" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$guardian_fixture" \
     GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
