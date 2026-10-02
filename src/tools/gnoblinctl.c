@@ -1633,6 +1633,7 @@ static int lua_cli_focus_policy_property(lua_State* state);
 static int lua_cli_settings_property(lua_State* state);
 static int lua_cli_layer_animation_policy(lua_State* state);
 static int lua_cli_privacy_state(lua_State* state);
+static int lua_cli_privacy_stop(lua_State* state);
 static int lua_cli_capabilities_list(lua_State* state);
 static int lua_cli_permissions_policy(lua_State* state);
 static int lua_cli_permissions_list(lua_State* state);
@@ -3128,6 +3129,30 @@ static int lua_cli_privacy_state(lua_State* state) {
     return 1;
 }
 
+static int lua_cli_privacy_stop(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "%s takes no arguments", lua_tostring(state, lua_upvalueindex(2)));
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "%s failed: %s", method, call_error->message);
+    JsonObject* object = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonNode* requested = object ? json_object_get_member(object, "requested") : NULL;
+    if (!requested || !JSON_NODE_HOLDS_VALUE(requested) ||
+        (json_node_get_value_type(requested) != G_TYPE_INT &&
+         json_node_get_value_type(requested) != G_TYPE_INT64) ||
+        json_node_get_int(requested) < 0)
+        return luaL_error(state, "%s returned an invalid result", method);
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
 static gboolean lua_cli_capability_valid(JsonObject* object) {
     const char* id = member_string(object, "id", NULL);
     const char* description = member_string(object, "description", NULL);
@@ -4576,6 +4601,13 @@ static int lua_api_index(lua_State* state) {
     if (g_str_equal(prefix, "privacy") && g_str_equal(name, "state")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_privacy_state, 1);
+        return 1;
+    }
+    if (g_str_equal(prefix, "privacy") &&
+        (g_str_equal(name, "stop_sharing") || g_str_equal(name, "stop_recording"))) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushfstring(state, "privacy.%s", name);
+        lua_pushcclosure(state, lua_cli_privacy_stop, 2);
         return 1;
     }
     if (g_str_equal(prefix, "capabilities") && g_str_equal(name, "list")) {

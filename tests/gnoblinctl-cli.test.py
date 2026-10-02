@@ -168,7 +168,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(97):
+                    for _ in range(99):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -402,6 +402,11 @@ def main() -> int:
                                     "recording": False,
                                     "revision": 42,
                                 }
+                            elif request["method"] in {"privacy.stop_sharing", "privacy.stop_recording"}:
+                                result = {
+                                    "request_id": 36 if request["method"] == "privacy.stop_sharing" else 37,
+                                    "method": request["method"],
+                                }
                             elif request["method"] == "capabilities.list":
                                 result = [
                                     {
@@ -603,6 +608,8 @@ def main() -> int:
                                 "shortcut.capture",
                                 "launch.begin",
                                 "launch.end",
+                                "privacy.stop_sharing",
+                                "privacy.stop_recording",
                             }:
                                 operation_id = result["request_id"]
                                 method = result["method"]
@@ -789,6 +796,8 @@ def main() -> int:
                                     value = {"accelerator": "<Super>Return"}
                                 elif method in {"launch.begin", "launch.end"}:
                                     value = completion_value
+                                elif method in {"privacy.stop_sharing", "privacy.stop_recording"}:
+                                    value = {"requested": 2 if method == "privacy.stop_sharing" else 0}
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
@@ -1621,11 +1630,22 @@ def main() -> int:
         )
         animation_inspect_result = run(binary, "--socket", socket_path, "lua", str(animation_inspect_file))
         assert animation_inspect_result.returncode == 0, animation_inspect_result.stderr
+        privacy_stop_script = Path(temporary) / "privacy-stop.lua"
+        privacy_stop_script.write_text(
+            "local sharing = gnoblin.privacy.stop_sharing()\n"
+            "assert(sharing.requested == 2 and not pcall(function() sharing.requested = 0 end))\n"
+            "assert(not pcall(function() gnoblin.privacy.stop_sharing(true) end))\n"
+            "local recording = gnoblin.privacy.stop_recording()\n"
+            'assert(recording.requested == 0 and not pcall(function() rawset(recording, "requested", 1) end))\n',
+            encoding="utf-8",
+        )
+        privacy_stop_result = run(binary, "--socket", socket_path, "lua", str(privacy_stop_script))
+        assert privacy_stop_result.returncode == 0, privacy_stop_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 97
-        assert len(subscriptions) == 97
+        assert len(received) == 99
+        assert len(subscriptions) == 99
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1934,6 +1954,15 @@ def main() -> int:
             "event": "open",
             "target_type": "window",
         }
+        privacy_stop_calls = [
+            call for call in received if call["method"] in {"privacy.stop_sharing", "privacy.stop_recording"}
+        ]
+        assert [call["method"] for call in privacy_stop_calls] == [
+            "privacy.stop_sharing",
+            "privacy.stop_recording",
+        ]
+        assert all(call["api_version"] == {"major": 1, "minor": 31} for call in privacy_stop_calls)
+        assert all(call["arguments"] == {} for call in privacy_stop_calls)
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
