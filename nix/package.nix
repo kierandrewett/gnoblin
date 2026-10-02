@@ -63,6 +63,7 @@ let
     patches = patchesFor "mutter";
     prePatch = (old.prePatch or "") + copyOverlay "mutter" + addSubproject gvdbSrc "gvdb";
     postPatch = old.postPatch or "";
+    nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ git ];
     preConfigure = ''
       export PKG_CONFIG_PATH="${schemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
     ''
@@ -92,6 +93,7 @@ let
     patches = patchesFor "xdg-desktop-portal-gnome";
     prePatch =
       (old.prePatch or "") + copyOverlay "xdg-desktop-portal-gnome" + addSubproject gxdpSrc "libgxdp";
+    nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ git ];
     buildInputs = (old.buildInputs or [ ]) ++ [
       json-glib
       libglycin
