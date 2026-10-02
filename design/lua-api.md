@@ -1065,7 +1065,7 @@ layer-surface identity.
 | `gnoblin.permissions.policy()`                    | none                              | `PermissionPolicy`                                     | state read               |
 | `gnoblin.permissions.check(capability, identity)` | capability and identity strings   | `PermissionDecision`                                   | state read               |
 | `gnoblin.portals.grants()`                        | optional `kind`                   | `PortalGrant[]`                                        | state read               |
-| `grant:revoke()`                                  | none                              | `Operation<nil>`                                       | `portal.grant.revoke`    |
+| `grant:revoke()`                                  | none                              | `Operation<nil>`                                       | `grant.revoke`           |
 
 `PrivacyState` contains an `available` record with boolean fields
 `screen_sharing`, `recording`, `microphone_in_use`, `camera_in_use`, and
