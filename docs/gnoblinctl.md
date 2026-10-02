@@ -153,6 +153,16 @@ if status.lock_available then
 end
 ```
 
+`gnoblin.session.activity()` returns the latest idle-monitor sample as a
+read-only `SessionActivity` record:
+
+```lua
+local activity = gnoblin.session.activity()
+if activity.available then
+    print(activity.idle, activity.idle_for_ms, activity.threshold_ms)
+end
+```
+
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
 read-only `Workspace` records. A workspace can be activated, renamed, removed,
