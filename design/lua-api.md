@@ -1672,6 +1672,13 @@ a runtime callback. Event subscriptions and callback dispatch remain exclusive
 to the supervised Lua runtime; full CLI parity with the shared API is still
 incomplete.
 
+The console also exposes `workspaces.list()`, `workspaces.active()`, and
+`workspaces.by_id(id)` as read-only `Workspace` records. Workspace methods
+`activate()`, `rename(name)`, `remove()`, and `move_here(window, options?)`
+wait for compositor completion and return the completed value. `move_here`
+accepts a `Window` record, stable window ID, or `"active"`; it does not provide
+the runtime's callback-scoped event or focus capabilities.
+
 Native-control API 1.17 implements `gnoblin.privacy.state()` as an immutable
 snapshot with `available`, a stable `revision`, and activity fields only for
 sources marked available. The current session reports screen-sharing and
