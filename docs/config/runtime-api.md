@@ -148,6 +148,29 @@ native session, reload applies changes to these settings:
 Other setting changes are rejected and leave the active runtime unchanged.
 Start a new session to apply them.
 
+Call `gnoblin.runtime.status()` to read worker health:
+
+```lua
+local status = gnoblin.runtime.status()
+print(status.state, status.generation)
+```
+
+The method uses native-control API 1.67. It returns a read-only record with
+`state` and `generation`. The state values are:
+
+- `starting` before the worker connects;
+- `running` while it serves requests;
+- `restarting` while Mutter suspends it for replacement;
+- `unavailable` when the supervisor is disconnected or stopping.
+
+The compositor answers the read while the Lua worker is restarting, so shell
+clients can use `gnoblinctl lua` to poll recovery. A call from the live Lua
+runtime reports `running` and that worker's active generation.
+
+`generation` identifies the runtime configuration accepted by Mutter. It
+stays unchanged across worker recovery and changes when a different
+configuration is accepted.
+
 The native open-animation matcher uses updated rules for windows mapped after
 reload. Reload does not replay open animations for windows already mapped.
 

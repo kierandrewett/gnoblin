@@ -221,6 +221,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime and `gnoblinctl lua` expose these reads and grant revocation; console results are deeply read-only. |
 | `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current.** The runtime and `gnoblinctl lua` expose all methods; the console waits for lock/logout operations and returns deeply read-only results. |
 | `gnoblin.runtime.reload_config()` | `() -> Operation<Result>` | **Current.** Reload the active configuration in the supervised runtime or `gnoblinctl lua`; the console waits and returns an immutable result. |
+| `gnoblin.runtime.status()` | `() -> RuntimeStatus` | **Current; native-control API 1.67.** Read Lua worker health and the accepted runtime generation. The compositor answers directly during worker recovery; the live runtime and `gnoblinctl lua` expose the same record shape. |
 | `gnoblin.listeners` | map of event names to callback arrays | **Current; inspect only.** Do not edit this table directly. |
 | `gnoblin.window_rule(rule)` | `(WindowRule) -> nil` | **Current and retained.** Append a window or layer matching rule. |
 | `gnoblin.permission_rule(rule)` | `(PermissionRule) -> nil` | **Current and retained.** Append a portal permission rule. |
@@ -1841,6 +1842,13 @@ validates the selected Lua config, waits asynchronously for active-runtime
 operations to complete, and applies supported live changes as a correlated
 Mutter transaction. The API operation completes only after Mutter confirms
 application. Settings that require a new session remain unchanged by reload.
+Native-control API 1.67 adds `runtime.status()`. It returns `state` and
+`generation`; the states are `starting`, `running`, `restarting`, and
+`unavailable`. `generation` identifies the runtime configuration Mutter has
+accepted; it is not a restart counter. It stays fixed across worker recovery
+and changes when Mutter accepts a different runtime configuration. The socket answers this
+read without dispatching to Lua, so shells can poll during worker recovery. A
+live Lua worker reports `running` and its active configuration generation.
 Native-control API 1.21
 implements `gnoblin.session.lock()` as a request to subscribed external shell
 clients and reports Mutter lock-state transitions through
