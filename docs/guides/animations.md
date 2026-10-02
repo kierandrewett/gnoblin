@@ -47,18 +47,16 @@ gnoblin.animation {name = "soft-open", enable = false}
 Each declaration uses one event. Choose the event that describes **when** the
 animation runs:
 
-| Event                                     | When it runs                                     |
-| ----------------------------------------- | ------------------------------------------------ |
-| `minimize`                                | When a window minimizes                          |
-| `restore`                                 | When a window restores                           |
-| `open`, `close`                           | When a window opens or closes                    |
-| `dialog-open`, `dialog-close`             | When a dialog opens or closes                    |
-| `dialog-dim`, `dialog-undim`              | When a dialog dims or returns to normal          |
-| `layer-open`, `layer-close`               | When a layer-shell surface appears or disappears |
-| `workspace-switch`                        | When the active workspace changes                |
-| `shadow-change`                           | When a window shadow changes                     |
-| `resize`                                  | When Mutter changes a window's geometry          |
-| `tile-preview-open`, `tile-preview-close` | When a tile preview appears or disappears        |
+| Event                         | When it runs                                     |
+| ----------------------------- | ------------------------------------------------ |
+| `minimize`                    | When a window minimizes                          |
+| `restore`                     | When a window restores                           |
+| `open`, `close`               | When a window opens or closes                    |
+| `dialog-open`, `dialog-close` | When a dialog opens or closes                    |
+| `layer-open`, `layer-close`   | When a layer-shell surface appears or disappears |
+| `workspace-switch`            | When the active workspace changes                |
+| `shadow-change`               | When a window shadow changes                     |
+| `resize`                      | When Mutter changes a window's geometry          |
 
 Bingux-owned UI transitions remain Bingux's responsibility.
 
@@ -88,11 +86,10 @@ Only use properties supported by the event. Values are numbers; lengths and
 translations are logical pixels. `opacity` and `progress` range from 0 to 1.
 Scale is a multiplier where 1 is the original size. `rotation` is in degrees.
 
-| Events                                                                      | Properties                                                     |
-| --------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| Window, dialog, layer, console and companion events                         | `x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation`, `opacity` |
-| `tile-preview-open`, `tile-preview-close`                                   | `x`, `y`, `width`, `height`, `opacity`                         |
-| `workspace-switch`, `resize`, `shadow-change`, `dialog-dim`, `dialog-undim` | `progress`                                                     |
+| Events                                              | Properties                                                     |
+| --------------------------------------------------- | -------------------------------------------------------------- |
+| Window, dialog, layer, console and companion events | `x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation`, `opacity` |
+| `workspace-switch`, `resize`, `shadow-change`       | `progress`                                                     |
 
 | Field                | Meaning and accepted values                                                                                                                   |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -137,8 +134,8 @@ The `x1` and `x2` control points represent time and must be from 0 to 1. The
 A Bézier curve changes timing; it does not add spring physics. For a bounce,
 add an overshooting value in an intermediate keyframe.
 
-Workspace transitions, resize effects, shadow changes and dialog dimming expose
-`progress` from 0 to 1. For these events, animate `progress` and let the effect
+Workspace transitions, resize effects, and shadow changes expose `progress`
+from 0 to 1. For these events, animate `progress` and let the effect
 consume it; actor properties such as `x` and `scale` are not accepted.
 
 Workspace switches use the selected animation's `progress` to move the outgoing
@@ -203,17 +200,16 @@ transitions exist.
 Gnoblin also uses that naming family for its layer-shell and shadow events.
 Those profiles belong to Gnoblin.
 
-| Preset                                                                | Default profile and motion                                                                                                                  |
-| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gnome-minimize`, `gnome-restore`                                     | 400 ms, ease-out expo; travel to/from dock icon geometry, or the monitor edge if no icon geometry is available. Monitor-sized windows fade. |
-| `gnome-open`                                                          | 150 ms, ease-out expo; scales from 0.01 × 0.05 and fades in around the bottom-center pivot.                                                 |
-| `gnome-close`                                                         | 150 ms, ease-out quad; scales to 0.8 and fades out.                                                                                         |
-| `gnome-dialog-open`, `gnome-dialog-close`                             | 100 ms, ease-out quad; vertically expands or collapses and fades on open.                                                                   |
-| `gnome-workspace-switch`                                              | 250 ms, ease-out cubic; eases the workspace transition's `progress`.                                                                        |
-| `gnome-resize`, `gnome-tile-preview-open`, `gnome-tile-preview-close` | 250 ms, ease-out quad; eases the resize or preview geometry supplied by the compositor.                                                     |
-| `gnome-dialog-dim`, `gnome-dialog-undim`                              | 500 ms / 250 ms, ease-out quad; eases dim `progress` in / out.                                                                              |
-| `gnoblin-layer-open`, `gnoblin-layer-close`                           | 250 ms, ease-out cubic; slides from/to the layer's anchor-derived offset, or fades when the offset is zero.                                 |
-| `gnoblin-shadow-change`                                               | Uses the configured shadow duration and easing; animates shadow `progress`.                                                                 |
+| Preset                                      | Default profile and motion                                                                                                                  |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gnome-minimize`, `gnome-restore`           | 400 ms, ease-out expo; travel to/from dock icon geometry, or the monitor edge if no icon geometry is available. Monitor-sized windows fade. |
+| `gnome-open`                                | 150 ms, ease-out expo; scales from 0.01 × 0.05 and fades in around the bottom-center pivot.                                                 |
+| `gnome-close`                               | 150 ms, ease-out quad; scales to 0.8 and fades out.                                                                                         |
+| `gnome-dialog-open`, `gnome-dialog-close`   | 100 ms, ease-out quad; vertically expands or collapses and fades on open.                                                                   |
+| `gnome-workspace-switch`                    | 250 ms, ease-out cubic; eases the workspace transition's `progress`.                                                                        |
+| `gnome-resize`                              | 250 ms, ease-out quad; eases the resize geometry supplied by the compositor.                                                                |
+| `gnoblin-layer-open`, `gnoblin-layer-close` | 250 ms, ease-out cubic; slides from/to the layer's anchor-derived offset, or fades when the offset is zero.                                 |
+| `gnoblin-shadow-change`                     | Uses the configured shadow duration and easing; animates shadow `progress`.                                                                 |
 
 These are resolved defaults. Geometry-dependent destinations vary with the
 window, dock, monitor, and layer anchors. Custom registrations can replace an
@@ -318,7 +314,6 @@ milliseconds, and `stop` restores
 the original visual state. The CLI lists which animations are previewable
 against window or layer targets.
 
-Console, shadow, tile-preview, dialog-dimming,
-and layer-companion transitions animate internal actors or effects and cannot
-currently be previewed against those targets. See
+Console, shadow, and layer-companion transitions animate internal actors or
+effects and cannot currently be previewed against those targets. See
 [gnoblinctl animation commands](/gnoblinctl#animations).

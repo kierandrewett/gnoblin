@@ -403,12 +403,15 @@ The Lua code runs in the local `gnoblinctl` process. Session calls go through
 the compositor's typed API, which validates methods and arguments. `gnoblinctl`
 never sends Lua source to the compositor.
 
-The terminal console cannot subscribe to runtime events, keep shortcut
-registrations alive, or create the trusted input context required for focus
-and interactive grabs. Calls to subscribe, bind or remove shortcuts, or end a
-shortcut session report this limit instead of sending an unsupported request.
-Use a configuration event handler for event-driven behavior or operations that
-need trusted input.
+The console can subscribe to runtime events. `gnoblinctl lua` stays open while
+any subscription is active. A `once` subscription ends after its event; call
+`subscription:unsubscribe()` to stop a repeating listener. Press Ctrl+C to
+stop a script that continues listening.
+
+Shortcut registrations and trusted input contexts belong to the supervised
+runtime. The console cannot bind or remove shortcuts, end a shortcut session,
+or perform focus and interactive move or resize operations that need a live
+`FocusContext`.
 
 ## Windows
 
@@ -580,9 +583,9 @@ print(inspection.event, inspection.duration)
 `animation get NAME` prints the configured record for an exact name. It returns
 `null` when no animation matches. Use `--json` in scripts.
 
-Workspace, shadow, tile-preview, dialog-dimming, and layer-companion animations
-run on internal compositor actors or effects, so the current CLI cannot
-preview them against a window or layer surface.
+Workspace, shadow, and layer-companion animations run on internal compositor
+actors or effects, so the current CLI cannot preview them against a window or
+layer surface.
 
 See the [animation guide](/guides/animations) for custom curves, events and
 GNOME-style presets.
