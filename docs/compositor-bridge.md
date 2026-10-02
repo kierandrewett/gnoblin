@@ -1396,6 +1396,59 @@ API 1.x retains camelCase fields for compatibility. Socket window lifecycle
 events include both naming styles in `window` and `last` records, and list both
 spellings in `changed`. Lua callbacks use snake_case names only.
 
+### API version 1.66: orientation lock
+
+API 1.66 adds `input.orientation_lock` and `input.set_orientation_lock`.
+`input.orientation_lock` takes an empty `arguments` object and returns the
+orientation-lock record directly:
+
+```json
+{
+    "op": "api",
+    "id": "orientation-lock",
+    "api_version": { "major": 1, "minor": 66 },
+    "method": "input.orientation_lock",
+    "arguments": {}
+}
+```
+
+The record has these fields:
+
+- `available` and `locked` are booleans.
+- `orientation` is `normal`, `bottom-up`, `left-up`, `right-up`, or
+  `undefined`.
+- `source` is `system`, `config`, or `runtime`.
+- `revision` is an integer.
+
+`input.set_orientation_lock` takes `{ "value": true }`,
+`{ "value": false }`, or `{ "value": "inherit" }`. It completes
+asynchronously with the resulting record. `inherit` clears the runtime
+override, restores a configured boolean if present, or follows the system
+setting otherwise. A runtime request does not write the config file.
+
+Config reload reapplies a boolean `input.orientation_lock` value. If it is
+omitted or set to `"inherit"`, reload clears the override and follows the
+system setting.
+
+Subscribe to `gnoblin.input.orientation-lock-changed` to receive changes. Its
+top-level fields are:
+
+- `available`, `locked`, `orientation`, `source`, and `revision` match the
+  current state record.
+- `event` names the event.
+- `sequence` orders events.
+- `time` is monotonic.
+
+Request API 1.66 or newer:
+
+```json
+{
+    "op": "events",
+    "api_version": { "major": 1, "minor": 66 },
+    "events": ["gnoblin.input.orientation-lock-changed"]
+}
+```
+
 ## Limits and disconnects
 
 The socket directory is private to the user. Limits are 32 clients, 32 bindings
