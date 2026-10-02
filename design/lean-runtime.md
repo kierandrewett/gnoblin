@@ -270,9 +270,11 @@ its native privacy snapshot currently reports camera activity as unavailable.
    The tracked GNOME Shell corner and border geometry helpers and their
    JavaScript-only unit fixtures have been removed. Lua owns the window-rule
    policy, Mutter owns clipping and effects, and the standalone devkit keeps
-   native border, shadow, and CSD reconstruction checks. Other historical
-   Shell patches and test fixtures still need an operation-by-operation audit
-   before they can be retired. The old `52-live-shell-config` and
+   native border, shadow, and CSD reconstruction checks. The remaining
+   historical Shell patch series is not built or packaged by this checkout;
+   its audited migration and retirement status is tracked in
+   [the Shell patch retirement audit](gnome-shell-retirement.md). The old
+   `52-live-shell-config` and
    `55-window-rules` resource patches were audited and removed in commits
    `4051113a` and `57672e7e`. The old private Shell D-Bus config test was
    removed with the first patch. The supported standalone runtime owns config
