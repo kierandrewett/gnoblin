@@ -10,7 +10,7 @@ source "$ROOT/scripts/gnoblin-state.sh"
 GNOBLIN_STATE_DIR="$(gnoblin_state_dir)" || exit 1
 export GNOBLIN_STATE_DIR
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
-RUNTIME="$PREFIX/bin/gnoblin"
+RUNTIME="${GNOBLIN_RUNTIME_BIN:-$PREFIX/bin/gnoblin}"
 GNOBLINCTL="$PREFIX/bin/gnoblinctl"
 CONFIG_SOURCE="${GNOBLIN_DEVKIT_CONFIG_SOURCE:-}"
 unset GNOBLIN_DEVKIT_CONFIG_SOURCE
@@ -139,7 +139,9 @@ WAYLAND_DISPLAY="$DISP" dbus-update-activation-environment \
 
 if [[ -n ${GNOBLIN_DEVKIT_EXEC:-} ]]; then
     GNOBLIN_DEVKIT_RUNTIME_LOG="$DK/runtime.log"
+    GNOBLIN_DEVKIT_HOST_PID="$RUNTIME_PID"
     export GNOBLIN_DEVKIT_RUNTIME_LOG
+    export GNOBLIN_DEVKIT_HOST_PID
     WAYLAND_DISPLAY="$DISP" bash -c "$GNOBLIN_DEVKIT_EXEC"
     exit $?
 fi
