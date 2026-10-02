@@ -142,7 +142,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(84):
+                    for _ in range(92):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -509,6 +509,10 @@ def main() -> int:
                                 result = {"request_id": 27, "method": "workspace.move_window"}
                             elif request["method"] == "workspace.remove":
                                 result = {"request_id": 28, "method": "workspace.remove"}
+                            elif request["method"] in {"workspace.next", "workspace.previous"}:
+                                result = {"request_id": 32, "method": request["method"]}
+                            elif request["method"] == "workspace.move_active":
+                                result = {"request_id": 33, "method": request["method"]}
                             else:
                                 result = {
                                     "request_id": 17,
@@ -534,6 +538,9 @@ def main() -> int:
                                 "workspace.rename",
                                 "workspace.move_window",
                                 "workspace.remove",
+                                "workspace.next",
+                                "workspace.previous",
+                                "workspace.move_active",
                                 "grant.revoke",
                                 "shortcut.capture",
                             }:
@@ -605,7 +612,17 @@ def main() -> int:
                                 elif method == "animation.stop":
                                     value = {"ok": True, "session": "preview-17"}
                                 elif method == "workspace.create":
-                                    value = {"id": "codex-probe", "name": "Codex Probe"}
+                                    if request.get("arguments", {}).get("id") == "lua-api":
+                                        value = {
+                                            "id": "lua-api",
+                                            "number": 3,
+                                            "name": request["arguments"]["name"],
+                                            "active": False,
+                                            "windows": 0,
+                                            "persistent": True,
+                                        }
+                                    else:
+                                        value = {"id": "codex-probe", "name": "Codex Probe"}
                                 elif method == "window.thumbnail":
                                     value = {
                                         "window_id": "42",
@@ -625,13 +642,87 @@ def main() -> int:
                                 elif method == "window.minimize":
                                     value = {"id": "42"}
                                 elif method == "workspace.switch":
-                                    value = {"id": "codex-probe", "active": True}
+                                    if request.get("arguments", {}).get("id") == "lua-api":
+                                        value = {
+                                            "id": "lua-api",
+                                            "number": 3,
+                                            "name": "Lua Workspace",
+                                            "active": True,
+                                            "windows": 0,
+                                            "persistent": True,
+                                        }
+                                    else:
+                                        value = {"id": "codex-probe", "active": True}
                                 elif method == "workspace.rename":
-                                    value = {"id": "codex-probe", "name": "Renamed"}
+                                    if request.get("arguments", {}).get("id") == "lua-api":
+                                        value = {
+                                            "id": "lua-api",
+                                            "number": 3,
+                                            "name": request["arguments"]["name"],
+                                            "active": False,
+                                            "windows": 0,
+                                            "persistent": True,
+                                        }
+                                    else:
+                                        value = {"id": "codex-probe", "name": "Renamed"}
                                 elif method == "workspace.move_window":
-                                    value = {"workspace": "codex-probe", "window": "42"}
+                                    if request.get("arguments", {}).get("window") == "active":
+                                        value = {
+                                            "workspace": {
+                                                "id": "lua-api",
+                                                "number": 3,
+                                                "name": "Lua Workspace",
+                                                "active": False,
+                                                "windows": 1,
+                                                "persistent": True,
+                                            },
+                                            "window": "42",
+                                            "follow": True,
+                                        }
+                                    else:
+                                        value = {"workspace": "codex-probe", "window": "42"}
                                 elif method == "workspace.remove":
-                                    value = {"id": "codex-probe"}
+                                    if request.get("arguments", {}).get("id") == "lua-api":
+                                        value = {
+                                            "id": "lua-api",
+                                            "number": 3,
+                                            "name": "Lua Workspace",
+                                            "active": False,
+                                            "windows": 0,
+                                            "persistent": True,
+                                        }
+                                    else:
+                                        value = {"id": "codex-probe"}
+                                elif method in {
+                                    "workspace.next",
+                                    "workspace.previous",
+                                    "workspace.move_active",
+                                } and (
+                                    method
+                                    in {
+                                        "workspace.next",
+                                        "workspace.previous",
+                                        "workspace.move_active",
+                                    }
+                                    or request.get("arguments", {}).get("id") == "lua-api"
+                                    or request.get("arguments", {}).get("window") == "active"
+                                ):
+                                    workspace = {
+                                        "id": "lua-api",
+                                        "number": 3,
+                                        "name": request.get("arguments", {}).get("name", "Lua Workspace"),
+                                        "active": method == "workspace.next",
+                                        "windows": 1 if method.startswith("workspace.move_") else 0,
+                                        "persistent": True,
+                                    }
+                                    if method in {"workspace.move_active", "workspace.move_window"}:
+                                        value = {
+                                            "workspace": workspace,
+                                            "window": "42",
+                                            "follow": request.get("arguments", {}).get("follow", False),
+                                        }
+                                    else:
+                                        value = workspace
                                 elif method == "grant.revoke":
                                     value = {"ok": True, "id": request["arguments"]["id"]}
                                 elif method == "shortcut.capture":
@@ -1408,11 +1499,35 @@ def main() -> int:
         )
         animation_surfaces_result = run(binary, "--socket", socket_path, "lua", str(animation_surfaces_file))
         assert animation_surfaces_result.returncode == 0, animation_surfaces_result.stderr
+        workspace_api_file = Path(temporary) / "workspace-api.lua"
+        workspace_api_file.write_text(
+            'local created = gnoblin.workspaces.create {id = "lua-api", name = "Lua Workspace", activate = false}\n'
+            'assert(created.id == "lua-api" and created.number == 3 and created.persistent)\n'
+            'assert(not pcall(function() created.name = "changed" end))\n'
+            'local renamed = gnoblin.workspaces.rename {id = "lua-api", name = "Renamed Lua Workspace"}\n'
+            'assert(renamed.name == "Renamed Lua Workspace")\n'
+            'local active = gnoblin.workspaces.activate {id = "lua-api"}\n'
+            "assert(active.active)\n"
+            'assert(gnoblin.workspaces.next().id == "lua-api")\n'
+            'assert(gnoblin.workspaces.previous().id == "lua-api")\n'
+            'local moved_active = gnoblin.workspaces.move_active {workspace = {id = "lua-api"}, follow = false}\n'
+            'assert(moved_active.workspace.id == "lua-api" and moved_active.follow == false)\n'
+            'assert(not pcall(function() rawset(moved_active, "follow", true) end))\n'
+            'local moved_window = gnoblin.workspaces.move_window {window = "active", workspace = {number = 1}, follow = true}\n'
+            'assert(moved_window.window == "42" and moved_window.follow)\n'
+            'assert(gnoblin.workspaces.remove {id = "lua-api"}.id == "lua-api")\n'
+            'assert(not pcall(function() gnoblin.workspaces.create {id = 42, name = "invalid"} end))\n'
+            'assert(not pcall(function() gnoblin.workspaces.move_window {window = "42", workspace = {id = "x", number = 1}} end))\n'
+            "assert(not pcall(function() gnoblin.workspaces.next(true) end))\n",
+            encoding="utf-8",
+        )
+        workspace_api_result = run(binary, "--socket", socket_path, "lua", str(workspace_api_file))
+        assert workspace_api_result.returncode == 0, workspace_api_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 84
-        assert len(subscriptions) == 84
+        assert len(received) == 92
+        assert len(subscriptions) == 92
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1691,6 +1806,17 @@ def main() -> int:
         assert len(surfaces_calls) == 1
         assert surfaces_calls[0]["api_version"] == {"major": 1, "minor": 18}
         assert surfaces_calls[0]["arguments"] == {}
+        workspace_calls = [call for call in received if call["method"].startswith("workspace.")]
+        assert [call["method"] for call in workspace_calls[-8:]] == [
+            "workspace.create",
+            "workspace.rename",
+            "workspace.switch",
+            "workspace.next",
+            "workspace.previous",
+            "workspace.move_active",
+            "workspace.move_window",
+            "workspace.remove",
+        ]
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
