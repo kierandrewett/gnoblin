@@ -953,6 +953,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_modal_key_events_refresh_focus_authority_from_real_input(self):
         source = CONTROL.read_text()
+        header = HEADER.read_text()
         capture_start = source.rindex("static void native_shortcut_capture_key(")
         capture_end = source.index("gboolean gnoblin_native_control_overlay_modifier_pressed(", capture_start)
         capture = source[capture_start:capture_end]
@@ -982,7 +983,9 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("CLUTTER_EVENT_FLAG_SYNTHETIC", issue_context)
         self.assertIn("CLUTTER_EVENT_FLAG_INPUT_METHOD", issue_context)
         self.assertIn("CLUTTER_EVENT_FLAG_REPEATED", issue_context)
+        self.assertGreaterEqual(api_minor(header), 68)
         self.assertIn("context->socket_owner_client_id = client ? client->client_id : 0", issue_context)
+        self.assertIn("client->api_minor < 68", issue_context)
         self.assertIn('"focus_context"', capture)
         self.assertIn("g_variant_new_string(focus_token)", capture)
         self.assertIn('g_str_equal(event, "gnoblin.shortcut.session.key")', runtime_event)
