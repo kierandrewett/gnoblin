@@ -148,6 +148,20 @@ for _, launch in ipairs(snapshot.launches) do
 end
 ```
 
+The console can also begin and finish launch feedback. Call `finish()` with the
+same token when the launch is cancelled or the application has started:
+
+```lua
+local token = "launcher-42"
+local launch = gnoblin.launches.begin {
+    token = token,
+    application = "org.example.Editor",
+    timeout_ms = 3000,
+}
+print(launch.state)
+gnoblin.launches.finish(token)
+```
+
 `gnoblin.permissions.policy()` returns the committed permission policy as a
 deeply read-only `PermissionPolicy` record:
 
