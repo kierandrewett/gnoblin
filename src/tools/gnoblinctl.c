@@ -1635,6 +1635,7 @@ static int lua_cli_layer_animation_policy(lua_State* state);
 static int lua_cli_privacy_state(lua_State* state);
 static int lua_cli_privacy_stop(lua_State* state);
 static int lua_cli_runtime_reload_config(lua_State* state);
+static int lua_cli_session_operation(lua_State* state);
 static int lua_cli_capabilities_list(lua_State* state);
 static int lua_cli_permissions_policy(lua_State* state);
 static int lua_cli_permissions_list(lua_State* state);
@@ -3178,6 +3179,37 @@ static int lua_cli_runtime_reload_config(lua_State* state) {
     return 1;
 }
 
+static int lua_cli_session_operation(lua_State* state) {
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.%s takes no arguments", method);
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.%s failed: %s", method, call_error->message);
+    JsonObject* object = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonNode* status = object ? json_object_get_member(object, "accepted") : NULL;
+    if (g_str_equal(method, "session.lock")) {
+        status = object ? json_object_get_member(object, "dispatched") : NULL;
+        JsonNode* subscribers = object ? json_object_get_member(object, "subscribers") : NULL;
+        if (!subscribers || !JSON_NODE_HOLDS_VALUE(subscribers) ||
+            (json_node_get_value_type(subscribers) != G_TYPE_INT &&
+             json_node_get_value_type(subscribers) != G_TYPE_INT64) ||
+            json_node_get_int(subscribers) < 0)
+            return luaL_error(state, "gnoblin.%s returned an invalid result", method);
+    }
+    if (!status || !JSON_NODE_HOLDS_VALUE(status) ||
+        json_node_get_value_type(status) != G_TYPE_BOOLEAN || !json_node_get_boolean(status))
+        return luaL_error(state, "gnoblin.%s returned an invalid result", method);
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
 static gboolean lua_cli_capability_valid(JsonObject* object) {
     const char* id = member_string(object, "id", NULL);
     const char* description = member_string(object, "description", NULL);
@@ -4638,6 +4670,13 @@ static int lua_api_index(lua_State* state) {
     if (g_str_equal(prefix, "runtime") && g_str_equal(name, "reload_config")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_runtime_reload_config, 1);
+        return 1;
+    }
+    if (g_str_equal(prefix, "session") &&
+        (g_str_equal(name, "lock") || g_str_equal(name, "logout"))) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushfstring(state, "session.%s", name);
+        lua_pushcclosure(state, lua_cli_session_operation, 2);
         return 1;
     }
     if (g_str_equal(prefix, "capabilities") && g_str_equal(name, "list")) {

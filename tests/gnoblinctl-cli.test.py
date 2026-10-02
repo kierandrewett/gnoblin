@@ -168,7 +168,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(100):
+                    for _ in range(102):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -409,6 +409,11 @@ def main() -> int:
                                 }
                             elif request["method"] == "runtime.reload_config":
                                 result = {"request_id": 38, "method": request["method"]}
+                            elif request["method"] in {"session.lock", "session.logout"}:
+                                result = {
+                                    "request_id": 39 if request["method"] == "session.lock" else 40,
+                                    "method": request["method"],
+                                }
                             elif request["method"] == "capabilities.list":
                                 result = [
                                     {
@@ -613,6 +618,8 @@ def main() -> int:
                                 "privacy.stop_sharing",
                                 "privacy.stop_recording",
                                 "runtime.reload_config",
+                                "session.lock",
+                                "session.logout",
                             }:
                                 operation_id = result["request_id"]
                                 method = result["method"]
@@ -803,6 +810,10 @@ def main() -> int:
                                     value = {"requested": 2 if method == "privacy.stop_sharing" else 0}
                                 elif method == "runtime.reload_config":
                                     value = {"ok": True, "action": "reloaded", "runtime_generation": 7}
+                                elif method == "session.lock":
+                                    value = {"dispatched": True, "subscribers": 1}
+                                elif method == "session.logout":
+                                    value = {"accepted": True}
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
@@ -1656,11 +1667,24 @@ def main() -> int:
         )
         runtime_reload_result = run(binary, "--socket", socket_path, "lua", str(runtime_reload_script))
         assert runtime_reload_result.returncode == 0, runtime_reload_result.stderr
+        session_operations_script = Path(temporary) / "session-operations.lua"
+        session_operations_script.write_text(
+            "local lock = gnoblin.session.lock()\n"
+            "assert(lock.dispatched and lock.subscribers == 1)\n"
+            "assert(not pcall(function() lock.dispatched = false end))\n"
+            "assert(not pcall(function() gnoblin.session.lock(true) end))\n"
+            "local logout = gnoblin.session.logout()\n"
+            "assert(logout.accepted and not pcall(function() logout.accepted = false end))\n"
+            "assert(not pcall(function() gnoblin.session.logout({}) end))\n",
+            encoding="utf-8",
+        )
+        session_operations_result = run(binary, "--socket", socket_path, "lua", str(session_operations_script))
+        assert session_operations_result.returncode == 0, session_operations_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 100
-        assert len(subscriptions) == 100
+        assert len(received) == 102
+        assert len(subscriptions) == 102
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1982,6 +2006,13 @@ def main() -> int:
         assert len(runtime_reload_calls) == 1
         assert runtime_reload_calls[0]["api_version"] == {"major": 1, "minor": 20}
         assert runtime_reload_calls[0]["arguments"] == {}
+        session_calls = [call for call in received if call["method"] in {"session.lock", "session.logout"}]
+        assert [call["method"] for call in session_calls] == ["session.lock", "session.logout"]
+        assert [call["api_version"] for call in session_calls] == [
+            {"major": 1, "minor": 21},
+            {"major": 1, "minor": 32},
+        ]
+        assert all(call["arguments"] == {} for call in session_calls)
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
