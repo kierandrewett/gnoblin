@@ -21,9 +21,10 @@ Python is used while building; the installed control command is a native
 GLib/GIO program.
 
 The installed `gsettings-desktop-schemas` development package must be at least
-the version pinned in `gnome-versions.json`. The pinned Mutter source also
-requires the PipeWire development library `libpipewire-0.3` version 1.6.0 or
-newer for its remote-desktop support.
+the version pinned in `gnome-versions.json`. The pinned Mutter compatibility
+patches build remote-desktop support with
+`libpipewire-0.3` version 1.4.11 or newer. PipeWire 1.5.84 and 1.6 add
+optional color-capability and device-ID negotiation.
 
 Mutter uses the shared schemas for settings such as keyboard, pointer, and
 accessibility behavior. The package also supplies enum headers used while

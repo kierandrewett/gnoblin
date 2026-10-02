@@ -357,10 +357,11 @@ Adding an older Fedora target requires all of the following:
   dependency failures instead of changing the release label.
 - Check RPM `Requires` against the target's repositories. Fedora 43 updates
   currently provide PipeWire 1.4.11, libinput 1.30.3, and Wayland 1.26.
-- A clean Fedora 43 source build reached Mutter compilation after the pinned
-  GNOME 51 desktop schemas and portal frontend were built in local prefixes.
-  Mutter then failed because PipeWire 1.4.11 does not provide
-  `pipewire/capabilities.h`; retain Mutter's upstream PipeWire 1.6.0 minimum.
+- The Fedora 43 native build verified Mutter against PipeWire 1.4.11 and the
+  pinned GNOME 51 schema headers. The compatibility patch omits capability/HDR
+  negotiation and device-ID negotiation where the installed PipeWire headers
+  lack those APIs; the rest of Mutter builds and installs. Full session and
+  graphical runtime verification remain separate gates.
 - Lower a dependency floor only after compiling against that library version
   and checking the symbols/APIs the built runtime uses. Keep shared package
   manifest requirements valid for every supported distribution.
