@@ -142,7 +142,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(81):
+                    for _ in range(83):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -481,6 +481,8 @@ def main() -> int:
                                 ]
                             elif request["method"] == "grant.revoke":
                                 result = {"request_id": 29, "method": "grant.revoke"}
+                            elif request["method"] == "shortcut.capture":
+                                result = {"request_id": 30, "method": "shortcut.capture"}
                             elif request["method"] == "window.move_to_monitor":
                                 result = {"id": "42", "monitor_id": "HDMI-1"}
                             elif request["method"] == "window.restore_or_minimize":
@@ -523,6 +525,7 @@ def main() -> int:
                                 "workspace.move_window",
                                 "workspace.remove",
                                 "grant.revoke",
+                                "shortcut.capture",
                             }:
                                 operation_id = result["request_id"]
                                 method = result["method"]
@@ -621,6 +624,8 @@ def main() -> int:
                                     value = {"id": "codex-probe"}
                                 elif method == "grant.revoke":
                                     value = {"ok": True, "id": request["arguments"]["id"]}
+                                elif method == "shortcut.capture":
+                                    value = {"accelerator": "<Super>Return"}
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
@@ -1364,11 +1369,27 @@ def main() -> int:
         )
         version_result = run(binary, "--socket", socket_path, "lua", str(version_file))
         assert version_result.returncode == 0, version_result.stderr
+        shortcut_capture_file = Path(temporary) / "shortcut-capture.lua"
+        shortcut_capture_file.write_text(
+            "local captured = gnoblin.shortcuts.capture()\n"
+            'assert(captured.accelerator == "<Super>Return")\n'
+            "local timed = gnoblin.shortcuts.capture {timeout = 10}\n"
+            'assert(timed.accelerator == "<Super>Return")\n'
+            "assert(not pcall(function() gnoblin.shortcuts.capture {timeout = 0} end))\n"
+            "assert(not pcall(function() gnoblin.shortcuts.capture {timeout = 61} end))\n"
+            "assert(not pcall(function() gnoblin.shortcuts.capture {timeout = 1.5} end))\n"
+            "assert(not pcall(function() gnoblin.shortcuts.capture {timeout = true} end))\n"
+            "assert(not pcall(function() gnoblin.shortcuts.capture {unexpected = true} end))\n"
+            'assert(not pcall(function() gnoblin.shortcuts.capture("10") end))\n',
+            encoding="utf-8",
+        )
+        shortcut_capture_result = run(binary, "--socket", socket_path, "lua", str(shortcut_capture_file))
+        assert shortcut_capture_result.returncode == 0, shortcut_capture_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 81
-        assert len(subscriptions) == 81
+        assert len(received) == 83
+        assert len(subscriptions) == 83
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1431,12 +1452,10 @@ def main() -> int:
             "launches.snapshot",
         ]
         assert all(call["api_version"] == {"major": 1, "minor": 39} for call in launch_calls)
-        permission_list_request = received[-2]
-        assert permission_list_request["method"] == "permissions.list"
+        permission_list_request = [call for call in received if call["method"] == "permissions.list"][-1]
         assert permission_list_request["api_version"] == {"major": 1, "minor": 42}
         assert permission_list_request["arguments"] == {}
-        version_request = received[-1]
-        assert version_request["method"] == "version"
+        version_request = [call for call in received if call["method"] == "version"][-1]
         assert version_request["api_version"] == {"major": 1, "minor": 19}
         assert version_request["arguments"] == {}
         assert received[53]["method"] == "portals.grants"
@@ -1640,6 +1659,11 @@ def main() -> int:
         unminimize_request = received[46]
         assert unminimize_request["method"] == "window.unminimize"
         assert unminimize_request["arguments"] == {"id": "42"}
+        capture_calls = [call for call in received if call["method"] == "shortcut.capture"]
+        assert len(capture_calls) == 2
+        assert all(call["api_version"] == {"major": 1, "minor": 8} for call in capture_calls)
+        assert capture_calls[0]["arguments"] == {}
+        assert capture_calls[1]["arguments"] == {"timeout": 10}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0

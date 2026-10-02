@@ -313,6 +313,7 @@ static guint api_minor_for_method(const char* method) {
         {"privacy.stop_recording", 31},
         {"window.thumbnail", 23},
         {"shortcut.actions", 5},
+        {"shortcut.capture", 8},
         {"shortcut.list", 9},
         {"session.status", 29},
         {"session.activity", 24},
@@ -1618,6 +1619,7 @@ static int lua_cli_input_snapshot(lua_State* state);
 static int lua_cli_input_select_source(lua_State* state);
 static int lua_cli_shortcuts_list(lua_State* state);
 static int lua_cli_shortcuts_actions(lua_State* state);
+static int lua_cli_shortcuts_capture(lua_State* state);
 static int lua_cli_focus_policy_property(lua_State* state);
 static int lua_cli_settings_property(lua_State* state);
 static int lua_cli_layer_animation_policy(lua_State* state);
@@ -2520,6 +2522,56 @@ static int lua_cli_shortcuts_actions(lua_State* state) {
     if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && lua_type(state, 1) != LUA_TSTRING))
         return luaL_error(state, "gnoblin.shortcuts.actions accepts an optional group string");
     return lua_cli_shortcut_snapshot(state, TRUE);
+}
+
+static int lua_cli_shortcuts_capture(lua_State* state) {
+    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
+        return luaL_error(state, "gnoblin.shortcuts.capture accepts one optional options table");
+
+    gint timeout_seconds = 30;
+    JsonObject* arguments = json_object_new();
+    if (lua_gettop(state) == 1) {
+        json_object_unref(arguments);
+        arguments = lua_cli_table_object(state, 1, "shortcut capture options");
+        if (json_object_get_size(arguments) > 1 ||
+            (json_object_get_size(arguments) == 1 &&
+             !json_object_has_member(arguments, "timeout"))) {
+            json_object_unref(arguments);
+            return luaL_error(state, "gnoblin.shortcuts.capture accepts only timeout");
+        }
+        JsonNode* timeout = json_object_get_member(arguments, "timeout");
+        if (timeout) {
+            if (!JSON_NODE_HOLDS_VALUE(timeout) ||
+                (json_node_get_value_type(timeout) != G_TYPE_INT &&
+                 json_node_get_value_type(timeout) != G_TYPE_INT64)) {
+                json_object_unref(arguments);
+                return luaL_error(state,
+                                  "shortcut capture timeout must be an integer from 1 to 60");
+            }
+            timeout_seconds = (gint)json_node_get_int(timeout);
+            if (timeout_seconds < 1 || timeout_seconds > 60) {
+                json_object_unref(arguments);
+                return luaL_error(state,
+                                  "shortcut capture timeout must be an integer from 1 to 60");
+            }
+        }
+    }
+
+    Cli capture_cli = *(Cli*)lua_touserdata(state, lua_upvalueindex(1));
+    capture_cli.timeout = (guint)timeout_seconds;
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(&capture_cli, "api", "shortcut.capture", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.shortcuts.capture failed: %s", call_error->message);
+    JsonObject* object = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    const char* accelerator = member_string(object, "accelerator", NULL);
+    if (!accelerator || !*accelerator)
+        return luaL_error(state, "gnoblin.shortcuts.capture returned an invalid result");
+
+    json_to_lua(state, result);
+    return 1;
 }
 
 static void register_lua_cli_shortcut_record(lua_State* state, const char* metatable) {
@@ -4153,6 +4205,11 @@ static int lua_api_index(lua_State* state) {
             lua_CFunction function =
                 g_str_equal(name, "list") ? lua_cli_shortcuts_list : lua_cli_shortcuts_actions;
             lua_pushcclosure(state, function, 1);
+            return 1;
+        }
+        if (g_str_equal(name, "capture")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state, lua_cli_shortcuts_capture, 1);
             return 1;
         }
     }
