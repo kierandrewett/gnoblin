@@ -745,11 +745,13 @@ events. These are compositor and protocol capabilities, not a Shell feature
 registry.
 
 The standalone runtime advertises `window-thumbnails` for bounded window
-previews, `session-activity` for idle-monitor state, and `microphone-monitor`
-for PipeWire microphone activity monitoring. The microphone capability is
-available only when the Mutter build includes remote-desktop support and
-PipeWire is connected; its unavailable record includes `remote_desktop_disabled` or
-`pipewire_unavailable` as its reason. Native API 1.33 emits
+previews, `session-activity` for idle-monitor state, `microphone-monitor` for
+PipeWire microphone activity, and `camera-monitor` for PipeWire camera activity.
+Both privacy-monitor capabilities are available only when the Mutter build
+includes remote-desktop support and PipeWire is connected. Their unavailable
+record includes `remote_desktop_disabled` or `pipewire_unavailable` as its
+reason. Camera state follows running nodes marked with the `Camera` media role
+and remains active for 500 ms after the last such node stops. Native API 1.33 emits
 `gnoblin.capability.changed` after updating the capability snapshot when this
 availability changes. Check the snapshot before using an optional feature.
 
@@ -1654,7 +1656,8 @@ recording from Mutter's tracked remote-access handles, and microphone activity
 from running PipeWire audio-capture streams when Mutter has remote-desktop
 support and can connect to PipeWire. Meter streams may count as active, because
 the monitor does not trust an application's self-reported ID to suppress
-microphone activity. Camera and location remain unavailable.
+microphone activity. Camera activity comes from running PipeWire nodes marked
+with the `Camera` media role. Location remains unavailable.
 The `gnoblin.privacy.changed` event carries the updated state plus event
 sequence and monotonic-time metadata. API 1.31 implements
 `gnoblin.privacy.stop_sharing()`
