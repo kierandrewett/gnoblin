@@ -110,6 +110,12 @@ jobs:
             WAYLAND_DISPLAY="$socket_name" \
             GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
             bash tests/test-gnoblin-devkit.sh
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY="$socket_name" \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            GNOBLIN_RUNTIME_BIN="$GITHUB_WORKSPACE/build/ninja/gnoblin" \
+            bash tests/test-layer-latency.sh
 
       - name: Upload build and session logs
         if: always()
