@@ -173,6 +173,15 @@ for _, surface in ipairs(gnoblin.layers.list { layer = "top" }) do
 end
 ```
 
+Read the effective animation and shadow policy for a layer namespace with
+`gnoblin.layers.animation_policy(namespace)`. It returns a deeply read-only
+`LayerAnimationPolicy` record:
+
+```lua
+local policy = gnoblin.layers.animation_policy("bingux-panel")
+print(policy.enter.animation, policy.exit.animation, policy.window_shadow)
+```
+
 Animation previews return a read-only `AnimationPreview` record. Its
 `seek`, `step`, `play`, and `pause` methods return the completed updated record;
 `stop` returns its completion result:

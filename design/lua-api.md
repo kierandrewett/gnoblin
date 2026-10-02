@@ -212,7 +212,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current; native runtime only.** Read-only revisioned window snapshots and a one-use context for keyboard snapping. |
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current; native runtime only.** Read-only revisioned workspace snapshots and typed workspace operations. |
 | `gnoblin.monitors` | `list()`, `primary()` | **Current; native runtime only.** Read-only revisioned monitor snapshot records. |
-| `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current; native runtime only.** Read-only revisioned layer-surface records and effective animation/shadow policy. |
+| `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
 | `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `text_target(context)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` exposes typed device/source snapshots and source selection. Trusted text targets remain callback-only. |
 | `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current; native runtime only.** Read and control declared compositor animation previews. |
 | `gnoblin.launches` | `list()`, `begin(args)`, `end(args)` | **Current; native runtime only.** Read and report tracked application launches. |
@@ -1690,6 +1690,9 @@ output-configuration methods.
 `layers.list(filter?)` returns read-only `LayerSurface` records and accepts
 exact string filters for `monitor_id`, `namespace`, and `layer`. The console
 also maps the compatibility alias `layer.list()` to that typed snapshot.
+`layers.animation_policy(namespace)` accepts the same 1–128 byte UTF-8
+namespace string in the console, calls the canonical `layer.animation_policy`
+read, and returns a deeply read-only `LayerAnimationPolicy` record.
 
 `animations.preview(spec)` returns a read-only `AnimationPreview` record with
 chained `seek`, `step`, `play`, `pause`, and `stop` methods. The console waits
