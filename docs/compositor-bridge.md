@@ -383,8 +383,14 @@ The window-menu event contains:
 - `menu_type`: `wm` for a window manager menu or `app` for an application menu;
 - `x` and `y`: global logical coordinates from Mutter.
 
-The OSD event contains the stable `monitor_id` and, when provided, `icon` and
-`label`. Mutter supplies no level, maximum, or output list.
+The OSD event includes:
+
+- `monitor_id`: the stable ID of the logical monitor;
+- `output_names`: the sorted, unique names of active physical connectors for
+  that logical monitor. Older API 1.27 builds may omit this field;
+- `icon` and `label`: optional fields supplied by Mutter.
+
+Mutter supplies no OSD level or maximum.
 
 ### API 1.30: WM menu actions
 

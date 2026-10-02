@@ -761,10 +761,15 @@ including malformed arguments. Disconnect and event-subscription replacement
 revoke it. Both Lua and socket paths recheck the window and lock state before
 using a fresh Mutter timestamp.
 
-`gnoblin.osd.requested` includes the stable `monitor_id` and may include
-`icon` and `label`. These are the fields Mutter supplies. It provides no OSD
-level, maximum, or output list. Gnoblin does not create the OSD; the subscribed
-shell decides how to present the request.
+`gnoblin.osd.requested` includes:
+
+- `monitor_id`: the stable ID of the logical monitor;
+- `output_names`: on current builds, a sorted, unique list of active physical
+  connector names for that logical monitor. Older API 1.27 builds may omit it;
+- `icon` and `label`: optional fields supplied by Mutter.
+
+Mutter provides no OSD level or maximum. Gnoblin does not create the OSD; the
+subscribed shell decides how to present the request.
 
 For keyboard-selected layouts, call `gnoblin.windows.snap_context(context)` in
 a trusted shortcut callback. It consumes the one-use focus context and returns
