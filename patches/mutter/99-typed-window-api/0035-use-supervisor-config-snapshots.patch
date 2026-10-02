@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 1 Oct 2026 01:29:58 +0100
+Subject: [PATCH] mutter: use supervisor-owned configuration snapshots
+
+---
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index 425cc79..5775c51 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -42,7 +42,7 @@
+ #include "mtk/mtk.h"
+ 
+ #ifdef HAVE_WAYLAND
+-#include "wayland/gnoblin-config.h"
++#include "core/gnoblin-native-control.h"
+ #endif
+ 
+ /* If you add a key, it needs updating in init() and in the gsettings
+@@ -1321,9 +1321,8 @@ meta_prefs_init (void)
+   if (is_gnoblin_session ())
+     {
+ #ifdef HAVE_WAYLAND
+-      g_autofree char *path = gnoblin_config_path ();
+-      g_autoptr (GError) error = NULL;
+-      g_autoptr (GVariant) document = gnoblin_config_load_document (path, NULL, NULL, &error);
++      g_autoptr (GVariant) document =
++        gnoblin_native_control_get_config_document (NULL);
+       g_autoptr (GVariant) window_management = document
+         ? g_variant_lookup_value (document, "window-management", G_VARIANT_TYPE_VARDICT)
+         : NULL;

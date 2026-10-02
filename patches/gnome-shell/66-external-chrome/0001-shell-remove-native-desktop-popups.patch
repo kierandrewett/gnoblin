@@ -1,5 +1,5 @@
 From 8e9975d367d1f35a49d806cb7650ae169ade68fb Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:55:24 +0100
 Subject: [PATCH] shell: remove native desktop popups from Gnoblin
 

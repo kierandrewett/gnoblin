@@ -12,7 +12,7 @@ In `appearance.lua`:
 
 ```lua
 gnoblin.configure {
-    shell = {minimize_duration = 120, layer_duration = 180},
+    compositor = {enable_animations = false},
 }
 ```
 

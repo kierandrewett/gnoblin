@@ -1,0 +1,53 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] mutter: use pure C Lua pattern matcher for window rules
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 415de1062..9d4380fdc 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -26,6 +26,7 @@
+ #include "core/util-private.h"
+ #include "core/gnoblin-native-control.h"
+ #include "core/gnoblin-animation.h"
++#include "wayland/gnoblin-lua-pattern.h"
+ 
+ #include <gio/gunixinputstream.h>
+ #include <glib/gstdio.h>
+@@ -54,6 +55,18 @@
+ #include "meta/window.h"
+ #include "meta/workspace.h"
+ 
++gboolean
++meta_gnoblin_window_pattern_match (const char *pattern,
++                                   const char *value,
++                                   GError    **error)
++{
++  gboolean matched = FALSE;
++
++  if (!gnoblin_lua_pattern_match (pattern, value, &matched, error))
++    return FALSE;
++  return matched;
++}
++
+ static const GDebugKey meta_debug_keys[] = {
+   { "focus", META_DEBUG_FOCUS },
+   { "workarea", META_DEBUG_WORKAREA },
+diff --git a/src/meta/util.h b/src/meta/util.h
+index af598c959..6eb85c1aa 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -115,6 +115,11 @@ int meta_gnoblin_layer_anchor (MetaWindow *window);
+ META_EXPORT
+ const char *meta_gnoblin_layer_namespace (MetaWindow *window);
+ 
++META_EXPORT
++gboolean meta_gnoblin_window_pattern_match (const char *pattern,
++                                            const char *value,
++                                            GError **error);
++
+ META_EXPORT
+ gboolean meta_gnoblin_window_frame_set (MetaWindow *window, GVariant *policy, GError **error);
+ META_EXPORT

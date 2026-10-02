@@ -1,5 +1,5 @@
 From 62b97221617951acaa18d927767641c2fac28ead Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 19:22:09 +0100
 Subject: [PATCH] Place background blur correctly on scaled outputs
 

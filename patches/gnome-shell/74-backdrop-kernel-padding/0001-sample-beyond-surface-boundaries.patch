@@ -1,5 +1,5 @@
 From 952563ed9489f7a5c7140c67f92f768b18a63e8b Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:55:57 +0100
 Subject: [PATCH] shell: sample backdrop beyond client surface bounds
 

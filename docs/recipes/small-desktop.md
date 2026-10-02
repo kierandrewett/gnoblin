@@ -14,7 +14,7 @@ application installed on your system.
 
 ```lua
 gnoblin.configure {
-    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+    cursor = {theme = "default", size = 28},
     autostart = {
         bar = {command = {"waybar"}},
         notifications = {command = {"mako"}},
@@ -26,8 +26,8 @@ gnoblin.configure {
 }
 ```
 
-Install the selected applications first. Gnoblin includes the Adwaita
-Hyprcursor theme. Cursor size is in logical pixels. `autostart` launches each
+Install the selected applications first. The cursor uses the system's default
+theme; its size is in logical pixels. `autostart` launches each
 named command at login; it does not install or configure the applications
 themselves.
 

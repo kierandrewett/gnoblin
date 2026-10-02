@@ -13,20 +13,8 @@
     nixpkgs_25_11.url = "github:NixOS/nixpkgs/nixos-25.11";
     nixpkgs_26_05.url = "github:NixOS/nixpkgs/nixos-26.05";
 
-    # Keep the only 26.05 backport in Gnoblin's private compositor closure.
-    # The source and its content hash are pinned in flake.lock.
-    wayland-src = {
-      url = "https://gitlab.freedesktop.org/wayland/wayland/-/releases/1.26.0/downloads/wayland-1.26.0.tar.xz";
-      flake = false;
-    };
-
     mutter-src = {
       url = "git+https://gitlab.gnome.org/GNOME/mutter.git?rev=138a14fbeef09d49ebf5be8a0cb83b042dd5c841";
-      flake = false;
-    };
-
-    gnome-shell-src = {
-      url = "git+https://gitlab.gnome.org/GNOME/gnome-shell.git?rev=2177bdf9624b2d285de7c1d34274073d3769d6b8";
       flake = false;
     };
 
@@ -35,23 +23,18 @@
       flake = false;
     };
 
+    portal-src = {
+      url = "git+https://gitlab.gnome.org/GNOME/xdg-desktop-portal-gnome.git?rev=99446c9c9d8197ac4651c5a8e1ee9eb771e1e120";
+      flake = false;
+    };
+
+    gxdp-src = {
+      url = "git+https://gitlab.gnome.org/GNOME/libgxdp.git?rev=df896e3412b749947bc6f62a91a1aac8e6b6d19b";
+      flake = false;
+    };
+
     gvdb = {
       url = "git+https://gitlab.gnome.org/GNOME/gvdb.git?rev=b54bc5da25127ef416858a3ad92e57159ff565b3";
-      flake = false;
-    };
-
-    gvc = {
-      url = "git+https://gitlab.gnome.org/GNOME/libgnome-volume-control.git?rev=d2442f455844e5292cb4a74ffc66ecc8d7595a9f";
-      flake = false;
-    };
-
-    libshew = {
-      url = "git+https://gitlab.gnome.org/GNOME/libshew.git?rev=ed782477cb5164320ae4f731d49bc5d475ab2a52";
-      flake = false;
-    };
-
-    jasmineGjs = {
-      url = "github:ptomato/jasmine-gjs/856465dddbd92e82e574891e1ebc79e17d7b708a";
       flake = false;
     };
 
@@ -71,7 +54,7 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
       versions = builtins.fromJSON (builtins.readFile ./gnome-versions.json);
       gnoblinRelease = builtins.fromJSON (builtins.readFile ./gnoblin-version.json);
-      nativePackages = import ./nix/native-packages.nix { inherit versions gnoblinRelease; };
+      nativePackages = builtins.fromJSON (builtins.readFile ./packaging/native-packages.json);
       nixpkgsChannels = {
         nixos_25_05 = {
           release = "25.05";
@@ -95,55 +78,19 @@
         pkgs.callPackage ./nix/package.nix (
           {
             gnoblinSrc = self.outPath;
+            gnoblinRevision =
+              self.rev or (if self ? dirtyRev then builtins.substring 0 40 self.dirtyRev else null);
+            gnoblinSourceModified = self ? dirtyRev;
+            gnoblinRemote = if self ? original && self.original ? url then self.original.url else null;
             mutterSrc = inputs.mutter-src.outPath;
-            gnomeShellSrc = inputs.gnome-shell-src.outPath;
             gsettingsDesktopSchemasSrc = inputs.gsettings-desktop-schemas-src.outPath;
+            portalSrc = inputs.portal-src.outPath;
+            gxdpSrc = inputs.gxdp-src.outPath;
+            gnomePortal = pkgs.xdg-desktop-portal-gnome;
             gvdbSrc = inputs.gvdb.outPath;
-            gvcSrc = inputs.gvc.outPath;
-            libshewSrc = inputs.libshew.outPath;
-            jasmineGjsSrc = inputs.jasmineGjs.outPath;
-            gnomeShell = pkgs.gnome-shell;
-            gnomeSession = pkgs.gnome-session;
           }
           // overrides
         );
-      mkNixos26_05Gnoblin =
-        system:
-        let
-          pkgs = import nixpkgs_26_05 { inherit system; };
-          # Do not overlay the host package set. Only the private Mutter
-          # derivation receives this Wayland server/client implementation.
-          gnoblinWaylandSource = pkgs.wayland.overrideAttrs (_: {
-            version = "1.26.0";
-            src = inputs.wayland-src.outPath;
-          });
-          gnoblinWaylandScanner = pkgs.wayland-scanner.override {
-            wayland = gnoblinWaylandSource;
-          };
-          gnoblinWayland =
-            (pkgs.wayland.override {
-              wayland-scanner = gnoblinWaylandScanner;
-            }).overrideAttrs
-              (_: {
-                version = "1.26.0";
-                src = inputs.wayland-src.outPath;
-              });
-        in
-        mkGnoblin pkgs {
-          wayland = gnoblinWayland;
-          waylandScanner = gnoblinWaylandScanner;
-        };
-      # Nix packages carry their complete dependency closure.  The older stable
-      # NixOS channels cannot build GNOME 51 against their host GNOME stack, so
-      # select the release-pinned rolling closure for Gnoblin only.  The host
-      # package set remains untouched: its GNOME Shell and Mutter are still the
-      # selected packages for the stock GNOME session.
-      mkStableGnoblin =
-        system:
-        let
-          pkgs = import nixpkgs { inherit system; };
-        in
-        mkGnoblin pkgs { };
       assessChannel =
         system: channel:
         let
@@ -153,10 +100,9 @@
           buildBlockers =
             nixpkgs.lib.optional (!hasLibglycin) "missing-libglycin"
             ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.glib.version "2.86.0") "glib-below-2.86"
-            ++ nixpkgs.lib.optional (!nixpkgs.lib.versionAtLeast pkgs.gjs.version "1.87.1") "gjs-below-1.87.1"
             ++ nixpkgs.lib.optional (
-              !nixpkgs.lib.versionAtLeast pkgs.wayland.version "1.26"
-            ) "wayland-below-1.26"
+              !nixpkgs.lib.versionAtLeast pkgs.wayland.version "1.25"
+            ) "wayland-below-1.25"
             ++ nixpkgs.lib.optional (
               !nixpkgs.lib.versionAtLeast pkgs.wayland-protocols.version "1.48"
             ) "wayland-protocols-below-1.48"
@@ -164,8 +110,8 @@
               !nixpkgs.lib.versionAtLeast pkgs.libinput.version "1.30.0"
             ) "libinput-below-1.30"
             ++ nixpkgs.lib.optional (
-              !nixpkgs.lib.versionAtLeast pkgs.pipewire.version "1.4.0"
-            ) "pipewire-below-1.4";
+              !nixpkgs.lib.versionAtLeast pkgs.pipewire.version "1.6.0"
+            ) "pipewire-below-1.6";
         in
         {
           inherit
@@ -175,6 +121,21 @@
             buildBlockers
             ;
         };
+      mkChannelPackage =
+        system: channel:
+        let
+          assessment = assessChannel system channel;
+        in
+        if assessment.buildBlockers == [ ] then
+          mkGnoblin assessment.pkgs { }
+        else
+          throw ''
+            Gnoblin does not currently provide an installable package for NixOS ${channel.release}.
+            This channel is blocked by: ${nixpkgs.lib.concatStringsSep ", " assessment.buildBlockers}.
+
+            Install a channel whose development libraries meet the pinned GNOME
+            requirements. See docs/install-nixos.md and lib.nixChannelEvaluations.
+          '';
       # These values evaluate a package and enabled NixOS module with the exact
       # release channel pinned in flake.lock. They do not build or run a
       # compositor, so a true result is not a session or coexistence claim.
@@ -190,24 +151,11 @@
               hasLibglycin
               buildBlockers
               ;
-            gnoblin =
-              if channel.release == "25.05" || channel.release == "25.11" then
-                mkStableGnoblin system
-              else if hasLibglycin then
-                mkGnoblin pkgs { }
-              else
-                null;
-            module =
-              if channel.release == "25.05" then
-                self.nixosModules.nixos_25_05
-              else if channel.release == "25.11" then
-                self.nixosModules.nixos_25_11
-              else
-                self.nixosModules.default;
+            gnoblin = if buildBlockers == [ ] then mkGnoblin pkgs { } else null;
             moduleTest = channel.input.lib.nixosSystem {
               inherit system;
               modules = [
-                module
+                self.nixosModules.default
                 {
                   system.stateVersion = channel.release;
                   programs.gnoblin = {
@@ -218,9 +166,9 @@
               ];
             };
             packageEvaluation =
-              if gnoblin != null then builtins.tryEval gnoblin.drvPath else { success = false; };
+              if buildBlockers == [ ] then builtins.tryEval gnoblin.drvPath else { success = false; };
             moduleEvaluation =
-              if gnoblin != null then
+              if buildBlockers == [ ] then
                 builtins.tryEval (
                   toString (builtins.head moduleTest.config.services.displayManager.sessionPackages)
                 )
@@ -230,134 +178,39 @@
           {
             inherit (channel) release;
             compiler = if hasGcc16Stdenv then "gcc16Stdenv" else "stdenv";
-            evaluationBlocker = if gnoblin != null then null else "missing-libglycin";
+            evaluationBlocker = if hasLibglycin then null else "missing-libglycin";
             inherit buildBlockers;
             package.evaluates = packageEvaluation.success;
             module.evaluates = moduleEvaluation.success;
           }
         ) nixpkgsChannels
       );
-      nixChannelPackages = forAllSystems (system: {
-        nixos_25_05 = mkStableGnoblin system;
-        nixos_25_11 = mkStableGnoblin system;
-        nixos_26_05 = mkNixos26_05Gnoblin system;
-        nixos_unstable = mkStableGnoblin system;
-      });
-      # NixOS installs sessions declaratively.  These values cover the three
-      # configuration transitions a release must preserve for every pinned
-      # channel: enabling Gnoblin adds its package and session, combining that
-      # package with the channel's stock GNOME binaries has no collisions, and
-      # disabling Gnoblin removes all of its declarations again.  They are
-      # consumed by the release CI next to each channel's package build.
-      nixChannelLifecycles = forAllSystems (
-        system:
-        nixpkgs.lib.mapAttrs (
-          name: channel:
-          let
-            pkgs = import channel.input { inherit system; };
-            package = nixChannelPackages.${system}.${name};
-            module =
-              if channel.release == "25.05" then
-                self.nixosModules.nixos_25_05
-              else if channel.release == "25.11" then
-                self.nixosModules.nixos_25_11
-              else if channel.release == "26.05" then
-                self.nixosModules.nixos_26_05
-              else
-                self.nixosModules.default;
-            # NixOS moved the GNOME desktop option after 25.05. Resolve the
-            # option from the pinned host rather than assuming one generation
-            # of the module API for every release channel.
-            base = channel.input.lib.nixosSystem {
-              inherit system;
-              modules = [
-                module
-                { system.stateVersion = channel.release; }
-              ];
-            };
-            stockGnomeModule =
-              if pkgs.lib.hasAttrByPath [ "services" "desktopManager" "gnome" "enable" ] base.options then
-                { services.desktopManager.gnome.enable = true; }
-              else
-                { services.xserver.desktopManager.gnome.enable = true; };
-            enabled = channel.input.lib.nixosSystem {
-              inherit system;
-              modules = [
-                module
-                stockGnomeModule
-                {
-                  system.stateVersion = channel.release;
-                  programs.gnoblin.enable = true;
-                }
-              ];
-            };
-            disabled = channel.input.lib.nixosSystem {
-              inherit system;
-              modules = [
-                module
-                stockGnomeModule
-                {
-                  system.stateVersion = channel.release;
-                }
-              ];
-            };
-            stockGnomeProfile = pkgs.buildEnv {
-              name = "gnome-and-gnoblin-${channel.release}";
-              paths = [
-                pkgs.gnome-shell
-                pkgs.mutter
-                package
-              ];
-              ignoreCollisions = false;
-            };
-          in
-          {
-            install =
-              builtins.elem package enabled.config.environment.systemPackages
-              && builtins.elem package enabled.config.services.displayManager.sessionPackages
-              && builtins.elem package enabled.config.systemd.packages;
-            removal =
-              !(builtins.elem package disabled.config.environment.systemPackages)
-              && !(builtins.elem package disabled.config.services.displayManager.sessionPackages)
-              && !(builtins.elem package disabled.config.systemd.packages);
-            coinstall = {
-              profile = stockGnomeProfile;
-              gnomeShell = "${pkgs.gnome-shell}/bin/gnome-shell";
-              mutter = "${pkgs.mutter}/bin/mutter";
-            };
-          }
-        ) nixpkgsChannels
+      nixChannelPackages = forAllSystems (
+        system: nixpkgs.lib.mapAttrs (_: channel: mkChannelPackage system channel) nixpkgsChannels
       );
     in
     {
       packages = forAllSystems (
         system:
         let
-          pkgs = import nixpkgs { inherit system; };
+          assessment = assessChannel system nixpkgsChannels.nixos_unstable;
         in
-        rec {
-          gnoblin = mkGnoblin pkgs { };
-          gnoblin-nixos-25_05 = mkStableGnoblin system;
-          gnoblin-nixos-25_11 = mkStableGnoblin system;
-          gnoblin-nixos-26_05 = mkNixos26_05Gnoblin system;
-          default = gnoblin;
-        }
+        if assessment.buildBlockers == [ ] then
+          rec {
+            gnoblin = mkGnoblin assessment.pkgs { };
+            gnoblin-runtime = gnoblin;
+            default = gnoblin;
+          }
+        else
+          { }
       );
 
       checks = forAllSystems (
         system:
         let
+          assessment = assessChannel system nixpkgsChannels.nixos_unstable;
           pkgs = import nixpkgs { inherit system; };
-          gnoblin = self.packages.${system}.gnoblin;
-          combinedProfile = pkgs.buildEnv {
-            name = "gnome-and-gnoblin";
-            paths = [
-              pkgs.gnome-shell
-              pkgs.mutter
-              gnoblin
-            ];
-            ignoreCollisions = false;
-          };
+          gnoblin = if assessment.buildBlockers == [ ] then self.packages.${system}.gnoblin else null;
           moduleTest = nixpkgs.lib.nixosSystem {
             inherit system;
             modules = [
@@ -369,77 +222,42 @@
             ];
           };
         in
-        {
-          gnoblin-session = pkgs.runCommand "gnoblin-session-check" { } ''
-            set -euxo pipefail
-            export GSETTINGS_BACKEND=memory
+        if assessment.buildBlockers == [ ] then
+          {
+            gnoblin-session = pkgs.runCommand "gnoblin-session-check" { } ''
+              set -euxo pipefail
+              export GSETTINGS_BACKEND=memory
 
-            test "${toString (builtins.head moduleTest.config.services.displayManager.sessionPackages)}" = "${gnoblin}"
-            test "${toString (builtins.head moduleTest.config.systemd.packages)}" = "${gnoblin}"
-            test ! -e "${gnoblin}/bin/gnome-shell"
-            test ! -e "${gnoblin}/bin/mutter"
-            test ! -e "${gnoblin}/share/glib-2.0/schemas"
-            test ! -e "${gnoblin}/share/dbus-1"
-            test -x "${gnoblin}/bin/gnoblinctl"
-            test -x "${gnoblin.runtime}/bin/gnome-shell"
-            test -x "${gnoblin.runtime}/bin/gnoblin-session"
-            test -x "${gnoblin.runtime}/bin/gnoblin-shell-service"
-            test "$(readlink -f ${combinedProfile}/bin/gnome-shell)" = "$(readlink -f ${pkgs.gnome-shell}/bin/gnome-shell)"
-            test "$(readlink -f ${combinedProfile}/bin/mutter)" = "$(readlink -f ${pkgs.mutter}/bin/mutter)"
-            test -f "${gnoblin}/share/wayland-sessions/gnoblin.desktop"
-            test -f "${gnoblin}/lib/systemd/user/org.gnoblin.Shell@wayland.service"
-            test -f "${pkgs.gnome-session}/share/systemd/user/gnome-session.target"
-            test -f "${pkgs.gnome-session}/share/systemd/user/gnome-session@.target"
-            test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
-            test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell.target"
-            test ! -e "${gnoblin}/lib/systemd/user/org.gnome.Shell@wayland.service"
-            bash -n "${gnoblin.runtime}/bin/gnoblin-session" "${gnoblin.runtime}/bin/gnoblin-shell-service"
-            case "$(<"${gnoblin.runtime}/bin/gnoblin-session")" in
-                *"--no-reexec"*) ;;
-                *) exit 1 ;;
-            esac
-            schema_directory="${gnoblin.runtime}/share/glib-2.0/schemas"
-            test -f "$schema_directory/org.gnome.mutter.gschema.xml"
-            test -f "$schema_directory/org.gnome.shell.gschema.xml"
-            test -f "$schema_directory/org.gnoblin.shell.gschema.xml"
-            test -f "$schema_directory/gschemas.compiled"
-            test "$(
-                GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
-                    get org.gnome.mutter overlay-key
-            )" = "'Super'"
-            GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
-                get org.gnome.shell enabled-extensions >/dev/null
-            GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
-                get org.gnoblin.shell disabled-features >/dev/null
-            touch "$out"
-          '';
-        }
+              test "${toString (builtins.head moduleTest.config.services.displayManager.sessionPackages)}" = "${gnoblin}"
+              test "${toString (builtins.head moduleTest.config.systemd.packages)}" = "${gnoblin}"
+              test ! -e "${gnoblin}/bin/gnome-shell"
+              test ! -e "${gnoblin}/bin/gnoblin-shell-service"
+              test -x "${gnoblin}/bin/gnoblinctl"
+              test -x "${gnoblin}/bin/gnoblin"
+              test -x "${gnoblin}/bin/gnoblin-mutter"
+              test -f "${gnoblin}/share/wayland-sessions/gnoblin.desktop"
+              test -f "${gnoblin}/lib/systemd/user/gnoblin-session.target"
+              test -f "${gnoblin}/lib/systemd/user/gnoblin-idle.service"
+              test -f "${gnoblin}/share/xdg-desktop-portal/portals/gnoblin.portal"
+              test ! -e "${gnoblin}/share/glib-2.0/schemas/org.gnome.shell.gschema.xml"
+              schema_directory="${gnoblin}/share/gsettings-schemas/gnoblin-${gnoblin.version}/glib-2.0/schemas"
+              test -f "$schema_directory/org.gnome.mutter.gschema.xml"
+              test -f "$schema_directory/gschemas.compiled"
+              test "$(
+                  GSETTINGS_SCHEMA_DIR="$schema_directory" ${pkgs.glib.bin}/bin/gsettings \
+                      get org.gnome.mutter overlay-key
+              )" = "'Super'"
+              touch "$out"
+            '';
+          }
+        else
+          { }
       );
 
       lib = {
-        inherit
-          nativePackages
-          nixChannelEvaluations
-          nixChannelLifecycles
-          nixChannelPackages
-          ;
+        inherit nativePackages nixChannelEvaluations nixChannelPackages;
       };
 
       nixosModules.default = import ./nix/module.nix { inherit self; };
-      nixosModules.nixos_26_05 = import ./nix/module.nix {
-        inherit self;
-        defaultPackage = system: self.packages.${system}.gnoblin-nixos-26_05;
-        defaultPackageText = "inputs.gnoblin.packages.\${pkgs.stdenv.hostPlatform.system}.gnoblin-nixos-26_05";
-      };
-      nixosModules.nixos_25_05 = import ./nix/module.nix {
-        inherit self;
-        defaultPackage = system: self.packages.${system}.gnoblin-nixos-25_05;
-        defaultPackageText = "inputs.gnoblin.packages.\${pkgs.stdenv.hostPlatform.system}.gnoblin-nixos-25_05";
-      };
-      nixosModules.nixos_25_11 = import ./nix/module.nix {
-        inherit self;
-        defaultPackage = system: self.packages.${system}.gnoblin-nixos-25_11;
-        defaultPackageText = "inputs.gnoblin.packages.\${pkgs.stdenv.hostPlatform.system}.gnoblin-nixos-25_11";
-      };
     };
 }

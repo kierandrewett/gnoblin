@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: expose native window record state
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 389f3df36..125bcb154 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -1383,10 +1383,16 @@ gnoblin_native_window_list (MetaDisplay *display,
+       g_autofree char *id = g_strdup_printf ("%u", meta_window_get_stable_sequence (window));
+       MetaWindow *parent = meta_window_get_transient_for (window);
+       MetaWorkspace *workspace = meta_window_get_workspace (window);
++      const char *role = meta_window_get_role (window);
++      MetaWindowType type = meta_window_get_window_type (window);
+       MtkRectangle frame;
+       gboolean minimized = FALSE;
++      gboolean demands_attention = FALSE;
+       meta_window_get_frame_rect (window, &frame);
+-      g_object_get (window, "minimized", &minimized, NULL);
++      g_object_get (window,
++                    "minimized", &minimized,
++                    "demands-attention", &demands_attention,
++                    NULL);
+       GVariantBuilder geometry;
+       GVariantBuilder entry;
+       g_variant_builder_init (&geometry, G_VARIANT_TYPE_VARDICT);
+@@ -1403,6 +1409,25 @@ gnoblin_native_window_list (MetaDisplay *display,
+       g_variant_builder_add (&entry, "{sv}", "ruleAppId", g_variant_new_string (app_id ? app_id : ""));
+       g_variant_builder_add (&entry, "{sv}", "focused", g_variant_new_boolean (window == focused));
+       g_variant_builder_add (&entry, "{sv}", "minimized", g_variant_new_boolean (minimized));
++      g_variant_builder_add (&entry, "{sv}", "above",
++                             g_variant_new_boolean (meta_window_is_above (window)));
++      g_variant_builder_add (&entry, "{sv}", "sticky",
++                             g_variant_new_boolean (meta_window_is_always_on_all_workspaces (window)));
++      g_variant_builder_add (&entry, "{sv}", "demandsAttention",
++                             g_variant_new_boolean (demands_attention));
++      g_variant_builder_add (&entry, "{sv}", "closable",
++                             g_variant_new_boolean (meta_window_can_close (window)));
++      g_variant_builder_add (&entry, "{sv}", "minimizable",
++                             g_variant_new_boolean (meta_window_can_minimize (window)));
++      g_variant_builder_add (&entry, "{sv}", "maximizable",
++                             g_variant_new_boolean (meta_window_can_maximize (window)));
++      g_variant_builder_add (&entry, "{sv}", "movable",
++                             g_variant_new_boolean (meta_window_allows_move (window)));
++      g_variant_builder_add (&entry, "{sv}", "resizable",
++                             g_variant_new_boolean (meta_window_allows_resize (window)));
++      if (role)
++        g_variant_builder_add (&entry, "{sv}", "role", g_variant_new_string (role));
++      g_variant_builder_add (&entry, "{sv}", "type", g_variant_new_int32 (type));
+       g_variant_builder_add (&entry, "{sv}", "lastUserTime",
+                              g_variant_new_uint32 (meta_window_get_user_time (window)));
+       if (parent)

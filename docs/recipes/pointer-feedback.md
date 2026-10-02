@@ -6,7 +6,7 @@ visual flash when a client requests the audible bell.
 ```lua
 gnoblin.configure {
     cursor = {
-        theme = "Adwaita-Hyprcursor",
+        theme = "default",
         size = 32,
     },
     compositor = {
@@ -18,7 +18,8 @@ gnoblin.configure {
 }
 ```
 
-Gnoblin bundles Adwaita-Hyprcursor. Other themes must be installed first.
+The example uses your system's default cursor theme. Install other themes
+before selecting them.
 The options in this example have these defaults and effects:
 
 | Setting                       | Accepted values and default                                           | Effect                                                 |

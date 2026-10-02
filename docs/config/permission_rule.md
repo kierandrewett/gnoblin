@@ -10,7 +10,7 @@ See the [permissions guide](/guides/permissions) for examples and diagnostics.
 ```lua
 gnoblin.permission_rule {
     name = "allow-example-remote-desktop",
-    match = "app-id:^org\\.example\\.Remote$",
+    match = "^app%-id:org%.example%.Remote$",
     capabilities = {"remote-desktop", "screen-cast"},
     level = "allow",
     monitors = {"primary"},
@@ -20,14 +20,21 @@ gnoblin.permission_rule {
 | Field          | Accepted values                                                                                   | Default and meaning                                                      |
 | -------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `name`         | Nonempty string                                                                                   | Required rule label.                                                     |
-| `match`        | JavaScript regular expression matching `app-id:ID` or `host-exe:/PATH`                            | Required. The prefix selects an application ID or executable path.       |
+| `match`        | Nonempty Lua 5.4 pattern, 1–512 bytes, against the complete verified identity                     | Required. Identities begin with `app-id:` or `host-exe:`.                |
 | `capabilities` | One or more of `"screen-cast"`, `"remote-desktop"`, `"input-capture"`, `"screenshot"`, `"access"` | Required permissions this rule controls.                                 |
 | `level`        | `"default"`, `"ask"`, `"allow"`, `"deny"`                                                         | Required permission decision.                                            |
 | `monitors`     | `"primary"` or exact monitor connector names                                                      | Applies to `screen-cast` and `remote-desktop`; unset means all monitors. |
 | `devices`      | Any of `"keyboard"`, `"pointer"`, `"touchscreen"`                                                 | Applies to `remote-desktop`; unset means no devices.                     |
 | `clipboard`    | Boolean                                                                                           | Applies to `remote-desktop`; defaults to `false`.                        |
 
-For example, `app-id:^org\\.example\\.Remote$` matches that application ID.
+For example, `^app%-id:org%.example%.Remote$` matches that complete
+application identity. Lua patterns use `%` to escape pattern characters.
+They are not regular expressions, and `|` is not alternation.
+
+Convert regex `^app-id:org\.example$` to Lua pattern
+`^app%-id:org%.example$`. Constructs such as `{m,n}`, `\d`, and lookarounds
+need rewriting. See the
+[Lua 5.4 pattern reference](https://www.lua.org/manual/5.4/manual.html#6.4.1).
 Use `gnoblinctl` permission inspection to find the identity Gnoblin reports;
 see [Inspect a decision](/guides/permissions#inspect-a-decision).
 
@@ -42,7 +49,7 @@ see [Inspect a decision](/guides/permissions#inspect-a-decision).
 ```lua
 gnoblin.permission_rule {
     name = string,
-    match = string, -- "app-id:" or "host-exe:" plus a regular expression
+    match = string, -- Lua pattern, 1-512 bytes, over the complete identity
     capabilities = {"screen-cast" | "remote-desktop" | "input-capture"
         | "screenshot" | "access", ...}, -- nonempty
     level = "default" | "ask" | "allow" | "deny",

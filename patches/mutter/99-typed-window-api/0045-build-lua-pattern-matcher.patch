@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: build the pure C Lua pattern matcher
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index 62b8938b..a4165673 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1176,6 +1176,7 @@ subdir('third_party')
+ mutter_sources += [
+   'core/gnoblin-runtime-protocol.c',
+   'core/gnoblin-runtime-cache.c',
++  'wayland/gnoblin-lua-pattern.c',
+ ]
+ 
+ libmutter = library(libmutter_name,

@@ -19,7 +19,7 @@ gnoblin.configure {
 }
 
 gnoblin.window_rule {
-    match = {type = "window", app_id = [[^org\.gnome\.TextEditor$]]},
+    match = {type = "window", app_id = [[^org%.gnome%.TextEditor$]]},
     workspace = {id = "write"},
     corners = {radius = 10, smoothing = 0.5},
 }
@@ -27,7 +27,7 @@ gnoblin.window_rule {
 gnoblin.window_rule {
     match = {
         type = "window",
-        app_id = [[^org\.gnome\.TextEditor$]],
+        app_id = [[^org%.gnome%.TextEditor$]],
         workspace_id = "write",
         focused = true,
     },
@@ -55,68 +55,56 @@ and adds a border only while it is focused.
 ## Create a temporary workspace from Lua
 
 This callback creates a session-only `Review session` workspace the first time
-you activate `review`. It checks the current workspace list first, so switching
-away and back does not create duplicates. Add it to the same Lua file:
+you activate `review`. It checks the current workspace snapshot first, so
+switching away and back does not create duplicates. Add it to the same Lua file:
 
 ```lua
-local checking = false
 local creating = false
 local requests = {}
 
 gnoblin.on("gnoblin.workspace.activated", function(event)
-    if event.id ~= "review" or checking or creating then return end
-    checking = true
-    requests[gnoblin.workspace.list()] = "list"
-end)
-
-gnoblin.on("gnoblin.api.operation-completed", function(event)
-    local operation = requests[event.request_id]
-    if not operation then return end
-    requests[event.request_id] = nil
-
-    if not event.ok then
-        checking = false
-        creating = false
-        print("Workspace action failed: " .. event.error)
-        return
+    if event.id ~= "review" or creating then return end
+    for _, workspace in ipairs(gnoblin.workspaces.list()) do
+        if workspace.id == "review-session" then return end
     end
 
-    if operation == "list" then
-        checking = false
-        for _, workspace in ipairs(event.result.workspaces) do
-            if workspace.id == "review-session" then return end
-        end
+    creating = true
+    local operation = gnoblin.workspaces.create {
+        id = "review-session",
+        name = "Review session",
+    }
+    requests[operation.id] = true
+end)
 
-        creating = true
-        requests[gnoblin.workspace.create {
-            id = "review-session",
-            name = "Review session",
-        }] = "create"
-    else
-        creating = false
+gnoblin.on("gnoblin.operation.completed", function(event)
+    if not requests[event.operation_id] then return end
+    requests[event.operation_id] = nil
+    creating = false
+
+    if not event.ok then
+        print("Workspace action failed: " .. event.error.message)
     end
 end)
 ```
 
-Workspace calls enqueue work and return a request ID. Gnoblin later sends the
-`gnoblin.api.operation-completed` event; the example uses its result before
-creating the workspace. See [Lua events](/config/lua-events) for event payloads
-and callback rules.
+`gnoblin.workspaces.list()` reads the current snapshot immediately. Creating a
+workspace returns an operation handle; Gnoblin reports its result through
+`gnoblin.operation.completed`. See [Lua events](/config/lua-events) for event
+payloads and callback rules.
 
 Runtime-created workspaces are temporary even when you provide an ID.
 Config-declared workspaces cannot be removed, and Gnoblin rejects removal of
 the active or occupied workspace. The [Lua runtime API](/config/runtime-api)
 lists available methods and result fields.
 
-| Call or field                 | Accepted value                                | Meaning                                         |
-| ----------------------------- | --------------------------------------------- | ----------------------------------------------- |
-| `workspace.list()`            | No arguments                                  | Lists current workspace records asynchronously. |
-| `workspace.create` `name`     | Required, nonempty string up to 80 characters | Display name for the new workspace.             |
-| `workspace.create` `id`       | Optional unique ID for this session           | Gives the temporary workspace a predictable ID. |
-| `workspace.create` `activate` | Boolean; default `false`                      | Switches to the new workspace when `true`.      |
+| Call or field                  | Accepted value                                | Meaning                                         |
+| ------------------------------ | --------------------------------------------- | ----------------------------------------------- |
+| `workspaces.list()`            | No arguments                                  | Returns an immediate immutable snapshot.        |
+| `workspaces.create` `name`     | Required, nonempty string up to 80 characters | Display name for the new workspace.             |
+| `workspaces.create` `id`       | Optional unique ID for this session           | Gives the temporary workspace a predictable ID. |
+| `workspaces.create` `activate` | Boolean; default `false`                      | Switches to the new workspace when `true`.      |
 
-Both calls return request IDs. Gnoblin sends completion events with the result
-or an error.
+Only workspace creation returns an operation handle and completion event.
 
 Save the file, then reload and inspect the workspace IDs and positions:
 

@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 19:00:00 +0100
+Subject: [PATCH] input: inherit GNOME Num Lock state without an override
+
+Only an explicit numlock-state override should keep Num Lock state in memory.
+Other Gnoblin input settings leave GNOME persistence active.
+
+---
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+index c0c23ac0a..dbaaf5ece 100644
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -2224,10 +2224,13 @@ meta_input_settings_maybe_save_numlock_state (MetaInputSettings *input_settings,
+                                               gboolean           numlock_state)
+ {
+   MetaInputSettingsPrivate *priv;
++  g_autoptr (GVariant) override = NULL;
+ 
+   priv = meta_input_settings_get_instance_private (input_settings);
+ 
+-  if (priv->gnoblin_config)
++  override = gnoblin_setting (input_settings, priv->keyboard_settings,
++                              "numlock-state");
++  if (override)
+     {
+       priv->gnoblin_numlock_state = numlock_state;
+       return;
+@@ -2246,11 +2249,14 @@ gboolean
+ meta_input_settings_maybe_restore_numlock_state (MetaInputSettings *input_settings)
+ {
+   MetaInputSettingsPrivate *priv;
++  g_autoptr (GVariant) override = NULL;
+   gboolean numlock_state = FALSE;
+ 
+   priv = meta_input_settings_get_instance_private (input_settings);
+ 
+-  if (priv->gnoblin_config)
++  override = gnoblin_setting (input_settings, priv->keyboard_settings,
++                              "numlock-state");
++  if (override)
+     return input_get_boolean (input_settings, priv->keyboard_settings,
+                               "remember-numlock-state")
+            ? priv->gnoblin_numlock_state : FALSE;
+@@ -2363,8 +2369,6 @@ meta_display_apply_gnoblin_input_config (MetaDisplay *display,
+   MetaInputSettingsPrivate *priv;
+   GHashTableIter iter;
+   gpointer value;
+-  gboolean had_gnoblin_config;
+-  gboolean previous_numlock_state;
+ 
+   g_return_if_fail (META_IS_DISPLAY (display));
+   g_return_if_fail (input == NULL || g_variant_is_of_type (input, G_VARIANT_TYPE_VARDICT));
+@@ -2375,8 +2379,6 @@ meta_display_apply_gnoblin_input_config (MetaDisplay *display,
+     return;
+ 
+   priv = meta_input_settings_get_instance_private (input_settings);
+-  had_gnoblin_config = priv->gnoblin_config != NULL;
+-  previous_numlock_state = priv->gnoblin_numlock_state;
+   g_clear_pointer (&priv->gnoblin_config, g_variant_unref);
+   if (input)
+     priv->gnoblin_config = g_variant_ref_sink (g_variant_get_normal_form (input));
+@@ -2384,23 +2386,6 @@ meta_display_apply_gnoblin_input_config (MetaDisplay *display,
+   priv->gnoblin_numlock_state = input_get_boolean (input_settings,
+                                                   priv->keyboard_settings,
+                                                   "numlock-state");
+-  if (priv->gnoblin_config)
+-    {
+-      GVariant *keyboard = g_variant_lookup_value (priv->gnoblin_config, "keyboard",
+-                                                   G_VARIANT_TYPE_VARDICT);
+-      if (keyboard)
+-        {
+-          gboolean has_numlock_state = g_variant_lookup (keyboard, "numlock-state", "b",
+-                                                         &priv->gnoblin_numlock_state);
+-          if (!has_numlock_state && had_gnoblin_config)
+-            priv->gnoblin_numlock_state = previous_numlock_state;
+-        }
+-      else if (had_gnoblin_config)
+-        {
+-          priv->gnoblin_numlock_state = previous_numlock_state;
+-        }
+-      g_clear_pointer (&keyboard, g_variant_unref);
+-    }
+ 
+   apply_device_settings (input_settings, NULL);
+   update_keyboard_repeat (input_settings);
+
+-- 
+2.51.0

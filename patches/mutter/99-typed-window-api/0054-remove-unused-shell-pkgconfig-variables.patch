@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] remove Shell-only uninstalled pkg-config variables
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index ab7dde010..1df3fa276 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1304,13 +1304,6 @@ pkg.generate(libmutter,
+     'have_xwayland=@0@'.format(have_xwayland),
+     'have_fonts=@0@'.format(have_fonts),
+   ],
+-  uninstalled_variables: [
+-    'apiversion=' + libmutter_api_version,
+-    'girdir=${prefix}/src',
+-    'typelibdir=${prefix}/src',
+-    'have_xwayland=@0@'.format(have_xwayland),
+-    'have_fonts=@0@'.format(have_fonts),
+-  ],
+   install_dir: pcdir,
+ )
+ 

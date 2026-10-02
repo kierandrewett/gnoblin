@@ -1,0 +1,183 @@
+{
+  "formatVersion": 1,
+  "packages": {
+    "gnoblin": {
+      "requires": ["cursor-theme", "dbus-tools", "dconf", "glib", "json-glib", "lua", "systemd", "wireplumber"],
+      "requiresSameMajor": ["gnoblin-mutter", "gnoblin-portal"],
+      "version": "0.1.10"
+    },
+    "gnoblin-gnome-integration": {
+      "requires": ["gvfs", "gnome-keyring", "xdg-user-dirs"],
+      "requiresExact": ["gnoblin"],
+      "version": "0.1.10"
+    },
+    "gnoblin-mutter": {
+      "requires": ["glib", "gsettings-desktop-schemas", "wayland", "libinput", "pipewire"],
+      "source": "mutter",
+      "version": "51.0"
+    },
+    "gnoblin-mutter-devel": {
+      "requires": ["wayland-protocols"],
+      "requiresSameMajor": ["gnoblin-mutter"],
+      "source": "mutter",
+      "version": "51.0"
+    },
+    "gnoblin-portal": {
+      "requires": ["gtk4", "xdg-desktop-portal"],
+      "source": "xdg-desktop-portal-gnome",
+      "version": "51.0"
+    }
+  },
+  "release": {
+    "archPkgRelease": 29,
+    "gnoblinVersion": "0.1.10",
+    "gnomeMajor": 51,
+    "gnomeVersion": "51.0",
+    "gnoblinRpmRelease": 21,
+    "mutterApi": "51",
+    "mutterRpmRelease": "44.gnoblin",
+    "rpmEpoch": 1
+  },
+  "requirements": {
+    "cursor-theme": {
+      "minVersion": null,
+      "names": {
+        "arch": "adwaita-cursors",
+        "rpm": "adwaita-cursor-theme"
+      }
+    },
+    "dbus-tools": {
+      "minVersion": null,
+      "names": {
+        "arch": "dbus",
+        "rpm": "dbus-tools"
+      }
+    },
+    "dconf": {
+      "minVersion": null,
+      "names": {
+        "arch": "dconf",
+        "rpm": "dconf"
+      }
+    },
+    "glib": {
+      "minVersion": "2.86.0",
+      "names": {
+        "arch": "glib2",
+        "rpm": "glib2"
+      }
+    },
+    "gtk4": {
+      "minVersion": "4.22.0",
+      "names": {
+        "arch": "gtk4",
+        "rpm": "gtk4"
+      }
+    },
+    "gnome-keyring": {
+      "minVersion": null,
+      "names": {
+        "arch": "gnome-keyring",
+        "rpm": "gnome-keyring"
+      }
+    },
+    "gsettings-desktop-schemas": {
+      "minVersion": "51.0",
+      "names": {
+        "arch": "gsettings-desktop-schemas",
+        "rpm": "gsettings-desktop-schemas"
+      }
+    },
+    "gvfs": {
+      "minVersion": null,
+      "names": {
+        "arch": "gvfs",
+        "rpm": "gvfs"
+      }
+    },
+    "json-glib": {
+      "minVersion": null,
+      "names": {
+        "arch": "json-glib",
+        "rpm": "json-glib"
+      }
+    },
+    "systemd": {
+      "minVersion": null,
+      "names": {
+        "arch": "systemd-libs",
+        "rpm": "systemd"
+      }
+    },
+    "libinput": {
+      "minVersion": "1.30.0",
+      "names": {
+        "arch": "libinput",
+        "rpm": "libinput"
+      }
+    },
+    "lua": {
+      "minVersion": "5.4",
+      "names": {
+        "arch": "lua",
+        "rpm": "lua-libs"
+      }
+    },
+    "pipewire": {
+      "minVersion": "1.6.0",
+      "names": {
+        "arch": "pipewire",
+        "rpm": "pipewire"
+      }
+    },
+    "wayland": {
+      "minVersion": "1.25",
+      "names": {
+        "arch": "wayland",
+        "rpm": "libwayland-client"
+      }
+    },
+    "wayland-protocols": {
+      "minVersion": "1.48",
+      "names": {
+        "arch": "wayland-protocols",
+        "rpm": "wayland-protocols-devel"
+      }
+    },
+    "wireplumber": {
+      "minVersion": null,
+      "names": {
+        "arch": "wireplumber",
+        "rpm": "wireplumber"
+      }
+    },
+    "xdg-desktop-portal": {
+      "minVersion": "1.21.1",
+      "names": {
+        "arch": "xdg-desktop-portal",
+        "rpm": "xdg-desktop-portal"
+      }
+    },
+    "xdg-user-dirs": {
+      "minVersion": null,
+      "names": {
+        "arch": "xdg-user-dirs",
+        "rpm": "xdg-user-dirs"
+      }
+    }
+  },
+  "sources": {
+    "gsettings-desktop-schemas": {
+      "commit": "1db238b6a349ea7fae6f1c0713afe04d1bb7ea5c",
+      "version": "51.0"
+    },
+    "mutter": {
+      "commit": "138a14fbeef09d49ebf5be8a0cb83b042dd5c841",
+      "version": "51.0"
+    },
+    "xdg-desktop-portal-gnome": {
+      "commit": "99446c9c9d8197ac4651c5a8e1ee9eb771e1e120",
+      "version": "51.0"
+    }
+  }
+}

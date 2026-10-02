@@ -1,37 +1,22 @@
-# Gnoblin touchpad gestures
+# Touchpad gestures
 
-Define the touchpad gestures Gnoblin recognizes and the action each gesture
-starts. Put `touchpad_gestures` beside `input` in `gnoblin.configure`. The
-gesture stream comes from Mutter and is available to Lua and shell frontends;
-GNOME Shell actions use GNOME's existing interactive gesture animations.
+Configure touchpad swipes and pinches in `gnoblin.configure`. The standalone
+compositor can run a built-in window or workspace action, or start a command
+when a gesture completes. The packaged `init.lua.example` includes two
+three-finger workspace swipe bindings.
 
-Gnoblin disables GNOME Shell's overview and app grid, so their gestures are not
-available in this session.
-
-If you omit `touchpad_gestures`, GNOME Shell's remaining built-in gesture
-handling stays enabled. If you set it, the list defines Gnoblin's direct actions
-and commands. The default
-`init.lua.example` shows the workspace, emoji-picker, and lock-screen gestures
-available in this session. An empty list disables the configured gesture
-bindings:
-
-```lua
-gnoblin.configure {
-    touchpad_gestures = gnoblin.array {},
-}
-```
+An empty or omitted `touchpad_gestures` list adds no direct actions or
+commands. Mutter gesture events are still available to Lua and integrations;
+see [Lua events](/config/lua-events).
 
 ## Define a gesture
 
-Each swipe is defined by an ordered path, so a binding can match a turn or
-other shape instead of every swipe in the same direction.
+Swipe paths describe the shape of a gesture relative to its start. Coordinates
+are normalized from -1 to 1, with x increasing to the right and y increasing
+downward. Gnoblin compares the path shape, so the same binding can match
+gestures of different physical lengths.
 
-Coordinates are relative to where the gesture starts: x increases to the right
-and y increases downward. Values are normalized from -1 to 1. Gnoblin scales
-the path before comparing it, so it describes shape rather than physical
-distance. Use `tolerance` to control how closely the fingers must follow it.
-
-This example runs `kgx` after a three-finger swipe that goes right and then
+This example starts `kgx` after a three-finger swipe that goes right and then
 down:
 
 ```lua
@@ -54,9 +39,8 @@ gnoblin.configure {
 }
 ```
 
-The path starts at `{x = 0, y = 0}` and must contain 2–16 points. Straight
-gestures need only two points. To define a pinch, use `direction = "in"` or
-`"out"` instead of `path`:
+Swipe paths start at `{x = 0, y = 0}` and contain 2–16 points. To configure a
+pinch, provide `direction` instead of `path`:
 
 ```lua
 gnoblin.configure {
@@ -75,47 +59,33 @@ gnoblin.configure {
 ```
 
 Commands are argument arrays, not shell command strings. Gnoblin starts the
-program after the gesture ends. Use the executable name or an absolute path.
+program after the gesture ends, using the executable name or an absolute path.
+Set exactly one of `action` or `command` for each entry.
 
-| Field       | Accepted values                                           | Default and meaning                                                                   |
-| ----------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| `name`      | Unique identifier, 1–64 letters, digits, `_`, or `-`      | Required. Used in warnings and frontend integrations.                                 |
-| `gesture`   | `"swipe"` or `"pinch"`                                    | Required.                                                                             |
-| `fingers`   | Integer from 2 to 5                                       | Required.                                                                             |
-| `path`      | Swipe: 2–16 `{x, y}` points, each coordinate from -1 to 1 | Required for swipes. Starts at `{x = 0, y = 0}` and must describe movement.           |
-| `direction` | Pinch: `"in"` or `"out"`                                  | Required for pinches; do not set `path`.                                              |
-| `tolerance` | Swipe: 0.05–0.5                                           | Defaults to 0.22. Lower values require a closer match to the path.                    |
-| `action`    | One of the actions below                                  | Set this or `command`, but not both.                                                  |
-| `command`   | Nonempty array of strings                                 | Set this or `action`, but not both.                                                   |
-| `when`      | `"normal"`, `"emoji-picker"`, `"unlock-screen"`, `"any"`  | Defaults to `"normal"`. Restricts the command or action to that active Shell context. |
-| `threshold` | Swipe: 16–240; pinch: 0.05–0.5                            | Defaults to 48 for swipe and 0.12 for pinch. Applies to commands and direct actions.  |
+| Field       | Accepted values                                           | Default and meaning                                                                                                           |
+| ----------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `name`      | Unique identifier, 1–64 letters, digits, `_`, or `-`      | Required. Used in validation errors and diagnostics.                                                                          |
+| `gesture`   | `"swipe"` or `"pinch"`                                    | Required.                                                                                                                     |
+| `fingers`   | Integer from 2 to 5                                       | Required.                                                                                                                     |
+| `path`      | Swipe: 2–16 `{x, y}` points, each coordinate from -1 to 1 | Required for swipes. Starts at `{x = 0, y = 0}` and describes movement.                                                       |
+| `direction` | Pinch: `"in"` or `"out"`                                  | Required for pinches; do not set `path`.                                                                                      |
+| `tolerance` | Swipe: 0.05–0.5                                           | Defaults to 0.22. Lower values require a closer match to the path.                                                            |
+| `action`    | One of the built-in actions below                         | Set this or `command`, but not both.                                                                                          |
+| `command`   | Nonempty array of strings                                 | Set this or `action`, but not both.                                                                                           |
+| `when`      | `"normal"`, `"unlock-screen"`, or `"any"`                 | Defaults to `"normal"`. `normal` applies while unlocked; `unlock-screen` applies while locked; `any` applies in either state. |
+| `threshold` | Swipe: 16–240; pinch: 0.05–0.5                            | Defaults to 48 for swipe and 0.12 for pinch. Minimum movement before the path can match.                                      |
 
-The threshold controls when a gesture has moved far enough to run. GNOME Shell
-progress actions use Shell's own gesture-start threshold. Config loading rejects
-entries that claim the same gesture and finger count in overlapping contexts.
+At gesture start, Gnoblin reserves input when a binding matches the gesture
+type, finger count, and active lock context. At the end, it runs the action or
+command only if the movement also matches the configured path or pinch
+direction and threshold.
 
-A direct action or command reserves its gesture from the start. If its path does
-not match at the end, Gnoblin performs no action and Mutter does not pass the
-gesture to GNOME Shell's built-in handlers.
+A reserved gesture whose movement does not match has no direct action and is
+not passed to another Mutter gesture handler.
 
-## Actions
+## Built-in actions
 
-The `*.progress` actions connect a gesture to GNOME Shell's existing live
-animation. The user can reverse direction before lifting their fingers.
-
-| Action                     | Path shape           | What it controls                           |
-| -------------------------- | -------------------- | ------------------------------------------ |
-| `"workspace.progress"`     | Straight, horizontal | Switch workspaces from the normal desktop. |
-| `"emoji-pager.progress"`   | Straight, horizontal | Move between emoji picker pages when open. |
-| `"unlock-screen.progress"` | Straight, vertical   | Move through the lock screen.              |
-
-Progress actions require a two-point straight path because GNOME Shell's live
-animation tracker commits to an axis as the gesture begins. Other actions and
-commands can use multi-point paths. These actions are GNOME Shell frontend
-actions. Other frontends can listen to Mutter's raw touchpad gesture events and
-choose their own response.
-
-The remaining actions run after the gesture ends:
+These actions run after a matching gesture ends:
 
 | Action                     | Effect                                     |
 | -------------------------- | ------------------------------------------ |
@@ -125,8 +95,15 @@ The remaining actions run after the gesture ends:
 | `"window.minimize"`        | Minimize the focused window.               |
 | `"window.toggle-maximize"` | Toggle maximization of the focused window. |
 
-## Listen to raw gesture events
+Workspace and window actions do nothing while the session is locked. Commands
+can be configured for either lock context; use care when starting programs
+while the screen is locked.
 
-Mutter emits `mutter.touchpad.gesture` for each swipe, pinch, and hold phase.
-The [Lua event reference](/config/lua-events) has a runnable listener and lists
-the fields included with each event.
+## Handle gestures in a shell
+
+Shells can subscribe to the raw `mutter.touchpad.gesture` signal or the stable
+`gnoblin.input.gesture` event and decide how to respond. These events report
+gesture phases and movement; they do not provide GNOME Shell overview,
+emoji-picker, or lock-screen progress animations. Shells that need animated UI
+can implement that behavior themselves. See [Lua events](/config/lua-events)
+for event payloads and a listener example.

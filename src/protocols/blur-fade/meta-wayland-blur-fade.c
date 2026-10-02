@@ -4,7 +4,7 @@
 #include "wayland/meta-wayland-blur-fade.h"
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-surface-private.h"
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 #include "meta/window.h"
 #include "gnoblin-blur-fade-v1-server-protocol.h"
 
@@ -50,7 +50,7 @@ static void bind_manager(struct wl_client* client, void* data, uint32_t version,
 }
 
 void meta_wayland_init_blur_fade(MetaWaylandCompositor* compositor) {
-    if (!gnoblin_config_protocol_enabled("blur-fade"))
+    if (!gnoblin_native_control_protocol_enabled("blur-fade"))
         return;
     if (!wl_global_create(compositor->wayland_display, &gnoblin_blur_fade_manager_v1_interface, 1,
                           NULL, bind_manager))

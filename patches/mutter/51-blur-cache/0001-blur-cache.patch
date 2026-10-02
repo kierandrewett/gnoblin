@@ -1,5 +1,5 @@
 From 59f32e6186e0a95745c8b9e1a603a3499a4499d3 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 13 Sep 2026 02:58:17 +0100
 Subject: [PATCH] Retain Gaussian blur resources and expose scene damage
 

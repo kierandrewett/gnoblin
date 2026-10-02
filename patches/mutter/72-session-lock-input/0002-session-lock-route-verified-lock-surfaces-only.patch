@@ -1,5 +1,5 @@
 From 438b9886bf879d4c474ce80383aad8747b9485a9 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 21:44:44 +0100
 Subject: [PATCH] session-lock: route verified lock surfaces only
 

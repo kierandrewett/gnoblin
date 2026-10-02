@@ -1,0 +1,256 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: render bounded window preview PNGs
+
+---
+diff --git a/src/compositor/meta-window-actor-private.h b/src/compositor/meta-window-actor-private.h
+index 89c8e710..1b937190 100644
+--- a/src/compositor/meta-window-actor-private.h
++++ b/src/compositor/meta-window-actor-private.h
+@@ -121,6 +121,13 @@ void meta_window_actor_remove_surface_actor (MetaWindowActor  *window_actor,
+ 
+ void meta_window_actor_invalidate_background_blur (MetaWindowActor *window_actor);
+ 
++GBytes *meta_window_actor_paint_to_png (MetaWindowActor *self,
++                                        int              max_width,
++                                        int              max_height,
++                                        int             *out_width,
++                                        int             *out_height,
++                                        GError         **error);
++
+ void meta_window_actor_set_tied_to_drag (MetaWindowActor *window_actor,
+                                          gboolean         tied_to_drag);
+ 
+diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
+index 4a733e95..169b659f 100644
+--- a/src/compositor/meta-window-actor.c
++++ b/src/compositor/meta-window-actor.c
+@@ -24,6 +24,7 @@
+ #include "wayland/meta-gnoblin-window-frame.h"
+ #endif
+ 
++#include <cairo.h>
+ #include <math.h>
+ #include <string.h>
+ 
+@@ -2011,6 +2012,219 @@ meta_window_actor_paint_to_content (MetaWindowActor  *self,
+                                                   error);
+ }
+ 
++typedef struct
++{
++  GByteArray *bytes;
++  gboolean exceeded_limit;
++} PngBuffer;
++
++static cairo_status_t
++write_png_chunk (void                  *closure,
++                 const unsigned char   *data,
++                 unsigned int           length)
++{
++  PngBuffer *buffer = closure;
++  const gsize max_bytes = 512 * 1024;
++
++  if (length > max_bytes - buffer->bytes->len)
++    {
++      buffer->exceeded_limit = TRUE;
++      return CAIRO_STATUS_WRITE_ERROR;
++    }
++
++  g_byte_array_append (buffer->bytes, data, length);
++  return CAIRO_STATUS_SUCCESS;
++}
++
++GBytes *
++meta_window_actor_paint_to_png (MetaWindowActor *self,
++                                int              max_width,
++                                int              max_height,
++                                int             *out_width,
++                                int             *out_height,
++                                GError         **error)
++{
++  MetaWindowActorPrivate *priv;
++  ClutterActor *actor;
++  MetaDisplay *display;
++  MetaContext *context;
++  MetaBackend *backend;
++  ClutterBackend *clutter_backend;
++  CoglContext *cogl_context;
++  CoglTexture *texture = NULL;
++  CoglFramebuffer *framebuffer = NULL;
++  CoglBitmap *bitmap = NULL;
++  ClutterPaintContext *paint_context = NULL;
++  ClutterActorBox paint_box;
++  PngBuffer png = { 0 };
++  cairo_surface_t *surface = NULL;
++  uint8_t *pixels = NULL;
++  float resource_scale;
++  int x, y, width, height;
++  int pixel_width, pixel_height;
++  int rowstride;
++  gboolean inhibited = FALSE;
++  cairo_status_t cairo_status;
++  GBytes *bytes = NULL;
++
++  g_return_val_if_fail (META_IS_WINDOW_ACTOR (self), NULL);
++  g_return_val_if_fail (error == NULL || *error == NULL, NULL);
++
++  if (max_width <= 0 || max_height <= 0)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "preview dimensions must be positive");
++      return NULL;
++    }
++
++  max_width = MIN (max_width, 512);
++  max_height = MIN (max_height, 512);
++  priv = meta_window_actor_get_instance_private (self);
++  actor = CLUTTER_ACTOR (self);
++  if (!priv->surface || meta_window_actor_is_destroyed (self) ||
++      !clutter_actor_get_paint_box (actor, &paint_box))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                           "window has no drawable content");
++      return NULL;
++    }
++
++  x = (int) floorf (paint_box.x1);
++  y = (int) floorf (paint_box.y1);
++  width = (int) ceilf (paint_box.x2) - x;
++  height = (int) ceilf (paint_box.y2) - y;
++  if (width <= 0 || height <= 0)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                           "window has no drawable area");
++      return NULL;
++    }
++
++  resource_scale = clutter_actor_get_resource_scale (actor);
++  if (resource_scale <= 0.0f)
++    resource_scale = 1.0f;
++  {
++    double scale = MIN (1.0,
++                        MIN (max_width / (width * (double) resource_scale),
++                             max_height / (height * (double) resource_scale)));
++    pixel_width = MAX (1, (int) floor (width * resource_scale * scale));
++    pixel_height = MAX (1, (int) floor (height * resource_scale * scale));
++  }
++
++  display = meta_compositor_get_display (priv->compositor);
++  context = meta_display_get_context (display);
++  backend = meta_context_get_backend (context);
++  clutter_backend = meta_backend_get_clutter_backend (backend);
++  cogl_context = clutter_backend_get_cogl_context (clutter_backend);
++  texture = cogl_texture_2d_new_with_format (cogl_context,
++                                              pixel_width,
++                                              pixel_height,
++                                              COGL_PIXEL_FORMAT_ARGB_8888_PRE);
++  if (!texture)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "could not allocate preview texture");
++      goto out;
++    }
++  cogl_texture_2d_set_auto_mipmap (COGL_TEXTURE_2D (texture), FALSE);
++  framebuffer = COGL_FRAMEBUFFER (cogl_offscreen_new_with_texture (texture));
++  if (!cogl_framebuffer_allocate (framebuffer, error))
++    goto out;
++
++  clutter_actor_inhibit_culling (actor);
++  inhibited = TRUE;
++  {
++    CoglColor clear_color;
++
++    cogl_color_init_from_4f (&clear_color, 0.0, 0.0, 0.0, 0.0);
++    cogl_framebuffer_clear (framebuffer, COGL_BUFFER_BIT_COLOR, &clear_color);
++    cogl_framebuffer_orthographic (framebuffer, 0, 0, width, height, 0, 1.0);
++    cogl_framebuffer_translate (framebuffer, -x, -y, 0);
++  }
++  paint_context = clutter_paint_context_new_for_framebuffer (
++    framebuffer, NULL, CLUTTER_PAINT_FLAG_NONE,
++    clutter_actor_get_color_state (actor));
++  clutter_actor_paint (actor, paint_context);
++  clutter_paint_context_destroy (paint_context);
++  paint_context = NULL;
++
++  bitmap = cogl_bitmap_new_with_malloc_buffer (cogl_context,
++                                                pixel_width,
++                                                pixel_height,
++                                                COGL_PIXEL_FORMAT_ARGB_8888_PRE,
++                                                NULL);
++  if (!bitmap)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "could not allocate preview pixels");
++      goto out;
++    }
++  if (!cogl_framebuffer_read_pixels_into_bitmap (framebuffer, 0, 0,
++                                                 COGL_READ_PIXELS_COLOR_BUFFER,
++                                                 bitmap))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "could not read window preview pixels");
++      goto out;
++    }
++  rowstride = cogl_bitmap_get_rowstride (bitmap);
++  pixels = cogl_bitmap_map (bitmap, COGL_BUFFER_ACCESS_READ, 0, error);
++  if (!pixels)
++    goto out;
++
++  surface = cairo_image_surface_create_for_data (pixels, CAIRO_FORMAT_ARGB32,
++                                                pixel_width, pixel_height,
++                                                rowstride);
++  cairo_status = cairo_surface_status (surface);
++  if (cairo_status != CAIRO_STATUS_SUCCESS)
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                   "could not create preview image: %s",
++                   cairo_status_to_string (cairo_status));
++      goto out;
++    }
++
++  png.bytes = g_byte_array_new ();
++  cairo_status = cairo_surface_write_to_png_stream (surface, write_png_chunk,
++                                                    &png);
++  if (cairo_status != CAIRO_STATUS_SUCCESS)
++    {
++      if (png.exceeded_limit)
++        g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
++                             "preview PNG exceeds 512 KiB");
++      else
++        g_set_error (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                     "could not encode preview PNG: %s",
++                     cairo_status_to_string (cairo_status));
++      goto out;
++    }
++
++  bytes = g_byte_array_free_to_bytes (g_steal_pointer (&png.bytes));
++  if (out_width)
++    *out_width = pixel_width;
++  if (out_height)
++    *out_height = pixel_height;
++
++out:
++  if (surface)
++    cairo_surface_destroy (surface);
++  if (pixels)
++    cogl_bitmap_unmap (bitmap);
++  if (png.bytes)
++    g_byte_array_unref (png.bytes);
++  if (bitmap)
++    g_object_unref (bitmap);
++  if (paint_context)
++    clutter_paint_context_destroy (paint_context);
++  if (inhibited)
++    clutter_actor_uninhibit_culling (actor);
++  if (framebuffer)
++    g_object_unref (framebuffer);
++  if (texture)
++    g_object_unref (texture);
++  return bytes;
++}
++
+ void
+ meta_window_actor_set_tied_to_drag (MetaWindowActor *window_actor,
+                                     gboolean         tied_to_drag)

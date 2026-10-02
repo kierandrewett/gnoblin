@@ -113,7 +113,7 @@ patch applies cleanly to the pinned tag independently of the layer-shell and
 screencopy wiring patches."
 
 mkdir -p "$OUT"
-rm -f "$OUT"/*.patch
-git -C "$SM" format-patch -1 HEAD --unified=1 -o "$OUT" >/dev/null
+"$ROOT/scripts/manage-patches.py" export mutter HEAD \
+    "$OUT/0001-gnoblin-protocols-wire-gnoblin-s-extra-Wayland-proto.patch" --replace --unified 1
 
 echo ">> regenerated $(ls "$OUT"/*.patch)"

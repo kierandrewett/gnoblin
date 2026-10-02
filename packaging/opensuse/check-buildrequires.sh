@@ -5,26 +5,35 @@
 set -euo pipefail
 
 install=0
-compatibility_runtime=0
-while (($#)); do
-    case "$1" in
+package=""
+for arg in "$@"; do
+    case "$arg" in
         --install) install=1 ;;
-        --compat-runtime) compatibility_runtime=1 ;;
+        mutter | gnoblin-portal | gnoblin)
+            if [[ -n "$package" ]]; then
+                echo "Pass exactly one package: mutter, gnoblin-portal, or gnoblin" >&2
+                exit 2
+            fi
+            package="$arg"
+            ;;
         *)
-            echo "Usage: $0 [--install] [--compat-runtime]" >&2
+            echo "Usage: $0 <mutter|gnoblin-portal|gnoblin> [--install]" >&2
             exit 2
             ;;
     esac
-    shift
 done
 
+if [[ -z "$package" ]]; then
+    echo "Usage: $0 <mutter|gnoblin-portal|gnoblin> [--install]" >&2
+    exit 2
+fi
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SPECS=(
-    "$ROOT/packaging/opensuse/gsettings-desktop-schemas.spec"
-    "$ROOT/packaging/opensuse/mutter.spec"
-    "$ROOT/packaging/opensuse/gnome-shell.spec"
-    "$ROOT/packaging/opensuse/gnoblin.spec"
-)
+case "$package" in
+    mutter) spec="$ROOT/packaging/opensuse/mutter.spec" ;;
+    gnoblin-portal) spec="$ROOT/packaging/opensuse/gnoblin-portal.spec" ;;
+    gnoblin) spec="$ROOT/packaging/opensuse/gnoblin.spec" ;;
+esac
 
 command -v rpmspec >/dev/null
 command -v zypper >/dev/null
@@ -35,21 +44,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-rpmspec_args=()
-if ((compatibility_runtime)); then
-    # Leap 15.6's RPM 4.14 lacks `rpmspec --with`. Defining the bcond macro
-    # makes this probe use the installed local compatibility RPM instead of
-    # trying to resolve GNOME 51 from the host repository.
-    rpmspec_args=(--define "_with_gnoblin_compat_runtime 1")
-fi
-
-for spec in "${SPECS[@]}"; do
-    # `%bcond_with gnoblin_stack` is disabled by default.  Do not pass
-    # rpmspec's `--without` convenience option here: RPM 4.14 in Leap 15.6
-    # predates that option even though it understands `%bcond_with`.
-    rpmspec -P "${rpmspec_args[@]}" "$spec" >/dev/null
-    rpmspec -q --buildrequires "${rpmspec_args[@]}" "$spec"
-done | LC_ALL=C sort -u >"$requirements"
+rpmspec -P "$spec" >/dev/null
+rpmspec -q --buildrequires "$spec" | LC_ALL=C sort -u >"$requirements"
 
 if [[ -s "$requirements" ]]; then
     # zypper understands RPM capabilities such as pkgconfig(gtk4), including
@@ -75,6 +71,5 @@ if [[ -s "$requirements" ]]; then
     fi
 fi
 
-printf 'PASS: openSUSE repository BuildRequires %s%s\n' \
-    "$([[ $install == 1 ]] && echo installed || echo resolve)" \
-    "$( ((compatibility_runtime)) && echo ' with private runtime' || true)"
+printf 'PASS: openSUSE Tumbleweed %s BuildRequires %s\n' \
+    "$package" "$([[ $install == 1 ]] && echo installed || echo resolve)"

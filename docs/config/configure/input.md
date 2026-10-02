@@ -5,6 +5,22 @@ reload. Groups and fields are optional. Gnoblin leaves anything you omit at its
 current GNOME/Mutter setting, so start with a small override and add only what
 you need.
 
+In the standalone native compositor preview, these settings apply at startup.
+Restart that compositor after changing the file. The full Shell session applies
+valid changes on config reload.
+
+`"inherit"` has the same effect for an individual field. Use it to clear a
+value supplied by an earlier loaded config file. For example, this keeps the
+GNOME pointer speed even if another file set a Gnoblin speed:
+
+```lua
+gnoblin.configure {input = {mouse = {speed = "inherit"}}}
+```
+
+GNOME Settings changes to inherited fields continue to take effect while the
+session is running. An explicit Gnoblin value takes precedence until removed
+or set to `"inherit"`.
+
 For the common pointer and keyboard settings, see:
 
 - [`gnoblin.configure.input.mouse`](/config/configure/input/mouse)
@@ -82,11 +98,14 @@ An empty keybinding has no effect unless its action is `"keybinding"`.
 
 ## Orientation lock
 
-| `orientation_lock` | Behavior                             |
-| ------------------ | ------------------------------------ |
-| `true`             | Lock the current screen orientation. |
-| `false`            | Allow automatic rotation.            |
-| Omitted            | Follow GNOME's setting.              |
+| `orientation_lock`     | Behavior                             |
+| ---------------------- | ------------------------------------ |
+| `true`                 | Lock the current screen orientation. |
+| `false`                | Allow automatic rotation.            |
+| `"inherit"` or omitted | Follow the system setting.           |
+
+On config reload, Gnoblin reapplies a configured boolean. An omitted value or
+`"inherit"` clears the override and follows the system setting.
 
 Use this override when the system rotation preference should not change screen
 orientation for this config.
@@ -100,12 +119,14 @@ gnoblin.configure {
 ```
 
 The keyboard `numlock_state` override is kept in memory while Gnoblin's config
-is active; removing it restores the system setting.
+is active; removing it or setting it to `"inherit"` restores GNOME's saved
+state and normal Num Lock persistence.
 
 ## Type definition
 
 This is schema pseudocode in Lua table form. `?` marks an optional field.
 Mouse, touchpad, and keyboard fields are listed on their linked pages.
+Every optional input field can also be set to `"inherit"`.
 
 ```lua
 gnoblin.configure {
@@ -113,7 +134,7 @@ gnoblin.configure {
         mouse = {...}?,
         touchpad = {...}?,
         keyboard = {...}?,
-        orientation_lock = boolean?,
+        orientation_lock = boolean | "inherit"?,
         tablets = {
             ["vvvv:pppp"] = {
                 mapping = "absolute" | "relative"?,

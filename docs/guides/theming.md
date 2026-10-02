@@ -1,14 +1,14 @@
 # Light and dark appearance
 
 GNOME stores the user's preferred color scheme in
-`org.gnome.desktop.interface` as `color-scheme`. Gnoblin reads this preference
-and reports changes to Lua config, so compositor rules can follow the same
-choice as applications.
+`org.gnome.desktop.interface` as `color-scheme`. Gnoblin reports preference
+changes to Lua config, so compositor rules can follow the same choice as
+applications.
 
-| Value | Meaning |
-| --- | --- |
-| `default` | Follow the desktop's default appearance. |
-| `prefer-dark` | The user prefers dark application surfaces. |
+| Value          | Meaning                                      |
+| -------------- | -------------------------------------------- |
+| `default`      | Follow the desktop's default appearance.     |
+| `prefer-dark`  | The user prefers dark application surfaces.  |
 | `prefer-light` | The user prefers light application surfaces. |
 
 Set the preference in GNOME Settings → Appearance, or with `gsettings`:
@@ -38,7 +38,7 @@ GNOME reports a change:
 ```lua
 local base_rules = gnoblin.snapshot().window_rules or {}
 
-gnoblin.on("gnome.interface.color-scheme-changed", function(event)
+gnoblin.events.on("gnoblin.appearance.color-scheme-changed", function(event)
     local rules = {}
     for i, rule in ipairs(base_rules) do rules[i] = rule end
 
@@ -51,10 +51,11 @@ gnoblin.on("gnome.interface.color-scheme-changed", function(event)
 end)
 ```
 
-Gnoblin also sends the current preference after the config loads, so the first
-palette applies without waiting for a later desktop change. Other values use
-the light palette in this short example; branch on `default` separately if
-your shell has its own default colors.
+The event reports changes after the subscription starts; it does not replay the
+current preference. Add an initial window rule to the config if you want a
+palette before the first change event. Other values use the light palette in
+this short example; branch on `default` separately if your shell has its own
+default colors.
 
 See [Lua events](/config/lua-events) for the event fields and
 [window effects](/guides/window_effects) for border, shadow and blur options.

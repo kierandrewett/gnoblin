@@ -1,5 +1,5 @@
 From bd87299b6c8f93e4fa847ec0d60777408dc1ec3b Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:51:37 +0100
 Subject: [PATCH] shell: include built-in window corner rules
 

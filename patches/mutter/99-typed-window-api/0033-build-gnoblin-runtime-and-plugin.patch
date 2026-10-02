@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] Build the Gnoblin Mutter plugin and runtime transport
+
+---
+diff --git a/src/compositor/plugins/meson.build b/src/compositor/plugins/meson.build
+index 61e1788db..30e7e75c7 100644
+--- a/src/compositor/plugins/meson.build
++++ b/src/compositor/plugins/meson.build
+@@ -17,3 +17,16 @@ default_plugin = shared_module('default',
+   install_rpath: pkglibdir,
+   install: true,
+ )
++
++gnoblin_plugin = shared_module('gnoblin',
++  sources: ['gnoblin-plugin.c'],
++  include_directories: mutter_includes,
++  c_args: default_plugin_c_args,
++  dependencies: [
++    glib_dep,
++    libmutter_clutter_dep,
++  ],
++  install_dir: pkglibdir / 'plugins',
++  install_rpath: pkglibdir,
++  install: true,
++)
+diff --git a/src/meson.build b/src/meson.build
+index cc9cac5dc..9e856178e 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1179,6 +1179,11 @@ subdir('helpers')
+ 
+ subdir('third_party')
+ 
++mutter_sources += files(
++  'core/gnoblin-runtime-protocol.c',
++  'core/gnoblin-runtime-cache.c',
++)
++
+ libmutter = library(libmutter_name,
+   mutter_sources,
+   mutter_built_sources,
+@@ -1227,6 +1232,20 @@ mutter = executable('mutter',
+   install: true,
+ )
+ 
++gnoblin_mutter = executable('gnoblin-mutter',
++  sources: [
++    files('core/mutter.c'),
++  ],
++  include_directories: mutter_includes,
++  c_args: [
++    mutter_c_args,
++    '-DG_LOG_DOMAIN="gnoblin-mutter"',
++  ],
++  dependencies: [libmutter_dep],
++  install_dir: bindir,
++  install: true,
++)
++
+ if have_introspection
+   mutter_introspected_sources = []
+   foreach source : mutter_sources

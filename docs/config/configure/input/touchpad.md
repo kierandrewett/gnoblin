@@ -47,6 +47,8 @@ gnoblin.configure {
 
 Each field defaults to the current device preference when omitted. The
 `"default"` enum value asks GNOME/libinput to choose the device behavior.
+Every field also accepts `"inherit"` to restore the GNOME/Mutter preference
+when an earlier config file supplied a value.
 
 Set the initial scroll speed from the window under the pointer when the config
 loads. Keyboard focus does not affect which window the event reports:

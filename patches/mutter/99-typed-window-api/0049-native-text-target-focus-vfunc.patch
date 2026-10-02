@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: dispatch native text target commits through focus vfunc
+
+---
+diff --git a/src/wayland/meta-wayland-text-input.c b/src/wayland/meta-wayland-text-input.c
+index 05e45a44..c940dd9f 100644
+--- a/src/wayland/meta-wayland-text-input.c
++++ b/src/wayland/meta-wayland-text-input.c
+@@ -1313,6 +1313,7 @@ meta_wayland_text_input_insert_gnoblin_text (MetaWaylandTextInput *text_input,
+                                                    client_id, focus_epoch))
+     return FALSE;
+ 
+-  clutter_input_focus_commit (text_input->input_focus, text);
++  CLUTTER_INPUT_FOCUS_GET_CLASS (text_input->input_focus)->commit_text (
++    text_input->input_focus, text);
+   return TRUE;
+ }

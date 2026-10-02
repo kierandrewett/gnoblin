@@ -8,35 +8,33 @@ import subprocess
 
 
 PACKAGES = {
-    "gnoblin-compat-runtime",
-    "gnoblin-gsettings-desktop-schemas",
+    "gnoblin",
     "gnoblin-mutter",
     "gnoblin-mutter-devel",
-    "gnoblin-shell",
-    "gnoblin-session",
+    "gnoblin-portal",
 }
 PUBLIC_FILES = {
+    "/usr/bin/gnoblin",
     "/usr/bin/gnoblinctl",
     "/usr/share/wayland-sessions/gnoblin.desktop",
-    "/usr/share/gnome-session/sessions/gnoblin.session",
-    "/usr/lib/systemd/user/org.gnoblin.Shell.target",
-    "/usr/lib/systemd/user/org.gnoblin.Shell@wayland.service",
-    "/usr/lib/systemd/user/gnome-session@gnoblin.target.d",
-    "/usr/lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf",
+    "/usr/lib/systemd/user/gnoblin-session.target",
     "/usr/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy",
+    "/usr/share/xdg-desktop-portal/portals/gnoblin.portal",
+    "/usr/share/xdg-desktop-portal/gnoblin-portals.conf",
+    "/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service",
+    "/usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service",
 }
 
 
 def validate(name, files, provides, conflicts, obsoletes):
     if name not in PACKAGES:
         raise ValueError(f"not a side-by-side Gnoblin package: {name}")
-    if conflicts.strip() or obsoletes.strip():
-        raise ValueError(f"{name} declares Conflicts or Obsoletes")
+    if conflicts.strip():
+        raise ValueError(f"{name} declares Conflicts")
+    for obsolete in obsoletes.splitlines():
+        if name != "gnoblin" or not obsolete.startswith("gnoblin-session"):
+            raise ValueError(f"{name} declares an unexpected Obsoletes entry: {obsolete}")
     for capability in provides.splitlines():
-        if name == "gnoblin-gsettings-desktop-schemas" and capability.startswith(
-            "pkgconfig(gsettings-desktop-schemas)"
-        ):
-            continue
         if re.match(
             r"(?:mutter|gnome-shell|libmutter|libshell-|libst-|pkgconfig\(|desktop-notification-daemon|PolicyKit-authentication-agent)",
             capability,

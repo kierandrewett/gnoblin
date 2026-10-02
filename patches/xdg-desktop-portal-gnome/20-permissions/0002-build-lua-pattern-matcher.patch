@@ -1,0 +1,24 @@
+From 8225bffe99f81db1f44bdb1577f2ad4e09edd8e7 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 20:59:15 +0000
+Subject: [PATCH] Build Lua pattern matcher for permission policy
+
+---
+ src/meson.build | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/meson.build b/src/meson.build
+index 4582a7e..6ac986e 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -94,6 +94,7 @@ deps = [
+ 
+ sources = built_sources + files(
+   'gnoblin-portal-policy.c',
++  'gnoblin-lua-pattern.c',
+   'access.c',
+   'account.c',
+   'accountdialog.c',
+-- 
+2.55.0
+

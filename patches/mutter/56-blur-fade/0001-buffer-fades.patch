@@ -1,19 +1,15 @@
-From 4954d9d828fa0a3bf05df6d225dc07b01630010f Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
-Date: Thu, 24 Sep 2026 21:32:57 +0100
-Subject: [PATCH] Commit client blur fade metadata with surface state
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 22:02:02 +0100
+Subject: [PATCH] mutter: commit blur fade metadata with surface state
 
 ---
- src/meson.build                    | 3 +++
- src/wayland/meta-wayland-surface.c | 4 ++++
- 2 files changed, 7 insertions(+)
-
 diff --git a/src/meson.build b/src/meson.build
-index 525334d4b..ddaae02bd 100644
+index 026b2290b..d1985c218 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -599,6 +599,8 @@ mutter_sources += [
-   'wayland/gnoblin-config.h',
+@@ -597,6 +597,8 @@ mutter_sources += [
+   # at build time; registered via meta_gnoblin_init_protocols)
    'wayland/meta-gnoblin-protocols.c',
    'wayland/meta-gnoblin-protocols.h',
 +  'wayland/meta-wayland-blur-fade.c',
@@ -21,7 +17,7 @@ index 525334d4b..ddaae02bd 100644
    'wayland/meta-wayland-idle-notify.c',
    'wayland/meta-wayland-idle-notify.h',
    'wayland/meta-wayland-foreign-toplevel-common.c',
-@@ -1087,6 +1089,7 @@ wayland_protocols = [
+@@ -1085,6 +1087,7 @@ wayland_protocols = [
    ['wlr-gamma-control-unstable-v1', 'private', ],
    ['wlr-output-power-management-unstable-v1', 'private', ],
    ['ext-data-control-v1', 'private', ],
@@ -58,6 +54,3 @@ index a0bfdcaf4..47a3de39c 100644
    g_signal_emit (state,
                   surface_state_signals[SURFACE_STATE_SIGNAL_APPLIED],
                   0);
--- 
-2.55.0
-

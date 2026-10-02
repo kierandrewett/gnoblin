@@ -43,7 +43,6 @@ useful saving there.
 
 ## Packaging
 
-- [ ] Build and test the Debian/Ubuntu package split in `packaging/deb/`.
 - [ ] Build and test the Arch package split in `packaging/arch/`.
 - [ ] Publish Fedora packages only after the clean-host login and rollback
       checks pass.

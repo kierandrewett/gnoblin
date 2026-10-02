@@ -1,5 +1,5 @@
 From 6a83db4a7e16e62fd4454a7e006836f3028c6797 Mon Sep 17 00:00:00 2001
-From: Kieran Andrewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 00:00:00 +0100
 Subject: [PATCH] test: allow disabling logind in headless sessions
 

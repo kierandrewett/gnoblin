@@ -19,7 +19,7 @@ The named views [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) and
 
 ## First config
 
-On first login, `gnoblin-session` copies the packaged reference config to
+On first login, `gnoblin` copies the packaged reference config to
 `~/.config/gnoblin/init.lua` when that file does not exist. It does not replace
 an existing config. Edit that file to configure Gnoblin.
 

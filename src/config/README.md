@@ -2,7 +2,9 @@
 
 Gnoblin evaluates one Lua root file in a fresh restricted Lua state. The
 default root is `$XDG_CONFIG_HOME/gnoblin/init.lua`. `GNOBLIN_CONFIG` selects
-an explicit root. Use a `.lua` suffix for Lua; other suffixes select TOML.
+an explicit root. Root and included files must use a `.lua` suffix. Existing
+`gnoblin.toml` and `gnoblin.conf` files are detected so Gnoblin can report that
+they need conversion instead of silently creating a new default config.
 
 `gnoblin` is available globally. Its main declarations are:
 
@@ -14,9 +16,8 @@ an explicit root. Use a `.lua` suffix for Lua; other suffixes select TOML.
 | `gnoblin.animation { ... }`       | Name, event, timing, and keyframes | Registers a named transition. See the [animation guide](../../docs/guides/animations.md). |
 
 Use `gnoblin.configure.shortcuts` and `gnoblin.configure.autostart` for named
-entries. The older `gnoblin.shortcut`, `gnoblin.autostart`,
-`gnoblin.remove_shortcut`, and `gnoblin.remove_autostart` functions remain for
-compatibility and are deprecated.
+entries. Set an entry's `enable` field to `false` to remove it from the
+configuration.
 
 The first animation registered for an event supplies its default. Settings and
 window rules can select another registered name. Set `enable = false` on a
@@ -30,7 +31,7 @@ For example, a settings declaration and a window rule use this shape:
 gnoblin.configure {window_management = {focus_mode = "click"}}
 
 gnoblin.window_rule {
-    match = {type = "window", app_id = "^org.example.Editor$"},
+    match = {type = "window", app_id = [[^org%.example%.Editor$]]},
     animation = {open = "gnome-open"},
 }
 ```
@@ -52,8 +53,8 @@ The supported event names are:
 
 - Window: `minimize`, `restore`, `open`, `close`.
 - Dialog: `dialog-open`, `dialog-close`, `dialog-dim`, `dialog-undim`.
-- Layer surface: `layer-open`, `layer-close`, `layer-companion-close`.
-- Workspace and shell: `workspace-switch`, `console-open`, `console-close`.
+- Layer surface: `layer-open`, `layer-close`.
+- Workspace: `workspace-switch`.
 - Effects: `shadow-change`, `resize`, `tile-preview-open`,
   `tile-preview-close`.
 
@@ -62,8 +63,9 @@ layer-shell use, and CLI preview commands.
 
 Declarations copy their input. Gnoblin converts setting names from
 `snake_case` to its internal hyphenated form. Keybinding action names stay
-`snake_case` until the shell maps them to GSettings. Renderer and shader
-uniform names stay literal.
+`snake_case` in the Lua document; native control resolves them to GSettings
+keys when it applies the configuration. Renderer and shader uniform names
+stay literal.
 
 Use `gnoblin.load('conf.d/**/*.lua')` to load sorted fragments in the same
 state. `require()` evaluates each module once per reload and returns the cached

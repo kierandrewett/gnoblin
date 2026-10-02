@@ -1,5 +1,5 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
-From: Gnoblin contributors <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 12:00:00 +0000
 Subject: [PATCH] shell: route Gnoblin window effects through animation engine
 

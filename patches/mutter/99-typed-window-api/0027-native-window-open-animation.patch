@@ -1,0 +1,473 @@
+From b4445ab3845b57ebd81eafaa77ae2d61c8c6b6c0 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] mutter: animate explicitly configured normal windows on first
+ map
+
+---
+ src/compositor/meta-window-actor.c |   2 +
+ src/core/gnoblin-animation.c       | 287 ++++++++++++++++++++++++++++-
+ src/core/gnoblin-animation.h       |   3 +
+ src/core/util.c                    |   6 +
+ src/meta/util.h                    |   3 +
+ 5 files changed, 291 insertions(+), 10 deletions(-)
+
+diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
+index 5e2f15fdc..4a733e958 100644
+--- a/src/compositor/meta-window-actor.c
++++ b/src/compositor/meta-window-actor.c
+@@ -34,6 +34,7 @@
+ #include "compositor/meta-window-actor-private.h"
+ #include "compositor/meta-surface-actor-wayland.h"
+ #include "core/boxes-private.h"
++#include "core/gnoblin-animation.h"
+ #include "core/window-private.h"
+ #include "meta/window.h"
+ #include "wayland/meta-wayland-surface-private.h"
+@@ -185,6 +186,7 @@ meta_window_actor_map (ClutterActor *actor)
+ {
+   MetaWindowActor *window_actor = META_WINDOW_ACTOR (actor);
+ 
++  meta_gnoblin_animation_window_mapped (window_actor);
+   CLUTTER_ACTOR_CLASS (meta_window_actor_parent_class)->map (actor);
+ 
+   update_is_effectively_visible (window_actor);
+diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
+index 7d3c9af7f..cf227040f 100644
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -7,6 +7,8 @@
+ #include "meta/meta-backend.h"
+ #include "meta/meta-context.h"
+ #include "meta/meta-window-actor.h"
++#include "meta/prefs.h"
++#include "meta/util.h"
+ #include "meta/window.h"
+ #include "meta/workspace.h"
+ #include "wayland/meta-wayland-layer-shell.h"
+@@ -41,6 +43,7 @@ typedef struct {
+   AnimationSpec spec;
+   double progress;
+   gboolean finished;
++  gboolean lifecycle;
+   float base_x, base_y, base_z;
+   double base_sx, base_sy, base_rotation;
+   guint8 base_opacity;
+@@ -85,6 +88,7 @@ static void preview_stop(AnimationPreview *preview, gboolean restore,
+                          gboolean report);
+ static void preview_new_frame(ClutterTimeline *timeline, guint elapsed,
+                               gpointer user_data);
++static void start_window_open_animation(MetaWindowActor *window_actor);
+ static void frame_add_number(GVariantBuilder *builder, const char *key,
+                              double value);
+ static void stop_lock_watch(AnimationState *state);
+@@ -547,7 +551,7 @@ static gboolean parse_spec(AnimationSpec *spec, const char *name,
+     event = "open";
+   if (!event)
+     event = builtin ? builtin->event : NULL;
+-  if (!custom && !builtin_previewable(name)) {
++  if (!custom && !builtin_previewable(name) && !g_str_equal(name, "gnome")) {
+     g_set_error(error, ANIMATION_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                 "animation '%s' needs context supplied by a lifecycle handler",
+                 name);
+@@ -980,6 +984,7 @@ typedef struct {
+   char *target;
+   char *event;
+   gboolean cancelled;
++  gboolean started;
+ } CompletionEvent;
+ 
+ static gboolean publish_completion(gpointer user_data) {
+@@ -996,10 +1001,11 @@ static gboolean publish_completion(gpointer user_data) {
+                         g_variant_new_boolean(completion->cancelled));
+   g_autoptr(GVariant) value =
+       g_variant_ref_sink(g_variant_builder_end(&payload));
+-  meta_display_dispatch_gnoblin_event(completion->display,
+-                                      "gnoblin.animation.finished", value);
+-  meta_display_dispatch_gnoblin_native_event(
+-      completion->display, "gnoblin.animation.finished", value);
++  const char *event_name = completion->started ? "gnoblin.animation.started"
++                                               : "gnoblin.animation.finished";
++  meta_display_dispatch_gnoblin_event(completion->display, event_name, value);
++  meta_display_dispatch_gnoblin_native_event(completion->display, event_name,
++                                             value);
+   return G_SOURCE_REMOVE;
+ }
+ 
+@@ -1012,7 +1018,8 @@ static void completion_event_free(gpointer user_data) {
+   g_free(completion);
+ }
+ 
+-static void emit_finished(AnimationPreview *preview, gboolean cancelled) {
++static void emit_animation_event(AnimationPreview *preview, gboolean started,
++                                 gboolean cancelled) {
+   CompletionEvent *completion = g_new0(CompletionEvent, 1);
+   completion->display = g_object_ref(preview->display);
+   completion->animation = g_strdup(preview->spec.name);
+@@ -1020,6 +1027,7 @@ static void emit_finished(AnimationPreview *preview, gboolean cancelled) {
+       g_strdup_printf("%u", meta_window_get_stable_sequence(preview->window));
+   completion->event = g_strdup(preview->spec.event);
+   completion->cancelled = cancelled;
++  completion->started = started;
+   g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, publish_completion, completion,
+                   completion_event_free);
+ }
+@@ -1046,7 +1054,7 @@ static void preview_stop(AnimationPreview *preview, gboolean restore,
+   if (preview->timeline)
+     g_signal_handlers_disconnect_by_data(preview->timeline, preview);
+   if (report)
+-    emit_finished(preview, TRUE);
++    emit_animation_event(preview, FALSE, TRUE);
+   AnimationState *state =
+       g_object_get_data(G_OBJECT(preview->display), ANIMATION_ID_KEY);
+   if (state && g_hash_table_lookup(state->previews, preview->id) == preview) {
+@@ -1062,7 +1070,7 @@ static void preview_completed(ClutterTimeline *timeline, gpointer user_data) {
+   if (preview->finished)
+     return;
+   render_preview(preview, 1);
+-  emit_finished(preview, FALSE);
++  emit_animation_event(preview, FALSE, FALSE);
+   preview_stop(preview, TRUE, FALSE);
+ }
+ 
+@@ -1078,6 +1086,14 @@ static void actor_destroyed(ClutterActor *actor, gpointer user_data) {
+   preview_stop(preview, FALSE, TRUE);
+ }
+ 
++static void actor_mapped_changed(ClutterActor *actor, GParamSpec *pspec,
++                                 gpointer user_data) {
++  (void)pspec;
++  AnimationPreview *preview = user_data;
++  if (preview->lifecycle && !clutter_actor_is_mapped(actor))
++    preview_stop(preview, TRUE, TRUE);
++}
++
+ static void save_actor_state(AnimationPreview *preview) {
+   clutter_actor_get_translation(preview->actor, &preview->base_x,
+                                 &preview->base_y, &preview->base_z);
+@@ -1404,7 +1420,7 @@ static GVariant *animation_inspect(MetaDisplay *display, GVariant *arguments,
+     g_hash_table_iter_init(&iter, state->previews);
+     while (g_hash_table_iter_next(&iter, NULL, &value))
+       if (((AnimationPreview *)value)->actor == actor)
+-        preview_stop(value, TRUE, FALSE);
++        preview_stop(value, TRUE, ((AnimationPreview *)value)->lifecycle);
+ 
+     AnimationPreview *preview = g_new0(AnimationPreview, 1);
+     preview->id = g_uuid_string_random();
+@@ -1470,7 +1486,8 @@ static void preview_new_frame(ClutterTimeline *timeline, guint elapsed,
+                               gpointer user_data) {
+   (void)timeline;
+   AnimationPreview *preview = user_data;
+-  if (is_locked(preview->display)) {
++  if (is_locked(preview->display) ||
++      (preview->lifecycle && !meta_prefs_get_gnome_animations())) {
+     preview_stop(preview, TRUE, TRUE);
+     return;
+   }
+@@ -1555,6 +1572,256 @@ static GVariant *preview_control(MetaDisplay *display, const char *method,
+   return preview_result(preview, g_str_equal(method, "animation.play"));
+ }
+ 
++static gboolean window_rule_matches(GVariant *match, MetaWindow *window,
++                                    const char *layer_namespace) {
++  const char *app_id = meta_window_get_gtk_application_id(window);
++  const char *title = meta_window_get_title(window);
++  MetaWorkspace *workspace = meta_window_get_workspace(window);
++  GVariantIter iter;
++  const char *key;
++  GVariant *expected;
++
++  if (!app_id || !*app_id)
++    app_id = meta_window_get_wm_class(window);
++  if (!app_id)
++    app_id = "";
++  if (!title)
++    title = "";
++
++  g_variant_iter_init(&iter, match);
++  while (g_variant_iter_next(&iter, "{&sv}", &key, &expected)) {
++    gboolean matched = FALSE;
++
++    if (g_str_equal(key, "type")) {
++      const char *type = g_variant_is_of_type(expected, G_VARIANT_TYPE_STRING)
++                             ? g_variant_get_string(expected, NULL)
++                             : "";
++      matched = g_str_equal(type, "window");
++    } else if (g_str_equal(key, "focused")) {
++      matched =
++          g_variant_is_of_type(expected, G_VARIANT_TYPE_BOOLEAN) &&
++          g_variant_get_boolean(expected) == meta_window_has_focus(window);
++    } else if (g_str_equal(key, "workspace-id")) {
++      const char *wanted = g_variant_is_of_type(expected, G_VARIANT_TYPE_STRING)
++                               ? g_variant_get_string(expected, NULL)
++                               : NULL;
++      matched = workspace && wanted &&
++                g_str_equal(wanted, meta_gnoblin_workspace_id(workspace));
++    } else if (g_str_equal(key, "workspace-number")) {
++      double wanted;
++      matched = workspace && variant_to_double(expected, &wanted) &&
++                wanted == meta_workspace_index(workspace) + 1;
++    } else if (g_str_equal(key, "app-id") || g_str_equal(key, "title") ||
++               g_str_equal(key, "layer")) {
++      const char *pattern =
++          g_variant_is_of_type(expected, G_VARIANT_TYPE_STRING)
++              ? g_variant_get_string(expected, NULL)
++              : NULL;
++      const char *value = g_str_equal(key, "app-id")  ? app_id
++                          : g_str_equal(key, "title") ? title
++                                                      : layer_namespace;
++
++      if (pattern && value) {
++        g_autoptr(GError) error = NULL;
++        matched = meta_gnoblin_window_pattern_match(pattern, value, &error);
++        if (error)
++          matched = FALSE;
++      }
++    }
++
++    g_variant_unref(expected);
++    if (!matched)
++      return FALSE;
++  }
++
++  return TRUE;
++}
++
++static gboolean animation_supports_open(const char *name) {
++  g_autoptr(GVariant) custom = find_custom_animation(name, NULL);
++  if (custom) {
++    gboolean enabled = TRUE;
++    const char *event = NULL;
++    g_variant_lookup(custom, "enable", "b", &enabled);
++    g_variant_lookup(custom, "event", "&s", &event);
++    return enabled && g_strcmp0(event, "open") == 0;
++  }
++
++  return g_str_equal(name, "fade") || g_str_equal(name, "gnome") ||
++         g_str_equal(name, "gnome-open") || g_str_equal(name, "none");
++}
++
++static gboolean select_window_open_animation(MetaWindow *window,
++                                             const char *layer_namespace,
++                                             char **selected_name,
++                                             GVariant **selected_overrides) {
++  g_autoptr(GVariant) document = gnoblin_native_control_get_config_document(NULL);
++  g_autoptr(GVariant) rules =
++      document ? g_variant_lookup_value(document, "window-rules", NULL) : NULL;
++  GVariantIter iter;
++  GVariant *rule_value;
++
++  *selected_name = NULL;
++  *selected_overrides = NULL;
++  if (!rules || !g_variant_is_container(rules))
++    return FALSE;
++
++  g_variant_iter_init(&iter, rules);
++  while ((rule_value = g_variant_iter_next_value(&iter))) {
++    g_autoptr(GVariant) rule = NULL;
++    g_autoptr(GVariant) match = NULL;
++    g_autoptr(GVariant) animation = NULL;
++    const char *name = NULL;
++
++    if (g_variant_is_of_type(rule_value, G_VARIANT_TYPE_VARIANT))
++      rule = g_variant_get_variant(rule_value);
++    else
++      rule = g_variant_ref(rule_value);
++    g_variant_unref(rule_value);
++    if (!g_variant_is_of_type(rule, G_VARIANT_TYPE_VARDICT))
++      continue;
++
++    match = lookup_field(rule, "match");
++    if (!match || !g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT) ||
++        !window_rule_matches(match, window, layer_namespace))
++      continue;
++    animation = lookup_field(rule, "animation");
++    if (!animation)
++      continue;
++
++    if (g_variant_is_of_type(animation, G_VARIANT_TYPE_STRING)) {
++      name = g_variant_get_string(animation, NULL);
++      if (!animation_supports_open(name))
++        continue;
++      g_free(*selected_name);
++      *selected_name = g_strdup(name);
++      g_clear_pointer(selected_overrides, g_variant_unref);
++      continue;
++    }
++
++    if (g_variant_is_of_type(animation, G_VARIANT_TYPE_VARDICT)) {
++      g_autoptr(GVariant) open = lookup_field(animation, "open");
++      if (!open || !g_variant_is_of_type(open, G_VARIANT_TYPE_STRING))
++        continue;
++      name = g_variant_get_string(open, NULL);
++      if (!animation_supports_open(name))
++        continue;
++      g_free(*selected_name);
++      *selected_name = g_strdup(name);
++      g_clear_pointer(selected_overrides, g_variant_unref);
++      *selected_overrides = g_variant_ref(animation);
++    }
++  }
++
++  return *selected_name != NULL;
++}
++
++static void apply_rule_overrides(AnimationSpec *spec, GVariant *overrides) {
++  g_autoptr(GVariant) duration = lookup_field(overrides, "duration");
++  g_autoptr(GVariant) ease = lookup_field(overrides, "ease");
++  if (!ease)
++    ease = lookup_field(overrides, "easing");
++
++  if (duration) {
++    double value;
++    if (variant_to_double(duration, &value) && value >= 0 && value <= 5000)
++      spec->duration = (guint)value;
++  }
++  if (ease && g_variant_is_of_type(ease, G_VARIANT_TYPE_STRING)) {
++    g_free(spec->ease);
++    spec->ease = g_variant_dup_string(ease, NULL);
++    g_clear_pointer(&spec->ease_value, g_variant_unref);
++    spec->ease_value = g_variant_ref(ease);
++  }
++}
++
++static void start_window_open_animation(MetaWindowActor *window_actor) {
++  MetaWindow *window = meta_window_actor_get_meta_window(window_actor);
++  MetaDisplay *display = meta_window_get_display(window);
++  const char *layer_namespace = meta_gnoblin_layer_namespace(window);
++  g_autofree char *name = NULL;
++  g_autoptr(GVariant) overrides = NULL;
++  AnimationSpec spec = {0};
++  g_autoptr(GError) error = NULL;
++
++  /* This actor can map again after its window is hidden and shown. */
++  if (g_object_get_data(G_OBJECT(window),
++                        "gnoblin-window-open-animation-handled"))
++    return;
++  g_object_set_data(G_OBJECT(window), "gnoblin-window-open-animation-handled",
++                    GINT_TO_POINTER(1));
++
++  /* Keep the first native lifecycle slice to normal windows, not layer
++   * surfaces. */
++  if (meta_window_get_window_type(window) != META_WINDOW_NORMAL ||
++      meta_window_is_override_redirect(window) || layer_namespace ||
++      meta_gnoblin_layer_anchor(window) >= 0 || is_locked(display) ||
++      !meta_prefs_get_gnome_animations())
++    return;
++
++  if (!select_window_open_animation(window, layer_namespace, &name,
++                                    &overrides) ||
++      !name || g_str_equal(name, "none"))
++    return;
++  if (!parse_spec(&spec, name, "open", window, &error))
++    return;
++  apply_rule_overrides(&spec, overrides);
++  if (!validate_previewable(&spec, &error) || spec.duration == 0) {
++    animation_spec_clear(&spec);
++    return;
++  }
++
++  AnimationState *state = get_state(display);
++  while (TRUE) {
++    AnimationPreview *existing = NULL;
++    GHashTableIter previews;
++    gpointer value;
++
++    g_hash_table_iter_init(&previews, state->previews);
++    while (g_hash_table_iter_next(&previews, NULL, &value))
++      if (((AnimationPreview *)value)->actor == CLUTTER_ACTOR(window_actor)) {
++        existing = value;
++        break;
++      }
++    if (!existing)
++      break;
++    preview_stop(existing, TRUE, existing->lifecycle);
++  }
++
++  AnimationPreview *preview = g_new0(AnimationPreview, 1);
++  preview->id = g_uuid_string_random();
++  preview->target_type = g_strdup("window");
++  preview->display = display;
++  preview->window = g_object_ref(window);
++  preview->actor = CLUTTER_ACTOR(window_actor);
++  preview->spec = spec;
++  preview->lifecycle = TRUE;
++  save_actor_state(preview);
++  set_origin(preview);
++  render_preview(preview, 0);
++  preview->timeline =
++      clutter_timeline_new_for_actor(preview->actor, preview->spec.duration);
++  clutter_timeline_set_progress_mode(preview->timeline, CLUTTER_LINEAR);
++  g_signal_connect(preview->timeline, "new-frame",
++                   G_CALLBACK(preview_new_frame), preview);
++  g_signal_connect(preview->timeline, "completed",
++                   G_CALLBACK(preview_completed), preview);
++  g_signal_connect(window, "unmanaged", G_CALLBACK(window_unmanaged), preview);
++  g_signal_connect(preview->actor, "notify::mapped",
++                   G_CALLBACK(actor_mapped_changed), preview);
++  g_signal_connect(preview->actor, "destroy", G_CALLBACK(actor_destroyed),
++                   preview);
++  g_hash_table_insert(state->previews, g_strdup(preview->id), preview);
++
++  emit_animation_event(preview, TRUE, FALSE);
++  clutter_timeline_start(preview->timeline);
++}
++
++void meta_gnoblin_animation_window_mapped(MetaWindowActor *window_actor) {
++  g_return_if_fail(META_IS_WINDOW_ACTOR(window_actor));
++  start_window_open_animation(window_actor);
++}
++
+ GVariant *meta_gnoblin_animation_dispatch(MetaDisplay *display,
+                                           const char *method,
+                                           GVariant *arguments, GError **error) {
+diff --git a/src/core/gnoblin-animation.h b/src/core/gnoblin-animation.h
+index 8df456517..3e369360a 100644
+--- a/src/core/gnoblin-animation.h
++++ b/src/core/gnoblin-animation.h
+@@ -1,8 +1,11 @@
+ /* Gnoblin-owned native compositor animation API. */
+ #pragma once
+ 
++#include "meta/meta-window-actor.h"
++#include "core/gnoblin-native-control.h"
+ #include "meta/util.h"
+ 
++void meta_gnoblin_animation_window_mapped (MetaWindowActor *window_actor);
+ GVariant * meta_gnoblin_animation_dispatch (MetaDisplay *display,
+                                              const char  *method,
+                                              GVariant    *arguments,
+diff --git a/src/core/util.c b/src/core/util.c
+index d22fd92a8..7821bb78d 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -979,6 +979,12 @@ gnoblin_native_workspace_id (MetaWorkspace *workspace)
+   return id;
+ }
+ 
++const char *
++meta_gnoblin_workspace_id (MetaWorkspace *workspace)
++{
++  return gnoblin_native_workspace_id (workspace);
++}
++
+ gboolean
+ meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
+                                            GError     **error)
+diff --git a/src/meta/util.h b/src/meta/util.h
+index 6e6fa635f..328762acf 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -131,6 +131,9 @@ gboolean meta_gnoblin_window_pattern_match (const char *pattern,
+                                             const char *value,
+                                             GError **error);
+ 
++META_EXPORT
++const char *meta_gnoblin_workspace_id (MetaWorkspace *workspace);
++
+ META_EXPORT
+ gboolean meta_gnoblin_window_frame_set (MetaWindow *window, GVariant *policy, GError **error);
+ META_EXPORT
+-- 
+2.55.0
+

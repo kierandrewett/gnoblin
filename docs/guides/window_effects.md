@@ -84,6 +84,25 @@ Shell developers can avoid that guesswork by [specifying a blur region](/backgro
 
 ## Inner and outer window borders
 
+The `borders` table below is available in the optional GNOME Shell
+compatibility session. For a standalone Gnoblin session, use the single
+outline fields in `corners` instead:
+
+```lua
+gnoblin.window_rule {
+    match = {type = "window"},
+    corners = {
+        radius = 14,
+        border_width = 2,
+        border_color = "#505050ff",
+    },
+}
+```
+
+Positive widths draw inside the rounded edge. Negative widths draw outside
+where the client buffer has room. The outline follows the corner state policy
+and is disabled when `mode = "off"`.
+
 ```lua
 gnoblin.window_rule {
     match = {type = "window"},
@@ -155,4 +174,3 @@ table, as above, changes only its supplied fields.
 ## Custom fragment shaders
 
 [Custom shaders](/guides/shaders) shows how to tint a window and pass shader parameters.
-For how Gnoblin draws these effects, see [effect rendering](/effects-rendering).

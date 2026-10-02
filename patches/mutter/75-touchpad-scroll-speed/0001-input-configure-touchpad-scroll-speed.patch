@@ -1,5 +1,5 @@
 From 5dcd25144275e7788ad08263b8b606ffad07bfb4 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 00:35:00 +0100
 Subject: [PATCH] input: configure touchpad scroll speed
 

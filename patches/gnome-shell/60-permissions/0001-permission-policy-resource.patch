@@ -1,5 +1,5 @@
 From 6a01c6bd491d62dec55310c3ffd1d583a1e76d60 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 12 Sep 2026 05:00:00 +0100
 Subject: [PATCH] shell: include permission policy resource
 

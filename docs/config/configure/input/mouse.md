@@ -44,6 +44,8 @@ The curve changes pointer motion; it does not define a separate scroll curve.
 When a custom curve is active, libinput ignores `speed` for pointer behavior.
 
 Omitted values keep the current GNOME/Mutter preference for that device.
+Every field also accepts `"inherit"` to restore that preference when an
+earlier config file supplied a value.
 GNOME's [pointer-speed guide](https://help.gnome.org/gnome-help/mouse-sensitivity.html)
 explains the user-facing speed setting. The [libinput guide](https://wayland.freedesktop.org/libinput/doc/latest/pointer-acceleration.html)
 explains the units and interpolation used by custom curves.

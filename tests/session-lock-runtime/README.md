@@ -5,9 +5,9 @@ opaque shared-memory buffer after the first `configure`, then observes the
 standard `ext-session-lock-v1` events. It has no authentication code and must
 never be installed as a locker.
 
-`run-nested.sh` builds it from Gnoblin's vendored protocol XML and starts a
-private headless Gnoblin session. It checks the security-relevant protocol
-sequence:
+`run-nested.sh` builds it from Gnoblin's vendored protocol XML and starts an
+isolated, supervised Gnoblin devkit session. It checks the security-relevant
+protocol sequence:
 
 1. a lock surface is configured, acknowledged, and committed, and the
    compositor eventually reports `locked` after a protected presentation;
@@ -18,10 +18,18 @@ sequence:
 5. killing the owner does not unlock the compositor, and a policy-supported
    replacement can take over.
 
-The runner exits 77 (and prints `SKIP`) when the installed Gnoblin does not
-advertise `ext_session_lock_manager_v1`, for example when using an older build
-or a configuration with the protocol disabled. A skipped run proves only that
-the test harness compiled; it is not runtime evidence for session locking.
+Set `GNOBLIN_SESSION_LOCK_PREFIX` to use a prepared private install prefix;
+otherwise the runner uses this checkout's `install/` prefix and current
+`build/ninja/gnoblin` runtime when available. It does not modify the system
+installation.
+
+The runner exits 77 (and prints `SKIP`) when the manager global is absent or
+when Mutter refuses the devkit's screen-capture stream during lock presentation.
+The nested viewer cannot prove that a lock frame reached its output in that
+case, so the isolated setup cannot verify lock takeover. Run the protocol
+lifecycle against a fresh session with a real output before claiming
+session-lock runtime coverage. A skipped run is not runtime evidence for the
+skipped lifecycle checks.
 
 Run it after installing a build which advertises the protocol:
 

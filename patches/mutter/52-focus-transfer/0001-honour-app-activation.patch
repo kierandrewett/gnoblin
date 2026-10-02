@@ -1,5 +1,5 @@
 From d5828d8c7f5f90a265882debeef786334fc8bfa8 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:02:01 +0100
 Subject: [PATCH] focus: make activation policy configurable in Gnoblin
 

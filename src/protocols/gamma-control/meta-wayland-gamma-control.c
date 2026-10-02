@@ -38,7 +38,7 @@
 #include "meta/meta-monitor-manager.h"
 #include "wayland/meta-wayland-outputs.h"
 #include "wayland/meta-wayland-private.h"
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 
 #include "wlr-gamma-control-unstable-v1-server-protocol.h"
 
@@ -305,7 +305,7 @@ void meta_wayland_init_gamma_control(MetaWaylandCompositor* compositor) {
     MetaBackend* backend = meta_context_get_backend(context);
     MetaWaylandGammaContext* ctx;
 
-    if (!gnoblin_config_protocol_enabled("wlr-gamma-control")) {
+    if (!gnoblin_native_control_protocol_enabled("wlr-gamma-control")) {
         g_message("Gnoblin wlr-gamma-control protocol disabled by settings");
         return;
     }

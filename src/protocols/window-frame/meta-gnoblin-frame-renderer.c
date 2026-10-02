@@ -11,7 +11,7 @@
 #include "meta/meta-wayland-client.h"
 #include "meta/meta-window-actor.h"
 #include "meta/prefs.h"
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 #include "wayland/meta-wayland-actor-surface.h"
 #include "wayland/meta-wayland-client-private.h"
 #include "wayland/meta-wayland-filter-manager.h"
@@ -1208,11 +1208,10 @@ void meta_gnoblin_frame_renderer_init(MetaWaylandCompositor* compositor) {
     frame_compositor = compositor;
     stopping = FALSE;
     g_signal_connect(compositor, "prepare-shutdown", G_CALLBACK(prepare_shutdown), NULL);
-    if (!gnoblin_config_protocol_enabled("window-frame-renderer"))
+    if (!gnoblin_native_control_protocol_enabled("window-frame-renderer"))
         return;
     renderers = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, renderer_unref);
-    g_autofree char* path = gnoblin_config_path();
-    g_autoptr(GVariant) document = gnoblin_config_load_document(path, NULL, NULL, NULL);
+    g_autoptr(GVariant) document = gnoblin_native_control_get_config_document(NULL);
     g_autoptr(GVariant) services =
         document ? g_variant_lookup_value(document, "frame-renderers", G_VARIANT_TYPE_VARDICT)
                  : NULL;

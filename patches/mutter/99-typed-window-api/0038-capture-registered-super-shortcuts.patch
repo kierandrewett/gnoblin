@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 29 Sep 2026 07:36:32 +0100
+Subject: [PATCH] mutter: capture registered bare Super shortcut sessions
+
+---
+diff --git a/src/core/keybindings.c b/src/core/keybindings.c
+index 3a4920d8a..c74074dde 100644
+--- a/src/core/keybindings.c
++++ b/src/core/keybindings.c
+@@ -38,6 +38,7 @@
+ #include "core/meta-accel-parse.h"
+ #include "core/meta-window-config-private.h"
+ #include "core/meta-workspace-manager-private.h"
++#include "core/gnoblin-native-control.h"
+ #include "compositor/meta-window-drag.h"
+ #include "core/workspace-private.h"
+ #include "meta/compositor.h"
+@@ -1621,6 +1622,7 @@ process_overlay_key (MetaDisplay  *display,
+                      MetaWindow   *window)
+ {
+   MetaKeyBindingManager *keys = &display->key_binding_manager;
++  ClutterModifierType modifiers = get_modifiers (event);
+ 
+   if (display->focus_window && !keys->overlay_key_only_pressed)
+     {
+@@ -1631,6 +1633,19 @@ process_overlay_key (MetaDisplay  *display,
+         return FALSE;
+     }
+ 
++  /* A registered Gnoblin capture_input binding must see bare Super before
++   * Mutter lets the key sequence propagate to application clients. The
++   * native capture handler then owns the sequence until release/cancellation. */
++  if (clutter_event_type (event) == CLUTTER_KEY_PRESS &&
++      ((modifiers & ~(IGNORED_MODIFIERS)) & CLUTTER_MODIFIER_MASK) == 0 &&
++      resolved_key_combo_has_keycode (&keys->overlay_resolved_key_combo,
++                                      clutter_event_get_key_code (event)) &&
++      gnoblin_native_control_overlay_modifier_pressed (display, event))
++    {
++      keys->overlay_key_only_pressed = FALSE;
++      return CLUTTER_EVENT_STOP;
++    }
++
+   return process_special_modifier_key (display,
+                                        event,
+                                        window,

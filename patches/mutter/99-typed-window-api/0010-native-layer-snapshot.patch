@@ -1,0 +1,104 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 06:18:39 +0100
+Subject: [PATCH] mutter: expose native layer snapshot records
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 9870549ea..e145e2bd8 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -2298,6 +2298,93 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+                    "unsupported native window method '%s'", method);
+       return NULL;
+     }
++  if (g_strcmp0 (method, "layer.list") == 0)
++    {
++      static const char * const filter_keys[] = {
++        "monitor_id", "namespace", "layer", NULL
++      };
++      GVariantBuilder layers;
++      const char *monitor_filter = NULL;
++      const char *namespace_filter = NULL;
++      const char *layer_filter = NULL;
++      g_autoptr (GList) windows = NULL;
++
++      if (arguments &&
++          !g_variant_is_of_type (arguments, G_VARIANT_TYPE_VARDICT))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "layer.list arguments must be a dictionary");
++          return NULL;
++        }
++      if (arguments)
++        {
++          GVariantIter iter;
++          const char *key;
++          GVariant *value;
++
++          g_variant_iter_init (&iter, arguments);
++          while (g_variant_iter_next (&iter, "{&sv}", &key, &value))
++            {
++              gboolean known = g_strv_contains (filter_keys, key);
++              gboolean string_value =
++                g_variant_is_of_type (value, G_VARIANT_TYPE_STRING);
++
++              g_variant_unref (value);
++              if (!known)
++                {
++                  g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "unknown layer.list filter '%s'", key);
++                  return NULL;
++                }
++              if (!string_value)
++                {
++                  g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "layer.list filter '%s' must be a string", key);
++                  return NULL;
++                }
++            }
++
++          g_variant_lookup (arguments, "monitor_id", "&s", &monitor_filter);
++          g_variant_lookup (arguments, "namespace", "&s", &namespace_filter);
++          g_variant_lookup (arguments, "layer", "&s", &layer_filter);
++        }
++
++      g_variant_builder_init (&layers, G_VARIANT_TYPE ("aa{sv}"));
++      windows = meta_display_list_all_windows (display);
++      for (GList *l = windows; l; l = l->next)
++        {
++          MetaWindow *window = l->data;
++          int monitor_index = meta_window_get_monitor (window);
++          g_autofree char *monitor_id =
++            gnoblin_native_monitor_id_for_index (display, monitor_index);
++          g_autoptr (GVariant) record =
++            monitor_id
++              ? meta_wayland_layer_shell_get_snapshot_record (window, monitor_id)
++              : NULL;
++          const char *record_value = NULL;
++
++          if (!record)
++            continue;
++          if (monitor_filter &&
++              g_strcmp0 (monitor_id, monitor_filter) != 0)
++            continue;
++          if (namespace_filter &&
++              (!g_variant_lookup (record, "namespace", "&s", &record_value) ||
++               g_strcmp0 (record_value, namespace_filter) != 0))
++            continue;
++          if (layer_filter &&
++              (!g_variant_lookup (record, "layer", "&s", &record_value) ||
++               g_strcmp0 (record_value, layer_filter) != 0))
++            continue;
++
++          g_variant_builder_add_value (&layers, g_steal_pointer (&record));
++        }
++
++      g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
++      g_variant_builder_add (&result, "{sv}", "layers",
++                             g_variant_builder_end (&layers));
++      return g_variant_ref_sink (g_variant_builder_end (&result));
++    }
+   if (g_strcmp0 (method, "workspace.list") == 0 ||
+       g_strcmp0 (method, "workspace.create") == 0 ||
+       g_strcmp0 (method, "workspace.rename") == 0 ||

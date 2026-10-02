@@ -1,5 +1,5 @@
 From 09ed42ccb5d7ccbacc739c7fce4a071e0e0ed845 Mon Sep 17 00:00:00 2001
-From: Gnoblin Developers <gnoblin@example.invalid>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sun, 21 Jun 2026 04:10:00 +0100
 Subject: [PATCH] tests: ignore input enters for unwrapped Wayland surfaces
 

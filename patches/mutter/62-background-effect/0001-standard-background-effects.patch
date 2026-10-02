@@ -1,5 +1,5 @@
 From 8822780a33d142e66ae45d7ecd762cf8fc4f1c61 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:08:20 +0100
 Subject: [PATCH] Wire ext-background-effect-v1 into surface transactions
 

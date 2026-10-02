@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 05:21:17 +0100
+Subject: [PATCH] gnoblin: omit GNOME end-session dialog in standalone mode
+
+---
+diff --git a/js/ui/main.js b/js/ui/main.js
+index b24c12f54..9c1dd5b81 100644
+--- a/js/ui/main.js
++++ b/js/ui/main.js
+@@ -13,7 +13,6 @@ import * as BrightnessManager from '../misc/brightnessManager.js';
+ import * as Config from '../misc/config.js';
+ import * as Components from './components.js';
+ import * as CtrlAltTab from './ctrlAltTab.js';
+-import * as EndSessionDialog from './endSessionDialog.js';
+ import * as ExtensionSystem from './extensionSystem.js';
+ import * as ExtensionDownloader from './extensionDownloader.js';
+ import * as InputMethod from '../misc/inputMethod.js';
+@@ -315,7 +314,11 @@ async function _initializeUI() {
+ 
+     // Provide the bus object for gnome-session to
+     // initiate logouts.
+-    endSessionDialog = new EndSessionDialog.EndSessionDialog();
++    if (global.session_mode !== 'gnoblin' ||
++        GLib.getenv('GNOBLIN_STANDALONE_SESSION') !== '1') {
++        const EndSessionDialog = await import('./endSessionDialog.js');
++        endSessionDialog = new EndSessionDialog.EndSessionDialog();
++    }
+ 
+     // We're ready for the session manager to move to the next phase
+     GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => {

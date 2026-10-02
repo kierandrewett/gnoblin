@@ -1,45 +1,47 @@
 #!/usr/bin/env bash
-# Register the gnoblin session with your login manager / systemd --user
-# instance. Separate from install-session.sh (and NOT run by `just build-local` /
-# `just dev-session`) because it touches state outside the prefix:
-#
-#   1. Links org.gnoblin.Shell.target + org.gnoblin.Shell@wayland.service
-#      into systemd --user's search path (~/.config/systemd/user/), so
-#      gnome-session's RequiredComponents=org.gnoblin.Shell can find them.
-#      User-level, no root, fully reversible (see "Undo" below). These are
-#      gnoblin-specific unit names -- this does NOT touch or shadow
-#      org.gnome.Shell@wayland.service, so any system GNOME session is
-#      unaffected.
-#   2. Prints (does not run) the command to make "Gnoblin" appear at your
-#      login manager's session picker. That step needs root, because login
-#      managers read wayland-session .desktop files from a fixed system
-#      directory (e.g. /usr/share/wayland-sessions/), not anything under
-#      your prefix or home directory -- there's no way around that without
-#      a real package install (see `just rpm`).
-#
-# Usage: register-session.sh <prefix>   (run install-session.sh <prefix> first)
+# Register a source build with the login manager and systemd --user.
+# build.sh is the public entry point. This script changes state outside the
+# build prefix, so it runs only for an explicit registration request.
 set -euo pipefail
 
-PREFIX="${1:?usage: register-session.sh <prefix>}"
+blue='' green='' reset=''
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+    blue=$'\033[1;36m'
+    green=$'\033[1;32m'
+    reset=$'\033[0m'
+fi
+
+if [ "$#" -ne 1 ]; then
+    echo 'Usage: register-session.sh <prefix>' >&2
+    exit 2
+fi
+PREFIX="$1"
 if [ ! -d "$PREFIX" ]; then
     echo "Gnoblin prefix does not exist: $PREFIX" >&2
-    echo "Build and install the local session first: GNOBLIN_PREFIX=\"$PREFIX\" just build-local" >&2
+    echo 'Build the local session first: ./build.sh' >&2
     exit 1
 fi
 PREFIX="$(cd "$PREFIX" && pwd)"
 source "$(dirname "$0")/../src/tools/gnoblin-env.sh"
 gnoblin_env_validate_install_prefix "$PREFIX" || exit
 UNIT_DIR="$PREFIX/lib/systemd/user"
-TARGET="$UNIT_DIR/org.gnoblin.Shell.target"
-SERVICE="$UNIT_DIR/org.gnoblin.Shell@wayland.service"
+STANDALONE_TARGET="$UNIT_DIR/gnoblin-session.target"
+IDLE_SERVICE="$UNIT_DIR/gnoblin-idle.service"
+IDLE_BINARY="$PREFIX/libexec/gnoblin-idle"
 DESKTOP="$PREFIX/share/wayland-sessions/gnoblin.desktop"
-SESSION="$PREFIX/share/gnome-session/sessions/gnoblin.session"
-DROPIN="$UNIT_DIR/gnome-session@gnoblin.target.d/gnoblin.conf"
-USER_DROPIN="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
+PORTAL_UNIT="$UNIT_DIR/xdg-desktop-portal-gnoblin.service"
+PORTAL_BINARY="$PREFIX/libexec/xdg-desktop-portal-gnoblin"
+PORTAL_DESCRIPTOR="$PREFIX/share/xdg-desktop-portal/portals/gnoblin.portal"
+PORTAL_CONFIG="$PREFIX/share/xdg-desktop-portal/gnoblin-portals.conf"
+PORTAL_DBUS="$PREFIX/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service"
+USER_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 
-for f in "$TARGET" "$SERVICE" "$DESKTOP" "$SESSION" "$DROPIN"; do
+required=("$DESKTOP" "$PORTAL_UNIT" "$PORTAL_BINARY" "$PORTAL_DESCRIPTOR" "$PORTAL_CONFIG" "$PORTAL_DBUS"
+    "$PREFIX/bin/gnoblin" "$PREFIX/libexec/gnoblin-env.sh"
+    "$STANDALONE_TARGET" "$IDLE_SERVICE" "$IDLE_BINARY")
+for f in "${required[@]}"; do
     [ -f "$f" ] || {
-        echo "missing $f -- run ./scripts/install-session.sh $PREFIX first" >&2
+        echo "Missing $f -- run ./build.sh first" >&2
         exit 1
     }
 done
@@ -48,35 +50,69 @@ command -v systemctl >/dev/null 2>&1 || {
     echo "systemctl not found -- this needs a systemd user session" >&2
     exit 1
 }
-if [ -e "$USER_DROPIN" ] && [ ! -L "$USER_DROPIN" ]; then
-    echo "Existing custom drop-in at $USER_DROPIN; move it aside before registering Gnoblin." >&2
+command -v python3 >/dev/null 2>&1 || {
+    echo 'Missing python3; it is required to create the standalone login entry.' >&2
+    exit 1
+}
+command -v dbus-update-activation-environment >/dev/null 2>&1 || {
+    echo "Missing dbus-update-activation-environment; install your distribution's D-Bus tools." >&2
+    exit 1
+}
+systemctl --user show-environment >/dev/null 2>&1 || {
+    echo 'The systemd user manager is unavailable. Register from a logged-in systemd session.' >&2
+    exit 1
+}
+if ! systemctl --user cat xdg-desktop-portal.service >/dev/null 2>&1; then
+    echo 'Missing user service xdg-desktop-portal.service. Install the session runtime packages in docs/install-source.md.' >&2
     exit 1
 fi
+# A previous source tarball may have registered the same unit names from a
+# different prefix. Refresh only links that point to Gnoblin's own unit paths.
+linked_units=(gnoblin-session.target gnoblin-idle.service xdg-desktop-portal-gnoblin.service)
+for unit in "${linked_units[@]}"; do
+    link="$USER_UNIT_DIR/$unit"
+    if [ -e "$link" ] && [ ! -L "$link" ]; then
+        echo "Existing custom unit at $link; move it aside before registering Gnoblin." >&2
+        exit 1
+    fi
+    if [ -L "$link" ]; then
+        case "$(readlink "$link")" in
+            */lib/systemd/user/"$unit") ;;
+            *)
+                echo "Existing custom unit link at $link; move it aside before registering Gnoblin." >&2
+                exit 1
+                ;;
+        esac
+    fi
+done
 
-echo ">> linking gnoblin's systemd --user units (does not touch org.gnome.Shell*):"
-systemctl --user link "$TARGET" "$SERVICE"
-mkdir -p "$(dirname "$USER_DROPIN")"
-ln -sfn "$DROPIN" "$USER_DROPIN"
+command -v sudo >/dev/null 2>&1 || {
+    echo 'sudo is needed to add the login screen entries.' >&2
+    exit 1
+}
+sudo -v
+
+printf '%s==>%s Registering Gnoblin with systemd and the login screen\n' "$blue" "$reset"
+systemctl --user --force link "$STANDALONE_TARGET" "$IDLE_SERVICE" "$PORTAL_UNIT"
+desktop_to_install="$(mktemp)"
+trap 'rm -f -- "$desktop_to_install"' EXIT
+python3 - "$DESKTOP" "$desktop_to_install" <<'PY'
+from pathlib import Path
+import sys
+
+source, destination = map(Path, sys.argv[1:])
+lines = []
+for line in source.read_text().splitlines():
+    if line.startswith('Exec='):
+        line = 'Exec=env GNOBLIN_STANDALONE_SESSION=1 ' + line[5:]
+    elif line.startswith('DesktopNames='):
+        line = 'DesktopNames=Gnoblin;'
+    lines.append(line)
+destination.write_text('\n'.join(lines) + '\n')
+PY
 systemctl --user daemon-reload
-echo "     org.gnoblin.Shell.target"
-echo "     org.gnoblin.Shell@wayland.service"
-
-cat <<EOF
-
->> systemd --user units linked. Verify with:
-     systemctl --user list-unit-files | grep gnoblin
-
->> Still needed to see "Gnoblin" at your login manager's session picker --
-   run this yourself (needs root; not run automatically):
-
-     sudo install -Dm644 "$DESKTOP" /usr/share/wayland-sessions/gnoblin.desktop
-     sudo install -Dm644 "$SESSION" /usr/share/gnome-session/sessions/gnoblin.session
-
->> Undo, any time:
-     rm ~/.config/systemd/user/org.gnoblin.Shell.target
-     rm ~/.config/systemd/user/org.gnoblin.Shell@wayland.service
-     rm "$USER_DROPIN"
-     systemctl --user daemon-reload
-     sudo rm /usr/share/wayland-sessions/gnoblin.desktop
-     sudo rm /usr/share/gnome-session/sessions/gnoblin.session
-EOF
+sudo install -Dm644 "$desktop_to_install" /usr/share/wayland-sessions/gnoblin.desktop
+sudo install -Dm644 "$PORTAL_DESCRIPTOR" /usr/share/xdg-desktop-portal/portals/gnoblin.portal
+sudo install -Dm644 "$PORTAL_CONFIG" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+sudo install -Dm644 "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
+printf '%sGnoblin is available%s at login. Choose the existing GNOME session to switch back to GNOME.\n' "$green" "$reset"

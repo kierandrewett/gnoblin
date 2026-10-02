@@ -1,0 +1,138 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 29 Sep 2026 07:51:59 +0100
+Subject: [PATCH] mutter: list windows in the native compositor
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 3198a8346..3dd6fc57b 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -44,6 +44,7 @@
+ #include "meta/meta-backend.h"
+ #include "meta/meta-context.h"
+ #include "meta/window.h"
++#include "meta/workspace.h"
+ 
+ static const GDebugKey meta_debug_keys[] = {
+   { "focus", META_DEBUG_FOCUS },
+@@ -708,6 +709,110 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
+ #endif
+ }
+ 
++static GVariant *
++gnoblin_native_window_list (MetaDisplay *display,
++                            GVariant    *arguments,
++                            GError     **error)
++{
++  MetaBackend *backend = meta_context_get_backend (meta_display_get_context (display));
++  if (meta_backend_get_gnoblin_session_lock_active (backend))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                           "window listing is unavailable while the session is locked");
++      return NULL;
++    }
++
++  const char *app_filter = NULL;
++  const char *title_filter = NULL;
++  gboolean focused_only = FALSE;
++  g_autoptr (GVariant) app_value = NULL;
++  g_autoptr (GVariant) title_value = NULL;
++  g_autoptr (GVariant) focused_value = NULL;
++  if (arguments)
++    {
++      app_value = g_variant_lookup_value (arguments, "app_id", NULL);
++      title_value = g_variant_lookup_value (arguments, "title", NULL);
++      focused_value = g_variant_lookup_value (arguments, "focused", NULL);
++      if ((app_value && !g_variant_is_of_type (app_value, G_VARIANT_TYPE_STRING)) ||
++          (title_value && !g_variant_is_of_type (title_value, G_VARIANT_TYPE_STRING)) ||
++          (focused_value && !g_variant_is_of_type (focused_value, G_VARIANT_TYPE_BOOLEAN)))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "window filters must be strings or a focused boolean");
++          return NULL;
++        }
++      if (app_value)
++        app_filter = g_variant_get_string (app_value, NULL);
++      if (title_value)
++        title_filter = g_variant_get_string (title_value, NULL);
++      if (focused_value)
++        focused_only = g_variant_get_boolean (focused_value);
++    }
++  g_autofree char *folded_filter = title_filter ? g_utf8_casefold (title_filter, -1) : NULL;
++  MetaWindow *focused = meta_display_get_focus_window (display);
++  g_autoptr (GList) windows = meta_display_list_all_windows (display);
++  GVariantBuilder entries;
++  GVariantBuilder result;
++  g_variant_builder_init (&entries, G_VARIANT_TYPE ("aa{sv}"));
++  for (GList *item = windows; item; item = item->next)
++    {
++      MetaWindow *window = item->data;
++      if (meta_window_is_skip_taskbar (window) ||
++          meta_window_is_override_redirect (window))
++        continue;
++
++      const char *title = meta_window_get_title (window);
++      const char *gtk_id = meta_window_get_gtk_application_id (window);
++      const char *wm_class = meta_window_get_wm_class (window);
++      const char *app_id = gtk_id && *gtk_id ? gtk_id : wm_class;
++      if (app_filter && g_strcmp0 (app_filter, app_id) != 0)
++        continue;
++      if (focused_only && window != focused)
++        continue;
++      if (folded_filter)
++        {
++          g_autofree char *folded_title = g_utf8_casefold (title ? title : "", -1);
++          if (!g_strstr_len (folded_title, -1, folded_filter))
++            continue;
++        }
++
++      g_autofree char *id = g_strdup_printf ("%u", meta_window_get_stable_sequence (window));
++      MetaWorkspace *workspace = meta_window_get_workspace (window);
++      MtkRectangle frame;
++      meta_window_get_frame_rect (window, &frame);
++      GVariantBuilder geometry;
++      GVariantBuilder entry;
++      g_variant_builder_init (&geometry, G_VARIANT_TYPE_VARDICT);
++      g_variant_builder_add (&geometry, "{sv}", "x", g_variant_new_int32 (frame.x));
++      g_variant_builder_add (&geometry, "{sv}", "y", g_variant_new_int32 (frame.y));
++      g_variant_builder_add (&geometry, "{sv}", "width", g_variant_new_int32 (frame.width));
++      g_variant_builder_add (&geometry, "{sv}", "height", g_variant_new_int32 (frame.height));
++      g_variant_builder_init (&entry, G_VARIANT_TYPE_VARDICT);
++      g_variant_builder_add (&entry, "{sv}", "id", g_variant_new_string (id));
++      g_variant_builder_add (&entry, "{sv}", "title", g_variant_new_string (title ? title : ""));
++      g_variant_builder_add (&entry, "{sv}", "appId", g_variant_new_string (app_id ? app_id : ""));
++      g_variant_builder_add (&entry, "{sv}", "gtkAppId", g_variant_new_string (gtk_id ? gtk_id : ""));
++      g_variant_builder_add (&entry, "{sv}", "wmClass", g_variant_new_string (wm_class ? wm_class : ""));
++      g_variant_builder_add (&entry, "{sv}", "ruleAppId", g_variant_new_string (app_id ? app_id : ""));
++      g_variant_builder_add (&entry, "{sv}", "focused", g_variant_new_boolean (window == focused));
++      if (workspace)
++        {
++          int number = meta_workspace_index (workspace) + 1;
++          g_variant_builder_add (&entry, "{sv}", "workspace", g_variant_new_int32 (number));
++          g_variant_builder_add (&entry, "{sv}", "workspaceNumber", g_variant_new_int32 (number));
++        }
++      g_variant_builder_add (&entry, "{sv}", "monitorIndex", g_variant_new_int32 (meta_window_get_monitor (window)));
++      g_variant_builder_add (&entry, "{sv}", "maximized", g_variant_new_boolean (meta_window_is_maximized (window)));
++      g_variant_builder_add (&entry, "{sv}", "fullscreen", g_variant_new_boolean (meta_window_is_fullscreen (window)));
++      g_variant_builder_add (&entry, "{sv}", "geometry", g_variant_builder_end (&geometry));
++      g_variant_builder_add_value (&entries, g_variant_builder_end (&entry));
++    }
++  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_add (&result, "{sv}", "windows", g_variant_builder_end (&entries));
++  return g_variant_ref_sink (g_variant_builder_end (&result));
++}
++
++
+ static GVariant *
+ gnoblin_native_window_action (MetaDisplay *display,
+                               GVariant    *arguments,
+@@ -848,6 +953,8 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+ 
+   if (g_strcmp0 (method, "window.action") == 0)
+     return gnoblin_native_window_action (display, arguments, error);
++  if (g_strcmp0 (method, "window.list") == 0)
++    return gnoblin_native_window_list (display, arguments, error);
+   if (g_strcmp0 (method, "monitor.list") != 0)
+     return NULL;
+ 

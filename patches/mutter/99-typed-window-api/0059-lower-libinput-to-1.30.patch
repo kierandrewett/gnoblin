@@ -1,0 +1,38 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] mutter: support libinput 1.30
+
+---
+diff --git a/meson.build b/meson.build
+index b926c9b39..e6c89af9c 100644
+--- a/meson.build
++++ b/meson.build
+@@ -52,3 +52,3 @@ wayland_protocols_req = '>= 1.48'
+ # native backend version requirements
+-libinput_req = '>= 1.31.0'
++libinput_req = '>= 1.30.0'
+ gbm_req = '>= 21.3'
+@@ -252,2 +252,5 @@ libgbm_dep = dependency('gbm', version: gbm_req)
+ libinput_dep = dependency('libinput', version: libinput_req)
++have_libinput_dwt_timeout = cc.has_function('libinput_device_config_dwt_set_timeout',
++  dependencies: libinput_dep,
++  prefix: '#include <libinput.h>')
+ 
+@@ -560,2 +563,3 @@ cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
+ cdata.set('HAVE_SOUND_PLAYER', have_sound_player)
++cdata.set('HAVE_LIBINPUT_DWT_TIMEOUT', have_libinput_dwt_timeout)
+ cdata.set('HAVE_LIBWACOM', have_libwacom)
+diff --git a/src/backends/native/meta-input-settings-native.c b/src/backends/native/meta-input-settings-native.c
+index 39f8e7611..b8ee88afb 100644
+--- a/src/backends/native/meta-input-settings-native.c
++++ b/src/backends/native/meta-input-settings-native.c
+@@ -289,4 +289,8 @@ meta_input_settings_native_set_disable_while_typing_timeout (MetaInputSettings
+ 
++#ifdef HAVE_LIBINPUT_DWT_TIMEOUT
+   if (libinput_device_config_dwt_is_available (libinput_device))
+     libinput_device_config_dwt_set_timeout (libinput_device, millis);
++#else
++  (void) millis;
++#endif
+ }

@@ -1,0 +1,13 @@
+# project source destination
+mutter gnoblin-native-control.c src/core/gnoblin-native-control.c
+mutter gnoblin-native-control.h src/core/gnoblin-native-control.h
+mutter gnoblin-location-agent.c src/core/gnoblin-location-agent.c
+mutter gnoblin-location-agent.h src/core/gnoblin-location-agent.h
+mutter gnoblin-pipewire-monitor.c src/core/gnoblin-pipewire-monitor.c
+mutter gnoblin-pipewire-monitor.h src/core/gnoblin-pipewire-monitor.h
+mutter gnoblin-touchpad-router.c src/core/gnoblin-touchpad-router.c
+mutter gnoblin-touchpad-router.h src/core/gnoblin-touchpad-router.h
+mutter gnoblin-runtime-protocol.c src/core/gnoblin-runtime-protocol.c
+mutter gnoblin-runtime-protocol.h src/core/gnoblin-runtime-protocol.h
+mutter gnoblin-runtime-cache.c src/core/gnoblin-runtime-cache.c
+mutter gnoblin-runtime-cache.h src/core/gnoblin-runtime-cache.h

@@ -1,0 +1,124 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 06:18:39 +0100
+Subject: [PATCH] mutter: dispatch native shortcut capture operations
+
+---
+diff --git a/src/core/display-private.h b/src/core/display-private.h
+index d05087e11..a77d87a81 100644
+--- a/src/core/display-private.h
++++ b/src/core/display-private.h
+@@ -316,6 +316,9 @@ void meta_display_flush_queued_window (MetaDisplay   *display,
+ gboolean meta_display_process_captured_input (MetaDisplay        *display,
+                                               const ClutterEvent *event);
+ 
++gboolean meta_display_can_start_native_key_capture (MetaDisplay *display);
++void meta_display_cancel_native_key_capture (MetaDisplay *display);
++
+ void meta_display_cancel_input_capture (MetaDisplay *display);
+ 
+ void meta_display_handle_window_enter (MetaDisplay *display,
+diff --git a/src/core/display.c b/src/core/display.c
+index 894a4f8cd..eac594855 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -637,6 +637,23 @@ meta_display_process_captured_input (MetaDisplay        *display,
+   return meta_input_capture_process_event (input_capture, event);
+ }
+ 
++gboolean
++meta_display_can_start_native_key_capture (MetaDisplay *display)
++{
++  MetaDisplayPrivate *priv = meta_display_get_instance_private (display);
++  MetaBackend *backend = meta_context_get_backend (priv->context);
++  ClutterStage *stage = meta_backend_get_stage (backend);
++  gboolean stage_is_grabbed = TRUE;
++
++  if (stage)
++    g_object_get (stage, "is-grabbed", &stage_is_grabbed, NULL);
++
++  /* Do not pre-empt an input-capture portal or a popup/other stage grab. */
++  return !priv->enable_input_capture &&
++         stage != NULL &&
++         !stage_is_grabbed;
++}
++
+ void
+ meta_display_cancel_input_capture (MetaDisplay *display)
+ {
+@@ -658,6 +675,7 @@ enable_input_capture (MetaInputCapture *input_capture,
+   g_return_if_fail (!priv->enable_input_capture);
+ 
+   priv->enable_input_capture = TRUE;
++  meta_display_cancel_native_key_capture (display);
+ }
+ 
+ static void
+@@ -1130,6 +1148,11 @@ on_is_grabbed_changed (ClutterStage *stage,
+                        MetaDisplay  *display)
+ {
+   MetaDisplayPrivate *priv = meta_display_get_instance_private (display);
++  gboolean is_grabbed = FALSE;
++
++  g_object_get (stage, "is-grabbed", &is_grabbed, NULL);
++  if (is_grabbed)
++    meta_display_cancel_native_key_capture (display);
+ 
+   if (!priv->focus_on_grab_dismissed.window)
+     return;
+diff --git a/src/core/events.c b/src/core/events.c
+index 70696957f..39ff5ec85 100644
+--- a/src/core/events.c
++++ b/src/core/events.c
+@@ -158,9 +158,11 @@ meta_display_handle_event (MetaDisplay        *display,
+     return CLUTTER_EVENT_STOP;
+ #endif
+ 
+-  /* Shortcut capture must run after the session-lock embargo, but before
+-   * captured input, accessibility, text input, global keybindings, or
+-   * Wayland delivery can observe these keys. */
++  if (meta_display_process_captured_input (display, event))
++    return CLUTTER_EVENT_STOP;
++
++  /* Shortcut capture must run after session-lock and input-capture embargoes,
++   * but before accessibility, text input, keybindings, or Wayland delivery. */
+   if (IS_KEY_EVENT (event_type) &&
+       display->native_key_capture_active
+ #ifdef HAVE_WAYLAND
+@@ -173,9 +175,6 @@ meta_display_handle_event (MetaDisplay        *display,
+       return CLUTTER_EVENT_STOP;
+     }
+ 
+-  if (meta_display_process_captured_input (display, event))
+-    return CLUTTER_EVENT_STOP;
+-
+   if (IS_KEY_EVENT (event_type))
+     {
+       gboolean should_inhibit_a11y = FALSE;
+@@ -443,6 +442,26 @@ meta_display_unregister_native_key_capture_handler (MetaDisplay *display,
+     destroy (callback_data);
+ }
+ 
++void
++meta_display_cancel_native_key_capture (MetaDisplay *display)
++{
++  gpointer user_data;
++
++  g_return_if_fail (META_IS_DISPLAY (display));
++
++  if (!display->native_key_capture_active ||
++      !display->native_key_capture_handler)
++    return;
++
++  user_data = display->native_key_capture_data;
++  display->native_key_capture_handler (NULL, user_data);
++
++  /* Cancellation callbacks normally unregister themselves. Keep the hook
++   * from remaining active if a caller fails to do so. */
++  if (display->native_key_capture_handler)
++    meta_display_unregister_native_key_capture_handler (display, user_data);
++}
++
+ gboolean
+ meta_display_start_native_key_capture (MetaDisplay *display)
+ {

@@ -1,5 +1,5 @@
 From b1f4cd2a043c8dddbb6a5723504373301e1c37d4 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 20:46:00 +0000
 Subject: [PATCH] wayland: finalize Gnoblin lock controller before dependencies
 

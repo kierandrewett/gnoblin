@@ -13,13 +13,15 @@ The usual path is `~/.config/gnoblin/init.lua`, or
 `$XDG_CONFIG_HOME/gnoblin/init.lua` when that variable is set.
 The compositor's `GNOBLIN_CONFIG` environment variable overrides it.
 
-Without that override, Gnoblin checks `init.lua`, `gnoblin.toml`, then
-`gnoblin.conf`. The TOML names are kept for existing installations. New configs
-should use `init.lua`; any selected file without a `.lua` suffix is parsed as TOML.
+Without that override, Gnoblin checks `init.lua`, then the old
+`gnoblin.toml` and `gnoblin.conf` names. Those names are detected only so Gnoblin
+can report that the file must be converted; TOML and CONF are not parsed. Rename
+or remove an old file after converting it to Lua. Every selected root and
+included configuration file must use the `.lua` suffix.
 
-For packaged logins, `gnoblin-session` copies
+For packaged logins, `gnoblin` copies
 `/usr/share/gnoblin/init.lua.example` to `init.lua` when no user config exists.
-The shell loads that file when its config starts.
+The session supervisor loads that file when the compositor starts.
 
 If the example is unavailable, or you run a build directly, Gnoblin uses its
 defaults. Setting `GNOBLIN_CONFIG` in a terminal does not change the
@@ -36,7 +38,7 @@ The included file uses the same API:
 
 ```lua
 gnoblin.configure {
-    shell = {minimize_duration = 150},
+    window_management = {focus_mode = "sloppy"},
 }
 ```
 
@@ -65,12 +67,12 @@ are applied last.
 Repeated `gnoblin.configure` calls keep settings you have not changed:
 
 ```lua
-gnoblin.configure {shell = {minimize_animation = "fade", minimize_duration = 200}}
-gnoblin.configure {shell = {minimize_duration = 150}}
+gnoblin.configure {window_management = {focus_mode = "sloppy"}}
+gnoblin.configure {window_management = {raise_on_click = true}}
 ```
 
-The result is a fade lasting 150 milliseconds. Changing the duration does not
-remove the animation choice.
+The result keeps sloppy focus and raises windows when clicked. The second call
+does not remove settings that it does not mention.
 
 Lists replace earlier values. This applies to `window_rules`, `shortcuts`,
 `autostart` and permission `rules`.
@@ -105,7 +107,7 @@ For ordinary config files, `gnoblin.load` is enough.
 In `appearance.lua`:
 
 ```lua
-return {shell = {minimize_duration = 150}}
+return {window_management = {focus_mode = "sloppy"}}
 ```
 
 In `init.lua`:
@@ -141,9 +143,10 @@ Use shortcuts or autostart to launch programs.
 Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 32 nested files.
 
-Lua configuration cannot run arbitrary JavaScript. For custom live automation,
-see [user scripts](/user-scripts); most settings and desktop behavior should
-stay in the supported configuration API.
+For event-driven compositor behavior, load a Lua module that registers a
+callback with `gnoblin.events.on`. See [Lua event handlers](/user-scripts) and
+the [event reference](/config/lua-events). Keep presentation in separate
+Wayland clients; the runtime API controls compositor state.
 
 ## Reload and persistence
 
@@ -170,5 +173,6 @@ An already-started autostart name uses a changed command only on the next login.
 If you change a setting with the CLI, a value written in your config file
 will replace that change on the next config reload.
 
-`gnoblinctl reload` also reloads the theme and user scripts. Neither reload
-command replaces native libraries or restarts your separate desktop shell.
+`gnoblinctl config reload` replaces the active Lua configuration and its event
+callbacks. It does not replace native libraries or restart separate desktop
+clients.

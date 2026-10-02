@@ -1,5 +1,5 @@
 From 8f82452dc67c2f2f40bb28b4e4f4fec16a2fb1f3 Mon Sep 17 00:00:00 2001
-From: Gnoblin contributors <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 03:40:00 +0100
 Subject: [PATCH] main: prepare compositor before releasing shell runtime
 

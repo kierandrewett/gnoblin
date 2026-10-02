@@ -1,12 +1,12 @@
 # Animation guide
 
 Register a named animation once. The first registration for an event becomes
-its default. Shell settings and window rules can select a different name.
+its default. A window rule can select a different registered animation for
+matching windows or layer surfaces.
 
 The shared registry drives compositor-owned motion for windows, layer-shell
-surfaces, the developer console, shadows, resizing and workspaces. Window and
-layer-shell surfaces use the same keyframe properties, but have different
-lifecycle events.
+surfaces, shadows, resizing and workspaces. Window and layer-shell surfaces use
+the same keyframe properties, but have different lifecycle events.
 
 ## Register a custom animation
 
@@ -14,7 +14,8 @@ Put declarations in `~/.config/gnoblin/init.lua` or in a file loaded with
 `gnoblin.load`.
 
 Each `gnoblin.animation { ... }` call registers one event under a reusable
-name. Select that name in a shell setting or window rule to use it.
+name. The first declaration for that event supplies its default; use a window
+rule to select another registration for matching windows or surfaces.
 
 ```lua
 gnoblin.animation {
@@ -54,9 +55,7 @@ animation runs:
 | `dialog-open`, `dialog-close`             | When a dialog opens or closes                    |
 | `dialog-dim`, `dialog-undim`              | When a dialog dims or returns to normal          |
 | `layer-open`, `layer-close`               | When a layer-shell surface appears or disappears |
-| `layer-companion-close`                   | When a layer companion is dismissed              |
 | `workspace-switch`                        | When the active workspace changes                |
-| `console-open`, `console-close`           | When the developer console opens or closes       |
 | `shadow-change`                           | When a window shadow changes                     |
 | `resize`                                  | While a window resizes                           |
 | `tile-preview-open`, `tile-preview-close` | When a tile preview appears or disappears        |
@@ -170,7 +169,7 @@ gnoblin.animation {
 }
 
 gnoblin.window_rule {
-    match = {type = "window", app_id = "^org.example.Editor$"},
+    match = {type = "window", app_id = "^org%.example%.Editor$"},
     animation = {open = "my-open", close = "my-close"},
 }
 ```
@@ -189,8 +188,8 @@ Preset names select definitions in Gnoblin's shared animation registry.
 Profiles named `gnome-*` follow GNOME Shell timing and motion where equivalent
 transitions exist.
 
-Gnoblin also uses that naming family for its layer-shell, console, and shadow
-events. Those profiles belong to Gnoblin.
+Gnoblin also uses that naming family for its layer-shell and shadow events.
+Those profiles belong to Gnoblin.
 
 | Preset                                                                | Default profile and motion                                                                                                                  |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -202,9 +201,7 @@ events. Those profiles belong to Gnoblin.
 | `gnome-resize`, `gnome-tile-preview-open`, `gnome-tile-preview-close` | 250 ms, ease-out quad; eases the resize or preview geometry supplied by the compositor.                                                     |
 | `gnome-dialog-dim`, `gnome-dialog-undim`                              | 500 ms / 250 ms, ease-out quad; eases dim `progress` in / out.                                                                              |
 | `gnoblin-layer-open`, `gnoblin-layer-close`                           | 250 ms, ease-out cubic; slides from/to the layer's anchor-derived offset, or fades when the offset is zero.                                 |
-| `gnoblin-console-open`, `gnoblin-console-close`                       | 140 ms, ease-out quad; slides the console vertically by its height.                                                                         |
 | `gnoblin-shadow-change`                                               | Uses the configured shadow duration and easing; animates shadow `progress`.                                                                 |
-| `gnoblin-layer-companion-close`                                       | 180 ms, ease-in quad; moves the companion actor by its dismissal offset.                                                                    |
 
 These are resolved defaults. Geometry-dependent destinations vary with the
 window, dock, monitor, and layer anchors. Custom registrations can replace an
@@ -225,39 +222,27 @@ completes immediately. `fade` changes opacity only. `zoom` minimizes toward the
 dock target. `slide` uses the layer's anchor-derived offset; it is the default
 policy for layer surfaces.
 
-Implementation references:
-
-- Gnoblin's animation definitions are in
-  [`gnoblinAnimation.js`](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-shell-overlay/js/ui/components/gnoblinAnimation.js).
-- Configuration validation and animation selection are in
-  [`gnoblinConfig.js`](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-shell-overlay/js/ui/components/gnoblinConfig.js).
-- GNOME Shell's window and workspace transitions are in
-  [`windowManager.js`](https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/cbc0ba9afaf26c0f579da87aca3de6be7ba5d914/js/ui/windowManager.js)
-  and [`workspacesView.js`](https://gitlab.gnome.org/GNOME/gnome-shell/-/blob/cbc0ba9afaf26c0f579da87aca3de6be7ba5d914/js/ui/workspacesView.js).
-
 ## Select animations
 
 ```lua
-gnoblin.configure {
-    shell = {
-        minimize_animation = {minimize = "gnome-minimize", restore = "gnome-restore"},
-        layer_animation = {["layer-open"] = "gnoblin-layer-open", ["layer-close"] = "gnoblin-layer-close"},
-    },
+gnoblin.animation {
+    name = "soft-minimize",
+    event = "minimize",
+    duration = 250,
+    ease = "ease-out-cubic",
+    from = {scale = 1, opacity = 1},
+    to = {scale = 0.85, opacity = 0},
 }
 
 gnoblin.window_rule {
     match = {type = "window", app_id = "^org.example.Editor$"},
-    animation = {open = "gnome-open"},
+    animation = {minimize = "soft-minimize"},
 }
 ```
 
-`minimize_animation` selects minimize and restore transitions.
-`layer_animation` selects layer-shell entry and exit. Each accepts one built-in
-name or an event map when the two phases need different names.
-
-Window rules select registered animations by event. For a layer rule, match
-the animation events to the layer's entry and exit. Set a rule to `"none"` when
-the shell already animates that surface.
+The first registered animation for an event is its default. A window rule
+overrides that choice for matching windows or layer surfaces. Set a rule to
+`"none"` when the client already animates its own contents.
 
 For shadow transitions, select a `shadow-change` animation in the corner
 configuration:
@@ -304,7 +289,7 @@ The layer's anchors determine the default slide direction. Explicit `x` and
 gnoblinctl animation list
 gnoblinctl animation surfaces
 gnoblinctl animation inspect gnome-open --window active
-session=$(gnoblinctl animation preview gnome-open --window active --format json | python3 -c 'import json,sys; print(json.load(sys.stdin)["session"])')
+session=$(gnoblinctl animation preview gnome-open --window active --format table | sed -n 's/^session: //p')
 gnoblinctl animation seek "$session" 50
 gnoblinctl animation step "$session" 16
 gnoblinctl animation play "$session"

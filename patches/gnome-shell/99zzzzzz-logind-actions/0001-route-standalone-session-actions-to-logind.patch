@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 05:21:17 +0100
+Subject: [PATCH] gnoblin: route standalone session actions to logind
+
+---
+diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
+index 5459bc95a..66b2a27cd 100644
+--- a/js/js-resources.gresource.xml
++++ b/js/js-resources.gresource.xml
+@@ -38,6 +38,7 @@
+     <file>misc/extensionUtils.js</file>
+     <file>misc/fileUtils.js</file>
+     <file>misc/gnomeSession.js</file>
++    <file>misc/gnoblinSessionManager.js</file>
+     <file>misc/history.js</file>
+     <file>misc/ibusManager.js</file>
+     <file>misc/inputMethod.js</file>
+diff --git a/js/misc/systemActions.js b/js/misc/systemActions.js
+index 7aacc85ab..0055e0a64 100644
+--- a/js/misc/systemActions.js
++++ b/js/misc/systemActions.js
+@@ -6,6 +6,7 @@ import GObject from 'gi://GObject';
+ 
+ import {logErrorUnlessCancelled} from './errorUtils.js';
+ import * as GnomeSession from './gnomeSession.js';
++import {SessionManager as GnoblinSessionManager} from './gnoblinSessionManager.js';
+ import * as LoginManager from './loginManager.js';
+ import * as Main from '../ui/main.js';
+ import * as Screenshot from '../ui/screenshot.js';
+@@ -180,7 +181,9 @@ const SystemActions = GObject.registerClass({
+             : new Gio.Settings({schema_id: 'org.gnome.settings-daemon.peripherals.touchscreen'});
+         this._screenSaverSettings = new Gio.Settings({schema_id: SCREENSAVER_SCHEMA});
+ 
+-        this._session = new GnomeSession.SessionManager();
++        this._session = this._gnoblinMode && GLib.getenv('GNOBLIN_STANDALONE_SESSION') === '1'
++            ? new GnoblinSessionManager()
++            : new GnomeSession.SessionManager();
+         this._monitorManager = global.backend.get_monitor_manager();
+ 
+         this._userManager = AccountsService.UserManager.get_default();

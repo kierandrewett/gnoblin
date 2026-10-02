@@ -10,6 +10,9 @@ restore GNOME's session sources.
   input method.
 - `sources[].id` is an installed XKB layout ID or IBus engine ID, depending on
   `type`.
+- In the direct Gnoblin session, XKB-only sources do not start `ibus-daemon`.
+  If you select an IBus source, install the `ibus` daemon and that engine;
+  Gnoblin starts the daemon when the source is configured.
 - `per_window` is optional and defaults to `false`. Set it to `true` to
   remember a different source for each window. With the default `false`, all
   windows share the same active source; switching layouts in one window changes
@@ -28,12 +31,14 @@ XKB data installed on your system.
 | US International | `"us+intl"` | The US layout with the `intl` variant.               |
 | Anthy            | `"anthy"`   | An IBus Japanese input engine; it must be installed. |
 
-Find layouts and variants in **Settings → Keyboard → Input Sources**. GNOME's
-[`GnomeXkbInfo`](https://gnome.pages.gitlab.gnome.org/gnome-desktop/html/gnome-desktop3/gnome-desktop3-GnomeXkbInfo.html)
-API lists the layout IDs GNOME recognizes. The
+Find layouts and variants in **Settings → Keyboard → Input Sources**. Gnoblin
+reads the installed XKB rules through libxkbregistry. The
 [XKB introduction](https://xkbcommon.org/doc/current/xkb-intro.html) explains
 how layouts and variants combine. For an overview of available layouts, see the
 [XKB layout gallery](https://xkeyboard-config.freedesktop.org/layouts/).
+
+When it needs a spare layout in an XKB group, Gnoblin chooses the base layout
+for the locale's country where one is available, then falls back to `us`.
 
 To find installed IBus engine IDs, run:
 

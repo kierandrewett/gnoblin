@@ -1,5 +1,5 @@
 From 5bcd5743a7f21b2064e5513d2ced56f52f76e358 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:58:54 +0100
 Subject: [PATCH] layer-shell: expose metadata for shell rules and animation
 

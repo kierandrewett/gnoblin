@@ -4,29 +4,25 @@
 -- Gnoblin reloads valid changes automatically.
 -- Full reference: https://gnoblin.org/configuration-reference/
 
--- Load shell/component defaults first. Files are evaluated in sorted order;
+-- Load shared config defaults first. Files are evaluated in sorted order;
 -- your values below then override imported values.
 gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
 gnoblin.load("conf.d/**/*.lua")
 
 gnoblin.configure {
-    -- Cursor changes are optional. Gnoblin includes this artwork; install
-    -- other Hyprcursor themes before selecting them.
+    -- Cursor changes are optional. The default uses the system cursor theme.
+    -- Source builds can use --with-vector-cursors to install Adwaita-Hyprcursor.
     cursor = {},
     -- cursor = {theme = "Adwaita-Hyprcursor", size = 24}, -- size: 1..256
 
-    -- Window focus, placement, workspaces and titlebar actions.
+    -- Window focus, placement and titlebar actions.
     window_management = {
         focus_mode = "click", -- "click", "sloppy", "mouse"
-        focus_new_windows = "smart", -- Set to "strict" to prevent focus stealing.
+        focus_new_windows = "strict", -- "smart" allows activation without recent context.
         raise_on_click = true,
         auto_raise = false,
         auto_raise_delay = 500, -- milliseconds, 0..10000
         focus_change_on_pointer_rest = false,
-        dynamic_workspaces = false,
-        num_workspaces = 4, -- 1..36; used when dynamic_workspaces is false
-        workspace_names = {}, -- up to 36 strings, in workspace order
-        workspace_ids = {}, -- up to 36 unique stable IDs, in workspace order
         workspaces_only_on_primary = false,
         edge_tiling = false,
         center_new_windows = false,
@@ -42,6 +38,14 @@ gnoblin.configure {
         action_right_click_titlebar = "menu",
         -- Actions: "toggle-maximize", "toggle-maximize-horizontally",
         -- "toggle-maximize-vertically", "minimize", "lower", "menu", "none".
+    },
+
+    -- Give each workspace a stable ID so rules survive renaming and reordering.
+    workspaces = {
+        {id = "1", name = "Workspace 1"},
+        {id = "2", name = "Workspace 2"},
+        {id = "3", name = "Workspace 3"},
+        {id = "4", name = "Workspace 4"},
     },
 
     -- General compositor interaction preferences. Accessibility settings are
@@ -105,32 +109,12 @@ gnoblin.configure {
     -- Commands and direct actions can use multi-point paths with turns.
     touchpad_gestures = {
         {name = "workspace-previous", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 1, y = 0}},
-            action = "workspace.progress", when = "normal"},
+            action = "workspace.previous", when = "normal"},
         {name = "workspace-next", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = -1, y = 0}},
-            action = "workspace.progress", when = "normal"},
-        {name = "emoji-page-previous", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 1, y = 0}},
-            action = "emoji-pager.progress", when = "emoji-picker"},
-        {name = "emoji-page-next", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = -1, y = 0}},
-            action = "emoji-pager.progress", when = "emoji-picker"},
-        {name = "unlock-screen-up", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 0, y = -1}},
-            action = "unlock-screen.progress", when = "unlock-screen"},
-        {name = "unlock-screen-down", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 0, y = 1}},
-            action = "unlock-screen.progress", when = "unlock-screen"},
+            action = "workspace.next", when = "normal"},
         -- Add a command gesture, for example:
         -- {name = "open-terminal", gesture = "pinch", fingers = 4, direction = "out",
         --     command = {"kgx"}, when = "normal"},
-    },
-
-    -- Shell transitions and built-in shell features.
-    shell = {
-        minimize_animation = {minimize = "gnome-minimize", restore = "gnome-restore"},
-        layer_animation = {["layer-open"] = "gnoblin-layer-open", ["layer-close"] = "gnoblin-layer-close"},
-        window_menu = gnoblin.array {}, -- argv for your shell's window-menu handler
-        window_switcher = false,
-        -- These supported saved preferences are opt-in. Leave them unset to
-        -- preserve their current state.
-        -- notifications = true,
-        -- input_source_switcher = true,
     },
 
     -- Portal policy. The global fallback may be "default", "ask", or "deny";
@@ -164,15 +148,15 @@ gnoblin.configure {
 
     -- Shortcuts use stable names. Use the same name to change an imported
     -- entry; fields you omit keep their earlier values. Set enable = false
-    -- to disable one. Built-in actions use a GNOME keybinding name.
+    -- to disable one. Compositor actions use wm.*, mutter.*, or wayland.*;
+    -- use command for applications and utilities.
+        -- Media bindings use optional wpctl/playerctl commands. Install them
+        -- or point those bindings at your preferred tools.
     shortcuts = {
-        screenshot = {action = "gnome:shell.show_screenshot_ui", binding = {"Print"}},
         ["volume-up"] = {binding = "XF86AudioRaiseVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"}},
         ["volume-down"] = {binding = "XF86AudioLowerVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"}},
         ["volume-mute"] = {binding = "XF86AudioMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"}},
         ["microphone-mute"] = {binding = "XF86AudioMicMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"}},
-        -- GNOME Shell handles the brightness keys itself; rebind them with
-        -- keybindings = {shell = {screen_brightness_up = {...}}}.
         ["media-play-pause"] = {binding = "XF86AudioPlay", command = {"playerctl", "play-pause"}},
         ["media-next"] = {binding = "XF86AudioNext", command = {"playerctl", "next"}},
         ["media-previous"] = {binding = "XF86AudioPrev", command = {"playerctl", "previous"}},
@@ -188,8 +172,8 @@ gnoblin.configure {
     -- window_rules = {},
 }
 
--- Register custom transitions once and reuse them by name in shell settings
--- or window rules. See /guides/animations for events and preview controls.
+-- Register custom compositor transitions once and reuse them by name in
+-- window rules. See /guides/animations for events and preview controls.
 -- gnoblin.animation {
 --     name = "soft-open",
 --     event = "open",
@@ -202,7 +186,7 @@ gnoblin.configure {
 
 -- A complete effect rule. Uncomment or add individual fields as needed.
 -- gnoblin.window_rule {
---     match = {type = "window", app_id = "^org\\.example\\.App$", focused = false},
+--     match = {type = "window", app_id = [[^org%.example%.App$]], focused = false},
 --     blur = 0, -- integer 0..100; zero disables blur
 --     blur_ignore_shadows = false,
 --     opacity = 0.95, -- 0..1
@@ -253,7 +237,7 @@ gnoblin.configure {
 -- or host-exe:/usr/bin/example. A matching deny always wins.
 -- gnoblin.permission_rule {
 --     name = "example-screen-share",
---     match = "^app-id:org\\.example\\.App$",
+--     match = "^app%-id:org%.example%.App$",
 --     capabilities = {"screen-cast"}, -- screen-cast, remote-desktop, input-capture, screenshot, access
 --     level = "ask", -- default, ask, allow, deny
 --     monitors = {"primary"}, -- screen-cast/remote-desktop only
@@ -302,13 +286,7 @@ gnoblin.configure {
 -- gnoblin.configure(require("bindings"))
 
 -- React to the application under the pointer, even if it is not focused:
--- gnoblin.on("mutter.wayland.pointer-window-changed", function(event)
+-- gnoblin.events.on("mutter.wayland.pointer-window-changed", function(event)
 --     local speed = event.app_id == "org.chromium.Chromium" and 0.3 or 1.0
 --     gnoblin.configure {input = {touchpad = {scroll_speed = speed}}}
 -- end)
-
--- Follow GNOME's light or dark preference while the session is running:
--- gnoblin.on("gnome.interface.color-scheme-changed", function(event)
---     print("Desktop color preference:", event.color_scheme)
--- end)
--- See /guides/theming for updating window borders from this event.

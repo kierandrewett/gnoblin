@@ -95,8 +95,8 @@ accepted values`, `Default`, and `Meaning or example`. Add an inline example
 ## Make examples useful
 
 - Include examples for Gnoblin features that help readers complete a task.
-  Cover built-in features such as the developer console as well as the
-  compositor, configuration API, and shell integration.
+  Cover built-in session services as well as the compositor, configuration API,
+  and shell integration.
 - Keep examples runnable or label pseudocode clearly. Identify prerequisites,
   where code goes, and the action that applies or runs it.
 - Prefer small, complete examples over fragments that omit required context.

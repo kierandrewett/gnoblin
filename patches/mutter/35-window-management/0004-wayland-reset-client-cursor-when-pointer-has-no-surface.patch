@@ -1,5 +1,5 @@
 From 0c22c17cedf7e47f5f67e08323b8d4a23f419cf2 Mon Sep 17 00:00:00 2001
-From: Gnoblin Developers <gnoblin@example.invalid>
+From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 22 Jun 2026 16:00:00 +0100
 Subject: [PATCH] wayland: reset stale client cursors on idle focus changes
 

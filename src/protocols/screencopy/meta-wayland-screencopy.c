@@ -31,7 +31,7 @@
 #include "wayland/meta-wayland-outputs.h"
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-session-lock.h"
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 
 #include "wlr-screencopy-unstable-v1-server-protocol.h"
 
@@ -366,7 +366,7 @@ static void bind_screencopy(struct wl_client* client, void* data, uint32_t versi
 }
 
 void meta_wayland_init_screencopy(MetaWaylandCompositor* compositor) {
-    if (!gnoblin_config_protocol_enabled("wlr-screencopy")) {
+    if (!gnoblin_native_control_protocol_enabled("wlr-screencopy")) {
         g_message("Gnoblin wlr-screencopy protocol disabled by settings");
         return;
     }
