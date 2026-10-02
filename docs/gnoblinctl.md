@@ -345,11 +345,10 @@ never sends Lua source to the compositor.
 
 The terminal console cannot subscribe to runtime events, keep shortcut
 registrations alive, or create the trusted input context required for focus
-and interactive window grabs. Calls to `gnoblin.events.on`,
-`gnoblin.events.once`, `gnoblin.shortcuts.bind`, `unbind`, and `end_session`
-explain this runtime boundary instead of sending an unsupported request. Use a
-configuration event handler when an operation needs trusted input or must
-react to events over time.
+and interactive grabs. Calls to subscribe, bind or remove shortcuts, or end a
+shortcut session report this limit instead of sending an unsupported request.
+Use a configuration event handler for event-driven behavior or operations that
+need trusted input.
 
 ## Windows
 
