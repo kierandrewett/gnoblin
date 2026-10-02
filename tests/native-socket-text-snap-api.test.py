@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTROL = ROOT / "src/native-control/gnoblin-native-control.c"
 HEADER = ROOT / "src/native-control/gnoblin-native-control.h"
 LUA = ROOT / "src/config/gnoblin-lua.c"
+SESSION = ROOT / "src/session/gnoblin-runtime.c"
 
 
 def function_body(source: str, signature: str, end_marker: str) -> str:
@@ -53,6 +54,13 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"runtime"', source)
         self.assertIn('"config"', source)
         self.assertIn('"system"', source)
+
+    def test_orientation_lock_snapshot_name_matches_runtime_worker(self):
+        source = CONTROL.read_text()
+        session = SESSION.read_text()
+        self.assertIn('g_str_equal(name, "input-orientation-lock")', session)
+        self.assertEqual(source.count('native_publish_runtime_snapshot(control, "input-orientation-lock"'), 2)
+        self.assertNotIn('native_publish_runtime_snapshot(control, "orientation-lock"', source)
 
     def test_handshake_advertises_current_runtime_methods(self):
         source = CONTROL.read_text()

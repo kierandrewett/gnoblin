@@ -3460,7 +3460,8 @@ static void native_orientation_lock_publish(GnoblinNativeControl* control) {
     g_clear_pointer(&control->orientation_lock_snapshot, g_variant_unref);
     control->orientation_lock_snapshot =
         native_orientation_lock_snapshot(control, control->orientation_lock_revision);
-    native_publish_runtime_snapshot(control, "orientation-lock", control->orientation_lock_snapshot,
+    native_publish_runtime_snapshot(control, "input-orientation-lock",
+                                    control->orientation_lock_snapshot,
                                     control->orientation_lock_revision);
 
     /* The first value seeds the Lua worker; only later changes are events. */
@@ -13336,7 +13337,7 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
     native_publish_runtime_snapshot(control, "input-sources", sources, revision);
     g_autoptr(GVariant) orientation_lock =
         native_orientation_lock_snapshot(control, control->orientation_lock_revision);
-    native_publish_runtime_snapshot(control, "orientation-lock", orientation_lock,
+    native_publish_runtime_snapshot(control, "input-orientation-lock", orientation_lock,
                                     control->orientation_lock_revision);
     g_autoptr(GVariant) shortcuts = native_shortcut_snapshot(control);
     native_publish_runtime_snapshot(control, "shortcuts", shortcuts, revision);
