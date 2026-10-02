@@ -1427,7 +1427,8 @@ static void push_public_settings(lua_State* state, GVariant* value, const char* 
     lua_newtable(state);
     gboolean literal =
         parent && (!strcmp(parent, "shader-uniforms") || !strcmp(parent, "frame-renderers") ||
-                   !strcmp(parent, "shortcuts") || !strcmp(parent, "autostart"));
+                   !strcmp(parent, "shortcuts") || !strcmp(parent, "autostart") ||
+                   !strcmp(parent, "interfaces"));
     GVariantIter iter;
     const char* name;
     GVariant* child;
@@ -3175,7 +3176,8 @@ static void push_settings(lua_State* state, int source, const char* parent, int 
     int destination = lua_gettop(state);
     gboolean literal =
         parent && (!strcmp(parent, "shader-uniforms") || !strcmp(parent, "frame-renderers") ||
-                   !strcmp(parent, "shortcuts") || !strcmp(parent, "autostart"));
+                   !strcmp(parent, "shortcuts") || !strcmp(parent, "autostart") ||
+                   !strcmp(parent, "interfaces"));
     lua_pushnil(state);
     while (lua_next(state, source)) {
         gboolean keybinding_action = keybinding_depth == 2 && lua_type(state, -2) == LUA_TSTRING;
