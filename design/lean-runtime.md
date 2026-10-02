@@ -69,7 +69,20 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 | Session    | `gnoblin`, logind, systemd user targets     | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open. |
 | Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                                             |
 | Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                       |
-| Settings   | `gsettings-desktop-schemas`                 | Mutter and Gnoblin's native control code read shared desktop setting definitions.                                                                                                   |
+| Settings   | `gsettings-desktop-schemas`                 | Shared schemas define key types and defaults; Mutter input settings overlay mapped Lua values, while other consumers still use GSettings.                                           |
+
+Migrate Mutter preferences through a typed compatibility view keyed by their
+existing GSettings schema and key. For each mapped preference, the view reads
+the validated Gnoblin Lua value first and falls back to GSettings while that
+field is inherited or unmigrated. Replace direct GSettings reads with this
+view one consumer at a time, and send changes through the existing config
+reload path. Keep each legacy key's type and write behavior explicit; do not
+assume that a generic GSettings backend can safely edit Lua configuration.
+This lets the Lua config become authoritative gradually while existing
+GSettings preferences remain available as a compatibility fallback. The
+schema package and its version requirement can be reconsidered only after the
+remaining Mutter, native-control, and portal consumers no longer need its
+definitions or defaults.
 
 The package recipes select Gnoblin's portal backend for a Gnoblin session.
 The Gnoblin session package requires `gnoblin-portal` and the generic portal

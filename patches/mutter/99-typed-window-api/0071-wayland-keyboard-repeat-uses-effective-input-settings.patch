@@ -1,0 +1,228 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] wayland keyboard repeat uses effective input settings
+
+---
+diff --git a/src/backends/meta-input-settings-private.h b/src/backends/meta-input-settings-private.h
+index 8b5881bc0..780bcb6ce 100644
+--- a/src/backends/meta-input-settings-private.h
++++ b/src/backends/meta-input-settings-private.h
+@@ -212,6 +212,12 @@ void meta_input_settings_notify_kbd_a11y_change (MetaInputSettings     *input_se
+                                                  MetaKeyboardA11yFlags  new_flags,
+                                                  MetaKeyboardA11yFlags  what_changed);
+ 
++/* Returns the effective value from Gnoblin config or the GSettings fallback. */
++void meta_input_settings_get_keyboard_repeat (MetaInputSettings *input_settings,
++                                             gboolean          *repeat,
++                                             guint             *delay,
++                                             guint             *interval);
++
+ MetaBackend * meta_input_settings_get_backend (MetaInputSettings *input_settings);
+ 
+ double meta_input_settings_get_touchpad_scroll_speed (MetaInputSettings *input_settings);
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+index fdc93c2c9..7cfa28b79 100644
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -99,6 +99,9 @@ struct _MetaInputSettingsPrivate
+   GHashTable *two_finger_devices;
+ 
+   MetaKbdA11ySettings kbd_a11y_settings;
++  gboolean keyboard_repeat;
++  guint keyboard_repeat_delay;
++  guint keyboard_repeat_interval;
+   GVariant *gnoblin_config;
+   gboolean gnoblin_numlock_state;
+ };
+@@ -122,6 +125,7 @@ G_DEFINE_TYPE_WITH_PRIVATE (MetaInputSettings, meta_input_settings, G_TYPE_OBJEC
+ enum
+ {
+   KBD_A11Y_CHANGED,
++  KEYBOARD_REPEAT_CHANGED,
+   N_SIGNALS
+ };
+ 
+@@ -1398,6 +1402,12 @@ update_keyboard_repeat (MetaInputSettings *input_settings)
+   input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
+   input_settings_class->set_keyboard_repeat (input_settings,
+                                              repeat, delay, interval);
++
++  priv->keyboard_repeat = repeat;
++  priv->keyboard_repeat_delay = delay;
++  priv->keyboard_repeat_interval = interval;
++
++  g_signal_emit (input_settings, signals[KEYBOARD_REPEAT_CHANGED], 0);
+ }
+ 
+ static void
+@@ -2243,6 +2253,13 @@ meta_input_settings_class_init (MetaInputSettingsClass *klass)
+                   G_TYPE_NONE, 1,
+                   G_TYPE_POINTER);
+ 
++  signals[KEYBOARD_REPEAT_CHANGED] =
++    g_signal_new ("keyboard-repeat-changed",
++                  G_TYPE_FROM_CLASS (object_class),
++                  G_SIGNAL_RUN_LAST,
++                  0, NULL, NULL, NULL,
++                  G_TYPE_NONE, 0);
++
+ }
+ 
+ static void
+@@ -2468,6 +2485,26 @@ meta_display_apply_gnoblin_input_config (MetaDisplay *display,
+     }
+ }
+ 
++void
++meta_input_settings_get_keyboard_repeat (MetaInputSettings *input_settings,
++                                        gboolean          *repeat,
++                                        guint             *delay,
++                                        guint             *interval)
++{
++  MetaInputSettingsPrivate *priv;
++
++  g_return_if_fail (META_IS_INPUT_SETTINGS (input_settings));
++
++  priv = meta_input_settings_get_instance_private (input_settings);
++
++  if (repeat)
++    *repeat = priv->keyboard_repeat;
++  if (delay)
++    *delay = priv->keyboard_repeat_delay;
++  if (interval)
++    *interval = priv->keyboard_repeat_interval;
++}
++
+ GDesktopStylusButtonAction
+ meta_input_settings_get_tool_button_action (MetaInputSettings       *input_settings,
+                                             ClutterInputDevice      *device,
+diff --git a/src/wayland/meta-wayland-keyboard.c b/src/wayland/meta-wayland-keyboard.c
+index a7a25bbba..c679467cc 100644
+--- a/src/wayland/meta-wayland-keyboard.c
++++ b/src/wayland/meta-wayland-keyboard.c
+@@ -53,6 +53,7 @@
+ #include <unistd.h>
+ 
+ #include "backends/meta-backend-private.h"
++#include "backends/meta-input-settings-private.h"
+ #include "core/display-private.h"
+ #include "mtk/mtk.h"
+ #include "wayland/meta-wayland-private.h"
+@@ -151,6 +152,7 @@ struct _MetaWaylandKeyboard
+   uint32_t last_key_up;
+ 
+   MetaWaylandXkbInfo xkb_info;
++  MetaInputSettings *input_settings;
+   GSettings *settings;
+ };
+ 
+@@ -468,23 +470,30 @@ notify_key_repeat_for_resource (MetaWaylandKeyboard *keyboard,
+     {
+       gboolean repeat;
+       unsigned int delay, rate;
++      guint interval;
+ 
++      if (keyboard->input_settings)
++        meta_input_settings_get_keyboard_repeat (keyboard->input_settings,
++                                                 &repeat,
++                                                 &delay,
++                                                 &interval);
++      else
++        {
++          repeat = g_settings_get_boolean (keyboard->settings, "repeat");
++          interval = g_settings_get_uint (keyboard->settings, "repeat-interval");
++          delay = g_settings_get_uint (keyboard->settings, "delay");
++        }
+       repeat = (wl_resource_get_version (keyboard_resource) <
+-                WL_KEYBOARD_KEY_STATE_REPEATED_SINCE_VERSION &&
+-                g_settings_get_boolean (keyboard->settings, "repeat"));
++                WL_KEYBOARD_KEY_STATE_REPEATED_SINCE_VERSION && repeat);
+ 
+       if (repeat)
+         {
+-          unsigned int interval;
+-          interval = g_settings_get_uint (keyboard->settings, "repeat-interval");
+           /* Our setting is in the milliseconds between keys. "rate" is the number
+            * of keys per second. */
+           if (interval > 0)
+             rate = (1000 / interval);
+           else
+             rate = 0;
+-
+-          delay = g_settings_get_uint (keyboard->settings, "delay");
+         }
+       else
+         {
+@@ -513,11 +522,20 @@ notify_key_repeat (MetaWaylandKeyboard *keyboard)
+ }
+ 
+ static void
+-settings_changed (GSettings           *settings,
+-                  const char          *key,
+-                  gpointer             data)
++keyboard_repeat_changed (MetaInputSettings *input_settings,
++                         gpointer           user_data)
+ {
+-  MetaWaylandKeyboard *keyboard = data;
++  MetaWaylandKeyboard *keyboard = user_data;
++
++  notify_key_repeat (keyboard);
++}
++
++static void
++settings_changed (GSettings  *settings,
++                  const char *key,
++                  gpointer    user_data)
++{
++  MetaWaylandKeyboard *keyboard = user_data;
+ 
+   notify_key_repeat (keyboard);
+ }
+@@ -529,15 +547,21 @@ meta_wayland_keyboard_enable (MetaWaylandKeyboard *keyboard)
+   MetaWaylandSeat *seat = meta_wayland_input_device_get_seat (input_device);
+   MetaBackend *backend = backend_from_keyboard (keyboard);
+ 
+-  keyboard->settings = g_settings_new ("org.gnome.desktop.peripherals.keyboard");
++  keyboard->input_settings = meta_backend_get_input_settings (backend);
++  if (keyboard->input_settings)
++    g_signal_connect (keyboard->input_settings, "keyboard-repeat-changed",
++                      G_CALLBACK (keyboard_repeat_changed), keyboard);
++  else
++    {
++      keyboard->settings = g_settings_new ("org.gnome.desktop.peripherals.keyboard");
++      g_signal_connect (keyboard->settings, "changed",
++                        G_CALLBACK (settings_changed), keyboard);
++    }
+ 
+   wl_array_init (&keyboard->pressed_keys);
+ 
+   keyboard->key_down_serials = g_hash_table_new (NULL, NULL);
+ 
+-  g_signal_connect (keyboard->settings, "changed",
+-                    G_CALLBACK (settings_changed), keyboard);
+-
+   g_signal_connect (backend, "keymap-changed",
+                     G_CALLBACK (on_keymap_changed), keyboard);
+   g_signal_connect (backend, "keymap-layout-group-changed",
+@@ -564,6 +588,12 @@ meta_wayland_keyboard_disable (MetaWaylandKeyboard *keyboard)
+ 
+   g_signal_handlers_disconnect_by_func (backend, on_keymap_changed, keyboard);
+   g_signal_handlers_disconnect_by_func (backend, on_keymap_layout_group_changed, keyboard);
++  if (keyboard->input_settings)
++    g_signal_handlers_disconnect_by_func (keyboard->input_settings,
++                                         keyboard_repeat_changed, keyboard);
++  if (keyboard->settings)
++    g_signal_handlers_disconnect_by_func (keyboard->settings,
++                                         settings_changed, keyboard);
+ 
+   meta_wayland_keyboard_set_focus (keyboard, NULL);
+ 
+@@ -578,6 +608,7 @@ meta_wayland_keyboard_disable (MetaWaylandKeyboard *keyboard)
+   wl_array_release (&keyboard->pressed_keys);
+ 
+   g_clear_object (&keyboard->settings);
++  keyboard->input_settings = NULL;
+ }
+ 
+ static gboolean
