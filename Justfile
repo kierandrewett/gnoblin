@@ -42,6 +42,10 @@ test-window-csd:
 test-window-borders:
     GNOBLIN_DEVKIT_EXEC='python3 {{justfile_directory()}}/tests/test-window-native-borders.py' ./scripts/run-gnoblin-devkit.sh
 
+# Verify repeated Lua window-rule reloads preserve a live compositor window.
+test-window-rule-lifecycle:
+    GNOBLIN_DEVKIT_CONFIG_SOURCE='{{justfile_directory()}}/tests/configs/window-rule-lifecycle' GNOBLIN_DEVKIT_EXEC='python3 {{justfile_directory()}}/tests/test-window-rule-lifecycle.py' ./scripts/run-gnoblin-devkit.sh
+
 # Verify Lua replacement shadows and transparent-window compositing in the standalone session.
 test-window-shadows:
     GNOBLIN_DEVKIT_EXEC='python3 {{justfile_directory()}}/tests/test-window-native-shadows.py' ./scripts/run-gnoblin-devkit.sh
