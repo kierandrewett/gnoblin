@@ -33,7 +33,7 @@ jobs:
         run: |
           dnf -y install \
             git cmake ninja-build meson python3 gcc gcc-c++ make pkgconf-pkg-config \
-            gettext gettext-devel sassc desktop-file-utils python3-docutils gnome-desktop-4 \
+            gettext gettext-devel sassc desktop-file-utils python3-docutils gnome-desktop4-devel \
             python3-packaging readline-devel iso-codes adwaita-cursor-theme util-linux-user \
             glib2-devel json-glib-devel libadwaita-devel expat-devel \
             mesa-libEGL-devel pam-devel lua-devel cvt xkeyboard-config-devel \
