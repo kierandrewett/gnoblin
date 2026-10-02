@@ -1050,6 +1050,11 @@ flickering. Location availability and activity come from Gnoblin's GeoClue
 agent. A source is unavailable when its service or monitor cannot be reached;
 unavailable does not mean inactive.
 
+GeoClue must allow the `gnoblin` agent ID in its agent whitelist. Append
+`gnoblin` to the existing `[agent]` `whitelist` in the system's GeoClue
+configuration, preserving the other IDs. If the service rejects Gnoblin as an
+agent, location is reported as unavailable and requests are not delivered.
+
 Gnoblin publishes `gnoblin.location.authorization-requested` when GeoClue asks
 whether an application may use location. A shell or Lua handler can answer
 with `gnoblin.location.authorize_app`:
@@ -1067,7 +1072,8 @@ end)
 This handler denies every request. A shell that asks the user for consent can
 return `allow = true` with the selected accuracy after the user approves.
 Socket clients need native-control API 1.65 to receive and answer these
-requests.
+requests. GeoClue configuration that does not allow the agent must be fixed by
+the system administrator before the capability becomes available.
 
 GeoClue supplies `app_id` as the application's desktop ID. Treat it as a
 request attribute, not an authenticated identity.
