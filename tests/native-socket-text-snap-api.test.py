@@ -132,14 +132,15 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             (ROOT / "docs/config/lua-events.md").read_text(),
         )
 
-    def test_microphone_capability_changes_reach_lua_and_socket_at_api_133(self):
+    def test_capture_capabilities_and_camera_privacy_reach_lua(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
         callback = function_body(
             source,
-            "static void privacy_microphone_state_changed(",
+            "static void privacy_pipewire_state_changed(",
             "static void privacy_refresh_state(",
         )
+        monitor = (ROOT / "src/native-control/gnoblin-pipewire-monitor.c").read_text()
         capability = function_body(
             source,
             "static GVariant* capability_snapshot_record(",
@@ -157,7 +158,12 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(native_capability->id, "microphone-monitor")', capability)
         self.assertIn('"pipewire_unavailable"', capability)
         self.assertIn('"remote_desktop_disabled"', capability)
-        self.assertIn('native_capability_by_id("microphone-monitor")', callback)
+        self.assertIn("native_capability_by_id(changed_capabilities[i])", callback)
+        self.assertIn('"camera-monitor"', source)
+        self.assertIn('g_str_equal(native_capability->id, "camera-monitor")', capability)
+        self.assertIn("PW_KEY_MEDIA_ROLE", monitor)
+        self.assertIn('g_str_equal(media_role, "Camera")', monitor)
+        self.assertIn("g_timeout_add(500, privacy_camera_disable, control)", source)
         self.assertNotIn("G_N_ELEMENTS(native_capabilities) - 1", callback)
         self.assertLess(
             callback.index('native_publish_runtime_snapshot(control, "capabilities"'),
