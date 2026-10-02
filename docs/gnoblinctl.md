@@ -103,6 +103,16 @@ value. `move_here` accepts a `Window` record, stable window ID, or `"active"`;
 its optional `follow` setting defaults to `false`. Removing configured,
 active, or nonempty workspaces is rejected by the compositor.
 
+Monitor snapshots are available through `gnoblin.monitors.list()` and
+`gnoblin.monitors.primary()`. They return read-only `Monitor` records, or
+`nil` when the session has no primary monitor:
+
+```lua
+for _, monitor in ipairs(gnoblin.monitors.list()) do
+    print(monitor.id, monitor.width, monitor.height, monitor.scale)
+end
+```
+
 To run a Lua file with the same API, pass its path:
 
 ```sh

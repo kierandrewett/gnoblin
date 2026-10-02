@@ -1679,6 +1679,11 @@ wait for compositor completion and return the completed value. `move_here`
 accepts a `Window` record, stable window ID, or `"active"`; it does not provide
 the runtime's callback-scoped event or focus capabilities.
 
+`monitors.list()` and `monitors.primary()` return read-only `Monitor` records.
+The primary lookup returns `nil` when no monitor is marked primary. Monitor
+records expose the cached snapshot fields documented above and do not add
+output-configuration methods.
+
 Native-control API 1.17 implements `gnoblin.privacy.state()` as an immutable
 snapshot with `available`, a stable `revision`, and activity fields only for
 sources marked available. The current session reports screen-sharing and
