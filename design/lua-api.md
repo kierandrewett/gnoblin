@@ -1684,6 +1684,10 @@ The primary lookup returns `nil` when no monitor is marked primary. Monitor
 records expose the cached snapshot fields documented above and do not add
 output-configuration methods.
 
+`layers.list(filter?)` returns read-only `LayerSurface` records and accepts
+exact string filters for `monitor_id`, `namespace`, and `layer`. The console
+also maps the compatibility alias `layer.list()` to that typed snapshot.
+
 Native-control API 1.17 implements `gnoblin.privacy.state()` as an immutable
 snapshot with `available`, a stable `revision`, and activity fields only for
 sources marked available. The current session reports screen-sharing and

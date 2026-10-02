@@ -113,6 +113,22 @@ for _, monitor in ipairs(gnoblin.monitors.list()) do
 end
 ```
 
+Use `gnoblin.layers.list(filter?)` to read layer surfaces. Each result is a
+read-only `LayerSurface` record. `gnoblin.layer.list()` is the compatibility
+spelling for the same snapshot.
+
+The optional filter matches these fields exactly:
+
+- `monitor_id`: the monitor's stable connector ID.
+- `namespace`: the layer surface namespace.
+- `layer`: `background`, `bottom`, `top`, or `overlay`.
+
+```lua
+for _, surface in ipairs(gnoblin.layers.list { layer = "top" }) do
+    print(surface.namespace, surface.geometry.width)
+end
+```
+
 To run a Lua file with the same API, pass its path:
 
 ```sh
