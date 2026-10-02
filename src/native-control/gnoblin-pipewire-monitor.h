@@ -1,4 +1,4 @@
-/* PipeWire microphone activity monitor for the native Gnoblin runtime. */
+/* PipeWire microphone and camera activity monitor for the native Gnoblin runtime. */
 #pragma once
 
 #include <glib.h>
@@ -8,12 +8,14 @@ G_BEGIN_DECLS
 typedef struct _GnoblinPipewireMonitor GnoblinPipewireMonitor;
 
 typedef void (*GnoblinPipewireMonitorCallback)(GnoblinPipewireMonitor* monitor, gboolean available,
-                                               gboolean microphone_in_use, gpointer user_data);
+                                               gboolean microphone_in_use, gboolean camera_in_use,
+                                               gpointer user_data);
 
 /*
  * The callback is dispatched on @context. If it is NULL, the default main
  * context is used. The callback receives availability independently from
- * activity: an unavailable PipeWire server is not reported as active.
+ * microphone and camera activity: an unavailable PipeWire server is not
+ * reported as active.
  */
 GnoblinPipewireMonitor* gnoblin_pipewire_monitor_new(GMainContext* context,
                                                      GnoblinPipewireMonitorCallback callback,

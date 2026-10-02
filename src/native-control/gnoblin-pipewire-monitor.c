@@ -1,4 +1,4 @@
-/* PipeWire microphone activity monitor for the native Gnoblin runtime. */
+/* PipeWire microphone and camera activity monitor for the native Gnoblin runtime. */
 #include "gnoblin-pipewire-monitor.h"
 
 #include <pipewire/core.h>
@@ -15,6 +15,8 @@ typedef struct {
     GnoblinPipewireMonitor* monitor;
     struct pw_node* node;
     struct spa_hook listener;
+    gboolean microphone;
+    gboolean camera;
     gboolean running;
 } NodeBinding;
 
@@ -41,6 +43,7 @@ struct _GnoblinPipewireMonitor {
     GHashTable* nodes;
     gboolean available;
     gboolean microphone_in_use;
+    gboolean camera_in_use;
     gint connection_lost;
     gboolean loop_started;
     int initial_sync_seq;
@@ -50,6 +53,7 @@ typedef struct {
     GnoblinPipewireMonitor* monitor;
     gboolean available;
     gboolean microphone_in_use;
+    gboolean camera_in_use;
 } Notification;
 
 static GnoblinPipewireMonitor* monitor_ref(GnoblinPipewireMonitor* monitor) {
@@ -82,7 +86,7 @@ static gboolean notify_on_context(gpointer data) {
 
     if (deliver) {
         monitor->callback(monitor, notification->available, notification->microphone_in_use,
-                          monitor->user_data);
+                          notification->camera_in_use, monitor->user_data);
         g_mutex_lock(&monitor->callback_mutex);
         monitor->callbacks_running--;
         g_cond_broadcast(&monitor->callback_cond);
@@ -106,18 +110,21 @@ static void attach_notification(GnoblinPipewireMonitor* monitor, Notification* n
 }
 
 static void queue_notification(GnoblinPipewireMonitor* monitor, gboolean available,
-                               gboolean microphone_in_use) {
+                               gboolean microphone_in_use, gboolean camera_in_use) {
     Notification* notification;
 
-    if (monitor->available == available && monitor->microphone_in_use == microphone_in_use)
+    if (monitor->available == available && monitor->microphone_in_use == microphone_in_use &&
+        monitor->camera_in_use == camera_in_use)
         return;
 
     monitor->available = available;
     monitor->microphone_in_use = microphone_in_use;
+    monitor->camera_in_use = camera_in_use;
     notification = g_new0(Notification, 1);
     notification->monitor = monitor_ref(monitor);
     notification->available = available;
     notification->microphone_in_use = microphone_in_use;
+    notification->camera_in_use = camera_in_use;
     attach_notification(monitor, notification);
 }
 
@@ -126,16 +133,18 @@ static void queue_current_state(GnoblinPipewireMonitor* monitor) {
     notification->monitor = monitor_ref(monitor);
     notification->available = monitor->available;
     notification->microphone_in_use = monitor->microphone_in_use;
+    notification->camera_in_use = monitor->camera_in_use;
     attach_notification(monitor, notification);
 }
 
-static gboolean any_node_running(GnoblinPipewireMonitor* monitor) {
+static gboolean any_node_running(GnoblinPipewireMonitor* monitor, gboolean microphone) {
     GHashTableIter iter;
     gpointer value;
 
     g_hash_table_iter_init(&iter, monitor->nodes);
     while (g_hash_table_iter_next(&iter, NULL, &value)) {
-        if (((NodeBinding*)value)->running)
+        NodeBinding* binding = value;
+        if (binding->running && (microphone ? binding->microphone : binding->camera))
             return TRUE;
     }
     return FALSE;
@@ -143,7 +152,8 @@ static gboolean any_node_running(GnoblinPipewireMonitor* monitor) {
 
 static void update_activity(GnoblinPipewireMonitor* monitor) {
     queue_notification(monitor, monitor->available,
-                       monitor->available && any_node_running(monitor));
+                       monitor->available && any_node_running(monitor, TRUE),
+                       monitor->available && any_node_running(monitor, FALSE));
 }
 
 static void on_node_info(void* data, const struct pw_node_info* info) {
@@ -200,17 +210,22 @@ static void on_global(void* data, uint32_t id, uint32_t permissions, const char*
                       uint32_t version, const struct spa_dict* props) {
     GnoblinPipewireMonitor* monitor = data;
     const char* media_class;
+    const char* media_role;
     NodeBinding* binding;
     (void)permissions;
 
     if (!g_str_equal(type, PW_TYPE_INTERFACE_Node) || !props)
         return;
     media_class = spa_dict_lookup(props, PW_KEY_MEDIA_CLASS);
-    if (!media_class || !g_str_equal(media_class, "Stream/Input/Audio"))
+    media_role = spa_dict_lookup(props, PW_KEY_MEDIA_ROLE);
+    if ((!media_class || !g_str_equal(media_class, "Stream/Input/Audio")) &&
+        (!media_role || !g_str_equal(media_role, "Camera")))
         return;
 
     binding = g_new0(NodeBinding, 1);
     binding->monitor = monitor;
+    binding->microphone = media_class && g_str_equal(media_class, "Stream/Input/Audio");
+    binding->camera = media_role && g_str_equal(media_role, "Camera");
     binding->node = pw_registry_bind(monitor->registry, id, PW_TYPE_INTERFACE_Node,
                                      MIN(version, PW_VERSION_NODE), 0);
     if (!binding->node) {
@@ -221,7 +236,7 @@ static void on_global(void* data, uint32_t id, uint32_t permissions, const char*
     if (pw_node_add_listener(binding->node, &binding->listener, &node_events, binding) < 0) {
         g_warning("gnoblin-pipewire-monitor: cannot observe capture node %u", id);
         g_atomic_int_set(&monitor->connection_lost, TRUE);
-        queue_notification(monitor, FALSE, FALSE);
+        queue_notification(monitor, FALSE, FALSE, FALSE);
         remove_node(monitor, id);
     }
 }
@@ -246,7 +261,8 @@ static void on_core_done(void* data, uint32_t id, int seq) {
     GnoblinPipewireMonitor* monitor = data;
     if (!g_atomic_int_get(&monitor->connection_lost) && id == PW_ID_CORE &&
         seq == monitor->initial_sync_seq)
-        queue_notification(monitor, TRUE, any_node_running(monitor));
+        queue_notification(monitor, TRUE, any_node_running(monitor, TRUE),
+                           any_node_running(monitor, FALSE));
 }
 
 static void on_core_error(void* data, uint32_t id, int seq, int res, const char* message) {
@@ -262,7 +278,7 @@ static void on_core_error(void* data, uint32_t id, int seq, int res, const char*
     }
 
     g_atomic_int_set(&monitor->connection_lost, TRUE);
-    queue_notification(monitor, FALSE, FALSE);
+    queue_notification(monitor, FALSE, FALSE, FALSE);
     if (monitor->nodes)
         g_hash_table_remove_all(monitor->nodes);
 }
@@ -308,7 +324,7 @@ static void disconnect_pipewire(GnoblinPipewireMonitor* monitor) {
 static gboolean connect_pipewire(GnoblinPipewireMonitor* monitor) {
     g_atomic_int_set(&monitor->connection_lost, FALSE);
     monitor->nodes = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, node_binding_free);
-    monitor->loop = pw_thread_loop_new("gnoblin-microphone-monitor", NULL);
+    monitor->loop = pw_thread_loop_new("gnoblin-privacy-monitor", NULL);
     if (!monitor->loop)
         goto fail;
     monitor->pw_context = pw_context_new(pw_thread_loop_get_loop(monitor->loop), NULL, 0);
@@ -361,7 +377,7 @@ static gboolean retry_connection(gpointer data) {
             g_hash_table_unref(monitor->nodes);
             monitor->nodes = NULL;
         }
-        queue_notification(monitor, FALSE, FALSE);
+        queue_notification(monitor, FALSE, FALSE, FALSE);
         connect_pipewire(monitor);
     }
     g_mutex_unlock(&monitor->callback_mutex);
@@ -435,6 +451,7 @@ void gnoblin_pipewire_monitor_stop(GnoblinPipewireMonitor* monitor) {
     g_atomic_int_set(&monitor->connection_lost, FALSE);
     monitor->available = FALSE;
     monitor->microphone_in_use = FALSE;
+    monitor->camera_in_use = FALSE;
     monitor->stopping = FALSE;
     g_mutex_unlock(&monitor->callback_mutex);
 }

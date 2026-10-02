@@ -224,6 +224,9 @@ struct _GnoblinNativeControl {
     gboolean privacy_recording;
     gboolean privacy_microphone_available;
     gboolean privacy_microphone_in_use;
+    gboolean privacy_camera_available;
+    gboolean privacy_camera_in_use;
+    guint privacy_camera_disable_source_id;
     gboolean supervised_runtime;
     gboolean runtime_hello_sent;
     gboolean runtime_worker_suspended;
@@ -822,6 +825,7 @@ static const NativeCapability native_capabilities[] = {
     {"permission-policy", "Read the committed portal permission policy."},
     {"animation-preview", "Inspect configured animations and control compositor previews."},
     {"microphone-monitor", "Monitor microphone activity through PipeWire."},
+    {"camera-monitor", "Monitor camera activity through PipeWire."},
 };
 
 static const char* native_socket_events[] = {
@@ -3701,6 +3705,15 @@ static GVariant* capability_snapshot_record(GnoblinNativeControl* control,
         available = FALSE;
         unavailable_reason = "remote_desktop_disabled";
 #endif
+    } else if (g_str_equal(native_capability->id, "camera-monitor")) {
+#ifdef HAVE_REMOTE_DESKTOP
+        available = control->privacy_camera_available;
+        if (!available)
+            unavailable_reason = "pipewire_unavailable";
+#else
+        available = FALSE;
+        unavailable_reason = "remote_desktop_disabled";
+#endif
     }
 
     g_variant_builder_init(&capability, G_VARIANT_TYPE_VARDICT);
@@ -5832,7 +5845,8 @@ static GVariant* privacy_snapshot_new(GnoblinNativeControl* control) {
     g_variant_builder_add(&available, "{sv}", "recording", g_variant_new_boolean(TRUE));
     g_variant_builder_add(&available, "{sv}", "microphone_in_use",
                           g_variant_new_boolean(control->privacy_microphone_available));
-    g_variant_builder_add(&available, "{sv}", "camera_in_use", g_variant_new_boolean(FALSE));
+    g_variant_builder_add(&available, "{sv}", "camera_in_use",
+                          g_variant_new_boolean(control->privacy_camera_available));
     g_variant_builder_add(&available, "{sv}", "location_in_use", g_variant_new_boolean(FALSE));
     g_variant_builder_init(&snapshot, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&snapshot, "{sv}", "available", g_variant_builder_end(&available));
@@ -5843,40 +5857,77 @@ static GVariant* privacy_snapshot_new(GnoblinNativeControl* control) {
     if (control->privacy_microphone_available)
         g_variant_builder_add(&snapshot, "{sv}", "microphone_in_use",
                               g_variant_new_boolean(control->privacy_microphone_in_use));
+    if (control->privacy_camera_available)
+        g_variant_builder_add(&snapshot, "{sv}", "camera_in_use",
+                              g_variant_new_boolean(control->privacy_camera_in_use));
     return g_variant_ref_sink(g_variant_builder_end(&snapshot));
 }
 
 static void publish_privacy_snapshot(GnoblinNativeControl* control, gboolean changed);
 
 #ifdef HAVE_REMOTE_DESKTOP
-static void privacy_microphone_state_changed(GnoblinPipewireMonitor* monitor, gboolean available,
-                                             gboolean microphone_in_use, gpointer user_data) {
+static gboolean privacy_camera_disable(gpointer user_data) {
+    GnoblinNativeControl* control = user_data;
+    control->privacy_camera_disable_source_id = 0;
+    if (!control->stopping && control->privacy_camera_available && control->privacy_camera_in_use) {
+        control->privacy_camera_in_use = FALSE;
+        control->privacy_revision++;
+        publish_privacy_snapshot(control, TRUE);
+    }
+    return G_SOURCE_REMOVE;
+}
+
+static void privacy_pipewire_state_changed(GnoblinPipewireMonitor* monitor, gboolean available,
+                                           gboolean microphone_in_use, gboolean camera_in_use,
+                                           gpointer user_data) {
     GnoblinNativeControl* control = user_data;
     (void)monitor;
 
     if (!control || control->stopping)
         return;
-    gboolean capability_changed = control->privacy_microphone_available != available;
+    gboolean microphone_capability_changed = control->privacy_microphone_available != available;
+    gboolean camera_capability_changed = control->privacy_camera_available != available;
+    gboolean old_microphone_in_use = control->privacy_microphone_in_use;
+    gboolean old_camera_in_use = control->privacy_camera_in_use;
     microphone_in_use = available && microphone_in_use;
+    camera_in_use = available && camera_in_use;
+    if (control->privacy_camera_disable_source_id) {
+        g_source_remove(control->privacy_camera_disable_source_id);
+        control->privacy_camera_disable_source_id = 0;
+    }
+    if (!camera_in_use && available && old_camera_in_use) {
+        /* Match GNOME Shell's 500 ms disable delay to avoid indicator flicker. */
+        control->privacy_camera_disable_source_id =
+            g_timeout_add(500, privacy_camera_disable, control);
+        camera_in_use = TRUE;
+    }
     if (control->privacy_microphone_available == available &&
-        control->privacy_microphone_in_use == microphone_in_use)
+        control->privacy_camera_available == available &&
+        old_microphone_in_use == microphone_in_use && old_camera_in_use == camera_in_use)
         return;
 
     control->privacy_microphone_available = available;
     control->privacy_microphone_in_use = microphone_in_use;
-    if (capability_changed) {
-        const NativeCapability* microphone_capability =
-            native_capability_by_id("microphone-monitor");
+    control->privacy_camera_available = available;
+    control->privacy_camera_in_use = camera_in_use;
+    if (microphone_capability_changed || camera_capability_changed) {
         control->state_revision++;
         g_autoptr(GVariant) capabilities = capability_snapshot(control);
         native_publish_runtime_snapshot(control, "capabilities", capabilities,
                                         control->state_revision);
 
-        if (microphone_capability) {
+        const char* changed_capabilities[] = {
+            microphone_capability_changed ? "microphone-monitor" : NULL,
+            camera_capability_changed ? "camera-monitor" : NULL,
+        };
+        for (guint i = 0; i < G_N_ELEMENTS(changed_capabilities); i++) {
+            const NativeCapability* changed =
+                changed_capabilities[i] ? native_capability_by_id(changed_capabilities[i]) : NULL;
+            if (!changed)
+                continue;
             GVariantBuilder event;
             g_variant_builder_init(&event, G_VARIANT_TYPE_VARDICT);
-            g_autoptr(GVariant) capability =
-                capability_snapshot_record(control, microphone_capability);
+            g_autoptr(GVariant) capability = capability_snapshot_record(control, changed);
             g_variant_builder_add(&event, "{sv}", "capability", capability);
             g_variant_builder_add(&event, "{sv}", "revision",
                                   g_variant_new_int64((gint64)control->state_revision));
@@ -5884,8 +5935,11 @@ static void privacy_microphone_state_changed(GnoblinPipewireMonitor* monitor, gb
             native_publish_request_event(control, "gnoblin.capability.changed", fields);
         }
     }
-    control->privacy_revision++;
-    publish_privacy_snapshot(control, TRUE);
+    if (old_microphone_in_use != microphone_in_use || old_camera_in_use != camera_in_use ||
+        microphone_capability_changed || camera_capability_changed) {
+        control->privacy_revision++;
+        publish_privacy_snapshot(control, TRUE);
+    }
 }
 #endif
 
@@ -13850,7 +13904,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     control->input_device_state_initialized = TRUE;
 #ifdef HAVE_REMOTE_DESKTOP
     control->pipewire_monitor =
-        gnoblin_pipewire_monitor_new(NULL, privacy_microphone_state_changed, control, NULL);
+        gnoblin_pipewire_monitor_new(NULL, privacy_pipewire_state_changed, control, NULL);
     if (control->pipewire_monitor)
         gnoblin_pipewire_monitor_start(control->pipewire_monitor);
 #endif
@@ -13899,6 +13953,10 @@ fail:
 void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     if (!control)
         return;
+    if (control->privacy_camera_disable_source_id) {
+        g_source_remove(control->privacy_camera_disable_source_id);
+        control->privacy_camera_disable_source_id = 0;
+    }
     control->overlay_modifier_hook_available = FALSE;
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session,
