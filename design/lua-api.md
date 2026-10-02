@@ -217,7 +217,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` supports read-only `list()`, `get(name)`, `inspect(args)`, and the deeply read-only `{surfaces = Surface[]}` snapshot, plus `preview(spec)` and typed preview controls. |
 | `gnoblin.launches` | `list()`, `snapshot()`, `begin(args)`, `finish(token)` | **Current.** The supervised runtime and `gnoblinctl lua` support all methods. The bracket form `gnoblin.launches["end"](token)` remains as a compatibility alias because `end` is a Lua keyword. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
-| `gnoblin.privacy.state()` | `() -> PrivacyState` | **Current.** Read the immutable privacy activity snapshot in the native runtime or `gnoblinctl lua`; the console returns a deeply read-only record. |
+| `gnoblin.privacy` | `state()`, `stop_sharing()`, `stop_recording()` | **Current.** The runtime and `gnoblinctl lua` expose the immutable activity snapshot and stop operations; the console waits for completion and returns read-only results. |
 | `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only permission-list, `PermissionPolicy`, and `PermissionDecision` snapshots from the matching reads. |
 | `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only `SessionStatus` and `SessionActivity` records from the matching reads. |
 | `gnoblin.runtime.reload_config()` | `() -> Operation<Result>` | **Current; native runtime only.** Reload the active configuration. |
@@ -1694,7 +1694,13 @@ specification. It accepts the shared `name`, optional `target` (default
 
 `launches.list()` and `launches.snapshot()` share native-control API 1.39.
 Both return deeply read-only `Launch` records; the snapshot also preserves the
-collection revision.
+collection revision. `launches.begin(options)` and `launches.finish(token)`
+route through native-control API 1.50, wait for the correlated operation
+completion, and return deeply read-only launch results.
+
+`privacy.stop_sharing()` and `privacy.stop_recording()` wait for the native
+operation result and return deeply read-only `{requested}` values. The count
+reports requests issued to Mutter, not confirmed session closure.
 
 `permissions.policy()` uses native-control API 1.44 and returns a deeply
 read-only `PermissionPolicy`, including its ordered rules array.
