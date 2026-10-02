@@ -219,7 +219,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
 | `gnoblin.privacy` | `state()`, `stop_sharing()`, `stop_recording()` | **Current.** The runtime and `gnoblinctl lua` expose the immutable activity snapshot and stop operations; the console waits for completion and returns read-only results. |
 | `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only permission-list, `PermissionPolicy`, and `PermissionDecision` snapshots from the matching reads. |
-| `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only `SessionStatus` and `SessionActivity` records from the matching reads. |
+| `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current.** The runtime and `gnoblinctl lua` expose all methods; the console waits for lock/logout operations and returns deeply read-only results. |
 | `gnoblin.runtime.reload_config()` | `() -> Operation<Result>` | **Current.** Reload the active configuration in the supervised runtime or `gnoblinctl lua`; the console waits and returns an immutable result. |
 | `gnoblin.listeners` | map of event names to callback arrays | **Current; inspect only.** Do not edit this table directly. |
 | `gnoblin.window_rule(rule)` | `(WindowRule) -> nil` | **Current and retained.** Append a window or layer matching rule. |
@@ -1720,6 +1720,11 @@ the console does not infer that the session is unlocked.
 `session.activity()` uses native-control API 1.24 and returns a deeply
 read-only `SessionActivity` with the same latest idle-monitor sample as the
 shared runtime API.
+
+`session.lock()` uses native-control API 1.21 and returns a deeply read-only
+`LockRequest`. Its `dispatched` and `subscribers` fields confirm delivery only,
+not that the shell showed a lock UI or the compositor locked. `session.logout()`
+uses API 1.32 and returns `{accepted = true}` before the session shuts down.
 
 `runtime.reload_config()` uses native-control API 1.20. The console waits for
 the compositor operation and returns the deeply read-only `ReloadResult`.
