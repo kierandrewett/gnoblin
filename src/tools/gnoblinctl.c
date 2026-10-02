@@ -4856,8 +4856,14 @@ static int lua_api_index(lua_State* state) {
     }
     if (g_str_equal(prefix, "input")) {
         if (g_str_equal(name, "devices") || g_str_equal(name, "sources") ||
-            g_str_equal(name, "current_source") || g_str_equal(name, "orientation_lock")) {
-            g_autofree char* method = g_strdup_printf("input.%s", name);
+            g_str_equal(name, "current_source") || g_str_equal(name, "orientation_lock") ||
+            g_str_equal(name, "list") || g_str_equal(name, "current")) {
+            const char* canonical_name = name;
+            if (g_str_equal(name, "list"))
+                canonical_name = "sources";
+            else if (g_str_equal(name, "current"))
+                canonical_name = "current_source";
+            g_autofree char* method = g_strdup_printf("input.%s", canonical_name);
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
             lua_pushstring(state, method);
             lua_pushcclosure(state, lua_cli_input_snapshot, 2);

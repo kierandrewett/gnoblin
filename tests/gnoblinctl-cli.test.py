@@ -168,7 +168,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(107):
+                    for _ in range(109):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -1344,7 +1344,11 @@ def main() -> int:
             'assert(current.id == "us" and current.current and current.revision == 5)\n'
             'local selected = gnoblin.input.select_source {type = "xkb", id = "us"}\n'
             'assert(selected.id == "us" and selected.current and selected.revision == 5)\n'
-            'assert(not pcall(function() gnoblin.input.select_source {type = "xkb", id = "us", extra = true} end))\n',
+            'assert(not pcall(function() gnoblin.input.select_source {type = "xkb", id = "us", extra = true} end))\n'
+            "local source_alias = gnoblin.input.list()\n"
+            "assert(#source_alias == 1 and source_alias[1].id == sources[1].id and source_alias[1].revision == sources[1].revision)\n"
+            "local current_alias = gnoblin.input.current()\n"
+            "assert(current_alias.id == current.id and current_alias.current and current_alias.revision == current.revision)\n",
             encoding="utf-8",
         )
         input_lua = run(binary, "--socket", socket_path, "lua", str(input_lua_file))
@@ -1751,8 +1755,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 107
-        assert len(subscriptions) == 107
+        assert len(received) == 109
+        assert len(subscriptions) == 109
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1856,61 +1860,67 @@ def main() -> int:
         assert received[59]["method"] == "input.select"
         assert received[59]["api_version"] == {"major": 1, "minor": 6}
         assert received[59]["arguments"] == {"type": "xkb", "id": "us"}
-        assert received[60]["method"] == "shortcuts.list"
-        assert received[60]["api_version"] == {"major": 1, "minor": 40}
+        assert received[60]["method"] == "input.sources"
+        assert received[60]["api_version"] == {"major": 1, "minor": 46}
         assert received[60]["arguments"] == {}
-        assert received[61]["method"] == "shortcuts.actions"
-        assert received[61]["api_version"] == {"major": 1, "minor": 41}
-        assert received[61]["arguments"] == {"group": "wm"}
-        assert received[62]["method"] == "focus.policy"
-        assert received[62]["api_version"] == {"major": 1, "minor": 19}
+        assert received[61]["method"] == "input.current_source"
+        assert received[61]["api_version"] == {"major": 1, "minor": 46}
+        assert received[61]["arguments"] == {}
+        assert received[62]["method"] == "shortcuts.list"
+        assert received[62]["api_version"] == {"major": 1, "minor": 40}
         assert received[62]["arguments"] == {}
-        assert received[63]["method"] == "settings"
-        assert received[63]["api_version"] == {"major": 1, "minor": 19}
-        assert received[63]["arguments"] == {}
-        assert received[64]["method"] == "focus.history"
+        assert received[63]["method"] == "shortcuts.actions"
+        assert received[63]["api_version"] == {"major": 1, "minor": 41}
+        assert received[63]["arguments"] == {"group": "wm"}
+        assert received[64]["method"] == "focus.policy"
         assert received[64]["api_version"] == {"major": 1, "minor": 19}
-        assert received[64]["arguments"] == {"limit": 1}
-        assert received[65]["method"] == "layer.animation_policy"
-        assert received[65]["api_version"] == {"major": 1, "minor": 31}
-        assert received[65]["arguments"] == {"namespace": "bingux-panel"}
-        assert received[103]["method"] == "input.orientation_lock"
-        assert received[103]["api_version"] == {"major": 1, "minor": 66}
-        assert received[103]["arguments"] == {}
-        assert received[104]["method"] == "input.set_orientation_lock"
-        assert received[104]["api_version"] == {"major": 1, "minor": 66}
-        assert received[104]["arguments"] == {"value": True}
+        assert received[64]["arguments"] == {}
+        assert received[65]["method"] == "settings"
+        assert received[65]["api_version"] == {"major": 1, "minor": 19}
+        assert received[65]["arguments"] == {}
+        assert received[66]["method"] == "focus.history"
+        assert received[66]["api_version"] == {"major": 1, "minor": 19}
+        assert received[66]["arguments"] == {"limit": 1}
+        assert received[67]["method"] == "layer.animation_policy"
+        assert received[67]["api_version"] == {"major": 1, "minor": 31}
+        assert received[67]["arguments"] == {"namespace": "bingux-panel"}
         assert received[105]["method"] == "input.orientation_lock"
+        assert received[105]["api_version"] == {"major": 1, "minor": 66}
+        assert received[105]["arguments"] == {}
         assert received[106]["method"] == "input.set_orientation_lock"
         assert received[106]["api_version"] == {"major": 1, "minor": 66}
         assert received[106]["arguments"] == {"value": True}
-        assert received[66]["method"] == "privacy.state"
-        assert received[66]["api_version"] == {"major": 1, "minor": 47}
-        assert received[66]["arguments"] == {}
-        assert received[67]["method"] == "capabilities.list"
-        assert received[67]["api_version"] == {"major": 1, "minor": 19}
-        assert received[67]["arguments"] == {}
-        assert received[68]["method"] == "permissions.policy"
-        assert received[68]["api_version"] == {"major": 1, "minor": 44}
+        assert received[107]["method"] == "input.orientation_lock"
+        assert received[108]["method"] == "input.set_orientation_lock"
+        assert received[108]["api_version"] == {"major": 1, "minor": 66}
+        assert received[108]["arguments"] == {"value": True}
+        assert received[68]["method"] == "privacy.state"
+        assert received[68]["api_version"] == {"major": 1, "minor": 47}
         assert received[68]["arguments"] == {}
-        assert received[69]["method"] == "session.status"
-        assert received[69]["api_version"] == {"major": 1, "minor": 29}
+        assert received[69]["method"] == "capabilities.list"
+        assert received[69]["api_version"] == {"major": 1, "minor": 19}
         assert received[69]["arguments"] == {}
-        assert received[70]["method"] == "session.status"
-        assert received[70]["api_version"] == {"major": 1, "minor": 29}
+        assert received[70]["method"] == "permissions.policy"
+        assert received[70]["api_version"] == {"major": 1, "minor": 44}
         assert received[70]["arguments"] == {}
-        assert received[71]["method"] == "session.activity"
-        assert received[71]["api_version"] == {"major": 1, "minor": 24}
+        assert received[71]["method"] == "session.status"
+        assert received[71]["api_version"] == {"major": 1, "minor": 29}
         assert received[71]["arguments"] == {}
-        assert received[72]["method"] == "permissions.check"
-        assert received[72]["api_version"] == {"major": 1, "minor": 43}
-        assert received[72]["arguments"] == {
+        assert received[72]["method"] == "session.status"
+        assert received[72]["api_version"] == {"major": 1, "minor": 29}
+        assert received[72]["arguments"] == {}
+        assert received[73]["method"] == "session.activity"
+        assert received[73]["api_version"] == {"major": 1, "minor": 24}
+        assert received[73]["arguments"] == {}
+        assert received[74]["method"] == "permissions.check"
+        assert received[74]["api_version"] == {"major": 1, "minor": 43}
+        assert received[74]["arguments"] == {
             "capability": "remote-desktop",
             "identity": "app-id:org.example.Remote",
         }
-        assert received[73]["method"] == "permissions.check"
-        assert received[73]["api_version"] == {"major": 1, "minor": 43}
-        assert received[73]["arguments"] == {
+        assert received[75]["method"] == "permissions.check"
+        assert received[75]["api_version"] == {"major": 1, "minor": 43}
+        assert received[75]["arguments"] == {
             "capability": "remote-desktop",
             "identity": "app-id:org.example.Remote",
         }
