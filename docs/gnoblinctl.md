@@ -466,6 +466,16 @@ which restores the target's original visual state. `inspect` accepts `--event EV
 `animation surfaces` prints layer surface IDs, namespaces, and titles. Layer
 surfaces are not included in `window list`.
 
+The Lua console exposes the same snapshot through
+`gnoblin.animations.surfaces()`. Its `surfaces` array and nested records are
+read-only:
+
+```lua
+for _, surface in ipairs(gnoblin.animations.surfaces().surfaces) do
+    print(surface.id, surface.namespace, surface.title)
+end
+```
+
 `animation list` marks entries that current preview targets can run with
 `previewable`.
 
