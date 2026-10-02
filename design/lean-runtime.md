@@ -385,18 +385,19 @@ its native privacy snapshot currently reports camera activity as unavailable.
    build. The same session verified both CLI version forms; they reported the
    Git remote and full SHA alongside the Gnoblin, GNOME, Mutter, portal, Lua,
    native API, and build-ID versions.
-   On October 2, a clean rebuild of the existing Mutter Meson build tree
-   compiled all 945 targets from the current checked-out Mutter source. The
-   resulting private install passed `tests/test-gnoblin-devkit.sh`: Lua config
-   reload, native CLI calls, and Lua-worker recovery all worked in a fresh
-   supervised devkit session. The session-lock smoke advertised
-   `ext-session-lock-v1`, then returned `SKIP` because the nested devkit cannot
-   confirm lock presentation after Mutter refuses screen capture while locked.
-   This is not a fresh `./build.sh` or real-seat login: the build wrapper still
-   refuses to reset the checked-out Mutter revision, which differs from the
-   superproject gitlink, and the Fedora host still reports schemas 49.1, GTK
-   4.20.4, PipeWire 1.4.11, and xdg-desktop-portal 1.20.4 below the configured
-   GNOME 51 minimums.
+   On October 2, a clean permanent worktree at commit `61dd3c45` completed
+   `./build.sh --jobs 8` on Fedora 43 using a private dependency prefix with
+   GNOME schemas 51.0, GTK 4.22.5, PipeWire 1.6.0, and xdg-desktop-portal
+   1.21.1. The fresh `tests/test-gnoblin-devkit.sh` session passed Lua config
+   reload, native CLI calls, workspace switching, Lua state snapshots, and
+   Lua-worker recovery while retaining the same compositor. The installed
+   `gnoblinctl` CLI smoke test passed, and its version output reported the
+   build's Git remote, full SHA, Gnoblin, GNOME, Mutter, Lua, and API versions.
+   This verifies the source build and nested development session. Fedora 43's
+   configured repositories still provide older versions, so the build needs
+   those newer development packages supplied through a prefix. A real-seat
+   login and retirement of the remaining GJS compatibility handlers are still
+   open.
 5. **Narrow the remaining forks.** Keep the portal frontend protocol and
    backend selection standard. Move Gnoblin's portal implementation out of the
    GNOME backend fork only after its dialogs, capture, permissions, and GNOME
