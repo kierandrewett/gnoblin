@@ -15,6 +15,11 @@ Event names identify their source: `mutter.*` comes from Mutter and
 `gnoblin.*` comes from Gnoblin. The supervised Lua runtime stays alive for the
 session; reloading the config replaces its callbacks.
 
+`gnoblinctl lua` can also subscribe while a script runs. It stays open until
+every subscription has ended. A one-time subscription ends after its first
+event; keep a repeating subscription in a variable so the callback can call
+`subscription:unsubscribe()`. Press Ctrl+C to stop listeners manually.
+
 For desktop color-scheme change notifications, subscribe to
 `gnoblin.appearance.color-scheme-changed`. The [appearance guide](/guides/theming)
 explains how applications use the preference.
