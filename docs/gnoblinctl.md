@@ -141,6 +141,18 @@ for _, rule in ipairs(policy.rules) do
 end
 ```
 
+`gnoblin.session.status()` returns a read-only `SessionStatus`. When lock state
+is unavailable, `lock_state` is omitted; that does not mean the session is
+unlocked:
+
+```lua
+local status = gnoblin.session.status()
+print(status.state)
+if status.lock_available then
+    print(status.lock_state)
+end
+```
+
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
 read-only `Workspace` records. A workspace can be activated, renamed, removed,

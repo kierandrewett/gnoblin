@@ -219,7 +219,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
 | `gnoblin.privacy.state()` | `() -> PrivacyState` | **Current.** Read the immutable privacy activity snapshot in the native runtime or `gnoblinctl lua`; the console returns a deeply read-only record. |
 | `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime exposes all methods; `gnoblinctl lua` returns a deeply read-only `PermissionPolicy` from `permissions.policy()`. |
-| `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current; native runtime only.** Control or read the supervised session. |
+| `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` returns a deeply read-only `SessionStatus` from `status()`. |
 | `gnoblin.runtime.reload_config()` | `() -> Operation<Result>` | **Current; native runtime only.** Reload the active configuration. |
 | `gnoblin.listeners` | map of event names to callback arrays | **Current; inspect only.** Do not edit this table directly. |
 | `gnoblin.window_rule(rule)` | `(WindowRule) -> nil` | **Current and retained.** Append a window or layer matching rule. |
@@ -1680,6 +1680,10 @@ records in the console. The no-argument call uses native-control API 1.19.
 
 `permissions.policy()` uses native-control API 1.44 and returns a deeply
 read-only `PermissionPolicy`, including its ordered rules array.
+
+`session.status()` uses native-control API 1.29 and returns a deeply read-only
+`SessionStatus`. When `lock_available` is false, `lock_state` stays omitted;
+the console does not infer that the session is unlocked.
 
 The console also exposes `workspaces.list()`, `workspaces.active()`, and
 `workspaces.by_id(id)` as read-only `Workspace` records. Workspace methods
