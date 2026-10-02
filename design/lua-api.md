@@ -213,7 +213,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current; native runtime only.** Read-only revisioned workspace snapshots and typed workspace operations. |
 | `gnoblin.monitors` | `list()`, `primary()` | **Current; native runtime only.** Read-only revisioned monitor snapshot records. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current; native runtime only.** Read-only revisioned layer-surface records and effective animation/shadow policy. |
-| `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `text_target(context)` | **Current; native runtime only.** Read-only device/source snapshots, XKB source selection, and trusted text insertion targets. |
+| `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `text_target(context)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` exposes typed device/source snapshots and source selection. Trusted text targets remain callback-only. |
 | `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current; native runtime only.** Read and control declared compositor animation previews. |
 | `gnoblin.launches` | `list()`, `begin(args)`, `end(args)` | **Current; native runtime only.** Read and report tracked application launches. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
@@ -1698,6 +1698,12 @@ deeply read-only device lists. The `grant.list()` compatibility spelling uses
 the same typed snapshot. `PortalGrant:revoke()` carries the snapshot creation
 time to the compositor so stale records cannot revoke a replacement grant; the
 console waits for completion and returns the completed value.
+
+`input.devices()`, `input.sources()`, and `input.current_source()` expose
+read-only `InputDevice` and `InputSource` records with snapshot revisions.
+`input.select_source(selector)` sends the documented `{type, id}` selector as
+the canonical `input.select` operation, waits for completion, and returns the
+updated source record.
 
 Native-control API 1.17 implements `gnoblin.privacy.state()` as an immutable
 snapshot with `available`, a stable `revision`, and activity fields only for

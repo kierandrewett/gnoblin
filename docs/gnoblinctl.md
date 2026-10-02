@@ -103,6 +103,25 @@ value. `move_here` accepts a `Window` record, stable window ID, or `"active"`;
 its optional `follow` setting defaults to `false`. Removing configured,
 active, or nonempty workspaces is rejected by the compositor.
 
+Input devices and sources are read-only `InputDevice` and `InputSource`
+records. Each record includes the revision of its snapshot. The current source
+is `nil` when Gnoblin cannot identify one. Select a listed source by passing
+its `type` and `id`:
+
+```lua
+for _, source in ipairs(gnoblin.input.sources()) do
+    if source.current then
+        print(source.name)
+    end
+end
+
+local selected = gnoblin.input.select_source { type = "xkb", id = "us" }
+print(selected.name)
+```
+
+Source selection waits for Mutter or IBus to confirm the change and returns the
+completed `InputSource` record.
+
 Monitor snapshots are available through `gnoblin.monitors.list()` and
 `gnoblin.monitors.primary()`. They return read-only `Monitor` records, or
 `nil` when the session has no primary monitor:
