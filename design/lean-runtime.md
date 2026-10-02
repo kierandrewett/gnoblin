@@ -1,8 +1,9 @@
 # Gnoblin session and compositor architecture
 
-The standalone `./build.sh` path builds the Gnoblin supervisor and Lua runtime,
-patched Mutter, and the portal backend from pinned GNOME sources. It does not
-build or run GNOME Shell or GJS. GNOME Shell compatibility recipes, patches,
+The default standalone `./build.sh` path builds the Gnoblin supervisor and Lua
+runtime and patched Mutter. `./build.sh --with-portal` also builds the optional
+GTK-based Gnoblin portal backend from pinned GNOME sources. Neither path builds
+or runs GNOME Shell or GJS. GNOME Shell compatibility recipes, patches,
 and adapters left in the checkout are migration residue, not a supported
 Gnoblin session path; retire them as their behavior is covered by Gnoblin's
 native Lua API or independent shell clients. GNOME Session and Settings Daemon
@@ -97,13 +98,13 @@ and defaults, and other Mutter or portal consumers may continue reading
 schemas. Revisit the schema package and its version requirement only after
 those consumers and build-time schema checks have been accounted for.
 
-The package recipes select Gnoblin's portal backend for a Gnoblin session.
-The Gnoblin session package requires `gnoblin-portal` and the generic portal
-frontend. The GTK portal is no longer a base dependency. GNOME's backend can coexist for
-an existing GNOME login. The source build can prepare and check the portal
-without preparing or checking Mutter or Shell. The Arch release job builds
-from the source tarball and checks package installation beside stock Shell and
-Mutter when its distribution libraries meet the pinned requirements.
+The session package does not require `gnoblin-portal`; users can install and
+select another XDG portal backend. The GTK-based Gnoblin backend is a separate
+optional package and requires the generic portal frontend. GNOME's backend can
+coexist for an existing GNOME login. The default source build does not prepare
+or check the portal component. The Arch release job builds from the source
+tarball and checks package installation beside stock Shell and Mutter when its
+distribution libraries meet the pinned requirements.
 An Arch-style `DESTDIR` build from the r44 release tarball completed with the
 private `/usr/lib/gnoblin` prefix. Its assembled package tree has a compiled
 private schema cache and no build-prefix paths; GNOME Shell found Mutter's
@@ -453,7 +454,15 @@ its native privacy snapshot currently reports camera activity as unavailable.
    opened a Foot window and verified Lua window lookup, immutable properties,
    minimize, and restore through the live compositor socket. This validates
    the CLI Window-record path but does not close the remaining API parity or
-   real-seat login work.
+   real-seat login work. On October 3, 2026, commit `8456879c` built the
+   default session on Fedora 43 with host GLib 2.86.5, schemas 49.1, and Lua
+   5.4.0; the optional portal component was not built. The same worktree then
+   built Mutter's devkit into its writable private prefix, and
+   `GNOBLIN_PREFIX=<worktree>/install tests/test-gnoblin-devkit.sh` passed Lua
+   config and native-control checks plus worker and supervisor recovery while
+   retaining Mutter and running login autostart once. This verifies the fresh
+   nested session, not a real-seat login or physical input. The standalone
+   login lifecycle and remaining API parity work are still open.
 5. **Narrow the remaining forks.** Keep the portal frontend protocol and
    backend selection standard. Move Gnoblin's portal implementation out of the
    GNOME backend fork only after its dialogs, capture, permissions, and GNOME
