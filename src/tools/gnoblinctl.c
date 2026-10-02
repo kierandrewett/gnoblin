@@ -1,6 +1,7 @@
 /* Gnoblin control client. Uses the libraries already required by the session. */
 #include <gio/gio.h>
 #include <gio/gunixsocketaddress.h>
+#include <glib-unix.h>
 #include <json-glib/json-glib.h>
 #include <glib/gstdio.h>
 #include <lauxlib.h>
@@ -23,7 +24,29 @@ typedef struct {
     guint timeout;
     gboolean help;
     gboolean version;
+    lua_State* lua_state;
+    GPtrArray* lua_event_subscriptions;
+    GMainLoop* lua_event_loop;
+    guint active_lua_event_subscriptions;
+    gboolean lua_event_failed;
 } Cli;
+
+typedef struct {
+    Cli* cli;
+    GSocketConnection* connection;
+    GString* pending;
+    char* event_name;
+    int callback_ref;
+    guint source_id;
+    guint pending_source_id;
+    gboolean once;
+    gboolean active;
+    gboolean dispatching;
+} CliLuaEventSubscription;
+
+typedef struct {
+    CliLuaEventSubscription* subscription;
+} LuaCliEventSubscriptionHandle;
 
 static gboolean is_flag(const char* name) {
     return g_str_equal(name, "focused") || g_str_equal(name, "activate") ||
@@ -165,6 +188,11 @@ static JsonObject* member_object(JsonObject* object, const char* name) {
         return NULL;
     JsonNode* node = json_object_get_member(object, name);
     return JSON_NODE_HOLDS_OBJECT(node) ? json_node_get_object(node) : NULL;
+}
+
+static JsonArray* member_array(JsonObject* object, const char* name) {
+    JsonNode* node = object ? json_object_get_member(object, name) : NULL;
+    return node && JSON_NODE_HOLDS_ARRAY(node) ? json_node_get_array(node) : NULL;
 }
 
 static void print_version(const char* format) {
@@ -1639,6 +1667,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_SESSION_STATUS_RECORD_METATABLE "gnoblinctl.SessionStatus"
 #define GNOBLINCTL_SESSION_ACTIVITY_RECORD_METATABLE "gnoblinctl.SessionActivity"
 #define GNOBLINCTL_PERMISSION_DECISION_RECORD_METATABLE "gnoblinctl.PermissionDecision"
+#define GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE "gnoblinctl.EventSubscription"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_animations_list(lua_State* state);
@@ -1673,6 +1702,8 @@ static int lua_cli_permissions_list(lua_State* state);
 static int lua_cli_session_status(lua_State* state);
 static int lua_cli_session_activity(lua_State* state);
 static int lua_cli_permissions_check(lua_State* state);
+static int lua_cli_events_subscribe(lua_State* state);
+static int lua_cli_event_subscription_unsubscribe(lua_State* state);
 static int lua_cli_version(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
@@ -4707,6 +4738,389 @@ static int lua_cli_windows_by_id(lua_State* state) {
     return 1;
 }
 
+static void cli_lua_event_subscription_detach(CliLuaEventSubscription* subscription) {
+    if (!subscription || !subscription->active)
+        return;
+    subscription->active = FALSE;
+    if (subscription->source_id) {
+        g_source_remove(subscription->source_id);
+        subscription->source_id = 0;
+    }
+    if (subscription->pending_source_id) {
+        g_source_remove(subscription->pending_source_id);
+        subscription->pending_source_id = 0;
+    }
+    if (subscription->connection) {
+        g_io_stream_close(G_IO_STREAM(subscription->connection), NULL, NULL);
+        g_clear_object(&subscription->connection);
+    }
+    if (subscription->cli && subscription->cli->active_lua_event_subscriptions > 0) {
+        subscription->cli->active_lua_event_subscriptions--;
+        if (subscription->cli->active_lua_event_subscriptions == 0 &&
+            subscription->cli->lua_event_loop &&
+            g_main_loop_is_running(subscription->cli->lua_event_loop))
+            g_main_loop_quit(subscription->cli->lua_event_loop);
+    }
+    if (!subscription->dispatching && subscription->callback_ref != LUA_NOREF) {
+        luaL_unref(subscription->cli->lua_state, LUA_REGISTRYINDEX, subscription->callback_ref);
+        subscription->callback_ref = LUA_NOREF;
+    }
+}
+
+static void cli_lua_event_subscription_free(gpointer data) {
+    CliLuaEventSubscription* subscription = data;
+    if (!subscription)
+        return;
+    cli_lua_event_subscription_detach(subscription);
+    if (subscription->callback_ref != LUA_NOREF && subscription->cli &&
+        subscription->cli->lua_state) {
+        luaL_unref(subscription->cli->lua_state, LUA_REGISTRYINDEX, subscription->callback_ref);
+        subscription->callback_ref = LUA_NOREF;
+    }
+    g_clear_object(&subscription->connection);
+    if (subscription->pending)
+        g_string_free(subscription->pending, TRUE);
+    g_free(subscription->event_name);
+    g_free(subscription);
+}
+
+static gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, JsonNode* event) {
+    if (!subscription || !subscription->cli || !subscription->cli->lua_state || !event)
+        return FALSE;
+    Cli* cli = subscription->cli;
+    lua_State* state = cli->lua_state;
+    int stack_top = lua_gettop(state);
+    subscription->dispatching = TRUE;
+    if (subscription->once) {
+        cli_lua_event_subscription_detach(subscription);
+        subscription->dispatching = TRUE;
+    }
+    lua_rawgeti(state, LUA_REGISTRYINDEX, subscription->callback_ref);
+    json_to_lua(state, event);
+    gboolean succeeded = lua_pcall(state, 1, 0, 0) == LUA_OK;
+    if (!succeeded) {
+        const char* message = lua_tostring(state, -1);
+        g_printerr("gnoblinctl lua: event callback for %s failed: %s\n", subscription->event_name,
+                   message ? message : "unknown Lua error");
+    }
+    lua_settop(state, stack_top);
+    subscription->dispatching = FALSE;
+    if (!subscription->active && subscription->callback_ref != LUA_NOREF) {
+        luaL_unref(state, LUA_REGISTRYINDEX, subscription->callback_ref);
+        subscription->callback_ref = LUA_NOREF;
+    }
+    return succeeded;
+}
+
+static gboolean cli_lua_event_process_pending(CliLuaEventSubscription* subscription) {
+    while (subscription->active) {
+        char* line_end = memchr(subscription->pending->str, '\n', subscription->pending->len);
+        if (!line_end)
+            return TRUE;
+        g_autofree char* line =
+            g_strndup(subscription->pending->str, line_end - subscription->pending->str);
+        g_string_erase(subscription->pending, 0, line_end - subscription->pending->str + 1);
+        g_autoptr(JsonParser) parser = json_parser_new();
+        g_autoptr(GError) error = NULL;
+        if (!json_parser_load_from_data(parser, line, -1, &error) ||
+            !JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+            g_printerr("gnoblinctl lua: invalid event from compositor: %s\n",
+                       error ? error->message : "expected an object");
+            subscription->cli->lua_event_failed = TRUE;
+            return FALSE;
+        }
+        JsonNode* event_node = json_parser_get_root(parser);
+        JsonObject* event_object = json_node_get_object(event_node);
+        const char* event_name = member_string(event_object, "event", "");
+        if (g_str_equal(event_name, "error")) {
+            g_printerr("gnoblinctl lua: event subscription failed: %s\n",
+                       member_string(event_object, "message", "compositor rejected event"));
+            subscription->cli->lua_event_failed = TRUE;
+            return FALSE;
+        }
+        if (g_str_equal(event_name, subscription->event_name))
+            cli_lua_event_dispatch(subscription, event_node);
+    }
+    return TRUE;
+}
+
+static gboolean cli_lua_event_process_pending_idle(gpointer data) {
+    CliLuaEventSubscription* subscription = data;
+    subscription->pending_source_id = 0;
+    if (subscription->active && !cli_lua_event_process_pending(subscription))
+        cli_lua_event_subscription_detach(subscription);
+    return G_SOURCE_REMOVE;
+}
+
+static void cli_lua_event_fail(CliLuaEventSubscription* subscription, const char* message) {
+    if (!subscription || !subscription->active)
+        return;
+    g_printerr("gnoblinctl lua: event subscription for %s ended: %s\n", subscription->event_name,
+               message ? message : "compositor disconnected");
+    subscription->cli->lua_event_failed = TRUE;
+    cli_lua_event_subscription_detach(subscription);
+}
+
+static gboolean cli_lua_event_ready(gint fd, GIOCondition condition, gpointer data) {
+    (void)fd;
+    CliLuaEventSubscription* subscription = data;
+    if (!subscription->active)
+        return G_SOURCE_REMOVE;
+    if (condition & G_IO_NVAL) {
+        subscription->source_id = 0;
+        cli_lua_event_fail(subscription, "invalid event socket");
+        return G_SOURCE_REMOVE;
+    }
+    if (subscription->pending->len > 0 && !cli_lua_event_process_pending(subscription)) {
+        subscription->source_id = 0;
+        cli_lua_event_subscription_detach(subscription);
+        return G_SOURCE_REMOVE;
+    }
+    while (subscription->active) {
+        char chunk[4096];
+        g_autoptr(GError) error = NULL;
+        gssize count = g_socket_receive(g_socket_connection_get_socket(subscription->connection),
+                                        chunk, sizeof chunk, NULL, &error);
+        if (count < 0) {
+            if (g_error_matches(error, G_IO_ERROR, G_IO_ERROR_WOULD_BLOCK)) {
+                if (condition & (G_IO_HUP | G_IO_ERR)) {
+                    subscription->source_id = 0;
+                    cli_lua_event_fail(subscription, "compositor disconnected");
+                    return G_SOURCE_REMOVE;
+                }
+                return G_SOURCE_CONTINUE;
+            }
+            subscription->source_id = 0;
+            cli_lua_event_fail(subscription, error ? error->message : "socket read failed");
+            return G_SOURCE_REMOVE;
+        }
+        if (count == 0) {
+            subscription->source_id = 0;
+            cli_lua_event_fail(subscription, "compositor disconnected");
+            return G_SOURCE_REMOVE;
+        }
+        g_string_append_len(subscription->pending, chunk, count);
+        if (subscription->pending->len > 4 * 1024 * 1024) {
+            subscription->source_id = 0;
+            cli_lua_event_fail(subscription, "event data exceeded 4 MiB");
+            return G_SOURCE_REMOVE;
+        }
+        if (!cli_lua_event_process_pending(subscription)) {
+            subscription->source_id = 0;
+            cli_lua_event_subscription_detach(subscription);
+            return G_SOURCE_REMOVE;
+        }
+    }
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean cli_lua_event_subscribe_socket(CliLuaEventSubscription* subscription,
+                                               GError** error) {
+    Cli* cli = subscription->cli;
+    g_autofree char* request_id = g_uuid_string_random();
+    g_autoptr(JsonBuilder) builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "op");
+    json_builder_add_string_value(builder, "events");
+    json_builder_set_member_name(builder, "id");
+    json_builder_add_string_value(builder, request_id);
+    json_builder_set_member_name(builder, "api_version");
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "major");
+    json_builder_add_int_value(builder, GNOBLIN_NATIVE_CONTROL_API_MAJOR);
+    json_builder_set_member_name(builder, "minor");
+    json_builder_add_int_value(builder, GNOBLIN_NATIVE_CONTROL_API_MINOR);
+    json_builder_end_object(builder);
+    json_builder_set_member_name(builder, "events");
+    json_builder_begin_array(builder);
+    json_builder_add_string_value(builder, subscription->event_name);
+    json_builder_end_array(builder);
+    json_builder_end_object(builder);
+    g_autoptr(JsonNode) request = json_builder_get_root(builder);
+    g_autofree char* encoded = json_to_string(request, FALSE);
+    g_autofree char* payload = g_strconcat(encoded, "\n", NULL);
+
+    g_autoptr(GSocketClient) client = g_socket_client_new();
+    g_socket_client_set_timeout(client, cli->timeout);
+    g_autoptr(GSocketAddress) address = g_unix_socket_address_new(cli->socket_path);
+    subscription->connection =
+        g_socket_client_connect(client, G_SOCKET_CONNECTABLE(address), NULL, error);
+    if (!subscription->connection)
+        return FALSE;
+    GSocket* socket = g_socket_connection_get_socket(subscription->connection);
+    g_socket_set_timeout(socket, cli->timeout);
+    if (!g_output_stream_write_all(
+            g_io_stream_get_output_stream(G_IO_STREAM(subscription->connection)), payload,
+            strlen(payload), NULL, NULL, error))
+        return FALSE;
+
+    gboolean subscribed = FALSE;
+    while (!subscribed) {
+        char chunk[4096];
+        gssize count = g_socket_receive(socket, chunk, sizeof chunk, NULL, error);
+        if (count <= 0) {
+            if (count == 0 && (!error || !*error))
+                g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CLOSED,
+                                    "compositor closed the event socket before acknowledging");
+            return FALSE;
+        }
+        g_string_append_len(subscription->pending, chunk, count);
+        if (subscription->pending->len > 4 * 1024 * 1024) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
+                                "event subscription response is too large");
+            return FALSE;
+        }
+        char* line_end = memchr(subscription->pending->str, '\n', subscription->pending->len);
+        if (!line_end)
+            continue;
+        g_autofree char* line =
+            g_strndup(subscription->pending->str, line_end - subscription->pending->str);
+        g_string_erase(subscription->pending, 0, line_end - subscription->pending->str + 1);
+        g_autoptr(JsonParser) parser = json_parser_new();
+        if (!json_parser_load_from_data(parser, line, -1, error) ||
+            !JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+            if (!error || !*error)
+                g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                    "invalid event subscription acknowledgement");
+            return FALSE;
+        }
+        JsonObject* response = json_node_get_object(json_parser_get_root(parser));
+        const char* response_event = member_string(response, "event", "");
+        if (g_str_equal(response_event, "error")) {
+            g_set_error(error, G_IO_ERROR, G_IO_ERROR_FAILED, "%s",
+                        member_string(response, "message", "compositor rejected subscription"));
+            return FALSE;
+        }
+        JsonArray* accepted = member_array(response, "events");
+        JsonNode* accepted_node = accepted && json_array_get_length(accepted) == 1
+                                      ? json_array_get_element(accepted, 0)
+                                      : NULL;
+        const char* accepted_name = accepted_node && JSON_NODE_HOLDS_VALUE(accepted_node) &&
+                                            json_node_get_value_type(accepted_node) == G_TYPE_STRING
+                                        ? json_node_get_string(accepted_node)
+                                        : NULL;
+        if (!g_str_equal(response_event, "subscribed") || !accepted || !accepted_name ||
+            !g_str_equal(accepted_name, subscription->event_name)) {
+            g_set_error_literal(
+                error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                "compositor returned an invalid event subscription acknowledgement");
+            return FALSE;
+        }
+        subscribed = TRUE;
+    }
+
+    g_socket_set_timeout(socket, 0);
+    g_socket_set_blocking(socket, FALSE);
+    subscription->active = TRUE;
+    cli->active_lua_event_subscriptions++;
+    subscription->source_id = g_unix_fd_add_full(G_PRIORITY_DEFAULT, g_socket_get_fd(socket),
+                                                 G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
+                                                 cli_lua_event_ready, subscription, NULL);
+    if (memchr(subscription->pending->str, '\n', subscription->pending->len)) {
+        subscription->pending_source_id = g_idle_add_full(
+            G_PRIORITY_DEFAULT_IDLE, cli_lua_event_process_pending_idle, subscription, NULL);
+    }
+    return TRUE;
+}
+
+static int lua_cli_events_subscribe(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    gboolean once = lua_toboolean(state, lua_upvalueindex(2));
+    if (lua_gettop(state) != 2 || lua_type(state, 1) != LUA_TSTRING ||
+        lua_type(state, 2) != LUA_TFUNCTION)
+        return luaL_error(state, "gnoblin.events.%s requires an event name and callback",
+                          once ? "once" : "on");
+    size_t event_length = 0;
+    const char* event_name = lua_tolstring(state, 1, &event_length);
+    if (!event_name || event_length == 0 || event_length > 128 ||
+        !g_utf8_validate(event_name, event_length, NULL))
+        return luaL_error(state, "event name must be 1 to 128 bytes of valid UTF-8");
+
+    CliLuaEventSubscription* subscription = g_new0(CliLuaEventSubscription, 1);
+    subscription->cli = cli;
+    subscription->event_name = g_strndup(event_name, event_length);
+    subscription->pending = g_string_new(NULL);
+    subscription->callback_ref = LUA_NOREF;
+    subscription->once = once;
+    lua_pushvalue(state, 2);
+    subscription->callback_ref = luaL_ref(state, LUA_REGISTRYINDEX);
+
+    g_autoptr(GError) error = NULL;
+    if (!cli_lua_event_subscribe_socket(subscription, &error)) {
+        cli_lua_event_subscription_free(subscription);
+        return luaL_error(state, "could not subscribe to %s: %s", event_name,
+                          error ? error->message : "unknown error");
+    }
+    g_ptr_array_add(cli->lua_event_subscriptions, subscription);
+    LuaCliEventSubscriptionHandle* handle = lua_newuserdatauv(state, sizeof *handle, 0);
+    handle->subscription = subscription;
+    luaL_getmetatable(state, GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE);
+    lua_setmetatable(state, -2);
+    return 1;
+}
+
+static int lua_cli_event_subscription_unsubscribe(lua_State* state) {
+    LuaCliEventSubscriptionHandle* handle =
+        luaL_checkudata(state, 1, GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE);
+    if (lua_gettop(state) != 1)
+        return luaL_error(state, "Subscription:unsubscribe takes no arguments");
+    cli_lua_event_subscription_detach(handle->subscription);
+    return 0;
+}
+
+static int lua_cli_event_subscription_index(lua_State* state) {
+    luaL_checkudata(state, 1, GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE);
+    const char* field = luaL_checkstring(state, 2);
+    if (g_str_equal(field, "unsubscribe")) {
+        lua_pushcfunction(state, lua_cli_event_subscription_unsubscribe);
+        return 1;
+    }
+    return 0;
+}
+
+static int lua_cli_event_subscription_newindex(lua_State* state) {
+    return luaL_error(state, "Subscription fields are read-only");
+}
+
+static int lua_cli_event_subscription_tostring(lua_State* state) {
+    LuaCliEventSubscriptionHandle* handle =
+        luaL_checkudata(state, 1, GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE);
+    CliLuaEventSubscription* subscription = handle->subscription;
+    lua_pushfstring(state, "Subscription<%s:%s>",
+                    subscription && subscription->active ? "active" : "ended",
+                    subscription ? subscription->event_name : "unknown");
+    return 1;
+}
+
+static void register_lua_cli_event_subscription(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_event_subscription_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_event_subscription_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_event_subscription_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static gboolean cli_lua_event_loop(Cli* cli) {
+    while (cli->active_lua_event_subscriptions > 0 && !cli->lua_event_failed)
+        g_main_loop_run(cli->lua_event_loop);
+    return !cli->lua_event_failed;
+}
+
+static void cli_lua_events_clear(Cli* cli) {
+    if (!cli->lua_event_subscriptions)
+        return;
+    g_ptr_array_unref(cli->lua_event_subscriptions);
+    cli->lua_event_subscriptions = NULL;
+    cli->active_lua_event_subscriptions = 0;
+    g_clear_pointer(&cli->lua_event_loop, g_main_loop_unref);
+}
+
 static int lua_api_call(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
@@ -4757,7 +5171,9 @@ static int lua_api_index(lua_State* state) {
     const char* name = luaL_checkstring(state, 2);
     if (!*prefix) {
         if (g_str_equal(name, "on")) {
-            lua_cli_push_runtime_scope_error(state, "gnoblin.on");
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushboolean(state, FALSE);
+            lua_pushcclosure(state, lua_cli_events_subscribe, 2);
             return 1;
         }
         if (g_str_equal(name, "version")) {
@@ -4781,8 +5197,9 @@ static int lua_api_index(lua_State* state) {
         return 1;
     }
     if (g_str_equal(prefix, "events") && (g_str_equal(name, "on") || g_str_equal(name, "once"))) {
-        g_autofree char* method = g_strdup_printf("gnoblin.events.%s", name);
-        lua_cli_push_runtime_scope_error(state, method);
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushboolean(state, g_str_equal(name, "once"));
+        lua_pushcclosure(state, lua_cli_events_subscribe, 2);
         return 1;
     }
     if (g_str_equal(prefix, "events") && g_str_equal(name, "mutter")) {
@@ -4797,8 +5214,9 @@ static int lua_api_index(lua_State* state) {
     }
     if (g_str_equal(prefix, "events.mutter") &&
         (g_str_equal(name, "on") || g_str_equal(name, "once"))) {
-        g_autofree char* method = g_strdup_printf("gnoblin.events.mutter.%s", name);
-        lua_cli_push_runtime_scope_error(state, method);
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushboolean(state, g_str_equal(name, "once"));
+        lua_pushcclosure(state, lua_cli_events_subscribe, 2);
         return 1;
     }
     if (g_str_equal(prefix, "windows")) {
@@ -5188,8 +5606,12 @@ static int run_lua_console(Cli* cli, const char* file) {
         g_printerr("gnoblinctl lua: could not create Lua state\n");
         return 1;
     }
+    cli->lua_state = state;
+    cli->lua_event_loop = g_main_loop_new(NULL, FALSE);
+    cli->lua_event_subscriptions = g_ptr_array_new_with_free_func(cli_lua_event_subscription_free);
     luaL_openlibs(state);
     register_lua_cli_readonly_table(state);
+    register_lua_cli_event_subscription(state);
     register_lua_cli_window_record(state);
     register_lua_cli_workspace_record(state);
     register_lua_cli_monitor_record(state);
@@ -5221,11 +5643,16 @@ static int run_lua_console(Cli* cli, const char* file) {
     if (file) {
         if (luaL_loadfile(state, file) != LUA_OK || lua_pcall(state, 0, 0, 0) != LUA_OK) {
             print_lua_error(state, "gnoblinctl lua: ");
+            cli_lua_events_clear(cli);
+            cli->lua_state = NULL;
             lua_close(state);
             return 1;
         }
+        gboolean succeeded = cli_lua_event_loop(cli);
+        cli_lua_events_clear(cli);
+        cli->lua_state = NULL;
         lua_close(state);
-        return 0;
+        return succeeded ? 0 : 1;
     }
 
     gboolean interactive = isatty(STDIN_FILENO);
@@ -5258,8 +5685,12 @@ static int run_lua_console(Cli* cli, const char* file) {
         }
         if (!evaluate_lua_line(state, line))
             exit_status = 1;
+        if (cli->active_lua_event_subscriptions && !cli_lua_event_loop(cli))
+            exit_status = 1;
     }
     free(line);
+    cli_lua_events_clear(cli);
+    cli->lua_state = NULL;
     lua_close(state);
     return exit_status;
 }

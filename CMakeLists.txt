@@ -124,6 +124,8 @@ add_custom_target(gnoblinctl-identity
     "${CMAKE_BINARY_DIR}/gnoblin-version.ini")
 add_dependencies(gnoblinctl gnoblinctl-identity)
 target_compile_definitions(gnoblinctl PRIVATE
+  GNOBLIN_NATIVE_CONTROL_API_MAJOR=${GNOBLIN_NATIVE_CONTROL_API_MAJOR}
+  GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}
   "GNOBLIN_IDENTITY_FALLBACK=\"${CMAKE_BINARY_DIR}/gnoblinctl-identity.json\"")
 
 set(GNOBLIN_BUILD_TYPE "debugoptimized" CACHE STRING "Meson build type")
