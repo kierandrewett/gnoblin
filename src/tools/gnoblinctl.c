@@ -1634,6 +1634,7 @@ static int lua_cli_settings_property(lua_State* state);
 static int lua_cli_layer_animation_policy(lua_State* state);
 static int lua_cli_privacy_state(lua_State* state);
 static int lua_cli_privacy_stop(lua_State* state);
+static int lua_cli_runtime_reload_config(lua_State* state);
 static int lua_cli_capabilities_list(lua_State* state);
 static int lua_cli_permissions_policy(lua_State* state);
 static int lua_cli_permissions_list(lua_State* state);
@@ -3153,6 +3154,30 @@ static int lua_cli_privacy_stop(lua_State* state) {
     return 1;
 }
 
+static int lua_cli_runtime_reload_config(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.runtime.reload_config takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "runtime.reload_config", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.runtime.reload_config failed: %s", call_error->message);
+    JsonObject* object = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonNode* ok = object ? json_object_get_member(object, "ok") : NULL;
+    JsonNode* action = object ? json_object_get_member(object, "action") : NULL;
+    if (!ok || !JSON_NODE_HOLDS_VALUE(ok) || json_node_get_value_type(ok) != G_TYPE_BOOLEAN ||
+        !action || !JSON_NODE_HOLDS_VALUE(action) ||
+        json_node_get_value_type(action) != G_TYPE_STRING)
+        return luaL_error(state, "gnoblin.runtime.reload_config returned an invalid result");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
 static gboolean lua_cli_capability_valid(JsonObject* object) {
     const char* id = member_string(object, "id", NULL);
     const char* description = member_string(object, "description", NULL);
@@ -4608,6 +4633,11 @@ static int lua_api_index(lua_State* state) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushfstring(state, "privacy.%s", name);
         lua_pushcclosure(state, lua_cli_privacy_stop, 2);
+        return 1;
+    }
+    if (g_str_equal(prefix, "runtime") && g_str_equal(name, "reload_config")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_runtime_reload_config, 1);
         return 1;
     }
     if (g_str_equal(prefix, "capabilities") && g_str_equal(name, "list")) {

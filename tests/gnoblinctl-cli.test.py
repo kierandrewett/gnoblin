@@ -168,7 +168,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(99):
+                    for _ in range(100):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -407,6 +407,8 @@ def main() -> int:
                                     "request_id": 36 if request["method"] == "privacy.stop_sharing" else 37,
                                     "method": request["method"],
                                 }
+                            elif request["method"] == "runtime.reload_config":
+                                result = {"request_id": 38, "method": request["method"]}
                             elif request["method"] == "capabilities.list":
                                 result = [
                                     {
@@ -610,6 +612,7 @@ def main() -> int:
                                 "launch.end",
                                 "privacy.stop_sharing",
                                 "privacy.stop_recording",
+                                "runtime.reload_config",
                             }:
                                 operation_id = result["request_id"]
                                 method = result["method"]
@@ -798,6 +801,8 @@ def main() -> int:
                                     value = completion_value
                                 elif method in {"privacy.stop_sharing", "privacy.stop_recording"}:
                                     value = {"requested": 2 if method == "privacy.stop_sharing" else 0}
+                                elif method == "runtime.reload_config":
+                                    value = {"ok": True, "action": "reloaded", "runtime_generation": 7}
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
@@ -1641,11 +1646,21 @@ def main() -> int:
         )
         privacy_stop_result = run(binary, "--socket", socket_path, "lua", str(privacy_stop_script))
         assert privacy_stop_result.returncode == 0, privacy_stop_result.stderr
+        runtime_reload_script = Path(temporary) / "runtime-reload.lua"
+        runtime_reload_script.write_text(
+            "local result = gnoblin.runtime.reload_config()\n"
+            'assert(result.ok and result.action == "reloaded" and result.runtime_generation == 7)\n'
+            "assert(not pcall(function() result.ok = false end))\n"
+            "assert(not pcall(function() gnoblin.runtime.reload_config(true) end))\n",
+            encoding="utf-8",
+        )
+        runtime_reload_result = run(binary, "--socket", socket_path, "lua", str(runtime_reload_script))
+        assert runtime_reload_result.returncode == 0, runtime_reload_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 99
-        assert len(subscriptions) == 99
+        assert len(received) == 100
+        assert len(subscriptions) == 100
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1963,6 +1978,10 @@ def main() -> int:
         ]
         assert all(call["api_version"] == {"major": 1, "minor": 31} for call in privacy_stop_calls)
         assert all(call["arguments"] == {} for call in privacy_stop_calls)
+        runtime_reload_calls = [call for call in received if call["method"] == "runtime.reload_config"]
+        assert len(runtime_reload_calls) == 1
+        assert runtime_reload_calls[0]["api_version"] == {"major": 1, "minor": 20}
+        assert runtime_reload_calls[0]["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
