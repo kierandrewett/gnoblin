@@ -2751,11 +2751,51 @@ static gboolean lua_cli_layer_animation_policy_valid(JsonObject* object,
         JsonNode* duration = json_object_get_member(phase, "duration");
         if (duration && (!JSON_NODE_HOLDS_VALUE(duration) ||
                          (json_node_get_value_type(duration) != G_TYPE_INT64 &&
-                          json_node_get_value_type(duration) != G_TYPE_INT)))
+                          json_node_get_value_type(duration) != G_TYPE_INT) ||
+                         json_node_get_int(duration) < 0))
             return FALSE;
         JsonNode* easing = json_object_get_member(phase, "easing");
-        if (easing && !JSON_NODE_HOLDS_VALUE(easing) && !JSON_NODE_HOLDS_OBJECT(easing))
-            return FALSE;
+        if (easing) {
+            static const char* const curves[] = {"linear",
+                                                 "ease-in-quad",
+                                                 "ease-out-quad",
+                                                 "ease-in-out-cubic",
+                                                 "ease-in-cubic",
+                                                 "ease-out-cubic",
+                                                 "ease-out-expo",
+                                                 "ease-out-back",
+                                                 NULL};
+            if (JSON_NODE_HOLDS_VALUE(easing) &&
+                json_node_get_value_type(easing) == G_TYPE_STRING) {
+                gboolean known_curve = FALSE;
+                const char* curve = json_node_get_string(easing);
+                for (guint j = 0; curves[j]; j++)
+                    known_curve |= g_str_equal(curve, curves[j]);
+                if (!known_curve)
+                    return FALSE;
+            } else if (JSON_NODE_HOLDS_OBJECT(easing)) {
+                JsonObject* bezier = json_node_get_object(easing);
+                if (!g_str_equal(member_string(bezier, "type", ""), "cubic-bezier"))
+                    return FALSE;
+                const char* coordinates[] = {"x1", "y1", "x2", "y2"};
+                double values[G_N_ELEMENTS(coordinates)];
+                for (guint j = 0; j < G_N_ELEMENTS(coordinates); j++) {
+                    JsonNode* coordinate = json_object_get_member(bezier, coordinates[j]);
+                    if (!coordinate || !JSON_NODE_HOLDS_VALUE(coordinate))
+                        return FALSE;
+                    GType type = json_node_get_value_type(coordinate);
+                    if (type != G_TYPE_DOUBLE && type != G_TYPE_INT && type != G_TYPE_INT64)
+                        return FALSE;
+                    values[j] = json_node_get_double(coordinate);
+                    if (!isfinite(values[j]))
+                        return FALSE;
+                }
+                if (values[0] < 0 || values[0] > 1 || values[2] < 0 || values[2] > 1)
+                    return FALSE;
+            } else {
+                return FALSE;
+            }
+        }
     }
     return TRUE;
 }

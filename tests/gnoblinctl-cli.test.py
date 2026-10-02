@@ -142,7 +142,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(92):
+                    for _ in range(94):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -437,7 +437,7 @@ def main() -> int:
                                 ]
                             elif request["method"] == "layer.animation_policy":
                                 result = {
-                                    "namespace": "bingux-panel",
+                                    "namespace": request["arguments"]["namespace"],
                                     "enter": {
                                         "animation": "fade",
                                         "duration": 240,
@@ -447,6 +447,10 @@ def main() -> int:
                                     "window_shadow": {"opacity": 0.4},
                                     "revision": 19,
                                 }
+                                if request["arguments"]["namespace"] == "bad-easing":
+                                    result["enter"]["easing"] = True
+                                elif request["arguments"]["namespace"] == "negative-duration":
+                                    result["enter"]["duration"] = -1
                             elif request["method"] == "permissions.list":
                                 result = {
                                     "policy": {"default": "deny", "rules": []},
@@ -1523,11 +1527,19 @@ def main() -> int:
         )
         workspace_api_result = run(binary, "--socket", socket_path, "lua", str(workspace_api_file))
         assert workspace_api_result.returncode == 0, workspace_api_result.stderr
+        invalid_policy_file = Path(temporary) / "invalid-layer-policy.lua"
+        invalid_policy_file.write_text(
+            'assert(not pcall(function() gnoblin.layers.animation_policy("bad-easing") end))\n'
+            'assert(not pcall(function() gnoblin.layers.animation_policy("negative-duration") end))\n',
+            encoding="utf-8",
+        )
+        invalid_policy_result = run(binary, "--socket", socket_path, "lua", str(invalid_policy_file))
+        assert invalid_policy_result.returncode == 0, invalid_policy_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 92
-        assert len(subscriptions) == 92
+        assert len(received) == 94
+        assert len(subscriptions) == 94
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
