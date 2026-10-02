@@ -95,3 +95,14 @@ if [ -n "$stage_root" ]; then
 else
     meson install -C "$build_dir" --no-rebuild
 fi
+if [ "$name" = mutter ]; then
+    devkit_marker="$installed_prefix/share/gnoblin/mutter-devkit-enabled"
+    case "$devkit" in
+        enabled | true | TRUE | 1)
+            install -Dm644 /dev/null "$devkit_marker"
+            ;;
+        *)
+            rm -f -- "$devkit_marker"
+            ;;
+    esac
+fi

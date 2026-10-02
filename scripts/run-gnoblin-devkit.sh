@@ -24,7 +24,8 @@ fi
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
 prepare_devkit=true
-if [[ -x "$PREFIX/libexec/mutter-devkit" ]]; then
+if [[ -x "$PREFIX/libexec/mutter-devkit" &&
+    -f "$PREFIX/share/gnoblin/mutter-devkit-enabled" ]]; then
     prepare_devkit=false
 fi
 if "$prepare_devkit"; then
