@@ -37,6 +37,21 @@ def main() -> int:
     assert help_result.returncode == 0, help_result.stderr
     assert "Usage: gnoblinctl" in help_result.stdout
 
+    lua_help = run(binary, "lua", "--help")
+    assert lua_help.returncode == 0, lua_help.stderr
+    assert "gnoblinctl lua [FILE]" in lua_help.stdout
+    lua_repl = subprocess.run(
+        [binary, "lua"],
+        check=False,
+        capture_output=True,
+        text=True,
+        input='=1 + 1\n={name = "Gnoblin", values = {1, 2}}\n:quit\n',
+        timeout=5,
+    )
+    assert lua_repl.returncode == 0, lua_repl.stderr
+    assert "2\n" in lua_repl.stdout
+    assert '"name" : "Gnoblin"' in lua_repl.stdout
+
     interactive_result = run(binary, "window", "interactive-move")
     assert interactive_result.returncode != 0
     assert "require a trusted shell input context" in interactive_result.stderr
@@ -124,7 +139,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(26):
+                    for _ in range(27):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -592,11 +607,15 @@ def main() -> int:
             "recording": False,
             "revision": 42,
         }
+        lua_file = Path(temporary) / "inspect.lua"
+        lua_file.write_text('local windows = gnoblin.windows.list { focused = true }\nassert(windows[1].id == "42")\n')
+        lua_api = run(binary, "--socket", socket_path, "lua", str(lua_file))
+        assert lua_api.returncode == 0, lua_api.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 26
-        assert len(subscriptions) == 26
+        assert len(received) == 27
+        assert len(subscriptions) == 27
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -703,6 +722,11 @@ def main() -> int:
         assert received[25]["method"] == "privacy.state"
         assert received[25]["api_version"] == {"major": 1, "minor": 47}
         assert received[25]["arguments"] == {}
+        lua_request = received[26]
+        assert lua_request["op"] == "api"
+        assert lua_request["method"] == "windows.list"
+        assert lua_request["arguments"] == {"focused": True}
+        assert "source" not in lua_request and "code" not in lua_request
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0

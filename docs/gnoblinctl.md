@@ -46,6 +46,7 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl focus history`                     | List recently focused windows                              |
 | `gnoblinctl focus policy`                      | Show the committed focus policy                            |
 | `gnoblinctl config show`                       | Show the committed settings snapshot                       |
+| `gnoblinctl lua`                               | Open a local Lua console for the session API               |
 | `gnoblinctl ping`                              | Check whether the compositor control socket responds       |
 
 Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
@@ -54,6 +55,31 @@ Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 If a Lua configuration reload is already in progress, API commands retry that
 temporary response until their `--timeout` expires. Other compositor errors are
 reported immediately, and uncertain actions are not retried.
+
+## Lua console
+
+Run `gnoblinctl lua` inside a Gnoblin session to inspect and control the live
+compositor with the Lua API. Enter one Lua statement or expression per line.
+Expressions print their result; tables print as JSON. Type `:help` for the
+console commands and `:quit` to exit.
+
+```lua
+=gnoblin.windows.list { focused = true }
+=gnoblin.workspaces.list()
+:quit
+```
+
+To run a Lua file with the same API, pass its path:
+
+```sh
+gnoblinctl lua ./inspect.lua
+```
+
+The Lua code runs in the local `gnoblinctl` process. Session calls go through
+the compositor's typed API, which validates methods and arguments; `gnoblinctl`
+does not send Lua source for evaluation by the compositor. The API returns
+operation descriptors for asynchronous changes. Use configuration event
+handlers when a script needs to react to state changes over time.
 
 ## Windows
 
