@@ -20,7 +20,7 @@ class PermissionContractTest(unittest.TestCase):
         self.assertIn('g_variant_new("(ss@asub)"', implementation)
         self.assertIn("decision.devices", implementation)
 
-    def test_native_privacy_reports_only_observable_capture_state(self):
+    def test_native_privacy_reports_observable_capture_and_location_state(self):
         start = CONTROL.index("static GVariant* privacy_snapshot_new(")
         end = CONTROL.index("static void publish_privacy_snapshot(", start)
         implementation = CONTROL[start:end]
@@ -31,7 +31,8 @@ class PermissionContractTest(unittest.TestCase):
         self.assertIn('"camera_in_use"', implementation)
         self.assertIn("if (control->privacy_camera_available)", implementation)
         self.assertIn('g_variant_builder_add(&available, "{sv}", "location_in_use"', implementation)
-        self.assertNotIn('g_variant_builder_add(&snapshot, "{sv}", "location_in_use"', implementation)
+        self.assertIn("if (control->privacy_location_available)", implementation)
+        self.assertIn('g_variant_builder_add(&snapshot, "{sv}", "location_in_use"', implementation)
 
     def test_window_rules_accept_public_lua_workspace_field_names(self):
         start = CONTROL.index("static gboolean native_window_rule_matches(")
