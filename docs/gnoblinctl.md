@@ -76,10 +76,13 @@ gnoblinctl lua ./inspect.lua
 ```
 
 The Lua code runs in the local `gnoblinctl` process. Session calls go through
-the compositor's typed API, which validates methods and arguments; `gnoblinctl`
-does not send Lua source for evaluation by the compositor. The API returns
-operation descriptors for asynchronous changes. Use configuration event
-handlers when a script needs to react to state changes over time.
+the compositor's typed API, which validates methods and arguments. `gnoblinctl`
+never sends Lua source to the compositor.
+
+Calls return results after asynchronous operations complete. The terminal
+console cannot create the trusted input context required for focusing a window
+from a click. Use a configuration event handler or external shell client when
+an operation needs that context or must react to events over time.
 
 ## Windows
 
