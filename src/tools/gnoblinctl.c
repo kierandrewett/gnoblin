@@ -1577,6 +1577,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_WINDOW_RECORD_METATABLE "gnoblinctl.Window"
 #define GNOBLINCTL_WORKSPACE_RECORD_METATABLE "gnoblinctl.Workspace"
 #define GNOBLINCTL_MONITOR_RECORD_METATABLE "gnoblinctl.Monitor"
+#define GNOBLINCTL_LAYER_SURFACE_RECORD_METATABLE "gnoblinctl.LayerSurface"
 
 /* The console must not turn a compositor snapshot into a mutable policy object.
  * Keep the JSON fields in a private backing table and expose the same read-only
@@ -1950,6 +1951,97 @@ static void lua_cli_push_monitor_record(lua_State* state, JsonObject* object) {
     lua_remove(state, backing);
 }
 
+static int lua_cli_layer_surface_tostring(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "id");
+    const char* id = lua_tostring(state, -1);
+    lua_pushfstring(state, "LayerSurface<%s>", id ? id : "unknown");
+    return 1;
+}
+
+static void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* object) {
+    const char* id = member_string(object, "id", NULL);
+    if (!id || !*id)
+        luaL_error(state, "gnoblin.layers.list returned a layer surface without a stable id");
+
+    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(node, object);
+    json_to_lua(state, node);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 2);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    lua_newtable(state);
+    lua_setiuservalue(state, record, 2);
+    luaL_getmetatable(state, GNOBLINCTL_LAYER_SURFACE_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+}
+
+static int lua_cli_layers_list(lua_State* state) {
+    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
+        return luaL_error(state, "gnoblin.layers.list accepts one optional filter table");
+
+    JsonObject* arguments = NULL;
+    if (lua_gettop(state) == 1) {
+        static const char* fields[] = {"monitor_id", "namespace", "layer"};
+        lua_pushnil(state);
+        while (lua_next(state, 1)) {
+            const char* key = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
+            gboolean known = FALSE;
+            for (guint i = 0; key && i < G_N_ELEMENTS(fields); i++)
+                known |= g_str_equal(key, fields[i]);
+            if (!known || lua_type(state, -1) != LUA_TSTRING)
+                return luaL_error(state, "gnoblin.layers.list filter fields must be monitor_id, "
+                                         "namespace, or layer strings");
+            lua_pop(state, 1);
+        }
+        arguments = lua_cli_table_object(state, 1, "layer filter");
+    } else {
+        arguments = json_object_new();
+    }
+
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", "layers.list", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.layers.list failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_ARRAY(result))
+        return luaL_error(state, "gnoblin.layers.list returned an invalid snapshot");
+
+    JsonArray* layers = json_node_get_array(result);
+    lua_createtable(state, json_array_get_length(layers), 0);
+    for (guint i = 0; i < json_array_get_length(layers); i++) {
+        JsonObject* layer = json_array_get_object_element(layers, i);
+        if (!layer)
+            return luaL_error(state,
+                              "gnoblin.layers.list returned an invalid layer surface record");
+        lua_cli_push_layer_surface_record(state, layer);
+        lua_rawseti(state, -2, i + 1);
+    }
+    return 1;
+}
+
+static void register_lua_cli_layer_surface_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_LAYER_SURFACE_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_window_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_window_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_layer_surface_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
 static JsonNode* lua_cli_monitor_snapshot(lua_State* state, Cli* cli, const char* operation) {
     JsonObject* arguments = json_object_new();
     g_autoptr(GError) call_error = NULL;
@@ -2235,6 +2327,25 @@ static int lua_api_index(lua_State* state) {
         if (g_str_equal(name, "list") || g_str_equal(name, "primary"))
             return 1;
     }
+    if (g_str_equal(prefix, "monitor") && g_str_equal(name, "list")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_monitors_list, 1);
+        return 1;
+    }
+    if (g_str_equal(prefix, "layers")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        if (g_str_equal(name, "list"))
+            lua_pushcclosure(state, lua_cli_layers_list, 1);
+        else
+            lua_pop(state, 1);
+        if (g_str_equal(name, "list"))
+            return 1;
+    }
+    if (g_str_equal(prefix, "layer") && g_str_equal(name, "list")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_layers_list, 1);
+        return 1;
+    }
     g_autofree char* method = g_strdup_printf("%s.%s", prefix, name);
     lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
     lua_pushstring(state, method);
@@ -2370,6 +2481,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_window_record(state);
     register_lua_cli_workspace_record(state);
     register_lua_cli_monitor_record(state);
+    register_lua_cli_layer_surface_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");

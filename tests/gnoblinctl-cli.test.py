@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(43):
+                    for _ in range(47):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -161,7 +161,7 @@ def main() -> int:
                                 result = {"session": "test-session", "locked": False}
                             elif request["method"] == "monitors.list":
                                 monitor_request_count += 1
-                                if monitor_request_count >= 5:
+                                if monitor_request_count >= 6:
                                     result = []
                                 elif monitor_request_count <= 2:
                                     result = [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
@@ -223,6 +223,11 @@ def main() -> int:
                                         "namespace": "panel:top",
                                         "layer": "top",
                                         "monitor_id": "HDMI-1",
+                                        "keyboard_interactive": "on_demand",
+                                        "exclusive_zone": 32,
+                                        "anchor": ["top", "left", "right"],
+                                        "geometry": {"x": 0, "y": 0, "width": 1920, "height": 32},
+                                        "mapped": True,
                                         "revision": 5,
                                     }
                                 ]
@@ -554,6 +559,11 @@ def main() -> int:
                     "namespace": "panel:top",
                     "layer": "top",
                     "monitor_id": "HDMI-1",
+                    "keyboard_interactive": "on_demand",
+                    "exclusive_zone": 32,
+                    "anchor": ["top", "left", "right"],
+                    "geometry": {"x": 0, "y": 0, "width": 1920, "height": 32},
+                    "mapped": True,
                     "revision": 5,
                 }
             ]
@@ -699,8 +709,32 @@ def main() -> int:
             'assert(not pcall(function() monitor.id = "DP-1" end))\n'
             "assert(not pcall(function() monitor.missing = true end))\n"
             'assert(tostring(monitor) == "Monitor<HDMI-1>")\n'
+            "local compatibility_monitors = gnoblin.monitor.list()\n"
+            'assert(#compatibility_monitors == 1 and compatibility_monitors[1].id == "HDMI-1")\n'
+            'assert(not pcall(function() compatibility_monitors[1].id = "DP-1" end))\n'
             'assert(gnoblin.monitors.primary().id == "HDMI-1")\n'
             "assert(gnoblin.monitors.primary() == nil)\n"
+            "local layers = gnoblin.layers.list()\n"
+            'assert(#layers == 1 and layers[1].id == "surface-1")\n'
+            "local layer = layers[1]\n"
+            'assert(layer.title == "Panel" and layer.namespace == "panel:top")\n'
+            'assert(layer.layer == "top" and layer.monitor_id == "HDMI-1")\n'
+            'assert(layer.keyboard_interactive == "on_demand" and layer.exclusive_zone == 32)\n'
+            'assert(layer.anchor[1] == "top" and layer.anchor[2] == "left" and layer.anchor[3] == "right")\n'
+            "assert(layer.geometry.x == 0 and layer.geometry.y == 0)\n"
+            "assert(layer.geometry.width == 1920 and layer.geometry.height == 32)\n"
+            "assert(layer.mapped and layer.revision == 5)\n"
+            'assert(not pcall(function() layer.title = "changed" end))\n'
+            "assert(not pcall(function() layer.missing = true end))\n"
+            'assert(tostring(layer) == "LayerSurface<surface-1>")\n'
+            'local filtered_layers = gnoblin.layers.list { monitor_id = "HDMI-1", namespace = "panel:top", layer = "top" }\n'
+            'assert(#filtered_layers == 1 and filtered_layers[1].id == "surface-1")\n'
+            'assert(not pcall(function() gnoblin.layers.list { app_id = "org.example.Panel" } end))\n'
+            "assert(not pcall(function() gnoblin.layers.list { layer = 2 } end))\n"
+            'assert(not pcall(function() gnoblin.layers.list { [1] = "top" } end))\n'
+            "local compatibility_layers = gnoblin.layer.list()\n"
+            'assert(#compatibility_layers == 1 and compatibility_layers[1].id == "surface-1")\n'
+            'assert(not pcall(function() compatibility_layers[1].id = "changed" end))\n'
         )
         lua_api = run(binary, "--socket", socket_path, "lua", str(lua_file))
         assert lua_api.returncode == 0, lua_api.stderr
@@ -719,8 +753,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 43
-        assert len(subscriptions) == 43
+        assert len(received) == 47
+        assert len(subscriptions) == 47
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -869,7 +903,20 @@ def main() -> int:
         assert received[40]["arguments"] == {}
         assert received[41]["method"] == "monitors.list"
         assert received[41]["arguments"] == {}
-        unminimize_request = received[42]
+        assert received[42]["method"] == "monitors.list"
+        assert received[42]["arguments"] == {}
+        assert received[43]["method"] == "layers.list"
+        assert received[43]["api_version"] == {"major": 1, "minor": 37}
+        assert received[43]["arguments"] == {}
+        assert received[44]["method"] == "layers.list"
+        assert received[44]["arguments"] == {
+            "monitor_id": "HDMI-1",
+            "namespace": "panel:top",
+            "layer": "top",
+        }
+        assert received[45]["method"] == "layers.list"
+        assert received[45]["arguments"] == {}
+        unminimize_request = received[46]
         assert unminimize_request["method"] == "window.unminimize"
         assert unminimize_request["arguments"] == {"id": "42"}
 
