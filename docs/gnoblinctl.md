@@ -489,6 +489,18 @@ for _, surface in ipairs(gnoblin.animations.surfaces().surfaces) do
 end
 ```
 
+Inspect the resolved animation for a visible target with
+`gnoblin.animations.inspect {name, target, event?, target_type?}`. The result
+and its nested tables are read-only:
+
+```lua
+local inspection = gnoblin.animations.inspect {
+    name = "gnome-open",
+    target = "active",
+}
+print(inspection.event, inspection.duration)
+```
+
 `animation list` marks entries that current preview targets can run with
 `previewable`.
 
