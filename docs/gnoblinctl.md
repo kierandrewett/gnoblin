@@ -85,6 +85,24 @@ They do not return an asynchronous `Operation` handle. `focus`, `begin_move`,
 and `begin_resize` require a trusted `FocusContext` from a runtime callback, so
 the terminal console rejects those calls.
 
+Workspace snapshots are available through `gnoblin.workspaces.list()`,
+`gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
+read-only `Workspace` records. A workspace can be activated, renamed, removed,
+or used as the destination for a window move:
+
+```lua
+local workspace = gnoblin.workspaces.by_id("web")
+if workspace then
+    workspace:activate()
+    workspace:move_here("42", { follow = true })
+end
+```
+
+Workspace actions also wait for compositor completion and return the completed
+value. `move_here` accepts a `Window` record, stable window ID, or `"active"`;
+its optional `follow` setting defaults to `false`. Removing configured,
+active, or nonempty workspaces is rejected by the compositor.
+
 To run a Lua file with the same API, pass its path:
 
 ```sh
