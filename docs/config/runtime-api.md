@@ -1066,6 +1066,8 @@ end)
 
 This handler denies every request. A shell that asks the user for consent can
 return `allow = true` with the selected accuracy after the user approves.
+Socket clients need native-control API 1.65 to receive and answer these
+requests.
 
 GeoClue supplies `app_id` as the application's desktop ID. Treat it as a
 request attribute, not an authenticated identity.
