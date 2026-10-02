@@ -115,6 +115,10 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
 char** gnoblin_config_runtime_events(void);
 void gnoblin_config_finish_event(gboolean commit);
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error);
+/* Project gnoblin.configure.portals into the generated XDG portal preferences.
+ * `config_home` is NULL to use XDG_CONFIG_HOME. The document must be valid. */
+gboolean gnoblin_config_sync_portal_selection(GVariant* document, const char* config_home,
+                                              GError** error);
 /* Match a value with Lua string.find pattern semantics. Invalid patterns set
  * an error; valid patterns search anywhere unless anchored with ^ or $. */
 gboolean gnoblin_config_window_pattern_match(const char* pattern, const char* value,

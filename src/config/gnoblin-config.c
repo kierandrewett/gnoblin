@@ -3,6 +3,8 @@
 #include "gnoblin-portal-policy.h"
 #include "gnoblin-input-config.h"
 
+#include <errno.h>
+#include <gio/gio.h>
 #include <glib/gstdio.h>
 #include <math.h>
 #include <string.h>
@@ -669,6 +671,244 @@ static gboolean validate_window_rule_patterns(GVariant* document, GError** error
     return TRUE;
 }
 
+static gboolean portal_backend_list_valid(GVariant* backends, const char* field, GError** error) {
+    if (!g_variant_is_of_type(backends, G_VARIANT_TYPE("av")) &&
+        !g_variant_is_of_type(backends, G_VARIANT_TYPE_STRING_ARRAY)) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "portals.%s must be a nonempty array of backend names", field);
+        return FALSE;
+    }
+
+    gsize count = g_variant_n_children(backends);
+    gboolean has_none = FALSE;
+    if (count == 0 || count > 32) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "portals.%s must contain between 1 and 32 backend names", field);
+        return FALSE;
+    }
+
+    for (gsize i = 0; i < count; i++) {
+        g_autoptr(GVariant) child = g_variant_get_child_value(backends, i);
+        g_autoptr(GVariant) item = g_variant_is_of_type(child, G_VARIANT_TYPE_VARIANT)
+                                       ? g_variant_get_variant(child)
+                                       : g_variant_ref(child);
+        if (!g_variant_is_of_type(item, G_VARIANT_TYPE_STRING)) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "portals.%s[%zu] must be a backend name", field, i + 1);
+            return FALSE;
+        }
+        const char* name = g_variant_get_string(item, NULL);
+        gboolean valid = g_str_equal(name, "*") || g_str_equal(name, "none") ||
+                         g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$", name,
+                                              G_REGEX_OPTIMIZE, G_REGEX_MATCH_NOTEMPTY);
+        if (!valid) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "portals.%s[%zu] is not a valid portal backend name", field, i + 1);
+            return FALSE;
+        }
+        has_none |= g_str_equal(name, "none");
+    }
+
+    if (has_none && count != 1) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "portals.%s may use 'none' only by itself", field);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static gboolean validate_portal_selection(GVariant* portals, GError** error) {
+    if (!g_variant_is_of_type(portals, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "portals must be a table with default and optional interfaces");
+        return FALSE;
+    }
+
+    gboolean has_default = FALSE;
+    g_autoptr(GVariant) interfaces = NULL;
+    GVariantIter iter;
+    const char* key;
+    GVariant* value;
+    g_variant_iter_init(&iter, portals);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+        g_autoptr(GVariant) field = value;
+        if (g_str_equal(key, "default")) {
+            has_default = TRUE;
+            if (!portal_backend_list_valid(field, "default", error))
+                return FALSE;
+        } else if (g_str_equal(key, "interfaces")) {
+            if (!g_variant_is_of_type(field, G_VARIANT_TYPE_VARDICT)) {
+                g_set_error_literal(
+                    error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "portals.interfaces must map portal interface names to backend arrays");
+                return FALSE;
+            }
+            interfaces = g_variant_ref(field);
+        } else {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "portals.%s is not a supported field", key);
+            return FALSE;
+        }
+    }
+
+    if (!has_default) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "portals.default must list one or more portal backends");
+        return FALSE;
+    }
+
+    if (interfaces) {
+        GVariantIter interface_iter;
+        const char* interface_name;
+        GVariant* route;
+        g_variant_iter_init(&interface_iter, interfaces);
+        while (g_variant_iter_next(&interface_iter, "{&sv}", &interface_name, &route)) {
+            g_autoptr(GVariant) route_value = route;
+            if (!g_dbus_is_interface_name(interface_name)) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "portals.interfaces key '%s' is not a D-Bus interface name",
+                            interface_name);
+                return FALSE;
+            }
+            g_autofree char* field_name = g_strdup_printf("interfaces.%s", interface_name);
+            if (!portal_backend_list_valid(route_value, field_name, error))
+                return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+static const char portal_config_marker[] =
+    "# Generated by Gnoblin from gnoblin.configure.portals. Do not edit.\n";
+
+static GVariant* portal_backend_at(GVariant* backends, gsize index) {
+    GVariant* child = g_variant_get_child_value(backends, index);
+    if (g_variant_is_of_type(child, G_VARIANT_TYPE_VARIANT)) {
+        GVariant* value = g_variant_get_variant(child);
+        g_variant_unref(child);
+        return value;
+    }
+    return child;
+}
+
+static void append_portal_backends(GString* output, const char* interface, GVariant* backends) {
+    g_string_append_printf(output, "%s=", interface);
+    for (gsize i = 0; i < g_variant_n_children(backends); i++) {
+        g_autoptr(GVariant) backend = portal_backend_at(backends, i);
+        if (i > 0)
+            g_string_append_c(output, ';');
+        g_string_append(output, g_variant_get_string(backend, NULL));
+    }
+    g_string_append(output, ";\n");
+}
+
+static gint portal_interface_compare(gconstpointer left, gconstpointer right) {
+    return g_strcmp0(*(char* const*)left, *(char* const*)right);
+}
+
+static char* render_portal_selection(GVariant* document) {
+    g_autoptr(GVariant) portals =
+        g_variant_lookup_value(document, "portals", G_VARIANT_TYPE_VARDICT);
+    if (!portals)
+        return NULL;
+
+    g_autoptr(GVariant) defaults = g_variant_lookup_value(portals, "default", G_VARIANT_TYPE("av"));
+    if (!defaults)
+        defaults = g_variant_lookup_value(portals, "default", G_VARIANT_TYPE_STRING_ARRAY);
+    g_autoptr(GVariant) interfaces =
+        g_variant_lookup_value(portals, "interfaces", G_VARIANT_TYPE_VARDICT);
+    GString* output = g_string_new(portal_config_marker);
+    g_string_append(output, "[preferred]\n");
+    append_portal_backends(output, "default", defaults);
+
+    if (interfaces) {
+        GPtrArray* names = g_ptr_array_new_with_free_func(g_free);
+        GVariantIter iter;
+        const char* name;
+        GVariant* route;
+        g_variant_iter_init(&iter, interfaces);
+        while (g_variant_iter_next(&iter, "{&sv}", &name, &route)) {
+            g_ptr_array_add(names, g_strdup(name));
+            g_variant_unref(route);
+        }
+        g_ptr_array_sort(names, portal_interface_compare);
+        for (guint i = 0; i < names->len; i++) {
+            const char* interface = g_ptr_array_index(names, i);
+            g_autoptr(GVariant) route =
+                g_variant_lookup_value(interfaces, interface, G_VARIANT_TYPE("av"));
+            if (!route)
+                route = g_variant_lookup_value(interfaces, interface, G_VARIANT_TYPE_STRING_ARRAY);
+            append_portal_backends(output, interface, route);
+        }
+        g_ptr_array_unref(names);
+    }
+
+    return g_string_free(output, FALSE);
+}
+
+static gboolean portal_config_is_managed(const char* contents) {
+    return contents && g_str_has_prefix(contents, portal_config_marker);
+}
+
+gboolean gnoblin_config_sync_portal_selection(GVariant* document, const char* config_home,
+                                              GError** error) {
+    if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "portal preferences need a configuration table");
+        return FALSE;
+    }
+    if (!gnoblin_config_validate_document(document, error))
+        return FALSE;
+
+    const char* home = config_home && *config_home ? config_home : g_get_user_config_dir();
+    g_autofree char* directory = g_build_filename(home, "xdg-desktop-portal", NULL);
+    g_autofree char* path = g_build_filename(directory, "gnoblin-portals.conf", NULL);
+    g_autofree char* existing = NULL;
+    gboolean has_existing = g_file_test(path, G_FILE_TEST_EXISTS);
+
+    if (has_existing && !g_file_get_contents(path, &existing, NULL, error))
+        return FALSE;
+
+    g_autoptr(GVariant) portals =
+        g_variant_lookup_value(document, "portals", G_VARIANT_TYPE_VARDICT);
+    if (!portals) {
+        if (!has_existing || !portal_config_is_managed(existing))
+            return TRUE;
+        if (g_unlink(path) == 0 || errno == ENOENT)
+            return TRUE;
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not remove generated portal preferences %s: %s", path,
+                    g_strerror(errno));
+        return FALSE;
+    }
+
+    if (has_existing && !portal_config_is_managed(existing)) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_EXIST,
+                    "user portal preferences at %s take precedence; move or remove that file to "
+                    "use gnoblin.configure.portals from your Lua config",
+                    path);
+        return FALSE;
+    }
+
+    g_autofree char* contents = render_portal_selection(document);
+    if (!contents) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "could not render portal preferences from Gnoblin configuration");
+        return FALSE;
+    }
+    if (g_strcmp0(existing, contents) == 0)
+        return TRUE;
+    if (g_mkdir_with_parents(directory, 0700) != 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not create portal preferences directory %s: %s", directory,
+                    g_strerror(errno));
+        return FALSE;
+    }
+    if (!g_file_set_contents_full(path, contents, -1, G_FILE_SET_CONTENTS_CONSISTENT, 0600, error))
+        return FALSE;
+    return TRUE;
+}
+
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     g_autoptr(GVariant) shell = g_variant_lookup_value(document, "shell", NULL);
     if (shell) {
@@ -679,6 +919,9 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
         return FALSE;
     }
     if (!gnoblin_permission_policy_validate(document, error))
+        return FALSE;
+    g_autoptr(GVariant) portals = g_variant_lookup_value(document, "portals", NULL);
+    if (portals && !validate_portal_selection(portals, error))
         return FALSE;
     if (!validate_window_rule_patterns(document, error))
         return FALSE;
