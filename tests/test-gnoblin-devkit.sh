@@ -18,6 +18,10 @@ gnoblin.events.once("gnoblin.config.reloaded", function()
     assert(type(gnoblin.workspaces.list()) == "table")
     assert(type(gnoblin.monitors.list()) == "table")
     assert(type(gnoblin.focus.history()) == "table")
+    local status = gnoblin.runtime.status()
+    assert(status.state == "running" and status.generation > 0)
+    assert(not pcall(function() status.state = "restarting" end))
+    print("LUA_API:runtime-status")
     print("LUA_API:snapshots")
 end)
 LUA
@@ -63,6 +67,10 @@ with open(sys.argv[1], encoding="utf-8") as stream:
     json.load(stream)
 print("WORKSPACE:next")
 PY
+cat > "$XDG_RUNTIME_DIR/runtime-status.lua" <<'LUA'
+local status = gnoblin.runtime.status()
+print("RUNTIME_STATUS:" .. status.state .. ":" .. status.generation)
+LUA
 python3 - <<'PY'
 import json
 import os
@@ -73,6 +81,7 @@ import time
 
 host_pid = int(os.environ["GNOBLIN_DEVKIT_HOST_PID"])
 gnoblinctl = os.environ["GNOBLIN_DEVKIT_CTL"]
+status_script = Path(os.environ["XDG_RUNTIME_DIR"]) / "runtime-status.lua"
 
 def children(pid):
     path = Path(f"/proc/{pid}/task/{pid}/children")
@@ -93,23 +102,80 @@ def worker_and_compositor():
 
 worker_before, compositor_before = worker_and_compositor()
 assert worker_before and compositor_before, (worker_before, compositor_before)
+status_before = subprocess.run(
+    [gnoblinctl, "--timeout", "1", "lua", str(status_script)],
+    check=True,
+    capture_output=True,
+    text=True,
+    timeout=3,
+)
+state, generation_text = next(
+    line.removeprefix("RUNTIME_STATUS:").split(":", 1)
+    for line in status_before.stdout.splitlines()
+    if line.startswith("RUNTIME_STATUS:")
+)
+assert state == "running", status_before.stdout
+generation_before = int(generation_text)
 os.kill(worker_before, signal.SIGKILL)
+
+deadline = time.monotonic() + 20
+generation_during = None
+while time.monotonic() < deadline:
+    worker_after, compositor_after = worker_and_compositor()
+    status_during = subprocess.run(
+        [gnoblinctl, "--timeout", "1", "lua", str(status_script)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=3,
+    )
+    for line in status_during.stdout.splitlines():
+        if line.startswith("RUNTIME_STATUS:restarting:"):
+            generation_during = int(line.rsplit(":", 1)[1])
+            break
+    if generation_during is not None:
+        break
+    time.sleep(0.01)
+if generation_during is None:
+    raise AssertionError("Lua worker restart state was not observable over the compositor socket")
+assert generation_during == generation_before, (generation_before, generation_during)
+print(f"RUNTIME_STATUS:restarting:generation-{generation_during}")
 
 deadline = time.monotonic() + 20
 while time.monotonic() < deadline:
     worker_after, compositor_after = worker_and_compositor()
     if worker_after and worker_after != worker_before:
-        response = subprocess.run(
-            [gnoblinctl, "--timeout", "1", "--json", "config", "show"],
+        status_after = subprocess.run(
+            [gnoblinctl, "--timeout", "1", "lua", str(status_script)],
             check=False,
             capture_output=True,
             text=True,
             timeout=3,
         )
-        if response.returncode == 0:
-            json.loads(response.stdout)
+        if status_after.returncode == 0 and "RUNTIME_STATUS:running:" in status_after.stdout:
+            recovered_generation = int(
+                next(
+                    line.rsplit(":", 1)[1]
+                    for line in status_after.stdout.splitlines()
+                    if line.startswith("RUNTIME_STATUS:running:")
+                )
+            )
+            assert recovered_generation == generation_before, (
+                generation_before,
+                recovered_generation,
+            )
             assert compositor_after == compositor_before, (compositor_before, compositor_after)
             os.kill(compositor_before, 0)
+            response = subprocess.run(
+                [gnoblinctl, "--timeout", "1", "--json", "config", "show"],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=3,
+            )
+            assert response.returncode == 0, response.stderr
+            json.loads(response.stdout)
+            print(f"RUNTIME_STATUS:running:generation-{recovered_generation}")
             print("WORKER:recovered-with-compositor-alive")
             break
     time.sleep(0.1)
@@ -135,6 +201,8 @@ grep -q 'CONFIG:click' <<<"$output"
 grep -q 'WINDOWS:json' <<<"$output"
 grep -q 'WORKSPACE:next' <<<"$output"
 grep -q 'WORKER:recovered-with-compositor-alive' <<<"$output"
+grep -q 'RUNTIME_STATUS:restarting:generation-' <<<"$output"
+grep -q 'RUNTIME_STATUS:running:generation-' <<<"$output"
 grep -q 'restarting Lua runtime worker' "$fixture_root/state/devkit-last.log"
 if ! grep -q 'LUA_API:snapshots' "$fixture_root/state/devkit-last.log"; then
     tail -n 60 "$fixture_root/state/devkit-last.log" >&2
