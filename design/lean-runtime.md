@@ -397,7 +397,14 @@ its native privacy snapshot currently reports camera activity as unavailable.
    configured repositories still provide older versions, so the build needs
    those newer development packages supplied through a prefix. A real-seat
    login and retirement of the remaining GJS compatibility handlers are still
-   open.
+   open. On October 2, commit `cf4c29ff` built the full session in a second
+   fresh worktree with the same private dependency prefix. The updated
+   `gnoblinctl lua` CLI smoke test passed against the installed client, and
+   `tests/test-gnoblin-devkit.sh` passed. A separate nested devkit session
+   opened a Foot window and verified Lua window lookup, immutable properties,
+   minimize, and restore through the live compositor socket. This validates
+   the CLI Window-record path but does not close the remaining API parity or
+   real-seat login work.
 5. **Narrow the remaining forks.** Keep the portal frontend protocol and
    backend selection standard. Move Gnoblin's portal implementation out of the
    GNOME backend fork only after its dialogs, capture, permissions, and GNOME
