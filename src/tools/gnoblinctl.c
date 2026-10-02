@@ -1643,6 +1643,7 @@ static int lua_cli_animations_list(lua_State* state);
 static int lua_cli_animations_get(lua_State* state);
 static int lua_cli_animations_inspect(lua_State* state);
 static int lua_cli_animations_surfaces(lua_State* state);
+static int lua_cli_animations_control(lua_State* state);
 static int lua_cli_launches_read(lua_State* state);
 static int lua_cli_launches_operation(lua_State* state);
 static gboolean lua_cli_workspace_object_has_only_keys(JsonObject* object,
@@ -1962,6 +1963,78 @@ static int lua_cli_animations_preview(lua_State* state) {
         return luaL_error(state, "gnoblin.animations.preview failed: %s", call_error->message);
     if (!JSON_NODE_HOLDS_OBJECT(result))
         return luaL_error(state, "gnoblin.animations.preview returned an invalid preview");
+    JsonObject* preview = json_node_get_object(result);
+    const char* session = member_string(preview, "session", NULL);
+    if (!session)
+        session = member_string(preview, "id", NULL);
+    lua_cli_push_animation_preview_record(state, cli, preview, session);
+    return 1;
+}
+
+static int lua_cli_animations_control(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
+        return luaL_error(state, "gnoblin.animations.%s requires one argument table",
+                          method + strlen("animation."));
+
+    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "animation control arguments");
+    gboolean takes_progress = g_str_equal(method, "animation.seek");
+    gboolean takes_milliseconds = g_str_equal(method, "animation.step");
+    static const char* const session_fields[] = {"session", NULL};
+    static const char* const progress_fields[] = {"session", "progress", NULL};
+    static const char* const step_fields[] = {"session", "milliseconds", NULL};
+    const char* const* allowed = takes_progress       ? progress_fields
+                                 : takes_milliseconds ? step_fields
+                                                      : session_fields;
+    JsonNode* session_node = json_object_get_member(arguments, "session");
+    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed) || !session_node ||
+        !JSON_NODE_HOLDS_VALUE(session_node) ||
+        json_node_get_value_type(session_node) != G_TYPE_STRING ||
+        !*json_node_get_string(session_node))
+        return luaL_error(state,
+                          "gnoblin.animations.%s requires a nonempty session and valid fields",
+                          method + strlen("animation."));
+
+    if (takes_progress) {
+        JsonNode* progress_node = json_object_get_member(arguments, "progress");
+        if (!progress_node || !JSON_NODE_HOLDS_VALUE(progress_node) ||
+            (json_node_get_value_type(progress_node) != G_TYPE_DOUBLE &&
+             json_node_get_value_type(progress_node) != G_TYPE_INT &&
+             json_node_get_value_type(progress_node) != G_TYPE_INT64))
+            return luaL_error(state, "gnoblin.animations.seek requires progress from 0 to 1");
+        double progress = json_node_get_double(progress_node);
+        if (!isfinite(progress) || progress < 0.0 || progress > 1.0)
+            return luaL_error(state, "gnoblin.animations.seek requires progress from 0 to 1");
+    } else if (takes_milliseconds) {
+        JsonNode* milliseconds_node = json_object_get_member(arguments, "milliseconds");
+        if (!milliseconds_node || !JSON_NODE_HOLDS_VALUE(milliseconds_node) ||
+            (json_node_get_value_type(milliseconds_node) != G_TYPE_INT &&
+             json_node_get_value_type(milliseconds_node) != G_TYPE_INT64) ||
+            json_node_get_int(milliseconds_node) < 1 ||
+            json_node_get_int(milliseconds_node) > 60000)
+            return luaL_error(state,
+                              "gnoblin.animations.step requires milliseconds from 1 to 60000");
+    }
+
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
+    if (!result)
+        return luaL_error(state, "gnoblin.animations.%s failed: %s", method + strlen("animation."),
+                          call_error->message);
+    if (g_str_equal(method, "animation.stop")) {
+        JsonObject* stopped = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+        if (!stopped || !json_object_get_boolean_member_with_default(stopped, "ok", FALSE) ||
+            !g_str_equal(member_string(stopped, "session", ""), json_node_get_string(session_node)))
+            return luaL_error(state, "gnoblin.animations.stop returned an invalid result");
+        json_to_lua(state, result);
+        lua_cli_push_readonly_value(state, -1);
+        lua_remove(state, -2);
+        return 1;
+    }
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "gnoblin.animations.%s returned an invalid AnimationPreview",
+                          method + strlen("animation."));
     JsonObject* preview = json_node_get_object(result);
     const char* session = member_string(preview, "session", NULL);
     if (!session)
@@ -4826,6 +4899,15 @@ static int lua_api_index(lua_State* state) {
     if (g_str_equal(prefix, "animations") && g_str_equal(name, "preview")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_animations_preview, 1);
+        return 1;
+    }
+    if (g_str_equal(prefix, "animations") &&
+        (g_str_equal(name, "seek") || g_str_equal(name, "step") || g_str_equal(name, "play") ||
+         g_str_equal(name, "pause") || g_str_equal(name, "stop"))) {
+        g_autofree char* method = g_strdup_printf("animation.%s", name);
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushstring(state, method);
+        lua_pushcclosure(state, lua_cli_animations_control, 2);
         return 1;
     }
     if (g_str_equal(prefix, "animations") &&

@@ -168,7 +168,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(109):
+                    for _ in range(114):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -1752,11 +1752,30 @@ def main() -> int:
         )
         orientation_lua = run(binary, "--socket", socket_path, "lua", str(orientation_lua_file))
         assert orientation_lua.returncode == 0, orientation_lua.stderr
+        animation_controls_file = Path(temporary) / "animation-controls.lua"
+        animation_controls_file.write_text(
+            'local seek = gnoblin.animations.seek {session = "preview-17", progress = 0.4}\n'
+            'assert(seek.progress == 0.4 and type(seek.step) == "function")\n'
+            'local step = gnoblin.animations.step {session = "preview-17", milliseconds = 250}\n'
+            'assert(step.progress == 0.75 and type(step.play) == "function")\n'
+            'local play = gnoblin.animations.play {session = "preview-17"}\n'
+            'assert(play.playing and type(play.pause) == "function")\n'
+            'local pause = gnoblin.animations.pause {session = "preview-17"}\n'
+            'assert(not pause.playing and type(pause.stop) == "function")\n'
+            'local stop = gnoblin.animations.stop {session = "preview-17"}\n'
+            'assert(stop.ok and stop.session == "preview-17")\n'
+            'assert(not pcall(function() gnoblin.animations.seek {session = "preview-17", progress = 1.1} end))\n'
+            'assert(not pcall(function() gnoblin.animations.step {session = "preview-17", milliseconds = 0} end))\n'
+            'assert(not pcall(function() gnoblin.animations.play {session = "preview-17", extra = true} end))\n',
+            encoding="utf-8",
+        )
+        animation_controls = run(binary, "--socket", socket_path, "lua", str(animation_controls_file))
+        assert animation_controls.returncode == 0, animation_controls.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 109
-        assert len(subscriptions) == 109
+        assert len(received) == 114
+        assert len(subscriptions) == 114
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1894,6 +1913,32 @@ def main() -> int:
         assert received[108]["method"] == "input.set_orientation_lock"
         assert received[108]["api_version"] == {"major": 1, "minor": 66}
         assert received[108]["arguments"] == {"value": True}
+        animation_control_requests = [
+            request
+            for request in received
+            if request["method"]
+            in {
+                "animation.seek",
+                "animation.step",
+                "animation.play",
+                "animation.pause",
+                "animation.stop",
+            }
+            and request.get("arguments", {}).get("session") == "preview-17"
+        ][-5:]
+        assert [request["method"] for request in animation_control_requests] == [
+            "animation.seek",
+            "animation.step",
+            "animation.play",
+            "animation.pause",
+            "animation.stop",
+        ]
+        assert all(request["api_version"] == {"major": 1, "minor": 18} for request in animation_control_requests)
+        assert animation_control_requests[0]["arguments"] == {"session": "preview-17", "progress": 0.4}
+        assert animation_control_requests[1]["arguments"] == {"session": "preview-17", "milliseconds": 250}
+        assert animation_control_requests[2]["arguments"] == {"session": "preview-17"}
+        assert animation_control_requests[3]["arguments"] == {"session": "preview-17"}
+        assert animation_control_requests[4]["arguments"] == {"session": "preview-17"}
         assert received[68]["method"] == "privacy.state"
         assert received[68]["api_version"] == {"major": 1, "minor": 47}
         assert received[68]["arguments"] == {}
