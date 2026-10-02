@@ -54,9 +54,11 @@ The input-specific unresolved patches are listed below.
   intentionally dropped or belongs in the native runtime.
 - `69-desktop-recovery`: verify the shell client owns the recovery UI while
   the supervisor recovers the Lua worker.
-- `73-location-indicator`: location activity is currently reported as
-  unavailable. Decide whether that feature is intentionally dropped or needs a
-  compositor/session provider.
+- `73-location-indicator`: the native GeoClue agent exposes availability,
+  in-use state, and authorization requests to Lua and shell clients. The
+  compositor provides data and policy; location-indicator UI belongs to shell
+  clients. GeoClue must allow the `gnoblin` agent ID. Packaging that allowlist
+  without replacing distro defaults is tracked in `gnoblin-mc6`.
 - `77-keymap-initialization`, `78-ibus-disconnect-guard`,
   `zzzzzzz-on-demand-ibus`, and shutdown-order patches: verify native input
   initialization, IBus recovery, and teardown on a real seat.
