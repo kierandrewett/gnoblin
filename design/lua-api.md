@@ -85,12 +85,13 @@ protocols through which those clients create and operate their own UI windows.
 
 ## Runtime and operation model
 
-The standalone session runs Lua configuration in a private worker launched by
-the stable `gnoblin` session host, which starts Mutter as its compositor child.
-The worker and compositor communicate through a private typed channel. Keep
-the API independent of that process split. Lua calls and the local
-shell-client control interface share operation names and schemas only where a
-method is exposed on the control socket. Trusted focus, text-target,
+The standalone session starts with a durable `gnoblin` guardian. It starts
+Mutter and a restartable `gnoblin` supervisor; the supervisor owns Lua
+configuration and runtime dispatch and starts the Lua worker. The guardian
+retains the private compositor channel and passes it only to the active
+supervisor. Keep the API independent of that process split. Lua calls and the
+local shell-client control interface share operation names and schemas only
+where a method is exposed on the control socket. Trusted focus, text-target,
 pointer-drag, and snap-context methods are available only to the supervised
 Lua runtime; remote clients cannot execute arbitrary Lua.
 
@@ -1231,32 +1232,24 @@ reports compositor availability, not supervisor health. The socket cannot
 report a final state after the compositor stops, so connection failure is the
 only status available then.
 
-The session host can now restart the Lua worker while keeping Mutter and its
-Wayland clients alive. The worker recovery handshake restores the accepted
-configuration and fresh compositor snapshots. Mutter cancels Lua-owned
-shortcuts and temporary interaction state while the worker is absent. Operation
-IDs remain monotonic across worker restarts: the suspension acknowledgement
-passes Mutter's last accepted ID to the replacement, preventing a delayed
-completion from the previous worker from matching a new operation. Mutter
-discards touchpad gestures in progress when the worker stops and before the
-replacement resumes. Worker recovery does not recover from a crash of the
-`gnoblin` session host itself. The host owns the private compositor channel and
-session lifecycle, and a replacement host cannot reconnect to the running
-compositor. Preserving the compositor across host restart remains tracked in
-[issue #70](https://github.com/kierandrewett/gnoblin/issues/70).
+The supervisor can restart the Lua worker while keeping Mutter and its Wayland
+clients alive. Worker recovery restores the accepted configuration and fresh
+compositor snapshots. Mutter cancels Lua-owned shortcuts and temporary
+interaction state while the worker is absent. Operation IDs remain monotonic
+across worker restarts: the suspension acknowledgement passes Mutter's last
+accepted ID to the replacement, preventing a delayed completion from the
+previous worker from matching a new operation. Mutter discards touchpad
+gestures in progress while the worker is stopped.
 
-The target architecture adds a durable session guardian around the restartable
-Gnoblin supervisor. The guardian owns Mutter's lifetime, session teardown, and
-the private compositor-channel endpoint. It passes that inherited endpoint to
-one supervisor at a time; it does not expose a reconnect socket to other
-same-user processes. If the supervisor exits unexpectedly, the guardian asks
-Mutter to suspend runtime operations, records the acknowledged settings
-revision, runtime generation, and operation watermark, and starts a replacement
-supervisor with those recovery values. The replacement must complete the
-existing worker-resume handshake before API operations resume. An intentional
-logout is sent to the guardian explicitly so it stops the session and Mutter;
-an unexpected supervisor exit must leave the compositor and connected clients
-alive. This process split is a target, not current behavior.
+The guardian also recovers from an unexpected supervisor exit. It retains the
+compositor channel, asks Mutter to suspend runtime operations, records the
+acknowledged settings revision, runtime generation, and operation watermark,
+then starts a replacement supervisor. The replacement must complete the
+worker-resume handshake before API operations resume. Initial autostart remains
+guardian-owned and is not repeated after recovery. The nested devkit test
+verifies that the same Mutter process survives supervisor recovery and that
+autostart runs once. A guardian crash still ends this recovery boundary, and
+real-seat login and logout behavior remain unverified.
 
 `Launch` fields: `token`, `application`, `started_at`, `timeout_ms`,
 `state`, `revision`. `state` is `"pending"`, `"started"`,
