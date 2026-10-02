@@ -53,9 +53,14 @@ The standalone shell receives `gnoblin.osd.requested` on the compositor socket
 and renders the request in Bingux. This event is available from native-control
 API 1.27.
 
-It includes a stable `monitor_id` and may include `icon` and `label`; it does
-not include an OSD level, maximum, or output list. The event is sent
-when Gnoblin delegates OSD presentation to the shell. See the
+It includes a stable `monitor_id`. Current builds add `output_names`, the
+sorted, unique names of active physical connectors for that logical monitor.
+Use it to route OSD surfaces on cloned displays. Older API 1.27 builds may omit
+it.
+
+Mutter may also supply `icon` and `label`, but provides no OSD level or maximum.
+Gnoblin sends this event when it delegates OSD presentation to the shell. See
+the
 [compositor bridge reference](/compositor-bridge#api-127-shell-presentation-requests)
 for the full contract.
 
