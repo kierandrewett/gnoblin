@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(66):
+                    for _ in range(67):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -1109,11 +1109,25 @@ def main() -> int:
         )
         layer_policy = run(binary, "--socket", socket_path, "lua", str(layer_policy_file))
         assert layer_policy.returncode == 0, layer_policy.stderr
+        privacy_file = Path(temporary) / "privacy-state.lua"
+        privacy_file.write_text(
+            "local state = gnoblin.privacy.state()\n"
+            'assert(tostring(state) == "PrivacyState" and state.revision == 42)\n'
+            "assert(state.available.screen_sharing and state.screen_sharing)\n"
+            "assert(state.available.recording and not state.recording)\n"
+            "assert(not pcall(function() state.revision = 1 end))\n"
+            "assert(not pcall(function() state.available.screen_sharing = false end))\n"
+            'assert(not pcall(function() rawset(state.available, "recording", false) end))\n'
+            "assert(not pcall(function() gnoblin.privacy.state(true) end))\n",
+            encoding="utf-8",
+        )
+        privacy = run(binary, "--socket", socket_path, "lua", str(privacy_file))
+        assert privacy.returncode == 0, privacy.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 66
-        assert len(subscriptions) == 66
+        assert len(received) == 67
+        assert len(subscriptions) == 67
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1213,6 +1227,9 @@ def main() -> int:
         assert received[65]["method"] == "layer.animation_policy"
         assert received[65]["api_version"] == {"major": 1, "minor": 31}
         assert received[65]["arguments"] == {"namespace": "bingux-panel"}
+        assert received[66]["method"] == "privacy.state"
+        assert received[66]["api_version"] == {"major": 1, "minor": 47}
+        assert received[66]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {

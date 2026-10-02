@@ -1602,6 +1602,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_FOCUS_POLICY_RECORD_METATABLE "gnoblinctl.FocusPolicy"
 #define GNOBLINCTL_SETTINGS_RECORD_METATABLE "gnoblinctl.Settings"
 #define GNOBLINCTL_LAYER_ANIMATION_POLICY_RECORD_METATABLE "gnoblinctl.LayerAnimationPolicy"
+#define GNOBLINCTL_PRIVACY_STATE_RECORD_METATABLE "gnoblinctl.PrivacyState"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
@@ -1612,6 +1613,7 @@ static int lua_cli_shortcuts_actions(lua_State* state);
 static int lua_cli_focus_policy_property(lua_State* state);
 static int lua_cli_settings_property(lua_State* state);
 static int lua_cli_layer_animation_policy(lua_State* state);
+static int lua_cli_privacy_state(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2594,6 +2596,106 @@ static int lua_cli_layer_animation_policy(lua_State* state) {
     return 1;
 }
 
+static gboolean lua_cli_privacy_state_valid(JsonObject* object) {
+    JsonObject* available = member_object(object, "available");
+    JsonNode* revision = json_object_get_member(object, "revision");
+    if (!available || !revision || !JSON_NODE_HOLDS_VALUE(revision) ||
+        (json_node_get_value_type(revision) != G_TYPE_INT64 &&
+         json_node_get_value_type(revision) != G_TYPE_INT) ||
+        json_node_get_int(revision) < 0)
+        return FALSE;
+
+    GList* available_fields = json_object_get_members(available);
+    for (GList* item = available_fields; item; item = item->next) {
+        const char* key = item->data;
+        JsonNode* value = json_object_get_member(available, key);
+        if (!value || !JSON_NODE_HOLDS_VALUE(value) ||
+            json_node_get_value_type(value) != G_TYPE_BOOLEAN) {
+            g_list_free(available_fields);
+            return FALSE;
+        }
+    }
+    g_list_free(available_fields);
+
+    GList* fields = json_object_get_members(object);
+    for (GList* item = fields; item; item = item->next) {
+        const char* key = item->data;
+        if (g_str_equal(key, "available") || g_str_equal(key, "revision"))
+            continue;
+        JsonNode* value = json_object_get_member(object, key);
+        JsonNode* source_available = json_object_get_member(available, key);
+        if (!value || !JSON_NODE_HOLDS_VALUE(value) ||
+            json_node_get_value_type(value) != G_TYPE_BOOLEAN || !source_available ||
+            !json_node_get_boolean(source_available)) {
+            g_list_free(fields);
+            return FALSE;
+        }
+    }
+    g_list_free(fields);
+
+    available_fields = json_object_get_members(available);
+    for (GList* item = available_fields; item; item = item->next) {
+        const char* key = item->data;
+        JsonNode* source_available = json_object_get_member(available, key);
+        if (json_node_get_boolean(source_available) && !json_object_has_member(object, key)) {
+            g_list_free(available_fields);
+            return FALSE;
+        }
+    }
+    g_list_free(available_fields);
+    return TRUE;
+}
+
+static int lua_cli_privacy_state_tostring(lua_State* state) {
+    lua_pushliteral(state, "PrivacyState");
+    return 1;
+}
+
+static void register_lua_cli_privacy_state_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_PRIVACY_STATE_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_readonly_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_privacy_state_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static int lua_cli_privacy_state(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.privacy.state takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "privacy.state", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.privacy.state failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result) ||
+        !lua_cli_privacy_state_valid(json_node_get_object(result)))
+        return luaL_error(state, "gnoblin.privacy.state returned an invalid PrivacyState");
+
+    json_to_lua(state, result);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 1);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    luaL_getmetatable(state, GNOBLINCTL_PRIVACY_STATE_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+    return 1;
+}
+
 static int lua_cli_focus_policy_property(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     JsonObject* arguments = json_object_new();
@@ -3351,6 +3453,11 @@ static int lua_api_index(lua_State* state) {
         if (g_str_equal(name, "list") || g_str_equal(name, "animation_policy"))
             return 1;
     }
+    if (g_str_equal(prefix, "privacy") && g_str_equal(name, "state")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_privacy_state, 1);
+        return 1;
+    }
     if (g_str_equal(prefix, "animations") && g_str_equal(name, "preview")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_animations_preview, 1);
@@ -3554,6 +3661,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_focus_policy_record(state);
     register_lua_cli_settings_record(state);
     register_lua_cli_layer_animation_policy_record(state);
+    register_lua_cli_privacy_state_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");
