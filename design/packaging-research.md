@@ -1,6 +1,11 @@
 # Gnoblin distribution packaging research
 
-Status: research and implementation direction, 2026-09-25.
+Status: research and implementation direction, updated 2026-10-02.
+
+This research began while Gnoblin packaged GNOME Shell. The current standalone
+runtime builds private Mutter and portal components and has no GNOME Shell or
+GJS target. Older compatibility findings below that cite GJS or a private Shell
+closure are historical and do not describe current build requirements.
 
 ## What other desktop projects do
 
@@ -80,15 +85,15 @@ Neither result proves graphical session login or session switching. Other RPM
 and Debian layouts keep files under `/usr/lib/gnoblin` and do not replace
 GNOME; each target still needs its own clean install/removal evidence.
 
-Gnoblin pins GNOME 51 and currently requires host GLib 2.86, GJS 1.87.1,
-Wayland 1.26, Wayland Protocols 1.48, libinput 1.30, and PipeWire 1.4. Fedora
-43 supplies the lowered libinput and PipeWire floors, but older distro releases
-cannot be assumed to satisfy the full GNOME 51 build/runtime dependency set.
-Support must come from measured package availability and a successful clean
-build/install per target. For older targets, decide whether each missing
-library is safe to use privately under `/usr/lib/gnoblin`, or is a required
-system integration dependency. Do not lower version floors just to make a
-solver accept a package.
+The supported source build does not compile or run GJS. It checks the host
+requirements declared by pinned Mutter and portal sources with
+`scripts/check-build-deps.py`; current Fedora 43 failures are GTK 4.22.0,
+gsettings-desktop-schemas 51.rc, and xdg-desktop-portal 1.21.1. Fedora 43's
+lowered libinput and PipeWire floors pass. Support still requires measured
+package availability and a successful clean build/install per target. For
+older targets, decide whether each missing library is safe to use privately
+under `/usr/lib/gnoblin` or is a required system integration dependency. Do not
+lower version floors just to make a solver accept a package.
 
 The `0.1.7` release workflow was cancelled at run `36136202878` before package
 install or publication. This keeps the candidate out of GitHub Releases, APT,
@@ -119,18 +124,16 @@ package and module. A private Wayland 1.26 and matching scanner feed only its
 private Mutter build; the default rolling package and host package set are
 unchanged.
 
-On 2026-09-25, 25.05 cannot evaluate because it lacks `libglycin`; it also
-falls below the GNOME 51 floors for GLib, GJS, Wayland, Wayland Protocols,
-libinput, and PipeWire. NixOS 25.11 misses GJS, Wayland, Wayland Protocols,
-libinput, and PipeWire floors. Its pinned package build stopped at Wayland
-1.26. NixOS 26.05 meets the other recorded floors but ships Wayland 1.25.
-The separate adapter now builds pinned Wayland 1.26, its matching scanner, and
-Gnoblin's private Mutter 51 package on 26.05; its full Shell/runtime derivation
-has not yet been built. The rolling output remains unchanged. Unstable is the
-only target without a recorded host-floor blocker. None of these results prove
-a graphical session, stock GNOME coexistence, or removal. The workflow records
-channel evaluations and builds the small private-compositor slice so channel
-changes cannot hide blockers or broaden overrides accidentally.
+The 2026-09-25 channel probe predates Shell retirement. Its GJS findings and
+private Shell build status are superseded. It recorded missing `libglycin` and
+older GLib, Wayland, Wayland Protocols, libinput, and PipeWire interfaces;
+check those against the current source requirements before changing the target
+matrix. The separate 26.05 adapter supplies a private Wayland 1.26 for its
+compositor build. Current CI evaluates NixOS 25.05, 25.11, 26.05, and unstable,
+but evaluation alone does not establish a complete package build, graphical
+session, stock GNOME coexistence, or removal. The workflow builds the
+private-compositor slice for the supported channel so channel composition
+errors are caught before release.
 
 Fedora packaging supports Fedora COPR chroots but has no EL publication target.
 Its `%rhel` condition only omits an optional portal helper; it does not adapt
@@ -157,15 +160,15 @@ full coexistence proof.
 
 The probes used disposable stock images and the current Gnoblin 51 dependency
 requirements. A distro's GNOME version is not itself a blocker because Gnoblin
-ships private Shell/Mutter binaries; the host libraries and services it links
-to remain real constraints.
+ships a private Mutter runtime; the host libraries and services it links to
+remain real constraints.
 
 | Targets                          | Probe result                                                                                                                                                                                                                                                                                                                          | Practical consequence                                                                                                                                                                                                                                                                                                        |
 | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Debian 11                        | Build solve lacks GTK4, libadwaita, GCR4, GI Repository 2.0, GNOME Desktop 4, libei, libdisplay-info, modern C++/Rust toolchains; stock runtime lacks WirePlumber and the GNOME portal                                                                                                                                                | Current private bundle cannot support it. Requires a much larger toolchain, session, and portal compatibility effort.                                                                                                                                                                                                        |
 | Debian 12, Ubuntu 22.04          | A clean-image CI probe records missing GCR4, GI Repository 2.0, libei/libeis, libdisplay-info, Glycin, and Hyprcursor development interfaces. Debian 12 has GTK 4.8 and Ubuntu 22.04 has GTK 4.6; Mutter 51 needs GTK 4.14. Host Rust on Debian 12 is 1.63. Stock GNOME session/settings components are GNOME 43 and 42 respectively. | Not installable with today's declared dependencies and runtime closure. A full route needs a separately reviewed private GTK, GIRepository, and GCR chain, followed by clean package, stock-GNOME coexistence, graphical-session, and removal gates. Do not add either to the package build matrix until that design exists. |
-| EL 8, 9, 10 (Rocky Linux images) | GLib/GJS are 2.56/1.56, 2.68/1.68, and 2.80/1.80; all miss Gnoblin 51's GLib 2.86 and GJS 1.87.1 floors.                                                                                                                                                                                                                              | Adding an EL repository or changing RPM macros cannot make these targets work. They need a privately namespaced GNOME runtime and per-EL session integration.                                                                                                                                                                |
-| openSUSE Leap 15.6 and 16.0      | GLib/GJS are 2.78/1.78 and 2.84/1.84; both miss the 51 floors. Leap 16 also misses libinput 1.30 and Wayland Protocols 1.48.                                                                                                                                                                                                          | Do not add these as Gnoblin 51 targets by reusing the Fedora spec. A private runtime closure is required.                                                                                                                                                                                                                    |
+| EL 8, 9, 10 (Rocky Linux images) | GLib is 2.56, 2.68, and 2.80; each image misses the current GLib 2.86 floor.                                                                                                                                                                                                                                                          | Adding an EL repository or changing RPM macros cannot make these targets work. They need a separately reviewed private GLib/runtime path and per-EL session integration.                                                                                                                                                     |
+| openSUSE Leap 15.6 and 16.0      | GLib is 2.78 and 2.84; both miss the current 2.86 floor. Leap 16 also misses libinput 1.30 and Wayland Protocols 1.48.                                                                                                                                                                                                                | Do not add these as Gnoblin 51 targets by reusing the Fedora spec. A private runtime closure is required.                                                                                                                                                                                                                    |
 | openSUSE Tumbleweed              | The host-capability probe passes for GLib 2.88, PipeWire 1.6, libinput 1.32, libei 1.6, and Wayland Protocols 1.49. The current RPM chain fails before compilation because Tumbleweed cannot provide `pkgconfig(gsettings-desktop-schemas) >= 51.0`, even after refreshing its repositories. GJS is not a Gnoblin runtime dependency. | Keep Tumbleweed unsupported until its repositories provide the GNOME 51 schema package needed by the private Mutter build and runtime. Do not lower the GNOME schema floor to make the RPM resolver pass.                                                                                                                    |
 
 The Arch placeholder is now replaced by a source-addressable single-package
@@ -178,30 +181,27 @@ unpublished-runtime-dependency and checkout-relative-path failures. Commit
 and removal checks a pre-publication release gate. That gate has not yet run
 for a release tag, and graphical login is still a separate support gate.
 
-### Host and private runtime boundary
+### Current host and private runtime boundary
 
-The least fragile model is a private GNOME 51 compositor/runtime inside
-`/usr/lib/gnoblin` with the host distribution owning login, device, and desktop
-services. Gnoblin can privately build ABI-sensitive libraries such as GLib,
-Wayland, libinput, GJS/mozjs, GNOME Desktop, libei, and its compositor
-dependencies. Its session wrapper must scope those library paths to Gnoblin
-Shell and clear them before launching the host session manager.
+Gnoblin builds private Mutter and portal components under `/usr/lib/gnoblin`.
+The `gnoblin` supervisor runs Mutter and the Lua worker as a standalone
+session. GNOME Shell, GJS, `gnome-session`, and GNOME Settings Daemon are not
+part of this runtime. Shell presentation belongs to separate Wayland clients;
+see `design/lean-runtime.md` for the runtime architecture.
 
-Keep these services host-owned: GDM and PAM, systemd/logind and the user
-manager, host `gnome-session`, host GNOME Settings Daemon, D-Bus, PipeWire and
-WirePlumber, udev, Mesa, and kernel/device drivers. They own authentication,
-session tracking, device access, portals, and hardware policy. Installing a
-private copy alongside the host can split session state and permissions rather
-than solve an old-library dependency.
+Keep GDM and PAM, systemd/logind and the user manager, D-Bus, PipeWire and
+WirePlumber, udev, Mesa, and kernel/device drivers host-owned. Gnoblin supplies
+its own portal backend and session-specific backend selection while using the
+host `xdg-desktop-portal` broker. The GNOME portal remains available to GNOME,
+so installing Gnoblin does not replace the host's GNOME session or portal
+packages.
 
-Use the host `xdg-desktop-portal` broker and its normal backend selection.
-Add a Gnoblin portal backend only if clean-target tests show that the stock
-portal configuration cannot select an appropriate backend with Gnoblin's
-desktop identity. Verify ScreenCast, RemoteDesktop, and settings portals
-against the host PipeWire/WirePlumber stack, including RustDesk's live connect,
-disconnect, and reconnect path. PipeWire client-library version compatibility
-must be tested against each host daemon; do not infer it from matching package
-names.
+Build against host libraries when they meet the minima read from the pinned
+Mutter and portal sources. Keep the checked requirements in
+`scripts/check-build-deps.py` and packaging manifests aligned. A private
+dependency prefix can verify a source build, but does not establish that a
+distribution package can resolve the same runtime dependencies. Record package
+resolution and session evidence separately for each target.
 
 This boundary fits the GNOME distribution model, where upstream releases
 signal downstreams to update distro packages, and the portal design supports
