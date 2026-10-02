@@ -370,6 +370,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.65            | `location.authorize_app` grants location access for a verified application identity              |
 | 1.66            | `input.orientation_lock` read and `input.set_orientation_lock` update                            |
 | 1.67            | Native status reads remain available while a Lua worker restarts                                 |
+| 1.68            | `gnoblin.shortcut.session.key` may carry one-use focus authority                                 |
 
 ### API 1.27: shell presentation requests
 
@@ -907,57 +908,12 @@ disconnects. The API 1.11 binding activates on press. API 1.22 adds held and
 modal shortcut sessions, described below. It does not buffer typing for later
 delivery to a popup.
 
-### API version 1.22: held and modal shortcut sessions
-
-API 1.22 extends `shortcut.bind` with four optional fields:
-
-- `trigger` is `press` (the default) or `release`.
-- `hold` is `none` (the default), `super`, `control`, or `alt`. A held binding
-  emits a shortcut-session activation and remains active until the held
-  modifier is released.
-- `mode` is `passive` (the default) or `modal`. Modal mode requires a non-`none`
-  `hold` value and captures keyboard input while the held modifier remains
-  down.
-- `capture_input` is a boolean, defaulting to `false`. It is supported only
-  for an explicit `accelerator: "Super"` binding. Bare Super must use
-  `trigger: "release"` and `hold: "none"`.
-
-Subscribe to `gnoblin.shortcut.session.activated`,
-`gnoblin.shortcut.session.key`, and `gnoblin.shortcut.session.ended` to receive
-session events. `session.key` carries the key value, key code, modifiers, and
-whether the key was pressed or released. If the Lua runtime stops while a
-socket client owns the active session, Gnoblin ends it with `runtime_stopped`.
-
-Modal and bare-Super sessions capture those key events for the shell instead
-of delivering them to the focused application. A session ends when its held
-modifier is released, after ten seconds, on lock, or when the binding is
-unbound or its owner disconnects.
-
-```json
-{
-    "op": "api",
-    "api_version": { "major": 1, "minor": 22 },
-    "id": "bind-switcher",
-    "method": "shortcut.bind",
-    "arguments": {
-        "id": "switcher",
-        "accelerator": "<Alt>Tab",
-        "hold": "alt",
-        "mode": "modal"
-    }
-}
-```
-
-The shell should subscribe before binding if it needs session events. Bare
-Super capture is intended for shells that open their overlay after the key is
-released.
-
 ### API version 1.12: interactive window grabs
 
-API 1.12 adds `window.begin_move` and `window.begin_resize`. Both require the
+API 1.12 adds `window.begin_move` and `window.begin_resize`. Both require a
 connection-bound `focus_context` token from a trusted shortcut activation and
-consume it on every attempt, including invalid arguments. A token can authorize
-only one focus or interactive-grab operation.
+consume it on every attempt, including invalid arguments. API 1.68 modal key
+events also provide these tokens.
 
 Use `window.begin_move` to start Mutter's keyboard move grab for a listed
 window:
@@ -990,6 +946,63 @@ available. Mutter starts the keyboard grab with the trusted shortcut timestamp
 and current pointer sprite. Calls fail if the token is expired, already used,
 revoked, or belongs to another connection; if the session is locked; or if the
 window cannot be moved or resized.
+
+### API version 1.22: held and modal shortcut sessions
+
+API 1.22 extends `shortcut.bind` with four optional fields:
+
+- `trigger` is `press` (the default) or `release`.
+- `hold` is `none` (the default), `super`, `control`, or `alt`. A held binding
+  emits a shortcut-session activation and remains active until the held
+  modifier is released.
+- `mode` is `passive` (the default) or `modal`. Modal mode requires a non-`none`
+  `hold` value and captures keyboard input while the held modifier remains
+  down.
+- `capture_input` is a boolean, defaulting to `false`. It is supported only
+  for an explicit `accelerator: "Super"` binding. Bare Super must use
+  `trigger: "release"` and `hold: "none"`.
+
+Subscribe to `gnoblin.shortcut.session.activated`,
+`gnoblin.shortcut.session.key`, and `gnoblin.shortcut.session.ended` to receive
+session events. `session.key` carries `keyval`, `keycode`, `modifiers`, `phase`,
+and `time`. The phase is `press` or `release`.
+
+#### API 1.68: modal key focus contexts
+
+- Lua listeners may receive a `FocusContext` userdata. API 1.68 socket clients
+  may receive `focus_context`, a one-use token bound to their connection.
+- Gnoblin issues a context only for real, non-repeated key presses and
+  releases. Synthetic and input-method events are excluded.
+- A context expires after five seconds and authorizes one focus-sensitive
+  compositor operation.
+- Gnoblin still delivers the key event if no context is available.
+
+If the Lua runtime stops while a socket client owns the active session, Gnoblin
+ends it with `runtime_stopped`.
+
+Modal and bare-Super sessions capture those key events for the shell instead
+of delivering them to the focused application. A session ends when its held
+modifier is released, after ten seconds, on lock, or when the binding is
+unbound or its owner disconnects.
+
+```json
+{
+    "op": "api",
+    "api_version": { "major": 1, "minor": 22 },
+    "id": "bind-switcher",
+    "method": "shortcut.bind",
+    "arguments": {
+        "id": "switcher",
+        "accelerator": "<Alt>Tab",
+        "hold": "alt",
+        "mode": "modal"
+    }
+}
+```
+
+The shell should subscribe before binding if it needs session events. Bare
+Super capture is intended for shells that open their overlay after the key is
+released.
 
 ### API version 1.13: focus policy events
 

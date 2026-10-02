@@ -1423,12 +1423,20 @@ Socket clients can subscribe to the following API 1.22 events:
 - `gnoblin.shortcut.session.activated` when a held binding starts.
 - `gnoblin.shortcut.session.key` for captured keyboard input. Fields include
   `keyval`, `keycode`, `modifiers`, `phase` (`press` or `release`), and `time`.
+  API 1.68 adds an optional, one-use `focus_context` token for real key presses
+  and releases; repeated events do not carry one.
 - `gnoblin.shortcut.session.ended` when a session ends. Reasons are `released`,
   `unbound`, `owner_disconnected`, `config_changed`, `locked`, `preempted`,
   `timed_out`, `cancelled`, `compositor_stopped`, and `runtime_stopped`. The
   `cancelled` reason is used by `shortcut.session.end`. `runtime_stopped` is
   sent to a socket client when the Lua runtime stops while that client owns the
   active session.
+
+Lua listeners receive the same authority as an opaque `event.focus_context`
+userdata on real, non-repeated `session.key` events. Synthetic and input-method
+events are excluded. The context expires after five seconds and authorizes one
+focus-sensitive compositor operation. Gnoblin still delivers the key event if
+it cannot issue a context.
 
 `gnoblin.shortcut.binding-activated` remains available from API 1.11. Its first
 trusted activation can carry a connection-bound, one-use `focus_context` token.
