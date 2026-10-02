@@ -349,6 +349,11 @@ static guint api_minor_for_method(const char* method) {
     for (guint i = 0; i < G_N_ELEMENTS(methods); i++)
         if (g_str_equal(method, methods[i].name))
             return methods[i].minor;
+    /* Window records are a current API surface. Their operations are typed by
+     * the supervisor, so negotiate the current minor rather than presenting a
+     * legacy unversioned request. */
+    if (g_str_has_prefix(method, "window."))
+        return 64;
     return 8;
 }
 
@@ -391,7 +396,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "layers.list") || g_str_equal(method_name, "focus.history") ||
         g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings") ||
         g_str_equal(method_name, "runtime.reload_config") ||
-        g_str_has_prefix(method_name, "animation.")) {
+        g_str_has_prefix(method_name, "window.") || g_str_has_prefix(method_name, "animation.")) {
         json_builder_set_member_name(builder, "api_version");
         json_builder_begin_object(builder);
         json_builder_set_member_name(builder, "major");
@@ -1566,6 +1571,311 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
     }
 }
 
+#define GNOBLINCTL_WINDOW_RECORD_METATABLE "gnoblinctl.Window"
+
+/* The console must not turn a compositor snapshot into a mutable policy object.
+ * Keep the JSON fields in a private backing table and expose the same read-only
+ * property/method split as the supervised runtime's Window records. */
+static int lua_cli_window_index(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_pushvalue(state, 2);
+    lua_gettable(state, -2);
+    if (!lua_isnil(state, -1))
+        return 1;
+    lua_pop(state, 2);
+    lua_getiuservalue(state, 1, 2);
+    lua_pushvalue(state, 2);
+    lua_gettable(state, -2);
+    return 1;
+}
+
+static int lua_cli_window_newindex(lua_State* state) {
+    return luaL_error(state, "Window records are read-only");
+}
+
+static int lua_cli_window_len(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_pushinteger(state, (lua_Integer)lua_rawlen(state, -1));
+    return 1;
+}
+
+static int lua_cli_window_pairs(lua_State* state) {
+    lua_getglobal(state, "next");
+    lua_getiuservalue(state, 1, 1);
+    lua_pushnil(state);
+    return 3;
+}
+
+static int lua_cli_window_tostring(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "id");
+    const char* id = lua_tostring(state, -1);
+    lua_pushfstring(state, "Window<%s>", id ? id : "unknown");
+    return 1;
+}
+
+static const char* lua_cli_window_id(lua_State* state) {
+    luaL_checkudata(state, 1, GNOBLINCTL_WINDOW_RECORD_METATABLE);
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "id");
+    const char* id = lua_tostring(state, -1);
+    if (!id || !*id)
+        luaL_error(state, "Window record has no stable id");
+    return id;
+}
+
+static JsonObject* lua_cli_table_object(lua_State* state, int index, const char* description) {
+    g_autoptr(GError) conversion_error = NULL;
+    g_autoptr(JsonNode) node = lua_to_json(state, index, 0, &conversion_error);
+    if (!node)
+        luaL_error(state, "%s: %s", description, conversion_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(node))
+        luaL_error(state, "%s must be a named table", description);
+    return json_object_ref(json_node_get_object(node));
+}
+
+static void lua_cli_set_window_id(JsonObject* arguments, const char* id) {
+    json_object_set_string_member(arguments, "id", id);
+}
+
+static int lua_cli_window_method(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    int supplied = lua_gettop(state) - 1;
+    g_autofree char* id = g_strdup(lua_cli_window_id(state));
+    lua_settop(state, supplied + 1);
+
+    /* Focus contexts are minted for a particular client connection and this
+     * console opens a fresh connection for each request. Do not accept a
+     * caller-supplied string or fabricate a capability that cannot work. */
+    if (g_str_equal(method, "window.focus") || g_str_equal(method, "window.begin_move") ||
+        g_str_equal(method, "window.begin_resize"))
+        return luaL_error(state,
+                          "%s requires a live FocusContext from a supervised runtime callback; "
+                          "gnoblinctl cannot mint or reuse one",
+                          method);
+
+    JsonObject* arguments = json_object_new();
+    lua_cli_set_window_id(arguments, id);
+    if (g_str_equal(method, "window.close") || g_str_equal(method, "window.minimize") ||
+        g_str_equal(method, "window.toggle_minimize") || g_str_equal(method, "window.unminimize") ||
+        g_str_equal(method, "window.restore") ||
+        g_str_equal(method, "window.restore_or_minimize")) {
+        if (supplied != 0) {
+            json_object_unref(arguments);
+            return luaL_error(state, "%s takes no arguments", method);
+        }
+    } else if (g_str_equal(method, "window.set_maximized") ||
+               g_str_equal(method, "window.set_fullscreen") ||
+               g_str_equal(method, "window.set_above") ||
+               g_str_equal(method, "window.set_sticky")) {
+        if (supplied != 1 || !lua_isboolean(state, 2)) {
+            json_object_unref(arguments);
+            return luaL_error(state, "%s requires one boolean", method);
+        }
+        json_object_set_boolean_member(arguments, "enabled", lua_toboolean(state, 2));
+    } else if (g_str_equal(method, "window.move") || g_str_equal(method, "window.resize") ||
+               g_str_equal(method, "window.thumbnail")) {
+        if (supplied != 1 || !lua_istable(state, 2)) {
+            json_object_unref(arguments);
+            return luaL_error(state, "%s requires one table", method);
+        }
+        g_autoptr(JsonObject) values = lua_cli_table_object(state, 2, method);
+        const char* first = g_str_equal(method, "window.move") ? "x" : "width";
+        const char* second = g_str_equal(method, "window.move") ? "y" : "height";
+        JsonNode* first_value = json_object_get_member(values, first);
+        JsonNode* second_value = json_object_get_member(values, second);
+        if (json_object_get_size(values) != 2 || !first_value || !second_value ||
+            !JSON_NODE_HOLDS_VALUE(first_value) || !JSON_NODE_HOLDS_VALUE(second_value) ||
+            (json_node_get_value_type(first_value) != G_TYPE_INT &&
+             json_node_get_value_type(first_value) != G_TYPE_INT64) ||
+            (json_node_get_value_type(second_value) != G_TYPE_INT &&
+             json_node_get_value_type(second_value) != G_TYPE_INT64)) {
+            json_object_unref(arguments);
+            return luaL_error(state, "%s requires integer %s and %s", method, first, second);
+        }
+        json_object_set_member(arguments, first, json_node_copy(first_value));
+        json_object_set_member(arguments, second, json_node_copy(second_value));
+    } else if (g_str_equal(method, "window.move_to_workspace")) {
+        if (supplied < 1 || supplied > 2 || !lua_istable(state, 2) ||
+            (supplied == 2 && !lua_isnil(state, 3) && !lua_istable(state, 3))) {
+            json_object_unref(arguments);
+            return luaL_error(state,
+                              "window.move_to_workspace requires a selector and optional options");
+        }
+        g_autoptr(JsonObject) selector = lua_cli_table_object(state, 2, "workspace selector");
+        if (json_object_get_size(selector) != 1 || (!json_object_has_member(selector, "id") &&
+                                                    !json_object_has_member(selector, "number"))) {
+            json_object_unref(arguments);
+            return luaL_error(state, "workspace selector accepts exactly id or number");
+        }
+        JsonNode* workspace = json_node_new(JSON_NODE_OBJECT);
+        json_node_set_object(workspace, selector);
+        json_object_set_member(arguments, "workspace", workspace);
+        if (supplied == 2 && !lua_isnil(state, 3)) {
+            g_autoptr(JsonObject) options = lua_cli_table_object(state, 3, "workspace options");
+            JsonNode* follow = json_object_get_member(options, "follow");
+            if (json_object_get_size(options) != 1 || !follow || !JSON_NODE_HOLDS_VALUE(follow) ||
+                json_node_get_value_type(follow) != G_TYPE_BOOLEAN) {
+                json_object_unref(arguments);
+                return luaL_error(state, "workspace options accept only boolean follow");
+            }
+            json_object_set_boolean_member(arguments, "follow", json_node_get_boolean(follow));
+        }
+    } else if (g_str_equal(method, "window.move_to_monitor")) {
+        if (supplied != 1) {
+            json_object_unref(arguments);
+            return luaL_error(state, "window.move_to_monitor requires a monitor selector");
+        }
+        g_autofree char* monitor = lua_isstring(state, 2) ? g_strdup(lua_tostring(state, 2)) : NULL;
+        if (!monitor && lua_istable(state, 2)) {
+            lua_getfield(state, 2, "id");
+            if (lua_isstring(state, -1))
+                monitor = g_strdup(lua_tostring(state, -1));
+            lua_pop(state, 1);
+        }
+        if (!monitor || !*monitor) {
+            json_object_unref(arguments);
+            return luaL_error(state, "window.move_to_monitor requires a monitor ID");
+        }
+        json_object_set_string_member(arguments, "monitor", monitor);
+    } else {
+        json_object_unref(arguments);
+        return luaL_error(state, "unsupported Window method %s", method);
+    }
+
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "%s failed: %s", method, call_error->message);
+    json_to_lua(state, result);
+    return 1;
+}
+
+static void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* object) {
+    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(node, object);
+    json_to_lua(state, node);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 2);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    lua_newtable(state);
+    static const char* const methods[][2] = {
+        {"close", "window.close"},
+        {"minimize", "window.minimize"},
+        {"toggle_minimize", "window.toggle_minimize"},
+        {"unminimize", "window.unminimize"},
+        {"restore", "window.restore"},
+        {"restore_or_minimize", "window.restore_or_minimize"},
+        {"set_maximized", "window.set_maximized"},
+        {"set_fullscreen", "window.set_fullscreen"},
+        {"set_above", "window.set_above"},
+        {"set_sticky", "window.set_sticky"},
+        {"move", "window.move"},
+        {"resize", "window.resize"},
+        {"move_to_workspace", "window.move_to_workspace"},
+        {"move_to_monitor", "window.move_to_monitor"},
+        {"focus", "window.focus"},
+        {"begin_move", "window.begin_move"},
+        {"begin_resize", "window.begin_resize"},
+        {"thumbnail", "window.thumbnail"},
+        {NULL, NULL},
+    };
+    for (guint i = 0; methods[i][0]; i++) {
+        lua_pushlightuserdata(state, cli);
+        lua_pushstring(state, methods[i][1]);
+        lua_pushcclosure(state, lua_cli_window_method, 2);
+        lua_setfield(state, -2, methods[i][0]);
+    }
+    lua_setiuservalue(state, record, 2);
+    luaL_getmetatable(state, GNOBLINCTL_WINDOW_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+}
+
+static int lua_cli_windows_list(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
+        return luaL_error(state, "gnoblin.windows.list accepts one optional filter table");
+    JsonObject* arguments =
+        lua_gettop(state) ? lua_cli_table_object(state, 1, "window filter") : json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "windows.list", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.windows.list failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_ARRAY(result))
+        return luaL_error(state, "gnoblin.windows.list returned an invalid snapshot");
+    JsonArray* windows = json_node_get_array(result);
+    lua_createtable(state, json_array_get_length(windows), 0);
+    for (guint i = 0; i < json_array_get_length(windows); i++) {
+        JsonObject* window = json_array_get_object_element(windows, i);
+        if (!window)
+            return luaL_error(state, "gnoblin.windows.list returned an invalid window record");
+        lua_cli_push_window_record(state, cli, window);
+        lua_rawseti(state, -2, i + 1);
+    }
+    return 1;
+}
+
+static int lua_cli_windows_focused(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.windows.focused takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    json_object_set_boolean_member(arguments, "focused", TRUE);
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "windows.list", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.windows.focused failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_ARRAY(result))
+        return luaL_error(state, "gnoblin.windows.focused returned an invalid snapshot");
+    JsonArray* windows = json_node_get_array(result);
+    if (json_array_get_length(windows) == 0) {
+        lua_pushnil(state);
+        return 1;
+    }
+    JsonObject* window = json_array_get_object_element(windows, 0);
+    if (!window)
+        return luaL_error(state, "gnoblin.windows.focused returned an invalid window record");
+    lua_cli_push_window_record(state, cli, window);
+    return 1;
+}
+
+static int lua_cli_windows_by_id(lua_State* state) {
+    if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING)
+        return luaL_error(state, "gnoblin.windows.by_id requires one stable window ID string");
+    const char* id = lua_tostring(state, 1);
+    if (!*id)
+        return luaL_error(state, "gnoblin.windows.by_id requires one stable window ID string");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "windows.list", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.windows.by_id failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_ARRAY(result))
+        return luaL_error(state, "gnoblin.windows.by_id returned an invalid snapshot");
+    JsonArray* windows = json_node_get_array(result);
+    for (guint i = 0; i < json_array_get_length(windows); i++) {
+        JsonObject* window = json_array_get_object_element(windows, i);
+        if (window && g_str_equal(member_string(window, "id", ""), id)) {
+            lua_cli_push_window_record(state, cli, window);
+            return 1;
+        }
+    }
+    lua_pushnil(state);
+    return 1;
+}
+
 static int lua_api_call(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
@@ -1606,11 +1916,42 @@ static int lua_api_index(lua_State* state) {
         lua_setmetatable(state, -2);
         return 1;
     }
+    if (g_str_equal(prefix, "windows")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        if (g_str_equal(name, "list"))
+            lua_pushcclosure(state, lua_cli_windows_list, 1);
+        else if (g_str_equal(name, "focused"))
+            lua_pushcclosure(state, lua_cli_windows_focused, 1);
+        else if (g_str_equal(name, "by_id"))
+            lua_pushcclosure(state, lua_cli_windows_by_id, 1);
+        else
+            lua_pop(state, 1);
+        if (g_str_equal(name, "list") || g_str_equal(name, "focused") || g_str_equal(name, "by_id"))
+            return 1;
+    }
     g_autofree char* method = g_strdup_printf("%s.%s", prefix, name);
     lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
     lua_pushstring(state, method);
     lua_pushcclosure(state, lua_api_call, 2);
     return 1;
+}
+
+static void register_lua_cli_window_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_WINDOW_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_window_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_window_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_window_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
 }
 
 static void print_lua_error(lua_State* state, const char* prefix) {
@@ -1684,6 +2025,7 @@ static int run_lua_console(Cli* cli, const char* file) {
         return 1;
     }
     luaL_openlibs(state);
+    register_lua_cli_window_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");

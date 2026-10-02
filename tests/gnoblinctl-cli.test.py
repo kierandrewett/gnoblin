@@ -139,7 +139,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(28):
+                    for _ in range(32):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -280,6 +280,8 @@ def main() -> int:
                                 result = {"id": "42", "action": "restore"}
                             elif request["method"] == "window.unminimize":
                                 result = {"id": "42"}
+                            elif request["method"] == "window.minimize":
+                                result = {"request_id": 24, "method": "window.minimize"}
                             else:
                                 result = {
                                     "request_id": 17,
@@ -295,6 +297,7 @@ def main() -> int:
                                 "workspace.create",
                                 "window.thumbnail",
                                 "input.select",
+                                "window.minimize",
                             }:
                                 operation_id = result["request_id"]
                                 method = result["method"]
@@ -311,6 +314,8 @@ def main() -> int:
                                     }
                                 elif method == "input.select":
                                     value = {"type": "xkb", "id": "us"}
+                                elif method == "window.minimize":
+                                    value = {"id": "42"}
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
@@ -610,7 +615,19 @@ def main() -> int:
             "revision": 42,
         }
         lua_file = Path(temporary) / "inspect.lua"
-        lua_file.write_text('local windows = gnoblin.windows.list { focused = true }\nassert(windows[1].id == "42")\n')
+        lua_file.write_text(
+            "local windows = gnoblin.windows.list { focused = true }\n"
+            'assert(#windows == 1 and windows[1].id == "42")\n'
+            "local window = windows[1]\n"
+            'assert(window.title == "Notes")\n'
+            'assert(not pcall(function() window.title = "changed" end))\n'
+            'assert(gnoblin.windows.focused().id == "42")\n'
+            'assert(gnoblin.windows.by_id("42").title == "Notes")\n'
+            'assert(gnoblin.windows.by_id("missing") == nil)\n'
+            'assert(window:minimize().id == "42")\n'
+            "local focus_ok, focus_error = pcall(function() window:focus() end)\n"
+            'assert(not focus_ok and focus_error:match("FocusContext"))\n'
+        )
         lua_api = run(binary, "--socket", socket_path, "lua", str(lua_file))
         assert lua_api.returncode == 0, lua_api.stderr
         unminimize = run(
@@ -628,8 +645,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 28
-        assert len(subscriptions) == 28
+        assert len(received) == 32
+        assert len(subscriptions) == 32
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -741,7 +758,16 @@ def main() -> int:
         assert lua_request["method"] == "windows.list"
         assert lua_request["arguments"] == {"focused": True}
         assert "source" not in lua_request and "code" not in lua_request
-        unminimize_request = received[27]
+        assert received[27]["method"] == "windows.list"
+        assert received[27]["arguments"] == {"focused": True}
+        assert received[28]["method"] == "windows.list"
+        assert received[28]["arguments"] == {}
+        assert received[29]["method"] == "windows.list"
+        assert received[29]["arguments"] == {}
+        assert received[30]["method"] == "window.minimize"
+        assert received[30]["api_version"] == {"major": 1, "minor": 64}
+        assert received[30]["arguments"] == {"id": "42"}
+        unminimize_request = received[31]
         assert unminimize_request["method"] == "window.unminimize"
         assert unminimize_request["arguments"] == {"id": "42"}
 
