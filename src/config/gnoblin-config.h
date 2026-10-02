@@ -54,6 +54,8 @@ void gnoblin_config_update_capability_snapshot(GVariant* snapshot, guint64 revis
 void gnoblin_config_update_input_device_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache configured XKB input sources and the confirmed current source. */
 void gnoblin_config_update_input_source_snapshot(GVariant* snapshot, guint64 revision);
+/* Cache the live orientation-lock state for Lua reads. */
+void gnoblin_config_update_orientation_lock_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the configured native shortcut snapshot. */
 void gnoblin_config_update_shortcut_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the latest native launch-feedback snapshot for immediate Lua reads. */

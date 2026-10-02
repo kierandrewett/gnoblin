@@ -94,6 +94,8 @@ typedef struct {
     guint64 input_device_revision;
     GVariant* input_source_snapshot;
     guint64 input_source_revision;
+    GVariant* orientation_lock_snapshot;
+    guint64 orientation_lock_revision;
     GVariant* shortcut_snapshot;
     guint64 shortcut_revision;
     GVariant* launch_snapshot;
@@ -287,6 +289,7 @@ static const char* api_methods[] = {
     "input.text_target",
     "input.sources",
     "input.current_source",
+    "input.set_orientation_lock",
     "privacy.get",
     "privacy.stop_sharing",
     "privacy.stop_recording",
@@ -2217,8 +2220,32 @@ static int lua_generic_api_action(lua_State* state) {
                               "and accuracy 0, 1, 4, 5, 6, or 8 (0 when denied)");
     }
 
+    if (g_str_equal(method, "input.set_orientation_lock") && config->api_calling) {
+        static const char* const fields[] = {"value", NULL};
+        if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
+            !table_fields_allowed(state, 1, fields))
+            return luaL_error(state, "input.set_orientation_lock accepts only value");
+        lua_getfield(state, 1, "value");
+        lua_replace(state, 1);
+        lua_settop(state, 1);
+    }
+
     GVariant* arguments = NULL;
-    if (lua_gettop(state) == 0) {
+    if (g_str_equal(method, "input.set_orientation_lock")) {
+        if (lua_gettop(state) != 1 ||
+            (!lua_isboolean(state, 1) && !(lua_type(state, 1) == LUA_TSTRING &&
+                                           g_str_equal(lua_tostring(state, 1), "inherit"))))
+            return luaL_error(state,
+                              "input.set_orientation_lock requires true, false, or 'inherit'");
+        GVariantBuilder builder;
+        g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+        if (lua_isboolean(state, 1))
+            g_variant_builder_add(&builder, "{sv}", "value",
+                                  g_variant_new_boolean(lua_toboolean(state, 1)));
+        else
+            g_variant_builder_add(&builder, "{sv}", "value", g_variant_new_string("inherit"));
+        arguments = g_variant_builder_end(&builder);
+    } else if (lua_gettop(state) == 0) {
         if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind") ||
             g_str_equal(method, "shortcut.session.end"))
             return luaL_error(state, "%s requires an argument table", method);
@@ -4336,6 +4363,18 @@ static int lua_input_current_source(lua_State* state) {
     return 1;
 }
 
+static int lua_input_orientation_lock(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.input.orientation_lock takes no arguments");
+    if (!config || !config->orientation_lock_snapshot)
+        return luaL_error(state, "native orientation lock snapshot is unavailable");
+    push_variant(state, config->orientation_lock_snapshot);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
 static int lua_shortcuts_list(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
@@ -4897,6 +4936,9 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_input_current_source, 1);
     lua_setfield(state, -2, "current_source");
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_input_orientation_lock, 1);
+    lua_setfield(state, -2, "orientation_lock");
     lua_getfield(state, -1, "sources");
     lua_setfield(state, -2, "list");
     lua_getfield(state, -1, "current_source");
@@ -5164,6 +5206,7 @@ static void lua_runtime_free(LuaRuntime* runtime) {
     g_clear_pointer(&runtime->config.capability_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.input_device_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.input_source_snapshot, g_variant_unref);
+    g_clear_pointer(&runtime->config.orientation_lock_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.shortcut_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.launch_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.portal_grant_snapshot, g_variant_unref);
@@ -5285,6 +5328,21 @@ void gnoblin_config_update_input_source_snapshot(GVariant* snapshot, guint64 rev
         runtime->config.input_source_revision = snapshot ? revision : 0;
         if (snapshot)
             runtime->config.input_source_snapshot = g_variant_ref(snapshot);
+    }
+}
+
+void gnoblin_config_update_orientation_lock_snapshot(GVariant* snapshot, guint64 revision) {
+    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
+        return;
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
+    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
+        LuaRuntime* runtime = runtimes[i];
+        if (!runtime || (i == 1 && runtime == runtimes[0]))
+            continue;
+        g_clear_pointer(&runtime->config.orientation_lock_snapshot, g_variant_unref);
+        runtime->config.orientation_lock_revision = snapshot ? revision : 0;
+        if (snapshot)
+            runtime->config.orientation_lock_snapshot = g_variant_ref(snapshot);
     }
 }
 
@@ -5530,6 +5588,12 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
         runtime->config.input_source_snapshot =
             g_variant_ref(snapshot_source->config.input_source_snapshot);
         runtime->config.input_source_revision = snapshot_source->config.input_source_revision;
+    }
+    if (snapshot_source && snapshot_source->config.orientation_lock_snapshot) {
+        runtime->config.orientation_lock_snapshot =
+            g_variant_ref(snapshot_source->config.orientation_lock_snapshot);
+        runtime->config.orientation_lock_revision =
+            snapshot_source->config.orientation_lock_revision;
     }
     if (snapshot_source && snapshot_source->config.shortcut_snapshot) {
         runtime->config.shortcut_snapshot =
@@ -6690,6 +6754,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "input.devices",
         "input.sources",
         "input.current_source",
+        "input.orientation_lock",
         NULL,
     };
     gboolean known = FALSE;
@@ -6876,11 +6941,13 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "input.devices") || g_str_equal(method, "input.sources") ||
-               g_str_equal(method, "input.current_source")) {
+               g_str_equal(method, "input.current_source") ||
+               g_str_equal(method, "input.orientation_lock")) {
         lua_getfield(state, -1, "input");
-        const char* field = g_str_equal(method, "input.devices")   ? "devices"
-                            : g_str_equal(method, "input.sources") ? "sources"
-                                                                   : "current_source";
+        const char* field = g_str_equal(method, "input.devices")          ? "devices"
+                            : g_str_equal(method, "input.sources")        ? "sources"
+                            : g_str_equal(method, "input.current_source") ? "current_source"
+                                                                          : "orientation_lock";
         lua_getfield(state, -1, field);
         lua_remove(state, -2);
         lua_remove(state, -2);
