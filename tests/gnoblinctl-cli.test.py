@@ -142,7 +142,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(71):
+                    for _ in range(72):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -164,6 +164,14 @@ def main() -> int:
                                 if status_request_count > 2:
                                     result["lock_available"] = True
                                     result["lock_state"] = "covering"
+                            elif request["method"] == "session.activity":
+                                result = {
+                                    "available": True,
+                                    "idle": True,
+                                    "threshold_ms": 300000,
+                                    "idle_for_ms": 1000,
+                                    "revision": 7,
+                                }
                             elif request["method"] == "monitors.list":
                                 monitor_request_count += 1
                                 if monitor_request_count >= 6:
@@ -1200,11 +1208,24 @@ def main() -> int:
         )
         session_status_result = run(binary, "--socket", socket_path, "lua", str(session_status_file))
         assert session_status_result.returncode == 0, session_status_result.stderr
+        session_activity_file = Path(temporary) / "session-activity.lua"
+        session_activity_file.write_text(
+            "local activity = gnoblin.session.activity()\n"
+            'assert(tostring(activity) == "SessionActivity" and activity.available and activity.idle)\n'
+            "assert(activity.threshold_ms == 300000 and activity.idle_for_ms >= 1000)\n"
+            "assert(activity.revision == 7)\n"
+            "assert(not pcall(function() activity.idle = false end))\n"
+            'assert(not pcall(function() rawset(activity, "idle", false) end))\n'
+            "assert(not pcall(function() gnoblin.session.activity(true) end))\n",
+            encoding="utf-8",
+        )
+        session_activity_result = run(binary, "--socket", socket_path, "lua", str(session_activity_file))
+        assert session_activity_result.returncode == 0, session_activity_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 71
-        assert len(subscriptions) == 71
+        assert len(received) == 72
+        assert len(subscriptions) == 72
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1319,6 +1340,9 @@ def main() -> int:
         assert received[70]["method"] == "session.status"
         assert received[70]["api_version"] == {"major": 1, "minor": 29}
         assert received[70]["arguments"] == {}
+        assert received[71]["method"] == "session.activity"
+        assert received[71]["api_version"] == {"major": 1, "minor": 24}
+        assert received[71]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
