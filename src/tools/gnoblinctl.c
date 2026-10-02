@@ -1576,6 +1576,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 
 #define GNOBLINCTL_WINDOW_RECORD_METATABLE "gnoblinctl.Window"
 #define GNOBLINCTL_WORKSPACE_RECORD_METATABLE "gnoblinctl.Workspace"
+#define GNOBLINCTL_MONITOR_RECORD_METATABLE "gnoblinctl.Monitor"
 
 /* The console must not turn a compositor snapshot into a mutable policy object.
  * Keep the JSON fields in a private backing table and expose the same read-only
@@ -1921,6 +1922,82 @@ static void lua_cli_push_workspace_record(lua_State* state, Cli* cli, JsonObject
     lua_remove(state, backing);
 }
 
+static int lua_cli_monitor_tostring(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "id");
+    const char* id = lua_tostring(state, -1);
+    lua_pushfstring(state, "Monitor<%s>", id ? id : "unknown");
+    return 1;
+}
+
+static void lua_cli_push_monitor_record(lua_State* state, JsonObject* object) {
+    const char* id = member_string(object, "id", NULL);
+    if (!id || !*id)
+        luaL_error(state, "gnoblin.monitors returned a monitor without a stable id");
+
+    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(node, object);
+    json_to_lua(state, node);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 2);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    lua_newtable(state);
+    lua_setiuservalue(state, record, 2);
+    luaL_getmetatable(state, GNOBLINCTL_MONITOR_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+}
+
+static JsonNode* lua_cli_monitor_snapshot(lua_State* state, Cli* cli, const char* operation) {
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    JsonNode* result = call_compositor(cli, "api", "monitors.list", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        luaL_error(state, "gnoblin.monitors.%s failed: %s", operation, call_error->message);
+    if (!JSON_NODE_HOLDS_ARRAY(result)) {
+        json_node_unref(result);
+        luaL_error(state, "gnoblin.monitors.%s returned an invalid snapshot", operation);
+    }
+    return result;
+}
+
+static int lua_cli_monitors_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.monitors.list takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    g_autoptr(JsonNode) result = lua_cli_monitor_snapshot(state, cli, "list");
+    JsonArray* monitors = json_node_get_array(result);
+    lua_createtable(state, json_array_get_length(monitors), 0);
+    for (guint i = 0; i < json_array_get_length(monitors); i++) {
+        JsonObject* monitor = json_array_get_object_element(monitors, i);
+        if (!monitor)
+            return luaL_error(state, "gnoblin.monitors.list returned an invalid monitor record");
+        lua_cli_push_monitor_record(state, monitor);
+        lua_rawseti(state, -2, i + 1);
+    }
+    return 1;
+}
+
+static int lua_cli_monitors_primary(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.monitors.primary takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    g_autoptr(JsonNode) result = lua_cli_monitor_snapshot(state, cli, "primary");
+    JsonArray* monitors = json_node_get_array(result);
+    for (guint i = 0; i < json_array_get_length(monitors); i++) {
+        JsonObject* monitor = json_array_get_object_element(monitors, i);
+        if (monitor && json_object_get_boolean_member_with_default(monitor, "primary", FALSE)) {
+            lua_cli_push_monitor_record(state, monitor);
+            return 1;
+        }
+    }
+    lua_pushnil(state);
+    return 1;
+}
+
 static int lua_cli_workspaces_list(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.workspaces.list takes no arguments");
@@ -2147,6 +2224,17 @@ static int lua_api_index(lua_State* state) {
         if (g_str_equal(name, "list") || g_str_equal(name, "active") || g_str_equal(name, "by_id"))
             return 1;
     }
+    if (g_str_equal(prefix, "monitors")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        if (g_str_equal(name, "list"))
+            lua_pushcclosure(state, lua_cli_monitors_list, 1);
+        else if (g_str_equal(name, "primary"))
+            lua_pushcclosure(state, lua_cli_monitors_primary, 1);
+        else
+            lua_pop(state, 1);
+        if (g_str_equal(name, "list") || g_str_equal(name, "primary"))
+            return 1;
+    }
     g_autofree char* method = g_strdup_printf("%s.%s", prefix, name);
     lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
     lua_pushstring(state, method);
@@ -2186,6 +2274,24 @@ static void register_lua_cli_workspace_record(lua_State* state) {
     lua_pushcfunction(state, lua_cli_window_pairs);
     lua_setfield(state, -2, "__pairs");
     lua_pushcfunction(state, lua_cli_workspace_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static void register_lua_cli_monitor_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_MONITOR_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_window_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_window_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_monitor_tostring);
     lua_setfield(state, -2, "__tostring");
     lua_pop(state, 1);
 }
@@ -2263,6 +2369,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     luaL_openlibs(state);
     register_lua_cli_window_record(state);
     register_lua_cli_workspace_record(state);
+    register_lua_cli_monitor_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");

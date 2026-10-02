@@ -132,14 +132,16 @@ def main() -> int:
         subscriptions: list[dict[str, object]] = []
         server_error: list[BaseException] = []
         ready = threading.Event()
+        monitor_request_count = 0
 
         def serve_once() -> None:
+            nonlocal monitor_request_count
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(40):
+                    for _ in range(43):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -158,7 +160,32 @@ def main() -> int:
                             if request["method"] == "session.status":
                                 result = {"session": "test-session", "locked": False}
                             elif request["method"] == "monitors.list":
-                                result = [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
+                                monitor_request_count += 1
+                                if monitor_request_count >= 5:
+                                    result = []
+                                elif monitor_request_count <= 2:
+                                    result = [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
+                                else:
+                                    result = [
+                                        {
+                                            "id": "HDMI-1",
+                                            "index": 0,
+                                            "name": "Test Display",
+                                            "make": "Acme",
+                                            "model": "Panel 1",
+                                            "serial": "ABC123",
+                                            "primary": True,
+                                            "enabled": True,
+                                            "x": 10,
+                                            "y": 20,
+                                            "width": 1920,
+                                            "height": 1080,
+                                            "scale": 1.5,
+                                            "refresh_rate": 144.0,
+                                            "transform": "normal",
+                                            "revision": 5,
+                                        }
+                                    ]
                             elif request["method"] == "windows.list":
                                 result = [
                                     {
@@ -659,6 +686,21 @@ def main() -> int:
             'assert(workspace:rename("Renamed").name == "Renamed")\n'
             'assert(workspace:move_here(window, {follow = true}).window == "42")\n'
             'assert(workspace:remove().id == "codex-probe")\n'
+            "local monitors = gnoblin.monitors.list()\n"
+            'assert(#monitors == 1 and monitors[1].id == "HDMI-1")\n'
+            "local monitor = monitors[1]\n"
+            'assert(monitor.name == "Test Display" and monitor.make == "Acme")\n'
+            'assert(monitor.model == "Panel 1" and monitor.serial == "ABC123")\n'
+            "assert(monitor.primary and monitor.enabled)\n"
+            "assert(monitor.x == 10 and monitor.y == 20)\n"
+            "assert(monitor.width == 1920 and monitor.height == 1080)\n"
+            "assert(monitor.scale == 1.5 and monitor.refresh_rate == 144.0)\n"
+            'assert(monitor.transform == "normal" and monitor.revision == 5)\n'
+            'assert(not pcall(function() monitor.id = "DP-1" end))\n'
+            "assert(not pcall(function() monitor.missing = true end))\n"
+            'assert(tostring(monitor) == "Monitor<HDMI-1>")\n'
+            'assert(gnoblin.monitors.primary().id == "HDMI-1")\n'
+            "assert(gnoblin.monitors.primary() == nil)\n"
         )
         lua_api = run(binary, "--socket", socket_path, "lua", str(lua_file))
         assert lua_api.returncode == 0, lua_api.stderr
@@ -677,8 +719,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 40
-        assert len(subscriptions) == 40
+        assert len(received) == 43
+        assert len(subscriptions) == 43
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -820,7 +862,14 @@ def main() -> int:
         }
         assert received[38]["method"] == "workspace.remove"
         assert received[38]["arguments"] == {"id": "codex-probe"}
-        unminimize_request = received[39]
+        assert received[39]["method"] == "monitors.list"
+        assert received[39]["api_version"] == {"major": 1, "minor": 37}
+        assert received[39]["arguments"] == {}
+        assert received[40]["method"] == "monitors.list"
+        assert received[40]["arguments"] == {}
+        assert received[41]["method"] == "monitors.list"
+        assert received[41]["arguments"] == {}
+        unminimize_request = received[42]
         assert unminimize_request["method"] == "window.unminimize"
         assert unminimize_request["arguments"] == {"id": "42"}
 
