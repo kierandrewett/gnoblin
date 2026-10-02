@@ -30,28 +30,31 @@ Mutter uses the shared schemas for settings such as keyboard, pointer, and
 accessibility behavior. The package also supplies enum headers used while
 building Mutter. This does not install or start GNOME Shell.
 
-Gnoblin builds its runtime, patched Mutter, and portal backend into a separate
-prefix. It uses the pinned sources and your installed development libraries;
-you do not need the distribution's `gnome-shell` or `mutter` packages to build
-or run Gnoblin.
-
-The `xdg-desktop-portal` development package supplies the D-Bus interface
-definitions used to generate the Gnoblin backend's bindings. At runtime,
-applications call the standard portal frontend, which routes requests to
-Gnoblin's backend for dialogs, screen sharing, and other desktop services.
-Install the frontend as a session service; Gnoblin builds and selects its own
-backend.
+Gnoblin builds its runtime and patched Mutter into a separate prefix. It uses
+the pinned sources and your installed development libraries; you do not need
+the distribution's `gnome-shell` or `mutter` packages to build or run Gnoblin.
 
 Mutter reads monitor vendor names from the system's udev hardware database.
-Gnoblin builds without the gnome-desktop development package. The portal's
-wallpaper preview uses Glycin.
+Gnoblin builds without the gnome-desktop development package.
 
-The portal also needs GTK4 and libadwaita for its dialogs and capture features.
+### Portal backend
+
+The default build works with any portal frontend and backend installed on your
+system. Applications continue to call the standard portal frontend. You can
+choose an installed backend for Gnoblin; see
+[Choose a different portal backend](/gnome-apps#choose-a-different-portal-backend).
+
+Gnoblin's optional backend uses GTK4 and libadwaita for its dialogs and capture
+features. It uses Glycin for wallpaper previews. Build it with
+`./build.sh --with-portal`.
+
 The pinned `libgxdp` source requires GTK4 development files version 4.22.0 or
-newer.
-Mutter's development viewer is built only for `./build.sh --preview`.
+newer. The portal source also requires `xdg-desktop-portal` 1.21.1 or newer.
+These versions are not requirements for the default Gnoblin build.
 
 ### Optional features
+
+Mutter's development viewer is built only for `./build.sh --preview`.
 
 The default build uses an installed Xcursor theme. Install a cursor theme if
 your system does not have one. To include Gnoblin's optional Adwaita vector
@@ -75,9 +78,9 @@ cd gnoblin-[0-9]*/
 ```
 
 The tarball includes Gnoblin and the pinned, patched Mutter and portal sources.
-`./build.sh` unpacks those sources and builds them with your installed
-development libraries; it does not need Git. Keep the extracted directory if
-you register it as a login session.
+`./build.sh` unpacks and builds Mutter. Add `--with-portal` to unpack and build
+Gnoblin's portal backend too. Neither command needs Git. Keep the extracted
+directory if you register it as a login session.
 
 For current development code, install Git and clone the repository instead:
 
@@ -91,9 +94,9 @@ The script uses CMake and Ninja and checks the installed library versions
 against the pinned source requirements. It never calls your system package
 manager. Run it as your normal user.
 
-The build also includes Gnoblin's portal backend;
-the login-session registration step makes that backend available to the portal
-frontend.
+The default build includes the session and Mutter. Add `--with-portal` to build
+Gnoblin's optional backend before registering the session. Registration
+installs its portal metadata when the backend is present in the prefix.
 
 ## 2. Try it in a window
 
@@ -174,26 +177,30 @@ separate GNOME login at the login screen when you need those services.
 The lean path needs a fresh Wayland login managed by logind. The login manager
 must set `XDG_SESSION_TYPE=wayland` when it starts Gnoblin.
 
-`./build.sh --register-session` asks for sudo to install the login entry and
-Gnoblin portal metadata, then links its user services. [Install a shell](bring-your-own-shell.md),
-log out, and select **Gnoblin**. This registration changes the login entry for
-Gnoblin; it does not change a separate GNOME session.
+`./build.sh --register-session` asks for sudo to install the login entry and,
+when the prefix includes Gnoblin's portal backend, its system portal metadata.
+It then links Gnoblin's user services.
+
+[Install a shell](bring-your-own-shell.md), log out, and select **Gnoblin**.
+This registration changes the Gnoblin login entry; it does not change a
+separate GNOME session.
 
 Registration only adds session files; it does not build a missing runtime.
 
 ## Build options
 
-| Command                            | Behaviour                                 |
-| ---------------------------------- | ----------------------------------------- |
-| `./build.sh`                       | Build Gnoblin and its session data        |
-| `./build.sh --jobs N`              | Use N parallel compilation jobs           |
-| `./build.sh --prefix DIR`          | Build into DIR instead of `./install`     |
-| `./build.sh --without-xwayland`    | Omit X11 application support              |
-| `./build.sh --with-vector-cursors` | Include the optional vector cursor theme  |
-| `./build.sh --dry-run`             | Show what will be built                   |
-| `./build.sh --verbose`             | Show all build output as it runs          |
-| `./build.sh --preview`             | Try the build in a nested Wayland session |
-| `./build.sh --register-session`    | Add the standalone Gnoblin login entry    |
+| Command                            | Behaviour                                   |
+| ---------------------------------- | ------------------------------------------- |
+| `./build.sh`                       | Build Gnoblin and its session data          |
+| `./build.sh --jobs N`              | Use N parallel compilation jobs             |
+| `./build.sh --prefix DIR`          | Build into DIR instead of `./install`       |
+| `./build.sh --without-xwayland`    | Omit X11 application support                |
+| `./build.sh --with-portal`         | Build Gnoblin's optional GTK portal backend |
+| `./build.sh --with-vector-cursors` | Include the optional vector cursor theme    |
+| `./build.sh --dry-run`             | Show what will be built                     |
+| `./build.sh --verbose`             | Show all build output as it runs            |
+| `./build.sh --preview`             | Try the build in a nested Wayland session   |
+| `./build.sh --register-session`    | Add the standalone Gnoblin login entry      |
 
 Use `./build.sh --preview --terminal kitty` to choose a terminal.
 Use `--without-xwayland` only if you run Wayland-native applications; X11-only
@@ -214,9 +221,9 @@ interrupt a build with space available in the checkout.
 ## How GNOME stays separate
 
 Gnoblin's patched Mutter stays in the private build prefix. The runtime and
-portal backend use development libraries installed by your distribution. The
-build does not add library paths to your shell profile or the system loader
-configuration.
+optional portal backend use development libraries installed by your
+distribution. The build does not add library paths to your shell profile or
+the system loader configuration.
 
 Gnoblin adds its own login entry and leaves the distribution's GNOME session
 available. Select the GNOME entry at login to return to the normal GNOME

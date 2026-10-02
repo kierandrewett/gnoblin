@@ -33,8 +33,9 @@ BuildRequires:  python3
 
 %description
 Installs the Lua-supervised Gnoblin session, private runtime tools, and login
-entry. The package uses the separately packaged Gnoblin Mutter and portal
-backend and does not require GNOME Shell or GJS. It replaces the earlier
+entry. The package uses the separately packaged Gnoblin Mutter and does not
+require GNOME Shell or GJS. The GTK-based Gnoblin portal backend is optional.
+It replaces the earlier
 gnoblin-session payload package on upgrade.
 
 %prep

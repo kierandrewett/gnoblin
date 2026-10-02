@@ -17,6 +17,7 @@ spec.loader.exec_module(checker)
 class BuildRequirements(unittest.TestCase):
     def test_dependency_check_applies_pipewire_compatibility_floor(self):
         source = """
+gsettings_desktop_schemas_req = '>= 51.rc'
 wayland_server_req = '>= 1.26'
 wayland_server_dep = dependency('wayland-server', version: wayland_server_req)
 libinput_req = '>= 1.31.0'
@@ -40,7 +41,7 @@ libpipewire_dep = dependency('libpipewire-0.3', version: libpipewire_req)
         source = """
 glib_req = '>= 2.86.0'
 wayland_req = '>= 1.25'
-schemas_req = '>= 51.rc'
+schemas_req = '>= 49.1'
 glib_dep = dependency('glib-2.0', version: glib_req)
 wayland_dep = dependency('wayland-server',
     version: wayland_req)
@@ -139,6 +140,21 @@ bundled_dep = dependency('bundled-lib')
             self.assertFalse(output_dir.exists())
             for obsolete in ("sudo", "dnf", "pacman", "apt-get", "zypper", "--yes", "--no-deps"):
                 self.assertNotIn(obsolete, result.stdout)
+            core_result = subprocess.run(
+                [str(ROOT / "build.sh"), "--dry-run"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(core_result.returncode, 0, core_result.stderr)
+            self.assertIn("Ninja target: gnoblin-session", core_result.stdout)
+            self.assertIn("Gnoblin portal backend: false", core_result.stdout)
+            portal_result = subprocess.run(
+                [str(ROOT / "build.sh"), "--dry-run", "--with-portal"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(portal_result.returncode, 0, portal_result.stderr)
+            self.assertIn("Ninja target: standalone-session", portal_result.stdout)
 
     def test_build_cli_rejects_invalid_or_misplaced_options(self):
         for args in (
@@ -146,6 +162,8 @@ bundled_dep = dependency('bundled-lib')
             ("--jobs", "0"),
             ("--terminal", "foot"),
             ("--preview", "--dry-run"),
+            ("--with-portal", "--preview"),
+            ("--with-portal", "--target", "gnoblin"),
             ("--register-session", "--dry-run"),
         ):
             with self.subTest(args=args):

@@ -58,6 +58,11 @@ python3 "$ROOT/scripts/sync-package-manifest.py" arch-release \
     --output "$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION.PKGBUILD" \
     --source-sha256 "$SOURCE_BUNDLE_SHA256" \
     --release-tag "$PUBLIC_RELEASE_TAG"
+PORTAL_SOURCE_SHA256="$(sha256sum "$OUTPUT/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" | awk '{print $1}')"
+python3 "$ROOT/scripts/sync-package-manifest.py" arch-portal-release \
+    --output "$OUTPUT/gnoblin-portal-$GNOME_VERSION.PKGBUILD" \
+    --source-sha256 "$PORTAL_SOURCE_SHA256" \
+    --release-tag "$PUBLIC_RELEASE_TAG"
 install -m 0644 -- "$ROOT/packaging/arch/gnome-integration/PKGBUILD" \
     "$OUTPUT/gnoblin-gnome-integration-$GNOBLIN_VERSION.PKGBUILD"
 

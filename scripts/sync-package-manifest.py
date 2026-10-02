@@ -139,13 +139,10 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP", release_tag: str = 
     dependencies += [
         f"'{name}'"
         for name in (
-            "glycin",
-            "libadwaita",
             "libcanberra",
             "libdisplay-info",
             "libei",
             "libnm",
-            "libsecret",
             "polkit",
             "startup-notification",
         )
@@ -159,7 +156,7 @@ pkgdesc='Standalone Gnoblin desktop session'
 arch=('x86_64')
 url='{PROJECT_URL}'
 license=('GPL-2.0-or-later')
-makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4>=4.22.0' 'json-glib' 'libadwaita' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' '{lua_build_requirement}' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
+makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4>=4.14.0' 'json-glib' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' '{lua_build_requirement}' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
 depends=({" ".join(dependencies)})
 
 source=("$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz")
@@ -169,20 +166,16 @@ _prefix=/usr/lib/gnoblin
 
 prepare() {{
     cd "$srcdir/$pkgname-$pkgver" || return
-    for project in mutter xdg-desktop-portal-gnome; do
-        archive_name="$project"
-        archive=(sources/"$archive_name"-*.tar.xz)
-        test ${{#archive[@]}} -eq 1
-        mkdir -p "subprojects/$project"
-        tar -xf "${{archive[0]}}" -C "subprojects/$project" --strip-components=1
-    done
+    archive=(sources/mutter-*.tar.xz)
+    test ${{#archive[@]}} -eq 1
+    mkdir -p subprojects/mutter
+    tar -xf "${{archive[0]}}" -C subprojects/mutter --strip-components=1
 }}
 
 build() {{
     cd "$srcdir/$pkgname-$pkgver" || return
     cmake -S . -B build/ninja -G Ninja -DGNOBLIN_PREFIX="$_prefix" -DGNOBLIN_LIBDIR=lib -DGNOBLIN_BUILD_TYPE=release -DGNOBLIN_SOURCE_MODE=release-archive -DGNOBLIN_STAGE_ROOT="$srcdir/$pkgname-$pkgver/stage" -DGNOBLIN_JOBS="$(nproc)"
-    cmake --build build/ninja --target standalone-session --parallel "$(nproc)"
-    cmake --build build/ninja --target xdg-desktop-portal-gnome --parallel "$(nproc)"
+    cmake --build build/ninja --target gnoblin-session --parallel "$(nproc)"
 }}
 
 package() {{
@@ -192,10 +185,6 @@ package() {{
     ln -s "$_prefix/bin/gnoblin" "$pkgdir/usr/bin/gnoblin"
     ln -s "$_prefix/bin/gnoblinctl" "$pkgdir/usr/bin/gnoblinctl"
     install -Dm644 "$pkgdir$_prefix/lib/systemd/user/gnoblin-session.target" "$pkgdir/usr/lib/systemd/user/gnoblin-session.target"
-    install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/portals/gnoblin.portal" "$pkgdir/usr/share/xdg-desktop-portal/portals/gnoblin.portal"
-    install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/gnoblin-portals.conf" "$pkgdir/usr/share/xdg-desktop-portal/gnoblin-portals.conf"
-    install -Dm644 "$pkgdir$_prefix/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service" "$pkgdir/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service"
-    install -Dm644 "$pkgdir$_prefix/lib/systemd/user/xdg-desktop-portal-gnoblin.service" "$pkgdir/usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service"
     install -Dm644 "$pkgdir$_prefix/share/wayland-sessions/gnoblin.desktop" "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
     sed -i -e 's|^Exec=.*|Exec=/usr/lib/gnoblin/bin/gnoblin|' -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
     api="$(scripts/gnome-versions.py get mutter api)"
@@ -203,6 +192,62 @@ package() {{
         head -c 4 "$file" | grep -qx $'\177ELF' || continue
         patchelf --set-rpath "$_prefix/lib:$_prefix/lib/mutter-$api" "$file"
     done
+}}
+"""
+
+
+def render_arch_portal(manifest: dict, source_sha256: str = "SKIP", release_tag: str | None = None) -> str:
+    portal = manifest["packages"]["gnoblin-portal"]
+    version = portal["version"]
+    package_release = manifest["release"]["archPkgRelease"]
+    gnoblin_version = manifest["packages"]["gnoblin"]["version"]
+    release_tag = release_tag or f"gnoblin-v{gnoblin_version}"
+    requirements = [
+        f"'{native_requirement(manifest, name, 'arch')[0]}"
+        + (
+            f">={native_requirement(manifest, name, 'arch')[1]}"
+            if native_requirement(manifest, name, "arch")[1] is not None
+            else ""
+        )
+        + "'"
+        for name in portal["requires"]
+    ]
+    return f"""# Generated from packaging/native-packages.json; do not edit.
+# shellcheck shell=bash disable=SC2034,SC2154
+pkgname=gnoblin-portal
+pkgver={version}
+pkgrel={package_release}
+pkgdesc='Optional GTK-based portal backend for Gnoblin sessions'
+arch=('x86_64')
+url='{PROJECT_URL}'
+license=('LGPL-2.1-or-later')
+makedepends=('base-devel' 'gettext' 'glib2-devel' 'glycin' 'gsettings-desktop-schemas' 'gtk4>=4.22.0' 'libadwaita' 'meson' 'ninja' 'pkgconf' 'xdg-desktop-portal>=1.21.1')
+depends=({" ".join(requirements)} 'glycin' 'libadwaita' 'libsecret')
+
+source=("xdg-desktop-portal-gnome-$pkgver.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/xdg-desktop-portal-gnome-$pkgver.tar.xz")
+sha256sums=('{source_sha256}')
+
+_prefix=/usr/lib/gnoblin
+
+build() {{
+    cd "$srcdir/xdg-desktop-portal-gnome-$pkgver" || return
+    meson setup build --prefix="$_prefix" --libdir=lib --libexecdir=libexec \\
+        --datadir=share -Ddbus_service_dir="$_prefix/share/dbus-1/services" \\
+        -Dsystemduserunitdir="$_prefix/lib/systemd/user" --wrap-mode=nodownload
+    meson compile -C build
+}}
+
+package() {{
+    cd "$srcdir/xdg-desktop-portal-gnome-$pkgver" || return
+    DESTDIR="$pkgdir" meson install -C build --no-rebuild
+    install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/portals/gnoblin.portal" \\
+        "$pkgdir/usr/share/xdg-desktop-portal/portals/gnoblin.portal"
+    install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/gnoblin-portals.conf" \\
+        "$pkgdir/usr/share/xdg-desktop-portal/gnoblin-portals.conf"
+    install -Dm644 "$pkgdir$_prefix/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service" \\
+        "$pkgdir/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service"
+    install -Dm644 "$pkgdir$_prefix/lib/systemd/user/xdg-desktop-portal-gnoblin.service" \\
+        "$pkgdir/usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service"
 }}
 """
 
@@ -235,13 +280,14 @@ def outputs(manifest: dict) -> dict[Path, str]:
     return {
         ROOT / "packaging/rpm/gnoblin.spec": render_rpm(manifest),
         ROOT / "packaging/arch/PKGBUILD": render_arch(manifest),
+        ROOT / "packaging/arch/portal/PKGBUILD": render_arch_portal(manifest),
         ROOT / "packaging/arch/gnome-integration/PKGBUILD": render_arch_integration(manifest),
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("write", "check", "arch-release"))
+    parser.add_argument("command", choices=("write", "check", "arch-release", "arch-portal-release"))
     parser.add_argument("--output", type=Path, help="output path for arch-release")
     parser.add_argument("--source-sha256", help="source archive digest for arch-release")
     parser.add_argument("--release-tag", help="GitHub release tag for arch-release")
@@ -257,6 +303,22 @@ def main() -> int:
                 manifest,
                 args.source_sha256,
                 args.release_tag or "gnoblin-v$pkgver",
+            )
+        )
+        print(f"wrote {args.output}")
+        return 0
+
+    if args.command == "arch-portal-release":
+        if not args.output or not args.source_sha256:
+            parser.error("arch-portal-release requires --output and --source-sha256")
+        if not re.fullmatch(r"[0-9a-f]{64}", args.source_sha256):
+            parser.error("--source-sha256 must be a lowercase SHA-256 digest")
+        manifest = load_manifest()
+        args.output.write_text(
+            render_arch_portal(
+                manifest,
+                args.source_sha256,
+                args.release_tag,
             )
         )
         print(f"wrote {args.output}")

@@ -11,10 +11,10 @@ as supported until its graphical-session gate has passed.
 
 Gnoblin installs as its own session and can coexist with GNOME.
 
-- RPM names: `gnoblin`, `gnoblin-mutter`, `gnoblin-portal`, and the optional
+- RPM names: `gnoblin`, `gnoblin-mutter`, the optional `gnoblin-portal`, and the optional
   `gnoblin-gnome-integration` subpackage.
 - The `gnoblin` package owns the supervisor, login entry, Lua runtime, and
-  session services.
+  session services. It does not require a portal backend.
 - Private runtime: `/usr/lib/gnoblin`.
 - Public files: login entry, control tool, service units and named policy files.
 - Private libraries must not satisfy stock GNOME dependencies.
@@ -46,9 +46,10 @@ RPM and Arch login entries launch the lean session directly, as
 Settings Daemon are not package requirements. The source tarball remains the
 primary install route until a distribution package passes its login gate.
 
-The optional integration subpackage adds GVfs, GNOME Keyring, and user-directory
-setup. The GTK folder-name updater is separate. This package does not install
-applications or replace Gnoblin's portal backend.
+The optional `gnoblin-portal` package provides Gnoblin's GTK-based backend.
+Users can choose another portal instead. The optional integration subpackage
+adds GVfs, GNOME Keyring, and user-directory setup. The GTK folder-name updater
+is separate. Neither package installs applications.
 Arch publishes it as a separate metadata-only PKGBUILD and package archive.
 
 ## Prepare the source tarball

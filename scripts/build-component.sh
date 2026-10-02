@@ -106,3 +106,7 @@ if [ "$name" = mutter ]; then
             ;;
     esac
 fi
+if [ "$name" = "xdg-desktop-portal-gnome" ] &&
+    [ -d "$installed_prefix/share/glib-2.0/schemas" ]; then
+    glib-compile-schemas "$installed_prefix/share/glib-2.0/schemas"
+fi

@@ -12,7 +12,7 @@
 %global gobject_introspection_version 1.41.4
 %global gtk4_version 4.14.0
 %global glycin_version 2.0.beta.2
-%global gsettings_desktop_schemas_version 51.0
+%global gsettings_desktop_schemas_version 49.1
 %global libdrm_version 2.4.118
 %global libdisplay_info_version 0.2
 %global libinput_version 1.30.0

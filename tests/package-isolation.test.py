@@ -102,6 +102,16 @@ class IsolationTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
+            subprocess.run(
+                ["bash", str(ROOT / "scripts/register-session.sh"), str(prefix)],
+                env=env,
+                check=True,
+                capture_output=True,
+            )
+            self.assertEqual(stock.read_text(), "stock GNOME unit\n")
+            core_registration = (base / "calls").read_text()
+            self.assertIn("gnoblin-session.target", core_registration)
+            self.assertNotIn("xdg-desktop-portal-gnoblin.service", core_registration)
             for relative in (
                 "lib/systemd/user/xdg-desktop-portal-gnoblin.service",
                 "libexec/xdg-desktop-portal-gnoblin",
@@ -122,6 +132,7 @@ class IsolationTests(unittest.TestCase):
             calls = (base / "calls").read_text()
             self.assertNotIn("org.gnome.Shell", calls)
             self.assertIn("gnoblin-session.target", calls)
+            self.assertIn("xdg-desktop-portal-gnoblin.service", calls)
 
     def test_rejects_stock_files_and_capabilities(self):
         for path in (
@@ -150,7 +161,15 @@ class IsolationTests(unittest.TestCase):
                 isolation.validate(name, "", "", conflicts, obsoletes)
 
     def test_gnoblin_payload_provides_and_obsoletes_the_old_session_package(self):
-        paths = "\n".join(sorted(isolation.PUBLIC_FILES)) + "\n/usr/lib/gnoblin/lib/libgnoblin-runtime.so"
+        portal_files = {
+            "/usr/share/xdg-desktop-portal/portals/gnoblin.portal",
+            "/usr/share/xdg-desktop-portal/gnoblin-portals.conf",
+            "/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service",
+            "/usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service",
+        }
+        paths = (
+            "\n".join(sorted(isolation.PUBLIC_FILES - portal_files)) + "\n/usr/lib/gnoblin/lib/libgnoblin-runtime.so"
+        )
         isolation.validate(
             "gnoblin",
             paths,
@@ -167,11 +186,16 @@ class IsolationTests(unittest.TestCase):
         self.assertEqual(manifest["requirements"]["lua"]["minVersion"], "5.4")
         self.assertIn("gtk4", packages["gnoblin-portal"]["requires"])
         self.assertEqual(manifest["requirements"]["gtk4"]["minVersion"], "4.22.0")
+        self.assertNotIn("gnoblin-portal", packages["gnoblin"].get("requiresSameMajor", []))
+        self.assertEqual(manifest["requirements"]["gsettings-desktop-schemas"]["minVersion"], "49.1")
         arch = (ROOT / "packaging/arch/PKGBUILD").read_text()
-        self.assertIn("'lua>=5.4'", arch.splitlines()[9])
-        self.assertIn("'lua>=5.4'", arch.splitlines()[10])
-        self.assertIn("'gtk4>=4.22.0'", arch.splitlines()[9])
-        self.assertIn("'gtk4>=4.22.0'", arch.splitlines()[10])
+        self.assertIn("'lua>=5.4'", arch)
+        self.assertIn("'gsettings-desktop-schemas>=49.1'", arch)
+        self.assertNotIn("'gtk4>=4.22.0'", arch)
+        self.assertNotIn("'xdg-desktop-portal>=1.21.1'", arch)
+        portal_arch = (ROOT / "packaging/arch/portal/PKGBUILD").read_text()
+        self.assertIn("'gtk4>=4.22.0'", portal_arch)
+        self.assertIn("'xdg-desktop-portal>=1.21.1'", portal_arch)
         self.assertIn("systemd", packages["gnoblin"]["requires"])
         self.assertEqual(packages["gnoblin-gnome-integration"]["requiresExact"], ["gnoblin"])
 
@@ -259,9 +283,9 @@ class IsolationTests(unittest.TestCase):
     def test_system_schemas_are_required_before_the_compositor(self):
         mutter = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/mutter.spec")], text=True)
         publisher = (ROOT / "scripts/publish-copr.sh").read_text()
-        self.assertIn("BuildRequires: pkgconfig(gsettings-desktop-schemas) >= 51.0", mutter)
+        self.assertIn("BuildRequires: pkgconfig(gsettings-desktop-schemas) >= 49.1", mutter)
         self.assertNotIn("BuildRequires: pkgconfig(lua)", mutter)
-        self.assertIn("Requires: gsettings-desktop-schemas >= 51.0", mutter)
+        self.assertIn("Requires: gsettings-desktop-schemas >= 49.1", mutter)
         self.assertIn("GI_GIR_PATH=/usr/lib/gnoblin/share/gir-1.0", mutter)
         runtime_env = (ROOT / "src/tools/gnoblin-env.sh").read_text()
         self.assertNotIn("GI_TYPELIB_PATH", runtime_env)

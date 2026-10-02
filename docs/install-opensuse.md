@@ -6,14 +6,15 @@ repositories provide those versions, including the required desktop-schema
 major version. Check [source build prerequisites](install-source.md) before
 choosing a release asset.
 
-The RPM set contains `gnoblin`, `gnoblin-mutter`, and `gnoblin-portal`.
+The core RPM set contains `gnoblin` and `gnoblin-mutter`. The
+`gnoblin-portal` RPM is optional.
 Gnoblin runs as a standalone Lua session and does not install GNOME Shell or
 GJS. Keep a working session available while installing. See
 [platform support](platform-support.md).
 
 ## Install
 
-Download all RPM assets from the
+Download the RPM assets from the
 [latest Gnoblin release](https://github.com/kierandrewett/gnoblin/releases),
 if it includes files named `opensuse-*.rpm`. Install the runtime RPMs
 together. With GitHub CLI:
@@ -23,9 +24,16 @@ mkdir -p gnoblin-rpms
 gh release download --repo kierandrewett/gnoblin --pattern 'opensuse-*.rpm' --dir gnoblin-rpms
 sudo zypper install --allow-unsigned-rpm \
   ./gnoblin-rpms/opensuse-gnoblin-[0-9]*.rpm \
-  ./gnoblin-rpms/opensuse-gnoblin-mutter-[0-9]*.rpm \
-  ./gnoblin-rpms/opensuse-gnoblin-portal-[0-9]*.rpm
+  ./gnoblin-rpms/opensuse-gnoblin-mutter-[0-9]*.rpm
 ```
+
+To use Gnoblin's GTK-based portal backend, install its RPM too:
+
+```sh
+sudo zypper install --allow-unsigned-rpm ./gnoblin-rpms/opensuse-gnoblin-portal-[0-9]*.rpm
+```
+
+You can use another installed portal backend instead.
 
 Install a desktop shell such as [Bingux](bring-your-own-shell.md), log out, and
 select **Gnoblin** at the login screen. If the session does not start, return
@@ -39,7 +47,7 @@ runtime packages above.
 
 Log into another session first. If you installed the optional integration
 package, remove it with `sudo zypper remove gnoblin-gnome-integration`.
-Then remove the Gnoblin runtime packages:
+Then remove the Gnoblin packages you installed:
 
 ```sh
 sudo zypper remove \
@@ -47,5 +55,5 @@ sudo zypper remove \
 ```
 
 Your existing GNOME packages remain installed.
-Gnoblin selects its own portal backend; GNOME keeps using its backend when it
-is installed for that session.
+Gnoblin and GNOME use the backend selected for each session. Install
+`gnoblin-portal` only if you want Gnoblin's GTK-based backend.

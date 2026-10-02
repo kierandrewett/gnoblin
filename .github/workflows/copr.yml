@@ -95,12 +95,16 @@ jobs:
           dnf -y --setopt=install_weak_deps=False install --refresh "gnoblin-$expected_version"
           installed_version="$(rpm -q --qf '%{VERSION}' gnoblin)"
           test "$installed_version" = "$expected_version"
-          rpm -q gnoblin gnoblin-mutter gnoblin-portal
+          rpm -q gnoblin gnoblin-mutter
+          ! rpm -q gnoblin-portal
+          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          dnf -y install gnoblin-portal
+          rpm -q gnoblin-portal
           ! rpm -q gnoblin-gnome-integration
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          grep -q '^default=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -q '^org.freedesktop.impl.portal.FileChooser=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -qx 'default=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -qx 'org.freedesktop.impl.portal.FileChooser=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           ! rpm -q xdg-desktop-portal-gtk >/dev/null 2>&1

@@ -25,6 +25,11 @@ session. [Install a desktop shell](bring-your-own-shell.md), log out, and
 select **Gnoblin** at the login screen. Keep another session available while
 testing this package path.
 
+The core package does not include a portal backend. The release also provides
+an optional `gnoblin-portal` PKGBUILD and matching portal source archive. Build
+them with `makepkg -si` if you want Gnoblin's GTK backend; otherwise install
+and select another portal backend.
+
 For GNOME applications on a minimal Arch system, install the separate
 [`gnoblin-gnome-integration` package](gnome-apps.md). Install the applications
 you want through pacman.

@@ -7,8 +7,9 @@ control and other access. These rules decide whether Gnoblin asks you,
 approves the request or rejects it. Without rules, the usual permission
 dialogs apply.
 
-These rules use Gnoblin's portal backend, built by `./build.sh` and selected for
-registered Gnoblin sessions. They have no effect in a stock GNOME session.
+These rules use Gnoblin's optional portal backend, built by
+`./build.sh --with-portal` or installed as `gnoblin-portal`. They have no effect
+when a different backend is selected or in a stock GNOME session.
 During a Gnoblin session, the native compositor evaluates the committed policy
 for portal requests. The shell does not make permission decisions.
 Changes apply to new requests;

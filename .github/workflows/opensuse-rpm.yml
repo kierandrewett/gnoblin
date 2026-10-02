@@ -94,7 +94,6 @@ jobs:
             find "$RUNNER_TEMP/rpmbuild/RPMS" -type f \( \
               -name 'gnoblin-mutter-[0-9]*.rpm' -o \
               -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \
-              -name 'gnoblin-portal-[0-9]*.rpm' -o \
               -name 'gnoblin-[0-9]*.rpm' \
             \) | sort
           )
@@ -138,21 +137,25 @@ jobs:
           mapfile -t runtime_rpms < <(
             find rpms -type f \( \
               -name 'gnoblin-[0-9]*.rpm' -o \
-              -name 'gnoblin-mutter-[0-9]*.rpm' -o \
-              -name 'gnoblin-portal-[0-9]*.rpm' \
+              -name 'gnoblin-mutter-[0-9]*.rpm' \
             \) | sort
           )
-          test "${#runtime_rpms[@]}" -eq 3
+          test "${#runtime_rpms[@]}" -eq 2
           integration_rpm="$(find rpms -type f -name 'gnoblin-gnome-integration-*.rpm' -print -quit)"
           test -n "$integration_rpm"
           python3 scripts/check-rpm-isolation.py "${component_rpms[@]}"
           zypper --non-interactive install --no-recommends --allow-unsigned-rpm "${runtime_rpms[@]}"
-          rpm -q gnoblin gnoblin-mutter gnoblin-portal
+          rpm -q gnoblin gnoblin-mutter
+          ! rpm -q gnoblin-portal
           ! rpm -q gnoblin-gnome-integration
-          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          portal_rpm="$(find rpms -type f -name 'gnoblin-portal-[0-9]*.rpm' -print -quit)"
+          test -n "$portal_rpm"
+          zypper --non-interactive install --no-recommends --allow-unsigned-rpm "$portal_rpm"
+          rpm -q gnoblin-portal
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          grep -q '^default=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -q '^org.freedesktop.impl.portal.FileChooser=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -qx 'default=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -qx 'org.freedesktop.impl.portal.FileChooser=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           ! rpm -q xdg-desktop-portal-gtk >/dev/null 2>&1

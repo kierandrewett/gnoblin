@@ -39,7 +39,7 @@ Select Gnoblin at login; the regular GNOME session stays available.
   bridge expose supported runtime state and actions.
 - **External desktop controls.** A separate shell or desktop clients provide
   bars, docks, launchers, notifications and other visible controls.
-- **Portal permissions.** The [Gnoblin portal backend](docs/guides/permissions.md) supports persistent,
+- **Portal permissions.** The optional [Gnoblin portal backend](docs/guides/permissions.md) supports persistent,
   identity-checked rules for Screen Cast, Remote Desktop, input capture,
   screenshots and Access. Stock GNOME keeps its normal portal behaviour.
 - **Lua runtime.** Configure the compositor and handle supported runtime events
@@ -80,8 +80,8 @@ required.
 Download the source tarball from a [Gnoblin release](https://github.com/kierandrewett/gnoblin/releases),
 extract it, and run `./build.sh` from the extracted directory. A Git checkout
 uses the same command. The build uses compatible development libraries from
-your distribution and keeps the compositor, native runtime, and portal backend
-in a private prefix.
+your distribution and keeps the compositor and native runtime in a private
+prefix. Add `--with-portal` to build Gnoblin's GTK-based portal backend too.
 
 After building, run `./build.sh --register-session` to add the lean login to
 the session picker. The [source instructions](docs/install-source.md) cover

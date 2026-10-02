@@ -3,7 +3,7 @@
   "packages": {
     "gnoblin": {
       "requires": ["cursor-theme", "dbus-tools", "dconf", "glib", "json-glib", "lua", "systemd", "wireplumber"],
-      "requiresSameMajor": ["gnoblin-mutter", "gnoblin-portal"],
+      "requiresSameMajor": ["gnoblin-mutter"],
       "version": "0.1.10"
     },
     "gnoblin-gnome-integration": {
@@ -82,7 +82,7 @@
       }
     },
     "gsettings-desktop-schemas": {
-      "minVersion": "51.0",
+      "minVersion": "49.1",
       "names": {
         "arch": "gsettings-desktop-schemas",
         "rpm": "gsettings-desktop-schemas"

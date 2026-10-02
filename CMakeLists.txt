@@ -172,6 +172,11 @@ add_custom_target(prepare-sources DEPENDS
   prepare-mutter-source prepare-xdg-desktop-portal-gnome-source)
 
 function(gnoblin_component name)
+  cmake_parse_arguments(COMPONENT "EXCLUDE_FROM_ALL" "" "" ${ARGN})
+  set(exclude_from_all FALSE)
+  if(COMPONENT_EXCLUDE_FROM_ALL)
+    set(exclude_from_all TRUE)
+  endif()
   ExternalProject_Add("${name}"
     SOURCE_DIR "${PROJECT_SOURCE_DIR}/subprojects/${name}"
     BINARY_DIR "${CMAKE_BINARY_DIR}/${name}"
@@ -186,14 +191,14 @@ function(gnoblin_component name)
       "${GNOBLIN_STAGE_ROOT}" "${GNOBLIN_XWAYLAND}"
       "${GNOBLIN_VECTOR_CURSORS}"
     INSTALL_COMMAND ""
-    DEPENDS "check-${name}-requirements" ${ARGN}
+    DEPENDS "check-${name}-requirements" ${COMPONENT_UNPARSED_ARGUMENTS}
+    EXCLUDE_FROM_ALL "${exclude_from_all}"
     USES_TERMINAL_BUILD TRUE)
 endfunction()
 
 gnoblin_component(mutter)
-gnoblin_component(xdg-desktop-portal-gnome)
 
-add_custom_target(standalone-session ALL
+add_custom_target(gnoblin-session ALL
   COMMAND "${CMAKE_COMMAND}" -E env "GNOBLIN_LIBDIR=${GNOBLIN_LIBDIR}"
     "GNOBLIN_STAGE_ROOT=${GNOBLIN_STAGE_ROOT}"
     "GNOBLIN_VECTOR_CURSORS=${GNOBLIN_VECTOR_CURSORS}"
@@ -203,6 +208,12 @@ add_custom_target(standalone-session ALL
     "GNOBLIN_VERSION_METADATA_FILE=${CMAKE_BINARY_DIR}/gnoblin-version.ini"
     "GNOBLIN_BINARY=${GNOBLIN_BINARY}"
     "${PROJECT_SOURCE_DIR}/scripts/install-session.sh" "${GNOBLIN_PREFIX}"
-  DEPENDS mutter xdg-desktop-portal-gnome gnoblin-idle gnoblinctl gnoblin
+  DEPENDS mutter gnoblin-idle gnoblinctl gnoblin
   USES_TERMINAL
   COMMENT "Install the standalone Gnoblin session")
+
+# The GTK-based portal backend is a separate component. Keep a full-session
+# target for package builds and users who explicitly want Gnoblin's backend,
+# while the default source build remains usable with any installed backend.
+gnoblin_component(xdg-desktop-portal-gnome EXCLUDE_FROM_ALL gnoblin-session)
+add_custom_target(standalone-session DEPENDS gnoblin-session xdg-desktop-portal-gnome)

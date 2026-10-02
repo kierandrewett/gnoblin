@@ -43,10 +43,12 @@ APT package.
 
 Keep an existing GNOME or other session available while testing these package
 paths.
-The Gnoblin session selects its own portal backend. An existing GNOME session
-keeps its own portal selection. Distribution packages use the same lean
-session launcher as the source tarball; GNOME Session and Settings Daemon are
-not required for Gnoblin's login entry.
+
+Gnoblin uses the portal backend selected by its XDG portal configuration. The
+Gnoblin backend is optional, and users can select another installed backend.
+An existing GNOME session keeps its own portal selection. Distribution
+packages use the same lean session launcher as the source tarball; GNOME
+Session and Settings Daemon are not required for Gnoblin's login entry.
 
 On a minimal install, add [GNOME application services](gnome-apps.md) only if
 you need them. GNOME apps install their own library dependencies; the optional

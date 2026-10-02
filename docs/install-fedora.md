@@ -13,13 +13,15 @@ sudo dnf copr enable kierandrewett/gnoblin
 sudo dnf --setopt=install_weak_deps=False install --refresh gnoblin
 ```
 
-`gnoblin` installs the Lua-supervised session and pulls in its private Mutter
-runtime and portal backend. Gnoblin does not install GNOME Shell or GJS. This
-command skips packages recommended by those dependencies. Install any optional
-services you need using the commands below.
+`gnoblin` installs the Lua-supervised session and its private Mutter runtime.
+It does not install GNOME Shell, GJS, or a portal backend. Install
+`gnoblin-portal` if you want Gnoblin's GTK-based backend; otherwise install and
+select any portal backend you prefer. To add Gnoblin's backend, run
+`sudo dnf install gnoblin-portal`. This command skips packages recommended by
+dependencies. Install any optional services you need using the commands below.
 
-The Gnoblin session selects its own portal backend. If GNOME is also installed,
-that session keeps using its own portal configuration and backend.
+Gnoblin uses the portal backend selected for its session. If GNOME is also
+installed, that session keeps using its own portal configuration and backend.
 Gnoblin does not install `xdg-desktop-portal-gtk` or require
 `gnome-desktop4`. Package dependencies may still bring GTK3 onto a system;
 inspect the transaction before installing if that matters to you.
@@ -53,7 +55,13 @@ Continue with [configuration](/config).
 ## Update
 
 ```sh
-sudo dnf upgrade --refresh gnoblin gnoblin-mutter gnoblin-portal
+sudo dnf upgrade --refresh gnoblin gnoblin-mutter
+```
+
+If you installed `gnoblin-portal`, update it separately:
+
+```sh
+sudo dnf upgrade --refresh gnoblin-portal
 ```
 
 Log out and back in to load the updated compositor.
@@ -66,8 +74,11 @@ If you installed the optional integration package, remove it with
 `sudo dnf remove gnoblin-gnome-integration` before removing the session.
 
 ```sh
-sudo dnf remove gnoblin gnoblin-mutter gnoblin-portal
+sudo dnf remove gnoblin gnoblin-mutter
 ```
+
+If you installed `gnoblin-portal`, remove it with
+`sudo dnf remove gnoblin-portal`.
 
 Your shell and personal configuration are separate. Remove your desktop shell separately if you no longer want it.
 

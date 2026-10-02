@@ -12,7 +12,7 @@
 %global glib_version 2.81.1
 %global gobject_introspection_version 1.41.4
 %global gtk4_version 4.14.0
-%global gsettings_desktop_schemas_version 51.0
+%global gsettings_desktop_schemas_version 49.1
 %global libdrm_version 2.4.118
 %global libinput_version 1.30.0
 %global pipewire_version 1.4.11

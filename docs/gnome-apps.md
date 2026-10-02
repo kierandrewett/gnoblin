@@ -35,17 +35,47 @@ Gnoblin does not start GNOME Shell's removable-media automount and autorun
 components. Open removable media through your file manager when needed; install
 GVfs through the integration package if that file manager uses GIO mounts.
 
-Gnoblin keeps using its own portal backend. This package does not install or
-select the stock GNOME portal backend. Apps continue to use the portal service
-selected by their current session.
+Gnoblin's portal backend is optional. When it is installed, Gnoblin prefers it
+for interfaces it implements and falls back to GTK. Otherwise the portal
+frontend uses another installed backend. This does not change portal selection
+in a GNOME session. Apps continue to use the portal service selected by their
+current session.
 
-File selection in a Gnoblin session uses Gnoblin's GTK4 portal dialog. Email
+File selection uses whichever backend is selected for the session. Email
 requests open the configured email app; install one separately if you need it.
 Nautilus is optional; install it only if you want a file manager.
 
-Gnoblin's portal backend handles file selection, Settings, screen sharing,
-remote desktop, and inhibition. The base install does not need
-`xdg-desktop-portal-gtk`.
+Gnoblin's optional portal backend handles file selection, Settings, screen
+sharing, remote desktop, and inhibition. Its file chooser uses GTK4. Install
+the `gnoblin-portal` package to use it. You can instead install another portal
+backend and select it below.
+
+## Choose a different portal backend
+
+To route portal requests to another installed backend for a Gnoblin session,
+create `~/.config/xdg-desktop-portal/gnoblin-portals.conf`:
+
+```ini
+[preferred]
+default=gtk
+```
+
+Replace `gtk` with an installed backend name such as `kde`. The per-user file
+takes precedence over Gnoblin's system default. To keep Gnoblin for screen
+sharing while using another file chooser, add an interface-specific entry:
+
+```ini
+[preferred]
+default=gtk
+org.freedesktop.impl.portal.ScreenCast=gnoblin
+org.freedesktop.impl.portal.RemoteDesktop=gnoblin
+```
+
+Restart `xdg-desktop-portal` after changing this file:
+
+```sh
+systemctl --user restart xdg-desktop-portal.service
+```
 
 In the lean login, portal apps can inhibit idle and
 suspend. Logout and user-switch inhibition return an unsupported response.

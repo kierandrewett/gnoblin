@@ -17,20 +17,21 @@ fi
 
 usage() {
     cat <<'HELP'
-Usage: ./build.sh [--prefix DIR] [--jobs N] [--without-xwayland] [--with-vector-cursors] [--verbose] [--dry-run]
+Usage: ./build.sh [--prefix DIR] [--jobs N] [--without-xwayland] [--with-vector-cursors] [--with-portal] [--verbose] [--dry-run]
        ./build.sh [--prefix DIR] --register-session
        ./build.sh [--prefix DIR] --preview [--terminal NAME]
 
-Build Gnoblin using the pinned GNOME sources and installed development libraries.
+Build Gnoblin using the pinned Mutter sources and installed development libraries.
 The build does not change system packages.
 
   --jobs N            Parallel compilation jobs (default: 4)
   --prefix DIR        Build output directory (default: ./install)
   --without-xwayland  Omit support for X11 applications
   --with-vector-cursors  Build the optional Adwaita vector cursor theme
+  --with-portal       Also build Gnoblin's GTK-based XDG portal backend
   --verbose           Stream every build command and its output
   --dry-run           Show stages without changing files
-  --target NAME       Build a CMake target (default: standalone-session)
+  --target NAME       Build a CMake target (default: gnoblin-session)
   --register-session  Add the standalone Gnoblin login
   --preview           Build the optional viewer if needed, then open it
   --terminal NAME     Terminal to open with --preview (default: first available)
@@ -42,10 +43,12 @@ jobs="${GNOBLIN_BUILD_JOBS:-4}"
 verbose=false dry_run=false register_session=false preview=false
 xwayland=true
 vector_cursors=false
+with_portal=false
 xwayland_selected=false
+target_selected=false
 prefix="$PWD/install"
 terminal=''
-target=standalone-session
+target=gnoblin-session
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --jobs)
@@ -61,8 +64,10 @@ while [ "$#" -gt 0 ]; do
             xwayland_selected=true
             ;;
         --with-vector-cursors) vector_cursors=true ;;
+        --with-portal) with_portal=true ;;
         --target)
             target="${2:?--target needs a CMake target}"
+            target_selected=true
             shift
             ;;
         --verbose) verbose=true ;;
@@ -104,6 +109,17 @@ if "$vector_cursors" && { "$preview" || "$register_session"; }; then
     echo '--with-vector-cursors is a build option.' >&2
     exit 2
 fi
+if "$with_portal" && { "$preview" || "$register_session"; }; then
+    echo '--with-portal is a build option.' >&2
+    exit 2
+fi
+if "$with_portal" && "$target_selected"; then
+    echo '--with-portal cannot be combined with --target.' >&2
+    exit 2
+fi
+if "$with_portal"; then
+    target=standalone-session
+fi
 prefix="$(realpath -m -- "$prefix")"
 export GNOBLIN_PREFIX="$prefix"
 if [ -n "${GNOBLIN_SOURCE_MODE:-}" ]; then
@@ -129,7 +145,7 @@ if "$register_session"; then
     exec ./scripts/register-session.sh "$prefix"
 fi
 if "$preview"; then
-    if "$verbose" || "$dry_run" || [ "$target" != standalone-session ]; then
+    if "$verbose" || "$dry_run" || [ "$target" != gnoblin-session ] || "$target_selected"; then
         echo '--preview must be used on its own, optionally with --terminal NAME.' >&2
         exit 2
     fi
@@ -139,6 +155,7 @@ if "$dry_run"; then
     printf 'Build Gnoblin from pinned sources.\n'
     printf '  Output: %s\n' "$prefix"
     echo "  Ninja target: $target"
+    echo "  Gnoblin portal backend: $with_portal"
     echo "  XWayland: $xwayland"
     echo "  Vector cursor theme: $vector_cursors"
     echo "  Development viewer: ${GNOBLIN_DEVKIT:-disabled}"
@@ -256,6 +273,13 @@ else
     fail_step 'Build Gnoblin' "$?"
 fi
 printf '\n%sBuild complete%s in %s\n' "$green" "$reset" "$prefix"
+if [ "$target" = gnoblin-session ]; then
+    if [ -x "$prefix/libexec/xdg-desktop-portal-gnoblin" ]; then
+        printf 'Portal: an existing Gnoblin backend was kept in this prefix and was not rebuilt.\n'
+    else
+        printf 'Portal: using the portal frontend and backend installed on your system. Build Gnoblin GTK backend with ./build.sh --with-portal.\n'
+    fi
+fi
 if [ "$prefix" = "$PWD/install" ]; then
     printf 'Try it: ./build.sh --preview\n'
     printf 'Add it to your login screen: ./build.sh --register-session\n'

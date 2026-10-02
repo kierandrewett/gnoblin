@@ -16,20 +16,17 @@ Provides:       gnoblin-session = %{version}
 Obsoletes:      gnoblin-session <= %{version}-%{release}
 
 Requires:       gnoblin-mutter = 51.0-20%{?dist}
-Requires:       gnoblin-portal >= 51
-Requires:       gnoblin-portal < 52
 Requires:       adwaita-icon-theme
 Requires:       dbus-1
 Requires:       dconf
 Requires:       glib2 >= 2.86
-Requires:       gsettings-desktop-schemas >= 51
+Requires:       gsettings-desktop-schemas >= 49.1
 Requires:       json-glib
 Requires:       libinput10 >= 1.30
 Requires:       pipewire >= 1.4.11
 Requires:       systemd
 Requires:       libwayland-client0 >= 1.25
 Requires:       wireplumber
-Requires:       xdg-desktop-portal >= 1.21.1
 
 BuildRequires:  cmake
 BuildRequires:  desktop-file-utils
@@ -47,8 +44,8 @@ BuildRequires:  python3
 
 %description
 Installs the Lua-supervised Gnoblin session, private runtime tools, and login
-entry. It uses the separately packaged Gnoblin Mutter and portal backend and
-does not require GNOME Shell or GJS.
+entry. It uses the separately packaged Gnoblin Mutter and does not require
+GNOME Shell or GJS. The GTK-based Gnoblin portal backend is optional.
 
 %prep
 %autosetup -n gnoblin-%{version}

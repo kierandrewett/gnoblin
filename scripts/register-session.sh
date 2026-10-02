@@ -36,8 +36,7 @@ PORTAL_CONFIG="$PREFIX/share/xdg-desktop-portal/gnoblin-portals.conf"
 PORTAL_DBUS="$PREFIX/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service"
 USER_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 
-required=("$DESKTOP" "$PORTAL_UNIT" "$PORTAL_BINARY" "$PORTAL_DESCRIPTOR" "$PORTAL_CONFIG" "$PORTAL_DBUS"
-    "$PREFIX/bin/gnoblin" "$PREFIX/libexec/gnoblin-env.sh"
+required=("$DESKTOP" "$PREFIX/bin/gnoblin" "$PREFIX/libexec/gnoblin-env.sh"
     "$STANDALONE_TARGET" "$IDLE_SERVICE" "$IDLE_BINARY")
 for f in "${required[@]}"; do
     [ -f "$f" ] || {
@@ -45,6 +44,19 @@ for f in "${required[@]}"; do
         exit 1
     }
 done
+
+portal_files=("$PORTAL_UNIT" "$PORTAL_BINARY" "$PORTAL_DESCRIPTOR" "$PORTAL_CONFIG" "$PORTAL_DBUS")
+portal_count=0
+for f in "${portal_files[@]}"; do
+    [ -f "$f" ] && ((portal_count += 1))
+done
+if ((portal_count != 0 && portal_count != ${#portal_files[@]})); then
+    echo 'The Gnoblin portal backend is only partly installed in this prefix.' >&2
+    echo 'Rebuild it with ./build.sh --with-portal or remove the incomplete portal files.' >&2
+    exit 1
+fi
+with_portal=false
+((portal_count == ${#portal_files[@]})) && with_portal=true
 
 command -v systemctl >/dev/null 2>&1 || {
     echo "systemctl not found -- this needs a systemd user session" >&2
@@ -62,13 +74,16 @@ systemctl --user show-environment >/dev/null 2>&1 || {
     echo 'The systemd user manager is unavailable. Register from a logged-in systemd session.' >&2
     exit 1
 }
-if ! systemctl --user cat xdg-desktop-portal.service >/dev/null 2>&1; then
+if "$with_portal" && ! systemctl --user cat xdg-desktop-portal.service >/dev/null 2>&1; then
     echo 'Missing user service xdg-desktop-portal.service. Install the session runtime packages in docs/install-source.md.' >&2
     exit 1
 fi
 # A previous source tarball may have registered the same unit names from a
 # different prefix. Refresh only links that point to Gnoblin's own unit paths.
-linked_units=(gnoblin-session.target gnoblin-idle.service xdg-desktop-portal-gnoblin.service)
+linked_units=(gnoblin-session.target gnoblin-idle.service)
+if "$with_portal"; then
+    linked_units+=(xdg-desktop-portal-gnoblin.service)
+fi
 for unit in "${linked_units[@]}"; do
     link="$USER_UNIT_DIR/$unit"
     if [ -e "$link" ] && [ ! -L "$link" ]; then
@@ -93,7 +108,11 @@ command -v sudo >/dev/null 2>&1 || {
 sudo -v
 
 printf '%s==>%s Registering Gnoblin with systemd and the login screen\n' "$blue" "$reset"
-systemctl --user --force link "$STANDALONE_TARGET" "$IDLE_SERVICE" "$PORTAL_UNIT"
+unit_files=("$STANDALONE_TARGET" "$IDLE_SERVICE")
+if "$with_portal"; then
+    unit_files+=("$PORTAL_UNIT")
+fi
+systemctl --user --force link "${unit_files[@]}"
 desktop_to_install="$(mktemp)"
 trap 'rm -f -- "$desktop_to_install"' EXIT
 python3 - "$DESKTOP" "$desktop_to_install" <<'PY'
@@ -112,7 +131,11 @@ destination.write_text('\n'.join(lines) + '\n')
 PY
 systemctl --user daemon-reload
 sudo install -Dm644 "$desktop_to_install" /usr/share/wayland-sessions/gnoblin.desktop
-sudo install -Dm644 "$PORTAL_DESCRIPTOR" /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-sudo install -Dm644 "$PORTAL_CONFIG" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-sudo install -Dm644 "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
 printf '%sGnoblin is available%s at login. Choose the existing GNOME session to switch back to GNOME.\n' "$green" "$reset"
+if "$with_portal"; then
+    sudo install -Dm644 "$PORTAL_DESCRIPTOR" /usr/share/xdg-desktop-portal/portals/gnoblin.portal
+    sudo install -Dm644 "$PORTAL_CONFIG" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+    sudo install -Dm644 "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
+else
+    echo 'No Gnoblin portal backend in this build. Portal requests use your installed backend; choose one in ~/.config/xdg-desktop-portal/gnoblin-portals.conf if needed.'
+fi

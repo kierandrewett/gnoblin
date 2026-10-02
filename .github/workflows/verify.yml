@@ -48,7 +48,7 @@ jobs:
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
             json-glib-devel desktop-file-utils python3 rpm-build util-linux-user
-          dnf -y builddep packaging/rpm/mutter.spec packaging/rpm/gnoblin-portal.spec
+          dnf -y builddep packaging/rpm/mutter.spec
           git -C subprojects/mutter fetch --force --tags origin
           git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin
           source_dir="$RUNNER_TEMP/gnoblin-source-assets"
@@ -75,16 +75,21 @@ jobs:
       - name: Verify the documented installation output
         run: |
           test -x "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin"
+          test ! -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
           "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version | grep -F "Git commit: $GITHUB_SHA"
           "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version --json |
             python3 -c 'import json, sys; v = json.load(sys.stdin); assert v["gitSha"] == sys.argv[1]; assert v["gitRemote"]; assert v["version"] == sys.argv[2]; assert v["gnomeVersion"] == sys.argv[3]; assert all(v["components"].get(name) for name in ("mutter", "xdg-desktop-portal-gnome")); assert "gnome-shell" not in v["components"]' \
               "$GITHUB_SHA" "$(python3 scripts/gnoblin-version.py get version)" "$(python3 scripts/gnoblin-version.py get gnomeVersion)"
-          test -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
-          ! readelf -d "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin" | grep -Eq 'libgnome-(bg|desktop)'
           test -f "$GNOBLIN_TARBALL_TREE/install/share/wayland-sessions/gnoblin.desktop"
           test -f "$GNOBLIN_TARBALL_TREE/install/lib/systemd/user/gnoblin-session.target"
           test ! -e "$GNOBLIN_TARBALL_TREE/install/bin/gnome-shell"
           test ! -e "$GNOBLIN_TARBALL_TREE/install/libexec/gnoblin-runtime"
+      - name: Build Gnoblin's optional portal backend
+        run: |
+          dnf -y builddep packaging/rpm/gnoblin-portal.spec
+          runuser -u builder -- "$GNOBLIN_TARBALL_TREE/build.sh" --with-portal
+          test -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
+          ! readelf -d "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin" | grep -Eq 'libgnome-(bg|desktop)'
       - name: Verify installer and package isolation
         run: |
           bash -n scripts/install-system.sh
@@ -108,12 +113,16 @@ jobs:
           dnf -y install dnf-plugins-core
           dnf -y copr enable kierandrewett/gnoblin
           dnf -y --setopt=install_weak_deps=False install --refresh gnoblin
-          rpm -q gnoblin gnoblin-mutter gnoblin-portal
+          rpm -q gnoblin gnoblin-mutter
+          ! rpm -q gnoblin-portal
+          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          dnf -y install gnoblin-portal
+          rpm -q gnoblin-portal
           rpm -q --whatprovides "gnoblin-session = $(rpm -q --qf '%{VERSION}' gnoblin)"
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          grep -q '^default=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -q '^org.freedesktop.impl.portal.FileChooser=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -qx 'default=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -qx 'org.freedesktop.impl.portal.FileChooser=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           ! rpm -q xdg-desktop-portal-gtk >/dev/null 2>&1
@@ -187,7 +196,8 @@ jobs:
           git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin
           source_dir="$RUNNER_TEMP/gnoblin-arch-source"
           package_dir="$RUNNER_TEMP/gnoblin-arch-package"
-          mkdir -p "$source_dir" "$package_dir"
+          portal_package_dir="$RUNNER_TEMP/gnoblin-arch-portal-package"
+          mkdir -p "$source_dir" "$package_dir" "$portal_package_dir"
           ./scripts/make-tarball.sh mutter "$source_dir"
           ./scripts/make-tarball.sh xdg-desktop-portal-gnome "$source_dir"
           version="$(./scripts/gnoblin-version.py get version)"
@@ -206,18 +216,34 @@ jobs:
           # created from the checked-out revision. Its name and SHA-256 remain
           # exactly those generated above.
           sed -i -E 's#::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v\$pkgver/[^\"]+##' "$package_dir/PKGBUILD"
+          portal_source="$source_dir/xdg-desktop-portal-gnome-$gnome_version.tar.xz"
+          portal_sha256="$(sha256sum "$portal_source" | awk '{print $1}')"
+          python3 scripts/sync-package-manifest.py arch-portal-release \
+            --output "$portal_package_dir/PKGBUILD" \
+            --source-sha256 "$portal_sha256"
+          cp "$portal_source" "$portal_package_dir/"
+          sed -i -E 's#::https://github.com/kierandrewett/gnoblin/releases/download/[^/]+/[^\"]+##' "$portal_package_dir/PKGBUILD"
       - name: Build the checked-out Arch package
         run: |
           package_dir="$RUNNER_TEMP/gnoblin-arch-package"
           useradd -m builder
           chown -R builder:builder "$package_dir"
           runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$package_dir"
+          portal_package_dir="$RUNNER_TEMP/gnoblin-arch-portal-package"
+          chown -R builder:builder "$portal_package_dir"
+          runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$portal_package_dir"
       - name: Install beside stock GNOME, then remove Gnoblin
         run: |
           package="$(find "$RUNNER_TEMP/gnoblin-arch-package" -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
           test -n "$package"
           pacman -U --noconfirm "$package"
           pacman -Q gnoblin
+          ! pacman -Q gnoblin-portal >/dev/null 2>&1
+          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          portal_package="$(find "$RUNNER_TEMP/gnoblin-arch-portal-package" -maxdepth 1 -name 'gnoblin-portal-[0-9]*.pkg.tar.zst' -print -quit)"
+          test -n "$portal_package"
+          pacman -U --noconfirm "$portal_package"
+          pacman -Q gnoblin-portal
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -x /usr/bin/gnoblinctl
           test -f /usr/share/wayland-sessions/gnoblin.desktop
@@ -227,7 +253,7 @@ jobs:
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
-          pacman -R --noconfirm gnoblin
+          pacman -R --noconfirm gnoblin-portal gnoblin
           ! pacman -Q gnoblin
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)

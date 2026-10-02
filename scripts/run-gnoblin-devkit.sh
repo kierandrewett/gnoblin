@@ -33,7 +33,7 @@ if "$prepare_devkit"; then
         echo 'This prefix has no nested development viewer. Use a writable source-build prefix for --preview.' >&2
         exit 1
     fi
-    GNOBLIN_DEVKIT=enabled "$ROOT/build.sh" --prefix "$PREFIX" --target standalone-session
+    GNOBLIN_DEVKIT=enabled "$ROOT/build.sh" --prefix "$PREFIX"
 fi
 [[ -x "$RUNTIME" && -x "$GNOBLINCTL" ]] || {
     echo "No standalone Gnoblin build found in $PREFIX. Run './build.sh' first." >&2

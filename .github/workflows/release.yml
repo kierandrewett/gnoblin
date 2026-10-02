@@ -222,10 +222,14 @@ jobs:
       - name: Build the release Arch package from its local source asset
         run: |
           source_archive="$(find release-assets -maxdepth 1 -name 'gnoblin-*-source.tar.xz' -print -quit)"
+          portal_source="$(find release-assets -maxdepth 1 -name 'xdg-desktop-portal-gnome-*.tar.xz' -print -quit)"
           pkgbuild="$(find release-assets -maxdepth 1 -name 'gnoblin-[0-9]*.PKGBUILD' -print -quit)"
+          portal_pkgbuild="$(find release-assets -maxdepth 1 -name 'gnoblin-portal-*.PKGBUILD' -print -quit)"
           integration_pkgbuild="$(find release-assets -maxdepth 1 -name 'gnoblin-gnome-integration-*.PKGBUILD' -print -quit)"
           test -n "$source_archive"
+          test -n "$portal_source"
           test -n "$pkgbuild"
+          test -n "$portal_pkgbuild"
           test -n "$integration_pkgbuild"
           mkdir -p build
           cp "$source_archive" build/
@@ -237,6 +241,13 @@ jobs:
           useradd -m builder
           chown -R builder:builder build
           runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$GITHUB_WORKSPACE/build"
+          mkdir -p build/portal
+          cp "$portal_source" "$portal_pkgbuild" build/portal/
+          mv build/portal/"$(basename "$portal_pkgbuild")" build/portal/PKGBUILD
+          sed -i -E 's#::https://github.com/kierandrewett/gnoblin/releases/download/[^/]+/[^\"]+##' build/portal/PKGBUILD
+          chown -R builder:builder build/portal
+          runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$GITHUB_WORKSPACE/build/portal"
+          cp build/portal/*.pkg.tar.zst build/
           mkdir -p build/integration
           cp "$integration_pkgbuild" build/integration/PKGBUILD
           chown -R builder:builder build/integration
@@ -245,11 +256,17 @@ jobs:
       - name: Install on a system without stock Shell or Mutter
         run: |
           package="$(find build -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
+          portal_package="$(find build -maxdepth 1 -name 'gnoblin-portal-[0-9]*.pkg.tar.zst' -print -quit)"
           integration_package="$(find build -maxdepth 1 -name 'gnoblin-gnome-integration-*.pkg.tar.zst' -print -quit)"
           test -n "$package"
+          test -n "$portal_package"
           test -n "$integration_package"
           pacman -U --noconfirm "$package"
           pacman -Q gnoblin
+          ! pacman -Q gnoblin-portal >/dev/null 2>&1
+          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          pacman -U --noconfirm "$portal_package"
+          pacman -Q gnoblin-portal
           ! pacman -Q gnoblin-gnome-integration
           test -x /usr/lib/gnoblin/bin/gnoblin-mutter
           test -x /usr/lib/gnoblin/bin/gnoblin
@@ -257,10 +274,10 @@ jobs:
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           grep -q '^Exec=env GNOBLIN_STANDALONE_SESSION=1 ' /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/lib/systemd/user/gnoblin-session.target
-          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          grep -q '^default=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -q '^org.freedesktop.impl.portal.FileChooser=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -qx 'default=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -qx 'org.freedesktop.impl.portal.FileChooser=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           ! pacman -Q xdg-desktop-portal-gtk >/dev/null 2>&1
@@ -281,7 +298,7 @@ jobs:
           pacman -U --noconfirm "$integration_package"
           pacman -Q gnoblin-gnome-integration gvfs gnome-keyring xdg-user-dirs
           pacman -R --noconfirm gnoblin-gnome-integration
-          pacman -R --noconfirm gnoblin
+          pacman -R --noconfirm gnoblin-portal gnoblin
           ! pacman -Q gnoblin
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
@@ -306,21 +323,27 @@ jobs:
         with:
           name: arch-package-${{ needs.source-packages.outputs.release_tag }}
           path: packages
-      - name: Install both packages on a clean Arch system
+      - name: Install the core package and optional portal on a clean Arch system
         run: |
           pacman -Syu --noconfirm
           mapfile -t packages < <(find packages -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -type f)
+          mapfile -t portal_packages < <(find packages -maxdepth 1 -name 'gnoblin-portal-[0-9]*.pkg.tar.zst' -type f)
           mapfile -t integration_packages < <(find packages -maxdepth 1 -name 'gnoblin-gnome-integration-*.pkg.tar.zst' -type f)
           test "${#packages[@]}" -eq 1
+          test "${#portal_packages[@]}" -eq 1
           test "${#integration_packages[@]}" -eq 1
           pacman -U --noconfirm "${packages[0]}"
           pacman -Q gnoblin
+          ! pacman -Q gnoblin-portal >/dev/null 2>&1
+          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test -x /usr/lib/gnoblin/bin/gnoblin-mutter
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -f /usr/share/wayland-sessions/gnoblin.desktop
+          pacman -U --noconfirm "${portal_packages[0]}"
+          pacman -Q gnoblin-portal
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          grep -q '^default=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -q '^org.freedesktop.impl.portal.FileChooser=gnoblin;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -qx 'default=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -qx 'org.freedesktop.impl.portal.FileChooser=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           ! pacman -Q xdg-desktop-portal-gtk >/dev/null 2>&1
@@ -345,7 +368,7 @@ jobs:
           for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon nautilus; do
             ! pacman -Q "$stock_package" >/dev/null 2>&1
           done
-          pacman -R --noconfirm gnoblin-gnome-integration gnoblin
+          pacman -R --noconfirm gnoblin-gnome-integration gnoblin-portal gnoblin
           ! pacman -Q gnoblin >/dev/null 2>&1
           ! pacman -Q gnoblin-gnome-integration >/dev/null 2>&1
 
