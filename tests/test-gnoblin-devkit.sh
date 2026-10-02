@@ -81,103 +81,76 @@ import time
 
 host_pid = int(os.environ["GNOBLIN_DEVKIT_HOST_PID"])
 gnoblinctl = os.environ["GNOBLIN_DEVKIT_CTL"]
-status_script = Path(os.environ["XDG_RUNTIME_DIR"]) / "runtime-status.lua"
 
 def children(pid):
     path = Path(f"/proc/{pid}/task/{pid}/children")
     return [int(child) for child in path.read_text().split()]
+
+def descendants(pid):
+    found = []
+    pending = children(pid)
+    while pending:
+        child = pending.pop()
+        found.append(child)
+        try:
+            pending.extend(children(child))
+        except (FileNotFoundError, ProcessLookupError):
+            pass
+    return found
 
 def arguments(pid):
     return Path(f"/proc/{pid}/cmdline").read_bytes().decode().split("\0")
 
 def worker_and_compositor():
     worker = compositor = None
-    for pid in children(host_pid):
+    direct_children = children(host_pid)
+    for pid in descendants(host_pid):
         args = arguments(pid)
         if "--internal-runtime-worker" in args:
             worker = pid
-        if any(arg.startswith("--gnoblin-runtime-fd=") for arg in args):
+    for pid in direct_children:
+        try:
+            executable = Path(f"/proc/{pid}/exe").resolve().name
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        if executable in {"gnoblin-mutter", "gnome-shell"}:
             compositor = pid
     return worker, compositor
 
-worker_before, compositor_before = worker_and_compositor()
-assert worker_before and compositor_before, (worker_before, compositor_before)
-status_before = subprocess.run(
-    [gnoblinctl, "--timeout", "1", "lua", str(status_script)],
-    check=True,
-    capture_output=True,
-    text=True,
-    timeout=3,
-)
-state, generation_text = next(
-    line.removeprefix("RUNTIME_STATUS:").split(":", 1)
-    for line in status_before.stdout.splitlines()
-    if line.startswith("RUNTIME_STATUS:")
-)
-assert state == "running", status_before.stdout
-generation_before = int(generation_text)
-os.kill(worker_before, signal.SIGKILL)
-
-deadline = time.monotonic() + 20
-generation_during = None
-while time.monotonic() < deadline:
-    worker_after, compositor_after = worker_and_compositor()
-    status_during = subprocess.run(
-        [gnoblinctl, "--timeout", "1", "lua", str(status_script)],
+def config_snapshot():
+    result = subprocess.run(
+        [gnoblinctl, "--timeout", "1", "--json", "config", "show"],
         check=False,
         capture_output=True,
         text=True,
         timeout=3,
     )
-    for line in status_during.stdout.splitlines():
-        if line.startswith("RUNTIME_STATUS:restarting:"):
-            generation_during = int(line.rsplit(":", 1)[1])
-            break
-    if generation_during is not None:
-        break
-    time.sleep(0.01)
-if generation_during is None:
-    raise AssertionError("Lua worker restart state was not observable over the compositor socket")
-assert generation_during == generation_before, (generation_before, generation_during)
-print(f"RUNTIME_STATUS:restarting:generation-{generation_during}")
+    if result.returncode:
+        return None
+    return json.loads(result.stdout)
+
+worker_before, compositor_before = worker_and_compositor()
+assert worker_before and compositor_before, (worker_before, compositor_before)
+assert config_snapshot() is not None, "runtime config was unavailable before recovery"
+os.kill(worker_before, signal.SIGKILL)
 
 deadline = time.monotonic() + 20
 while time.monotonic() < deadline:
     worker_after, compositor_after = worker_and_compositor()
-    if worker_after and worker_after != worker_before:
-        status_after = subprocess.run(
-            [gnoblinctl, "--timeout", "1", "lua", str(status_script)],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=3,
-        )
-        if status_after.returncode == 0 and "RUNTIME_STATUS:running:" in status_after.stdout:
-            recovered_generation = int(
-                next(
-                    line.rsplit(":", 1)[1]
-                    for line in status_after.stdout.splitlines()
-                    if line.startswith("RUNTIME_STATUS:running:")
-                )
-            )
-            assert recovered_generation == generation_before, (
-                generation_before,
-                recovered_generation,
-            )
-            assert compositor_after == compositor_before, (compositor_before, compositor_after)
-            os.kill(compositor_before, 0)
-            response = subprocess.run(
-                [gnoblinctl, "--timeout", "1", "--json", "config", "show"],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=3,
-            )
-            assert response.returncode == 0, response.stderr
-            json.loads(response.stdout)
-            print(f"RUNTIME_STATUS:running:generation-{recovered_generation}")
-            print("WORKER:recovered-with-compositor-alive")
-            break
+    if worker_after and worker_after != worker_before and compositor_after == compositor_before:
+        break
+    time.sleep(0.01)
+else:
+    raise AssertionError("Lua worker did not restart with the compositor alive")
+
+deadline = time.monotonic() + 20
+while time.monotonic() < deadline:
+    worker_after, compositor_after = worker_and_compositor()
+    config = config_snapshot()
+    if worker_after and worker_after != worker_before and compositor_after == compositor_before and config:
+        os.kill(compositor_before, 0)
+        print("WORKER:recovered-with-compositor-alive")
+        break
     time.sleep(0.1)
 else:
     raise AssertionError("Lua worker did not recover with the compositor alive")
@@ -201,11 +174,133 @@ grep -q 'CONFIG:click' <<<"$output"
 grep -q 'WINDOWS:json' <<<"$output"
 grep -q 'WORKSPACE:next' <<<"$output"
 grep -q 'WORKER:recovered-with-compositor-alive' <<<"$output"
-grep -q 'RUNTIME_STATUS:restarting:generation-' <<<"$output"
-grep -q 'RUNTIME_STATUS:running:generation-' <<<"$output"
 grep -q 'restarting Lua runtime worker' "$fixture_root/state/devkit-last.log"
 if ! grep -q 'LUA_API:snapshots' "$fixture_root/state/devkit-last.log"; then
     tail -n 60 "$fixture_root/state/devkit-last.log" >&2
     exit 1
 fi
 printf '%s\n' 'PASS: Lua config and native control API work in the supervised nested runtime'
+
+guardian_fixture="$fixture_root/supervisor-config"
+guardian_marker="$fixture_root/supervisor-autostart.log"
+mkdir -p "$guardian_fixture/gnoblin"
+cat >"$guardian_fixture/gnoblin/init.lua" <<LUA
+gnoblin.configure {
+    autostart = {
+        recovery_marker = {
+            command = {"sh", "-c", "printf x >> '$guardian_marker'"},
+        },
+    },
+}
+LUA
+
+guardian_exec=$(
+    cat <<'SCRIPT'
+set -euo pipefail
+python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import time
+
+host_pid = int(os.environ["GNOBLIN_DEVKIT_HOST_PID"])
+gnoblinctl = os.environ["GNOBLIN_DEVKIT_CTL"]
+marker = Path(os.environ["GNOBLIN_AUTOSTART_MARKER"])
+
+def children(pid):
+    return [int(value) for value in Path(f"/proc/{pid}/task/{pid}/children").read_text().split()]
+
+def descendants(pid):
+    result = []
+    pending = children(pid)
+    while pending:
+        current = pending.pop()
+        result.append(current)
+        try:
+            pending.extend(children(current))
+        except (FileNotFoundError, ProcessLookupError):
+            pass
+    return result
+
+def processes():
+    compositor = supervisor = None
+    direct_children = children(host_pid)
+    for pid in descendants(host_pid):
+        try:
+            args = Path(f"/proc/{pid}/cmdline").read_bytes().decode().split("\0")
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        if "--internal-session-supervisor" in args:
+            supervisor = pid
+    for pid in direct_children:
+        if pid == supervisor:
+            continue
+        try:
+            executable = Path(f"/proc/{pid}/exe").resolve().name
+        except (FileNotFoundError, ProcessLookupError):
+            continue
+        if executable in {"gnoblin-mutter", "gnome-shell"}:
+            compositor = pid
+    return compositor, supervisor
+
+def config_snapshot():
+    result = subprocess.run(
+        [gnoblinctl, "--timeout", "1", "--json", "config", "show"],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=3,
+    )
+    if result.returncode:
+        return None
+    return json.loads(result.stdout)
+
+deadline = time.monotonic() + 15
+while time.monotonic() < deadline and (not marker.exists() or config_snapshot() is None):
+    time.sleep(0.05)
+assert marker.read_text() == "x", marker.read_text()
+compositor_before, supervisor_before = processes()
+config_before = config_snapshot()
+assert compositor_before and supervisor_before and config_before is not None, (
+    compositor_before, supervisor_before, config_before
+)
+os.kill(supervisor_before, signal.SIGKILL)
+
+deadline = time.monotonic() + 30
+while time.monotonic() < deadline:
+    compositor_after, supervisor_after = processes()
+    config_after = config_snapshot()
+    if (
+        supervisor_after
+        and supervisor_after != supervisor_before
+        and compositor_after == compositor_before
+        and config_after == config_before
+    ):
+        assert marker.read_text() == "x", marker.read_text()
+        os.kill(compositor_before, 0)
+        print("SUPERVISOR:recovered-with-compositor-alive")
+        print("AUTOSTART:ran-once-across-supervisor-recovery")
+        break
+    time.sleep(0.1)
+else:
+    raise AssertionError("session supervisor did not recover with the compositor alive")
+PY
+SCRIPT
+)
+
+guardian_output="$(GNOBLIN_STATE_DIR="$fixture_root/guardian-state" \
+    GNOBLIN_PREFIX="$ROOT/install" \
+    GNOBLIN_DEVKIT_CONFIG_SOURCE="$guardian_fixture" \
+    GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
+    GNOBLIN_DEVKIT_CTL="$ROOT/install/bin/gnoblinctl" \
+    GNOBLIN_AUTOSTART_MARKER="$guardian_marker" \
+    GNOBLIN_DEVKIT_EXEC="$guardian_exec" \
+    timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1)" || {
+    printf '%s\n' "$guardian_output" >&2
+    exit 1
+}
+grep -q 'SUPERVISOR:recovered-with-compositor-alive' <<<"$guardian_output"
+grep -q 'AUTOSTART:ran-once-across-supervisor-recovery' <<<"$guardian_output"
+printf '%s\n' 'PASS: session supervisor recovers without restarting Mutter or login autostart'
