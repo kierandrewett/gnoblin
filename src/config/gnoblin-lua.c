@@ -290,6 +290,7 @@ static const char* api_methods[] = {
     "privacy.get",
     "privacy.stop_sharing",
     "privacy.stop_recording",
+    "location.authorize_app",
     "permissions.list",
     "permissions.policy",
     "permissions.check",
@@ -2190,6 +2191,30 @@ static int lua_generic_api_action(lua_State* state) {
         lua_pop(state, 1);
         if (!valid_created_at)
             return luaL_error(state, "grant.revoke created_at must be a nonnegative integer");
+    }
+    if (g_str_equal(method, "location.authorize_app")) {
+        static const char* const fields[] = {"request_id", "allow", "accuracy", NULL};
+        if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
+            !table_fields_allowed(state, 1, fields))
+            return luaL_error(state,
+                              "location.authorize_app requires request_id, allow, and accuracy");
+        lua_getfield(state, 1, "request_id");
+        gboolean valid_request_id = lua_isinteger(state, -1) && lua_tointeger(state, -1) > 0;
+        lua_pop(state, 1);
+        lua_getfield(state, 1, "allow");
+        gboolean valid_allow = lua_isboolean(state, -1);
+        gboolean allowed = valid_allow && lua_toboolean(state, -1);
+        lua_pop(state, 1);
+        lua_getfield(state, 1, "accuracy");
+        lua_Integer accuracy = lua_isinteger(state, -1) ? lua_tointeger(state, -1) : -1;
+        gboolean valid_accuracy = accuracy == 0 || accuracy == 1 || accuracy == 4 ||
+                                  accuracy == 5 || accuracy == 6 || accuracy == 8;
+        lua_pop(state, 1);
+        if (!valid_request_id || !valid_allow || !valid_accuracy || (allowed && accuracy == 0) ||
+            (!allowed && accuracy != 0))
+            return luaL_error(state,
+                              "location.authorize_app needs a positive request_id, boolean allow, "
+                              "and accuracy 0, 1, 4, 5, 6, or 8 (0 when denied)");
     }
 
     GVariant* arguments = NULL;
