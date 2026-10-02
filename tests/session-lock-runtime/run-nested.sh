@@ -63,6 +63,10 @@ DBUS_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$BUILD" "$ROOT")"
 export ROOT BUILD PREFIX RUNTIME DBUS_CONF
 set +e
 dbus-run-session --config-file="$DBUS_CONF" -- bash -euo pipefail -c '
+  devkit_capture_refused_during_lock() {
+    grep -q "Devkit viewer exited; keeping the compositor session alive" "$BUILD/runtime.log" ||
+      grep -q "Screen capture is unavailable while the session is locked" "$BUILD/runtime.log" "$BUILD/dbus.log"
+  }
   cleanup_inner() {
     if [[ -n "${SUPERVISOR_PID:-}" ]]; then
       kill "$SUPERVISOR_PID" 2>/dev/null || true
@@ -90,13 +94,13 @@ dbus-run-session --config-file="$DBUS_CONF" -- bash -euo pipefail -c '
   [[ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]] || { cat "$BUILD/runtime.log" >&2; exit 1; }
   "$BUILD/session-lock-smoke" probe
   if ! "$BUILD/session-lock-smoke" lock-unlock; then
-    if grep -q "Devkit viewer exited; keeping the compositor session alive" "$BUILD/runtime.log"; then
-      echo "SKIP: the nested devkit stops presenting frames when its screen-capture stream is refused during lock"
+    if devkit_capture_refused_during_lock; then
+      echo "SKIP: the nested devkit cannot confirm lock presentation after screen capture is refused"
       exit 77
     fi
     exit 1
   fi
-  if grep -q "Devkit viewer exited; keeping the compositor session alive" "$BUILD/runtime.log"; then
+  if devkit_capture_refused_during_lock; then
     echo "SKIP: the nested devkit cannot present additional lock states after its screen-capture stream is refused"
     exit 77
   fi

@@ -24,11 +24,12 @@ otherwise the runner uses this checkout's `install/` prefix and current
 installation.
 
 The runner exits 77 (and prints `SKIP`) when the manager global is absent or
-when the devkit stops presenting frames after Mutter refuses screen capture
-during a lock. In that case, the isolated setup cannot verify lock takeover;
-run the protocol lifecycle against a fresh session with a real output before
-claiming session-lock runtime coverage. A skipped run is not runtime evidence
-for the skipped lifecycle checks.
+when Mutter refuses the devkit's screen-capture stream during lock presentation.
+The nested viewer cannot prove that a lock frame reached its output in that
+case, so the isolated setup cannot verify lock takeover. Run the protocol
+lifecycle against a fresh session with a real output before claiming
+session-lock runtime coverage. A skipped run is not runtime evidence for the
+skipped lifecycle checks.
 
 Run it after installing a build which advertises the protocol:
 
