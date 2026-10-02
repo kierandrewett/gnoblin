@@ -142,7 +142,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(83):
+                    for _ in range(84):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -225,6 +225,16 @@ def main() -> int:
                                         "revision": 5,
                                     }
                                 ]
+                            elif request["method"] == "animation.surfaces":
+                                result = {
+                                    "surfaces": [
+                                        {
+                                            "id": "42",
+                                            "namespace": "bingux-panel",
+                                            "title": "Panel",
+                                        }
+                                    ]
+                                }
                             elif request["method"] == "animation.list":
                                 result = {
                                     "animations": [
@@ -1385,11 +1395,24 @@ def main() -> int:
         )
         shortcut_capture_result = run(binary, "--socket", socket_path, "lua", str(shortcut_capture_file))
         assert shortcut_capture_result.returncode == 0, shortcut_capture_result.stderr
+        animation_surfaces_file = Path(temporary) / "animation-surfaces.lua"
+        animation_surfaces_file.write_text(
+            "local snapshot = gnoblin.animations.surfaces()\n"
+            "local surface = snapshot.surfaces[1]\n"
+            'assert(surface.id == "42" and surface.namespace == "bingux-panel" and surface.title == "Panel")\n'
+            'assert(not pcall(function() surface.namespace = "changed" end))\n'
+            'assert(not pcall(function() rawset(surface, "namespace", "changed") end))\n'
+            "assert(not pcall(function() rawset(snapshot.surfaces, 1, {}) end))\n"
+            "assert(not pcall(function() gnoblin.animations.surfaces(true) end))\n",
+            encoding="utf-8",
+        )
+        animation_surfaces_result = run(binary, "--socket", socket_path, "lua", str(animation_surfaces_file))
+        assert animation_surfaces_result.returncode == 0, animation_surfaces_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 83
-        assert len(subscriptions) == 83
+        assert len(received) == 84
+        assert len(subscriptions) == 84
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1664,6 +1687,10 @@ def main() -> int:
         assert all(call["api_version"] == {"major": 1, "minor": 8} for call in capture_calls)
         assert capture_calls[0]["arguments"] == {}
         assert capture_calls[1]["arguments"] == {"timeout": 10}
+        surfaces_calls = [call for call in received if call["method"] == "animation.surfaces"]
+        assert len(surfaces_calls) == 1
+        assert surfaces_calls[0]["api_version"] == {"major": 1, "minor": 18}
+        assert surfaces_calls[0]["arguments"] == {}
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
