@@ -42,6 +42,7 @@ jobs:
     steps:
       - name: Install checkout and RPM tools
         run: |
+          sed -i 's#http://#https://#g' /etc/zypp/repos.d/*.repo
           zypper --non-interactive refresh
           zypper --non-interactive install git patch rpm-build tar xz python3
       - uses: actions/checkout@v4
@@ -114,6 +115,7 @@ jobs:
     steps:
       - name: Install verification tools
         run: |
+          sed -i 's#http://#https://#g' /etc/zypp/repos.d/*.repo
           zypper --non-interactive refresh
           zypper --non-interactive install python3 rpm
       - uses: actions/checkout@v4
