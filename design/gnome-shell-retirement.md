@@ -16,6 +16,11 @@ that installing Gnoblin does not replace a user's GNOME packages. The old
 Shell files removed by `scripts/install-session.sh` are upgrade cleanup for a
 private prefix and should remain until that cleanup is no longer needed.
 
+The unbuilt `src/gnome-shell-overlay/shell-gnoblin-shader.{c,h}` helper has
+been removed. It was only included by retired Shell shader patches. Shader
+file watching now belongs to Gnoblin's native control service, and Mutter
+compiles the effect; the old patch references remain historical artifacts.
+
 ## Audited groups
 
 | Patch group                                                                                                                                                                                                                                                                              | Current disposition                                                                                                                                                                                                                                                                                                      |
