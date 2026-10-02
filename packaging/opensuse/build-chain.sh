@@ -12,6 +12,9 @@ PREPARED_SOURCES="${2:-}"
 
 mkdir -p "$SOURCES" "$BUILDROOT"
 
+# The source archiver needs the host tools from the first build stage too.
+"$ROOT/packaging/opensuse/check-buildrequires.sh" mutter --install
+
 if [[ -n "$PREPARED_SOURCES" ]]; then
     gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
     gnoblin_source="$PREPARED_SOURCES/gnoblin-$gnoblin_version-source.tar.xz"
@@ -53,7 +56,6 @@ install_output() {
     done
 }
 
-"$ROOT/packaging/opensuse/check-buildrequires.sh" mutter --install
 build mutter.spec
 mapfile -t mutter_rpms < <(find "$TOPDIR/RPMS" -type f \( -name 'gnoblin-mutter-[0-9]*.rpm' -o -name 'gnoblin-mutter-devel-[0-9]*.rpm' \) | sort)
 ((${#mutter_rpms[@]} == 2))

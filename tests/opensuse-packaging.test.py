@@ -70,7 +70,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         self.assertLess(chain.index("build gnoblin-portal.spec"), chain.index("build gnoblin.spec"))
         self.assertLess(
             chain.index('check-buildrequires.sh" mutter --install'),
-            chain.index("build mutter.spec"),
+            chain.index('if [[ -n "$PREPARED_SOURCES" ]]'),
         )
         self.assertLess(
             chain.index('check-buildrequires.sh" gnoblin-portal --install'),

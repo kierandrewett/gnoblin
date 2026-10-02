@@ -7,8 +7,9 @@ and the distinct Gnoblin polkit action. The recipes do not replace, conflict
 with, obsolete, or provide stock GNOME packages.
 
 `check-buildrequires.sh` runs `rpmspec` for one package and asks Zypper to
-resolve only that package's host dependencies. `build-chain.sh` checks each
-stage when it is ready, so the session package is not resolved before the
+resolve only that package's host dependencies. `build-chain.sh` installs the
+Mutter host requirements before preparing source archives, then checks each
+later stage when it is ready. The session package is not resolved before the
 private Mutter development RPM has been built and installed:
 
 1. `gnoblin-mutter` and `gnoblin-mutter-devel`

@@ -220,8 +220,14 @@ class IsolationTests(unittest.TestCase):
             self.assertNotRegex(expanded, r"(?m)^Provides:\s+lib(?:mutter|shell-|st-)")
             self.assertNotIn("-Degl_device", expanded)
             if project == "gnoblin":
-                self.assertIn("Provides:       gnoblin-session = 0.1.7", expanded)
-                self.assertIn("Obsoletes:      gnoblin-session <= 0.1.7-21", expanded)
+                version = subprocess.check_output(
+                    [str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True
+                ).strip()
+                self.assertIn(f"Provides:       gnoblin-session = {version}", expanded)
+                release = next(
+                    line.split(":", 1)[1].strip() for line in expanded.splitlines() if line.startswith("Release:")
+                )
+                self.assertIn(f"Obsoletes:      gnoblin-session <= {version}-{release}", expanded)
                 self.assertNotIn("Requires:       gnoblin-session", expanded)
                 self.assertNotIn("Requires:       gnoblin-shell", expanded)
                 self.assertNotIn("Requires:       gjs", expanded)
