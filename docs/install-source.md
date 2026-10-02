@@ -41,8 +41,8 @@ Gnoblin builds without the gnome-desktop development package.
 
 The default build works with any portal frontend and backend installed on your
 system. Applications continue to call the standard portal frontend. You can
-choose an installed backend for Gnoblin; see
-[Choose a different portal backend](/gnome-apps#choose-a-different-portal-backend).
+choose an installed backend for Gnoblin with
+[`gnoblin.configure.portals`](/config/configure/portals).
 
 Gnoblin's optional backend uses GTK4 and libadwaita for its dialogs and capture
 features. It uses Glycin for wallpaper previews. Build it with
