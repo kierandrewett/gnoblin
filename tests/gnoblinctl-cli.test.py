@@ -139,7 +139,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(32):
+                    for _ in range(40):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -282,6 +282,14 @@ def main() -> int:
                                 result = {"id": "42"}
                             elif request["method"] == "window.minimize":
                                 result = {"request_id": 24, "method": "window.minimize"}
+                            elif request["method"] == "workspace.switch":
+                                result = {"request_id": 25, "method": "workspace.switch"}
+                            elif request["method"] == "workspace.rename":
+                                result = {"request_id": 26, "method": "workspace.rename"}
+                            elif request["method"] == "workspace.move_window":
+                                result = {"request_id": 27, "method": "workspace.move_window"}
+                            elif request["method"] == "workspace.remove":
+                                result = {"request_id": 28, "method": "workspace.remove"}
                             else:
                                 result = {
                                     "request_id": 17,
@@ -298,6 +306,10 @@ def main() -> int:
                                 "window.thumbnail",
                                 "input.select",
                                 "window.minimize",
+                                "workspace.switch",
+                                "workspace.rename",
+                                "workspace.move_window",
+                                "workspace.remove",
                             }:
                                 operation_id = result["request_id"]
                                 method = result["method"]
@@ -316,6 +328,14 @@ def main() -> int:
                                     value = {"type": "xkb", "id": "us"}
                                 elif method == "window.minimize":
                                     value = {"id": "42"}
+                                elif method == "workspace.switch":
+                                    value = {"id": "codex-probe", "active": True}
+                                elif method == "workspace.rename":
+                                    value = {"id": "codex-probe", "name": "Renamed"}
+                                elif method == "workspace.move_window":
+                                    value = {"workspace": "codex-probe", "window": "42"}
+                                elif method == "workspace.remove":
+                                    value = {"id": "codex-probe"}
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
@@ -627,6 +647,18 @@ def main() -> int:
             'assert(window:minimize().id == "42")\n'
             "local focus_ok, focus_error = pcall(function() window:focus() end)\n"
             'assert(not focus_ok and focus_error:match("FocusContext"))\n'
+            "local workspaces = gnoblin.workspaces.list()\n"
+            'assert(#workspaces == 1 and workspaces[1].id == "codex-probe")\n'
+            "local workspace = workspaces[1]\n"
+            'assert(workspace.name == "Codex Probe")\n'
+            'assert(not pcall(function() workspace.name = "changed" end))\n'
+            'assert(gnoblin.workspaces.active().id == "codex-probe")\n'
+            'assert(gnoblin.workspaces.by_id("codex-probe").number == 1)\n'
+            'assert(gnoblin.workspaces.by_id("missing") == nil)\n'
+            "assert(workspace:activate().active)\n"
+            'assert(workspace:rename("Renamed").name == "Renamed")\n'
+            'assert(workspace:move_here(window, {follow = true}).window == "42")\n'
+            'assert(workspace:remove().id == "codex-probe")\n'
         )
         lua_api = run(binary, "--socket", socket_path, "lua", str(lua_file))
         assert lua_api.returncode == 0, lua_api.stderr
@@ -645,8 +677,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 32
-        assert len(subscriptions) == 32
+        assert len(received) == 40
+        assert len(subscriptions) == 40
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -767,7 +799,28 @@ def main() -> int:
         assert received[30]["method"] == "window.minimize"
         assert received[30]["api_version"] == {"major": 1, "minor": 64}
         assert received[30]["arguments"] == {"id": "42"}
-        unminimize_request = received[31]
+        assert received[31]["method"] == "workspaces.list"
+        assert received[31]["arguments"] == {}
+        assert received[32]["method"] == "workspaces.list"
+        assert received[32]["arguments"] == {}
+        assert received[33]["method"] == "workspaces.list"
+        assert received[33]["arguments"] == {}
+        assert received[34]["method"] == "workspaces.list"
+        assert received[34]["arguments"] == {}
+        assert received[35]["method"] == "workspace.switch"
+        assert received[35]["api_version"] == {"major": 1, "minor": 64}
+        assert received[35]["arguments"] == {"id": "codex-probe"}
+        assert received[36]["method"] == "workspace.rename"
+        assert received[36]["arguments"] == {"id": "codex-probe", "name": "Renamed"}
+        assert received[37]["method"] == "workspace.move_window"
+        assert received[37]["arguments"] == {
+            "window": "42",
+            "workspace": {"id": "codex-probe"},
+            "follow": True,
+        }
+        assert received[38]["method"] == "workspace.remove"
+        assert received[38]["arguments"] == {"id": "codex-probe"}
+        unminimize_request = received[39]
         assert unminimize_request["method"] == "window.unminimize"
         assert unminimize_request["arguments"] == {"id": "42"}
 
