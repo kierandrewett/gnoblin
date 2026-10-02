@@ -876,9 +876,12 @@ gnoblin.shortcuts.bind {
 
 Mutter window-menu requests are exposed as `gnoblin.window.menu-requested` with
 `window_id`, `menu_type` (`wm` or `app`), and global logical `x`/`y`. Mutter OSD
-requests are exposed as `gnoblin.osd.requested` with stable `monitor_id` and the
-optional `icon` and `label` Mutter supplied. The request contains no level,
-maximum, or output list. These API 1.27 events let the shell own all UI.
+requests are exposed as `gnoblin.osd.requested` with stable `monitor_id`, the
+active physical connector names in `output_names`, and the optional `icon` and
+`label` Mutter supplied. `output_names` is sorted and unique so shells can route
+surfaces across cloned displays. Older API 1.27 builds may omit this field. The
+request contains no level or maximum. These API 1.27 events let the shell own
+all UI.
 
 API 1.30 adds a non-serializable `MenuContext` userdata to Lua WM-menu event
 callbacks. `event.menu_context:begin_move()` and

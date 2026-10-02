@@ -29,6 +29,8 @@
 
 #include "backends/meta-backend-private.h"
 #include "backends/meta-keymap-description-private.h"
+#include "backends/meta-monitor-private.h"
+#include "backends/meta-output.h"
 #include "clutter/clutter.h"
 #include "compositor/meta-window-actor-private.h"
 #include "compositor/meta-window-actor-x11.h"
@@ -49,6 +51,8 @@
 #include "meta/meta-backend.h"
 #include "meta/meta-cursor-tracker.h"
 #include "meta/meta-context.h"
+#include "meta/meta-logical-monitor.h"
+#include "meta/meta-monitor.h"
 #include "meta/meta-wayland-compositor.h"
 #include "meta/meta-monitor-manager.h"
 #include "meta/meta-orientation-manager.h"
@@ -10231,6 +10235,59 @@ static char* native_monitor_id_for_index(JsonNode* snapshot, int monitor_index) 
     return g_strdup(matched_id);
 }
 
+static gint native_output_name_compare(gconstpointer left, gconstpointer right) {
+    return g_strcmp0(*(const char* const*)left, *(const char* const*)right);
+}
+
+static GVariant* native_monitor_output_names_for_index(GnoblinNativeControl* control,
+                                                       int monitor_index) {
+    if (!control->monitor_manager || monitor_index < 0)
+        return NULL;
+
+    MetaLogicalMonitor* logical_monitor = NULL;
+    GList* logical_monitors = meta_monitor_manager_get_logical_monitors(control->monitor_manager);
+    for (GList* item = logical_monitors; item; item = item->next) {
+        MetaLogicalMonitor* candidate = item->data;
+        if (meta_logical_monitor_get_number(candidate) == monitor_index) {
+            logical_monitor = candidate;
+            break;
+        }
+    }
+    if (!logical_monitor)
+        return NULL;
+
+    GPtrArray* names = g_ptr_array_new_with_free_func(g_free);
+    GList* monitors = meta_logical_monitor_get_monitors(logical_monitor);
+    for (GList* monitor_item = monitors; monitor_item; monitor_item = monitor_item->next) {
+        MetaMonitor* monitor = monitor_item->data;
+        if (!meta_monitor_is_active(monitor))
+            continue;
+        GList* outputs = meta_monitor_get_outputs(monitor);
+        for (GList* output_item = outputs; output_item; output_item = output_item->next) {
+            const char* name = meta_output_get_name(output_item->data);
+            if (name && *name)
+                g_ptr_array_add(names, g_strdup(name));
+        }
+    }
+    if (names->len == 0) {
+        g_ptr_array_unref(names);
+        return NULL;
+    }
+
+    g_ptr_array_sort(names, native_output_name_compare);
+    GVariantBuilder output_names;
+    g_variant_builder_init(&output_names, G_VARIANT_TYPE_STRING_ARRAY);
+    const char* previous = NULL;
+    for (guint i = 0; i < names->len; i++) {
+        const char* name = g_ptr_array_index(names, i);
+        if (!previous || !g_str_equal(previous, name))
+            g_variant_builder_add(&output_names, "s", name);
+        previous = name;
+    }
+    g_ptr_array_unref(names);
+    return g_variant_ref_sink(g_variant_builder_end(&output_names));
+}
+
 static void native_show_osd_requested(MetaDisplay* display, gint monitor_index,
                                       const gchar* icon_name, const gchar* message,
                                       gpointer user_data) {
@@ -10240,7 +10297,9 @@ static void native_show_osd_requested(MetaDisplay* display, gint monitor_index,
     g_autoptr(GError) snapshot_error = NULL;
     g_autoptr(JsonNode) monitor_snapshot = monitor_snapshot_json(control, FALSE, &snapshot_error);
     g_autofree char* monitor_id = native_monitor_id_for_index(monitor_snapshot, monitor_index);
-    if (!monitor_id) {
+    g_autoptr(GVariant) output_names =
+        native_monitor_output_names_for_index(control, monitor_index);
+    if (!monitor_id || !output_names) {
         g_debug("gnoblin-native-control: ignoring OSD request for stale or unmapped monitor index "
                 "%d%s%s",
                 monitor_index, snapshot_error ? ": " : "",
@@ -10250,6 +10309,7 @@ static void native_show_osd_requested(MetaDisplay* display, gint monitor_index,
     GVariantBuilder fields;
     g_variant_builder_init(&fields, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&fields, "{sv}", "monitor_id", g_variant_new_string(monitor_id));
+    g_variant_builder_add(&fields, "{sv}", "output_names", output_names);
     if (icon_name)
         g_variant_builder_add(&fields, "{sv}", "icon", g_variant_new_string(icon_name));
     if (message)
