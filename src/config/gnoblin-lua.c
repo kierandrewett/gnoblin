@@ -173,7 +173,7 @@ static int lua_snap_context_commit(lua_State* state);
 static int lua_windows_snap_context(lua_State* state);
 static int lua_permissions_check(lua_State* state);
 static int lua_launches_begin(lua_State* state);
-static int lua_launches_end(lua_State* state);
+static int lua_launches_finish(lua_State* state);
 static int lua_portal_grants(lua_State* state);
 static guint64 allocate_operation_id(void);
 static GVariant* focus_policy_snapshot(GVariant* document, guint64 revision);
@@ -4491,11 +4491,11 @@ static int lua_launches_begin(lua_State* state) {
     return call_launch_operation(state, "launch.begin", arguments);
 }
 
-static int lua_launches_end(lua_State* state) {
+static int lua_launches_finish(lua_State* state) {
     if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING || !*lua_tostring(state, 1) ||
         g_utf8_strlen(lua_tostring(state, 1), -1) > 128)
         return luaL_error(
-            state, "gnoblin.launches.end requires a non-empty token of at most 128 characters");
+            state, "gnoblin.launches.finish requires a non-empty token of at most 128 characters");
     lua_newtable(state);
     lua_pushvalue(state, 1);
     lua_setfield(state, -2, "token");
@@ -4936,7 +4936,10 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushcclosure(state, lua_launches_begin, 1);
     lua_setfield(state, -2, "begin");
     lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_launches_end, 1);
+    lua_pushcclosure(state, lua_launches_finish, 1);
+    lua_setfield(state, -2, "finish");
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_launches_finish, 1);
     lua_setfield(state, -2, "end");
     lua_setfield(state, -2, "launches");
     lua_newtable(state);

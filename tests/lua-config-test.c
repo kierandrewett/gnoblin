@@ -472,6 +472,8 @@ int main(void) {
         "assert(type(g.workspaces.previous)=='function')\n"
         "assert(type(g.workspaces.move_active)=='function')\n"
         "assert(type(g.workspaces.move_window)=='function')\n"
+        "assert(type(g.launches.finish)=='function')\n"
+        "assert(type(g.launches['end'])=='function')\n"
         "g.animation {name='test-open', event='open', duration=240}\n"
         "g.animation {name='test-layer-open', event='layer-open', duration=230}\n"
         "g.animation {name='test-layer-close', event='layer-close', duration=240}\n"
