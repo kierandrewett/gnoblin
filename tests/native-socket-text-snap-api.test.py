@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Guard connection ownership for native text and keyboard-snap methods."""
+"""Guard native compositor socket API contracts."""
 
 from pathlib import Path
 import re
@@ -26,6 +26,34 @@ def api_minor(header: str) -> int:
 
 
 class NativeSocketTextSnapTests(unittest.TestCase):
+    def test_cmake_api_minor_is_derived_from_control_header(self):
+        cmake = (ROOT / "CMakeLists.txt").read_text()
+        self.assertIn('REGEX "^#define GNOBLIN_NATIVE_CONTROL_API_MINOR [0-9]+$"', cmake)
+        self.assertIn('GNOBLIN_NATIVE_CONTROL_API_MINOR "${GNOBLIN_NATIVE_CONTROL_API_MINOR_LINE}"', cmake)
+
+    def test_orientation_lock_read_write_and_event_use_api_166(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        methods = function_body(
+            source,
+            "static gboolean client_connected(",
+            "GVariant* gnoblin_native_control_receive_runtime_config(",
+        )
+        operation = function_body(
+            source,
+            "static gboolean native_runtime_handle_operation(",
+            "static gboolean native_runtime_fd_ready(",
+        )
+        self.assertGreaterEqual(api_minor(header), 66)
+        self.assertIn('"input.orientation_lock"', methods)
+        self.assertIn('"input.set_orientation_lock"', methods)
+        self.assertIn("client->api_minor < 66", source)
+        self.assertIn('"gnoblin.input.orientation-lock-changed"', source)
+        self.assertIn("native_set_orientation_lock(control, arguments, &operation_error)", operation)
+        self.assertIn('"runtime"', source)
+        self.assertIn('"config"', source)
+        self.assertIn('"system"', source)
+
     def test_handshake_advertises_current_runtime_methods(self):
         source = CONTROL.read_text()
         connected = function_body(
@@ -115,7 +143,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 38)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertIn('"gnoblin.appearance.color-scheme-changed"', events)
         self.assertIn("client->api_minor < 34", subscription)
         self.assertIn('"org.gnome.desktop.interface"', startup)
@@ -293,7 +321,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 38)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertIn("menu == META_WINDOW_MENU_WM", menu_emit)
         self.assertIn("client->event_api_minor >= 30", socket_issue)
         self.assertNotIn("client->api_minor >= 30", socket_issue)
@@ -479,7 +507,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 59)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', workspace_list)
         self.assertIn("if (!client->control->supervised_runtime)", workspace_list)
         self.assertNotIn("meta_gnoblin_dispatch_native_api", workspace_list)
@@ -752,7 +780,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 60)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertIn(
             "mutter gnoblin-native-control.c src/core/gnoblin-native-control.c",
             overlay_manifest,
@@ -817,7 +845,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 61)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertIn('gboolean resize_action = g_str_equal(action, "resize")', handler)
         self.assertIn("client->api_minor >= 61", handler)
         self.assertIn('lua_method = "window.resize"', handler)
@@ -845,7 +873,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 62)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertIn('gboolean move_action = g_str_equal(action, "move")', handler)
         self.assertIn("client->api_minor >= 62", handler)
         self.assertIn('lua_method = "window.move"', handler)
@@ -867,7 +895,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 63)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertIn('gboolean workspace_action = g_str_equal(action, "workspace")', handler)
         self.assertIn('gboolean monitor_action = g_str_equal(action, "monitor")', handler)
         self.assertIn("client->api_minor < 63", handler)
@@ -901,8 +929,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean native_runtime_flush_state_snapshots(",
         )
 
-        self.assertEqual(api_minor(header), 64)
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=64", cmake)
+        self.assertGreaterEqual(api_minor(header), 64)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertIn('"shortcut.session.end"', methods)
         self.assertIn("client->api_minor < 64", dispatcher)
         self.assertIn("dynamic_shortcut_request_end_session(client, id, arguments)", socket_method)
@@ -974,7 +1002,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(method, "input.current_source") && lua_isnil(state, -1)', lua_source)
         self.assertIn("gnoblin_config_update_input_device_snapshot", lua_source)
         self.assertIn("gnoblin_config_update_input_source_snapshot", lua_source)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertGreaterEqual(api_minor(header), 46)
 
     def test_privacy_state_always_uses_lua(self):
@@ -1006,7 +1034,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(method, "privacy.state")', lua_read)
         self.assertIn('lua_getfield(state, -1, "state")', lua_read)
         self.assertGreaterEqual(api_minor(header), 47)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
 
     def test_restore_or_minimize_always_uses_lua_operation(self):
         source = CONTROL.read_text()
@@ -1062,7 +1090,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("drag->original_frame = drag->frame", drag_begin)
         self.assertIn("*original_frame = drag->original_frame", drag_snap)
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
 
     def test_session_lock_uses_lua_for_api_149_and_keeps_legacy_route(self):
         source = CONTROL.read_text()
@@ -1087,7 +1115,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(method, "session.lock")', operation_dispatch)
         self.assertIn("gnoblin_native_control_request_session_lock", operation_dispatch)
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
 
     def test_launch_mutations_use_lua_for_api_150_and_keep_legacy_route(self):
         source = CONTROL.read_text()
@@ -1115,7 +1143,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_has_prefix(method, "launch.")', operation)
         self.assertIn("gnoblin_native_control_dispatch_launch", operation)
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
 
     def test_launch_status_always_uses_lua_and_keeps_event_tracking(self):
         source = CONTROL.read_text()
@@ -1140,7 +1168,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 59)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertIn('g_str_equal(method, "launch.status")', status_read)
         self.assertNotIn("client->api_minor", status_read)
         self.assertLess(
@@ -1165,7 +1193,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 59)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertNotIn("client->api_minor >= 55", shortcut_list)
         self.assertIn("client->control->supervised_runtime", shortcut_list)
         self.assertIn('queue_runtime_api_request(client, id, "shortcuts.list", read_arguments, "read")', shortcut_list)
@@ -1183,7 +1211,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 59)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertNotIn("client->api_minor >= 56", shortcut_actions)
         self.assertIn("client->control->supervised_runtime", shortcut_actions)
         self.assertIn('queue_runtime_api_request(client, id, "shortcuts.actions", read_arguments,', shortcut_actions)
@@ -1207,7 +1235,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 59)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertNotIn("client->api_minor >= 57", layer_list)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', layer_list)
         self.assertIn('"layer.list"', read_api)
@@ -1232,7 +1260,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 59)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertNotIn("client->api_minor >= 58", monitor_list)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', monitor_list)
         self.assertIn('g_str_equal(method, "monitor.list")', read_api)
@@ -1257,7 +1285,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
         self.assertGreaterEqual(api_minor(header), 59)
-        self.assertIn(f"GNOBLIN_NATIVE_CONTROL_API_MINOR={api_minor(header)}", cmake)
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
         self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', window_match)
         self.assertNotIn("meta_gnoblin_dispatch_native_api", window_match)
         self.assertIn('g_str_equal(method, "window.match")', read_api)
