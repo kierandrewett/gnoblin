@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(65):
+                    for _ in range(66):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -346,6 +346,18 @@ def main() -> int:
                                         "geometry": {"x": 8, "y": 12, "width": 640, "height": 480},
                                     }
                                 ]
+                            elif request["method"] == "layer.animation_policy":
+                                result = {
+                                    "namespace": "bingux-panel",
+                                    "enter": {
+                                        "animation": "fade",
+                                        "duration": 240,
+                                        "easing": {"type": "cubic-bezier", "x1": 0.2, "y1": 0.0, "x2": 0.0, "y2": 1.0},
+                                    },
+                                    "exit": {"animation": "slide"},
+                                    "window_shadow": {"opacity": 0.4},
+                                    "revision": 19,
+                                }
                             elif request["method"] == "permissions.list":
                                 result = {
                                     "policy": {"default": "deny", "rules": []},
@@ -1079,11 +1091,29 @@ def main() -> int:
         )
         focus_history = run(binary, "--socket", socket_path, "lua", str(focus_history_file))
         assert focus_history.returncode == 0, focus_history.stderr
+        layer_policy_file = Path(temporary) / "layer-animation-policy.lua"
+        layer_policy_file.write_text(
+            'local policy = gnoblin.layers.animation_policy("bingux-panel")\n'
+            'assert(tostring(policy) == "LayerAnimationPolicy<bingux-panel>")\n'
+            'assert(policy.namespace == "bingux-panel" and policy.revision == 19)\n'
+            'assert(policy.enter.animation == "fade" and policy.enter.duration == 240)\n'
+            'assert(policy.enter.easing.type == "cubic-bezier" and policy.enter.easing.x2 == 0)\n'
+            'assert(policy.exit.animation == "slide" and policy.window_shadow.opacity == 0.4)\n'
+            'assert(not pcall(function() policy.enter.animation = "slide" end))\n'
+            'assert(not pcall(function() rawset(policy.enter.easing, "x1", 0) end))\n'
+            "assert(not pcall(function() policy.window_shadow.opacity = 0 end))\n"
+            "assert(not pcall(function() gnoblin.layers.animation_policy() end))\n"
+            "assert(not pcall(function() gnoblin.layers.animation_policy(2) end))\n"
+            'assert(not pcall(function() gnoblin.layers.animation_policy(string.rep("x", 129)) end))\n',
+            encoding="utf-8",
+        )
+        layer_policy = run(binary, "--socket", socket_path, "lua", str(layer_policy_file))
+        assert layer_policy.returncode == 0, layer_policy.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 65
-        assert len(subscriptions) == 65
+        assert len(received) == 66
+        assert len(subscriptions) == 66
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1180,6 +1210,9 @@ def main() -> int:
         assert received[64]["method"] == "focus.history"
         assert received[64]["api_version"] == {"major": 1, "minor": 19}
         assert received[64]["arguments"] == {"limit": 1}
+        assert received[65]["method"] == "layer.animation_policy"
+        assert received[65]["api_version"] == {"major": 1, "minor": 31}
+        assert received[65]["arguments"] == {"namespace": "bingux-panel"}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {

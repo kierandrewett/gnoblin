@@ -332,6 +332,7 @@ static guint api_minor_for_method(const char* method) {
         {"focus.history", 19},
         {"focus.policy", 19},
         {"settings", 19},
+        {"layer.animation_policy", 31},
         {"privacy.state", 47},
         {"permissions.policy", 44},
         {"grant.list", 14},
@@ -399,6 +400,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "workspaces.list") || g_str_equal(method_name, "monitors.list") ||
         g_str_equal(method_name, "layers.list") || g_str_equal(method_name, "focus.history") ||
         g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings") ||
+        g_str_equal(method_name, "layer.animation_policy") ||
         g_str_equal(method_name, "runtime.reload_config") ||
         g_str_has_prefix(method_name, "window.") || g_str_has_prefix(method_name, "workspace.") ||
         g_str_has_prefix(method_name, "animation.")) {
@@ -1599,6 +1601,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE "gnoblinctl.ShortcutAction"
 #define GNOBLINCTL_FOCUS_POLICY_RECORD_METATABLE "gnoblinctl.FocusPolicy"
 #define GNOBLINCTL_SETTINGS_RECORD_METATABLE "gnoblinctl.Settings"
+#define GNOBLINCTL_LAYER_ANIMATION_POLICY_RECORD_METATABLE "gnoblinctl.LayerAnimationPolicy"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
@@ -1608,6 +1611,7 @@ static int lua_cli_shortcuts_list(lua_State* state);
 static int lua_cli_shortcuts_actions(lua_State* state);
 static int lua_cli_focus_policy_property(lua_State* state);
 static int lua_cli_settings_property(lua_State* state);
+static int lua_cli_layer_animation_policy(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2502,6 +2506,94 @@ static int lua_cli_settings_property(lua_State* state) {
     return 1;
 }
 
+static gboolean lua_cli_layer_animation_policy_valid(JsonObject* object,
+                                                     const char* requested_namespace) {
+    if (!g_str_equal(member_string(object, "namespace", ""), requested_namespace))
+        return FALSE;
+    JsonNode* window_shadow = json_object_get_member(object, "window_shadow");
+    JsonNode* revision = json_object_get_member(object, "revision");
+    if (!window_shadow || !revision || !JSON_NODE_HOLDS_VALUE(revision) ||
+        (json_node_get_value_type(revision) != G_TYPE_INT64 &&
+         json_node_get_value_type(revision) != G_TYPE_INT) ||
+        json_node_get_int(revision) < 0)
+        return FALSE;
+
+    static const char* const phase_names[] = {"enter", "exit"};
+    for (guint i = 0; i < G_N_ELEMENTS(phase_names); i++) {
+        JsonObject* phase = member_object(object, phase_names[i]);
+        if (!phase || !*member_string(phase, "animation", ""))
+            return FALSE;
+        JsonNode* duration = json_object_get_member(phase, "duration");
+        if (duration && (!JSON_NODE_HOLDS_VALUE(duration) ||
+                         (json_node_get_value_type(duration) != G_TYPE_INT64 &&
+                          json_node_get_value_type(duration) != G_TYPE_INT)))
+            return FALSE;
+        JsonNode* easing = json_object_get_member(phase, "easing");
+        if (easing && !JSON_NODE_HOLDS_VALUE(easing) && !JSON_NODE_HOLDS_OBJECT(easing))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static int lua_cli_layer_animation_policy_tostring(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "namespace");
+    const char* namespace = lua_tostring(state, -1);
+    lua_pushfstring(state, "LayerAnimationPolicy<%s>", namespace ? namespace : "unknown");
+    return 1;
+}
+
+static void register_lua_cli_layer_animation_policy_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_LAYER_ANIMATION_POLICY_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_readonly_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_layer_animation_policy_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static int lua_cli_layer_animation_policy(lua_State* state) {
+    if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING)
+        return luaL_error(state, "gnoblin.layers.animation_policy requires one namespace string");
+    const char* namespace = lua_tostring(state, 1);
+    gsize length = strlen(namespace);
+    if (length == 0 || length > 128 || !g_utf8_validate(namespace, length, NULL))
+        return luaL_error(state, "layer namespace must be 1 to 128 bytes of UTF-8");
+
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    json_object_set_string_member(arguments, "namespace", namespace);
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "layer.animation_policy", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.layers.animation_policy failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result) ||
+        !lua_cli_layer_animation_policy_valid(json_node_get_object(result), namespace))
+        return luaL_error(state, "gnoblin.layers.animation_policy returned an invalid snapshot");
+
+    json_to_lua(state, result);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 1);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    luaL_getmetatable(state, GNOBLINCTL_LAYER_ANIMATION_POLICY_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+    return 1;
+}
+
 static int lua_cli_focus_policy_property(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     JsonObject* arguments = json_object_new();
@@ -3252,9 +3344,11 @@ static int lua_api_index(lua_State* state) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         if (g_str_equal(name, "list"))
             lua_pushcclosure(state, lua_cli_layers_list, 1);
+        else if (g_str_equal(name, "animation_policy"))
+            lua_pushcclosure(state, lua_cli_layer_animation_policy, 1);
         else
             lua_pop(state, 1);
-        if (g_str_equal(name, "list"))
+        if (g_str_equal(name, "list") || g_str_equal(name, "animation_policy"))
             return 1;
     }
     if (g_str_equal(prefix, "animations") && g_str_equal(name, "preview")) {
@@ -3459,6 +3553,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE);
     register_lua_cli_focus_policy_record(state);
     register_lua_cli_settings_record(state);
+    register_lua_cli_layer_animation_policy_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");
