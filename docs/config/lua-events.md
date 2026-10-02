@@ -63,7 +63,7 @@ events or the `*` listener.
 
 Gnoblin also exposes the Wayland pointer-window transition as
 `mutter.wayland.pointer-window-changed`, with `app_id`, `wm_class`, and
-`title`. The older `pointer_window_changed` name remains available.
+`title`.
 
 Touchpad swipe, pinch, and hold input is available as
 `mutter.touchpad.gesture`. Mutter sends each phase through Gnoblin's native
