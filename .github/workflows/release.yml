@@ -275,9 +275,7 @@ jobs:
           grep -q '^Exec=env GNOBLIN_STANDALONE_SESSION=1 ' /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/lib/systemd/user/gnoblin-session.target
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -qx 'default=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -qx 'org.freedesktop.impl.portal.FileChooser=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           ! pacman -Q xdg-desktop-portal-gtk >/dev/null 2>&1
@@ -342,8 +340,6 @@ jobs:
           pacman -U --noconfirm "${portal_packages[0]}"
           pacman -Q gnoblin-portal
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          grep -qx 'default=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -qx 'org.freedesktop.impl.portal.FileChooser=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           ! pacman -Q xdg-desktop-portal-gtk >/dev/null 2>&1

@@ -6,10 +6,9 @@ interface in a Gnoblin session.
 ```lua
 gnoblin.configure {
     portals = {
-        default = {"gtk"},
+        default = {"gnoblin", "*"},
         interfaces = {
-            ["org.freedesktop.impl.portal.ScreenCast"] = {"gnoblin", "gtk"},
-            ["org.freedesktop.impl.portal.RemoteDesktop"] = {"gnoblin", "gtk"},
+            ["org.freedesktop.impl.portal.ScreenCast"] = {"gtk", "gnoblin", "*"},
         },
     },
 }
@@ -35,16 +34,21 @@ The special backend value `"*"` selects the first installed implementation in
 name order. It can appear in a list with named backends. The value `"none"`
 disables that portal interface and must be used by itself.
 
-Gnoblin's optional `gnoblin-portal` package supplies the `gnoblin` backend. If
-you omit the `portals` section, the portal service uses the system's
-desktop-specific default.
+Gnoblin's seeded Lua config prefers the optional `gnoblin` backend, then uses
+`"*"` as a fallback. To prefer another portal for one interface, list that
+backend first under `interfaces`, as in the ScreenCast example. To change the
+preference for every interface, move its backend ID before `"gnoblin"` in
+`default`.
 
-The portal service does not read Lua. It reads a desktop-specific INI file
-based on `XDG_CURRENT_DESKTOP`. In a Gnoblin session, that file is named
-`gnoblin-portals.conf`. Gnoblin generates it from this Lua section, so you do
-not need to create or maintain it. See the [XDG portal configuration
+Set portal routes only in your Gnoblin Lua config,
+`~/.config/gnoblin/init.lua`. The portal service does not read Lua; it accepts
+routes through its standard INI configuration.
+
+When this section is present, Gnoblin generates the desktop-specific
+`gnoblin-portals.conf` from it. This file is an adapter for xdg-desktop-portal,
+not another config to edit. See the [XDG portal configuration
 reference](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html)
-for how the portal service resolves backend preferences.
+for how the service resolves backend preferences.
 
 Gnoblin writes portal preferences before starting session services. A
 configuration reload updates the generated preference, but an already running
@@ -59,6 +63,9 @@ request is active:
 systemctl --user restart xdg-desktop-portal.service
 ```
 
-If you created `~/.config/xdg-desktop-portal/gnoblin-portals.conf` using older
-Gnoblin instructions, move or remove that file once to let the Lua setting take
-effect. User-owned portal preferences are preserved.
+The `gnoblin-portal` package installs the backend implementation without
+changing the system-wide portal default. If you omit `portals`,
+xdg-desktop-portal uses the system's desktop-specific default.
+
+An existing user-owned `gnoblin-portals.conf` takes precedence. Gnoblin
+preserves it and reports a conflict rather than overwriting it.

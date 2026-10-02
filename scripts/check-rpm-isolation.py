@@ -20,7 +20,6 @@ PUBLIC_FILES = {
     "/usr/lib/systemd/user/gnoblin-session.target",
     "/usr/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy",
     "/usr/share/xdg-desktop-portal/portals/gnoblin.portal",
-    "/usr/share/xdg-desktop-portal/gnoblin-portals.conf",
     "/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service",
     "/usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service",
 }

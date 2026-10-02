@@ -175,7 +175,6 @@ let
 
       for path in \
         share/xdg-desktop-portal/portals/gnoblin.portal \
-        share/xdg-desktop-portal/gnoblin-portals.conf \
         share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service \
         lib/systemd/user/xdg-desktop-portal-gnoblin.service; do
         if [ -e "${gnoblinPortal}/$path" ]; then

@@ -8,7 +8,7 @@ diff --git a/data/meson.build b/data/meson.build
 index 33504d1..bcbc8d5 100644
 --- a/data/meson.build
 +++ b/data/meson.build
-@@ -29,16 +29,17 @@ gnome_portal_conf.set('PORTALS', ';'.join(gnome_portal_interfaces))
+@@ -29,16 +29,16 @@ gnome_portal_conf.set('PORTALS', ';'.join(gnome_portal_interfaces))
  
  portal_dir = datadir / 'xdg-desktop-portal' / 'portals'
  configure_file(
@@ -19,7 +19,6 @@ index 33504d1..bcbc8d5 100644
    configuration: gnome_portal_conf,
    install_dir: portal_dir,
  )
-+install_data('gnoblin-portals.conf', install_dir: datadir / 'xdg-desktop-portal')
  
  # Service
  configure_file(

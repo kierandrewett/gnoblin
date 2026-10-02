@@ -116,7 +116,6 @@ class IsolationTests(unittest.TestCase):
                 "lib/systemd/user/xdg-desktop-portal-gnoblin.service",
                 "libexec/xdg-desktop-portal-gnoblin",
                 "share/xdg-desktop-portal/portals/gnoblin.portal",
-                "share/xdg-desktop-portal/gnoblin-portals.conf",
                 "share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service",
             ):
                 destination = prefix / relative
@@ -163,7 +162,6 @@ class IsolationTests(unittest.TestCase):
     def test_gnoblin_payload_provides_and_obsoletes_the_old_session_package(self):
         portal_files = {
             "/usr/share/xdg-desktop-portal/portals/gnoblin.portal",
-            "/usr/share/xdg-desktop-portal/gnoblin-portals.conf",
             "/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service",
             "/usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service",
         }

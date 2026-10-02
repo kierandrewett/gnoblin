@@ -119,10 +119,8 @@ jobs:
           dnf -y install gnoblin-portal
           rpm -q gnoblin-portal
           rpm -q --whatprovides "gnoblin-session = $(rpm -q --qf '%{VERSION}' gnoblin)"
-          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          grep -qx 'default=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -qx 'org.freedesktop.impl.portal.FileChooser=gnoblin;gtk;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           ! rpm -q xdg-desktop-portal-gtk >/dev/null 2>&1
@@ -248,7 +246,7 @@ jobs:
           test -x /usr/bin/gnoblinctl
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
-          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)

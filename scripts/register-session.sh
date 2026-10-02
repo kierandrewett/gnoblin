@@ -32,7 +32,6 @@ DESKTOP="$PREFIX/share/wayland-sessions/gnoblin.desktop"
 PORTAL_UNIT="$UNIT_DIR/xdg-desktop-portal-gnoblin.service"
 PORTAL_BINARY="$PREFIX/libexec/xdg-desktop-portal-gnoblin"
 PORTAL_DESCRIPTOR="$PREFIX/share/xdg-desktop-portal/portals/gnoblin.portal"
-PORTAL_CONFIG="$PREFIX/share/xdg-desktop-portal/gnoblin-portals.conf"
 PORTAL_DBUS="$PREFIX/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service"
 USER_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 
@@ -45,7 +44,7 @@ for f in "${required[@]}"; do
     }
 done
 
-portal_files=("$PORTAL_UNIT" "$PORTAL_BINARY" "$PORTAL_DESCRIPTOR" "$PORTAL_CONFIG" "$PORTAL_DBUS")
+portal_files=("$PORTAL_UNIT" "$PORTAL_BINARY" "$PORTAL_DESCRIPTOR" "$PORTAL_DBUS")
 portal_count=0
 for f in "${portal_files[@]}"; do
     [ -f "$f" ] && ((portal_count += 1))
@@ -134,7 +133,6 @@ sudo install -Dm644 "$desktop_to_install" /usr/share/wayland-sessions/gnoblin.de
 printf '%sGnoblin is available%s at login. Choose the existing GNOME session to switch back to GNOME.\n' "$green" "$reset"
 if "$with_portal"; then
     sudo install -Dm644 "$PORTAL_DESCRIPTOR" /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-    sudo install -Dm644 "$PORTAL_CONFIG" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
     sudo install -Dm644 "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
 else
     echo 'No Gnoblin portal backend in this build; using your installed backend.'
