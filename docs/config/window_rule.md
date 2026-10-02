@@ -208,8 +208,6 @@ gnoblin.window_rule {
         minimize = string?, restore = string?, workspace_switch = string?,
         shadow_change = string?,
         layer_companion_close = string?, resize = string?,
-        tile_preview_open = string?, tile_preview_close = string?,
-        dialog_dim = string?, dialog_undim = string?,
         duration = integer?, -- 0–5000 ms
         easing = string?,
         ease = string?, -- alias for easing
