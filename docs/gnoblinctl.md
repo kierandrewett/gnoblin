@@ -117,6 +117,14 @@ local settings = gnoblin.settings
 print(settings.window_management.focus_mode, settings.revision)
 ```
 
+Reload the Lua configuration from the console when it changes. The operation
+returns a deeply read-only result; inspect it to see what was applied:
+
+```lua
+local result = gnoblin.runtime.reload_config()
+print(result.action, result.runtime_generation)
+```
+
 `gnoblin.privacy.state()` returns a deeply read-only `PrivacyState` record.
 Check `available` before reading an activity field; unavailable sources omit
 their activity value:

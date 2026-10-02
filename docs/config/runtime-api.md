@@ -152,6 +152,9 @@ and been staged. Its `runtime_generation` is the generation assigned if the
 candidate commits; it does not confirm commit. Mutter waits for active-runtime
 operations and deferred callbacks before swapping runtimes.
 
+`gnoblinctl lua` also exposes `gnoblin.runtime.reload_config()`. It waits for
+the compositor operation and returns its result as a deeply read-only value.
+
 `gnoblin.config.reloaded` signals that the candidate became active. If the
 session stops first, the candidate is discarded and that event is not sent, even
 if the Lua operation already reported successful staging.
