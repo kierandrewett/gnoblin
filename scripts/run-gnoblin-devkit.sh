@@ -23,13 +23,8 @@ fi
 # devkit options. Check the exact binary that the session will launch.
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_apply "$PREFIX"
-compositor_help=''
-if [[ -x "$PREFIX/bin/gnoblin-mutter" ]]; then
-    compositor_help="$("$PREFIX/bin/gnoblin-mutter" --help 2>&1 || true)"
-fi
 prepare_devkit=true
-if [[ -x "$PREFIX/libexec/mutter-devkit" ]] &&
-    grep -Fq -- '--devkit' <<<"$compositor_help"; then
+if [[ -x "$PREFIX/libexec/mutter-devkit" ]]; then
     prepare_devkit=false
 fi
 if "$prepare_devkit"; then
