@@ -126,6 +126,10 @@ operation, the supervisor exits successfully and stops the compositor. The
 session wrapper then stops Gnoblin's user services and returns to the login
 manager. A socket caller may receive EOF while the session is closing.
 
+`gnoblinctl lua` exposes this operation and `gnoblin.session.lock()` too. The
+lock result reports that a subscribed shell client received the request; check
+`session.status()` to confirm the compositor entered a locked state.
+
 Send `{}` as `arguments` for reads without filters. Responses contain the
 snapshot directly, not an operation handle. See the
 [compositor bridge](/compositor-bridge#connect) for the wire format and version

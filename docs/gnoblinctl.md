@@ -228,6 +228,17 @@ if activity.available then
 end
 ```
 
+`gnoblin.session.lock()` asks a subscribed shell client to show its lock UI.
+Its read-only result reports delivery, not that the compositor locked the
+session. Check `gnoblin.session.status()` for the confirmed lock state.
+`gnoblin.session.logout()` ends the session and returns `{accepted = true}`
+before the compositor shuts down:
+
+```lua
+local request = gnoblin.session.lock()
+print(request.dispatched, request.subscribers)
+```
+
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
 read-only `Workspace` records. The console also exposes the workspace
