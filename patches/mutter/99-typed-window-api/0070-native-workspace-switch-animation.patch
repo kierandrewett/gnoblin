@@ -5,10 +5,10 @@ Subject: [PATCH] mutter: animate workspace switches from gnoblin specs
 
 ---
 diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
-index 08508e333..c1d1dfb1b 100644
+index 08508e333..1d4ccef4f 100644
 --- a/src/core/gnoblin-animation.c
 +++ b/src/core/gnoblin-animation.c
-@@ -5,6 +5,7 @@
+@@ -5,9 +5,11 @@
  #include "core/gnoblin-animation.h"
  #include "core/gnoblin-native-control.h"
  #include "meta/meta-backend.h"
@@ -16,7 +16,11 @@ index 08508e333..c1d1dfb1b 100644
  #include "meta/meta-context.h"
  #include "meta/meta-plugin.h"
  #include "meta/meta-window-actor.h"
-@@ -60,9 +61,34 @@ typedef struct {
++#include "meta/meta-workspace-manager.h"
+ #include "meta/prefs.h"
+ #include "meta/util.h"
+ #include "meta/window.h"
+@@ -60,9 +62,34 @@ typedef struct {
    float base_pivot_x, base_pivot_y;
  } AnimationPreview;
  
@@ -31,7 +35,7 @@ index 08508e333..c1d1dfb1b 100644
 +typedef struct {
 +  MetaDisplay *display;
 +  MetaPlugin *plugin;
-+  ClutterActor *stage;
++  ClutterStage *stage;
 +  ClutterActor *outgoing_group;
 +  ClutterActor *incoming_group;
 +  ClutterTimeline *timeline;
@@ -51,7 +55,7 @@ index 08508e333..c1d1dfb1b 100644
  } AnimationState;
  
  typedef struct {
-@@ -104,6 +130,12 @@ static void frame_add_number(GVariantBuilder *builder, const char *key,
+@@ -104,6 +131,12 @@ static void frame_add_number(GVariantBuilder *builder, const char *key,
  static void stop_lock_watch(AnimationState *state);
  static gboolean is_locked(MetaDisplay *display);
  static GVariant *animation_spec_variant(AnimationSpec *spec);
@@ -64,7 +68,7 @@ index 08508e333..c1d1dfb1b 100644
  
  static void animation_spec_clear(AnimationSpec *spec) {
    g_free(spec->name);
-@@ -135,6 +167,11 @@ static void preview_free(gpointer data) {
+@@ -135,6 +168,11 @@ static void preview_free(gpointer data) {
  static void animation_state_free(gpointer data) {
    AnimationState *state = data;
    stop_lock_watch(state);
@@ -76,7 +80,7 @@ index 08508e333..c1d1dfb1b 100644
    while (g_hash_table_size(state->previews) > 0) {
      GHashTableIter iter;
      gpointer value;
-@@ -155,6 +192,11 @@ static AnimationState *get_state(MetaDisplay *display) {
+@@ -155,6 +193,11 @@ static AnimationState *get_state(MetaDisplay *display) {
      state = g_new0(AnimationState, 1);
      state->previews =
          g_hash_table_new_full(g_str_hash, g_str_equal, g_free, preview_free);
@@ -88,7 +92,7 @@ index 08508e333..c1d1dfb1b 100644
      g_object_set_data_full(G_OBJECT(display), ANIMATION_ID_KEY, state,
                             animation_state_free);
    }
-@@ -166,7 +208,8 @@ static gboolean lock_watch_cb(gpointer user_data) {
+@@ -166,7 +209,8 @@ static gboolean lock_watch_cb(gpointer user_data) {
    AnimationState *state =
        g_object_get_data(G_OBJECT(display), ANIMATION_ID_KEY);
  
@@ -98,7 +102,7 @@ index 08508e333..c1d1dfb1b 100644
      if (state)
        state->lock_watch_id = 0;
      return G_SOURCE_REMOVE;
-@@ -183,6 +226,7 @@ static gboolean lock_watch_cb(gpointer user_data) {
+@@ -183,6 +227,7 @@ static gboolean lock_watch_cb(gpointer user_data) {
        break;
      preview_stop(value, TRUE, TRUE);
    }
@@ -106,7 +110,7 @@ index 08508e333..c1d1dfb1b 100644
    return G_SOURCE_REMOVE;
  }
  
-@@ -335,7 +379,8 @@ static gboolean builtin_previewable(const char *name) {
+@@ -335,7 +380,8 @@ static gboolean builtin_previewable(const char *name) {
           g_str_equal(name, "zoom") || g_str_equal(name, "slide") ||
           g_str_equal(name, "gnome-open") || g_str_equal(name, "gnome-close") ||
           g_str_equal(name, "gnome-dialog-open") ||
@@ -116,7 +120,7 @@ index 08508e333..c1d1dfb1b 100644
  }
  
  static gboolean builtin_supports_event(const char *name, const char *event) {
-@@ -374,13 +419,16 @@ static void builtin_event_defaults(const char *event, guint *duration,
+@@ -374,13 +420,16 @@ static void builtin_event_defaults(const char *event, guint *duration,
               g_str_equal(event, "layer-close")) {
      *duration = 250;
      *ease = "ease-out-cubic";
@@ -134,7 +138,7 @@ index 08508e333..c1d1dfb1b 100644
    return g_strv_contains(names, event);
  }
  
-@@ -388,7 +436,7 @@ static gboolean internal_event(const char *event) {
+@@ -388,7 +437,7 @@ static gboolean internal_event(const char *event) {
    static const char *const names[] = {
        "shadow-change",      "tile-preview-open",
        "tile-preview-close", "dialog-dim",
@@ -143,7 +147,7 @@ index 08508e333..c1d1dfb1b 100644
    return g_strv_contains(names, event);
  }
  
-@@ -644,7 +692,10 @@ static gboolean parse_spec(AnimationSpec *spec, const char *name,
+@@ -644,7 +693,10 @@ static gboolean parse_spec(AnimationSpec *spec, const char *name,
      GVariantBuilder from, to;
      g_variant_builder_init(&from, G_VARIANT_TYPE_VARDICT);
      g_variant_builder_init(&to, G_VARIANT_TYPE_VARDICT);
@@ -155,7 +159,7 @@ index 08508e333..c1d1dfb1b 100644
        frame_add_number(&from, "opacity", entering ? 0 : 1);
        frame_add_number(&to, "opacity", entering ? 1 : 0);
      } else if (g_str_equal(name, "slide")) {
-@@ -769,6 +820,21 @@ static gboolean parse_spec(AnimationSpec *spec, const char *name,
+@@ -769,6 +821,21 @@ static gboolean parse_spec(AnimationSpec *spec, const char *name,
      spec->origin = g_variant_ref_sink(g_variant_new_string("center"));
    if (!spec->target)
      spec->target = g_variant_ref_sink(g_variant_new_string("none"));
@@ -177,7 +181,7 @@ index 08508e333..c1d1dfb1b 100644
    return TRUE;
  }
  
-@@ -1094,7 +1160,7 @@ static void preview_stop(AnimationPreview *preview, gboolean restore,
+@@ -1094,7 +1161,7 @@ static void preview_stop(AnimationPreview *preview, gboolean restore,
        g_object_get_data(G_OBJECT(preview->display), ANIMATION_ID_KEY);
    if (state && g_hash_table_lookup(state->previews, preview->id) == preview) {
      g_hash_table_remove(state->previews, preview->id);
@@ -186,7 +190,7 @@ index 08508e333..c1d1dfb1b 100644
        stop_lock_watch(state);
    }
    if (lifecycle_plugin)
-@@ -1202,9 +1268,13 @@ static void set_origin(AnimationPreview *preview) {
+@@ -1202,9 +1269,13 @@ static void set_origin(AnimationPreview *preview) {
  static gboolean validate_previewable(AnimationSpec *spec, GError **error) {
    static const char *const actor_keys[] = {
        "x", "y", "scale", "scale_x", "scale_y", "rotation", "opacity", NULL};
@@ -201,7 +205,7 @@ index 08508e333..c1d1dfb1b 100644
        return FALSE;
    if (!actor_event(spec->event)) {
      set_error(
-@@ -1694,7 +1764,8 @@ static gboolean animation_supports_lifecycle_event(const char *name,
+@@ -1694,7 +1765,8 @@ static gboolean animation_supports_lifecycle_event(const char *name,
  
    if (g_str_equal(name, "none"))
      return g_strv_contains((const char *const[]){"minimize", "restore", "open",
@@ -211,7 +215,7 @@ index 08508e333..c1d1dfb1b 100644
                             event);
  
    return builtin_supports_event(name, event);
-@@ -1747,6 +1818,9 @@ static char *animation_for_event(const char *event) {
+@@ -1747,6 +1819,9 @@ static char *animation_for_event(const char *event) {
      if (g_str_equal(defaults[i].event, event))
        return g_strdup(defaults[i].name);
  
@@ -221,7 +225,7 @@ index 08508e333..c1d1dfb1b 100644
    return NULL;
  }
  
-@@ -1840,6 +1914,326 @@ static void apply_rule_overrides(AnimationSpec *spec, GVariant *overrides) {
+@@ -1840,6 +1915,328 @@ static void apply_rule_overrides(AnimationSpec *spec, GVariant *overrides) {
    }
  }
  
@@ -481,9 +485,11 @@ index 08508e333..c1d1dfb1b 100644
 +  workspace_switch->outgoing_group = g_object_ref_sink(clutter_actor_new());
 +  workspace_switch->incoming_group = g_object_ref_sink(clutter_actor_new());
 +  clutter_actor_set_size(workspace_switch->outgoing_group,
-+                         workspace_switch->width, workspace_switch->height);
++                         (float)workspace_switch->width,
++                         (float)workspace_switch->height);
 +  clutter_actor_set_size(workspace_switch->incoming_group,
-+                         workspace_switch->width, workspace_switch->height);
++                         (float)workspace_switch->width,
++                         (float)workspace_switch->height);
 +  clutter_actor_add_child(window_group, workspace_switch->outgoing_group);
 +  clutter_actor_add_child(window_group, workspace_switch->incoming_group);
 +
@@ -506,7 +512,7 @@ index 08508e333..c1d1dfb1b 100644
 +  state->workspace_switch = workspace_switch;
 +  start_lock_watch(display, state);
 +  workspace_switch->timeline =
-+      clutter_timeline_new_for_actor(workspace_switch->stage,
++      clutter_timeline_new_for_actor(CLUTTER_ACTOR(workspace_switch->stage),
 +                                     workspace_switch->spec.duration);
 +  clutter_timeline_set_progress_mode(workspace_switch->timeline, CLUTTER_LINEAR);
 +  g_signal_connect(workspace_switch->timeline, "new-frame",
