@@ -18,6 +18,8 @@ typedef struct _GnoblinNativeControl GnoblinNativeControl;
 META_EXPORT
 void gnoblin_native_control_window_menu_requested(MetaDisplay* display, MetaWindow* window,
                                                   MetaWindowMenuType menu, int x, int y);
+META_EXPORT
+void gnoblin_native_control_track_layer_window(MetaDisplay* display, MetaWindow* window);
 
 META_EXPORT
 GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVariant* document,
