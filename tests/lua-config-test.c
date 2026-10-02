@@ -109,6 +109,20 @@ int main(void) {
     g_assert_true(g_file_set_contents(runtime_root, "return {}\n", -1, &error));
     g_assert_no_error(error);
     test_runtime_document_ownership(runtime_root);
+    GVariantBuilder unhandled_gesture_builder;
+    g_variant_builder_init(&unhandled_gesture_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&unhandled_gesture_builder, "{sv}", "gesture",
+                          g_variant_new_string("swipe"));
+    g_variant_builder_add(&unhandled_gesture_builder, "{sv}", "phase",
+                          g_variant_new_string("update"));
+    g_variant_builder_add(&unhandled_gesture_builder, "{sv}", "fingers", g_variant_new_int64(3));
+    g_autoptr(GVariant) unhandled_gesture_payload =
+        g_variant_ref_sink(g_variant_builder_end(&unhandled_gesture_builder));
+    g_autoptr(GVariant) unhandled_gesture =
+        gnoblin_config_dispatch_event("mutter.touchpad.gesture", unhandled_gesture_payload, &error);
+    g_assert_no_error(error);
+    g_assert_null(unhandled_gesture);
+
     g_assert_true(g_file_set_contents(module, "return { name = 'module' }\n", -1, &error));
     g_assert_true(g_file_set_contents(
         nested,
