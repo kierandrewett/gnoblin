@@ -121,6 +121,15 @@ if privacy.available.screen_sharing then
 end
 ```
 
+`gnoblin.capabilities.list()` returns read-only `Capability` records with the
+capability ID, description, availability, revision, and an optional reason:
+
+```lua
+for _, capability in ipairs(gnoblin.capabilities.list()) do
+    print(capability.id, capability.available, capability.reason)
+end
+```
+
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
 read-only `Workspace` records. A workspace can be activated, renamed, removed,
