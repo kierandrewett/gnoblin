@@ -57,10 +57,14 @@ animation runs:
 | `layer-open`, `layer-close`               | When a layer-shell surface appears or disappears |
 | `workspace-switch`                        | When the active workspace changes                |
 | `shadow-change`                           | When a window shadow changes                     |
-| `resize`                                  | While a window resizes                           |
+| `resize`                                  | When Mutter changes a window's geometry          |
 | `tile-preview-open`, `tile-preview-close` | When a tile preview appears or disappears        |
 
 Bingux-owned UI transitions remain Bingux's responsibility.
+
+Resize animations run for normal windows when Mutter changes geometry for
+maximize, unmaximize, fullscreen, unfullscreen, or a monitor move. Interactive
+edge-drag resizing does not trigger this event.
 
 `from` and `to` describe endpoints; alternatively provide ordered `keyframes`
 with `at` positions from 0 to 1:
@@ -140,6 +144,10 @@ consume it; actor properties such as `x` and `scale` are not accepted.
 Workspace switches use the selected animation's `progress` to move the outgoing
 and incoming workspaces in Mutter's switch direction. Custom keyframes change
 the transition timing and progress curve.
+
+Resize animations use `progress` to interpolate the window from its previous
+buffer geometry to its new geometry. Custom keyframes control how the window
+settles into the new size.
 
 `target` is an optional label shown by inspection tools. Minimize and restore
 presets calculate their destination from dock/icon or monitor geometry. Custom
