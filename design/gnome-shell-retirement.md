@@ -88,8 +88,10 @@ The input-specific unresolved patches are listed below.
   initialization, IBus recovery, and teardown on a real seat.
 - `80-optional-gnome-qr`: removed on 2026-10-02. It only makes GNOME Shell's
   login-dialog QR rendering optional; Gnoblin does not provide that dialog.
-  `81-brightness-follows-backlight` remains under review because brightness
-  state may need an owner when a shell client provides brightness controls.
+  `81-brightness-follows-backlight` was removed on 2026-10-02. It synchronized
+  GNOME Shell's private brightness sliders after external backlight changes;
+  Gnoblin has no such UI state. Brightness shortcuts remain command bindings
+  such as `brightnessctl`, as described in the user guide.
 
 Stale JavaScript tests that import removed Shell modules are not a migration
 target. The unregistered `tests/gnome-shell-overlay-resources.test.py` was
