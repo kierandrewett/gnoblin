@@ -92,6 +92,14 @@ local policy = gnoblin.focus.policy
 print(policy.focus_mode, policy.focus_new_windows, policy.revision)
 ```
 
+`gnoblin.settings` returns the committed settings snapshot as a deeply
+read-only value. Read nested options directly from the snapshot:
+
+```lua
+local settings = gnoblin.settings
+print(settings.window_management.focus_mode, settings.revision)
+```
+
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
 read-only `Workspace` records. A workspace can be activated, renamed, removed,
