@@ -142,7 +142,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(94):
+                    for _ in range(95):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -273,6 +273,20 @@ def main() -> int:
                                     if request["arguments"].get("name") == "fade"
                                     else None
                                 )
+                            elif request["method"] == "animation.inspect":
+                                result = {
+                                    "name": "fade",
+                                    "event": "open",
+                                    "target": "42",
+                                    "target_type": "window",
+                                    "duration": 150,
+                                    "ease": "ease-out-expo",
+                                    "from": {"opacity": 0.0},
+                                    "to": {"opacity": 1.0},
+                                    "properties": {"opacity": 1.0},
+                                    "context": {"window": {"id": "42"}},
+                                    "spec": {"name": "fade", "event": "open"},
+                                }
                             elif request["method"] in {
                                 "animation.preview",
                                 "animation.seek",
@@ -1535,11 +1549,23 @@ def main() -> int:
         )
         invalid_policy_result = run(binary, "--socket", socket_path, "lua", str(invalid_policy_file))
         assert invalid_policy_result.returncode == 0, invalid_policy_result.stderr
+        animation_inspect_file = Path(temporary) / "animation-inspect.lua"
+        animation_inspect_file.write_text(
+            'local inspection = gnoblin.animations.inspect {name = "fade", target = "active", event = "open", target_type = "window"}\n'
+            'assert(inspection.name == "fade" and inspection.event == "open" and inspection.target == "42")\n'
+            'assert(inspection.spec.name == "fade" and inspection.context.window.id == "42")\n'
+            'assert(not pcall(function() inspection.spec.event = "close" end))\n'
+            'assert(not pcall(function() gnoblin.animations.inspect {name = "fade", target = 42} end))\n'
+            'assert(not pcall(function() gnoblin.animations.inspect {name = "fade", extra = true} end))\n',
+            encoding="utf-8",
+        )
+        animation_inspect_result = run(binary, "--socket", socket_path, "lua", str(animation_inspect_file))
+        assert animation_inspect_result.returncode == 0, animation_inspect_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 94
-        assert len(subscriptions) == 94
+        assert len(received) == 95
+        assert len(subscriptions) == 95
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1829,6 +1855,15 @@ def main() -> int:
             "workspace.move_window",
             "workspace.remove",
         ]
+        inspect_calls = [call for call in received if call["method"] == "animation.inspect"]
+        assert len(inspect_calls) == 1
+        assert inspect_calls[0]["api_version"] == {"major": 1, "minor": 18}
+        assert inspect_calls[0]["arguments"] == {
+            "name": "fade",
+            "target": "active",
+            "event": "open",
+            "target_type": "window",
+        }
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0

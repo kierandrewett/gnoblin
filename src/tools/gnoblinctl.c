@@ -1613,6 +1613,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_animations_list(lua_State* state);
 static int lua_cli_animations_get(lua_State* state);
+static int lua_cli_animations_inspect(lua_State* state);
 static int lua_cli_animations_surfaces(lua_State* state);
 static int lua_cli_launches_read(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
@@ -1987,6 +1988,102 @@ static int lua_cli_animations_get(lua_State* state) {
     const char* name = record ? member_string(record, "name", NULL) : NULL;
     if (!name || !g_str_equal(name, lua_tostring(state, 1)))
         return luaL_error(state, "gnoblin.animations.get returned an invalid AnimationInfo");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static gboolean lua_cli_animation_inspect_arguments_valid(JsonObject* arguments) {
+    static const char* const fields[] = {"name", "target", "event", "target_type", NULL};
+    GList* members = json_object_get_members(arguments);
+    gboolean valid = TRUE;
+    for (GList* item = members; item && valid; item = item->next) {
+        gboolean found = FALSE;
+        for (guint i = 0; fields[i]; i++)
+            found |= g_str_equal(item->data, fields[i]);
+        valid = found;
+    }
+    g_list_free(members);
+    const char* name = member_string(arguments, "name", NULL);
+    const char* target = member_string(arguments, "target", "active");
+    const char* event = member_string(arguments, "event", NULL);
+    const char* target_type = member_string(arguments, "target_type", "window");
+    const char* optional_fields[] = {"target", "event", "target_type", NULL};
+    for (guint i = 0; optional_fields[i]; i++) {
+        JsonNode* field = json_object_get_member(arguments, optional_fields[i]);
+        if (field &&
+            (!JSON_NODE_HOLDS_VALUE(field) || json_node_get_value_type(field) != G_TYPE_STRING))
+            return FALSE;
+    }
+    return valid && name && g_regex_match_simple("^[A-Za-z0-9_-]{1,80}$", name, 0, 0) && target &&
+           *target && g_utf8_validate(target, -1, NULL) && strlen(target) <= 128 &&
+           (!json_object_has_member(arguments, "event") || (event && *event)) &&
+           (g_str_equal(target_type, "window") || g_str_equal(target_type, "layer") ||
+            g_str_equal(target_type, "namespace"));
+}
+
+static gboolean lua_cli_animation_inspection_valid(JsonObject* result, JsonObject* arguments) {
+    const char* name = member_string(arguments, "name", NULL);
+    const char* requested_event = member_string(arguments, "event", NULL);
+    const char* requested_target_type = member_string(arguments, "target_type", "window");
+    JsonNode* duration = json_object_get_member(result, "duration");
+    JsonNode* ease = json_object_get_member(result, "ease");
+    JsonNode* from = json_object_get_member(result, "from");
+    JsonNode* to = json_object_get_member(result, "to");
+    JsonNode* properties = json_object_get_member(result, "properties");
+    JsonNode* context = json_object_get_member(result, "context");
+    JsonNode* spec = json_object_get_member(result, "spec");
+    const char* event = member_string(result, "event", NULL);
+    const char* target = member_string(result, "target", NULL);
+    const char* target_type = member_string(result, "target_type", NULL);
+    gboolean valid_ease = FALSE;
+    if (ease && JSON_NODE_HOLDS_VALUE(ease) && json_node_get_value_type(ease) == G_TYPE_STRING) {
+        const char* curves[] = {"linear",
+                                "ease-in-quad",
+                                "ease-out-quad",
+                                "ease-in-out-cubic",
+                                "ease-in-cubic",
+                                "ease-out-cubic",
+                                "ease-out-expo",
+                                "ease-out-back",
+                                NULL};
+        const char* curve = json_node_get_string(ease);
+        for (guint i = 0; curves[i]; i++)
+            valid_ease |= g_str_equal(curve, curves[i]);
+    } else if (ease && JSON_NODE_HOLDS_OBJECT(ease)) {
+        valid_ease =
+            g_str_equal(member_string(json_node_get_object(ease), "type", ""), "cubic-bezier");
+    }
+    if (!name || !g_str_equal(member_string(result, "name", ""), name) || !event || !*event ||
+        (requested_event && !g_str_equal(event, requested_event)) || !target || !*target ||
+        !target_type || !g_str_equal(target_type, requested_target_type) || !duration ||
+        !JSON_NODE_HOLDS_VALUE(duration) ||
+        (json_node_get_value_type(duration) != G_TYPE_INT &&
+         json_node_get_value_type(duration) != G_TYPE_INT64) ||
+        json_node_get_int(duration) < 0 || !valid_ease || !from || !JSON_NODE_HOLDS_OBJECT(from) ||
+        !to || !JSON_NODE_HOLDS_OBJECT(to) || !properties || !JSON_NODE_HOLDS_OBJECT(properties) ||
+        !context || !JSON_NODE_HOLDS_OBJECT(context) || !spec || !JSON_NODE_HOLDS_OBJECT(spec))
+        return FALSE;
+    JsonNode* keyframes = json_object_get_member(result, "keyframes");
+    return !keyframes || JSON_NODE_HOLDS_ARRAY(keyframes);
+}
+
+static int lua_cli_animations_inspect(lua_State* state) {
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
+        return luaL_error(state, "gnoblin.animations.inspect requires one spec table");
+    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "animation inspection spec");
+    if (!lua_cli_animation_inspect_arguments_valid(arguments))
+        return luaL_error(state, "gnoblin.animations.inspect received invalid arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "animation.inspect", arguments, &call_error);
+    if (!result)
+        return luaL_error(state, "gnoblin.animations.inspect failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result) ||
+        !lua_cli_animation_inspection_valid(json_node_get_object(result), arguments))
+        return luaL_error(state, "gnoblin.animations.inspect returned an invalid inspection");
     json_to_lua(state, result);
     lua_cli_push_readonly_value(state, -1);
     lua_remove(state, -2);
@@ -4402,11 +4499,13 @@ static int lua_api_index(lua_State* state) {
         return 1;
     }
     if (g_str_equal(prefix, "animations") &&
-        (g_str_equal(name, "list") || g_str_equal(name, "get") || g_str_equal(name, "surfaces"))) {
+        (g_str_equal(name, "list") || g_str_equal(name, "get") || g_str_equal(name, "inspect") ||
+         g_str_equal(name, "surfaces"))) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_CFunction function = g_str_equal(name, "list")  ? lua_cli_animations_list
-                                 : g_str_equal(name, "get") ? lua_cli_animations_get
-                                                            : lua_cli_animations_surfaces;
+        lua_CFunction function = g_str_equal(name, "list")      ? lua_cli_animations_list
+                                 : g_str_equal(name, "get")     ? lua_cli_animations_get
+                                 : g_str_equal(name, "inspect") ? lua_cli_animations_inspect
+                                                                : lua_cli_animations_surfaces;
         lua_pushcclosure(state, function, 1);
         return 1;
     }
