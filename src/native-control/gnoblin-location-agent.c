@@ -74,7 +74,7 @@ void gnoblin_location_request_unref(GnoblinLocationRequest* request) {
 }
 
 static guint accuracy_from_setting(GSettings* settings) {
-    if (!settings)
+    if (!settings || !g_settings_get_boolean(settings, "enabled"))
         return 0;
     g_autofree char* nick = g_settings_get_string(settings, "max-accuracy-level");
     if (g_strcmp0(nick, "country") == 0)
@@ -432,7 +432,6 @@ static gboolean begin_stop(gpointer data) {
     GnoblinLocationAgent* agent = data;
     if (!agent->stopped) {
         agent->stopped = TRUE;
-        notify_state(agent, FALSE, FALSE);
         if (agent->retry_source) {
             g_source_destroy(agent->retry_source);
             g_clear_pointer(&agent->retry_source, g_source_unref);
@@ -496,8 +495,8 @@ GnoblinLocationAgent* gnoblin_location_agent_new(GMainContext* context,
         g_warning("Missing required GSettings schema org.gnome.system.location");
     }
     if (agent->settings)
-        agent->settings_handler = g_signal_connect(agent->settings, "changed::max-accuracy-level",
-                                                   G_CALLBACK(settings_changed), agent);
+        agent->settings_handler =
+            g_signal_connect(agent->settings, "changed", G_CALLBACK(settings_changed), agent);
     return agent;
 }
 

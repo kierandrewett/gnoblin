@@ -2,6 +2,7 @@
 #include "config.h"
 
 #include "core/gnoblin-native-control.h"
+#include "core/gnoblin-location-agent.h"
 #ifdef HAVE_REMOTE_DESKTOP
 #include "core/gnoblin-pipewire-monitor.h"
 #endif
@@ -74,6 +75,8 @@
 #define MAX_DYNAMIC_SHORTCUTS 128
 #define MAX_PENDING_THUMBNAILS 4
 #define MAX_PENDING_THUMBNAILS_PER_CLIENT 1
+#define MAX_PENDING_LOCATION_AUTHORIZATIONS 32
+#define LOCATION_AUTHORIZATION_TIMEOUT_SECONDS 25
 #define MAX_CORNER_TOOLKIT_CACHE_ENTRIES 256
 #define MAX_CORNER_TOOLKIT_MAPS_BYTES (4 * 1024 * 1024)
 #define FOCUS_CONTEXT_LIFETIME_US (5 * G_USEC_PER_SEC)
@@ -90,6 +93,17 @@ typedef struct _NativeDynamicShortcut NativeDynamicShortcut;
 typedef struct _NativeMutterSignalWatch NativeMutterSignalWatch;
 typedef struct _NativeCornerToolkitCache NativeCornerToolkitCache;
 typedef struct _NativeWindowShaderFile NativeWindowShaderFile;
+
+typedef struct {
+    GnoblinNativeControl* control;
+    GnoblinLocationRequest* request;
+    GHashTable* recipient_client_ids;
+    guint64 request_id;
+    guint requested_accuracy;
+    gint64 expires_at_us;
+    guint timeout_source_id;
+    gboolean completed;
+} PendingLocationAuthorization;
 
 struct _NativeCornerToolkitCache {
     gint ref_count;
@@ -156,6 +170,7 @@ struct _GnoblinNativeControl {
     GnoblinPipewireMonitor* pipewire_monitor;
 #endif
     GnoblinTouchpadRouter* touchpad_router;
+    GnoblinLocationAgent* location_agent;
     GnoblinRuntimeCache* runtime_cache;
     GnoblinRuntimeReader* runtime_reader;
     GnoblinRuntimeWriter* runtime_writer;
@@ -183,6 +198,7 @@ struct _GnoblinNativeControl {
     guint runtime_write_source_id;
     guint64 next_runtime_request_id;
     GHashTable* pending_runtime_requests;
+    GHashTable* pending_location_authorizations;
     GHashTable* runtime_operation_ids;
     GHashTable* runtime_cancelled_operation_ids;
     GHashTable* runtime_event_subscriptions;
@@ -214,6 +230,7 @@ struct _GnoblinNativeControl {
     guint64 next_window_drag_id;
     guint64 next_snap_context_id;
     guint64 next_client_id;
+    guint64 next_location_request_id;
     gboolean window_state_initialized;
     gboolean workspace_state_initialized;
     gboolean monitor_state_initialized;
@@ -226,6 +243,8 @@ struct _GnoblinNativeControl {
     gboolean privacy_microphone_in_use;
     gboolean privacy_camera_available;
     gboolean privacy_camera_in_use;
+    gboolean privacy_location_available;
+    gboolean privacy_location_in_use;
     guint privacy_camera_disable_source_id;
     gboolean supervised_runtime;
     gboolean runtime_hello_sent;
@@ -275,11 +294,13 @@ static void stop_native_shortcut_capture(GnoblinNativeControl* control, gboolean
 static void dynamic_shortcut_end_session(GnoblinNativeControl* control,
                                          NativeDynamicShortcut* shortcut, const char* reason);
 static void native_corner_toolkit_cache_shutdown(GnoblinNativeControl* control);
+static void clear_pending_location_authorizations(GnoblinNativeControl* control);
 
 static void native_runtime_abort(GnoblinNativeControl* control) {
     if (!control)
         return;
     control->stopping = TRUE;
+    clear_pending_location_authorizations(control);
     native_corner_toolkit_cache_shutdown(control);
     if (control->runtime_read_source_id) {
         g_source_remove(control->runtime_read_source_id);
@@ -826,6 +847,7 @@ static const NativeCapability native_capabilities[] = {
     {"animation-preview", "Inspect configured animations and control compositor previews."},
     {"microphone-monitor", "Monitor microphone activity through PipeWire."},
     {"camera-monitor", "Monitor camera activity through PipeWire."},
+    {"location-agent", "Monitor GeoClue activity and broker location authorization to Lua."},
 };
 
 static const char* native_socket_events[] = {
@@ -848,6 +870,7 @@ static const char* native_socket_events[] = {
     "gnoblin.capability.changed",
     "gnoblin.appearance.color-scheme-changed",
     "gnoblin.privacy.changed",
+    "gnoblin.location.authorization-requested",
     "gnoblin.animation.started",
     "gnoblin.animation.finished",
     "gnoblin.workspace.created",
@@ -3714,6 +3737,10 @@ static GVariant* capability_snapshot_record(GnoblinNativeControl* control,
         available = FALSE;
         unavailable_reason = "remote_desktop_disabled";
 #endif
+    } else if (g_str_equal(native_capability->id, "location-agent")) {
+        available = control->privacy_location_available;
+        if (!available)
+            unavailable_reason = "geoclue_unavailable";
     }
 
     g_variant_builder_init(&capability, G_VARIANT_TYPE_VARDICT);
@@ -5752,6 +5779,19 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
             if (g_hash_table_remove(client->pending_grant_operations, key))
                 subscribed = client->api_minor >= 14;
         }
+        if (subscribed && g_str_equal(name, "gnoblin.location.authorization-requested") &&
+            json_object_has_member(object, "request_id")) {
+            gint64 request_id = json_object_get_int_member(object, "request_id");
+            PendingLocationAuthorization* pending =
+                request_id > 0
+                    ? g_hash_table_lookup(control->pending_location_authorizations, &request_id)
+                    : NULL;
+            if (pending) {
+                guint64* client_key = g_new(guint64, 1);
+                *client_key = client->client_id;
+                g_hash_table_add(pending->recipient_client_ids, client_key);
+            }
+        }
         if (g_str_equal(name, "gnoblin.api.operation-completed") ||
             g_str_equal(name, "gnoblin.operation.completed")) {
             if (g_str_equal(name, "gnoblin.operation.completed") && client->api_minor < 11)
@@ -5847,7 +5887,8 @@ static GVariant* privacy_snapshot_new(GnoblinNativeControl* control) {
                           g_variant_new_boolean(control->privacy_microphone_available));
     g_variant_builder_add(&available, "{sv}", "camera_in_use",
                           g_variant_new_boolean(control->privacy_camera_available));
-    g_variant_builder_add(&available, "{sv}", "location_in_use", g_variant_new_boolean(FALSE));
+    g_variant_builder_add(&available, "{sv}", "location_in_use",
+                          g_variant_new_boolean(control->privacy_location_available));
     g_variant_builder_init(&snapshot, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&snapshot, "{sv}", "available", g_variant_builder_end(&available));
     g_variant_builder_add(&snapshot, "{sv}", "screen_sharing",
@@ -5860,6 +5901,9 @@ static GVariant* privacy_snapshot_new(GnoblinNativeControl* control) {
     if (control->privacy_camera_available)
         g_variant_builder_add(&snapshot, "{sv}", "camera_in_use",
                               g_variant_new_boolean(control->privacy_camera_in_use));
+    if (control->privacy_location_available)
+        g_variant_builder_add(&snapshot, "{sv}", "location_in_use",
+                              g_variant_new_boolean(control->privacy_location_in_use));
     return g_variant_ref_sink(g_variant_builder_end(&snapshot));
 }
 
@@ -6011,6 +6055,161 @@ static void publish_privacy_snapshot(GnoblinNativeControl* control, gboolean cha
     g_autoptr(JsonNode) json = json_from_variant(enriched);
     if (JSON_NODE_HOLDS_OBJECT(json))
         publish_native_socket_event(control, json);
+}
+
+static void pending_location_authorization_free(gpointer user_data) {
+    PendingLocationAuthorization* pending = user_data;
+    if (pending->timeout_source_id)
+        g_source_remove(pending->timeout_source_id);
+    if (!pending->completed)
+        gnoblin_location_request_complete(pending->request, FALSE, 0);
+    gnoblin_location_request_unref(pending->request);
+    g_clear_pointer(&pending->recipient_client_ids, g_hash_table_unref);
+    g_free(pending);
+}
+
+static void clear_pending_location_authorizations(GnoblinNativeControl* control) {
+    if (control && control->pending_location_authorizations)
+        g_hash_table_remove_all(control->pending_location_authorizations);
+}
+
+static gboolean pending_location_authorization_timeout(gpointer user_data) {
+    PendingLocationAuthorization* pending = user_data;
+    pending->timeout_source_id = 0;
+    if (pending->control->pending_location_authorizations)
+        g_hash_table_remove(pending->control->pending_location_authorizations,
+                            &pending->request_id);
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean location_accuracy_valid(guint accuracy) {
+    return accuracy == 0 || accuracy == 1 || accuracy == 4 || accuracy == 5 || accuracy == 6 ||
+           accuracy == 8;
+}
+
+static void location_authorize_app(GnoblinLocationAgent* agent, const char* app_id,
+                                   guint requested_accuracy, GnoblinLocationRequest* request,
+                                   gpointer user_data) {
+    GnoblinNativeControl* control = user_data;
+    (void)agent;
+    if (!control || control->stopping || !control->supervised_runtime ||
+        control->runtime_worker_suspended || !control->runtime_hello_sent ||
+        !control->pending_location_authorizations ||
+        g_hash_table_size(control->pending_location_authorizations) >=
+            MAX_PENDING_LOCATION_AUTHORIZATIONS ||
+        control->next_location_request_id >= G_MAXINT64) {
+        gnoblin_location_request_complete(request, FALSE, 0);
+        return;
+    }
+
+    PendingLocationAuthorization* pending = g_new0(PendingLocationAuthorization, 1);
+    pending->control = control;
+    pending->request = gnoblin_location_request_ref(request);
+    pending->request_id = ++control->next_location_request_id;
+    pending->requested_accuracy = requested_accuracy;
+    pending->expires_at_us =
+        g_get_monotonic_time() + LOCATION_AUTHORIZATION_TIMEOUT_SECONDS * G_USEC_PER_SEC;
+    pending->recipient_client_ids =
+        g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, NULL);
+    guint64* key = g_new(guint64, 1);
+    *key = pending->request_id;
+    g_hash_table_insert(control->pending_location_authorizations, key, pending);
+    pending->timeout_source_id = g_timeout_add_seconds(
+        LOCATION_AUTHORIZATION_TIMEOUT_SECONDS, pending_location_authorization_timeout, pending);
+
+    GVariantBuilder fields;
+    g_variant_builder_init(&fields, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&fields, "{sv}", "request_id",
+                          g_variant_new_int64((gint64)pending->request_id));
+    g_variant_builder_add(&fields, "{sv}", "app_id", g_variant_new_string(app_id ? app_id : ""));
+    g_variant_builder_add(&fields, "{sv}", "requested_accuracy",
+                          g_variant_new_uint32(requested_accuracy));
+    g_variant_builder_add(&fields, "{sv}", "expires_at_us",
+                          g_variant_new_int64(pending->expires_at_us));
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&fields));
+    native_publish_request_event(control, "gnoblin.location.authorization-requested", payload);
+}
+
+static void privacy_location_state_changed(GnoblinLocationAgent* agent, gboolean available,
+                                           gboolean in_use, gpointer user_data) {
+    GnoblinNativeControl* control = user_data;
+    (void)agent;
+    if (!control || control->stopping)
+        return;
+    in_use = available && in_use;
+    gboolean availability_changed = control->privacy_location_available != available;
+    if (!availability_changed && control->privacy_location_in_use == in_use)
+        return;
+    control->privacy_location_available = available;
+    control->privacy_location_in_use = in_use;
+    if (availability_changed) {
+        control->state_revision++;
+        g_autoptr(GVariant) capabilities = capability_snapshot(control);
+        native_publish_runtime_snapshot(control, "capabilities", capabilities,
+                                        control->state_revision);
+        const NativeCapability* changed = native_capability_by_id("location-agent");
+        if (changed) {
+            GVariantBuilder event;
+            g_variant_builder_init(&event, G_VARIANT_TYPE_VARDICT);
+            g_autoptr(GVariant) capability = capability_snapshot_record(control, changed);
+            g_variant_builder_add(&event, "{sv}", "capability", capability);
+            g_variant_builder_add(&event, "{sv}", "revision",
+                                  g_variant_new_int64((gint64)control->state_revision));
+            g_autoptr(GVariant) fields = g_variant_ref_sink(g_variant_builder_end(&event));
+            native_publish_request_event(control, "gnoblin.capability.changed", fields);
+        }
+    }
+    control->privacy_revision++;
+    publish_privacy_snapshot(control, TRUE);
+}
+
+static GVariant* native_location_authorize_operation(GnoblinNativeControl* control,
+                                                     GVariant* arguments, guint64 client_id,
+                                                     GError** error) {
+    gint64 signed_request_id = 0;
+    gint64 signed_accuracy = 0;
+    gboolean allowed = FALSE;
+    if (g_variant_n_children(arguments) != 3 ||
+        !g_variant_lookup(arguments, "request_id", "x", &signed_request_id) ||
+        signed_request_id <= 0 || !g_variant_lookup(arguments, "allow", "b", &allowed) ||
+        !g_variant_lookup(arguments, "accuracy", "x", &signed_accuracy) || signed_accuracy < 0 ||
+        signed_accuracy > 8 || !location_accuracy_valid((guint)signed_accuracy)) {
+        g_set_error_literal(
+            error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+            "location.authorize_app requires request_id, allow, and a valid accuracy level");
+        return NULL;
+    }
+
+    PendingLocationAuthorization* pending =
+        g_hash_table_lookup(control->pending_location_authorizations, &signed_request_id);
+    if (!pending || pending->completed || pending->expires_at_us <= g_get_monotonic_time()) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                            "location authorization request is no longer pending");
+        return NULL;
+    }
+    if (client_id && !g_hash_table_contains(pending->recipient_client_ids, &client_id)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
+                            "only a client that received the location request can answer it");
+        return NULL;
+    }
+
+    guint accuracy = allowed ? (guint)signed_accuracy : 0;
+    if ((allowed && (accuracy == 0 || accuracy > pending->requested_accuracy)) ||
+        (!allowed && accuracy != 0)) {
+        g_set_error_literal(
+            error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+            "allowed location accuracy must be nonzero and no greater than requested");
+        return NULL;
+    }
+    pending->completed = TRUE;
+    gnoblin_location_request_complete(pending->request, allowed, accuracy);
+    GVariantBuilder result;
+    g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&result, "{sv}", "request_id", g_variant_new_int64(signed_request_id));
+    g_variant_builder_add(&result, "{sv}", "submitted", g_variant_new_boolean(TRUE));
+    GVariant* response = g_variant_ref_sink(g_variant_builder_end(&result));
+    g_hash_table_remove(control->pending_location_authorizations, &signed_request_id);
+    return response;
 }
 
 static void privacy_handle_stopped(MetaRemoteAccessHandle* handle, gpointer user_data) {
@@ -10864,6 +11063,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "privacy state events require API version 1.17");
             }
+            if (g_str_equal(name, "gnoblin.location.authorization-requested") &&
+                client->api_minor < 65) {
+                g_hash_table_unref(subscriptions);
+                return encode_response("", NULL,
+                                       "location authorization events require API version 1.65");
+            }
             if (g_str_equal(name, "gnoblin.capability.changed") && client->api_minor < 33) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL,
@@ -10980,6 +11185,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         return encode_response(id, NULL, "dynamic shortcut methods require API version 1.11");
     if (g_str_equal(method, "shortcut.session.end") && client->api_minor < 64)
         return encode_response(id, NULL, "shortcut.session.end requires API version 1.64");
+    if (g_str_equal(method, "location.authorize_app") && client->api_minor < 65)
+        return encode_response(id, NULL, "location.authorize_app requires API version 1.65");
     if ((g_str_equal(method, "grant.list") || g_str_equal(method, "grant.revoke")) &&
         client->api_minor < 14)
         return encode_response(id, NULL, "portal grant methods require API version 1.14");
@@ -12295,6 +12502,7 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         "privacy.state",
         "privacy.stop_sharing",
         "privacy.stop_recording",
+        "location.authorize_app",
         "animation.list",
         "animation.get",
         "animation.surfaces",
@@ -13038,7 +13246,7 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
     g_autoptr(GError) operation_error = NULL;
     g_autoptr(GVariant) result = NULL;
     gboolean pending = FALSE;
-    if (g_str_equal(method, "window.thumbnail"))
+    if (g_str_equal(method, "window.thumbnail") || g_str_equal(method, "location.authorize_app"))
         g_variant_lookup(packet->payload, "client_id", "t", &client_id);
     if (g_str_equal(method, "window.snap") || g_str_equal(method, "window.snap_context")) {
         guint64 operation_generation = 0;
@@ -13141,6 +13349,9 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
             result = native_stop_privacy_sessions(
                 control, g_str_equal(method, "privacy.stop_recording"), &operation_error);
         }
+    } else if (g_str_equal(method, "location.authorize_app")) {
+        result =
+            native_location_authorize_operation(control, arguments, client_id, &operation_error);
     } else if (g_str_equal(method, "session.lock")) {
         result = gnoblin_native_control_request_session_lock(control->display, arguments,
                                                              &operation_error);
@@ -13674,6 +13885,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_window_shader_file_free);
     control->pending_runtime_requests =
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, pending_runtime_request_free);
+    control->pending_location_authorizations = g_hash_table_new_full(
+        g_int64_hash, g_int64_equal, g_free, pending_location_authorization_free);
     control->runtime_operation_ids =
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, NULL);
     control->runtime_cancelled_operation_ids =
@@ -13908,6 +14121,10 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     if (control->pipewire_monitor)
         gnoblin_pipewire_monitor_start(control->pipewire_monitor);
 #endif
+    control->location_agent = gnoblin_location_agent_new(
+        NULL, location_authorize_app, privacy_location_state_changed, control, NULL);
+    if (control->location_agent)
+        gnoblin_location_agent_start(control->location_agent);
     schedule_windows(control);
     if (control->input_sources && control->input_sources->len > 0 &&
         !control->input_keymap_description) {
@@ -13953,15 +14170,17 @@ fail:
 void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     if (!control)
         return;
+    control->stopping = TRUE;
     if (control->privacy_camera_disable_source_id) {
         g_source_remove(control->privacy_camera_disable_source_id);
         control->privacy_camera_disable_source_id = 0;
     }
+    clear_pending_location_authorizations(control);
+    g_clear_pointer(&control->location_agent, gnoblin_location_agent_free);
     control->overlay_modifier_hook_available = FALSE;
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session,
                                      "compositor_stopped");
-    control->stopping = TRUE;
     native_corner_toolkit_cache_shutdown(control);
 #ifdef HAVE_REMOTE_DESKTOP
     g_clear_pointer(&control->pipewire_monitor, gnoblin_pipewire_monitor_free);
@@ -14124,6 +14343,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->touchpad_router, gnoblin_touchpad_router_free);
     g_clear_pointer(&control->runtime_cache, gnoblin_runtime_cache_free);
     g_clear_pointer(&control->pending_runtime_requests, g_hash_table_unref);
+    g_clear_pointer(&control->pending_location_authorizations, g_hash_table_unref);
     g_clear_pointer(&control->runtime_operation_ids, g_hash_table_unref);
     g_clear_pointer(&control->runtime_cancelled_operation_ids, g_hash_table_unref);
     g_clear_pointer(&control->runtime_event_subscriptions, g_hash_table_unref);
