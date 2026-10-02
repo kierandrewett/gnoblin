@@ -352,6 +352,8 @@ end
 
 Revocation uses the record's creation time, so a stale record cannot revoke a
 new grant that reuses its ID. The console waits for each revoke to complete.
+Both `PortalGrant:revoke()` and `gnoblin.grant.revoke(args)` return deeply
+read-only results.
 Scripts can also use the shared `gnoblin.grant.revoke` call directly; pass the
 timestamp from the snapshot to keep the same stale-record check:
 

@@ -1757,7 +1757,7 @@ for each compositor operation and returns its completed value instead of an
 deeply read-only device lists. The `grant.list()` compatibility spelling uses
 the same typed snapshot. `PortalGrant:revoke()` carries the snapshot creation
 time to the compositor so stale records cannot revoke a replacement grant; the
-console waits for completion and returns the completed value.
+console waits for completion and returns a deeply read-only result.
 
 `grant.revoke({kind, id, created_at?})` is also available in the console. It
 validates the grant kind and opaque ID, waits for compositor completion, and
