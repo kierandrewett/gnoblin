@@ -362,7 +362,8 @@ its native privacy snapshot currently reports camera activity as unavailable.
    triggers. A headless Fedora 45 session claimed a `<Super>Return` binding;
    an injected accelerator signal launched its command without GJS. This
    proves the signal-to-command path, not a physical key press on a real seat.
-   Built-in Shell actions and popup input capture still require Shell.
+   At that checkpoint, built-in Shell actions and popup input capture still
+   required Shell.
    Native Mutter now validates and applies Lua input settings directly through
    its in-memory overlay: mouse, touchpad, keyboard, tablets, styluses, and
    orientation lock. A Fedora 45 headless run accepted all groups and showed
@@ -373,9 +374,15 @@ its native privacy snapshot currently reports camera activity as unavailable.
    actions for the `wm`, `mutter`, and `wayland` groups in memory. Fedora 45
    headless probes read `wm.close=<Super>q` back after startup from both
    configuration forms. A `shell` group and `gnome:shell` action fail with an
-   explicit Shell-required error. The full login still requires Shell while
-   its UI, capture-input shortcuts, and services are being replaced.
-   The full login still requires Shell while those capabilities are moved.
+   explicit Shell-required error. Native-control API 1.22 later added held and
+   modal `gnoblin.shortcuts.bind` sessions for Lua and shell clients. Modal
+   sessions deliver captured key press and release events while their held
+   modifier is down; bare-Super bindings can capture type-ahead input when
+   Mutter's early modifier hook is available. These APIs let an external shell
+   own shortcut behavior and UI without GNOME Shell. Named GNOME Shell actions
+   remain unsupported, and static
+   `gnoblin.configure.shortcuts.*.capture_input` remains unsupported. Real-seat
+   shortcut behavior and a complete standalone login still need verification.
    On Fedora 43, a clean permanent worktree completed the full source build
    with GCC 15.3.1. Host versions of GNOME schemas (49.1), xdg-desktop-portal
    (1.20.4), and GTK (4.20.4) were below the pinned GNOME 51 build floors, so
