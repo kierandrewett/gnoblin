@@ -1607,6 +1607,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_PERMISSION_POLICY_RECORD_METATABLE "gnoblinctl.PermissionPolicy"
 #define GNOBLINCTL_SESSION_STATUS_RECORD_METATABLE "gnoblinctl.SessionStatus"
 #define GNOBLINCTL_SESSION_ACTIVITY_RECORD_METATABLE "gnoblinctl.SessionActivity"
+#define GNOBLINCTL_PERMISSION_DECISION_RECORD_METATABLE "gnoblinctl.PermissionDecision"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
@@ -1622,6 +1623,7 @@ static int lua_cli_capabilities_list(lua_State* state);
 static int lua_cli_permissions_policy(lua_State* state);
 static int lua_cli_session_status(lua_State* state);
 static int lua_cli_session_activity(lua_State* state);
+static int lua_cli_permissions_check(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2852,6 +2854,126 @@ static int lua_cli_permissions_policy(lua_State* state) {
     return 1;
 }
 
+static gboolean lua_cli_permission_decision_valid(JsonObject* object) {
+    const char* level = member_string(object, "level", NULL);
+    JsonNode* rule = json_object_get_member(object, "rule");
+    JsonArray* monitors = json_object_get_array_member(object, "monitors");
+    JsonArray* devices = json_object_get_array_member(object, "devices");
+    JsonNode* clipboard = json_object_get_member(object, "clipboard");
+    JsonNode* revision = json_object_get_member(object, "revision");
+    if (!level ||
+        (!g_str_equal(level, "default") && !g_str_equal(level, "ask") &&
+         !g_str_equal(level, "allow") && !g_str_equal(level, "deny")) ||
+        !rule || !JSON_NODE_HOLDS_VALUE(rule) || json_node_get_value_type(rule) != G_TYPE_STRING ||
+        !monitors || !devices || !clipboard || !JSON_NODE_HOLDS_VALUE(clipboard) ||
+        json_node_get_value_type(clipboard) != G_TYPE_BOOLEAN || !revision ||
+        !JSON_NODE_HOLDS_VALUE(revision) ||
+        (json_node_get_value_type(revision) != G_TYPE_INT64 &&
+         json_node_get_value_type(revision) != G_TYPE_INT) ||
+        json_node_get_int(revision) < 0)
+        return FALSE;
+    for (guint i = 0; i < json_array_get_length(monitors); i++) {
+        JsonNode* monitor = json_array_get_element(monitors, i);
+        if (!monitor || !JSON_NODE_HOLDS_VALUE(monitor) ||
+            json_node_get_value_type(monitor) != G_TYPE_STRING)
+            return FALSE;
+    }
+    for (guint i = 0; i < json_array_get_length(devices); i++) {
+        JsonNode* device = json_array_get_element(devices, i);
+        const char* name = device && JSON_NODE_HOLDS_VALUE(device) &&
+                                   json_node_get_value_type(device) == G_TYPE_STRING
+                               ? json_node_get_string(device)
+                               : NULL;
+        if (!name || (!g_str_equal(name, "keyboard") && !g_str_equal(name, "pointer") &&
+                      !g_str_equal(name, "touchscreen")))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static int lua_cli_permission_decision_tostring(lua_State* state) {
+    lua_pushliteral(state, "PermissionDecision");
+    return 1;
+}
+
+static void register_lua_cli_permission_decision_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_PERMISSION_DECISION_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_readonly_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_permission_decision_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static int lua_cli_permissions_check(lua_State* state) {
+    JsonObject* arguments = json_object_new();
+    if (lua_gettop(state) == 2 && lua_type(state, 1) == LUA_TSTRING &&
+        lua_type(state, 2) == LUA_TSTRING) {
+        json_object_set_string_member(arguments, "capability", lua_tostring(state, 1));
+        json_object_set_string_member(arguments, "identity", lua_tostring(state, 2));
+    } else if (lua_gettop(state) == 1 && lua_istable(state, 1)) {
+        lua_pushnil(state);
+        while (lua_next(state, 1)) {
+            const char* key = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
+            if (!key || (!g_str_equal(key, "capability") && !g_str_equal(key, "identity")) ||
+                lua_type(state, -1) != LUA_TSTRING) {
+                json_object_unref(arguments);
+                return luaL_error(
+                    state, "gnoblin.permissions.check accepts string capability and identity");
+            }
+            lua_pop(state, 1);
+        }
+        lua_getfield(state, 1, "capability");
+        const char* capability =
+            lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
+        lua_getfield(state, 1, "identity");
+        const char* identity = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
+        if (!capability || !identity) {
+            lua_pop(state, 2);
+            json_object_unref(arguments);
+            return luaL_error(state,
+                              "gnoblin.permissions.check requires string capability and identity");
+        }
+        json_object_set_string_member(arguments, "capability", capability);
+        json_object_set_string_member(arguments, "identity", identity);
+        lua_pop(state, 2);
+    } else {
+        json_object_unref(arguments);
+        return luaL_error(state,
+                          "gnoblin.permissions.check accepts (capability, identity) or one table");
+    }
+
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "permissions.check", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.permissions.check failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result) ||
+        !lua_cli_permission_decision_valid(json_node_get_object(result)))
+        return luaL_error(state,
+                          "gnoblin.permissions.check returned an invalid PermissionDecision");
+
+    json_to_lua(state, result);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 1);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    luaL_getmetatable(state, GNOBLINCTL_PERMISSION_DECISION_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+    return 1;
+}
+
 static gboolean lua_cli_session_status_valid(JsonObject* object) {
     const char* session_state = member_string(object, "state", NULL);
     JsonNode* lock_available = json_object_get_member(object, "lock_available");
@@ -3758,6 +3880,11 @@ static int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_cli_permissions_policy, 1);
         return 1;
     }
+    if (g_str_equal(prefix, "permissions") && g_str_equal(name, "check")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_permissions_check, 1);
+        return 1;
+    }
     if (g_str_equal(prefix, "session") && g_str_equal(name, "status")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_session_status, 1);
@@ -3974,6 +4101,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_privacy_state_record(state);
     register_lua_cli_capability_record(state);
     register_lua_cli_permission_policy_record(state);
+    register_lua_cli_permission_decision_record(state);
     register_lua_cli_session_status_record(state);
     register_lua_cli_session_activity_record(state);
     lua_newtable(state);
