@@ -71,18 +71,31 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 | Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                       |
 | Settings   | `gsettings-desktop-schemas`                 | Shared schemas define key types and defaults; Mutter input settings overlay mapped Lua values, while other consumers still use GSettings.                                           |
 
-Migrate Mutter preferences through a typed compatibility view keyed by their
-existing GSettings schema and key. For each mapped preference, the view reads
-the validated Gnoblin Lua value first and falls back to GSettings while that
-field is inherited or unmigrated. Replace direct GSettings reads with this
-view one consumer at a time, and send changes through the existing config
-reload path. Keep each legacy key's type and write behavior explicit; do not
-assume that a generic GSettings backend can safely edit Lua configuration.
-This lets the Lua config become authoritative gradually while existing
-GSettings preferences remain available as a compatibility fallback. The
-schema package and its version requirement can be reconsidered only after the
-remaining Mutter, native-control, and portal consumers no longer need its
-definitions or defaults.
+Migrate Mutter preferences behind one typed compatibility adapter keyed by the
+existing GSettings schema ID and key. Gnoblin validates each Lua value, maps it
+to the legacy key's type, and sends the effective settings through the existing
+configuration path. Mutter consumers keep their current behavior while the
+adapter reads an explicit Gnoblin value first and uses the desktop value for
+inherited or unmigrated fields. Move consumers onto the adapter one at a time;
+do not give each consumer its own key-to-Lua mapping.
+
+Keep the legacy schema and key as the compatibility boundary, but keep
+user-facing configuration in Gnoblin's domain-specific snake_case paths. Add
+new Gnoblin paths only when the setting belongs to the compositor or session;
+leave desktop-wide and application-owned preferences with their existing
+owners. Make write behavior explicit for every mapped key. Gnoblin config
+reloads update adapter values and notify affected consumers without writing
+the user's Lua files or silently redirecting writes to GSettings.
+
+Prefer this Mutter-owned adapter over replacing the process-wide default
+GSettings backend: a backend swap would also affect unrelated GSettings users
+inside Mutter, while the backend extension API has weaker stability guarantees
+than public GIO APIs. Keep the existing GSettings fallback during migration so
+omitted fields retain their current behavior. This adapter does not remove the
+schema package by itself: GSettings still needs key types, enum definitions,
+and defaults, and other Mutter or portal consumers may continue reading
+schemas. Revisit the schema package and its version requirement only after
+those consumers and build-time schema checks have been accounted for.
 
 The package recipes select Gnoblin's portal backend for a Gnoblin session.
 The Gnoblin session package requires `gnoblin-portal` and the generic portal
