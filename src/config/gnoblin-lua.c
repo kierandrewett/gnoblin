@@ -2939,14 +2939,6 @@ static gboolean builtin_animation_supports(const char* name, const char* event) 
         return g_str_equal(event, "workspace-switch");
     if (g_str_equal(name, "gnome-resize"))
         return g_str_equal(event, "resize");
-    if (g_str_equal(name, "gnome-tile-preview-open"))
-        return g_str_equal(event, "tile-preview-open");
-    if (g_str_equal(name, "gnome-tile-preview-close"))
-        return g_str_equal(event, "tile-preview-close");
-    if (g_str_equal(name, "gnome-dialog-dim"))
-        return g_str_equal(event, "dialog-dim");
-    if (g_str_equal(name, "gnome-dialog-undim"))
-        return g_str_equal(event, "dialog-undim");
     if (g_str_equal(name, "gnoblin-shadow-change"))
         return g_str_equal(event, "shadow-change");
     return FALSE;

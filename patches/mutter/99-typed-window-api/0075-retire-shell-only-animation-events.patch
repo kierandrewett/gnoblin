@@ -1,0 +1,33 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] mutter: retire shell-only animation events
+
+---
+diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
+index 2e78d47bd..3b60eb39c 100644
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -123,10 +123,6 @@ static const BuiltinAnimation builtins[] = {
+     {"slide", NULL},
+     {"none", NULL},
+     {"gnome-resize", "resize"},
+-    {"gnome-tile-preview-open", "tile-preview-open"},
+-    {"gnome-tile-preview-close", "tile-preview-close"},
+-    {"gnome-dialog-dim", "dialog-dim"},
+-    {"gnome-dialog-undim", "dialog-undim"},
+     {"gnoblin-shadow-change", "shadow-change"},
+     {NULL, NULL}};
+ 
+@@ -449,10 +445,7 @@ static gboolean actor_event(const char *event) {
+ }
+ 
+ static gboolean internal_event(const char *event) {
+-  static const char *const names[] = {
+-      "shadow-change",      "tile-preview-open",
+-      "tile-preview-close", "dialog-dim",
+-      "dialog-undim", NULL};
++  static const char *const names[] = {"shadow-change", NULL};
+   return g_strv_contains(names, event);
+ }
+ 
