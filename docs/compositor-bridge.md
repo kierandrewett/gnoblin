@@ -297,7 +297,7 @@ an API version:
 
 The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 
-### API additions through 1.36
+### API additions
 
 | Minimum version | Added methods or events                                                                               |
 | --------------- | ----------------------------------------------------------------------------------------------------- |
@@ -367,6 +367,9 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.62            | Legacy `window.action` maps move to `window.move`                                                |
 | 1.63            | Adds `workspace` and `monitor` actions to `window.action`                                        |
 | 1.64            | `shortcut.session.end` ends an owned active session without removing its binding                 |
+| 1.65            | `location.authorize_app` grants location access for a verified application identity              |
+| 1.66            | `input.orientation_lock` read and `input.set_orientation_lock` update                            |
+| 1.67            | Native status reads remain available while a Lua worker restarts                                 |
 
 ### API 1.27: shell presentation requests
 
@@ -1448,6 +1451,31 @@ Request API 1.66 or newer:
     "events": ["gnoblin.input.orientation-lock-changed"]
 }
 ```
+
+### API version 1.67: Lua runtime health
+
+Read worker health directly from Mutter with `runtime.status`:
+
+```json
+{
+    "op": "api",
+    "id": "runtime-status",
+    "api_version": { "major": 1, "minor": 67 },
+    "method": "runtime.status",
+    "arguments": {}
+}
+```
+
+`state` reports the worker's connection state:
+
+- `starting` means the worker has not connected yet.
+- `running` means the worker is serving requests.
+- `restarting` means Mutter has suspended the worker for replacement.
+- `unavailable` means the supervisor is disconnected or stopping.
+
+`generation` identifies the runtime configuration accepted by Mutter. It
+stays the same across worker recovery and changes when Mutter accepts a new
+configuration.
 
 ## Limits and disconnects
 
