@@ -214,8 +214,8 @@ supervisor operations such as configuration reload.
 | `gnoblin.monitors` | `list()`, `primary()` | **Current; native runtime only.** Read-only revisioned monitor snapshot records. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
 | `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `text_target(context)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` exposes typed device/source snapshots and source selection. Trusted text targets remain callback-only. |
-| `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current; native runtime only.** Read and control declared compositor animation previews. |
-| `gnoblin.launches` | `list()`, `begin(args)`, `end(args)` | **Current; native runtime only.** Read and report tracked application launches. |
+| `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` supports read-only `list()` and `get(name)`. |
+| `gnoblin.launches` | `list()`, `snapshot()`, `begin(args)`, `end(args)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` supports read-only `list()` and revisioned `snapshot()`. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
 | `gnoblin.privacy.state()` | `() -> PrivacyState` | **Current.** Read the immutable privacy activity snapshot in the native runtime or `gnoblinctl lua`; the console returns a deeply read-only record. |
 | `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only `PermissionPolicy` and `PermissionDecision` records from the matching reads. |
@@ -1677,6 +1677,14 @@ the console, preserving the shared API's MRU order and filters.
 
 `capabilities.list()` returns the shared array of read-only `Capability`
 records in the console. The no-argument call uses native-control API 1.19.
+
+`animations.list()` and `animations.get(name)` use the canonical singular
+`animation.list` and `animation.get` socket reads. They return the same
+deeply read-only `AnimationInfo` values as the runtime API.
+
+`launches.list()` and `launches.snapshot()` share native-control API 1.39.
+Both return deeply read-only `Launch` records; the snapshot also preserves the
+collection revision.
 
 `permissions.policy()` uses native-control API 1.44 and returns a deeply
 read-only `PermissionPolicy`, including its ordered rules array.
