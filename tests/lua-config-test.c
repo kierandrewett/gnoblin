@@ -293,8 +293,10 @@ int main(void) {
         "    numlock_state = 'inherit' },"
         "  tablets = { ['056a:00b9'] = { mapping = 'relative', keep_aspect = true },"
         "    ['1234:abcd'] = { mapping = 'inherit' } },"
-        "  styluses = { ['123'] = { button_action = 'keybinding',"
-        "    button_keybinding = 'XF86AudioMute' } },"
+        "  styluses = { ['123'] = { eraser_button_mode = 'button',"
+        "    eraser_button_action = 'keybinding',"
+        "    eraser_button_keybinding = 'XF86AudioMute',"
+        "    button_action = 'keybinding', button_keybinding = 'XF86AudioMute' } },"
         "  orientation_lock = false } }\n";
     g_assert_true(g_file_set_contents(explicit_root, input_source, -1, &error));
     g_clear_pointer(&document, g_variant_unref);
@@ -348,6 +350,15 @@ int main(void) {
     g_autoptr(GVariant) mapped_tablet =
         g_variant_lookup_value(tablets, "056a:00b9", G_VARIANT_TYPE_VARDICT);
     g_assert_nonnull(mapped_tablet);
+    g_autoptr(GVariant) styluses =
+        g_variant_lookup_value(input_overlay, "styluses", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) stylus = g_variant_lookup_value(styluses, "123", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) eraser_mode =
+        g_variant_lookup_value(stylus, "eraser-button-mode", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(eraser_mode, NULL), ==, "button");
+    g_autoptr(GVariant) eraser_action =
+        g_variant_lookup_value(stylus, "eraser-button-action", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(eraser_action, NULL), ==, "keybinding");
 
     g_assert_true(g_file_set_contents(explicit_root,
                                       "gnoblin.configure {input = {mouse = {speed = 'inherit'},"

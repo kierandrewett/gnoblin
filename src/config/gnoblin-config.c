@@ -61,13 +61,11 @@ static gboolean input_field_known(const char* group, const char* key) {
     };
     static const char* const tablet_fields[] = {"mapping", "left-handed", "keep-aspect", NULL};
     static const char* const stylus_fields[] = {
-        "button-action",
-        "secondary-button-action",
-        "tertiary-button-action",
-        "button-keybinding",
-        "secondary-button-keybinding",
-        "tertiary-button-keybinding",
-        NULL,
+        "eraser-button-mode",         "eraser-button-action",
+        "eraser-button-keybinding",   "button-action",
+        "secondary-button-action",    "tertiary-button-action",
+        "button-keybinding",          "secondary-button-keybinding",
+        "tertiary-button-keybinding", NULL,
     };
     const char* const* fields = g_str_equal(group, "mouse")      ? mouse_fields
                                 : g_str_equal(group, "touchpad") ? touchpad_fields
@@ -90,6 +88,7 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
     static const char* tap_button_maps[] = {"default", "lrm", "lmr", NULL};
     static const char* click_methods[] = {"default", "none", "areas", "fingers", NULL};
     static const char* tablet_mapping[] = {"absolute", "relative", NULL};
+    static const char* stylus_eraser_modes[] = {"default", "button", NULL};
     static const char* stylus_actions[] = {"default", "middle",         "right",      "back",
                                            "forward", "switch-monitor", "keybinding", NULL};
     if (!input_field_known(group, key))
@@ -169,6 +168,8 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
         return input_string_is(value, click_methods);
     if (g_str_equal(key, "mapping"))
         return input_string_is(value, tablet_mapping);
+    if (g_str_equal(key, "eraser-button-mode"))
+        return input_string_is(value, stylus_eraser_modes);
     if (g_str_has_suffix(key, "button-action"))
         return input_string_is(value, stylus_actions);
     if (g_str_has_suffix(key, "button-keybinding"))
