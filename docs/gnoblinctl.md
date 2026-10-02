@@ -152,6 +152,10 @@ for _, rule in ipairs(policy.rules) do
 end
 ```
 
+Use `gnoblin.permissions.list()` to also read the supported capabilities,
+permission levels, and configuration path. Its nested values are deeply
+read-only.
+
 Check how the committed policy evaluates a capability for an application
 identity. The console accepts either two strings or a table:
 

@@ -1011,7 +1011,7 @@ names documented for their interfaces.
 | `gnoblin.privacy.state()`          | None                     | Read-only `PrivacyState` snapshot                        |
 | `gnoblin.privacy.stop_sharing()`   | None                     | `Operation<{requested: integer}>`                        |
 | `gnoblin.privacy.stop_recording()` | None                     | `Operation<{requested: integer}>`                        |
-| `permissions.list()`               | None                     | Policy, capabilities, permission levels, and config path |
+| `permissions.list()`               | None                     | Read-only policy, capabilities, levels, and config path  |
 | `permissions.policy()`             | None                     | Immutable policy with `default`, `rules`, and `revision` |
 | `permissions.check(args)`          | `capability`, `identity` | Permission decision with scope details                   |
 | `grant.list()`                     | None                     | `{grants = {Grant, ...}}`                                |
@@ -1019,6 +1019,8 @@ names documented for their interfaces.
 
 Permission capabilities, identities, grant kinds, and scope fields use the
 same values as [session permissions](/config/configure/permissions).
+`gnoblinctl lua` exposes `gnoblin.permissions.list()` as a deeply read-only
+snapshot through native-control API 1.42.
 
 `permissions.check` returns an immutable decision with `level`, `rule`,
 `monitors` (a string array), `devices` (an array containing any of
