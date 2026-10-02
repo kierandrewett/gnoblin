@@ -1,5 +1,5 @@
 /*
- * gnoblin: shared configuration loading for Mutter and Shell.
+ * gnoblin: Lua configuration loading for the standalone Mutter runtime.
  *
  * Read from $GNOBLIN_CONFIG, else the first existing init.lua, gnoblin.toml,
  * or gnoblin.conf under $XDG_CONFIG_HOME/gnoblin. A fresh installation uses
@@ -7,7 +7,7 @@
  *
  * Missing files and keys use the caller's default. Invalid reloads retain
  * the last valid configuration. Mutter uses these accessors to gate Wayland
- * protocols; the shell receives the same evaluated document for live settings.
+ * protocols and run Gnoblin's compositor-side Lua callbacks.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
