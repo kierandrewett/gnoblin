@@ -87,6 +87,8 @@ with (root / "rule-lifecycle-client.log").open("w") as log:
         configure(False)
         subprocess.run([gnoblinctl, "ping"], check=True, capture_output=True, text=True)
         assert window_geometry(), "removing a Lua window rule closed the window"
+        runtime_log = Path(os.environ["GNOBLIN_DEVKIT_RUNTIME_LOG"]).read_text(errors="replace")
+        assert "failed to match Gnoblin window animation rules" not in runtime_log, runtime_log
         print("PASS: four Lua window-rule reloads preserve the live compositor window")
     finally:
         process.terminate()
