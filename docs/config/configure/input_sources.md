@@ -10,9 +10,10 @@ restore GNOME's session sources.
   input method.
 - `sources[].id` is an installed XKB layout ID or IBus engine ID, depending on
   `type`.
-- In the direct Gnoblin session, XKB-only sources do not start `ibus-daemon`.
-  If you select an IBus source, install the `ibus` daemon and that engine;
-  Gnoblin starts the daemon when the source is configured.
+- In the direct Gnoblin session, XKB-only sources do not need `ibus-daemon`.
+  Gnoblin does not start the daemon. Start it in your session and install the
+  selected engine before using an IBus source. Gnoblin reconnects when the
+  IBus service becomes available or restarts.
 - `per_window` is optional and defaults to `false`. Set it to `true` to
   remember a different source for each window. With the default `false`, all
   windows share the same active source; switching layouts in one window changes
