@@ -98,11 +98,14 @@ An empty keybinding has no effect unless its action is `"keybinding"`.
 
 ## Orientation lock
 
-| `orientation_lock` | Behavior                             |
-| ------------------ | ------------------------------------ |
-| `true`             | Lock the current screen orientation. |
-| `false`            | Allow automatic rotation.            |
-| Omitted            | Follow GNOME's setting.              |
+| `orientation_lock`     | Behavior                             |
+| ---------------------- | ------------------------------------ |
+| `true`                 | Lock the current screen orientation. |
+| `false`                | Allow automatic rotation.            |
+| `"inherit"` or omitted | Follow the system setting.           |
+
+On config reload, Gnoblin reapplies a configured boolean. An omitted value or
+`"inherit"` clears the override and follows the system setting.
 
 Use this override when the system rotation preference should not change screen
 orientation for this config.
@@ -131,7 +134,7 @@ gnoblin.configure {
         mouse = {...}?,
         touchpad = {...}?,
         keyboard = {...}?,
-        orientation_lock = boolean?,
+        orientation_lock = boolean | "inherit"?,
         tablets = {
             ["vvvv:pppp"] = {
                 mapping = "absolute" | "relative"?,

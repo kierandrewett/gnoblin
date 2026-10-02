@@ -213,7 +213,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current.** The native runtime exposes read-only revisioned snapshots and typed operations. `gnoblinctl lua` exposes the same reads and namespace mutations; operations wait for completion and return read-only records. |
 | `gnoblin.monitors` | `list()`, `primary()` | **Current.** Both the supervised runtime and `gnoblinctl lua` expose read-only revisioned monitor snapshots. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
-| `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `text_target(context)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` exposes typed device/source snapshots and source selection. Trusted text targets remain callback-only. |
+| `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `orientation_lock()`, `set_orientation_lock(value)`, `text_target(context)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` exposes device/source and orientation-lock reads and changes. Trusted text targets remain callback-only. |
 | `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` supports read-only `list()`, `get(name)`, `inspect(args)`, and the deeply read-only `{surfaces = Surface[]}` snapshot, plus `preview(spec)` and typed preview controls. |
 | `gnoblin.launches` | `list()`, `snapshot()`, `begin(args)`, `finish(token)` | **Current.** The supervised runtime and `gnoblinctl lua` support all methods. The bracket form `gnoblin.launches["end"](token)` remains as a compatibility alias because `end` is a Lua keyword. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records with stale-safe revoke methods. |
@@ -630,18 +630,20 @@ must retain its validation and rollback semantics.
 
 ### Input and shortcuts
 
-| Lua call                                | Arguments                                          | Result                               | Canonical operation                                                 |
-| --------------------------------------- | -------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------- |
-| `gnoblin.input.devices()`               | none                                               | `InputDevice[]`                      | `input.devices`                                                     |
-| `gnoblin.input.sources()`               | none                                               | `InputSource[]`                      | `input.sources`                                                     |
-| `gnoblin.input.current_source()`        | none                                               | `InputSource or nil`                 | state read                                                          |
-| `gnoblin.input.select_source(selector)` | `{type, id}` source selector                       | `Operation<InputSource>`             | `input.select`                                                      |
-| `gnoblin.input.text_target(context)`    | live `FocusContext` from shortcut event            | `Operation<TextTarget>`              | Lua wrapper for `input.text_target`; socket counterpart is API 1.28 |
-| `target:insert_text(text)`              | UTF-8 text from 1 to 256 bytes, without controls   | `Operation<{inserted}>`              | Lua wrapper for `input.insert_text`; socket counterpart is API 1.28 |
-| `gnoblin.shortcuts.list()`              | none                                               | `ShortcutState[]`                    | `shortcut.list`                                                     |
-| `gnoblin.shortcuts.actions(group?)`     | optional group: `"wm"`, `"mutter"`, or `"wayland"` | `ShortcutAction[]`                   | socket read `shortcuts.actions` (API 1.41)                          |
-| `gnoblin.shortcuts.capture(options?)`   | `timeout?` seconds                                 | `Operation<CapturedShortcut>`        | `shortcut.capture`                                                  |
-| `gnoblin.shortcuts.end_session(args)`   | binding `id` and active `session_id`               | `Operation<{id, session_id, ended}>` | `shortcut.session.end` (socket API 1.64)                            |
+| Lua call                                    | Arguments                                          | Result                               | Canonical operation                                                 |
+| ------------------------------------------- | -------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------- |
+| `gnoblin.input.devices()`                   | none                                               | `InputDevice[]`                      | `input.devices`                                                     |
+| `gnoblin.input.sources()`                   | none                                               | `InputSource[]`                      | `input.sources`                                                     |
+| `gnoblin.input.current_source()`            | none                                               | `InputSource or nil`                 | state read                                                          |
+| `gnoblin.input.select_source(selector)`     | `{type, id}` source selector                       | `Operation<InputSource>`             | `input.select`                                                      |
+| `gnoblin.input.orientation_lock()`          | none                                               | `OrientationLock`                    | `input.orientation_lock` (socket API 1.66)                          |
+| `gnoblin.input.set_orientation_lock(value)` | `true`, `false`, or `"inherit"`                    | `Operation<OrientationLock>`         | `input.set_orientation_lock` (socket API 1.66)                      |
+| `gnoblin.input.text_target(context)`        | live `FocusContext` from shortcut event            | `Operation<TextTarget>`              | Lua wrapper for `input.text_target`; socket counterpart is API 1.28 |
+| `target:insert_text(text)`                  | UTF-8 text from 1 to 256 bytes, without controls   | `Operation<{inserted}>`              | Lua wrapper for `input.insert_text`; socket counterpart is API 1.28 |
+| `gnoblin.shortcuts.list()`                  | none                                               | `ShortcutState[]`                    | `shortcut.list`                                                     |
+| `gnoblin.shortcuts.actions(group?)`         | optional group: `"wm"`, `"mutter"`, or `"wayland"` | `ShortcutAction[]`                   | socket read `shortcuts.actions` (API 1.41)                          |
+| `gnoblin.shortcuts.capture(options?)`       | `timeout?` seconds                                 | `Operation<CapturedShortcut>`        | `shortcut.capture`                                                  |
+| `gnoblin.shortcuts.end_session(args)`       | binding `id` and active `session_id`               | `Operation<{id, session_id, ended}>` | `shortcut.session.end` (socket API 1.64)                            |
 
 `InputDevice` fields: string `id`, `name`, and `device_type`; optional string
 `seat` when Mutter provides a seat name;
@@ -663,6 +665,17 @@ configured XKB layouts or variants and IBus engine IDs. IBus records currently
 use the engine ID as their display names. XKB selection changes Mutter's
 keymap; IBus selection calls `SetGlobalEngine` over the session bus. IBus is an
 optional runtime service and is not a linked build dependency.
+
+`OrientationLock` fields: boolean `available` and `locked`; string
+`orientation`; `source`, which is `system` when the system setting applies,
+`config` when a configured boolean applies, or `runtime` while a runtime
+override is active; and integer `revision`. The orientation is `normal`,
+`bottom-up`, `left-up`, `right-up`, or `undefined`. The setter accepts `true`,
+`false`, or `"inherit"`; `inherit` clears the runtime override and restores the
+configured value or follows the system setting. Runtime calls are ephemeral
+and do not write config files. Config reload reapplies its boolean setting or
+clears the override when `input.orientation_lock` is omitted or set to
+`"inherit"`.
 
 `ShortcutState` fields: string `name`; `binding` as one accelerator string
 or an array of strings; boolean `enabled`; `trigger` as `"press"` or
@@ -1342,6 +1355,8 @@ support the newer resize, move, workspace, or monitor actions.
 | `input.list`                                                           | `gnoblin.input.sources()`                                                                                                                                                                 |
 | `input.current`                                                        | `gnoblin.input.current_source()`                                                                                                                                                          |
 | `input.select`                                                         | `gnoblin.input.select_source({type, id})`                                                                                                                                                 |
+| `input.orientation_lock`                                               | `gnoblin.input.orientation_lock()`; shared Lua read from native-control API 1.66.                                                                                                         |
+| `input.set_orientation_lock`                                           | `gnoblin.input.set_orientation_lock(value)`; `value` is `true`, `false`, or `"inherit"`; native-control API 1.66.                                                                         |
 | `privacy.get`                                                          | `gnoblin.privacy.state()`                                                                                                                                                                 |
 | `privacy.stop_sharing`                                                 | `gnoblin.privacy.stop_sharing()`; Native-control API 1.31                                                                                                                                 |
 | `privacy.stop_recording`                                               | `gnoblin.privacy.stop_recording()`; Native-control API 1.31                                                                                                                               |
@@ -1383,6 +1398,7 @@ legacy. Mutter signal coverage can change with the pinned upstream version.
 | `mutter.wayland.pointer-window-changed`       | `app_id`, `wm_class`, `title`; empty strings when no client surface is under pointer                   | Mutter pointer tracking.                                                                                 |
 | `mutter.touchpad.gesture`                     | `gesture`, `phase`, `fingers`, `time`, and gesture-specific deltas                                     | Mutter touchpad recognizer.                                                                              |
 | `gnoblin.input.gesture`                       | `gesture`, `phase`, `fingers`, `sequence`, monotonic `time`, `input_time`, and gesture-specific deltas | Stable native Lua event derived from Mutter touchpad input.                                              |
+| `gnoblin.input.orientation-lock-changed`      | `available`, `locked`, `orientation`, `source`, `revision`, `sequence`, `time`                         | Orientation-lock state or its source changes; native-control API 1.66.                                   |
 | `mutter.<object>.<signal>`                    | `source`, `signal`, typed `argN` fields, and window identity fields when applicable                    | Forwarded Mutter GObject signal.                                                                         |
 | `gnoblin.config.reloaded`                     | `path`; native reload also includes `revision`                                                         | Config reload succeeds.                                                                                  |
 | `gnoblin.config.reload-failed`                | `path`, `error`                                                                                        | Candidate load or apply fails; rejected overlapping requests report only through their operation result. |
@@ -1463,6 +1479,7 @@ record also includes `name`, monotonic `sequence`, and monotonic-clock
 | `gnoblin.input.device-removed`             | `device_id`, `last: InputDevice`                                                   | A device disappears from the native input-device snapshot.                                                                                                                      |
 | `gnoblin.input.sources-changed`            | `sources: InputSource[]`                                                           | The configured available XKB source list changes.                                                                                                                               |
 | `gnoblin.input.source-changed`             | `available`, `source?: InputSource`                                                | Mutter confirms a different Gnoblin-owned keymap group, or the current source becomes unknown.                                                                                  |
+| `gnoblin.input.orientation-lock-changed`   | `available`, `locked`, `orientation`, `source`, `revision`, `sequence`, `time`     | Orientation-lock state or its source changes.                                                                                                                                   |
 | `gnoblin.input.gesture`                    | `gesture`, `phase`, `fingers`, gesture-specific deltas                             | A touchpad gesture phase arrives.                                                                                                                                               |
 | `gnoblin.shortcut.activated`               | `shortcut`, `trigger`, `focus_context: FocusContext`                               | A registered Gnoblin shortcut activates; its context can authorize one focus, interactive move, or interactive resize operation.                                                |
 | `gnoblin.window.menu-requested`            | `window_id`, `menu_type`, `x`, `y`, optional `menu_context: MenuContext`           | Mutter requests a window menu; only `wm` requests carry a one-use target-bound action capability.                                                                               |
