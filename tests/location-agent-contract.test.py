@@ -5,6 +5,9 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CONTROL = ROOT / "src/native-control/gnoblin-native-control.c"
+API_HEADER = ROOT / "src/native-control/gnoblin-native-control.h"
+LUA = ROOT / "src/config/gnoblin-lua.c"
 
 
 class LocationAgentContractTests(unittest.TestCase):
@@ -12,6 +15,8 @@ class LocationAgentContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = (ROOT / "src/native-control/gnoblin-location-agent.c").read_text()
         cls.header = (ROOT / "src/native-control/gnoblin-location-agent.h").read_text()
+        cls.control = CONTROL.read_text()
+        cls.lua = LUA.read_text()
 
     def test_agent_exports_expected_geo_clue_contract(self):
         self.assertIn('"/org/freedesktop/GeoClue2/Agent"', self.source)
@@ -22,6 +27,11 @@ class LocationAgentContractTests(unittest.TestCase):
 
     def test_accuracy_setting_is_mapped_to_geo_clue_levels(self):
         self.assertRegex(self.source, r"g_settings_schema_source_lookup\(source, \"org\.gnome\.system\.location\"")
+        accuracy_helper = self.source.split("static guint accuracy_from_setting", 1)[1].split(
+            "static guint clamp_accuracy", 1
+        )[0]
+        self.assertIn('!g_settings_get_boolean(settings, "enabled")', accuracy_helper)
+        self.assertIn('g_signal_connect(agent->settings, "changed"', self.source)
         for nick, level in (("country", 1), ("city", 4), ("neighborhood", 5), ("street", 6), ("exact", 8)):
             self.assertRegex(self.source, rf'(?s)g_strcmp0\(nick, "{nick}"\) == 0\).*?return {level};')
         self.assertIn("MIN(accuracy_level, 8)", self.source)
@@ -54,6 +64,22 @@ class LocationAgentContractTests(unittest.TestCase):
         patch = patch_path.read_text()
         self.assertIn("From: kierandrewett <kieran@drewett.dev>", patch)
         self.assertIn("files('core/gnoblin-location-agent.c')", patch)
+
+    def test_authorization_is_brokered_to_lua_with_bounded_one_use_requests(self):
+        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 65", API_HEADER.read_text())
+        self.assertIn('"location.authorize_app"', self.lua)
+        self.assertIn('"gnoblin.location.authorization-requested"', self.control)
+        self.assertIn("MAX_PENDING_LOCATION_AUTHORIZATIONS 32", self.control)
+        self.assertIn("LOCATION_AUTHORIZATION_TIMEOUT_SECONDS 25", self.control)
+        self.assertIn("recipient_client_ids", self.control)
+        self.assertIn("only a client that received the location request can answer it", self.control)
+        self.assertIn("clear_pending_location_authorizations(control)", self.control)
+        self.assertIn("native_location_authorize_operation(control, arguments, client_id", self.control)
+
+    def test_shutdown_does_not_dispatch_callbacks_through_destroyed_control(self):
+        stop = self.source.split("static gboolean begin_stop(", 1)[1].split("static void settings_changed(", 1)[0]
+        self.assertIn("agent->stopped = TRUE;", stop)
+        self.assertNotIn("notify_state(agent", stop)
 
 
 if __name__ == "__main__":

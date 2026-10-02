@@ -276,16 +276,51 @@ int main(void) {
         g_variant_lookup_value(socket_input_operation, "method", G_VARIANT_TYPE_STRING);
     g_assert_nonnull(socket_input_method);
     g_assert_cmpstr(g_variant_get_string(socket_input_method, NULL), ==, "input.select");
+    GVariantBuilder invalid_location_arguments_builder;
+    g_variant_builder_init(&invalid_location_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&invalid_location_arguments_builder, "{sv}", "request_id",
+                          g_variant_new_int64(7));
+    g_variant_builder_add(&invalid_location_arguments_builder, "{sv}", "allow",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&invalid_location_arguments_builder, "{sv}", "accuracy",
+                          g_variant_new_int64(3));
+    g_autoptr(GVariant) invalid_location_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&invalid_location_arguments_builder));
+    g_autoptr(GVariant) invalid_location_operation =
+        gnoblin_config_call_api("location.authorize_app", invalid_location_arguments, &error);
+    g_assert_null(invalid_location_operation);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_clear_error(&error);
+    GVariantBuilder location_arguments_builder;
+    g_variant_builder_init(&location_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&location_arguments_builder, "{sv}", "request_id",
+                          g_variant_new_int64(7));
+    g_variant_builder_add(&location_arguments_builder, "{sv}", "allow",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&location_arguments_builder, "{sv}", "accuracy", g_variant_new_int64(5));
+    g_autoptr(GVariant) location_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&location_arguments_builder));
+    g_autoptr(GVariant) location_operation =
+        gnoblin_config_call_api("location.authorize_app", location_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(location_operation);
+    g_autoptr(GVariant) location_method =
+        g_variant_lookup_value(location_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_nonnull(location_method);
+    g_assert_cmpstr(g_variant_get_string(location_method, NULL), ==, "location.authorize_app");
     g_autoptr(GVariant) queued_api_operations = gnoblin_config_drain_runtime_operations();
-    g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 3);
+    g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 4);
     g_autoptr(GVariant) queued_api_operation = g_variant_get_child_value(queued_api_operations, 0);
     g_autoptr(GVariant) queued_window_operation =
         g_variant_get_child_value(queued_api_operations, 1);
     g_autoptr(GVariant) queued_input_operation =
         g_variant_get_child_value(queued_api_operations, 2);
+    g_autoptr(GVariant) queued_location_operation =
+        g_variant_get_child_value(queued_api_operations, 3);
     g_assert_true(g_variant_equal(socket_workspace_operation, queued_api_operation));
     g_assert_true(g_variant_equal(socket_window_operation, queued_window_operation));
     g_assert_true(g_variant_equal(socket_input_operation, queued_input_operation));
+    g_assert_true(g_variant_equal(location_operation, queued_location_operation));
 
     GVariantBuilder thumbnail_event_builder;
     g_variant_builder_init(&thumbnail_event_builder, G_VARIANT_TYPE_VARDICT);
