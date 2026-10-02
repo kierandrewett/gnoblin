@@ -110,8 +110,8 @@
               !nixpkgs.lib.versionAtLeast pkgs.libinput.version "1.30.0"
             ) "libinput-below-1.30"
             ++ nixpkgs.lib.optional (
-              !nixpkgs.lib.versionAtLeast pkgs.pipewire.version "1.6.0"
-            ) "pipewire-below-1.6";
+              !nixpkgs.lib.versionAtLeast pkgs.pipewire.version "1.4.11"
+            ) "pipewire-below-1.4.11";
         in
         {
           inherit
