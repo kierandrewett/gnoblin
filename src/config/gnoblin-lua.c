@@ -6076,14 +6076,15 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
                     push_window_drag(state, event_payloads[event_index]);
                     lua_setfield(state, -2, "drag");
                 }
-                gboolean trusted_activation =
-                    g_str_equal(event_names[event_index], "gnoblin.shortcut.activated");
+                gboolean focus_context_event =
+                    g_str_equal(event_names[event_index], "gnoblin.shortcut.activated") ||
+                    g_str_equal(event_names[event_index], "gnoblin.shortcut.session.key");
                 if (g_str_equal(event_names[event_index], "gnoblin.shortcut.binding-activated")) {
                     lua_getfield(state, -1, "first");
-                    trusted_activation = lua_toboolean(state, -1);
+                    focus_context_event = lua_toboolean(state, -1);
                     lua_pop(state, 1);
                 }
-                if (trusted_activation && active_runtime->config.dispatch_focus_handle) {
+                if (focus_context_event && active_runtime->config.dispatch_focus_handle) {
                     push_focus_context(state, active_runtime->config.dispatch_focus_handle,
                                        active_runtime->config.dispatch_focus_generation,
                                        active_runtime->config.dispatch_native_focus_generation,
@@ -6226,9 +6227,10 @@ GVariant* gnoblin_config_dispatch_shortcut_event(const char* event, GVariant* pa
     if (!active_runtime || !context_handle || !native_generation ||
         expires_at_us <= g_get_monotonic_time() || !event ||
         (!g_str_equal(event, "gnoblin.shortcut.activated") &&
-         !g_str_equal(event, "gnoblin.shortcut.binding-activated"))) {
+         !g_str_equal(event, "gnoblin.shortcut.binding-activated") &&
+         !g_str_equal(event, "gnoblin.shortcut.session.key"))) {
         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "invalid trusted shortcut activation context");
+                            "invalid trusted shortcut event context");
         return NULL;
     }
     LuaConfig* config = &active_runtime->config;

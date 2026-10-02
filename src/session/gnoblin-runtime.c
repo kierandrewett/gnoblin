@@ -814,7 +814,8 @@ static gboolean handle_event(Runtime* runtime, GVariant* payload, GError** error
     g_autoptr(GVariant) document = NULL;
     gboolean trusted_binding = g_str_equal(event, "gnoblin.shortcut.binding-activated");
     gboolean trusted_shortcut = g_str_equal(event, "gnoblin.shortcut.activated");
-    if (trusted_binding || trusted_shortcut) {
+    gboolean session_key = g_str_equal(event, "gnoblin.shortcut.session.key");
+    if (trusted_binding || trusted_shortcut || session_key) {
         gboolean first = FALSE;
         if (trusted_binding && (!g_variant_lookup(event_payload, "first", "b", &first) || !first)) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
@@ -840,8 +841,8 @@ static gboolean handle_event(Runtime* runtime, GVariant* payload, GError** error
         if (has_context) {
             document = gnoblin_config_dispatch_shortcut_event(
                 event, event_payload, handle, native_generation, expires_at_us, error);
-        } else if (trusted_binding && !has_any_context) {
-            /* Activation delivery does not depend on optional focus authority. */
+        } else if ((trusted_binding || session_key) && !has_any_context) {
+            /* These events still reach Lua if optional focus authority is unavailable. */
             document = gnoblin_config_dispatch_event(event, event_payload, error);
         } else {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
