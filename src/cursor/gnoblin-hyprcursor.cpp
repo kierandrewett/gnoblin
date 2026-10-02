@@ -3,9 +3,8 @@
 
 #include "backends/gnoblin-hyprcursor.h"
 
-extern "C" {
-#include "core/gnoblin-native-control.h"
-}
+typedef struct _MetaDisplay MetaDisplay;
+extern "C" gboolean gnoblin_native_control_is_session(MetaDisplay* display);
 
 #include <hyprcursor/hyprcursor.hpp>
 #include <cstring>
