@@ -133,15 +133,16 @@ def main() -> int:
         server_error: list[BaseException] = []
         ready = threading.Event()
         monitor_request_count = 0
+        status_request_count = 0
 
         def serve_once() -> None:
-            nonlocal monitor_request_count
+            nonlocal monitor_request_count, status_request_count
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(69):
+                    for _ in range(71):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -158,7 +159,11 @@ def main() -> int:
                                 request = json.loads(stream.readline())
                             received.append(request)
                             if request["method"] == "session.status":
-                                result = {"session": "test-session", "locked": False}
+                                status_request_count += 1
+                                result = {"state": "running", "lock_available": False}
+                                if status_request_count > 2:
+                                    result["lock_available"] = True
+                                    result["lock_state"] = "covering"
                             elif request["method"] == "monitors.list":
                                 monitor_request_count += 1
                                 if monitor_request_count >= 6:
@@ -571,7 +576,7 @@ def main() -> int:
         assert ready.wait(timeout=5), repr(server_error)
         result = run(binary, "--socket", socket_path, "--format", "json", "status")
         assert result.returncode == 0, result.stderr
-        assert json.loads(result.stdout) == {"session": "test-session", "locked": False}
+        assert json.loads(result.stdout) == {"state": "running", "lock_available": False}
         monitor_result = run(binary, "--socket", socket_path, "--format", "json", "monitor", "list")
         assert monitor_result.returncode == 0, monitor_result.stderr
         assert json.loads(monitor_result.stdout) == {
@@ -1180,11 +1185,26 @@ def main() -> int:
         )
         policy_result = run(binary, "--socket", socket_path, "lua", str(policy_file))
         assert policy_result.returncode == 0, policy_result.stderr
+        session_status_file = Path(temporary) / "session-status.lua"
+        session_status_file.write_text(
+            "local unavailable = gnoblin.session.status()\n"
+            'assert(tostring(unavailable) == "SessionStatus" and unavailable.state == "running")\n'
+            "assert(not unavailable.lock_available and unavailable.lock_state == nil)\n"
+            'assert(not pcall(function() unavailable.lock_state = "unlocked" end))\n'
+            'assert(not pcall(function() rawset(unavailable, "lock_state", "unlocked") end))\n'
+            "local available = gnoblin.session.status()\n"
+            'assert(available.lock_available and available.lock_state == "covering")\n'
+            'assert(not pcall(function() available.lock_state = "unlocked" end))\n'
+            "assert(not pcall(function() gnoblin.session.status(true) end))\n",
+            encoding="utf-8",
+        )
+        session_status_result = run(binary, "--socket", socket_path, "lua", str(session_status_file))
+        assert session_status_result.returncode == 0, session_status_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 69
-        assert len(subscriptions) == 69
+        assert len(received) == 71
+        assert len(subscriptions) == 71
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1293,6 +1313,12 @@ def main() -> int:
         assert received[68]["method"] == "permissions.policy"
         assert received[68]["api_version"] == {"major": 1, "minor": 44}
         assert received[68]["arguments"] == {}
+        assert received[69]["method"] == "session.status"
+        assert received[69]["api_version"] == {"major": 1, "minor": 29}
+        assert received[69]["arguments"] == {}
+        assert received[70]["method"] == "session.status"
+        assert received[70]["api_version"] == {"major": 1, "minor": 29}
+        assert received[70]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {

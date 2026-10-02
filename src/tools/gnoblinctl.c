@@ -1605,6 +1605,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_PRIVACY_STATE_RECORD_METATABLE "gnoblinctl.PrivacyState"
 #define GNOBLINCTL_CAPABILITY_RECORD_METATABLE "gnoblinctl.Capability"
 #define GNOBLINCTL_PERMISSION_POLICY_RECORD_METATABLE "gnoblinctl.PermissionPolicy"
+#define GNOBLINCTL_SESSION_STATUS_RECORD_METATABLE "gnoblinctl.SessionStatus"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
@@ -1618,6 +1619,7 @@ static int lua_cli_layer_animation_policy(lua_State* state);
 static int lua_cli_privacy_state(lua_State* state);
 static int lua_cli_capabilities_list(lua_State* state);
 static int lua_cli_permissions_policy(lua_State* state);
+static int lua_cli_session_status(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2848,6 +2850,72 @@ static int lua_cli_permissions_policy(lua_State* state) {
     return 1;
 }
 
+static gboolean lua_cli_session_status_valid(JsonObject* object) {
+    const char* session_state = member_string(object, "state", NULL);
+    JsonNode* lock_available = json_object_get_member(object, "lock_available");
+    if (!session_state || !g_str_equal(session_state, "running") || !lock_available ||
+        !JSON_NODE_HOLDS_VALUE(lock_available) ||
+        json_node_get_value_type(lock_available) != G_TYPE_BOOLEAN)
+        return FALSE;
+    JsonNode* lock_state_node = json_object_get_member(object, "lock_state");
+    if (!json_node_get_boolean(lock_available))
+        return lock_state_node == NULL;
+    if (!lock_state_node || !JSON_NODE_HOLDS_VALUE(lock_state_node) ||
+        json_node_get_value_type(lock_state_node) != G_TYPE_STRING)
+        return FALSE;
+    const char* lock_state = json_node_get_string(lock_state_node);
+    return g_str_equal(lock_state, "unlocked") || g_str_equal(lock_state, "covering") ||
+           g_str_equal(lock_state, "locked") || g_str_equal(lock_state, "failsafe");
+}
+
+static int lua_cli_session_status_tostring(lua_State* state) {
+    lua_pushliteral(state, "SessionStatus");
+    return 1;
+}
+
+static void register_lua_cli_session_status_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_SESSION_STATUS_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_readonly_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_session_status_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static int lua_cli_session_status(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.session.status takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "session.status", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.session.status failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result) ||
+        !lua_cli_session_status_valid(json_node_get_object(result)))
+        return luaL_error(state, "gnoblin.session.status returned an invalid SessionStatus");
+
+    json_to_lua(state, result);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 1);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    luaL_getmetatable(state, GNOBLINCTL_SESSION_STATUS_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+    return 1;
+}
+
 static int lua_cli_focus_policy_property(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     JsonObject* arguments = json_object_new();
@@ -3620,6 +3688,11 @@ static int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_cli_permissions_policy, 1);
         return 1;
     }
+    if (g_str_equal(prefix, "session") && g_str_equal(name, "status")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_session_status, 1);
+        return 1;
+    }
     if (g_str_equal(prefix, "animations") && g_str_equal(name, "preview")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_animations_preview, 1);
@@ -3826,6 +3899,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_privacy_state_record(state);
     register_lua_cli_capability_record(state);
     register_lua_cli_permission_policy_record(state);
+    register_lua_cli_session_status_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");
