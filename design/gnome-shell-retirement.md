@@ -86,9 +86,10 @@ The input-specific unresolved patches are listed below.
 - `77-keymap-initialization`, `78-ibus-disconnect-guard`,
   `zzzzzzz-on-demand-ibus`, and shutdown-order patches: verify native input
   initialization, IBus recovery, and teardown on a real seat.
-- `80-optional-gnome-qr` and `81-brightness-follows-backlight`: confirm whether
-  these are GNOME app features outside Gnoblin's session contract or still
-  require a supported replacement.
+- `80-optional-gnome-qr`: removed on 2026-10-02. It only makes GNOME Shell's
+  login-dialog QR rendering optional; Gnoblin does not provide that dialog.
+  `81-brightness-follows-backlight` remains under review because brightness
+  state may need an owner when a shell client provides brightness controls.
 
 Stale JavaScript tests that import removed Shell modules are not a migration
 target. The unregistered `tests/gnome-shell-overlay-resources.test.py` was
