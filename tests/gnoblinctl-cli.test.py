@@ -168,7 +168,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(103):
+                    for _ in range(107):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -377,6 +377,14 @@ def main() -> int:
                                     },
                                     "revision": 5,
                                 }
+                            elif request["method"] == "input.orientation_lock":
+                                result = {
+                                    "available": True,
+                                    "locked": False,
+                                    "orientation": "normal",
+                                    "source": "system",
+                                    "revision": 17,
+                                }
                             elif request["method"] == "input.devices":
                                 result = {
                                     "devices": [
@@ -426,6 +434,8 @@ def main() -> int:
                                 ]
                             elif request["method"] == "input.select":
                                 result = {"request_id": 23, "method": "input.select"}
+                            elif request["method"] == "input.set_orientation_lock":
+                                result = {"request_id": 24, "method": request["method"]}
                             elif request["method"] == "window.thumbnail":
                                 result = {"request_id": 20, "method": "window.thumbnail"}
                             elif request["method"] == "launches.snapshot":
@@ -603,6 +613,7 @@ def main() -> int:
                                 "workspace.create",
                                 "window.thumbnail",
                                 "input.select",
+                                "input.set_orientation_lock",
                                 "window.minimize",
                                 "workspace.switch",
                                 "workspace.rename",
@@ -715,6 +726,14 @@ def main() -> int:
                                         "name": "English (US)",
                                         "current": True,
                                         "revision": 5,
+                                    }
+                                elif method == "input.set_orientation_lock":
+                                    value = {
+                                        "available": True,
+                                        "locked": request["arguments"]["value"],
+                                        "orientation": "normal",
+                                        "source": "runtime",
+                                        "revision": 18,
                                     }
                                 elif method == "window.minimize":
                                     value = {"id": "42"}
@@ -1692,11 +1711,48 @@ def main() -> int:
         )
         grant_revoke_result = run(binary, "--socket", socket_path, "lua", str(grant_revoke_script))
         assert grant_revoke_result.returncode == 0, grant_revoke_result.stderr
+        orientation_read = run(binary, "--socket", socket_path, "--format", "json", "input", "orientation-lock")
+        assert orientation_read.returncode == 0, orientation_read.stderr
+        assert json.loads(orientation_read.stdout) == {
+            "available": True,
+            "locked": False,
+            "orientation": "normal",
+            "source": "system",
+            "revision": 17,
+        }
+        orientation_set = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "input",
+            "orientation-lock",
+            "on",
+        )
+        assert orientation_set.returncode == 0, orientation_set.stderr
+        assert json.loads(orientation_set.stdout) == {
+            "available": True,
+            "locked": True,
+            "orientation": "normal",
+            "source": "runtime",
+            "revision": 18,
+        }
+        orientation_lua_file = Path(temporary) / "orientation-lock.lua"
+        orientation_lua_file.write_text(
+            "local lock = gnoblin.input.orientation_lock()\n"
+            'assert(lock.available and not lock.locked and lock.source == "system")\n'
+            "local updated = gnoblin.input.set_orientation_lock(true)\n"
+            'assert(updated.available and updated.locked and updated.source == "runtime")\n',
+            encoding="utf-8",
+        )
+        orientation_lua = run(binary, "--socket", socket_path, "lua", str(orientation_lua_file))
+        assert orientation_lua.returncode == 0, orientation_lua.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 103
-        assert len(subscriptions) == 103
+        assert len(received) == 107
+        assert len(subscriptions) == 107
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1818,6 +1874,16 @@ def main() -> int:
         assert received[65]["method"] == "layer.animation_policy"
         assert received[65]["api_version"] == {"major": 1, "minor": 31}
         assert received[65]["arguments"] == {"namespace": "bingux-panel"}
+        assert received[103]["method"] == "input.orientation_lock"
+        assert received[103]["api_version"] == {"major": 1, "minor": 66}
+        assert received[103]["arguments"] == {}
+        assert received[104]["method"] == "input.set_orientation_lock"
+        assert received[104]["api_version"] == {"major": 1, "minor": 66}
+        assert received[104]["arguments"] == {"value": True}
+        assert received[105]["method"] == "input.orientation_lock"
+        assert received[106]["method"] == "input.set_orientation_lock"
+        assert received[106]["api_version"] == {"major": 1, "minor": 66}
+        assert received[106]["arguments"] == {"value": True}
         assert received[66]["method"] == "privacy.state"
         assert received[66]["api_version"] == {"major": 1, "minor": 47}
         assert received[66]["arguments"] == {}

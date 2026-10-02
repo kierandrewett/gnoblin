@@ -58,7 +58,7 @@ static const CommandSpec commands[] = {
     {"config", "path default show reload"},
     {"workspace", "list create rename remove switch next previous move-active"},
     {"monitor", "list"},
-    {"input", "list current select devices"},
+    {"input", "list current select devices orientation-lock"},
     {"grant", "list revoke"},
     {"launch", "status begin end"},
     {"animation", "list get surfaces inspect preview seek step play pause stop"},
@@ -345,6 +345,8 @@ static guint api_minor_for_method(const char* method) {
         {"input.devices", 46},
         {"input.sources", 46},
         {"input.current_source", 46},
+        {"input.orientation_lock", 66},
+        {"input.set_orientation_lock", 66},
         {"input.select", 6},
         {"launch.status", 8},
     };
@@ -406,6 +408,8 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "layer.animation_policy") ||
         g_str_equal(method_name, "runtime.reload_config") ||
         g_str_equal(method_name, "launch.begin") || g_str_equal(method_name, "launch.end") ||
+        g_str_equal(method_name, "input.orientation_lock") ||
+        g_str_equal(method_name, "input.set_orientation_lock") ||
         g_str_has_prefix(method_name, "window.") || g_str_has_prefix(method_name, "workspace.") ||
         g_str_has_prefix(method_name, "animation.")) {
         json_builder_set_member_name(builder, "api_version");
@@ -454,6 +458,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
 
     gboolean waits_for_operation =
         g_str_equal(method_name, "window.thumbnail") || g_str_equal(method_name, "input.select") ||
+        g_str_equal(method_name, "input.set_orientation_lock") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "grant.list") ||
         g_str_equal(method_name, "grant.revoke") || g_str_equal(method_name, "animation.preview");
     guint wait_timeout = cli->timeout + (g_str_equal(method_name, "shortcut.capture") ? 2
@@ -1193,6 +1198,26 @@ static JsonNode* dispatch(Cli* cli, GError** error) {
             set_string(arguments, "type", arg(cli, 0));
             set_string(arguments, "id", arg(cli, 1));
             method = "input.select";
+        } else if (is(action, "orientation-lock")) {
+            if (!require_count(cli, 0, 1, error))
+                goto invalid;
+            if (arg_count(cli) == 0) {
+                method = "input.orientation_lock";
+            } else {
+                const char* value = arg(cli, 0);
+                if (is(value, "on"))
+                    set_boolean(arguments, "value", TRUE);
+                else if (is(value, "off"))
+                    set_boolean(arguments, "value", FALSE);
+                else if (is(value, "inherit"))
+                    set_string(arguments, "value", "inherit");
+                else {
+                    g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
+                                        "orientation lock must be on, off, or inherit");
+                    goto invalid;
+                }
+                method = "input.set_orientation_lock";
+            }
         } else if (action) {
             method = owned_method = g_strdup_printf("input.%s", action);
         }
@@ -1626,6 +1651,7 @@ static int lua_cli_portal_grant_revoke(lua_State* state);
 static int lua_cli_grant_revoke(lua_State* state);
 static int lua_cli_input_snapshot(lua_State* state);
 static int lua_cli_input_select_source(lua_State* state);
+static int lua_cli_input_set_orientation_lock(lua_State* state);
 static int lua_cli_shortcuts_list(lua_State* state);
 static int lua_cli_shortcuts_actions(lua_State* state);
 static int lua_cli_shortcuts_capture(lua_State* state);
@@ -3732,6 +3758,23 @@ static int lua_cli_input_snapshot(lua_State* state) {
         return luaL_error(state, "%s returned an invalid snapshot", method);
 
     JsonObject* snapshot = json_node_get_object(result);
+    if (g_str_equal(method, "input.orientation_lock")) {
+        JsonNode* available = json_object_get_member(snapshot, "available");
+        JsonNode* locked = json_object_get_member(snapshot, "locked");
+        JsonNode* orientation = json_object_get_member(snapshot, "orientation");
+        JsonNode* source = json_object_get_member(snapshot, "source");
+        gint64 revision = json_object_get_int_member_with_default(snapshot, "revision", -1);
+        if (!available || !JSON_NODE_HOLDS_VALUE(available) ||
+            json_node_get_value_type(available) != G_TYPE_BOOLEAN || !locked ||
+            !JSON_NODE_HOLDS_VALUE(locked) || json_node_get_value_type(locked) != G_TYPE_BOOLEAN ||
+            !orientation || !JSON_NODE_HOLDS_VALUE(orientation) ||
+            json_node_get_value_type(orientation) != G_TYPE_STRING || !source ||
+            !JSON_NODE_HOLDS_VALUE(source) || json_node_get_value_type(source) != G_TYPE_STRING ||
+            revision < 0)
+            return luaL_error(state, "%s returned an invalid OrientationLock", method);
+        json_to_lua(state, result);
+        return 1;
+    }
     if (g_str_equal(method, "input.current_source")) {
         JsonNode* available = json_object_get_member(snapshot, "available");
         JsonObject* source = json_object_get_object_member(snapshot, "source");
@@ -3810,6 +3853,29 @@ static int lua_cli_input_select_source(lua_State* state) {
     if (revision < 0)
         return luaL_error(state, "input.select_source returned an invalid InputSource");
     lua_cli_push_input_record(state, source, revision, FALSE);
+    return 1;
+}
+
+static int lua_cli_input_set_orientation_lock(lua_State* state) {
+    if (lua_gettop(state) != 1 || (!lua_isboolean(state, 1) &&
+                                   !(lua_type(state, 1) == LUA_TSTRING && lua_isstring(state, 1) &&
+                                     g_str_equal(lua_tostring(state, 1), "inherit"))))
+        return luaL_error(state, "input.set_orientation_lock requires true, false, or 'inherit'");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    if (lua_isboolean(state, 1))
+        json_object_set_boolean_member(arguments, "value", lua_toboolean(state, 1));
+    else
+        json_object_set_string_member(arguments, "value", "inherit");
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "input.set_orientation_lock", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "input.set_orientation_lock failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "input.set_orientation_lock returned an invalid snapshot");
+    json_to_lua(state, result);
     return 1;
 }
 
@@ -4790,7 +4856,7 @@ static int lua_api_index(lua_State* state) {
     }
     if (g_str_equal(prefix, "input")) {
         if (g_str_equal(name, "devices") || g_str_equal(name, "sources") ||
-            g_str_equal(name, "current_source")) {
+            g_str_equal(name, "current_source") || g_str_equal(name, "orientation_lock")) {
             g_autofree char* method = g_strdup_printf("input.%s", name);
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
             lua_pushstring(state, method);
@@ -4800,6 +4866,11 @@ static int lua_api_index(lua_State* state) {
         if (g_str_equal(name, "select_source")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
             lua_pushcclosure(state, lua_cli_input_select_source, 1);
+            return 1;
+        }
+        if (g_str_equal(name, "set_orientation_lock")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state, lua_cli_input_set_orientation_lock, 1);
             return 1;
         }
     }
@@ -5425,6 +5496,8 @@ static const char* action_usage(const char* command, const char* action) {
     }
     if (g_str_equal(command, "input") && g_str_equal(action, "select"))
         return "TYPE ID";
+    if (g_str_equal(command, "input") && g_str_equal(action, "orientation-lock"))
+        return "[on | off | inherit]";
     return NULL;
 }
 
