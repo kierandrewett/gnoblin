@@ -55,11 +55,13 @@ The input-specific unresolved patches are listed below.
 - `60-blur-cache` and `74-0002-share-shell-layer-backdrops`: the native blur
   path does not currently demonstrate cross-surface backdrop sharing. Compare
   frame cost and output before claiming parity or removing the old design.
-- `68-dev-console`: the local `gnoblinctl lua` console now evaluates Lua in the
-  terminal process and exposes the typed session API through `gnoblin.<area>.<method>`.
-  It accepts a Lua file or one-line interactive input, prints table results as
-  JSON, and never sends Lua source to the compositor. Shell-owned graphical
-  console presentation remains outside the compositor contract.
+- `68-dev-console`: the obsolete GJS entrypoint and console stylesheet patches
+  were removed on 2026-10-02. `gnoblinctl lua` evaluates Lua locally in the
+  terminal process and exposes the typed session API through
+  `gnoblin.<area>.<method>`. It accepts a Lua file or one-line interactive
+  input, prints table results as JSON, and never sends Lua source to the
+  compositor. Shell-owned graphical console presentation remains outside the
+  compositor contract.
 - `69-desktop-recovery`: the nested devkit test kills the Lua worker, confirms
   the supervisor starts a replacement, and checks the same Mutter process
   remains alive and serves the config API. The recovery UI remains shell-client
