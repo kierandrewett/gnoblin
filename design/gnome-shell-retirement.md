@@ -102,6 +102,15 @@ The `96-workspace-resource` patch was removed on 2026-10-02. It registered
 `gnoblinWorkspaces.js`, which no longer exists in the checkout; workspace
 operations are part of the native compositor API.
 
+The stock-mode test harness `tests/test-stock-protocol-isolation.sh`, its
+`tests/test-shell-security-policy.py` helper, and both extension fixtures were
+removed on 2026-10-02. They tested GNOME Shell Eval policy, extension
+registration and version checks, notification ownership, and cancellation of
+the Shell-owned Access dialog. Gnoblin does not expose GNOME Shell modes or
+extension APIs. External shell clients own notification presentation, while
+native portal tests retain Access allow, deny, and caller-identity coverage.
+The Shell-specific probes were dropped with the retired Shell integration.
+
 Stale JavaScript tests that import removed Shell modules are not a migration
 target. The unregistered `tests/gnome-shell-overlay-resources.test.py` was
 removed after confirming the standalone source no longer has a Shell resource
