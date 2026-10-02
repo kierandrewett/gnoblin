@@ -37,6 +37,7 @@ jobs:
           python3 scripts/sync-package-manifest.py check
           python3 scripts/manage-patches.py check
           python3 tests/native-socket-text-snap-api.test.py
+          python3 tests/hyprcursor-session-predicate.test.py
           python3 tests/session-lock-api.test.py
           python3 tests/focus-policy-contract.test.py
           python3 tests/check-build-deps.test.py
