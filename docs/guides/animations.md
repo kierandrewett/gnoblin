@@ -5,7 +5,7 @@ its default. A window rule can select a different registered animation for
 matching windows or layer surfaces.
 
 The shared registry drives compositor-owned motion for windows, layer-shell
-surfaces, shadows, resizing and workspaces. Window and layer-shell surfaces use
+surfaces, shadows and workspace transitions. Window and layer-shell surfaces use
 the same keyframe properties, but have different lifecycle events.
 
 ## Register a custom animation
@@ -136,6 +136,10 @@ add an overshooting value in an intermediate keyframe.
 Workspace transitions, resize effects, shadow changes and dialog dimming expose
 `progress` from 0 to 1. For these events, animate `progress` and let the effect
 consume it; actor properties such as `x` and `scale` are not accepted.
+
+Workspace switches use the selected animation's `progress` to move the outgoing
+and incoming workspaces in Mutter's switch direction. Custom keyframes change
+the transition timing and progress curve.
 
 `target` is an optional label shown by inspection tools. Minimize and restore
 presets calculate their destination from dock/icon or monitor geometry. Custom

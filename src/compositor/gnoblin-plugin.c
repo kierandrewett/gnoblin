@@ -52,6 +52,16 @@ static void gnoblin_plugin_kill_window_effects(MetaPlugin* plugin, MetaWindowAct
     meta_gnoblin_animation_cancel_window_effects(plugin, actor);
 }
 
+static void gnoblin_plugin_switch_workspace(MetaPlugin* plugin, gint from, gint to,
+                                            MetaMotionDirection direction) {
+    if (!meta_gnoblin_animation_switch_workspace(plugin, from, to, direction))
+        meta_plugin_switch_workspace_completed(plugin);
+}
+
+static void gnoblin_plugin_kill_switch_workspace(MetaPlugin* plugin) {
+    meta_gnoblin_animation_kill_switch_workspace(plugin);
+}
+
 static void gnoblin_plugin_show_window_menu(MetaPlugin* plugin, MetaWindow* window,
                                             MetaWindowMenuType menu, int x, int y) {
     gnoblin_native_control_window_menu_requested(meta_plugin_get_display(plugin), window, menu, x,
@@ -67,6 +77,8 @@ static void meta_gnoblin_plugin_class_init(MetaGnoblinPluginClass* klass) {
     plugin_class->unminimize = gnoblin_plugin_unminimize;
     plugin_class->destroy = gnoblin_plugin_destroy;
     plugin_class->kill_window_effects = gnoblin_plugin_kill_window_effects;
+    plugin_class->switch_workspace = gnoblin_plugin_switch_workspace;
+    plugin_class->kill_switch_workspace = gnoblin_plugin_kill_switch_workspace;
 }
 
 static void meta_gnoblin_plugin_init(MetaGnoblinPlugin* self) {
