@@ -128,6 +128,16 @@ if privacy.available.screen_sharing then
 end
 ```
 
+The console can ask Mutter to stop tracked screen-sharing or recording
+sessions. The result reports how many stop requests were issued; it does not
+confirm that the sessions have closed:
+
+```lua
+local sharing = gnoblin.privacy.stop_sharing()
+local recording = gnoblin.privacy.stop_recording()
+print(sharing.requested, recording.requested)
+```
+
 `gnoblin.capabilities.list()` returns read-only `Capability` records with the
 capability ID, description, availability, revision, and an optional reason:
 

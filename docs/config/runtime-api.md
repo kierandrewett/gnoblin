@@ -1041,6 +1041,12 @@ The native runtime reports screen-sharing and recording activity from Mutter's
 tracked remote-access handles. Microphone and camera monitoring are available
 when Mutter is built with remote-desktop support and can connect to PipeWire.
 
+`gnoblinctl lua` also exposes `gnoblin.privacy.stop_sharing()` and
+`gnoblin.privacy.stop_recording()`. The console waits for compositor completion
+and returns a deeply read-only `{requested = integer}` result. A positive count
+means Mutter was asked to stop those handles; it does not confirm that they
+have closed.
+
 It reports running audio-capture streams, including meter streams opened by
 volume-control applications. A stream's self-reported application ID is not
 trusted to suppress microphone activity. The monitor reports an active capture
