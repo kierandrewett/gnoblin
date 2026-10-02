@@ -82,6 +82,9 @@ class IsolationTests(unittest.TestCase):
             sudo = fake_bin / "sudo"
             sudo.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$TEST_SYSTEMCTL_LOG"\n')
             sudo.chmod(0o755)
+            dbus_update_environment = fake_bin / "dbus-update-activation-environment"
+            dbus_update_environment.write_text("#!/bin/sh\nexit 0\n")
+            dbus_update_environment.chmod(0o755)
             gnome_session = fake_bin / "gnome-session"
             gnome_session.write_text("#!/bin/sh\nexit 0\n")
             gnome_session.chmod(0o755)

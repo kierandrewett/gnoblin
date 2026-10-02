@@ -47,7 +47,7 @@ jobs:
           GIT_COMMITTER_EMAIL: ci@gnoblin.local
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
-            json-glib-devel desktop-file-utils python3 util-linux-user
+            json-glib-devel desktop-file-utils python3 rpm-build util-linux-user
           dnf -y builddep packaging/rpm/mutter.spec packaging/rpm/gnoblin-portal.spec
           git -C subprojects/mutter fetch --force --tags origin
           git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin
