@@ -12,7 +12,6 @@ PREPARED_SOURCES="${2:-}"
 
 mkdir -p "$SOURCES" "$BUILDROOT"
 
-"$ROOT/packaging/opensuse/check-buildrequires.sh" --install
 if [[ -n "$PREPARED_SOURCES" ]]; then
     gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
     gnoblin_source="$PREPARED_SOURCES/gnoblin-$gnoblin_version-source.tar.xz"
@@ -54,12 +53,15 @@ install_output() {
     done
 }
 
+"$ROOT/packaging/opensuse/check-buildrequires.sh" mutter --install
 build mutter.spec
 mapfile -t mutter_rpms < <(find "$TOPDIR/RPMS" -type f \( -name 'gnoblin-mutter-[0-9]*.rpm' -o -name 'gnoblin-mutter-devel-[0-9]*.rpm' \) | sort)
 ((${#mutter_rpms[@]} == 2))
 install_output "${mutter_rpms[@]}"
 
+"$ROOT/packaging/opensuse/check-buildrequires.sh" gnoblin-portal --install
 build gnoblin-portal.spec
+"$ROOT/packaging/opensuse/check-buildrequires.sh" gnoblin --install
 build gnoblin.spec
 
 find "$TOPDIR/RPMS" -type f -name '*.rpm' -print | LC_ALL=C sort

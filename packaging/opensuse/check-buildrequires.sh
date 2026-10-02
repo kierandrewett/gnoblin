@@ -5,21 +5,35 @@
 set -euo pipefail
 
 install=0
-case "${1:-}" in
-    "") ;;
-    --install) install=1 ;;
-    *)
-        echo "Usage: $0 [--install]" >&2
-        exit 2
-        ;;
-esac
+package=""
+for arg in "$@"; do
+    case "$arg" in
+        --install) install=1 ;;
+        mutter | gnoblin-portal | gnoblin)
+            if [[ -n "$package" ]]; then
+                echo "Pass exactly one package: mutter, gnoblin-portal, or gnoblin" >&2
+                exit 2
+            fi
+            package="$arg"
+            ;;
+        *)
+            echo "Usage: $0 <mutter|gnoblin-portal|gnoblin> [--install]" >&2
+            exit 2
+            ;;
+    esac
+done
+
+if [[ -z "$package" ]]; then
+    echo "Usage: $0 <mutter|gnoblin-portal|gnoblin> [--install]" >&2
+    exit 2
+fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-SPECS=(
-    "$ROOT/packaging/opensuse/mutter.spec"
-    "$ROOT/packaging/opensuse/gnoblin-portal.spec"
-    "$ROOT/packaging/opensuse/gnoblin.spec"
-)
+case "$package" in
+    mutter) spec="$ROOT/packaging/opensuse/mutter.spec" ;;
+    gnoblin-portal) spec="$ROOT/packaging/opensuse/gnoblin-portal.spec" ;;
+    gnoblin) spec="$ROOT/packaging/opensuse/gnoblin.spec" ;;
+esac
 
 command -v rpmspec >/dev/null
 command -v zypper >/dev/null
@@ -30,10 +44,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for spec in "${SPECS[@]}"; do
-    rpmspec -P --without gnoblin_stack "$spec" >/dev/null
-    rpmspec -q --buildrequires --without gnoblin_stack "$spec"
-done | LC_ALL=C sort -u >"$requirements"
+rpmspec -P "$spec" >/dev/null
+rpmspec -q --buildrequires "$spec" | LC_ALL=C sort -u >"$requirements"
 
 if [[ -s "$requirements" ]]; then
     # zypper understands RPM capabilities such as pkgconfig(gtk4), including
@@ -59,5 +71,5 @@ if [[ -s "$requirements" ]]; then
     fi
 fi
 
-printf 'PASS: openSUSE Tumbleweed repository BuildRequires %s\n' \
-    "$([[ $install == 1 ]] && echo installed || echo resolve)"
+printf 'PASS: openSUSE Tumbleweed %s BuildRequires %s\n' \
+    "$package" "$([[ $install == 1 ]] && echo installed || echo resolve)"
