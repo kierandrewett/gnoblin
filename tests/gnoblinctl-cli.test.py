@@ -142,7 +142,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(74):
+                    for _ in range(77):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -214,8 +214,44 @@ def main() -> int:
                                         "revision": 5,
                                     }
                                 ]
+                            elif request["method"] == "animation.list":
+                                result = {
+                                    "animations": [
+                                        {
+                                            "name": "fade",
+                                            "enable": True,
+                                            "event": "open",
+                                            "duration": 150,
+                                            "ease": "ease-out-expo",
+                                            "builtin": True,
+                                            "previewable": True,
+                                            "from": {"opacity": 0.0},
+                                            "to": {"opacity": 1.0},
+                                            "origin": "center",
+                                            "target": "none",
+                                            "revision": 5,
+                                        }
+                                    ]
+                                }
                             elif request["method"] == "animation.get":
-                                result = None
+                                result = (
+                                    {
+                                        "name": "fade",
+                                        "enable": True,
+                                        "event": "open",
+                                        "duration": 150,
+                                        "ease": "ease-out-expo",
+                                        "builtin": True,
+                                        "previewable": True,
+                                        "from": {"opacity": 0.0},
+                                        "to": {"opacity": 1.0},
+                                        "origin": "center",
+                                        "target": "none",
+                                        "revision": 5,
+                                    }
+                                    if request["arguments"].get("name") == "fade"
+                                    else None
+                                )
                             elif request["method"] in {
                                 "animation.preview",
                                 "animation.seek",
@@ -1237,11 +1273,30 @@ def main() -> int:
         )
         permission_decision_result = run(binary, "--socket", socket_path, "lua", str(permission_decision_file))
         assert permission_decision_result.returncode == 0, permission_decision_result.stderr
+        animation_reads_file = Path(temporary) / "animation-reads.lua"
+        animation_reads_file.write_text(
+            "local animations = gnoblin.animations.list()\n"
+            'assert(#animations == 1 and animations[1].name == "fade")\n'
+            "assert(animations[1].from.opacity == 0 and animations[1].revision == 5)\n"
+            'assert(not pcall(function() animations[1].name = "changed" end))\n'
+            "assert(not pcall(function() animations[1].from.opacity = 0.5 end))\n"
+            'assert(not pcall(function() rawset(animations[1].from, "opacity", 0.5) end))\n'
+            'local fade = gnoblin.animations.get("fade")\n'
+            'assert(fade.name == "fade" and fade.to.opacity == 1)\n'
+            "assert(not pcall(function() fade.enable = false end))\n"
+            'assert(gnoblin.animations.get("missing") == nil)\n'
+            "assert(not pcall(function() gnoblin.animations.list(true) end))\n"
+            "assert(not pcall(function() gnoblin.animations.get() end))\n"
+            "assert(not pcall(function() gnoblin.animations.get(2) end))\n",
+            encoding="utf-8",
+        )
+        animation_reads_result = run(binary, "--socket", socket_path, "lua", str(animation_reads_file))
+        assert animation_reads_result.returncode == 0, animation_reads_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 74
-        assert len(subscriptions) == 74
+        assert len(received) == 77
+        assert len(subscriptions) == 77
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}

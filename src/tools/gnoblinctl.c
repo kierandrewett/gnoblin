@@ -1610,6 +1610,8 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_PERMISSION_DECISION_RECORD_METATABLE "gnoblinctl.PermissionDecision"
 
 static int lua_cli_animation_preview_method(lua_State* state);
+static int lua_cli_animations_list(lua_State* state);
+static int lua_cli_animations_get(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
 static int lua_cli_input_snapshot(lua_State* state);
 static int lua_cli_input_select_source(lua_State* state);
@@ -1921,6 +1923,66 @@ static int lua_cli_animations_preview(lua_State* state) {
     if (!session)
         session = member_string(preview, "id", NULL);
     lua_cli_push_animation_preview_record(state, cli, preview, session);
+    return 1;
+}
+
+static int lua_cli_animations_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.animations.list takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "animation.list", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.animations.list failed: %s", call_error->message);
+    JsonObject* response = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonArray* animations = response ? json_object_get_array_member(response, "animations") : NULL;
+    if (!animations)
+        return luaL_error(state, "gnoblin.animations.list returned an invalid snapshot");
+
+    lua_createtable(state, json_array_get_length(animations), 0);
+    for (guint i = 0; i < json_array_get_length(animations); i++) {
+        JsonNode* animation = json_array_get_element(animations, i);
+        JsonObject* record =
+            JSON_NODE_HOLDS_OBJECT(animation) ? json_node_get_object(animation) : NULL;
+        const char* name = record ? member_string(record, "name", NULL) : NULL;
+        if (!name || !*name)
+            return luaL_error(state, "gnoblin.animations.list returned an invalid AnimationInfo");
+        json_to_lua(state, animation);
+        lua_cli_push_readonly_value(state, -1);
+        lua_remove(state, -2);
+        lua_rawseti(state, -2, i + 1);
+    }
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static int lua_cli_animations_get(lua_State* state) {
+    if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING || !*lua_tostring(state, 1))
+        return luaL_error(state, "gnoblin.animations.get requires one animation name");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    json_object_set_string_member(arguments, "name", lua_tostring(state, 1));
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "animation.get", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.animations.get failed: %s", call_error->message);
+    if (JSON_NODE_HOLDS_NULL(result)) {
+        lua_pushnil(state);
+        return 1;
+    }
+    JsonObject* record = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    const char* name = record ? member_string(record, "name", NULL) : NULL;
+    if (!name || !g_str_equal(name, lua_tostring(state, 1)))
+        return luaL_error(state, "gnoblin.animations.get returned an invalid AnimationInfo");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
     return 1;
 }
 
@@ -3898,6 +3960,13 @@ static int lua_api_index(lua_State* state) {
     if (g_str_equal(prefix, "animations") && g_str_equal(name, "preview")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_animations_preview, 1);
+        return 1;
+    }
+    if (g_str_equal(prefix, "animations") &&
+        (g_str_equal(name, "list") || g_str_equal(name, "get"))) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(
+            state, g_str_equal(name, "list") ? lua_cli_animations_list : lua_cli_animations_get, 1);
         return 1;
     }
     if (g_str_equal(prefix, "input")) {
