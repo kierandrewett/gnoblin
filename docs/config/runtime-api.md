@@ -431,13 +431,18 @@ The standalone runtime advertises these optional capabilities:
 - `window-thumbnails`: bounded window previews.
 - `session-activity`: native idle-monitor state.
 - `microphone-monitor`: PipeWire microphone activity monitoring.
+- `camera-monitor`: PipeWire camera activity monitoring.
 
-`microphone-monitor` is available only when this Mutter build includes
-remote-desktop support and the PipeWire monitor is connected. When unavailable,
-`reason` is one of:
+`microphone-monitor` and `camera-monitor` are available only when this Mutter
+build includes remote-desktop support and the PipeWire monitor is connected.
+When unavailable, `reason` is one of:
 
 - `remote_desktop_disabled`: the Mutter build lacks remote-desktop support.
 - `pipewire_unavailable`: the monitor cannot connect.
+
+Camera activity follows running PipeWire nodes whose media role is `Camera`.
+The activity remains available for 500 ms after the last camera node stops to
+avoid flickering.
 
 Subscribe to `gnoblin.capability.changed` through the Lua event API or API 1.33
 on the compositor socket to receive the updated record when availability
@@ -1031,14 +1036,17 @@ The `available` record uses `screen_sharing`, `recording`,
 activity field when its source is unavailable.
 
 The native runtime reports screen-sharing and recording activity from Mutter's
-tracked remote-access handles. Microphone monitoring is available when Mutter
-is built with remote-desktop support and can connect to PipeWire.
+tracked remote-access handles. Microphone and camera monitoring are available
+when Mutter is built with remote-desktop support and can connect to PipeWire.
 
 It reports running audio-capture streams, including meter streams opened by
 volume-control applications. A stream's self-reported application ID is not
 trusted to suppress microphone activity. The monitor reports an active capture
 stream; it does not inspect whether the stream is carrying audible samples.
-Camera and location activity are unavailable. The `available` value for each
+
+Camera monitoring follows running PipeWire nodes whose media role is `Camera`.
+It keeps the activity state for 500 ms after the last node stops to avoid
+flickering. Location activity is unavailable. The `available` value for each
 source distinguishes unsupported monitoring from inactive activity.
 
 `gnoblin.privacy.stop_sharing()` requests closure of tracked non-recording
