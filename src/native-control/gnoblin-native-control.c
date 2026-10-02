@@ -162,6 +162,7 @@ struct _GnoblinNativeControl {
     MetaWaylandCompositor* wayland_compositor;
     MetaWorkspaceManager* workspace_manager;
     MetaCursorTracker* cursor_tracker;
+    MetaOrientationManager* orientation_manager;
     MetaMonitorManager* monitor_manager;
     ClutterSeat* input_seat;
     MetaBackend* backend;
@@ -269,6 +270,12 @@ struct _GnoblinNativeControl {
     guint pending_thumbnail_count;
     GVariant* session_activity_snapshot;
     guint64 session_activity_revision;
+    GVariant* orientation_lock_snapshot;
+    guint64 orientation_lock_revision;
+    gboolean orientation_lock_configured;
+    gboolean orientation_lock_config_value;
+    gboolean orientation_lock_runtime_override;
+    gboolean orientation_lock_notifications_suppressed;
     guint session_activity_subscription_id;
     guint session_activity_owner_subscription_id;
     guint pending_activity_queries;
@@ -568,6 +575,8 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
 static void publish_shortcut_focus_event(GnoblinNativeControl* control, const char* shortcut,
                                          guint64 handle, guint64 generation, gint64 expires_at_us);
 static void publish_input_source_changes(GnoblinNativeControl* control, guint64 revision);
+static GVariant* native_orientation_lock_snapshot(GnoblinNativeControl* control, guint64 revision);
+static void native_orientation_lock_publish(GnoblinNativeControl* control);
 static void update_launch_snapshot(GnoblinNativeControl* control);
 static void dispatch_dynamic_shortcut_activated(GnoblinNativeControl* control, guint action,
                                                 const ClutterEvent* event);
@@ -887,6 +896,7 @@ static const char* native_socket_events[] = {
     "gnoblin.input.device-removed",
     "gnoblin.input.sources-changed",
     "gnoblin.input.source-changed",
+    "gnoblin.input.orientation-lock-changed",
     "gnoblin.input.gesture",
     "gnoblin.launch.changed",
     "gnoblin.session.lock-requested",
@@ -3394,11 +3404,129 @@ static gboolean valid_input_device(const char* group, const char* device) {
                                 device, G_REGEX_OPTIMIZE, 0);
 }
 
+static const char* native_orientation_name(MetaOrientation orientation) {
+    switch (orientation) {
+    case META_ORIENTATION_NORMAL:
+        return "normal";
+    case META_ORIENTATION_BOTTOM_UP:
+        return "bottom-up";
+    case META_ORIENTATION_LEFT_UP:
+        return "left-up";
+    case META_ORIENTATION_RIGHT_UP:
+        return "right-up";
+    case META_ORIENTATION_UNDEFINED:
+    default:
+        return "undefined";
+    }
+}
+
+static GVariant* native_orientation_lock_snapshot(GnoblinNativeControl* control, guint64 revision) {
+    MetaOrientationManager* manager = control ? control->orientation_manager : NULL;
+    gboolean available = manager && meta_orientation_manager_has_accelerometer(manager);
+    const char* source = control && control->orientation_lock_runtime_override ? "runtime"
+                         : control && control->orientation_lock_configured     ? "config"
+                                                                               : "system";
+    GVariantBuilder builder;
+    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&builder, "{sv}", "available", g_variant_new_boolean(available));
+    g_variant_builder_add(
+        &builder, "{sv}", "locked",
+        g_variant_new_boolean(available &&
+                              meta_orientation_manager_get_orientation_locked(manager)));
+    g_variant_builder_add(
+        &builder, "{sv}", "orientation",
+        g_variant_new_string(
+            available ? native_orientation_name(meta_orientation_manager_get_orientation(manager))
+                      : "undefined"));
+    g_variant_builder_add(&builder, "{sv}", "source", g_variant_new_string(source));
+    g_variant_builder_add(&builder, "{sv}", "revision", g_variant_new_uint64(revision));
+    return g_variant_ref_sink(g_variant_builder_end(&builder));
+}
+
+static void native_orientation_lock_publish(GnoblinNativeControl* control) {
+    if (!control || control->stopping)
+        return;
+
+    g_autoptr(GVariant) candidate =
+        native_orientation_lock_snapshot(control, control->orientation_lock_revision);
+    gboolean initialized = control->orientation_lock_snapshot != NULL;
+    gboolean changed =
+        !initialized || !g_variant_equal(control->orientation_lock_snapshot, candidate);
+    if (!changed)
+        return;
+
+    if (control->orientation_lock_revision < G_MAXUINT64)
+        control->orientation_lock_revision++;
+    g_clear_pointer(&control->orientation_lock_snapshot, g_variant_unref);
+    control->orientation_lock_snapshot =
+        native_orientation_lock_snapshot(control, control->orientation_lock_revision);
+    native_publish_runtime_snapshot(control, "orientation-lock", control->orientation_lock_snapshot,
+                                    control->orientation_lock_revision);
+
+    /* The first value seeds the Lua worker; only later changes are events. */
+    if (!initialized)
+        return;
+
+    guint64 sequence = ++control->event_sequence;
+    gint64 time = g_get_monotonic_time();
+    GVariantBuilder event_builder;
+    GVariantIter fields;
+    const char* field_name;
+    GVariant* field_value;
+    g_variant_builder_init(&event_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&event_builder, "{sv}", "name",
+                          g_variant_new_string("gnoblin.input.orientation-lock-changed"));
+    g_variant_iter_init(&fields, control->orientation_lock_snapshot);
+    while (g_variant_iter_next(&fields, "{&sv}", &field_name, &field_value)) {
+        g_autoptr(GVariant) value = field_value;
+        g_variant_builder_add(&event_builder, "{sv}", field_name, g_variant_ref(value));
+    }
+    g_variant_builder_add(&event_builder, "{sv}", "sequence", g_variant_new_uint64(sequence));
+    g_variant_builder_add(&event_builder, "{sv}", "time", g_variant_new_int64(time));
+    g_autoptr(GVariant) event_payload = g_variant_ref_sink(g_variant_builder_end(&event_builder));
+    g_autoptr(JsonNode) json = json_from_variant(event_payload);
+    if (JSON_NODE_HOLDS_OBJECT(json))
+        publish_native_socket_event(control, json);
+    native_runtime_dispatch_event(control, "gnoblin.input.orientation-lock-changed", event_payload);
+}
+
+static void native_orientation_manager_notified(GObject* manager, GParamSpec* property,
+                                                gpointer user_data) {
+    (void)manager;
+    (void)property;
+    GnoblinNativeControl* control = user_data;
+    if (control && !control->orientation_lock_notifications_suppressed)
+        native_orientation_lock_publish(control);
+}
+
+static void native_orientation_manager_accelerometer_notified(GObject* manager,
+                                                              GParamSpec* property,
+                                                              gpointer user_data) {
+    native_orientation_manager_notified(manager, property, user_data);
+}
+
+static void native_orientation_manager_orientation_changed(MetaOrientationManager* manager,
+                                                           gpointer user_data) {
+    (void)manager;
+    GnoblinNativeControl* control = user_data;
+    if (control && !control->orientation_lock_notifications_suppressed)
+        native_orientation_lock_publish(control);
+}
+
 static gboolean apply_native_input(GnoblinNativeControl* control, MetaContext* context,
                                    GVariant* document, GError** error) {
     g_autoptr(GVariant) input = document ? g_variant_lookup_value(document, "input", NULL) : NULL;
-    if (!input)
+    if (!input) {
+        control->orientation_lock_configured = FALSE;
+        control->orientation_lock_config_value = FALSE;
+        control->orientation_lock_runtime_override = FALSE;
+        control->orientation_lock_notifications_suppressed = TRUE;
+        if (control->orientation_manager)
+            meta_orientation_manager_clear_orientation_lock_override(control->orientation_manager);
+        control->orientation_lock_notifications_suppressed = FALSE;
+        native_orientation_lock_publish(control);
         return TRUE;
+    }
     if (!g_variant_is_of_type(input, G_VARIANT_TYPE_VARDICT)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "input must be a table");
@@ -3476,11 +3604,21 @@ static gboolean apply_native_input(GnoblinNativeControl* control, MetaContext* c
     keyboard = g_variant_lookup_value(normalized_input, "keyboard", G_VARIANT_TYPE_VARDICT);
     meta_prefs_apply_gnoblin_keyboard_preferences(keyboard);
     MetaOrientationManager* orientation =
-        meta_backend_get_orientation_manager(meta_context_get_backend(context));
-    if (orientation_set)
-        meta_orientation_manager_set_orientation_locked(orientation, orientation_locked);
-    else
-        meta_orientation_manager_clear_orientation_lock_override(orientation);
+        control->orientation_manager
+            ? control->orientation_manager
+            : meta_backend_get_orientation_manager(meta_context_get_backend(context));
+    control->orientation_lock_configured = orientation_set;
+    control->orientation_lock_config_value = orientation_locked;
+    control->orientation_lock_runtime_override = FALSE;
+    control->orientation_lock_notifications_suppressed = TRUE;
+    if (orientation) {
+        if (orientation_set)
+            meta_orientation_manager_set_orientation_locked(orientation, orientation_locked);
+        else
+            meta_orientation_manager_clear_orientation_lock_override(orientation);
+    }
+    control->orientation_lock_notifications_suppressed = FALSE;
+    native_orientation_lock_publish(control);
     return TRUE;
 
 invalid_input:
@@ -10661,7 +10799,8 @@ static gboolean native_api_read_method(const char* method) {
             g_str_equal(method, "workspaces.list") || g_str_equal(method, "monitors.list") ||
             g_str_equal(method, "layers.list") || g_str_equal(method, "launches.list") ||
             g_str_equal(method, "launches.snapshot") || g_str_equal(method, "shortcuts.list") ||
-            g_str_equal(method, "shortcuts.actions"));
+            g_str_equal(method, "shortcuts.actions") ||
+            g_str_equal(method, "input.orientation_lock"));
 }
 
 static gboolean runtime_reload_document_supported(GVariant* current, GVariant* candidate) {
@@ -11069,6 +11208,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 return encode_response("", NULL,
                                        "location authorization events require API version 1.65");
             }
+            if (g_str_equal(name, "gnoblin.input.orientation-lock-changed") &&
+                client->api_minor < 66) {
+                g_hash_table_unref(subscriptions);
+                return encode_response("", NULL,
+                                       "orientation lock events require API version 1.66");
+            }
             if (g_str_equal(name, "gnoblin.capability.changed") && client->api_minor < 33) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL,
@@ -11169,6 +11314,10 @@ static char* handle_request(Client* client, const char* data, gsize length) {
          g_str_equal(method, "input.select_source") || g_str_equal(method, "input.select")) &&
         client->api_minor < 6)
         return encode_response(id, NULL, "input source methods require API version 1.6");
+    if ((g_str_equal(method, "input.orientation_lock") ||
+         g_str_equal(method, "input.set_orientation_lock")) &&
+        client->api_minor < 66)
+        return encode_response(id, NULL, "orientation lock methods require API version 1.66");
     if (g_str_equal(method, "shortcut.actions") && client->api_minor < 5)
         return encode_response(id, NULL, "shortcut.actions requires API version 1.5");
     if (g_str_equal(method, "shortcut.capture") && client->api_minor < 8)
@@ -12475,7 +12624,9 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         "input.devices",
         "input.sources",
         "input.current_source",
+        "input.orientation_lock",
         "input.select",
+        "input.set_orientation_lock",
         "input.text_target",
         "input.insert_text",
         "launch.status",
@@ -13183,6 +13334,10 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
     native_publish_runtime_snapshot(control, "input-devices", devices, revision);
     g_autoptr(GVariant) sources = input_source_snapshot(control);
     native_publish_runtime_snapshot(control, "input-sources", sources, revision);
+    g_autoptr(GVariant) orientation_lock =
+        native_orientation_lock_snapshot(control, control->orientation_lock_revision);
+    native_publish_runtime_snapshot(control, "orientation-lock", orientation_lock,
+                                    control->orientation_lock_revision);
     g_autoptr(GVariant) shortcuts = native_shortcut_snapshot(control);
     native_publish_runtime_snapshot(control, "shortcuts", shortcuts, revision);
     publish_privacy_snapshot(control, FALSE);
@@ -13198,6 +13353,52 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
                                     control->state_revision);
     update_launch_snapshot(control);
     return native_runtime_flush_state_snapshots(control, error);
+}
+
+static GVariant* native_set_orientation_lock(GnoblinNativeControl* control, GVariant* arguments,
+                                             GError** error) {
+    if (!arguments || !g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT) ||
+        g_variant_n_children(arguments) != 1) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "input.set_orientation_lock requires only value");
+        return NULL;
+    }
+    if (!control->orientation_manager) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                            "orientation lock is unavailable on this backend");
+        return NULL;
+    }
+
+    g_autoptr(GVariant) value = g_variant_lookup_value(arguments, "value", NULL);
+    if (!value) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "input.set_orientation_lock requires value");
+        return NULL;
+    }
+
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN)) {
+        control->orientation_lock_runtime_override = TRUE;
+        control->orientation_lock_notifications_suppressed = TRUE;
+        meta_orientation_manager_set_orientation_locked(control->orientation_manager,
+                                                        g_variant_get_boolean(value));
+    } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+               g_str_equal(g_variant_get_string(value, NULL), "inherit")) {
+        control->orientation_lock_runtime_override = FALSE;
+        control->orientation_lock_notifications_suppressed = TRUE;
+        if (control->orientation_lock_configured)
+            meta_orientation_manager_set_orientation_locked(control->orientation_manager,
+                                                            control->orientation_lock_config_value);
+        else
+            meta_orientation_manager_clear_orientation_lock_override(control->orientation_manager);
+    } else {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "input.set_orientation_lock value must be boolean or 'inherit'");
+        return NULL;
+    }
+
+    control->orientation_lock_notifications_suppressed = FALSE;
+    native_orientation_lock_publish(control);
+    return g_variant_ref(control->orientation_lock_snapshot);
 }
 
 static gboolean native_runtime_send_config_result(GnoblinNativeControl* control,
@@ -13352,6 +13553,8 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
     } else if (g_str_equal(method, "location.authorize_app")) {
         result =
             native_location_authorize_operation(control, arguments, client_id, &operation_error);
+    } else if (g_str_equal(method, "input.set_orientation_lock")) {
+        result = native_set_orientation_lock(control, arguments, &operation_error);
     } else if (g_str_equal(method, "session.lock")) {
         result = gnoblin_native_control_request_session_lock(control->display, arguments,
                                                              &operation_error);
@@ -13939,6 +14142,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     g_object_set_data(G_OBJECT(control->display), NATIVE_CONTROL_OBJECT_DATA_KEY, control);
     MetaBackend* backend = meta_context_get_backend(context);
     control->backend = backend;
+    control->orientation_manager = meta_backend_get_orientation_manager(backend);
     control->cursor_tracker = meta_backend_get_cursor_tracker(backend);
     control->remote_access_controller =
         g_object_ref(meta_backend_get_remote_access_controller(backend));
@@ -14134,6 +14338,15 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     }
     if (!apply_native_input(control, context, document, error))
         goto fail;
+    if (control->orientation_manager) {
+        g_signal_connect(control->orientation_manager, "notify::orientation-locked",
+                         G_CALLBACK(native_orientation_manager_notified), control);
+        g_signal_connect(control->orientation_manager, "notify::has-accelerometer",
+                         G_CALLBACK(native_orientation_manager_accelerometer_notified), control);
+        g_signal_connect(control->orientation_manager, "orientation-changed",
+                         G_CALLBACK(native_orientation_manager_orientation_changed), control);
+    }
+    native_orientation_lock_publish(control);
     if (!apply_native_keybindings(document, error))
         goto fail;
     if (!start_native_shortcuts(control, document, error))
@@ -14282,6 +14495,8 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         g_signal_handlers_disconnect_by_data(control->remote_access_controller, control);
     if (control->input_source_settings)
         g_signal_handlers_disconnect_by_data(control->input_source_settings, control);
+    if (control->orientation_manager)
+        g_signal_handlers_disconnect_by_data(control->orientation_manager, control);
     if (control->appearance_settings)
         g_signal_handlers_disconnect_by_data(control->appearance_settings, control);
     if (control->input_seat)
@@ -14296,6 +14511,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         control->privacy_handles = NULL;
     }
     g_clear_pointer(&control->privacy_snapshot, g_variant_unref);
+    g_clear_pointer(&control->orientation_lock_snapshot, g_variant_unref);
     native_publish_runtime_snapshot(control, "privacy", NULL, control->privacy_revision);
     g_clear_object(&control->remote_access_controller);
     if (control->window_state)
