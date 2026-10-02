@@ -311,6 +311,15 @@ for _, action in ipairs(gnoblin.shortcuts.actions("wm")) do
 end
 ```
 
+Capture a shortcut from the terminal console. The call waits for the key press
+and returns the normalized accelerator. The timeout defaults to 30 seconds and
+can be set from 1 to 60 seconds; Escape cancels capture.
+
+```lua
+local captured = gnoblin.shortcuts.capture({timeout = 10})
+print(captured.accelerator)
+```
+
 To run a Lua file with the same API, pass its path:
 
 ```sh
