@@ -2328,7 +2328,7 @@ static gboolean issue_focus_context_for_session_key(GnoblinNativeControl* contro
 
     Client* client = shortcut->client;
     if ((!client && (!shortcut->owner_id || !g_str_has_prefix(shortcut->owner_id, "lua:"))) ||
-        (client && (client->closing || !client->focus_grants ||
+        (client && (client->closing || client->api_minor < 68 || !client->focus_grants ||
                     g_hash_table_size(client->focus_grants) >= MAX_FOCUS_CONTEXTS)))
         return FALSE;
 
