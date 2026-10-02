@@ -165,6 +165,7 @@ static int lua_permissions_policy(lua_State* state);
 static int lua_privacy_state(lua_State* state);
 static int lua_session_activity(lua_State* state);
 static int lua_session_status(lua_State* state);
+static int lua_runtime_status(lua_State* state);
 static int lua_input_text_target(lua_State* state);
 static int lua_text_target_insert_text(lua_State* state);
 static int lua_text_target_index(lua_State* state);
@@ -307,6 +308,7 @@ static const char* api_methods[] = {
     "session.status",
     "session.logout",
     "runtime.reload_config",
+    "runtime.status",
     "shortcut.capture",
     "shortcut.bind",
     "shortcut.unbind",
@@ -4220,6 +4222,23 @@ static int lua_session_status(lua_State* state) {
     return 1;
 }
 
+static int lua_runtime_status(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.runtime.status takes no arguments");
+    if (!active_runtime)
+        return luaL_error(state, "Lua runtime status is unavailable");
+    GVariantBuilder builder;
+    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&builder, "{sv}", "state", g_variant_new_string("running"));
+    g_variant_builder_add(&builder, "{sv}", "generation",
+                          g_variant_new_uint64(active_runtime->generation));
+    g_autoptr(GVariant) status = g_variant_ref_sink(g_variant_builder_end(&builder));
+    push_variant(state, status);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
 static int lua_permissions_check(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     const char* capability = NULL;
@@ -4805,6 +4824,8 @@ static void install_api(lua_State* state, LuaConfig* config) {
         if (g_str_equal(api_methods[i], "session.status")) {
             lua_pushlightuserdata(state, config);
             lua_pushcclosure(state, lua_session_status, 1);
+        } else if (g_str_equal(api_methods[i], "runtime.status")) {
+            lua_pushcfunction(state, lua_runtime_status);
         } else if (g_str_equal(api_methods[i], "session.activity")) {
             lua_pushlightuserdata(state, config);
             lua_pushcclosure(state, lua_session_activity, 1);
@@ -6733,6 +6754,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "focus.policy",
         "session.activity",
         "session.status",
+        "runtime.status",
         "launch.status",
         "window.match",
         "workspace.list",
@@ -6873,6 +6895,11 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "session.activity") || g_str_equal(method, "session.status")) {
         lua_getfield(state, -1, "session");
         lua_getfield(state, -1, g_str_equal(method, "session.status") ? "status" : "activity");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "runtime.status")) {
+        lua_getfield(state, -1, "runtime");
+        lua_getfield(state, -1, "status");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "layer.animation_policy")) {

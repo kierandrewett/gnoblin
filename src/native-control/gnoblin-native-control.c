@@ -10795,7 +10795,7 @@ static gboolean native_api_read_method(const char* method) {
             g_str_equal(method, "version") || g_str_equal(method, "capabilities.list") ||
             g_str_equal(method, "focus.history") || g_str_equal(method, "settings") ||
             g_str_equal(method, "focus.policy") || g_str_equal(method, "session.activity") ||
-            g_str_equal(method, "session.status") ||
+            g_str_equal(method, "session.status") || g_str_equal(method, "runtime.status") ||
             g_str_equal(method, "layer.animation_policy") ||
             g_str_equal(method, "workspaces.list") || g_str_equal(method, "monitors.list") ||
             g_str_equal(method, "layers.list") || g_str_equal(method, "launches.list") ||
@@ -11388,6 +11388,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         return encode_response(id, NULL, "shared snapshot reads require API version 1.19");
     if (g_str_equal(method, "runtime.reload_config") && client->api_minor < 20)
         return encode_response(id, NULL, "runtime.reload_config requires API version 1.20");
+    if (g_str_equal(method, "runtime.status") && client->api_minor < 67)
+        return encode_response(id, NULL, "runtime.status requires API version 1.67");
     if (g_str_has_prefix(method, "launch.") && client->api_minor < 7)
         return encode_response(id, NULL, "launch methods require API version 1.7");
     JsonNode* arguments_node = json_object_get_member(request, "arguments");
@@ -11475,6 +11477,25 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         if (!client->control->supervised_runtime)
             return encode_response(id, NULL, "Lua supervisor is not connected");
         return queue_runtime_api_request(client, id, method, arguments, "reload");
+    }
+    if (g_str_equal(method, "runtime.status")) {
+        if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
+            return encode_response(id, NULL, "runtime.status does not accept arguments");
+        const char* state = "starting";
+        if (!client->control->supervised_runtime || client->control->stopping)
+            state = "unavailable";
+        else if (client->control->runtime_worker_suspended)
+            state = "restarting";
+        else if (client->control->runtime_hello_sent)
+            state = "running";
+        GVariantBuilder status;
+        g_variant_builder_init(&status, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&status, "{sv}", "state", g_variant_new_string(state));
+        g_variant_builder_add(&status, "{sv}", "generation",
+                              g_variant_new_uint64(client->control->runtime_generation));
+        g_autoptr(GVariant) result = g_variant_ref_sink(g_variant_builder_end(&status));
+        g_autoptr(JsonNode) json = json_from_variant(result);
+        return encode_response(id, json, NULL);
     }
     if (g_str_equal(method, "session.lock")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
@@ -12704,6 +12725,7 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         "workspace.move_active",
         "workspace.move_window",
         "runtime.reload_config",
+        "runtime.status",
         "session.lock",
         "session.activity",
         "session.logout",
