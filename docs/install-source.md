@@ -21,7 +21,9 @@ Python is used while building; the installed control command is a native
 GLib/GIO program.
 
 The installed `gsettings-desktop-schemas` development package must be at least
-the version pinned in `gnome-versions.json`.
+the version pinned in `gnome-versions.json`. The pinned Mutter source also
+requires the PipeWire development library `libpipewire-0.3` version 1.6.0 or
+newer for its remote-desktop support.
 
 Mutter uses the shared schemas for settings such as keyboard, pointer, and
 accessibility behavior. The package also supplies enum headers used while
@@ -55,7 +57,8 @@ your system does not have one. To include Gnoblin's optional Adwaita vector
 theme, install librsvg, hyprcursor-util and the Adwaita cursor theme, then run
 `./build.sh --with-vector-cursors`. Inkscape is not required.
 
-Portal screen sharing uses the compositor's PipeWire support.
+Portal screen sharing uses the compositor's PipeWire support and connects to
+the PipeWire service installed on your system.
 
 ## 1. Get the source
 
