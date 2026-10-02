@@ -22,11 +22,17 @@ extern char** environ;
 #define RUNTIME_FD 198
 #define WORKER_READY_FD 199
 #define WORKER_HOST_FD 200
+#define GUARDIAN_STATUS_FD 201
+#define GUARDIAN_AUTOSTART_FD 202
+#define WORKER_GUARDIAN_STATUS_FD 203
 #define STARTUP_TIMEOUT_MS 10000
 #define SUSPEND_TIMEOUT_MS 10000
 #define WORKER_MAX_RESTARTS 5
 #define WORKER_STABLE_RESET_MS 60000
 #define EXIT_RESUME_REJECTED 75
+#define GUARDIAN_STATUS_STARTED 1
+#define GUARDIAN_STATUS_READY 2
+#define GUARDIAN_STATUS_LOGOUT 3
 #define SESSION_SUPERVISOR_BUS_NAME "org.gnoblin.SessionSupervisor"
 #define PORTAL_BACKEND_BUS_NAME "org.freedesktop.impl.portal.desktop.gnoblin"
 #define PORTAL_LIFECYCLE_INTERFACE "org.gnoblin.Portal.InhibitLifecycle"
@@ -55,9 +61,11 @@ typedef struct {
     gboolean failed;
     gboolean logout_requested;
     gboolean resume_worker;
+    gboolean send_initial_autostart;
     gboolean resume_rejected;
     int ready_fd;
     int host_control_fd;
+    int guardian_status_fd;
     GVariant* initial_document;
     guint startup_timeout_id;
     guint child_watch_id;
@@ -91,6 +99,7 @@ typedef struct {
 static char* session_prefix;
 
 static gboolean send_initial_autostart(int fd, GVariant* document, GVariant* hello, GError** error);
+static gboolean guardian_send_status(int fd, guint8 status);
 
 static GDBusConnection* claim_session_lifecycle_bus(void) {
     g_autoptr(GError) error = NULL;
@@ -587,6 +596,49 @@ static gboolean queue_packet(Runtime* runtime, GnoblinRuntimePacketType type, gu
         }
         g_propagate_error(error, g_steal_pointer(&flush_error));
         return FALSE;
+    }
+    return TRUE;
+}
+
+/* The guardian treats STARTED as proof that Mutter has received the initial
+ * CONFIG/RESUME packet. queue_packet() may return with bytes still queued when
+ * the socket is full, so finish that first packet before publishing the
+ * status. Otherwise a supervisor killed in that gap could make the guardian
+ * restart without suspending Mutter. */
+static gboolean flush_startup_packet(Runtime* runtime, GError** error) {
+    gint64 deadline = g_get_monotonic_time() + STARTUP_TIMEOUT_MS * 1000;
+    for (;;) {
+        g_autoptr(GError) flush_error = NULL;
+        if (gnoblin_runtime_writer_flush(runtime->writer, runtime->channel_fd, &flush_error))
+            break;
+        if (!g_error_matches(flush_error, G_IO_ERROR, G_IO_ERROR_WOULD_BLOCK)) {
+            g_propagate_error(error, g_steal_pointer(&flush_error));
+            return FALSE;
+        }
+
+        gint64 remaining = deadline - g_get_monotonic_time();
+        if (remaining <= 0) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT,
+                                "Mutter did not accept the initial runtime packet");
+            return FALSE;
+        }
+        struct pollfd pfd = {.fd = runtime->channel_fd, .events = POLLOUT};
+        int timeout = (int)MIN((remaining + 999) / 1000, 100);
+        int result;
+        do {
+            result = poll(&pfd, 1, timeout);
+        } while (result < 0 && errno == EINTR);
+        if (result < 0 || (result > 0 && (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)))) {
+            g_set_error(error, G_IO_ERROR,
+                        result < 0 ? g_io_error_from_errno(errno) : G_IO_ERROR_CLOSED,
+                        "Mutter closed the runtime channel during startup: %s",
+                        result < 0 ? g_strerror(errno) : "peer closed the channel");
+            return FALSE;
+        }
+    }
+    if (runtime->write_watch_id) {
+        g_source_remove(runtime->write_watch_id);
+        runtime->write_watch_id = 0;
     }
     return TRUE;
 }
@@ -1159,7 +1211,7 @@ static gboolean handle_runtime_packet(Runtime* runtime, GnoblinRuntimePacket* pa
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
                                 "compositor runtime handshake is incompatible");
         else {
-            if (!runtime->resume_worker &&
+            if (runtime->send_initial_autostart &&
                 !send_initial_autostart(runtime->host_control_fd, runtime->initial_document,
                                         packet->payload, error))
                 return FALSE;
@@ -1168,6 +1220,8 @@ static gboolean handle_runtime_packet(Runtime* runtime, GnoblinRuntimePacket* pa
                 runtime->host_control_fd = -1;
             }
             runtime->ready = TRUE;
+            if (runtime->guardian_status_fd >= 0)
+                (void)guardian_send_status(runtime->guardian_status_fd, GUARDIAN_STATUS_READY);
             /* The host uses this one-byte notification to distinguish a
              * startup failure from a worker crash after the first handshake. */
             if (runtime->ready_fd >= 0) {
@@ -1358,8 +1412,10 @@ static void terminate_and_reap(Runtime* runtime) {
  * PID in Runtime after waitpid() has consumed it risks signalling a reused PID
  * during the normal shutdown path. */
 static gboolean host_reap_compositor(Runtime* runtime) {
-    if (!runtime || !runtime->compositor_pid)
+    if (!runtime)
         return TRUE;
+    if (!runtime->compositor_pid)
+        return FALSE;
 
     GPid pid = runtime->compositor_pid;
     gint status = 0;
@@ -1457,6 +1513,7 @@ static int runtime_worker_main(int argc, char** argv) {
     const char* wayland_display = NULL;
     gboolean devkit = FALSE;
     gboolean resume_worker = FALSE;
+    gboolean send_autostart = FALSE;
     int ready_fd = -1;
     int host_control_fd = -1;
     guint64 seed_settings_revision = 0;
@@ -1474,6 +1531,8 @@ static int runtime_worker_main(int argc, char** argv) {
             ;
         else if (g_str_equal(argv[i], "--resume-runtime-worker"))
             resume_worker = TRUE;
+        else if (g_str_equal(argv[i], "--send-initial-autostart"))
+            send_autostart = TRUE;
         else if (g_str_equal(argv[i], "--worker-ready-fd") && i + 1 < argc)
             ready_fd = (int)g_ascii_strtoll(argv[++i], NULL, 10);
         else if (g_str_equal(argv[i], "--worker-host-fd") && i + 1 < argc)
@@ -1497,11 +1556,17 @@ static int runtime_worker_main(int argc, char** argv) {
         g_printerr("gnoblin: devkit mode needs a valid Wayland display name\n");
         return EXIT_FAILURE;
     }
-    if (ready_fd < 0 || (!resume_worker && host_control_fd < 0)) {
+    send_autostart |= !resume_worker;
+    if (ready_fd < 0 || (send_autostart && host_control_fd < 0)) {
         g_printerr("gnoblin: invalid internal runtime worker arguments\n");
         return EXIT_FAILURE;
     }
-    if (!resume_worker) {
+    if (fcntl(WORKER_GUARDIAN_STATUS_FD, F_GETFD) < 0) {
+        g_printerr("gnoblin: runtime worker has no guardian status channel\n");
+        close(ready_fd);
+        return EXIT_FAILURE;
+    }
+    if (send_autostart) {
         int type = 0;
         socklen_t type_size = sizeof type;
         if (fcntl(host_control_fd, F_GETFD) < 0 ||
@@ -1541,8 +1606,10 @@ static int runtime_worker_main(int argc, char** argv) {
         .channel_fd = RUNTIME_FD,
         .ready_fd = ready_fd,
         .host_control_fd = host_control_fd,
-        .initial_document = resume_worker ? NULL : g_variant_ref(document),
+        .guardian_status_fd = WORKER_GUARDIAN_STATUS_FD,
+        .initial_document = send_autostart ? g_variant_ref(document) : NULL,
         .resume_worker = resume_worker,
+        .send_initial_autostart = send_autostart,
         .exit_status = EXIT_FAILURE,
         .writer = gnoblin_runtime_writer_new(),
         .reader = gnoblin_runtime_reader_new(),
@@ -1596,6 +1663,8 @@ static int runtime_worker_main(int argc, char** argv) {
                                      resume_payload, &error)
                       : send_config(&runtime, document, revision,
                                     gnoblin_config_runtime_generation(), 0, &error);
+    if (sent_startup_packet)
+        sent_startup_packet = flush_startup_packet(&runtime, &error);
     if (!sent_startup_packet) {
         close(runtime.ready_fd);
         close(runtime.channel_fd);
@@ -1607,7 +1676,7 @@ static int runtime_worker_main(int argc, char** argv) {
         g_hash_table_unref(runtime.state_revisions);
         g_hash_table_unref(runtime.pending_logout_ids);
         g_hash_table_unref(runtime.pending_operation_ids);
-        g_printerr("gnoblin: could not send initial configuration: %s\n",
+        g_printerr("gnoblin: could not send initial runtime packet: %s\n",
                    error ? error->message : "channel write failed");
         g_main_loop_unref(runtime.loop);
         return EXIT_FAILURE;
@@ -1616,6 +1685,7 @@ static int runtime_worker_main(int argc, char** argv) {
         const guint8 started = 2;
         (void)write(runtime.ready_fd, &started, sizeof started);
     }
+    (void)guardian_send_status(runtime.guardian_status_fd, GUARDIAN_STATUS_STARTED);
 
     gnoblin_config_set_runtime_wakeup_callback(runtime_schedule_deferred_callbacks, &runtime);
     g_unix_fd_add(runtime.channel_fd, G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
@@ -1635,6 +1705,7 @@ static int runtime_worker_main(int argc, char** argv) {
     if (runtime.reload_progress_id)
         g_source_remove(runtime.reload_progress_id);
     close(runtime.channel_fd);
+    close(runtime.guardian_status_fd);
     gnoblin_runtime_writer_free(runtime.writer);
     gnoblin_runtime_reader_free(runtime.reader);
     gnoblin_config_set_focus_policy_changed_callback(NULL, NULL);
@@ -1666,7 +1737,7 @@ static void host_signal_handler(int signal_number) {
 }
 
 static gboolean move_fd_above_runtime_targets(int fd, int* moved_fd, GError** error) {
-    int moved = fcntl(fd, F_DUPFD_CLOEXEC, WORKER_HOST_FD + 1);
+    int moved = fcntl(fd, F_DUPFD_CLOEXEC, WORKER_GUARDIAN_STATUS_FD + 1);
     if (moved < 0) {
         g_set_error(error, G_IO_ERROR, g_io_error_from_errno(errno),
                     "could not move worker descriptor: %s", g_strerror(errno));
@@ -1678,13 +1749,14 @@ static gboolean move_fd_above_runtime_targets(int fd, int* moved_fd, GError** er
 
 static GPid spawn_runtime_worker(const char* executable, const char* config_path, gboolean devkit,
                                  const char* wayland_display, gboolean resume,
-                                 guint64 settings_revision, guint64 runtime_generation,
-                                 guint64 operation_id_watermark, int channel_fd,
-                                 int host_control_fd, int* ready_fd, GError** error) {
+                                 gboolean send_autostart, guint64 settings_revision,
+                                 guint64 runtime_generation, guint64 operation_id_watermark,
+                                 int channel_fd, int host_control_fd, int guardian_status_fd,
+                                 int* ready_fd, GError** error) {
     int status_pipe[2] = {-1, -1};
     int channel_parent_alias = -1, channel_child_alias = -1;
     int status_parent_alias = -1, status_child_alias = -1;
-    int host_parent_alias = -1, host_child_alias = -1;
+    int host_parent_alias = -1, host_child_alias = -1, guardian_status_alias = -1;
     if (pipe2(status_pipe, O_CLOEXEC | O_NONBLOCK) != 0) {
         g_set_error(error, G_IO_ERROR, g_io_error_from_errno(errno),
                     "could not create worker status pipe: %s", g_strerror(errno));
@@ -1694,6 +1766,7 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
         !move_fd_above_runtime_targets(channel_fd, &channel_child_alias, error) ||
         !move_fd_above_runtime_targets(status_pipe[0], &status_parent_alias, error) ||
         !move_fd_above_runtime_targets(status_pipe[1], &status_child_alias, error) ||
+        !move_fd_above_runtime_targets(guardian_status_fd, &guardian_status_alias, error) ||
         (host_control_fd >= 0 &&
          (!move_fd_above_runtime_targets(host_control_fd, &host_parent_alias, error) ||
           !move_fd_above_runtime_targets(host_control_fd, &host_child_alias, error))))
@@ -1717,6 +1790,22 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
         (host_control_fd < 0 ||
          gnoblin_runtime_spawn_add_channel_actions(&actions, host_parent_alias, host_child_alias,
                                                    WORKER_HOST_FD, &host_temporary_fd, error));
+    if (actions_ready) {
+        int action_result = posix_spawn_file_actions_adddup2(&actions, guardian_status_alias,
+                                                             WORKER_GUARDIAN_STATUS_FD);
+        if (action_result == 0)
+            action_result = posix_spawn_file_actions_addclose(&actions, guardian_status_alias);
+        if (action_result == 0)
+            action_result = posix_spawn_file_actions_addclose(&actions, GUARDIAN_STATUS_FD);
+        if (action_result == 0)
+            action_result = posix_spawn_file_actions_addclose(&actions, GUARDIAN_AUTOSTART_FD);
+        if (action_result != 0) {
+            g_set_error(error, G_IO_ERROR, g_io_error_from_errno(action_result),
+                        "could not prepare guardian status descriptor: %s",
+                        g_strerror(action_result));
+            actions_ready = FALSE;
+        }
+    }
     if (!actions_ready) {
         posix_spawn_file_actions_destroy(&actions);
         if (channel_temporary_fd >= 0)
@@ -1754,6 +1843,8 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
         g_ptr_array_add(argv, g_strdup("--seed-operation-id-watermark"));
         g_ptr_array_add(argv, g_strdup(operation_id_watermark_arg));
     }
+    if (send_autostart)
+        g_ptr_array_add(argv, g_strdup("--send-initial-autostart"));
     if (devkit) {
         g_ptr_array_add(argv, g_strdup("--devkit"));
         g_ptr_array_add(argv, g_strdup("--wayland-display"));
@@ -1769,6 +1860,8 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
         close(status_temporary_fd);
     if (host_temporary_fd >= 0)
         close(host_temporary_fd);
+    if (guardian_status_alias >= 0)
+        close(guardian_status_alias);
     close(channel_parent_alias);
     close(channel_child_alias);
     close(status_parent_alias);
@@ -1800,6 +1893,8 @@ fail:
         close(host_parent_alias);
     if (host_child_alias >= 0)
         close(host_child_alias);
+    if (guardian_status_alias >= 0)
+        close(guardian_status_alias);
     close(status_pipe[0]);
     close(status_pipe[1]);
     return 0;
@@ -2047,6 +2142,28 @@ invalid_entry:
     return FALSE;
 }
 
+static gboolean guardian_send_status(int fd, guint8 status) {
+    ssize_t written;
+    do {
+        written = send(fd, &status, sizeof status, MSG_NOSIGNAL);
+    } while (written < 0 && errno == EINTR);
+    return written == sizeof status;
+}
+
+static gboolean forward_autostart_to_guardian(int fd, GVariant* entries, GVariant* environment,
+                                              GError** error) {
+    GVariantBuilder payload;
+    g_variant_builder_init(&payload, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&payload, "{sv}", "entries", entries);
+    g_variant_builder_add(&payload, "{sv}", "environment", environment);
+    g_autoptr(GVariant) packet_payload = g_variant_ref_sink(g_variant_builder_end(&payload));
+    g_autoptr(GnoblinRuntimeWriter) writer = gnoblin_runtime_writer_new();
+    if (!gnoblin_runtime_writer_queue(writer, GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART, 0,
+                                      packet_payload, error))
+        return FALSE;
+    return gnoblin_runtime_writer_flush(writer, fd, error);
+}
+
 static void reap_autostart_children(GPtrArray* children) {
     for (guint index = 0; index < children->len;) {
         HostAutostartChild* child = g_ptr_array_index(children, index);
@@ -2064,7 +2181,492 @@ static void reap_autostart_children(GPtrArray* children) {
     }
 }
 
-static int session_host_main(int argc, char** argv) {
+static GPid spawn_session_supervisor(const char* executable, const char* config_path,
+                                     gboolean devkit, const char* wayland_display, int runtime_fd,
+                                     int status_parent_fd, int status_child_fd,
+                                     int autostart_parent_fd, int autostart_child_fd,
+                                     gboolean resume, guint64 settings_revision,
+                                     guint64 runtime_generation, guint64 operation_id_watermark,
+                                     gboolean autostart_complete, GError** error) {
+    int runtime_alias = -1, status_parent_alias = -1, status_child_alias = -1;
+    int autostart_parent_alias = -1, autostart_child_alias = -1;
+    if (!move_fd_above_runtime_targets(runtime_fd, &runtime_alias, error) ||
+        !move_fd_above_runtime_targets(status_parent_fd, &status_parent_alias, error) ||
+        !move_fd_above_runtime_targets(status_child_fd, &status_child_alias, error) ||
+        !move_fd_above_runtime_targets(autostart_parent_fd, &autostart_parent_alias, error) ||
+        !move_fd_above_runtime_targets(autostart_child_fd, &autostart_child_alias, error))
+        goto fail;
+
+    posix_spawn_file_actions_t actions;
+    int result = posix_spawn_file_actions_init(&actions);
+    if (result != 0) {
+        g_set_error(error, G_IO_ERROR, g_io_error_from_errno(result),
+                    "could not prepare session supervisor spawn: %s", g_strerror(result));
+        goto fail;
+    }
+    int runtime_result = posix_spawn_file_actions_adddup2(&actions, runtime_alias, RUNTIME_FD);
+    if (runtime_result == 0)
+        runtime_result = posix_spawn_file_actions_addclose(&actions, runtime_alias);
+    gboolean actions_ready =
+        runtime_result == 0 &&
+        gnoblin_runtime_spawn_add_channel_actions(&actions, status_parent_alias, status_child_alias,
+                                                  GUARDIAN_STATUS_FD, &(int){-1}, error) &&
+        gnoblin_runtime_spawn_add_channel_actions(&actions, autostart_parent_alias,
+                                                  autostart_child_alias, GUARDIAN_AUTOSTART_FD,
+                                                  &(int){-1}, error);
+    if (runtime_result != 0 && (!error || !*error))
+        g_set_error(error, G_IO_ERROR, g_io_error_from_errno(runtime_result),
+                    "could not prepare session compositor descriptor: %s",
+                    g_strerror(runtime_result));
+    if (!actions_ready) {
+        posix_spawn_file_actions_destroy(&actions);
+        goto fail;
+    }
+
+    posix_spawnattr_t attributes;
+    result = posix_spawnattr_init(&attributes);
+    if (result != 0) {
+        posix_spawn_file_actions_destroy(&actions);
+        g_set_error(error, G_IO_ERROR, g_io_error_from_errno(result),
+                    "could not prepare session supervisor process group: %s", g_strerror(result));
+        goto fail;
+    }
+    result = posix_spawnattr_setpgroup(&attributes, 0);
+    if (result == 0)
+        result = posix_spawnattr_setflags(&attributes, POSIX_SPAWN_SETPGROUP);
+    if (result != 0) {
+        posix_spawnattr_destroy(&attributes);
+        posix_spawn_file_actions_destroy(&actions);
+        g_set_error(error, G_IO_ERROR, g_io_error_from_errno(result),
+                    "could not prepare session supervisor process group: %s", g_strerror(result));
+        goto fail;
+    }
+
+    g_autofree char* revision_arg = g_strdup_printf("%" G_GUINT64_FORMAT, settings_revision);
+    g_autofree char* generation_arg = g_strdup_printf("%" G_GUINT64_FORMAT, runtime_generation);
+    g_autofree char* watermark_arg = g_strdup_printf("%" G_GUINT64_FORMAT, operation_id_watermark);
+    g_autoptr(GPtrArray) argv = g_ptr_array_new_with_free_func(g_free);
+    g_ptr_array_add(argv, g_strdup(executable));
+    g_ptr_array_add(argv, g_strdup("--internal-session-supervisor"));
+    g_ptr_array_add(argv, g_strdup("--config"));
+    g_ptr_array_add(argv, g_strdup(config_path));
+    if (devkit) {
+        g_ptr_array_add(argv, g_strdup("--devkit"));
+        g_ptr_array_add(argv, g_strdup("--wayland-display"));
+        g_ptr_array_add(argv, g_strdup(wayland_display));
+    }
+    if (resume) {
+        g_ptr_array_add(argv, g_strdup("--resume-session-supervisor"));
+        g_ptr_array_add(argv, g_strdup("--resume-settings-revision"));
+        g_ptr_array_add(argv, g_strdup(revision_arg));
+        g_ptr_array_add(argv, g_strdup("--resume-runtime-generation"));
+        g_ptr_array_add(argv, g_strdup(generation_arg));
+        g_ptr_array_add(argv, g_strdup("--resume-operation-id-watermark"));
+        g_ptr_array_add(argv, g_strdup(watermark_arg));
+    }
+    if (autostart_complete)
+        g_ptr_array_add(argv, g_strdup("--autostart-complete"));
+    g_ptr_array_add(argv, NULL);
+
+    pid_t pid = 0;
+    result = posix_spawn(&pid, executable, &actions, &attributes, (char**)argv->pdata, environ);
+    posix_spawnattr_destroy(&attributes);
+    posix_spawn_file_actions_destroy(&actions);
+    if (result != 0) {
+        g_set_error(error, G_IO_ERROR, g_io_error_from_errno(result),
+                    "could not start Gnoblin session supervisor: %s", g_strerror(result));
+        goto fail;
+    }
+    close(runtime_alias);
+    close(status_parent_alias);
+    close(status_child_alias);
+    close(autostart_parent_alias);
+    close(autostart_child_alias);
+    return (GPid)pid;
+
+fail:
+    if (runtime_alias >= 0)
+        close(runtime_alias);
+    if (status_parent_alias >= 0)
+        close(status_parent_alias);
+    if (status_child_alias >= 0)
+        close(status_child_alias);
+    if (autostart_parent_alias >= 0)
+        close(autostart_parent_alias);
+    if (autostart_child_alias >= 0)
+        close(autostart_child_alias);
+    return 0;
+}
+
+static int session_supervisor_main(int argc, char** argv) {
+    g_autofree char* config_path = NULL;
+    const char* wayland_display = NULL;
+    gboolean devkit = FALSE;
+    gboolean resume_supervisor = FALSE;
+    gboolean autostart_complete = FALSE;
+    guint64 supervisor_seed_revision = 0, supervisor_seed_generation = 0;
+    guint64 supervisor_seed_operation_id_watermark = 0;
+    for (int i = 1; i < argc; i++) {
+        if (g_str_equal(argv[i], "--config") && i + 1 < argc)
+            config_path = g_canonicalize_filename(argv[++i], NULL);
+        else if (g_str_equal(argv[i], "--devkit"))
+            devkit = TRUE;
+        else if (g_str_equal(argv[i], "--wayland-display") && i + 1 < argc)
+            wayland_display = argv[++i];
+        else if (g_str_equal(argv[i], "--internal-session-supervisor"))
+            ;
+        else if (g_str_equal(argv[i], "--resume-session-supervisor"))
+            resume_supervisor = TRUE;
+        else if (g_str_equal(argv[i], "--autostart-complete"))
+            autostart_complete = TRUE;
+        else if (g_str_equal(argv[i], "--resume-settings-revision") && i + 1 < argc)
+            supervisor_seed_revision = g_ascii_strtoull(argv[++i], NULL, 10);
+        else if (g_str_equal(argv[i], "--resume-runtime-generation") && i + 1 < argc)
+            supervisor_seed_generation = g_ascii_strtoull(argv[++i], NULL, 10);
+        else if (g_str_equal(argv[i], "--resume-operation-id-watermark") && i + 1 < argc)
+            supervisor_seed_operation_id_watermark = g_ascii_strtoull(argv[++i], NULL, 10);
+        else {
+            usage(argv[0]);
+            return EXIT_FAILURE;
+        }
+    }
+    if (devkit != (wayland_display != NULL) ||
+        (wayland_display &&
+         (!g_regex_match_simple("^[A-Za-z0-9_.-]{1,128}$", wayland_display, 0, 0) ||
+          g_str_equal(wayland_display, ".") || g_str_equal(wayland_display, "..")))) {
+        usage(argv[0]);
+        g_printerr("gnoblin: devkit mode needs a valid Wayland display name\n");
+        return EXIT_FAILURE;
+    }
+    if (!config_path)
+        config_path = gnoblin_config_path();
+    g_setenv("GNOBLIN_CONFIG", config_path, TRUE);
+    if (fcntl(RUNTIME_FD, F_GETFD) < 0 || fcntl(GUARDIAN_STATUS_FD, F_GETFD) < 0 ||
+        fcntl(GUARDIAN_AUTOSTART_FD, F_GETFD) < 0 ||
+        (resume_supervisor && (!supervisor_seed_revision || !supervisor_seed_generation))) {
+        g_printerr("gnoblin: invalid inherited session supervisor channels\n");
+        return EXIT_FAILURE;
+    }
+
+    struct sigaction action = {.sa_handler = host_signal_handler};
+    sigemptyset(&action.sa_mask);
+    sigaction(SIGTERM, &action, NULL);
+    sigaction(SIGINT, &action, NULL);
+    g_autoptr(GError) error = NULL;
+    Runtime host = {.channel_fd = RUNTIME_FD, .exit_status = EXIT_FAILURE};
+    g_autofree char* executable = g_file_read_link("/proc/self/exe", NULL);
+    if (!executable) {
+        g_printerr("gnoblin: could not locate installed executable\n");
+        return EXIT_FAILURE;
+    }
+
+    GPid worker_pid = 0;
+    int ready_fd = -1;
+    gboolean worker_ready = FALSE;
+    gboolean worker_start_packet_sent = FALSE;
+    gboolean first_worker = TRUE;
+    gboolean host_autostart_received = FALSE;
+    gboolean host_autostart_started = FALSE;
+    gboolean stop_session = FALSE;
+    gboolean leave_session_alive = FALSE;
+    gboolean explicit_logout = FALSE;
+    guint restart_count = 0;
+    gint64 worker_ready_since_us = 0;
+    guint64 resume_revision = 0, resume_generation = 0;
+    guint64 resume_operation_id_watermark = 0;
+    int host_control_sockets[2] = {-1, -1};
+    if (!autostart_complete &&
+        socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, host_control_sockets) != 0) {
+        g_printerr("gnoblin: could not create private runtime supervisor channel: %s\n",
+                   g_strerror(errno));
+        return EXIT_FAILURE;
+    }
+    int host_control_fd = host_control_sockets[0];
+    g_autoptr(GnoblinRuntimeReader) host_control_reader = gnoblin_runtime_reader_new();
+    g_autoptr(GVariant) host_autostart_entries = NULL;
+    g_autoptr(GVariant) host_autostart_environment = NULL;
+    host_autostart_started = autostart_complete;
+    worker_pid = spawn_runtime_worker(
+        executable, config_path, devkit, wayland_display, resume_supervisor, !autostart_complete,
+        supervisor_seed_revision, supervisor_seed_generation,
+        supervisor_seed_operation_id_watermark, host.channel_fd, host_control_sockets[1],
+        GUARDIAN_STATUS_FD, &ready_fd, &error);
+    if (host_control_sockets[1] >= 0) {
+        close(host_control_sockets[1]);
+        host_control_sockets[1] = -1;
+    }
+    if (!worker_pid) {
+        g_printerr("gnoblin: could not start Lua runtime worker: %s\n",
+                   error ? error->message : "spawn failed");
+        close(host_control_fd);
+        return EXIT_FAILURE;
+    }
+
+    while (!host_signal_number) {
+        if (host_control_fd >= 0) {
+            struct pollfd control_poll = {.fd = host_control_fd, .events = POLLIN | POLLHUP};
+            if (poll(&control_poll, 1, 0) > 0 && (control_poll.revents & (POLLIN | POLLHUP))) {
+                if (!gnoblin_autostart_receive_packet(
+                        host_control_fd, host_control_reader, &host_autostart_received,
+                        &host_autostart_entries, &host_autostart_environment, &error)) {
+                    g_printerr("gnoblin: Lua runtime supervisor channel failed: %s\n",
+                               error ? error->message : "invalid packet");
+                    stop_session = TRUE;
+                    break;
+                }
+            }
+        }
+        if (worker_pid) {
+            struct pollfd ready_poll = {.fd = ready_fd, .events = POLLIN | POLLHUP};
+            if (poll(&ready_poll, 1, 0) > 0 && (ready_poll.revents & (POLLIN | POLLHUP))) {
+                gboolean became_ready = drain_worker_ready_fd(ready_fd, &worker_start_packet_sent);
+                worker_ready |= became_ready;
+                if (became_ready && !worker_ready_since_us)
+                    worker_ready_since_us = g_get_monotonic_time();
+                if (became_ready && !host_autostart_started) {
+                    if (host_control_fd >= 0 &&
+                        !gnoblin_autostart_receive_packet(
+                            host_control_fd, host_control_reader, &host_autostart_received,
+                            &host_autostart_entries, &host_autostart_environment, &error)) {
+                        g_printerr("gnoblin: Lua runtime supervisor channel failed: %s\n",
+                                   error ? error->message : "invalid packet");
+                        stop_session = TRUE;
+                        break;
+                    }
+                    if (!host_autostart_received ||
+                        !forward_autostart_to_guardian(GUARDIAN_AUTOSTART_FD,
+                                                       host_autostart_entries,
+                                                       host_autostart_environment, &error)) {
+                        g_printerr("gnoblin: could not start login autostart: %s\n",
+                                   error ? error->message
+                                         : "Lua runtime did not send the initial list");
+                        stop_session = TRUE;
+                        break;
+                    }
+                    host_autostart_started = TRUE;
+                    close(host_control_fd);
+                    host_control_fd = -1;
+                }
+            }
+            if (worker_ready_since_us &&
+                g_get_monotonic_time() - worker_ready_since_us >= WORKER_STABLE_RESET_MS * 1000)
+                restart_count = 0;
+            int worker_status = 0;
+            pid_t worker_result = waitpid(worker_pid, &worker_status, WNOHANG);
+            if (worker_result == worker_pid) {
+                gboolean became_ready = drain_worker_ready_fd(ready_fd, &worker_start_packet_sent);
+                worker_ready |= became_ready;
+                if (became_ready && !worker_ready_since_us)
+                    worker_ready_since_us = g_get_monotonic_time();
+                close(ready_fd);
+                ready_fd = -1;
+                worker_pid = 0;
+                g_spawn_close_pid((GPid)worker_result);
+                gboolean clean_exit =
+                    WIFEXITED(worker_status) && WEXITSTATUS(worker_status) == EXIT_SUCCESS;
+                if (clean_exit) {
+                    stop_session = TRUE;
+                    explicit_logout = TRUE;
+                    host.exit_status = EXIT_SUCCESS;
+                    break;
+                }
+                if (WIFEXITED(worker_status) &&
+                    WEXITSTATUS(worker_status) == EXIT_RESUME_REJECTED) {
+                    g_printerr("gnoblin: Mutter rejected runtime resume; keeping the session host "
+                               "and compositor alive\n");
+                    leave_session_alive = TRUE;
+                    break;
+                }
+                if (first_worker && !worker_ready) {
+                    g_printerr("gnoblin: Lua runtime failed before Mutter handshake\n");
+                    stop_session = TRUE;
+                    host.exit_status = EXIT_FAILURE;
+                    break;
+                }
+                first_worker = FALSE;
+                restart_count++;
+                /* If a replacement failed before sending RESUME, Mutter is
+                 * still in the SUSPENDED state already acknowledged above. */
+                if (worker_start_packet_sent) {
+                    g_autoptr(GError) suspend_error = NULL;
+                    if (!send_worker_disconnected(host.channel_fd, &suspend_error) ||
+                        !wait_for_worker_suspended(
+                            host.channel_fd, &host, &resume_revision, &resume_generation,
+                            &resume_operation_id_watermark, &suspend_error)) {
+                        if (!host.compositor_pid) {
+                            stop_session = TRUE;
+                            break;
+                        }
+                        g_printerr("gnoblin: could not complete worker suspension; keeping the "
+                                   "session host and compositor alive: %s\n",
+                                   suspend_error ? suspend_error->message
+                                                 : "Mutter did not suspend");
+                        leave_session_alive = TRUE;
+                        break;
+                    }
+                }
+                if (restart_count > WORKER_MAX_RESTARTS) {
+                    g_printerr("gnoblin: Lua runtime recovery failed repeatedly; leaving Mutter "
+                               "and session targets running\n");
+                    leave_session_alive = TRUE;
+                    break;
+                }
+                g_printerr("gnoblin: restarting Lua runtime worker (attempt %u of %u)\n",
+                           restart_count, WORKER_MAX_RESTARTS);
+                if (!sleep_before_worker_restart(restart_count, &host)) {
+                    stop_session = TRUE;
+                    break;
+                }
+                worker_ready = FALSE;
+                worker_start_packet_sent = FALSE;
+                worker_ready_since_us = 0;
+                worker_pid = spawn_runtime_worker(
+                    executable, config_path, devkit, wayland_display, TRUE, !host_autostart_started,
+                    resume_revision, resume_generation, resume_operation_id_watermark,
+                    host.channel_fd, -1, GUARDIAN_STATUS_FD, &ready_fd, &error);
+                if (!worker_pid) {
+                    g_printerr("gnoblin: could not restart Lua runtime worker: %s\n",
+                               error ? error->message : "spawn failed");
+                    leave_session_alive = TRUE;
+                    break;
+                }
+            }
+        }
+        g_usleep(50000);
+    }
+
+    if (host_signal_number) {
+        host.exit_status = 128 + host_signal_number;
+        stop_session = TRUE;
+    }
+    if (leave_session_alive && !host_signal_number) {
+        /* Exhausted recovery keeps the session host alive so logind ownership,
+         * Mutter, and session targets continue until logout or compositor exit. */
+        while (!host_signal_number) {
+            if (host_reap_compositor(&host)) {
+                stop_session = TRUE;
+                break;
+            }
+            g_usleep(100000);
+        }
+    }
+    if (host_signal_number) {
+        host.exit_status = 128 + host_signal_number;
+        stop_session = TRUE;
+    }
+    if (explicit_logout)
+        (void)guardian_send_status(GUARDIAN_STATUS_FD, GUARDIAN_STATUS_LOGOUT);
+    if (worker_pid) {
+        kill(worker_pid, SIGTERM);
+        while (waitpid(worker_pid, NULL, 0) < 0 && errno == EINTR) {
+        }
+        g_spawn_close_pid(worker_pid);
+    }
+    if (ready_fd >= 0)
+        close(ready_fd);
+    if (host_control_fd >= 0)
+        close(host_control_fd);
+    if (host_control_sockets[1] >= 0)
+        close(host_control_sockets[1]);
+    close(host.channel_fd);
+    return host.exit_status;
+}
+
+static gboolean guardian_drain_status(int fd, gboolean* native_channel_started,
+                                      gboolean* supervisor_ready, gboolean* session_ready,
+                                      gint64* ready_since_us, gboolean* explicit_logout,
+                                      GError** error) {
+    for (;;) {
+        guint8 status = 0;
+        ssize_t count = recv(fd, &status, sizeof status, MSG_DONTWAIT);
+        if (count == 0)
+            return TRUE;
+        if (count < 0) {
+            if (errno == EINTR)
+                continue;
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+                return TRUE;
+            g_set_error(error, G_IO_ERROR, g_io_error_from_errno(errno),
+                        "could not read session supervisor status: %s", g_strerror(errno));
+            return FALSE;
+        }
+        if (count != sizeof status) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                "session supervisor sent a truncated status message");
+            return FALSE;
+        }
+        switch (status) {
+        case GUARDIAN_STATUS_STARTED:
+            *native_channel_started = TRUE;
+            break;
+        case GUARDIAN_STATUS_READY:
+            if (!*supervisor_ready)
+                *ready_since_us = g_get_monotonic_time();
+            *supervisor_ready = TRUE;
+            *session_ready = TRUE;
+            break;
+        case GUARDIAN_STATUS_LOGOUT:
+            *explicit_logout = TRUE;
+            break;
+        default:
+            g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                        "session supervisor sent unknown status %u", status);
+            return FALSE;
+        }
+    }
+}
+
+static gboolean guardian_receive_autostart(int fd, GnoblinRuntimeReader* reader, gboolean* received,
+                                           gboolean* autostart_complete, GVariant** entries,
+                                           GVariant** environment, GPtrArray* children,
+                                           GError** error) {
+    gboolean was_received = *received;
+    if (!gnoblin_autostart_receive_packet(fd, reader, received, entries, environment, error)) {
+        if (!*received && error && *error &&
+            g_error_matches(*error, G_IO_ERROR, G_IO_ERROR_CLOSED)) {
+            g_clear_error(error);
+            return TRUE;
+        }
+        return FALSE;
+    }
+    if (!was_received && *received && !*autostart_complete) {
+        /* Record the one-shot transition before launching anything. If the
+         * supervisor exits immediately afterwards, a replacement must not
+         * run the same login commands a second time. */
+        *autostart_complete = TRUE;
+        if (!launch_initial_autostart(*entries, *environment, children, error))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static void guardian_stop_supervisor(GPid* supervisor_pid, gboolean graceful) {
+    if (!supervisor_pid || !*supervisor_pid)
+        return;
+    GPid pid = *supervisor_pid;
+    *supervisor_pid = 0;
+    kill(-pid, graceful ? SIGTERM : SIGKILL);
+    int status = 0;
+    gboolean reaped = FALSE;
+    for (guint i = 0; i < (graceful ? 200u : 10u); i++) {
+        pid_t result = waitpid(pid, &status, WNOHANG);
+        if (result == pid || (result < 0 && errno == ECHILD)) {
+            reaped = TRUE;
+            break;
+        }
+        if (result < 0 && errno != EINTR)
+            break;
+        g_usleep(10000);
+    }
+    if (!reaped) {
+        kill(-pid, SIGKILL);
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+        }
+    }
+    g_spawn_close_pid(pid);
+}
+
+static int session_guardian_main(int argc, char** argv) {
     g_autofree char* compositor_path = g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR, NULL);
     g_autofree char* plugin = g_strdup("libgnoblin");
     g_autofree char* config_path = NULL;
@@ -2108,26 +2710,24 @@ static int session_host_main(int argc, char** argv) {
     if (!devkit && !activate_session())
         return EXIT_FAILURE;
 
-    /* Hold this name for the session lifetime. The portal backend accepts
-     * end-session requests only from its current owner, so ordinary session
-     * clients cannot make monitored applications believe logout is underway. */
+    /* The guardian owns the lifecycle name even while supervisors restart. */
     g_autoptr(GDBusConnection) lifecycle_bus = claim_session_lifecycle_bus();
-
     struct sigaction action = {.sa_handler = host_signal_handler};
     sigemptyset(&action.sa_mask);
     sigaction(SIGTERM, &action, NULL);
     sigaction(SIGINT, &action, NULL);
+
     int sockets[2] = {-1, -1};
     if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sockets) != 0) {
         g_printerr("gnoblin: could not create private compositor channel: %s\n", g_strerror(errno));
         return EXIT_FAILURE;
     }
     g_autoptr(GError) error = NULL;
-    Runtime host = {.channel_fd = sockets[0], .exit_status = EXIT_FAILURE};
-    host.compositor_pid = spawn_compositor(compositor_path, plugin, sockets[0], sockets[1],
-                                           xwayland, devkit, wayland_display, &error);
+    Runtime guardian = {.channel_fd = sockets[0], .exit_status = EXIT_FAILURE};
+    guardian.compositor_pid = spawn_compositor(compositor_path, plugin, sockets[0], sockets[1],
+                                               xwayland, devkit, wayland_display, &error);
     close(sockets[1]);
-    if (!host.compositor_pid) {
+    if (!guardian.compositor_pid) {
         close(sockets[0]);
         g_printerr("gnoblin: %s\n", error ? error->message : "compositor spawn failed");
         return EXIT_FAILURE;
@@ -2135,199 +2735,182 @@ static int session_host_main(int argc, char** argv) {
     g_autofree char* executable = g_file_read_link("/proc/self/exe", NULL);
     if (!executable) {
         g_printerr("gnoblin: could not locate installed executable\n");
-        terminate_and_reap(&host);
-        close(sockets[0]);
+        terminate_and_reap(&guardian);
+        close(guardian.channel_fd);
         return EXIT_FAILURE;
     }
 
-    GPid worker_pid = 0;
-    int ready_fd = -1;
-    gboolean worker_ready = FALSE;
-    gboolean worker_start_packet_sent = FALSE;
-    gboolean first_worker = TRUE;
-    gboolean host_autostart_received = FALSE;
-    gboolean host_autostart_started = FALSE;
-    gboolean stop_session = FALSE;
-    gboolean leave_session_alive = FALSE;
-    guint restart_count = 0;
-    gint64 worker_ready_since_us = 0;
-    guint64 resume_revision = 0, resume_generation = 0;
-    guint64 resume_operation_id_watermark = 0;
-    int host_control_sockets[2] = {-1, -1};
-    if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, host_control_sockets) != 0) {
-        g_printerr("gnoblin: could not create private runtime supervisor channel: %s\n",
-                   g_strerror(errno));
-        terminate_and_reap(&host);
-        close(host.channel_fd);
-        return EXIT_FAILURE;
-    }
-    int host_control_fd = host_control_sockets[0];
-    g_autoptr(GnoblinRuntimeReader) host_control_reader = gnoblin_runtime_reader_new();
-    g_autoptr(GVariant) host_autostart_entries = NULL;
-    g_autoptr(GVariant) host_autostart_environment = NULL;
+    GPid supervisor_pid = 0;
+    int status_sockets[2] = {-1, -1};
+    int autostart_sockets[2] = {-1, -1};
+    int status_fd = -1, autostart_fd = -1;
+    g_autoptr(GnoblinRuntimeReader) autostart_reader = gnoblin_runtime_reader_new();
+    g_autoptr(GVariant) autostart_entries = NULL;
+    g_autoptr(GVariant) autostart_environment = NULL;
     g_autoptr(GPtrArray) autostart_children =
         g_ptr_array_new_with_free_func(host_autostart_child_free);
-    worker_pid =
-        spawn_runtime_worker(executable, config_path, devkit, wayland_display, FALSE, 0, 0, 0,
-                             host.channel_fd, host_control_sockets[1], &ready_fd, &error);
-    close(host_control_sockets[1]);
-    host_control_sockets[1] = -1;
-    if (!worker_pid) {
-        g_printerr("gnoblin: could not start Lua runtime worker: %s\n",
-                   error ? error->message : "spawn failed");
-        terminate_and_reap(&host);
-        close(host.channel_fd);
-        close(host_control_fd);
-        return EXIT_FAILURE;
-    }
+    gboolean autostart_received = FALSE;
+    gboolean autostart_complete = FALSE;
+    gboolean native_channel_started = FALSE;
+    gboolean supervisor_ready = FALSE;
+    gboolean session_ready = FALSE;
+    gboolean explicit_logout = FALSE;
+    gboolean stop_session = FALSE;
+    gboolean retain_session = FALSE;
+    gboolean resume_supervisor = FALSE;
+    guint restart_count = 0;
+    gint64 supervisor_ready_since_us = 0;
+    guint64 resume_revision = 0, resume_generation = 0, resume_operation_id_watermark = 0;
 
-    while (!host_signal_number) {
-        if (host_control_fd >= 0) {
-            struct pollfd control_poll = {.fd = host_control_fd, .events = POLLIN | POLLHUP};
-            if (poll(&control_poll, 1, 0) > 0 && (control_poll.revents & (POLLIN | POLLHUP))) {
-                if (!gnoblin_autostart_receive_packet(
-                        host_control_fd, host_control_reader, &host_autostart_received,
-                        &host_autostart_entries, &host_autostart_environment, &error)) {
-                    g_printerr("gnoblin: Lua runtime supervisor channel failed: %s\n",
-                               error ? error->message : "invalid packet");
-                    stop_session = TRUE;
-                    break;
-                }
+    while (!host_signal_number && !stop_session) {
+        if (!supervisor_pid) {
+            if (socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, status_sockets) != 0 ||
+                socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, autostart_sockets) != 0) {
+                g_printerr("gnoblin: could not create private supervisor channels: %s\n",
+                           g_strerror(errno));
+                guardian.exit_status = EXIT_FAILURE;
+                stop_session = TRUE;
+                break;
             }
+            status_fd = status_sockets[0];
+            autostart_fd = autostart_sockets[0];
+            supervisor_pid = spawn_session_supervisor(
+                executable, config_path, devkit, wayland_display, guardian.channel_fd,
+                status_sockets[0], status_sockets[1], autostart_sockets[0], autostart_sockets[1],
+                resume_supervisor, resume_revision, resume_generation,
+                resume_operation_id_watermark, autostart_complete, &error);
+            close(status_sockets[1]);
+            status_sockets[1] = -1;
+            close(autostart_sockets[1]);
+            autostart_sockets[1] = -1;
+            if (!supervisor_pid) {
+                g_printerr("gnoblin: could not start session supervisor: %s\n",
+                           error ? error->message : "spawn failed");
+                guardian.exit_status = EXIT_FAILURE;
+                stop_session = TRUE;
+                break;
+            }
+            error = NULL;
         }
-        if (host_reap_compositor(&host)) {
+
+        struct pollfd polls[2] = {{.fd = status_fd, .events = POLLIN | POLLHUP},
+                                  {.fd = autostart_fd, .events = POLLIN | POLLHUP}};
+        (void)poll(polls, G_N_ELEMENTS(polls), 50);
+        if (!guardian_drain_status(status_fd, &native_channel_started, &supervisor_ready,
+                                   &session_ready, &supervisor_ready_since_us, &explicit_logout,
+                                   &error)) {
+            g_printerr("gnoblin: session supervisor status failed: %s\n",
+                       error ? error->message : "invalid message");
             stop_session = TRUE;
             break;
         }
-        if (worker_pid) {
-            struct pollfd ready_poll = {.fd = ready_fd, .events = POLLIN | POLLHUP};
-            if (poll(&ready_poll, 1, 0) > 0 && (ready_poll.revents & (POLLIN | POLLHUP))) {
-                gboolean became_ready = drain_worker_ready_fd(ready_fd, &worker_start_packet_sent);
-                worker_ready |= became_ready;
-                if (became_ready && !worker_ready_since_us)
-                    worker_ready_since_us = g_get_monotonic_time();
-                if (became_ready && !host_autostart_started) {
-                    if (host_control_fd >= 0 &&
-                        !gnoblin_autostart_receive_packet(
-                            host_control_fd, host_control_reader, &host_autostart_received,
-                            &host_autostart_entries, &host_autostart_environment, &error)) {
-                        g_printerr("gnoblin: Lua runtime supervisor channel failed: %s\n",
-                                   error ? error->message : "invalid packet");
-                        stop_session = TRUE;
-                        break;
-                    }
-                    if (!host_autostart_received ||
-                        !launch_initial_autostart(host_autostart_entries,
-                                                  host_autostart_environment, autostart_children,
-                                                  &error)) {
-                        g_printerr("gnoblin: could not start login autostart: %s\n",
-                                   error ? error->message
-                                         : "Lua runtime did not send the initial list");
-                        stop_session = TRUE;
-                        break;
-                    }
-                    host_autostart_started = TRUE;
-                    close(host_control_fd);
-                    host_control_fd = -1;
-                }
-            }
-            if (worker_ready_since_us &&
-                g_get_monotonic_time() - worker_ready_since_us >= WORKER_STABLE_RESET_MS * 1000)
-                restart_count = 0;
-            int worker_status = 0;
-            pid_t worker_result = waitpid(worker_pid, &worker_status, WNOHANG);
-            if (worker_result == worker_pid) {
-                gboolean became_ready = drain_worker_ready_fd(ready_fd, &worker_start_packet_sent);
-                worker_ready |= became_ready;
-                if (became_ready && !worker_ready_since_us)
-                    worker_ready_since_us = g_get_monotonic_time();
-                close(ready_fd);
-                ready_fd = -1;
-                worker_pid = 0;
-                g_spawn_close_pid((GPid)worker_result);
-                gboolean clean_exit =
-                    WIFEXITED(worker_status) && WEXITSTATUS(worker_status) == EXIT_SUCCESS;
-                if (clean_exit) {
-                    stop_session = TRUE;
-                    host.exit_status = EXIT_SUCCESS;
-                    break;
-                }
-                if (WIFEXITED(worker_status) &&
-                    WEXITSTATUS(worker_status) == EXIT_RESUME_REJECTED) {
-                    g_printerr("gnoblin: Mutter rejected runtime resume; keeping the session host "
-                               "and compositor alive\n");
-                    leave_session_alive = TRUE;
-                    break;
-                }
-                if (first_worker && !worker_ready) {
-                    g_printerr(
-                        "gnoblin: Lua runtime failed before Mutter handshake; ending login\n");
-                    stop_session = TRUE;
-                    host.exit_status = EXIT_FAILURE;
-                    break;
-                }
-                first_worker = FALSE;
-                restart_count++;
-                /* If a replacement failed before sending RESUME, Mutter is
-                 * still in the SUSPENDED state already acknowledged above. */
-                if (worker_start_packet_sent) {
-                    g_autoptr(GError) suspend_error = NULL;
-                    if (!send_worker_disconnected(host.channel_fd, &suspend_error) ||
-                        !wait_for_worker_suspended(
-                            host.channel_fd, &host, &resume_revision, &resume_generation,
-                            &resume_operation_id_watermark, &suspend_error)) {
-                        if (!host.compositor_pid) {
-                            stop_session = TRUE;
-                            break;
-                        }
-                        g_printerr("gnoblin: could not complete worker suspension; keeping the "
-                                   "session host and compositor alive: %s\n",
-                                   suspend_error ? suspend_error->message
-                                                 : "Mutter did not suspend");
-                        leave_session_alive = TRUE;
-                        break;
-                    }
-                }
-                if (restart_count > WORKER_MAX_RESTARTS) {
-                    g_printerr("gnoblin: Lua runtime recovery failed repeatedly; leaving Mutter "
-                               "and session targets running\n");
-                    leave_session_alive = TRUE;
-                    break;
-                }
-                g_printerr("gnoblin: restarting Lua runtime worker (attempt %u of %u)\n",
-                           restart_count, WORKER_MAX_RESTARTS);
-                if (!sleep_before_worker_restart(restart_count, &host)) {
-                    stop_session = TRUE;
-                    break;
-                }
-                worker_ready = FALSE;
-                worker_start_packet_sent = FALSE;
-                worker_ready_since_us = 0;
-                worker_pid = spawn_runtime_worker(executable, config_path, devkit, wayland_display,
-                                                  TRUE, resume_revision, resume_generation,
-                                                  resume_operation_id_watermark, host.channel_fd,
-                                                  -1, &ready_fd, &error);
-                if (!worker_pid) {
-                    g_printerr("gnoblin: could not restart Lua runtime worker: %s\n",
-                               error ? error->message : "spawn failed");
-                    leave_session_alive = TRUE;
-                    break;
-                }
-            }
+        if (!guardian_receive_autostart(autostart_fd, autostart_reader, &autostart_received,
+                                        &autostart_complete, &autostart_entries,
+                                        &autostart_environment, autostart_children, &error)) {
+            g_printerr("gnoblin: login autostart data failed: %s\n",
+                       error ? error->message : "invalid message");
+            stop_session = TRUE;
+            break;
         }
-        reap_autostart_children(autostart_children);
-        g_usleep(50000);
+        if (host_reap_compositor(&guardian)) {
+            stop_session = TRUE;
+            break;
+        }
+
+        int supervisor_status = 0;
+        pid_t supervisor_result = waitpid(supervisor_pid, &supervisor_status, WNOHANG);
+        if (supervisor_result < 0 && errno != EINTR) {
+            g_printerr("gnoblin: could not wait for session supervisor: %s\n", g_strerror(errno));
+            guardian.exit_status = EXIT_FAILURE;
+            stop_session = TRUE;
+            break;
+        }
+        if (supervisor_result != supervisor_pid) {
+            reap_autostart_children(autostart_children);
+            if (supervisor_ready && supervisor_ready_since_us &&
+                g_get_monotonic_time() - supervisor_ready_since_us >= WORKER_STABLE_RESET_MS * 1000)
+                restart_count = 0;
+            continue;
+        }
+
+        g_spawn_close_pid(supervisor_pid);
+        supervisor_pid = 0;
+        kill(-supervisor_result, SIGKILL);
+        if (!guardian_drain_status(status_fd, &native_channel_started, &supervisor_ready,
+                                   &session_ready, &supervisor_ready_since_us, &explicit_logout,
+                                   &error) ||
+            !guardian_receive_autostart(autostart_fd, autostart_reader, &autostart_received,
+                                        &autostart_complete, &autostart_entries,
+                                        &autostart_environment, autostart_children, &error)) {
+            g_printerr("gnoblin: could not collect final supervisor state: %s\n",
+                       error ? error->message : "invalid message");
+            stop_session = TRUE;
+        }
+        close(status_fd);
+        close(autostart_fd);
+        status_fd = autostart_fd = -1;
+        status_sockets[0] = autostart_sockets[0] = -1;
+        supervisor_ready = FALSE;
+        supervisor_ready_since_us = 0;
+
+        if (stop_session)
+            break;
+        if (host_signal_number || explicit_logout) {
+            stop_session = TRUE;
+            guardian.exit_status = explicit_logout ? EXIT_SUCCESS : 128 + host_signal_number;
+            break;
+        }
+        if (WIFEXITED(supervisor_status) &&
+            WEXITSTATUS(supervisor_status) == EXIT_RESUME_REJECTED) {
+            g_printerr("gnoblin: Mutter rejected supervisor recovery; keeping the session alive\n");
+            retain_session = TRUE;
+            break;
+        }
+        if (host_reap_compositor(&guardian)) {
+            stop_session = TRUE;
+            break;
+        }
+
+        if (native_channel_started) {
+            g_autoptr(GError) suspend_error = NULL;
+            if (!send_worker_disconnected(guardian.channel_fd, &suspend_error) ||
+                !wait_for_worker_suspended(guardian.channel_fd, &guardian, &resume_revision,
+                                           &resume_generation, &resume_operation_id_watermark,
+                                           &suspend_error)) {
+                if (host_reap_compositor(&guardian)) {
+                    stop_session = TRUE;
+                    break;
+                }
+                g_printerr("gnoblin: could not suspend Mutter for supervisor recovery; keeping the "
+                           "session alive: %s\n",
+                           suspend_error ? suspend_error->message : "no acknowledgement");
+                retain_session = TRUE;
+                break;
+            }
+            native_channel_started = FALSE;
+            resume_supervisor = TRUE;
+        }
+        restart_count++;
+        if (restart_count > WORKER_MAX_RESTARTS) {
+            g_printerr("gnoblin: session supervisor recovery failed repeatedly; keeping Mutter "
+                       "and the session alive\n");
+            retain_session = TRUE;
+            break;
+        }
+        g_printerr("gnoblin: restarting session supervisor (attempt %u of %u)\n", restart_count,
+                   WORKER_MAX_RESTARTS);
+        if (!sleep_before_worker_restart(restart_count, &guardian)) {
+            stop_session = TRUE;
+            break;
+        }
+        supervisor_ready_since_us = 0;
+        g_clear_pointer(&autostart_reader, gnoblin_runtime_reader_free);
+        autostart_reader = gnoblin_runtime_reader_new();
     }
 
-    if (host_signal_number) {
-        host.exit_status = 128 + host_signal_number;
-        stop_session = TRUE;
-    }
-    if (leave_session_alive && !host_signal_number) {
-        /* Exhausted recovery keeps the session host alive so logind ownership,
-         * Mutter, and session targets continue until logout or compositor exit. */
+    if (retain_session && !host_signal_number) {
         while (!host_signal_number) {
-            if (host_reap_compositor(&host)) {
+            if (host_reap_compositor(&guardian)) {
                 stop_session = TRUE;
                 break;
             }
@@ -2336,36 +2919,36 @@ static int session_host_main(int argc, char** argv) {
         }
     }
     if (host_signal_number) {
-        host.exit_status = 128 + host_signal_number;
+        guardian.exit_status = 128 + host_signal_number;
         stop_session = TRUE;
     }
-    if (stop_session && worker_ready)
+    if (supervisor_pid)
+        guardian_stop_supervisor(&supervisor_pid, TRUE);
+    if (status_fd >= 0)
+        close(status_fd);
+    if (autostart_fd >= 0)
+        close(autostart_fd);
+    if (status_sockets[1] >= 0)
+        close(status_sockets[1]);
+    if (autostart_sockets[1] >= 0)
+        close(autostart_sockets[1]);
+    if (stop_session && session_ready)
         notify_portal_session_ending(lifecycle_bus);
-    if (worker_pid) {
-        kill(worker_pid, SIGTERM);
-        while (waitpid(worker_pid, NULL, 0) < 0 && errno == EINTR) {
-        }
-        g_spawn_close_pid(worker_pid);
-    }
-    if (ready_fd >= 0)
-        close(ready_fd);
     reap_autostart_children(autostart_children);
-    if (host_control_fd >= 0)
-        close(host_control_fd);
-    if (host_control_sockets[1] >= 0)
-        close(host_control_sockets[1]);
-    if (stop_session && host.compositor_pid)
-        terminate_and_reap(&host);
-    close(host.channel_fd);
-    return host.exit_status;
+    if (stop_session && guardian.compositor_pid)
+        terminate_and_reap(&guardian);
+    close(guardian.channel_fd);
+    return guardian.exit_status;
 }
 
 int main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (g_str_equal(argv[i], "--internal-runtime-worker"))
             return runtime_worker_main(argc, argv);
+        if (g_str_equal(argv[i], "--internal-session-supervisor"))
+            return session_supervisor_main(argc, argv);
     }
     if (argc >= 2 && g_str_equal(argv[1], "--version"))
         return runtime_worker_main(argc, argv);
-    return session_host_main(argc, argv);
+    return session_guardian_main(argc, argv);
 }
