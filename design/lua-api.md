@@ -216,7 +216,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `text_target(context)` | **Current; native runtime only.** Read-only device/source snapshots, XKB source selection, and trusted text insertion targets. |
 | `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current; native runtime only.** Read and control declared compositor animation previews. |
 | `gnoblin.launches` | `list()`, `begin(args)`, `end(args)` | **Current; native runtime only.** Read and report tracked application launches. |
-| `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current; native runtime only.** Read active portal grants, optionally by kind. |
+| `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
 | `gnoblin.privacy.state()` | `() -> PrivacyState` | **Current; native runtime only.** Read screen-sharing and recording state. |
 | `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current; native runtime only.** Inspect permission policy, check requests, list grants, and revoke grants. |
 | `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current; native runtime only.** Control or read the supervised session. |
@@ -1692,6 +1692,12 @@ also maps the compatibility alias `layer.list()` to that typed snapshot.
 chained `seek`, `step`, `play`, `pause`, and `stop` methods. The console waits
 for each compositor operation and returns its completed value instead of an
 `Operation` handle. The private preview session token is not exposed as a field.
+
+`portals.grants(filter?)` returns read-only `PortalGrant` records, including
+deeply read-only device lists. The `grant.list()` compatibility spelling uses
+the same typed snapshot. `PortalGrant:revoke()` carries the snapshot creation
+time to the compositor so stale records cannot revoke a replacement grant; the
+console waits for completion and returns the completed value.
 
 Native-control API 1.17 implements `gnoblin.privacy.state()` as an immutable
 snapshot with `available`, a stable `revision`, and activity fields only for
