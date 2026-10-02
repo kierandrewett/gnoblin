@@ -49,9 +49,11 @@ The input-specific unresolved patches are listed below.
 - `60-blur-cache` and `74-0002-share-shell-layer-backdrops`: the native blur
   path does not currently demonstrate cross-surface backdrop sharing. Compare
   frame cost and output before claiming parity or removing the old design.
-- `68-dev-console`: config inspection and reload through `gnoblinctl` do not
-  establish an equivalent interactive Lua console. Decide whether that tool is
-  intentionally dropped or belongs in the native runtime.
+- `68-dev-console`: the local `gnoblinctl lua` console now evaluates Lua in the
+  terminal process and exposes the typed session API through `gnoblin.<area>.<method>`.
+  It accepts a Lua file or one-line interactive input, prints table results as
+  JSON, and never sends Lua source to the compositor. Shell-owned graphical
+  console presentation remains outside the compositor contract.
 - `69-desktop-recovery`: verify the shell client owns the recovery UI while
   the supervisor recovers the Lua worker.
 - `73-location-indicator`: the native GeoClue agent exposes availability,
