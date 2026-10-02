@@ -29,6 +29,7 @@ Each entry below is a real top-level key accepted by `gnoblin.configure`.
 - [`gnoblin.configure.input_sources`](/config/configure/input_sources)
 - [`gnoblin.configure.touchpad_gestures`](/config/configure/touchpad_gestures)
 - [`gnoblin.configure.permissions`](/config/configure/permissions)
+- [`gnoblin.configure.portals`](/config/configure/portals)
 - [`gnoblin.configure.layer_shell`](/config/configure/layer_shell)
 - [`gnoblin.configure.protocols`](/config/configure/protocols)
 - [`gnoblin.configure.frame_renderers`](/config/configure/frame_renderers)
@@ -63,6 +64,7 @@ gnoblin.configure {
     input_sources = {...}?,
     touchpad_gestures = {...}?,
     permissions = {...}?,
+    portals = {...}?,
     layer_shell = {...}?,
     protocols = {...}?,
     frame_renderers = {...}?,
