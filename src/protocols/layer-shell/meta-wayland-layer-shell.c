@@ -252,6 +252,14 @@ GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const
     return g_variant_ref_sink(g_variant_builder_end(&record));
 }
 
+MetaSurfaceActor* meta_wayland_layer_shell_get_actor(MetaWindow* window) {
+    MetaWaylandLayerSurface* layer_surface =
+        window ? g_object_get_data(G_OBJECT(window), "gnoblin-layer-surface") : NULL;
+    if (!META_IS_WAYLAND_LAYER_SURFACE(layer_surface))
+        return NULL;
+    return meta_wayland_actor_surface_get_actor(META_WAYLAND_ACTOR_SURFACE(layer_surface));
+}
+
 static MetaWaylandSurface* menu_get_focus_surface(MetaWaylandEventHandler* handler,
                                                   ClutterFocus* focus, gpointer user_data) {
     MetaWaylandLayerSurface* layer_surface = user_data;
@@ -1346,6 +1354,7 @@ static void layer_shell_get_layer_surface(struct wl_client* client, struct wl_re
                       (gpointer)gnoblin_layer_dismiss_trampoline);
     apply_window_type_and_layer(layer_surface, window);
     meta_wayland_shell_surface_set_window(META_WAYLAND_SHELL_SURFACE(layer_surface), window);
+    gnoblin_native_control_track_layer_window(display_from_surface(surface), window);
 }
 
 static void layer_shell_destroy(struct wl_client* client, struct wl_resource* resource) {

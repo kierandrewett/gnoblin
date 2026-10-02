@@ -14,6 +14,7 @@
 #include "wayland/meta-wayland-types.h"
 
 typedef struct _MetaWindow MetaWindow;
+typedef struct _MetaSurfaceActor MetaSurfaceActor;
 
 /* g_object data key on a MetaWindow holding the desired MetaStackLayer of a
  * layer-shell surface, stored as GINT_TO_POINTER(layer + 1) (0/NULL = unset).
@@ -32,5 +33,6 @@ typedef struct _MetaWindow MetaWindow;
 GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const char* monitor_id);
 
 gboolean meta_wayland_surface_is_layer_shell(MetaWaylandSurface* surface);
+MetaSurfaceActor* meta_wayland_layer_shell_get_actor(MetaWindow* window);
 
 void meta_wayland_init_layer_shell(MetaWaylandCompositor* compositor);
