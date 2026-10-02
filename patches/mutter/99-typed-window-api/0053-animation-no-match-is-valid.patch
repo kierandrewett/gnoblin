@@ -8,7 +8,9 @@ diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
 index 358d7487e..398a70eac 100644
 --- a/src/core/gnoblin-animation.c
 +++ b/src/core/gnoblin-animation.c
-@@ -1741 +1741,2 @@ static gboolean select_window_lifecycle_animation(
+@@ -1740,3 +1740,4 @@ static gboolean select_window_lifecycle_animation(
+ 
 -  return *selected_name != NULL;
 +  /* No configured animation is a valid choice; only rule matching can fail. */
 +  return TRUE;
+ }
