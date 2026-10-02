@@ -21,6 +21,12 @@ been removed. It was only included by retired Shell shader patches. Shader
 file watching now belongs to Gnoblin's native control service, and Mutter
 compiles the effect; the old patch references remain historical artifacts.
 
+The unregistered `tests/test-native-chrome.py` probe has been removed. It
+started the retired GNOME Shell session and asserted details of `Main`, panel
+actors, and Shell D-Bus objects. Those are not part of the standalone session
+contract; compositor state is verified through the Lua-backed devkit tests,
+and shell presentation belongs to external shell clients.
+
 ## Audited groups
 
 | Patch group                                                                                                                                                                                                                                                                              | Current disposition                                                                                                                                                                                                                                                                                                                            |
