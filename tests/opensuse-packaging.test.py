@@ -54,7 +54,8 @@ class OpenSUSEPackagingTests(unittest.TestCase):
 
     def test_check_script_keeps_the_probe_non_installing(self):
         check = (SPECS / "check-buildrequires.sh").read_text()
-        self.assertIn("--without gnoblin_stack", check)
+        self.assertIn("mutter|gnoblin-portal|gnoblin", check)
+        self.assertIn('rpmspec -q --buildrequires "$spec"', check)
         self.assertIn("install --dry-run --no-recommends", check)
         self.assertNotIn("--compat-runtime", check)
         self.assertIn("for attempt in 1 2 3", check)
@@ -67,6 +68,18 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         )
         self.assertLess(chain.index("build mutter.spec"), chain.index("build gnoblin-portal.spec"))
         self.assertLess(chain.index("build gnoblin-portal.spec"), chain.index("build gnoblin.spec"))
+        self.assertLess(
+            chain.index('check-buildrequires.sh" mutter --install'),
+            chain.index("build mutter.spec"),
+        )
+        self.assertLess(
+            chain.index('check-buildrequires.sh" gnoblin-portal --install'),
+            chain.index("build gnoblin-portal.spec"),
+        )
+        self.assertLess(
+            chain.index('check-buildrequires.sh" gnoblin --install'),
+            chain.index("build gnoblin.spec"),
+        )
         self.assertIn("--allow-unsigned-rpm", chain)
 
 

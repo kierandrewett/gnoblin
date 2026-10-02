@@ -6,21 +6,24 @@ stack under `/usr/lib/gnoblin` on Tumbleweed. The only shared paths are the
 and the distinct Gnoblin polkit action. The recipes do not replace, conflict
 with, obsolete, or provide stock GNOME packages.
 
-`check-buildrequires.sh` runs `rpmspec` and asks Zypper to resolve the host
-dependencies in a clean Tumbleweed image. It deliberately omits the internal
-Gnoblin compositor packages because an OBS project must build those
-in this order:
+`check-buildrequires.sh` runs `rpmspec` for one package and asks Zypper to
+resolve only that package's host dependencies. `build-chain.sh` checks each
+stage when it is ready, so the session package is not resolved before the
+private Mutter development RPM has been built and installed:
 
 1. `gnoblin-mutter` and `gnoblin-mutter-devel`
 2. `gnoblin-portal`
 3. `gnoblin` and its optional `gnoblin-gnome-integration` subpackage
 
-The check proves that Tumbleweed can resolve the external BuildRequires. It
-does not prove a binary build, an installation, GNOME coexistence, login, or
-removal. Do not publish this adapter until those gates have passed on a clean
-Tumbleweed GNOME installation.
+To check dependencies without installing them, run
+`packaging/opensuse/check-buildrequires.sh mutter`. The accepted package names
+are `mutter`, `gnoblin-portal`, and `gnoblin`. Add `--install` to install the
+selected stage's host dependencies. A successful dependency check does not
+prove a binary build, installation, GNOME coexistence, login, or removal. Do
+not publish this adapter until those gates have passed on a clean Tumbleweed
+GNOME installation.
 
 To prepare the sources, use the repository's reproducible staging script and
 point `rpmbuild` at the resulting source directory. Build the packages in the
-order above, enabling `--with gnoblin_stack` once the preceding local RPMs are
-available to the build service.
+order above; the chain installs each private RPM before resolving the next
+package's requirements.
