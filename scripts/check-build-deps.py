@@ -156,15 +156,6 @@ def check(mode="checkout", project=None, xwayland=True, vector_cursors=False):
             return prepare.returncode
     versions = json.loads((ROOT / "gnome-versions.json").read_text())
     missing = set()
-    if project is None or project == "mutter":
-        schemas_version = versions["components"]["gsettings-desktop-schemas"]["version"]
-        if subprocess.run(["pkg-config", "--exists", f"gsettings-desktop-schemas >= {schemas_version}"]).returncode:
-            version = subprocess.run(
-                ["pkg-config", "--modversion", "gsettings-desktop-schemas"], capture_output=True, text=True
-            )
-            missing.add(
-                ("gsettings-desktop-schemas", f">= {schemas_version}", version.stdout.strip() or "not installed")
-            )
     for source_project in (project,) if project else projects:
         build_file = projects[source_project]
         if mode == "release-archive":
@@ -198,7 +189,9 @@ def check(mode="checkout", project=None, xwayland=True, vector_cursors=False):
             source = apply_dependency_version_patches(source, source_project, build_file)
         for module, minimum in requirements(
             source,
-            include_schemas=(source_project == "xdg-desktop-portal-gnome" and project is not None),
+            include_schemas=(
+                source_project == "mutter" or (source_project == "xdg-desktop-portal-gnome" and project is not None)
+            ),
             bundled=bundled_subprojects(root_source),
         ):
             if module in disabled_modules.get(source_project, set()):
