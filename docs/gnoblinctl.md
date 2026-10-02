@@ -198,8 +198,8 @@ end
 
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
-read-only `Workspace` records. A workspace can be activated, renamed, removed,
-or used as the destination for a window move:
+read-only `Workspace` records. The console also exposes the workspace
+operations available to configuration scripts:
 
 ```lua
 local workspace = gnoblin.workspaces.by_id("web")
@@ -209,10 +209,23 @@ if workspace then
 end
 ```
 
-Workspace actions also wait for compositor completion and return the completed
-value. `move_here` accepts a `Window` record, stable window ID, or `"active"`;
-its optional `follow` setting defaults to `false`. Removing configured,
-active, or nonempty workspaces is rejected by the compositor.
+Workspace actions wait for compositor completion and return the completed
+value. The console supports these namespace methods:
+
+- `create {name, id?, activate?}`
+- `rename {id|number, name}`, `activate {id|number}`, and `remove {id|number}`
+- `next()` and `previous()`
+- `move_active {workspace, follow?}` and `move_window {window, workspace, follow?}`
+
+A workspace selector is a table with exactly one of `id` or positive `number`.
+Creation accepts a nonempty name up to 80 characters. An optional ID must
+start with an ASCII letter or digit and contain up to 64 letters, digits,
+periods, underscores, or hyphens. `activate` and `follow` must be booleans
+when supplied. A window is `"active"` or a stable window ID.
+
+`move_active` and `move_window` return a read-only `WorkspaceMove` with the
+resulting workspace, window ID, and `follow` value. The compositor rejects
+removal of configured, active, or nonempty workspaces.
 
 Input devices and sources are read-only `InputDevice` and `InputSource`
 records. Each record includes the revision of its snapshot. The current source

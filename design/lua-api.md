@@ -210,7 +210,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.shortcuts.end_session(args)`           | `({id: string, session_id: integer}) -> Operation<Result>`  | **Current; native runtime.** End the matching active session while keeping its binding registered.                                                                                                                                                         |
 
 | `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current; native runtime only.** Read-only revisioned window snapshots and a one-use context for keyboard snapping. |
-| `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current; native runtime only.** Read-only revisioned workspace snapshots and typed workspace operations. |
+| `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current.** The native runtime exposes read-only revisioned snapshots and typed operations. `gnoblinctl lua` exposes the same reads and namespace mutations; operations wait for completion and return read-only records. |
 | `gnoblin.monitors` | `list()`, `primary()` | **Current; native runtime only.** Read-only revisioned monitor snapshot records. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
 | `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `text_target(context)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` exposes typed device/source snapshots and source selection. Trusted text targets remain callback-only. |
@@ -575,8 +575,10 @@ a selector with exactly one of `id` or `number`; `follow` defaults to
 `workspaces.create({name, id?, activate?})` requires a nonempty name up to
 80 characters. If `id` is omitted, Gnoblin creates a session-only ID.
 `activate` defaults to `false`. Rename requires a nonempty name up to 80
-characters. `WorkspaceMove` contains `window_id`, `workspace_id`,
-`follow`, and the resulting `revision`.
+characters. `WorkspaceMove` contains the resulting `workspace` record, stable
+`window` ID, and effective `follow` boolean. In `gnoblinctl lua`, workspace
+operations wait for compositor completion and return the completed `Workspace`
+or `WorkspaceMove` value instead of an `Operation` handle.
 
 ### Monitors and layer surfaces
 
