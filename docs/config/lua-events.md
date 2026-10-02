@@ -136,45 +136,46 @@ Window event records also include `revision`, `sequence`, and monotonic `time`.
 Nested `window` and `last` records carry their own `revision`, matching the
 event revision.
 
-| Event name                                | Fields                                                                             | Dispatched when                                                                                     |
-| ----------------------------------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `gnoblin.session.lock-state-changed`      | `state`, `sequence`, `time`                                                        | Mutter reports a lock-state transition in a native session.                                         |
-| `gnoblin.config.reloaded`                 | `path`, `revision`                                                                 | The candidate config commits and becomes active.                                                    |
-| `gnoblin.config.reload-failed`            | `path`, `error`                                                                    | Candidate loading, validation, or apply fails while the active runtime stays available.             |
-| `gnoblin.workspace.created`               | `workspace`                                                                        | A runtime workspace is created.                                                                     |
-| `gnoblin.workspace.renamed`               | `workspace`                                                                        | A workspace display name changes.                                                                   |
-| `gnoblin.workspace.changed`               | `workspace`, `changed`                                                             | Its position, window count, or persistence state changes.                                           |
-| `gnoblin.workspace.removed`               | `workspace_id`, `last`                                                             | A temporary workspace is removed.                                                                   |
-| `gnoblin.workspace.activated`             | `workspace`, optional `previous_id`                                                | The active workspace changes.                                                                       |
-| `gnoblin.workspace.window-moved`          | `window_id`, `from_id`, `to_id`                                                    | A window moves from one workspace to another.                                                       |
-| `gnoblin.monitor.added`                   | `monitor`                                                                          | An active logical monitor appears in the native runtime.                                            |
-| `gnoblin.monitor.changed`                 | `monitor`, `changed`                                                               | A listed monitor property changes; `changed` names the changed properties.                          |
-| `gnoblin.monitor.removed`                 | `monitor_id`, `last`                                                               | An active logical monitor is removed.                                                               |
-| `gnoblin.input.device-added`              | `device`                                                                           | An input device appears in the native runtime.                                                      |
-| `gnoblin.input.device-removed`            | `device_id`, `last`                                                                | An input device is removed from the native runtime.                                                 |
-| `gnoblin.input.sources-changed`           | `sources`                                                                          | The configured, available XKB source list changes.                                                  |
-| `gnoblin.input.source-changed`            | `available`, optional `source`                                                     | Mutter confirms a different Gnoblin-owned keymap group, or the current source becomes unknown.      |
-| `gnoblin.input.gesture`                   | `gesture`, `phase`, `fingers`, `sequence`, `time`, and gesture-specific fields     | A touchpad gesture phase reaches the standalone native Lua runtime.                                 |
-| `gnoblin.launch.changed`                  | `launch`                                                                           | A native launch-feedback record is created or changes state.                                        |
-| `gnoblin.portal.grant-added`              | `grant`, `revision`, `sequence`, `time`                                            | A validated persistent portal grant is added or updated.                                            |
-| `gnoblin.portal.grant-removed`            | `grant_id`, `kind`, `revision`, `sequence`, `time`                                 | A persistent portal grant is revoked.                                                               |
-| `gnoblin.privacy.changed`                 | `state`, `revision`, `sequence`, `time`                                            | A monitored privacy activity changes; `state` is a `PrivacyState` snapshot.                         |
-| `gnoblin.capability.changed`              | `capability`, `revision`, `sequence`, `time`                                       | The availability of `microphone-monitor` changes; `capability` is the updated `Capability` record.  |
-| `gnoblin.appearance.color-scheme-changed` | `color_scheme` (`default`, `prefer-dark`, `prefer-light`), `sequence`, `time`      | The desktop color-scheme preference changes; socket clients need API 1.34.                          |
-| `gnoblin.window.created`                  | `window`                                                                           | The native compositor runtime observes a new managed window.                                        |
-| `gnoblin.window.changed`                  | `window_id`, `changed`, `window`                                                   | A mapped window property changes in the native compositor runtime.                                  |
-| `gnoblin.window.focused`                  | `window_id`, `window`                                                              | A window gains keyboard focus in the native compositor runtime.                                     |
-| `gnoblin.window.unfocused`                | `window_id`, `window`                                                              | A window loses keyboard focus in the native compositor runtime.                                     |
-| `gnoblin.window.attention-changed`        | `window_id`, `window`, `demands_attention`                                         | Mutter's attention state changes.                                                                   |
-| `gnoblin.window.closed`                   | `window_id`, `last`                                                                | The native compositor runtime removes a managed window.                                             |
-| `gnoblin.focus.policy-changed`            | `policy`, `revision`, `sequence`, `time`                                           | The effective focus policy changes after a successful config commit.                                |
-| `gnoblin.permission.changed`              | `policy`, `revision`, `sequence`, `time`                                           | The committed portal permission policy changes after a successful config commit.                    |
-| `gnoblin.shortcut.activated`              | `shortcut`, `trigger`, `focus_context`                                             | A configured native command shortcut is activated by a trusted key press in the native runtime.     |
-| `gnoblin.shortcut.binding-activated`      | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `focus_context`      | A Lua-registered dynamic shortcut activates. Only the first activation can carry focus authority.   |
-| `gnoblin.shortcut.binding-deactivated`    | `id`, `accelerator`, `input_time`                                                  | A press-triggered dynamic shortcut is physically released.                                          |
-| `gnoblin.animation.started`               | `animation`, `target`, `event`                                                     | A configured lifecycle animation or preview begins playback; socket subscription requires API 1.18. |
-| `gnoblin.animation.finished`              | `animation`, `target`, `event`, `cancelled`                                        | A configured lifecycle animation or preview completes or is interrupted; API 1.18.                  |
-| `gnoblin.operation.completed`             | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | Native API 1.11 completion event; `error` is an `Error` record.                                     |
+| Event name                                 | Fields                                                                             | Dispatched when                                                                                     |
+| ------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `gnoblin.session.lock-state-changed`       | `state`, `sequence`, `time`                                                        | Mutter reports a lock-state transition in a native session.                                         |
+| `gnoblin.config.reloaded`                  | `path`, `revision`                                                                 | The candidate config commits and becomes active.                                                    |
+| `gnoblin.config.reload-failed`             | `path`, `error`                                                                    | Candidate loading, validation, or apply fails while the active runtime stays available.             |
+| `gnoblin.workspace.created`                | `workspace`                                                                        | A runtime workspace is created.                                                                     |
+| `gnoblin.workspace.renamed`                | `workspace`                                                                        | A workspace display name changes.                                                                   |
+| `gnoblin.workspace.changed`                | `workspace`, `changed`                                                             | Its position, window count, or persistence state changes.                                           |
+| `gnoblin.workspace.removed`                | `workspace_id`, `last`                                                             | A temporary workspace is removed.                                                                   |
+| `gnoblin.workspace.activated`              | `workspace`, optional `previous_id`                                                | The active workspace changes.                                                                       |
+| `gnoblin.workspace.window-moved`           | `window_id`, `from_id`, `to_id`                                                    | A window moves from one workspace to another.                                                       |
+| `gnoblin.monitor.added`                    | `monitor`                                                                          | An active logical monitor appears in the native runtime.                                            |
+| `gnoblin.monitor.changed`                  | `monitor`, `changed`                                                               | A listed monitor property changes; `changed` names the changed properties.                          |
+| `gnoblin.monitor.removed`                  | `monitor_id`, `last`                                                               | An active logical monitor is removed.                                                               |
+| `gnoblin.input.device-added`               | `device`                                                                           | An input device appears in the native runtime.                                                      |
+| `gnoblin.input.device-removed`             | `device_id`, `last`                                                                | An input device is removed from the native runtime.                                                 |
+| `gnoblin.input.sources-changed`            | `sources`                                                                          | The configured, available XKB source list changes.                                                  |
+| `gnoblin.input.source-changed`             | `available`, optional `source`                                                     | Mutter confirms a different Gnoblin-owned keymap group, or the current source becomes unknown.      |
+| `gnoblin.input.gesture`                    | `gesture`, `phase`, `fingers`, `sequence`, `time`, and gesture-specific fields     | A touchpad gesture phase reaches the standalone native Lua runtime.                                 |
+| `gnoblin.launch.changed`                   | `launch`                                                                           | A native launch-feedback record is created or changes state.                                        |
+| `gnoblin.portal.grant-added`               | `grant`, `revision`, `sequence`, `time`                                            | A validated persistent portal grant is added or updated.                                            |
+| `gnoblin.portal.grant-removed`             | `grant_id`, `kind`, `revision`, `sequence`, `time`                                 | A persistent portal grant is revoked.                                                               |
+| `gnoblin.privacy.changed`                  | `state`, `revision`, `sequence`, `time`                                            | A monitored privacy activity changes; `state` is a `PrivacyState` snapshot.                         |
+| `gnoblin.location.authorization-requested` | `request_id`, `app_id`, `requested_accuracy`, `expires_at_us`, `sequence`, `time`  | GeoClue asks Gnoblin to authorize an application's location request.                                |
+| `gnoblin.capability.changed`               | `capability`, `revision`, `sequence`, `time`                                       | A native capability changes; `capability` is the updated `Capability` record.                       |
+| `gnoblin.appearance.color-scheme-changed`  | `color_scheme` (`default`, `prefer-dark`, `prefer-light`), `sequence`, `time`      | The desktop color-scheme preference changes; socket clients need API 1.34.                          |
+| `gnoblin.window.created`                   | `window`                                                                           | The native compositor runtime observes a new managed window.                                        |
+| `gnoblin.window.changed`                   | `window_id`, `changed`, `window`                                                   | A mapped window property changes in the native compositor runtime.                                  |
+| `gnoblin.window.focused`                   | `window_id`, `window`                                                              | A window gains keyboard focus in the native compositor runtime.                                     |
+| `gnoblin.window.unfocused`                 | `window_id`, `window`                                                              | A window loses keyboard focus in the native compositor runtime.                                     |
+| `gnoblin.window.attention-changed`         | `window_id`, `window`, `demands_attention`                                         | Mutter's attention state changes.                                                                   |
+| `gnoblin.window.closed`                    | `window_id`, `last`                                                                | The native compositor runtime removes a managed window.                                             |
+| `gnoblin.focus.policy-changed`             | `policy`, `revision`, `sequence`, `time`                                           | The effective focus policy changes after a successful config commit.                                |
+| `gnoblin.permission.changed`               | `policy`, `revision`, `sequence`, `time`                                           | The committed portal permission policy changes after a successful config commit.                    |
+| `gnoblin.shortcut.activated`               | `shortcut`, `trigger`, `focus_context`                                             | A configured native command shortcut is activated by a trusted key press in the native runtime.     |
+| `gnoblin.shortcut.binding-activated`       | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `focus_context`      | A Lua-registered dynamic shortcut activates. Only the first activation can carry focus authority.   |
+| `gnoblin.shortcut.binding-deactivated`     | `id`, `accelerator`, `input_time`                                                  | A press-triggered dynamic shortcut is physically released.                                          |
+| `gnoblin.animation.started`                | `animation`, `target`, `event`                                                     | A configured lifecycle animation or preview begins playback; socket subscription requires API 1.18. |
+| `gnoblin.animation.finished`               | `animation`, `target`, `event`, `cancelled`                                        | A configured lifecycle animation or preview completes or is interrupted; API 1.18.                  |
+| `gnoblin.operation.completed`              | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | Native API 1.11 completion event; `error` is an `Error` record.                                     |
 
 Structured event values are read-only snapshots. Call methods on a lifecycle
 event's `window` record to act on that window:
@@ -216,11 +217,15 @@ reports request dispatch and does not confirm delivery or lock state.
 
 `gnoblin.privacy.changed` reports available screen-sharing, microphone, camera,
 and location activity in `state`. Activity appears only for available sources.
-The compositor currently monitors screen sharing.
+The native runtime monitors screen sharing, PipeWire microphone and camera
+activity, and GeoClue location activity. GeoClue authorization requests arrive
+through `gnoblin.location.authorization-requested`; answer them with
+`gnoblin.location.authorize_app`. See the [runtime API reference](runtime-api.md#privacy-and-permissions)
+for accuracy levels, deadlines, and the authorization rules.
 
-`gnoblin.capability.changed` fires when PipeWire monitoring connects or
-disconnects. Gnoblin updates the capability snapshot first. An unavailable
-capability reports one of these reasons:
+`gnoblin.capability.changed` fires when a monitored native capability becomes
+available or unavailable. Gnoblin updates the capability snapshot first.
+Unavailable monitor capabilities report one of these reasons:
 
 - `remote_desktop_disabled`: Mutter was built without remote-desktop support.
 - `pipewire_unavailable`: the monitor is disconnected or could not connect.

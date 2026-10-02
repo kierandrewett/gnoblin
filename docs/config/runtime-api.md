@@ -1046,8 +1046,50 @@ stream; it does not inspect whether the stream is carrying audible samples.
 
 Camera monitoring follows running PipeWire nodes whose media role is `Camera`.
 It keeps the activity state for 500 ms after the last node stops to avoid
-flickering. Location activity is unavailable. The `available` value for each
-source distinguishes unsupported monitoring from inactive activity.
+flickering. Location availability and activity come from Gnoblin's GeoClue
+agent. A source is unavailable when its service or monitor cannot be reached;
+unavailable does not mean inactive.
+
+Gnoblin publishes `gnoblin.location.authorization-requested` when GeoClue asks
+whether an application may use location. A shell or Lua handler can answer
+with `gnoblin.location.authorize_app`:
+
+```lua
+gnoblin.on("gnoblin.location.authorization-requested", function(event)
+  gnoblin.location.authorize_app {
+    request_id = event.request_id,
+    allow = false,
+    accuracy = 0,
+  }
+end)
+```
+
+This handler denies every request. A shell that asks the user for consent can
+return `allow = true` with the selected accuracy after the user approves.
+
+GeoClue supplies `app_id` as the application's desktop ID. Treat it as a
+request attribute, not an authenticated identity.
+
+Accuracy levels are:
+
+- `0`: none. Use this when denying a request.
+- `1`: country.
+- `4`: city.
+- `5`: neighborhood.
+- `6`: street.
+- `8`: exact.
+
+An allowed answer must choose a nonzero level no more precise than the
+request. Gnoblin also clamps approval to the system location setting's enabled
+state and maximum accuracy.
+
+The event fields are `request_id`, `app_id`, `requested_accuracy`, and
+`expires_at_us`, plus the standard event metadata.
+
+Requests expire after 25 seconds. Gnoblin denies unanswered requests and
+requests still pending when the runtime stops or the GeoClue agent becomes
+unavailable. A socket client can answer only if it received the request event.
+The answer is a one-use operation.
 
 `gnoblin.privacy.stop_sharing()` requests closure of tracked non-recording
 handles. `gnoblin.privacy.stop_recording()` requests closure of tracked
