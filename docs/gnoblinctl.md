@@ -89,6 +89,7 @@ an operation needs that context or must react to events over time.
 ```sh
 gnoblinctl window list
 gnoblinctl window minimize 42
+gnoblinctl window unminimize 42
 gnoblinctl window toggle-minimize 42
 gnoblinctl window restore 42
 gnoblinctl window maximize 42
@@ -96,11 +97,12 @@ gnoblinctl window close 42
 gnoblinctl window thumbnail 42 --output window.png
 ```
 
-Typed window operations take a stable ID from `window list`. IDs last for the
-window's lifetime, not across logins. For typed actions that accept `active`,
-`gnoblinctl` first reads the focused window's stable ID, then sends the typed
-operation for that ID. If there is no focused window, it reports an error and
-sends no action. `toggle-minimize` still requires an explicit ID.
+Each ID from `window list` lasts for that window's lifetime, not across
+logins. Commands that accept `active` use the focused window's ID and fail
+without sending a request when no window is focused. `toggle-minimize` requires
+an explicit ID.
+`unminimize` removes minimization while preserving maximized state; `restore`
+returns the window to its normal size.
 
 `gnoblinctl window focus` is rejected because the command cannot create the
 one-use trusted context required to focus a window. An external shell client
