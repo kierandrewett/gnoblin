@@ -69,13 +69,18 @@ serial properties. See the [`udevadm` reference](https://man7.org/linux/man-page
 and [libinput tools](https://wayland.freedesktop.org/libinput/doc/latest/tools.html).
 
 Set an action to `"default"` to leave the button unchanged. To assign a
-shortcut, use `"keybinding"` and provide the matching keybinding field.
+shortcut, use `"keybinding"` and provide the matching keybinding field. The
+eraser button uses `eraser_button_mode` to choose between its default behavior
+and acting as a button with its own action.
 
 ```lua
 gnoblin.configure {
     input = {
         styluses = {
             ["default-1234:5678"] = {
+                eraser_button_mode = "button",
+                eraser_button_action = "keybinding",
+                eraser_button_keybinding = "<Super>e",
                 secondary_button_action = "keybinding",
                 secondary_button_keybinding = "<Super>r",
             },
@@ -92,9 +97,16 @@ gnoblin.configure {
 | `"switch-monitor"`    | Switch the stylus to another monitor.   |
 | `"keybinding"`        | Run the matching configured keybinding. |
 
+| `eraser_button_mode` | Effect                                                          |
+| -------------------- | --------------------------------------------------------------- |
+| `"default"`          | Keep the eraser button's default behavior.                      |
+| `"button"`           | Use `eraser_button_action` and its matching keybinding, if any. |
+
 The primary button uses `button_action` and `button_keybinding`. Secondary and
 tertiary buttons use the corresponding `secondary_` and `tertiary_` fields.
-An empty keybinding has no effect unless its action is `"keybinding"`.
+The eraser button uses `eraser_button_action` and
+`eraser_button_keybinding`. An empty keybinding has no effect unless its action
+is `"keybinding"`.
 
 ## Orientation lock
 
@@ -144,6 +156,9 @@ gnoblin.configure {
         }?,
         styluses = {
             ["serial-or-default-vvvv:pppp"] = {
+                eraser_button_mode = StylusEraserMode?,
+                eraser_button_action = StylusAction?,
+                eraser_button_keybinding = string?,
                 button_action = StylusAction?,
                 button_keybinding = string?,
                 secondary_button_action = StylusAction?,
@@ -157,4 +172,5 @@ gnoblin.configure {
 
 -- StylusAction = "default" | "middle" | "right" | "back" | "forward"
 --             | "switch-monitor" | "keybinding"
+-- StylusEraserMode = "default" | "button"
 ```
