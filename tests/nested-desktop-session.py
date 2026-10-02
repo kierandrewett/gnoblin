@@ -36,6 +36,24 @@ env = {
     )
 }
 (root / "session.json").write_text(json.dumps(env))
+fixture_dir = Path(os.environ["XDG_CACHE_HOME"]) / "gnoblin-test-fixtures"
+fixture_dir.mkdir(parents=True, exist_ok=True)
+gtk_flags = subprocess.check_output(["pkg-config", "--cflags", "--libs", "gtk4", "libadwaita-1"], text=True).split()
+gtk_fixture = fixture_dir / "window-corners-gtk"
+subprocess.run(
+    [
+        os.environ.get("CC", "cc"),
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        *gtk_flags,
+        str(Path(__file__).with_name("window-corners-gtk.c")),
+        "-o",
+        str(gtk_fixture),
+    ],
+    check=True,
+)
 processes = []
 try:
     for name, command in (
@@ -48,7 +66,7 @@ try:
                 "--no-color",
             ],
         ),
-        ("gtk", ["gjs", "-m", str(Path(__file__).with_name("window-corners-gtk.js"))]),
+        ("gtk", [str(gtk_fixture)]),
         ("ghostty", ["ghostty", "--title=Nested Ghostty", "-e", "bash", "--noprofile", "--norc"]),
     ):
         log = (root / f"{name}.log").open("w")
