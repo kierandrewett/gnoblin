@@ -4356,10 +4356,32 @@ static int lua_api_call(lua_State* state) {
     return 1;
 }
 
+static int lua_cli_runtime_scope_error(lua_State* state) {
+    const char* method = lua_tostring(state, lua_upvalueindex(1));
+    if (g_str_has_prefix(method, "gnoblin.shortcuts."))
+        return luaL_error(
+            state,
+            "%s requires the supervised Lua runtime; terminal shortcut bindings are owned by "
+            "a persistent runtime connection",
+            method);
+    return luaL_error(
+        state, "%s requires the supervised Lua runtime; gnoblinctl lua cannot subscribe to events",
+        method);
+}
+
+static void lua_cli_push_runtime_scope_error(lua_State* state, const char* method) {
+    lua_pushstring(state, method);
+    lua_pushcclosure(state, lua_cli_runtime_scope_error, 1);
+}
+
 static int lua_api_index(lua_State* state) {
     const char* prefix = lua_tostring(state, lua_upvalueindex(1));
     const char* name = luaL_checkstring(state, 2);
     if (!*prefix) {
+        if (g_str_equal(name, "on")) {
+            lua_cli_push_runtime_scope_error(state, "gnoblin.on");
+            return 1;
+        }
         if (g_str_equal(name, "version")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
             lua_pushcclosure(state, lua_cli_version, 1);
@@ -4378,6 +4400,11 @@ static int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_api_index, 2);
         lua_setfield(state, -2, "__index");
         lua_setmetatable(state, -2);
+        return 1;
+    }
+    if (g_str_equal(prefix, "events") && (g_str_equal(name, "on") || g_str_equal(name, "once"))) {
+        g_autofree char* method = g_strdup_printf("gnoblin.events.%s", name);
+        lua_cli_push_runtime_scope_error(state, method);
         return 1;
     }
     if (g_str_equal(prefix, "windows")) {
@@ -4545,6 +4572,12 @@ static int lua_api_index(lua_State* state) {
         }
     }
     if (g_str_equal(prefix, "shortcuts")) {
+        if (g_str_equal(name, "bind") || g_str_equal(name, "unbind") ||
+            g_str_equal(name, "end_session")) {
+            g_autofree char* method = g_strdup_printf("gnoblin.shortcuts.%s", name);
+            lua_cli_push_runtime_scope_error(state, method);
+            return 1;
+        }
         if (g_str_equal(name, "list") || g_str_equal(name, "actions")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
             lua_CFunction function =

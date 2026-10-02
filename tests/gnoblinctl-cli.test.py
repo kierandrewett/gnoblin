@@ -126,6 +126,30 @@ def main() -> int:
     assert invalid_result.returncode != 0
     assert "unknown command:" in invalid_result.stderr
 
+    runtime_scope_script = Path(build_directory) / "runtime-scope.lua"
+    runtime_scope_script.write_text(
+        "local calls = {\n"
+        "    function() gnoblin.shortcuts.bind {} end,\n"
+        "    function() gnoblin.shortcuts.unbind {} end,\n"
+        "    function() gnoblin.shortcuts.end_session {} end,\n"
+        '    function() gnoblin.events.on("example", function() end) end,\n'
+        '    function() gnoblin.events.once("example", function() end) end,\n'
+        '    function() gnoblin.on("example", function() end) end,\n'
+        "}\n"
+        "for _, call in ipairs(calls) do\n"
+        "    local ok, err = pcall(call)\n"
+        '    assert(not ok and err:match("requires the supervised Lua runtime"), tostring(err))\n'
+        "end\n"
+    )
+    runtime_scope_result = run(
+        binary,
+        "--socket",
+        str(Path(build_directory) / "no-compositor.sock"),
+        "lua",
+        str(runtime_scope_script),
+    )
+    assert runtime_scope_result.returncode == 0, runtime_scope_result.stderr
+
     with tempfile.TemporaryDirectory(prefix="gnoblinctl-", dir=build_directory) as temporary:
         socket_path = str(Path(temporary) / "compositor.sock")
         received: list[dict[str, object]] = []
