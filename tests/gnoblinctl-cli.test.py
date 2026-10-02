@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(47):
+                    for _ in range(53):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -202,6 +202,15 @@ def main() -> int:
                                 ]
                             elif request["method"] == "animation.get":
                                 result = None
+                            elif request["method"] in {
+                                "animation.preview",
+                                "animation.seek",
+                                "animation.step",
+                                "animation.play",
+                                "animation.pause",
+                                "animation.stop",
+                            }:
+                                result = {"request_id": 17, "method": request["method"]}
                             elif request["method"] == "workspace.create":
                                 result = {"request_id": 18, "method": "workspace.create"}
                             elif request["method"] == "workspaces.list":
@@ -334,6 +343,11 @@ def main() -> int:
                             stream.flush()
                             if request.get("method") in {
                                 "animation.preview",
+                                "animation.seek",
+                                "animation.step",
+                                "animation.play",
+                                "animation.pause",
+                                "animation.stop",
                                 "workspace.create",
                                 "window.thumbnail",
                                 "input.select",
@@ -346,7 +360,70 @@ def main() -> int:
                                 operation_id = result["request_id"]
                                 method = result["method"]
                                 if method == "animation.preview":
-                                    value = {"session": "preview-17"}
+                                    if request.get("arguments", {}).get("target_type") == "namespace":
+                                        value = {"session": "preview-17"}
+                                    else:
+                                        value = {
+                                            "id": "preview-17",
+                                            "session": "preview-17",
+                                            "name": "gnoblin-window-open",
+                                            "event": "open",
+                                            "target": "42",
+                                            "target_type": "window",
+                                            "progress": 0.0,
+                                            "playing": False,
+                                            "revision": 5,
+                                        }
+                                elif method == "animation.seek":
+                                    value = {
+                                        "id": "preview-17",
+                                        "session": "preview-17",
+                                        "name": "gnoblin-window-open",
+                                        "event": "open",
+                                        "target": "42",
+                                        "target_type": "window",
+                                        "progress": request["arguments"]["progress"],
+                                        "playing": False,
+                                        "revision": 5,
+                                    }
+                                elif method == "animation.step":
+                                    value = {
+                                        "id": "preview-17",
+                                        "session": "preview-17",
+                                        "name": "gnoblin-window-open",
+                                        "event": "open",
+                                        "target": "42",
+                                        "target_type": "window",
+                                        "progress": 0.75,
+                                        "playing": False,
+                                        "revision": 5,
+                                    }
+                                elif method == "animation.play":
+                                    value = {
+                                        "id": "preview-17",
+                                        "session": "preview-17",
+                                        "name": "gnoblin-window-open",
+                                        "event": "open",
+                                        "target": "42",
+                                        "target_type": "window",
+                                        "progress": 0.75,
+                                        "playing": True,
+                                        "revision": 5,
+                                    }
+                                elif method == "animation.pause":
+                                    value = {
+                                        "id": "preview-17",
+                                        "session": "preview-17",
+                                        "name": "gnoblin-window-open",
+                                        "event": "open",
+                                        "target": "42",
+                                        "target_type": "window",
+                                        "progress": 0.75,
+                                        "playing": False,
+                                        "revision": 5,
+                                    }
+                                elif method == "animation.stop":
+                                    value = {"ok": True, "session": "preview-17"}
                                 elif method == "workspace.create":
                                     value = {"id": "codex-probe", "name": "Codex Probe"}
                                 elif method == "window.thumbnail":
@@ -750,11 +827,39 @@ def main() -> int:
         )
         assert unminimize.returncode == 0, unminimize.stderr
         assert json.loads(unminimize.stdout) == {"id": "42"}
+        animation_lua_file = Path(temporary) / "animation-preview.lua"
+        animation_lua_file.write_text(
+            'local preview = gnoblin.animations.preview { name = "gnoblin-window-open", '
+            'event = "open", target_type = "window", target = "42", autoplay = false }\n'
+            'assert(tostring(preview) == "AnimationPreview<preview-17>")\n'
+            'assert(preview.id == "preview-17" and preview.name == "gnoblin-window-open")\n'
+            'assert(preview.event == "open" and preview.target == "42" and preview.target_type == "window")\n'
+            "assert(preview.progress == 0 and not preview.playing and preview.revision == 5)\n"
+            "assert(preview.session == nil)\n"
+            "assert(not pcall(function() preview.progress = 0.5 end))\n"
+            "assert(not pcall(function() preview.missing = true end))\n"
+            "local sought = preview:seek(0.5)\n"
+            'assert(sought.progress == 0.5 and not sought.playing and type(sought.step) == "function")\n'
+            "local stepped = sought:step(250)\n"
+            'assert(stepped.progress == 0.75 and type(stepped.play) == "function")\n'
+            "local playing = stepped:play()\n"
+            'assert(playing.playing and type(playing.pause) == "function")\n'
+            "local paused = playing:pause()\n"
+            'assert(not paused.playing and type(paused.stop) == "function")\n'
+            "local stopped = paused:stop()\n"
+            'assert(stopped.ok and stopped.session == "preview-17")\n'
+            "assert(not pcall(function() preview:seek(1.1) end))\n"
+            "assert(not pcall(function() preview:step(0) end))\n"
+            "assert(not pcall(function() preview:play(true) end))\n",
+            encoding="utf-8",
+        )
+        animation_lua = run(binary, "--socket", socket_path, "lua", str(animation_lua_file))
+        assert animation_lua.returncode == 0, animation_lua.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 47
-        assert len(subscriptions) == 47
+        assert len(received) == 53
+        assert len(subscriptions) == 53
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -791,6 +896,26 @@ def main() -> int:
             "target": "panel:test",
             "autoplay": False,
         }
+        animation_calls = received[47:53]
+        assert [call["method"] for call in animation_calls] == [
+            "animation.preview",
+            "animation.seek",
+            "animation.step",
+            "animation.play",
+            "animation.pause",
+            "animation.stop",
+        ]
+        assert animation_calls[0]["arguments"] == {
+            "name": "gnoblin-window-open",
+            "event": "open",
+            "target_type": "window",
+            "target": "42",
+            "autoplay": False,
+        }
+        assert animation_calls[1]["arguments"] == {"session": "preview-17", "progress": 0.5}
+        assert animation_calls[2]["arguments"] == {"session": "preview-17", "milliseconds": 250}
+        for call in animation_calls[3:]:
+            assert call["arguments"] == {"session": "preview-17"}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
