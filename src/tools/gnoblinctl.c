@@ -1597,6 +1597,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE "gnoblinctl.InputSource"
 #define GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE "gnoblinctl.ShortcutState"
 #define GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE "gnoblinctl.ShortcutAction"
+#define GNOBLINCTL_FOCUS_POLICY_RECORD_METATABLE "gnoblinctl.FocusPolicy"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
@@ -1604,6 +1605,7 @@ static int lua_cli_input_snapshot(lua_State* state);
 static int lua_cli_input_select_source(lua_State* state);
 static int lua_cli_shortcuts_list(lua_State* state);
 static int lua_cli_shortcuts_actions(lua_State* state);
+static int lua_cli_focus_policy_property(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2391,6 +2393,86 @@ static void register_lua_cli_shortcut_record(lua_State* state, const char* metat
     lua_pop(state, 1);
 }
 
+static gboolean lua_cli_focus_policy_valid(JsonObject* object) {
+    const char* focus_mode = member_string(object, "focus_mode", NULL);
+    const char* focus_new_windows = member_string(object, "focus_new_windows", NULL);
+    if ((!focus_mode || (!g_str_equal(focus_mode, "click") && !g_str_equal(focus_mode, "sloppy") &&
+                         !g_str_equal(focus_mode, "mouse"))) ||
+        (!focus_new_windows ||
+         (!g_str_equal(focus_new_windows, "strict") && !g_str_equal(focus_new_windows, "smart"))))
+        return FALSE;
+
+    static const char* const boolean_fields[] = {"raise_on_click", "auto_raise",
+                                                 "focus_change_on_pointer_rest"};
+    for (guint i = 0; i < G_N_ELEMENTS(boolean_fields); i++) {
+        JsonNode* field = json_object_get_member(object, boolean_fields[i]);
+        if (!field || !JSON_NODE_HOLDS_VALUE(field) ||
+            json_node_get_value_type(field) != G_TYPE_BOOLEAN)
+            return FALSE;
+    }
+    const char* const integer_fields[] = {"auto_raise_delay", "revision"};
+    for (guint i = 0; i < G_N_ELEMENTS(integer_fields); i++) {
+        JsonNode* field = json_object_get_member(object, integer_fields[i]);
+        if (!field || !JSON_NODE_HOLDS_VALUE(field) ||
+            (json_node_get_value_type(field) != G_TYPE_INT64 &&
+             json_node_get_value_type(field) != G_TYPE_INT))
+            return FALSE;
+    }
+    gint64 delay = json_object_get_int_member(object, "auto_raise_delay");
+    gint64 revision = json_object_get_int_member(object, "revision");
+    return delay >= 0 && delay <= 10000 && revision >= 0;
+}
+
+static int lua_cli_focus_policy_tostring(lua_State* state) {
+    lua_pushliteral(state, "FocusPolicy");
+    return 1;
+}
+
+static void register_lua_cli_focus_policy_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_FOCUS_POLICY_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_readonly_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_readonly_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_focus_policy_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static int lua_cli_focus_policy_property(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "focus.policy", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.focus.policy failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "gnoblin.focus.policy returned an invalid snapshot");
+    JsonObject* object = json_node_get_object(result);
+    if (!lua_cli_focus_policy_valid(object))
+        return luaL_error(state, "gnoblin.focus.policy returned an invalid FocusPolicy");
+
+    json_to_lua(state, result);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 1);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    luaL_getmetatable(state, GNOBLINCTL_FOCUS_POLICY_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+    return 1;
+}
+
 static int lua_cli_input_record_tostring(lua_State* state) {
     lua_getiuservalue(state, 1, 1);
     lua_getfield(state, -1, "id");
@@ -3105,6 +3187,12 @@ static int lua_api_index(lua_State* state) {
             return 1;
         }
     }
+    if (g_str_equal(prefix, "focus") && g_str_equal(name, "policy")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_focus_policy_property, 1);
+        lua_call(state, 0, 1);
+        return 1;
+    }
     if (g_str_equal(prefix, "shortcuts")) {
         if (g_str_equal(name, "list") || g_str_equal(name, "actions")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
@@ -3272,6 +3360,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_input_record(state, GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
     register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE);
     register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_ACTION_RECORD_METATABLE);
+    register_lua_cli_focus_policy_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");

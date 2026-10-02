@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(62):
+                    for _ in range(63):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -320,6 +320,16 @@ def main() -> int:
                                         "default_bindings": ["<Alt>F4"],
                                     }
                                 ]
+                            elif request["method"] == "focus.policy":
+                                result = {
+                                    "focus_mode": "sloppy",
+                                    "focus_new_windows": "smart",
+                                    "raise_on_click": False,
+                                    "auto_raise": True,
+                                    "focus_change_on_pointer_rest": True,
+                                    "auto_raise_delay": 750,
+                                    "revision": 42,
+                                }
                             elif request["method"] == "permissions.list":
                                 result = {
                                     "policy": {"default": "deny", "rules": []},
@@ -1012,11 +1022,26 @@ def main() -> int:
         )
         shortcuts_lua = run(binary, "--socket", socket_path, "lua", str(shortcuts_lua_file))
         assert shortcuts_lua.returncode == 0, shortcuts_lua.stderr
+        focus_policy_file = Path(temporary) / "focus-policy.lua"
+        focus_policy_file.write_text(
+            "local policy = gnoblin.focus.policy\n"
+            'assert(tostring(policy) == "FocusPolicy")\n'
+            'assert(policy.focus_mode == "sloppy" and policy.focus_new_windows == "smart")\n'
+            "assert(not policy.raise_on_click and policy.auto_raise)\n"
+            "assert(policy.focus_change_on_pointer_rest and policy.auto_raise_delay == 750)\n"
+            "assert(policy.revision == 42)\n"
+            'assert(not pcall(function() policy.focus_mode = "click" end))\n'
+            'assert(not pcall(function() rawset(policy, "focus_mode", "click") end))\n'
+            "assert(not pcall(function() gnoblin.focus.policy() end))\n",
+            encoding="utf-8",
+        )
+        focus_policy = run(binary, "--socket", socket_path, "lua", str(focus_policy_file))
+        assert focus_policy.returncode == 0, focus_policy.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 62
-        assert len(subscriptions) == 62
+        assert len(received) == 63
+        assert len(subscriptions) == 63
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1104,6 +1129,9 @@ def main() -> int:
         assert received[61]["method"] == "shortcuts.actions"
         assert received[61]["api_version"] == {"major": 1, "minor": 41}
         assert received[61]["arguments"] == {"group": "wm"}
+        assert received[62]["method"] == "focus.policy"
+        assert received[62]["api_version"] == {"major": 1, "minor": 19}
+        assert received[62]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
