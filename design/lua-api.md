@@ -193,7 +193,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.settings`                              | read-only property                                          | **Current.** Detached snapshot of committed settings with public snake_case names and a non-persistent `revision`; available after the initial config commit in the standalone Lua runtime. `gnoblinctl lua` exposes a deeply read-only `Settings` record. |
 | `gnoblin.focus.policy`                          | read-only property                                          | **Current.** Immutable focus-preference snapshot with the committed settings revision in the standalone Lua runtime; `gnoblinctl lua` exposes a read-only `FocusPolicy` record.                                                                            |
 | `gnoblin.focus.history(filter?)`                | `(filter?: FocusFilter) -> Window[]`                        | **Current; native runtime.** Read windows in most-recently-focused order, with optional workspace, monitor, and limit filters; `gnoblinctl lua` returns read-only `Window` records too.                                                                    |
-| `gnoblin.version()`                             | `() -> Version`                                             | **Current.** Read Gnoblin, GNOME, Mutter, Lua, API, Git remote, Git SHA, and build ID.                                                                                                                                                                     |
+| `gnoblin.version()`                             | `() -> Version`                                             | **Current.** Read Gnoblin, GNOME, Mutter, Lua, API, Git remote, Git SHA, and build ID; the runtime and `gnoblinctl lua` return immutable records.                                                                                                          |
 | `gnoblin.capabilities.list()`                   | `() -> Capability[]`                                        | **Current.** Read supported compositor and protocol capabilities as read-only records in the native runtime and `gnoblinctl lua`.                                                                                                                          |
 | `gnoblin.snapshot()`                            | `() -> Settings`                                            | **Current; compatibility only.** Returns a copy of the mutable config view. Prefer `gnoblin.settings` for reads.                                                                                                                                           |
 | `gnoblin.load(path)`                            | `(string) -> true`                                          | **Current; retained.** Load a relative file or glob in the current config context.                                                                                                                                                                         |
@@ -1677,6 +1677,9 @@ the console, preserving the shared API's MRU order and filters.
 
 `capabilities.list()` returns the shared array of read-only `Capability`
 records in the console. The no-argument call uses native-control API 1.19.
+
+`version()` uses native-control API 1.19 and returns the same deeply
+read-only `Version` fields as the supervised runtime.
 
 `animations.list()` and `animations.get(name)` use the canonical singular
 `animation.list` and `animation.get` socket reads. They return the same

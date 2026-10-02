@@ -63,6 +63,13 @@ compositor with the Lua API. Enter one Lua statement or expression per line.
 Expressions print their result; tables print as JSON. Type `:help` for the
 console commands and `:quit` to exit.
 
+Read build and source identity with `gnoblin.version()`:
+
+```lua
+local version = gnoblin.version()
+print(version.gnoblin, version.gnome, version.git_sha)
+```
+
 ```lua
 =gnoblin.windows.list { focused = true }
 =gnoblin.workspaces.list()
