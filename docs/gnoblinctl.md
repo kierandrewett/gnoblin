@@ -145,6 +145,19 @@ print(preview.progress)
 preview:stop()
 ```
 
+Portal grants are read-only `PortalGrant` records. Filter by kind and revoke a
+grant from the snapshot:
+
+```lua
+for _, grant in ipairs(gnoblin.portals.grants { kind = "remote-desktop" }) do
+    print(grant.requester, table.concat(grant.devices, ", "))
+    grant:revoke()
+end
+```
+
+Revocation uses the record's creation time, so a stale record cannot revoke a
+new grant that reuses its ID. The console waits for each revoke to complete.
+
 To run a Lua file with the same API, pass its path:
 
 ```sh
