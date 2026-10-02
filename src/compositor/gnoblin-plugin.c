@@ -48,6 +48,17 @@ static void gnoblin_plugin_destroy(MetaPlugin* plugin, MetaWindowActor* actor) {
         meta_plugin_destroy_completed(plugin, actor);
 }
 
+static void gnoblin_plugin_size_change(MetaPlugin* plugin, MetaWindowActor* actor,
+                                       MetaSizeChange which_change, MtkRectangle* old_frame_rect,
+                                       MtkRectangle* old_buffer_rect) {
+    meta_gnoblin_animation_size_change(plugin, actor, which_change, old_frame_rect,
+                                       old_buffer_rect);
+}
+
+static void gnoblin_plugin_size_changed(MetaPlugin* plugin, MetaWindowActor* actor) {
+    meta_gnoblin_animation_size_changed(plugin, actor);
+}
+
 static void gnoblin_plugin_kill_window_effects(MetaPlugin* plugin, MetaWindowActor* actor) {
     meta_gnoblin_animation_cancel_window_effects(plugin, actor);
 }
@@ -76,6 +87,8 @@ static void meta_gnoblin_plugin_class_init(MetaGnoblinPluginClass* klass) {
     plugin_class->minimize = gnoblin_plugin_minimize;
     plugin_class->unminimize = gnoblin_plugin_unminimize;
     plugin_class->destroy = gnoblin_plugin_destroy;
+    plugin_class->size_change = gnoblin_plugin_size_change;
+    plugin_class->size_changed = gnoblin_plugin_size_changed;
     plugin_class->kill_window_effects = gnoblin_plugin_kill_window_effects;
     plugin_class->switch_workspace = gnoblin_plugin_switch_workspace;
     plugin_class->kill_switch_workspace = gnoblin_plugin_kill_switch_workspace;
