@@ -191,7 +191,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.configure.autostart`                   | named entry view                                            | **Current and retained.** Read and edit named autostart entries.                                                                                                                                   |
 | `gnoblin.config`                                | mutable config table                                        | **Current; compatibility view.** Keys use normalized internal hyphenated names. Prefer `gnoblin.configure`.                                                                                        |
 | `gnoblin.settings`                              | read-only property                                          | **Current.** Detached snapshot of committed settings with public snake_case names and a non-persistent `revision`; available after the initial config commit in the standalone Lua runtime.        |
-| `gnoblin.focus.policy`                          | read-only property                                          | **Current.** Immutable focus-preference snapshot with the committed settings revision in the standalone Lua runtime.                                                                               |
+| `gnoblin.focus.policy`                          | read-only property                                          | **Current.** Immutable focus-preference snapshot with the committed settings revision in the standalone Lua runtime; `gnoblinctl lua` exposes a read-only `FocusPolicy` record.                    |
 | `gnoblin.focus.history(filter?)`                | `(filter?: FocusFilter) -> Window[]`                        | **Current; native runtime.** Read windows in most-recently-focused order, with optional workspace, monitor, and limit filters.                                                                     |
 | `gnoblin.version()`                             | `() -> Version`                                             | **Current.** Read Gnoblin, GNOME, Mutter, Lua, API, Git remote, Git SHA, and build ID.                                                                                                             |
 | `gnoblin.capabilities.list()`                   | `() -> Capability[]`                                        | **Current; native runtime.** Read supported compositor and protocol capabilities.                                                                                                                  |
@@ -1709,6 +1709,9 @@ updated source record.
 `ShortcutState` and `ShortcutAction` records in the console. The optional
 action group is passed as a string, matching the shared Lua API; nested action
 binding arrays are read-only too.
+
+`focus.policy` is read as the shared read-only property and returns a deeply
+read-only `FocusPolicy` record. It is not called as a function in the console.
 
 Native-control API 1.17 implements `gnoblin.privacy.state()` as an immutable
 snapshot with `available`, a stable `revision`, and activity fields only for

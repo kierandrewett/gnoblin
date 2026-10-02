@@ -85,6 +85,13 @@ They do not return an asynchronous `Operation` handle. `focus`, `begin_move`,
 and `begin_resize` require a trusted `FocusContext` from a runtime callback, so
 the terminal console rejects those calls.
 
+Read the committed focus behavior through the read-only `FocusPolicy` property:
+
+```lua
+local policy = gnoblin.focus.policy
+print(policy.focus_mode, policy.focus_new_windows, policy.revision)
+```
+
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
 read-only `Workspace` records. A workspace can be activated, renamed, removed,
