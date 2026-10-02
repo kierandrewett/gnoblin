@@ -924,8 +924,8 @@ configuration.
 
 | Method                             | Arguments                                         | Successful result                            |
 | ---------------------------------- | ------------------------------------------------- | -------------------------------------------- |
-| `gnoblin.animations.list()`        | None                                              | `{animations = AnimationInfo[]}`             |
-| `gnoblin.animations.get(name)`     | Animation name                                    | Animation record or `nil`                    |
+| `gnoblin.animations.list()`        | None                                              | Read-only `AnimationInfo[]`                  |
+| `gnoblin.animations.get(name)`     | Animation name                                    | Read-only `AnimationInfo` or `nil`           |
 | `gnoblin.animations.surfaces()`    | None                                              | `{surfaces = {Surface, ...}}`                |
 | `gnoblin.animations.inspect(args)` | `name`, `target`; optional `event`, `target_type` | Animation details and resolved specification |
 | `gnoblin.animations.preview(args)` | Same as inspect; optional `autoplay`              | `AnimationPreview` record                    |
