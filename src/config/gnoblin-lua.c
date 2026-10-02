@@ -5563,14 +5563,13 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
     }
     // The builder returns a floating variant. Own it before exposing another
     // reference to the supervisor; otherwise a later event can unref a stale value.
-    runtime->document = run.result ? g_variant_ref_sink(run.result) : NULL;
-    lua_runtime_free(pending_runtime);
-    pending_runtime = runtime;
+    runtime->document = run.result ? g_variant_ref_sink(g_steal_pointer(&run.result)) : NULL;
     if (!runtime->document || !gnoblin_config_validate_document(runtime->document, error)) {
-        pending_runtime = NULL;
         lua_runtime_free(runtime);
         return NULL;
     }
+    lua_runtime_free(pending_runtime);
+    pending_runtime = runtime;
     if (paths)
         *paths = g_ptr_array_ref(runtime->config.paths);
     if (directories)

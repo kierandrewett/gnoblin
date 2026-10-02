@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+set -euo pipefail
+trap 'chmod -R a+rX "$ARTIFACT_DIR" 2>/dev/null || true' EXIT
+
+device_paths=(/dev/dri /dev/vulkan /dev/kfd /dev/dxg /dev/galcore /dev/snd)
+shopt -s nullglob
+device_paths+=(/dev/nvidia* /dev/mali* /dev/fb*)
+shopt -u nullglob
+hardware_devices=()
+{
+    printf 'Container mode: Docker non-privileged; SYS_ADMIN enabled; host device passthrough: disabled\n'
+    for device_path in "${device_paths[@]}"; do
+        [[ -e "$device_path" ]] || continue
+        hardware_devices+=("$device_path")
+        printf 'exposed device path: %s\n' "$device_path"
+        ls -la "$device_path" || true
+    done
+    if ((${#hardware_devices[@]} == 0)); then
+        printf 'Result: no GPU or audio device nodes are exposed\n'
+    fi
+} >"$ARTIFACT_DIR/device-access.txt"
+if ((${#hardware_devices[@]} > 0)); then
+    cat "$ARTIFACT_DIR/device-access.txt" >&2
+    exit 1
+fi
+
+dnf -y install git flatpak gtk3 gtk4 gnome-shell wayland-devel wayland-protocols-devel \
+    gcc pkgconf-pkg-config xorg-x11-server-Xwayland dbus-daemon python3-gobject \
+    xdg-desktop-portal xdg-desktop-portal-gnome xdg-desktop-portal-gtk dconf hyprcursor ibus util-linux \
+    mesa-vulkan-drivers vulkan-tools pipewire pipewire-pulseaudio wireplumber pulseaudio-utils
+trace_env=()
+if [[ "${TRACE_CRASH:-false}" == true ]]; then
+    dnf -y install gdb
+    trace_env+=(GNOBLIN_TEST_GDB_LOG_CRITICALS=1)
+fi
+
+tar -xf "$GITHUB_WORKSPACE/e2e-ci-artifacts/gnoblin-install-prefix.tar" \
+    --no-same-owner -C "$GITHUB_WORKSPACE"
+test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
+test -f "$GITHUB_WORKSPACE/install/share/gnome-shell/gnome-shell-dbus-interfaces.gresource"
+
+# A fresh procfs avoids Docker's masked proc entries, which block nested
+# Bubblewrap proc mounts in an unprivileged user namespace. Docker gives this
+# container its own PID namespace, so this procfs does not expose host tasks.
+mount -t proc proc /proc
+{
+    printf 'Fresh procfs mounted inside the Docker container PID namespace\n'
+    awk '$2 == "/proc" && $3 == "proc"' /proc/mounts
+} >"$ARTIFACT_DIR/container-procfs.txt"
+
+useradd --create-home e2e
+runuser -u e2e -- bwrap --unshare-all --ro-bind / / --proc /proc --dev /dev true
+./tests/start-system-bus.sh
+
+e2e_uid="$(id -u e2e)"
+e2e_failure_policy="${GNOBLIN_E2E_FAILURE_POLICY:-strict}"
+e2e_required_app_ids="${GNOBLIN_E2E_REQUIRED_APP_IDS:-}"
+e2e_app_ids="${APP_IDS:-}"
+app_selection_args=()
+if [[ -n "$e2e_app_ids" ]]; then
+    if [[ "$e2e_app_ids" =~ (^|,)[[:space:]]*(,|$) ]]; then
+        echo "APP_IDS must be a comma-separated list of non-empty app IDs" >&2
+        exit 2
+    fi
+    IFS=',' read -r -a requested_app_ids <<<"$e2e_app_ids"
+    for app_id in "${requested_app_ids[@]}"; do
+        app_id="${app_id#"${app_id%%[![:space:]]*}"}"
+        app_id="${app_id%"${app_id##*[![:space:]]}"}"
+        if [[ -z "$app_id" ]]; then
+            echo "APP_IDS must be a comma-separated list of non-empty app IDs" >&2
+            exit 2
+        fi
+        app_selection_args+=(--app-id "$app_id")
+    done
+fi
+mkdir -p "$ARTIFACT_DIR"
+vulkan_icd=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+if [[ ! -r "$vulkan_icd" ]]; then
+    echo "Mesa lavapipe ICD is missing: $vulkan_icd" >&2
+    exit 1
+fi
+VK_ICD_FILENAMES="$vulkan_icd" vulkaninfo --summary >"$ARTIFACT_DIR/software-vulkan.txt" 2>&1
+if ! grep -Eiq 'llvmpipe|lavapipe' "$ARTIFACT_DIR/software-vulkan.txt"; then
+    cat "$ARTIFACT_DIR/software-vulkan.txt" >&2
+    echo "Vulkan preflight did not find Mesa lavapipe" >&2
+    exit 1
+fi
+grep -Ei 'deviceName|driverName' "$ARTIFACT_DIR/software-vulkan.txt" | head -10
+python3 scripts/devkit_dbus.py \
+    "$ARTIFACT_DIR/gnoblin-dbus-preflight" "$GITHUB_WORKSPACE" --flatpak-portal
+runuser -u e2e -- python3 tests/devkit-flatpak-portal.test.py
+runuser -u e2e -- python3 tests/devkit-ibus-daemon.test.py
+
+flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+python3 tests/e2e/app-catalog.py \
+    --catalog-in "$GITHUB_WORKSPACE/e2e-ci-artifacts/app-catalog.json" \
+    --shard-index "$SHARD_INDEX" --shard-count 40 \
+    "${app_selection_args[@]}" \
+    --shard-output "$ARTIFACT_DIR/shard.json"
+
+python3 tests/e2e/install-shard.py \
+    "$ARTIFACT_DIR/shard.json" "$ARTIFACT_DIR/installation-report.json"
+
+extra_monitor="${GNOBLIN_E2E_EXTRA_MONITOR_OVERRIDE:-}"
+if [[ -z "$extra_monitor" ]] && ((SHARD_INDEX % 2 == 0)); then
+    extra_monitor="1024x768"
+fi
+install -d -o e2e -g e2e -m 700 "/run/user/$e2e_uid"
+chown -R e2e:e2e "$ARTIFACT_DIR"
+runuser -u e2e -- test -x "$GITHUB_WORKSPACE/install/bin/gnome-shell"
+e2e_env=(
+    "${trace_env[@]}"
+    XDG_RUNTIME_DIR="/run/user/$e2e_uid"
+    GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install"
+    GNOBLIN_E2E_CATALOG="$GITHUB_WORKSPACE/e2e-ci-artifacts/app-catalog.json"
+    GNOBLIN_E2E_PREPARED_SHARD="$ARTIFACT_DIR/shard.json"
+    GNOBLIN_E2E_SHARD_INDEX="$SHARD_INDEX"
+    GNOBLIN_E2E_SHARD_COUNT=40
+    GNOBLIN_E2E_EXTRA_MONITOR="$extra_monitor"
+    GNOBLIN_E2E_INSTALL_REPORT="$ARTIFACT_DIR/installation-report.json"
+    GNOBLIN_E2E_FAILURE_POLICY="$e2e_failure_policy"
+    GNOBLIN_E2E_REQUIRED_APP_IDS="$e2e_required_app_ids"
+    GNOBLIN_TEST_FLATPAK_PORTAL=1
+    GNOBLIN_TEST_IBUS_DAEMON=1
+    GNOBLIN_TEST_PIPEWIRE=1
+    GNOBLIN_E2E_VULKAN_ICD="$vulkan_icd"
+    GNOBLIN_E2E_TIMEOUT=3300
+)
+probe_status=0
+if [[ "${GNOBLIN_E2E_TEST_IBUS_DISCONNECT:-0}" == 1 ]]; then
+    # Exercise IBus in a clean shell session. Fcitx intentionally replaces the
+    # session's IBus service name, so probing afterward would test app order.
+    runuser -u e2e -- env "${e2e_env[@]}" \
+        GNOBLIN_E2E_ARTIFACT_DIR="$ARTIFACT_DIR/ibus-probe" \
+        GNOBLIN_E2E_SESSION_PROBE_ONLY=1 \
+        GNOBLIN_E2E_TEST_IBUS_DISCONNECT=1 \
+        python3 tests/e2e/app-e2e.py || probe_status=$?
+fi
+app_status=0
+runuser -u e2e -- env "${e2e_env[@]}" \
+    GNOBLIN_E2E_ARTIFACT_DIR="$ARTIFACT_DIR" \
+    GNOBLIN_E2E_SESSION_PROBE_ONLY=0 \
+    GNOBLIN_E2E_TEST_IBUS_DISCONNECT=0 \
+    python3 tests/e2e/app-e2e.py || app_status=$?
+if ((probe_status != 0)); then
+    exit "$probe_status"
+fi
+exit "$app_status"

@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Pixel regression for masked layer blur in an isolated Gnoblin session."""
 
+import math
 import os
-from pathlib import Path
+import re
 import shutil
 import subprocess
 import time
+from pathlib import Path
+
 from PIL import Image, ImageChops, ImageStat
 
 root = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin"
@@ -13,6 +16,28 @@ root.mkdir(parents=True, exist_ok=True)
 test_corners = os.environ.get("GNOBLIN_BLUR_TEST_CORNERS") == "1"
 test_shadows = os.environ.get("GNOBLIN_BLUR_TEST_SHADOWS") == "1"
 use_theme = os.environ.get("GNOBLIN_BLUR_TEST_THEME") == "1"
+test_scale = float(os.environ.get("GNOBLIN_BLUR_TEST_SCALE", "1"))
+if test_scale < 1:
+    raise ValueError("GNOBLIN_BLUR_TEST_SCALE must be positive")
+if test_scale > 1:
+    prefix = Path(os.environ["GNOBLIN_PREFIX"])
+    subprocess.run(
+        [
+            str(prefix / "bin/gdctl"),
+            "set",
+            "-L",
+            "-M",
+            "Meta-0",
+            "-p",
+            "-s",
+            f"{test_scale:g}",
+        ],
+        check=True,
+    )
+    display = subprocess.run([str(prefix / "bin/gdctl"), "show"], check=True, capture_output=True, text=True).stdout
+    scales = [float(value) for value in re.findall(r"Scale: ([0-9.]+)", display)]
+    if not scales or any(not math.isclose(value, test_scale, abs_tol=0.001) for value in scales):
+        raise AssertionError(f"gdctl reports scales {scales}, expected {test_scale}")
 if use_theme:
     shutil.copy2(Path(__file__).resolve().parents[2] / "bingux/shell/bingux/Theme.qml", root / "Theme.qml")
     (root / "qmldir").write_text("singleton Theme 1.0 Theme.qml\n")
@@ -77,7 +102,16 @@ g.set({{
 def capture(name):
     path = root / name
     subprocess.run(["grim", str(path)], check=True)
-    return Image.open(path).convert("RGB")
+    image = Image.open(path)
+    if test_scale > 1:
+        monitor_width, monitor_height = (int(value) for value in os.environ["MONITOR"].split("x", 1))
+        expected_size = (monitor_width, monitor_height)
+        if image.size != expected_size:
+            raise AssertionError(f"scale-{test_scale} screencopy is {image.size}, expected {expected_size}")
+        logical_size = (round(image.width / test_scale), round(image.height / test_scale))
+        print(f"scale-{test_scale} screencopy: {image.width}x{image.height}; checking logical pixels")
+        image = image.resize(logical_size, Image.Resampling.NEAREST)
+    return image.convert("RGB")
 
 
 configure(0)
@@ -102,8 +136,9 @@ try:
             for x in range(60, 80)
             if ((x + 0.5 - 80) ** 2 + (y + 0.5 - 80) ** 2) ** 0.5 > 17
         ]
-        peak = max(max(delta.getpixel(point)) for point in edge_pixels)
-        assert peak <= 2, ("blur outside rounded corner", peak)
+        peak_point = max(edge_pixels, key=lambda point: max(delta.getpixel(point)))
+        peak = max(delta.getpixel(peak_point))
+        assert peak <= 2, ("blur outside rounded corner", peak, peak_point)
         if not use_theme and not test_shadows:
             for y in range(64, 80):
                 for x in range(64, 80):

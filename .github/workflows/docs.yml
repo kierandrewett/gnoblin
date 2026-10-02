@@ -5,6 +5,9 @@ on:
       [
         "docs/**",
         "scripts/docs-vitepress-postbuild.mjs",
+        "scripts/prepare-apt-pages.py",
+        "scripts/build-apt-repository.py",
+        "packaging/targets.json",
         "package.json",
         "package-lock.json",
         ".github/workflows/docs.yml",
@@ -15,16 +18,18 @@ on:
       [
         "docs/**",
         "scripts/docs-vitepress-postbuild.mjs",
+        "scripts/prepare-apt-pages.py",
+        "scripts/build-apt-repository.py",
+        "packaging/targets.json",
         "package.json",
         "package-lock.json",
-        ".github/workflows/docs.yml",
       ]
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
-  group: docs-${{ github.ref }}
-  cancel-in-progress: true
+  group: gnoblin-static-site
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -49,10 +54,22 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           name: documentation
           path: docs/.vitepress/dist
+      - name: Include the published APT archive
+        run: |
+          git fetch origin gh-pages
+          mkdir -p docs/.vitepress/dist/apt
+          git archive origin/gh-pages apt | tar -x -C docs/.vitepress/dist
+          test -s docs/.vitepress/dist/apt/gnoblin-archive-keyring.asc
+          python3 scripts/prepare-apt-pages.py \
+            --archive docs/.vitepress/dist/apt \
+            --output docs/.vitepress/dist/_redirects
       - name: Deploy to Cloudflare Pages
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

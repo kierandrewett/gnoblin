@@ -116,9 +116,9 @@ another persistent GSettings backend so desktop
 settings survive logout. The source build does not install host packages.
 GNOME Settings is optional.
 
-The example configuration binds media keys to `playerctl` and brightness keys
-to `brightnessctl`. Install either command if you want those shortcuts, or
-change the bindings to commands available on your system.
+The example configuration binds media keys to `wpctl` and `playerctl`. To add
+brightness shortcuts, bind the keys to a command such as `brightnessctl`.
+Install the commands used by your configuration.
 
 Register the standalone Gnoblin login:
 

@@ -15,12 +15,11 @@ diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 index da691f3..276bc2b 100644
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -156,8 +157,9 @@
+@@ -156,7 +157,8 @@
      <file>ui/components/gnoblinFrames.js</file>
      <file>ui/components/gnoblinFramePolicy.js</file>
      <file>ui/components/gnoblinControl.js</file>
      <file>ui/components/gnoblinSessionLock.js</file>
-     <file>ui/components/gnoblinMutterEvents.js</file>
 +    <file>ui/components/gnoblinNotificationBridge.js</file>
      <file>ui/components/gnoblinRecovery.js</file>
      <file>ui/components/gnoblinConsole.js</file>

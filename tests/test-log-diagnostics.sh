@@ -12,10 +12,14 @@ cat >"$TMP/benign.log" <<'EOF'
 portal is not running: GDBus.Error:org.freedesktop.DBus.Error.ServiceUnknown
 DeprecationWarning: Gio.DBusConnection.register_object is deprecated
 GNOME Shell started
+Catchpoint 4 (signal SIGABRT)
+Catchpoint 5 (signal SIGSEGV)
 EOF
 
 cat >"$TMP/fatal.log" <<'EOF'
 GNOME Shell-CRITICAL **: TypeError: can't access property "join"
+GNOBLIN_GDB_FATAL: SIGSEGV
+GNOBLIN_GDB_ABORT: SIGABRT
 EOF
 
 if gnoblin_log_has_fatal "$TMP/benign.log"; then

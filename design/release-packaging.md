@@ -3,6 +3,113 @@
 This is internal release engineering material. Keep it current whenever the
 release pipeline or COPR publication changes.
 
+## Candidate release validation (2026-09-26)
+
+- Release run `36236893302` passed the package builds and install checks for
+  Debian 13, Ubuntu 24.04/26.04, Arch and openSUSE Tumbleweed. APT refused to
+  replace Debian revision `-4` because its published checksum differs from the
+  rebuilt package; the corrected package used `-5`. COPR built Mutter successfully
+  for Fedora 43/44/45, then exposed a missing `gcc-c++` build requirement for
+  private GJS in the Shell package. Shell RPM release `51.0-22` adds it.
+- Release run `36239667423` passed the rebuilt DEBs and their install checks,
+  Arch co-install/removal, openSUSE Tumbleweed co-install/removal, and the
+  NixOS 26.05 closure. Its corrected Shell RPM `51.0-22` then failed all COPR
+  chroots because the GJS build appended `-fPIE` after Meson's shared-library
+  `-fPIC`, breaking a bundled GObject Introspection test library. Shell RPM
+  release `51.0-23` removes the global PIE flags and uses Meson's `b_pie`
+  option so executable targets stay PIE while shared libraries remain PIC.
+- Release run `36242668258` passed the Shell `51.0-23` source build, all three
+  DEB build/install checks, Arch co-install/removal, openSUSE co-install/removal,
+  and the NixOS 26.05 closure. APT correctly refused to replace Debian revision
+  `-5`: `/usr/share/doc/gnoblin/build-info.json` records the source commit, so
+  each tag commit produces a different package checksum even when the DEB
+  sources are otherwise unchanged. The next corrected package must use `-6`.
+  COPR Shell `51.0-23` reached GNOME Shell introspection but failed because
+  `g-ir-scanner` linked a temporary helper as PIE without compiling it with
+  `-fPIE`. Shell RPM `51.0-24` enables Meson's built-in PIE handling for Shell
+  itself as well as the private GJS build.
+
+- Release run `36230307572` built Debian 13, Ubuntu 24.04/26.04, Arch,
+  openSUSE Tumbleweed, and NixOS 26.05 artifacts. Their package installation,
+  GNOME co-installation, and removal gates passed. COPR Mutter build `11038026`
+  passed Fedora 44/45 and failed Fedora 43 because PipeWire 1.4 lacks the
+  capability/HDR APIs and device-ID SPA property used by Mutter 51.
+- The compatibility patch now keeps common tag parameters outside the optional
+  capability code, uses numeric logging for color enums missing in PipeWire
+  1.4, and gates device ID separately at PipeWire 1.6. The COPR Mutter release
+  is `51.0-27.gnoblin`; DEB revisions `-1` through `-5` of the 0.1.7 package
+  are published and immutable. The corrected package must use `-6`.
+- APT suite indexes were corrected and republished by `36232880003` at
+  `gh-pages` commit `f95cc80e`. The index contents now match each Ubuntu suite;
+  confirm the newest Pages build and live custom domain before treating the
+  APT repository as available.
+- `gnoblin.org` is served by the Cloudflare Pages VitePress project, not the
+  legacy GitHub Pages build. Include the `gh-pages` APT archive in that deploy.
+  Cloudflare Pages rejects files over 25 MiB, so publish the small signed
+  indexes/keyring and redirect each indexed `.deb` path to that release's
+  GitHub asset. Index only the release version being published so redirects
+  never point at an asset removed from the current release draft.
+
+- The Wayland config fix is validated by DEB builds and installed reload/window
+  smoke checks on Debian 13 and Ubuntu 24.04/26.04 in release runs
+  `36218054872` and `36220527312`.
+- Run `36218054872` found two Arch release-gate defects: the runner omitted the
+  declared `brightnessctl` dependency, and its package selector chose the
+  `gnoblin-debug` split. Both are fixed in `main`; run `36220527312` passed the
+  Arch build and stock-GNOME co-install/removal check.
+- Run `36220527312` created the GitHub Release draft and published the APT
+  repository, but its COPR job failed while resolving
+  `pkgconfig(hyprcursor) >= 0.1.13` in Fedora 43/44/45. The Gnoblin Mutter
+  patch itself requires Hyprcursor 0.1.11; the RPM floor has been corrected to
+  that patch's API requirement.
+- Run `36223273109` passed the Fedora schema build, then failed the Mutter
+  build because Mutter 51 includes `pipewire/capabilities.h`, which is absent
+  from Fedora 43's PipeWire 1.4.11. Lowering only the dependency floor was not
+  sufficient. The compatibility patch now compiles device-ID negotiation only
+  when PipeWire 1.5.84 or newer provides those APIs; the 1.4 path retains normal
+  screen casting without that optional negotiation. Fedora and openSUSE RPM
+  declarations now use the 1.4 API floor. Rebuild all three COPR chroots
+  before claiming Fedora 43 package availability.
+- The next Mutter RPM release is 51.0-25.gnoblin, and the generated RPM
+  metapackage now requires that exact build. Keep the release manifest and
+  metapackage synchronized whenever the Mutter RPM release changes.
+- That run's APT job correctly refused different bytes for the already
+  published 0.1.7 package versions. The exact immutable Debian/Ubuntu package
+  payloads were restored to the GitHub release draft and its checksums updated;
+  rerunning only the APT job then passed without changing those packages.
+- Since the corrected Mutter source changes the 0.1.7 build, the next release
+  workflow run uses Debian package revision `-2`; revision `-1` remains
+  immutable. The `gnoblin-v0.1.7` tag must point at the corrected release commit
+  before rerunning the full Release workflow.
+- Release run `36226484341` was cancelled after Nix found that the first
+  compatibility patch used no-context hunks that landed at the wrong locations
+  after earlier Mutter patches shifted the source. The patch now anchors its
+  edits to the PipeWire dependency and affected functions; rerun the source and
+  Nix builds before allowing publication.
+- Release run `36226790588` passed the source, Nix, openSUSE, Arch, and all three
+  Debian/Ubuntu build/install gates. Its APT publication passed with Debian
+  revision `-2`. COPR initially stopped at source-RPM selection because the
+  draft still contained the obsolete Mutter 51.0-24 asset beside 51.0-25. The
+  stale asset was removed and the COPR job rerun. The release workflow now
+  removes draft assets absent from the fresh build before upload, preventing
+  this repair failure on later releases.
+- COPR build `11037820` then exposed three more PipeWire 1.5-only headers absent
+  from Fedora 43's PipeWire 1.4.11: `spa/param/dict.h`, `dict-utils.h`, and
+  `peer-utils.h`. The compatibility patch now guards those includes with the
+  same capability check. Since Debian revisions `-1` and `-2` are published,
+  the next release run uses Debian revision `-3`; the matching Mutter RPM
+  release is `51.0-26.gnoblin`.
+- The APT revision `-3` publication revealed that each Ubuntu suite index
+  included both Ubuntu builds from the shared pool. Filter each index by its
+  version suffix and republish the archive before treating APT availability
+  as correct. The release workflow now tests the suite-specific index rule.
+- The current family scope has distinct remaining work: Debian 12 and Ubuntu
+  22.04 have only a private dependency-closure build; EL 8/9/10 and openSUSE
+  Leap have no viable host dependency floor for the GNOME 51 packages; Arch,
+  Tumbleweed, and NixOS 26.05 still need graphical-session acceptance. Keep
+  those states aligned with `packaging/targets.json` and
+  `docs/platform-support.md`.
+
 ## Release workflow coverage added 2026-09-26
 
 - The tagged Release workflow now builds the openSUSE Tumbleweed RPM chain from
@@ -123,9 +230,10 @@ release pipeline or COPR publication changes.
   utility. The new exact-main package runs must still pass before recording
   Arch or Tumbleweed package gates.
 - Commit `4cb52603` changed Nix full-build concurrency to preserve a long
-  package build when later commits are pushed. Stable Nix channels still have
-  dependency-floor blockers and do not have installable channel-specific
-  package outputs; successful evaluation is not NixOS release support.
+  package build when later commits are pushed. The stable NixOS channels still
+  record their host dependency-floor blockers, but the 25.05 and 25.11 module
+  outputs now select a private, pinned Gnoblin closure rather than attempting
+  to replace their host GNOME packages.
 - The earlier install failure in run `36074745709` was caused by
   `next.cursor` being undefined while reloading a partial config. Commits
   `752d016` and `3daf6dc` added default cursor values, validation, and
@@ -147,7 +255,16 @@ release pipeline or COPR publication changes.
 
 - The current packaging audit adds automated RPM repository probes for Rocky 8/9/10 and openSUSE Leap 15.6/16.0/Tumbleweed. The probe separates five host runtime floors from build-only API requirements and the Mutter development package's Wayland Protocols floor. Rocky and Leap remain blocked by their repository-provided versions. Tumbleweed's later package and coexistence gate is recorded below; a probe alone would not establish build, installation, co-installation, or graphical-session support.
 - Arch's generated `PKGBUILD` stages the privately built Mutter into a temporary build prefix before configuring Shell. It feeds staged pkg-config, GIR, and typelib paths to Shell and checks that headers and libraries resolve from that private stage. This fixed the `mutter-clutter-51` configure failure from Verify run `36148646223`; the completed package result is recorded below.
-- Stable NixOS channel package attributes fail early with recorded dependency blockers instead of implying support through `nixpkgs-unstable`. The 25.05 and 25.11 channels remain unsupported. The separate 26.05 closure now has a successful package-build gate, but remains unsupported pending installation, stock-GNOME coexistence, removal, and graphical-session evidence.
+- NixOS 25.05 and 25.11 expose `gnoblin-nixos-25_05` and
+  `gnoblin-nixos-25_11` package attributes with matching channel modules. Both
+  names resolve to the same lock-file-pinned private Gnoblin closure, built
+  from the rolling input because each stable host lacks required GNOME 51
+  interfaces. The Nix workflow job `build-nixos-25-stable-private-runtime`
+  evaluates both modules against their exact channel inputs, builds that
+  closure once, and retains `nixos-25-stable-private-runtime-metadata` with
+  the resulting Nix store path. It does not replace the host `gnome-shell` or
+  `mutter` package, and it does not prove installation, removal, or graphical
+  session login.
 
 - Commit `c54e3d4b` corrects the pinned GNOME 51 host floors to GJS 1.87.1
   and Wayland Protocols 1.48, sourced directly from the exact Shell and Mutter
@@ -198,6 +315,17 @@ release pipeline or COPR publication changes.
   The production DEB manifest and workflow remain unchanged. GTK 4.14/GCR4,
   Mutter/Shell, Ubuntu 22.04, package transactions, and graphical sessions
   remain unverified; both targets stay unsupported.
+- Rocky 10.2 and openSUSE Leap 16.0 clean containers now build the same
+  minimal private GLib 2.90/GObject Introspection 1.80.1 closure through
+  `packaging/rpm/build-compat-bootstrap.sh`. The gate verifies the private
+  `girepository-2.0.pc`, `libgirepository-2.0.so`, the scanner kept under the
+  sibling build-tools prefix, and the runtime RPATH. Rocky provisions its
+  isolated Meson/Ninja virtual environment; Leap uses its repository tools.
+  This is a prerequisite check only: it does not build an RPM, publish to
+  COPR, install beside GNOME, remove a package, or start a graphical session.
+  EL 8/9, Leap 15.6, and the remaining runtime closure (including GJS and
+  target-specific unsupported dependencies) remain blocked pending their own
+  build and package transaction gates.
 - The exact-main records above supersede the earlier in-progress results.
   Inventory workflow run `36160948365` validates the 21-target schema at the
   current revision. It validates consistency of the recorded states; it does

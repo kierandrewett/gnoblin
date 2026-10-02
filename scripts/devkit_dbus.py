@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
-"""Write an isolated D-Bus config for nested Gnoblin development sessions.
+"""Write the isolated D-Bus config used by Gnoblin devkit runs.
 
-The nested compositor does not inherit the host session's full service
-directory. A private document portal stub also prevents tests and clients from
-mounting FUSE in the host user's document directory.
+The visible devkit and the headless harness both need xdg-desktop-portal for
+Mutter ScreenCast, but must not inherit the host session's full DBus service
+directory. In particular, the real document portal tries to mount FUSE at the
+user's real /run/user/.../doc. This helper writes a small per-run service dir
+with only the portal services the devkit needs plus gnoblin's document stub.
+Application E2E runs can also opt into Flatpak's session portal for sandboxed
+clients that require it at startup. The test runner starts IBus directly in the
+private session so the daemon remains owned by that session bus.
 """
 
 from __future__ import annotations
 
+import argparse
 import html
 import os
 import pathlib
@@ -20,6 +26,7 @@ REQUIRED_DBUS_SERVICES = (
     "org.freedesktop.impl.portal.PermissionStore",
 )
 OPTIONAL_DBUS_SERVICES = (
+    "org.freedesktop.impl.portal.desktop.gnome",
     "org.freedesktop.impl.portal.desktop.gtk",
     "ca.desrt.dconf",
     "org.freedesktop.impl.portal.desktop.gnome",
@@ -27,13 +34,21 @@ OPTIONAL_DBUS_SERVICES = (
 )
 
 
-def write_config(tmp: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
+def write_config(
+    tmp: pathlib.Path,
+    repo_root: pathlib.Path,
+    *,
+    include_flatpak_portal: bool = False,
+) -> pathlib.Path:
     tmp = tmp.resolve()
     repo_root = repo_root.resolve()
     service_dir = tmp / "dbus-services"
     service_dir.mkdir(parents=True, exist_ok=True)
     system_service_dir = pathlib.Path("/usr/share/dbus-1/services")
-    for name in (*REQUIRED_DBUS_SERVICES, *OPTIONAL_DBUS_SERVICES):
+    service_names = [*REQUIRED_DBUS_SERVICES, *OPTIONAL_DBUS_SERVICES]
+    if include_flatpak_portal:
+        service_names.append("org.freedesktop.portal.Flatpak")
+    for name in service_names:
         src = system_service_dir / f"{name}.service"
         if not src.exists():
             if name in OPTIONAL_DBUS_SERVICES:
@@ -98,11 +113,21 @@ def write_config(tmp: pathlib.Path, repo_root: pathlib.Path) -> pathlib.Path:
 
 
 def main() -> int:
-    if len(sys.argv) != 3:
-        print(f"usage: {sys.argv[0]} TMPDIR REPO_ROOT", file=sys.stderr)
-        return 2
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("tmpdir", type=pathlib.Path)
+    parser.add_argument("repo_root", type=pathlib.Path)
+    parser.add_argument(
+        "--flatpak-portal",
+        action="store_true",
+        help="include Flatpak's session portal for sandboxed application tests",
+    )
+    args = parser.parse_args()
     try:
-        conf = write_config(pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2]))
+        conf = write_config(
+            args.tmpdir,
+            args.repo_root,
+            include_flatpak_portal=args.flatpak_portal,
+        )
     except Exception as exc:
         print(f"devkit-dbus: {exc}", file=sys.stderr)
         return 1

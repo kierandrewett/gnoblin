@@ -172,11 +172,11 @@ index fcfda8a..59df1c5 100644
 diff --git a/js/js-resources.gresource.xml b/js/js-resources.gresource.xml
 --- a/js/js-resources.gresource.xml
 +++ b/js/js-resources.gresource.xml
-@@ -159,6 +159,8 @@
+@@ -159,5 +159,8 @@
      <file>ui/components/gnoblinFramePolicy.js</file>
      <file>ui/components/gnoblinControl.js</file>
      <file>ui/components/gnoblinSessionLock.js</file>
-     <file>ui/components/gnoblinMutterEvents.js</file>
++    <file>ui/components/gnoblinMutterEvents.js</file>
 +    <file>ui/components/gnoblinTouchpadGestures.js</file>
 +    <file>ui/components/gnoblinTouchpadGestureCore.js</file>
      <file>ui/components/gnoblinNotificationBridge.js</file>

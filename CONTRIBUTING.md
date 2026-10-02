@@ -26,6 +26,11 @@ Use `just test-all` for a fresh build plus the full headless suite. Use `just te
 when the real-host and RPM gates are required. The testing guide records which
 checks need a real seat, hardware or a running private session.
 
+Strict scheduled and manually dispatched app E2E failures create or update a
+Beads/GitHub compatibility issue with the failed outcomes and workflow
+artifacts. Treat those outcomes as triage evidence until the artifacts show
+whether the cause is Gnoblin, an application or the test environment.
+
 ## Boundaries
 
 Keep upstream submodules at their pinned commits. Put Gnoblin overlays in

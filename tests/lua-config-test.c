@@ -33,6 +33,29 @@ static GVariant* load(const char* path, GPtrArray** paths, GError** error) {
     return gnoblin_config_load_document(path, paths, NULL, error);
 }
 
+static void test_runtime_document_ownership(const char* path) {
+    g_autoptr(GError) error = NULL;
+    GVariant* document = gnoblin_config_load_runtime(path, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_assert_false(g_variant_is_floating(document));
+
+    /* Retain the returned document across replacement of the active runtime. */
+    GVariantBuilder builder;
+    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&builder, "{sv}", "document", document);
+    g_autoptr(GVariant) result = g_variant_ref_sink(g_variant_builder_end(&builder));
+    gnoblin_config_finish_load(TRUE);
+    g_variant_unref(document);
+
+    document = gnoblin_config_load_runtime(path, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    gnoblin_config_finish_load(TRUE);
+    g_variant_unref(document);
+    g_variant_unref(g_steal_pointer(&result));
+}
+
 int main(void) {
     g_autoptr(GError) error = NULL;
     g_assert_true(gnoblin_config_window_pattern_match("dock", "prefix-dock-suffix", &error));
@@ -57,6 +80,7 @@ int main(void) {
     g_autofree char* root = g_build_filename(dir, "init.lua", NULL);
     g_autofree char* example_root = g_build_filename(dir, "example.lua", NULL);
     g_autofree char* explicit_root = g_build_filename(dir, "personal.lua", NULL);
+    g_autofree char* runtime_root = g_build_filename(dir, "runtime.lua", NULL);
     g_autofree char* malformed_patterns = g_build_filename(dir, "malformed-patterns.lua", NULL);
     g_autofree char* padding_config = g_build_filename(dir, "padding.lua", NULL);
     g_autofree char* module = g_build_filename(dir, "module.lua", NULL);
@@ -82,6 +106,9 @@ int main(void) {
         g_clear_error(&error);
     }
     g_assert_cmpint(g_mkdir(conf, 0700), ==, 0);
+    g_assert_true(g_file_set_contents(runtime_root, "return {}\n", -1, &error));
+    g_assert_no_error(error);
+    test_runtime_document_ownership(runtime_root);
     g_assert_true(g_file_set_contents(module, "return { name = 'module' }\n", -1, &error));
     g_assert_true(g_file_set_contents(
         nested,
@@ -202,8 +229,8 @@ int main(void) {
         g_autoptr(GVariant) example_shortcuts =
             g_variant_lookup_value(document, "shortcuts", G_VARIANT_TYPE("av"));
         g_assert_nonnull(example_shortcuts);
-        /* The seed includes ten command shortcuts and one compositor action. */
-        g_assert_cmpuint(g_variant_n_children(example_shortcuts), ==, 11);
+        /* The seed includes eight command shortcuts and one compositor action. */
+        g_assert_cmpuint(g_variant_n_children(example_shortcuts), ==, 9);
         g_autoptr(GVariant) example_window_management =
             g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
         g_assert_nonnull(example_window_management);

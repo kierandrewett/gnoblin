@@ -603,6 +603,10 @@ void meta_wayland_session_lock_finalize(MetaWaylandCompositor* compositor) {
         destroy_controller(controller);
 }
 
+void meta_wayland_session_lock_controller_finalize(MetaWaylandCompositor* compositor) {
+    meta_wayland_session_lock_finalize(compositor);
+}
+
 void meta_wayland_session_lock_enter_failsafe(MetaWaylandCompositor* compositor) {
     MetaWaylandSessionLockController* controller;
     MetaContext* context;

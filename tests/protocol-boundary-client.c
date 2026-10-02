@@ -127,6 +127,7 @@ static const struct zwlr_foreign_toplevel_manager_v1_listener foreign_listener =
 
 struct xdg_surface_state {
     bool configured;
+    bool maximized;
     uint32_t serial;
 };
 
@@ -153,11 +154,20 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 
 static void xdg_toplevel_configure(void* data, struct xdg_toplevel* xdg_toplevel, int32_t width,
                                    int32_t height, struct wl_array* states) {
-    (void)data;
+    struct xdg_surface_state* state = data;
+    uint32_t* value;
+
     (void)xdg_toplevel;
     (void)width;
     (void)height;
-    (void)states;
+    if (!state)
+        return;
+
+    state->maximized = false;
+    wl_array_for_each(value, states) {
+        if (*value == XDG_TOPLEVEL_STATE_MAXIMIZED)
+            state->maximized = true;
+    }
 }
 
 static void xdg_toplevel_close(void* data, struct xdg_toplevel* xdg_toplevel) {
@@ -451,6 +461,180 @@ static bool test_foreign_toplevel_stop(struct wl_display* display, struct protoc
     }
 
     protocols->foreign_toplevel = NULL;
+    return true;
+}
+
+static bool expect_no_precommit_configure(struct wl_display* display,
+                                          struct xdg_surface_state* state, const char* request) {
+    if (wl_display_roundtrip(display) < 0) {
+        fprintf(stderr, "FAIL: precommit %s request failed\n", request);
+        return false;
+    }
+    if (state->configured) {
+        fprintf(
+            stderr,
+            "FAIL: compositor sent xdg configure after precommit %s, before first surface commit\n",
+            request);
+        return false;
+    }
+    return true;
+}
+
+static bool test_precommit_maximize_configure_order(void) {
+    struct protocols protocols = {0};
+    struct xdg_surface_state xdg_state = {0};
+    struct wl_display* display = wl_display_connect(NULL);
+    struct wl_registry* registry;
+    struct wl_surface* surface;
+    struct xdg_surface* xdg_surface;
+    struct xdg_toplevel* xdg_toplevel;
+
+    if (!display) {
+        fprintf(stderr, "FAIL: precommit-state client could not connect\n");
+        return false;
+    }
+
+    registry = wl_display_get_registry(display);
+    wl_registry_add_listener(registry, &registry_listener, &protocols);
+    if (wl_display_roundtrip(display) < 0 || !protocols.compositor || !protocols.xdg_wm_base) {
+        fprintf(stderr, "FAIL: precommit-state client missed required globals\n");
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_wm_base_add_listener(protocols.xdg_wm_base, &xdg_wm_base_listener, NULL);
+    surface = wl_compositor_create_surface(protocols.compositor);
+    xdg_surface = xdg_wm_base_get_xdg_surface(protocols.xdg_wm_base, surface);
+    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, &xdg_state);
+    xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
+    xdg_toplevel_add_listener(xdg_toplevel, &xdg_toplevel_listener, &xdg_state);
+    xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.PrecommitMaximize");
+    xdg_toplevel_set_maximized(xdg_toplevel);
+
+    if (!expect_no_precommit_configure(display, &xdg_state, "set_maximized")) {
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_toplevel_unset_maximized(xdg_toplevel);
+    if (!expect_no_precommit_configure(display, &xdg_state, "unset_maximized")) {
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_toplevel_set_fullscreen(xdg_toplevel, NULL);
+    if (!expect_no_precommit_configure(display, &xdg_state, "set_fullscreen")) {
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_toplevel_unset_fullscreen(xdg_toplevel);
+    if (!expect_no_precommit_configure(display, &xdg_state, "unset_fullscreen")) {
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_toplevel_set_maximized(xdg_toplevel);
+    if (!expect_no_precommit_configure(display, &xdg_state, "set_maximized")) {
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    wl_surface_commit(surface);
+    if (wl_display_roundtrip(display) < 0 || !xdg_state.configured || !xdg_state.maximized) {
+        fprintf(
+            stderr,
+            "FAIL: first surface commit did not produce an initially maximized xdg configure\n");
+        wl_display_disconnect(display);
+        return false;
+    }
+
+    xdg_surface_ack_configure(xdg_surface, xdg_state.serial);
+    xdg_toplevel_destroy(xdg_toplevel);
+    xdg_surface_destroy(xdg_surface);
+    wl_surface_destroy(surface);
+    if (wl_display_roundtrip(display) < 0) {
+        fprintf(stderr, "FAIL: precommit-state client could not clean up\n");
+        wl_display_disconnect(display);
+        return false;
+    }
+    wl_display_disconnect(display);
+    return true;
+}
+
+static bool test_disconnect_unconfigured_toplevel(void) {
+    struct protocols protocols = {0};
+    struct protocols observer_protocols = {0};
+    struct wl_display* disconnect_display = wl_display_connect(NULL);
+    struct wl_display* observer_display;
+    struct wl_registry* registry;
+    struct wl_surface* surface;
+    struct xdg_surface* xdg_surface;
+    struct xdg_toplevel* xdg_toplevel;
+    struct xdg_surface_state xdg_state = {0};
+
+    if (!disconnect_display) {
+        fprintf(stderr, "FAIL: unconfigured toplevel client could not connect\n");
+        return false;
+    }
+
+    registry = wl_display_get_registry(disconnect_display);
+    wl_registry_add_listener(registry, &registry_listener, &protocols);
+    if (wl_display_roundtrip(disconnect_display) < 0 || !protocols.compositor ||
+        !protocols.xdg_wm_base) {
+        fprintf(stderr, "FAIL: unconfigured toplevel client missed required globals\n");
+        wl_display_disconnect(disconnect_display);
+        return false;
+    }
+
+    surface = wl_compositor_create_surface(protocols.compositor);
+    xdg_surface = xdg_wm_base_get_xdg_surface(protocols.xdg_wm_base, surface);
+    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, &xdg_state);
+    xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
+    xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.UnconfiguredDisconnect");
+    xdg_toplevel_set_minimized(xdg_toplevel);
+
+    /* Role creation gives Mutter an unready MetaWindow, but we deliberately do
+     * not commit a buffer or acknowledge the initial configure. Disconnecting
+     * now exercises wl_resource cleanup with the toplevel still unconfigured. */
+    if (!expect_no_precommit_configure(disconnect_display, &xdg_state, "set_minimized")) {
+        wl_display_disconnect(disconnect_display);
+        return false;
+    }
+
+    /* Role creation gives Mutter an unready MetaWindow. Disconnecting without
+     * a commit also exercises wl_resource cleanup for an unconfigured role. */
+    wl_display_disconnect(disconnect_display);
+    observer_display = wl_display_connect(NULL);
+    if (!observer_display) {
+        int error = errno;
+
+        fprintf(stderr,
+                "FAIL: compositor did not survive unconfigured toplevel disconnect: "
+                "observer connect failed: %s\n",
+                strerror(error));
+        return false;
+    }
+
+    registry = wl_display_get_registry(observer_display);
+    wl_registry_add_listener(registry, &registry_listener, &observer_protocols);
+    if (wl_display_roundtrip(observer_display) < 0 || !observer_protocols.compositor ||
+        !observer_protocols.xdg_wm_base) {
+        const struct wl_interface* interface = NULL;
+        uint32_t object_id = 0;
+        uint32_t code = wl_display_get_protocol_error(observer_display, &interface, &object_id);
+        int error = wl_display_get_error(observer_display);
+
+        fprintf(stderr,
+                "FAIL: compositor did not survive unconfigured toplevel disconnect: "
+                "wayland_error=%d (%s), protocol_error=%s#%u code=%u\n",
+                error, error ? strerror(error) : "none", interface ? interface->name : "none",
+                object_id, code);
+        wl_display_disconnect(observer_display);
+        return false;
+    }
+
+    wl_display_disconnect(observer_display);
     return true;
 }
 
@@ -788,6 +972,12 @@ int main(void) {
     }
 
     if (!test_screencopy_boundaries(display, &protocols))
+        return 1;
+
+    if (!test_disconnect_unconfigured_toplevel())
+        return 1;
+
+    if (!test_precommit_maximize_configure_order())
         return 1;
 
     wl_display_disconnect(display);

@@ -85,11 +85,12 @@ Configure a Fedora account using the [COPR API page](https://copr.fedorainfraclo
 Keep credentials outside the repository.
 
 ```sh
-scripts/publish-copr.sh OWNER/gnoblin PATH_TO_MUTTER_SRPM PATH_TO_SHELL_SRPM PATH_TO_PORTAL_SRPM PATH_TO_META_SRPM
+scripts/publish-copr.sh OWNER/gnoblin PATH_TO_MUTTER_SRPM PATH_TO_PORTAL_SRPM PATH_TO_GNOBLIN_SRPM
 ```
 
-Replace the owner and paths. The script waits for Mutter before building Shell.
-Do not use asynchronous submission that bypasses this dependency.
+Replace the owner and paths. The script publishes the standalone Mutter,
+portal, and Gnoblin packages in dependency order. It does not build or publish
+GNOME Shell.
 
 Use a currently available chroot supplying the required dependencies.
 After all builds succeed, test package resolution, login and removal on a clean
@@ -113,7 +114,7 @@ git push origin gnoblin-v0.1.0
 ```
 
 The release workflow publishes a self-contained Gnoblin source tarball and
-the component source archives first, then source RPMs and binary packages.
+the Mutter and portal source archives first, then source RPMs and binary packages.
 The main tarball builds with `./build.sh` and does not need Git or submodules.
 The Fedora source RPM and openSUSE jobs use the component archives inside that
 tarball, after checking the published source assets' SHA-256 sums.
@@ -164,7 +165,7 @@ refresh the pinned Nix inputs, and run:
 
 ```sh
 just check-gnome-version
-nix flake update mutter-src gnome-shell-src portal-src gxdp-src
+nix flake update mutter-src portal-src gxdp-src
 just verify
 ```
 
@@ -175,5 +176,5 @@ Patch rebasing and runtime compatibility still require review.
 1. Build all artifacts from the release checkout.
 2. Verify private package paths and stock GNOME coexistence.
 3. Publish packages and check dependency resolution.
-4. Test login, shell startup, portal access and removal on a clean host.
+4. Test login, desktop-shell integration, portal access and removal on a clean host.
 5. Update installation commands and version notes to match published packages.

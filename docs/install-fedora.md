@@ -37,10 +37,6 @@ For IBus input methods, install `ibus` separately with `sudo dnf install ibus`.
 The basic session needs only `ibus-libs` and does not start the daemon until
 an IBus input source is configured.
 
-For GNOME Shell's built-in screen recorder, run
-`sudo dnf install gstreamer1 gstreamer1-plugins-good pipewire-gstreamer`.
-Portal screen sharing does not need these recording plugins.
-
 ## 2. Install a shell
 
 [Choose a desktop shell](bring-your-own-shell.md) for your bar and launcher.

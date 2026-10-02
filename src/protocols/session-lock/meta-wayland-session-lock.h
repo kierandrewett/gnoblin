@@ -85,3 +85,6 @@ void meta_wayland_init_session_lock(MetaWaylandCompositor* compositor);
 
 /* Release the controller before the compositor frees its seat and globals. */
 void meta_wayland_session_lock_finalize(MetaWaylandCompositor* compositor);
+
+/* Compatibility entry point used by the newer compositor shutdown path. */
+void meta_wayland_session_lock_controller_finalize(MetaWaylandCompositor* compositor);

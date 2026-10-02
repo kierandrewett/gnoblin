@@ -126,13 +126,74 @@ runtime typelib path remains untested. The entire run is still only a private
 dependency build: Mutter/Shell, package transactions, Ubuntu 22.04, and
 graphical sessions have not been tested.
 
-`.github/workflows/deb.yml` now attempts this pinned dependency graph on clean
-Debian 12 and Ubuntu 22.04 images during normal CI. The job is explicitly
-experimental: it does not generate or publish a `.deb`, and release workflows
-continue to package only Debian 13 and Ubuntu 24.04/26.04. Keep the two older
-targets unsupported until the graph builds on both images, private GTK/GCR
-typelibs load in GJS, the complete compositor runtime builds, and install,
-coexistence, removal, and graphical-session checks pass.
+`.github/workflows/deb.yml` runs this pinned graph on clean Debian 12 and
+Ubuntu 22.04 images during normal CI. The job is experimental: it does not
+generate or publish a `.deb`. Release workflows package Debian 13 and Ubuntu
+24.04/26.04.
+
+Debian 12 and Ubuntu 22.04 remain unsupported. Private GTK/GCR typelibs must
+load in GJS, the full compositor must build, and package install, GNOME
+coexistence, removal, and graphical-session checks must pass.
+
+## Full-runtime experiment runner
+
+`scripts/build-deb-compat-runtime.sh` composes the experimental bootstrap
+graph with the pinned compositor dependencies, then follows the normal
+private-prefix build, Mutter/Shell install and DEB assembly sequence. It is
+restricted to disposable Debian 12 and Ubuntu 22.04 containers and is separate
+from `scripts/build-deb.sh` and release CI. It deliberately refuses to start
+until a Rust compiler at least 1.85 is available because the first additional
+Mutter dependency, Glycin 2.0, declares that compiler floor.
+
+This is a reproducible source-closure gate, not a support switch. It prevents
+a builder from silently using an older host library in place of Glycin or from
+mistaking the GTK/GCR success for a full GNOME runtime result. A pinned,
+checksum-verified build-only Rust toolchain is required before this runner can
+reach the remaining libei, display-info, cursor, Mutter, Shell, package and
+session gates.
+
+The experimental container now installs only the `rustc`, `cargo` and
+`rust-std` components for Rust 1.85.1 under
+`/opt/gnoblin-compat-build-tools`. `scripts/bootstrap-compat-rust.py` verifies
+each archive against the upstream 1.85.1 channel manifest before invoking its
+component installer. The compiler is build-only: it is not staged below
+`/usr/lib/gnoblin`, included in a DEB, exported into the host environment, or
+used by a host session service. The initial pin covers x86_64 Linux, matching
+the published DEB architecture and CI runners.
+
+With that compiler and the pinned Meson 1.10.1 tool on `PATH`, a clean Debian
+12 Glycin 2.0.0 configure reached its first non-toolchain requirement:
+`libseccomp`. The compatibility container installs `libseccomp-dev` as a host
+build prerequisite. It is a system call filtering library used while building
+the private image loader; it is not a GNOME session service and does not alter
+the private-runtime ownership boundary.
+
+The next configure pass resolved libseccomp and then required the normal
+image-codec development interface `libheif`, which is likewise installed from
+the target archive as `libheif-dev`. No private GNOME library has been
+substituted during these checks.
+
+That package is only version 1.15.1, below Glycin's `>= 1.17.0` source floor.
+The compatibility graph therefore pins upstream libheif 1.17.6 as a private
+library, checksum `8390baf4913eda0a183e132cec62b875fb2ef507ced5ddddc98dfd2f17780aee`.
+Its codec libraries remain host dependencies recorded by the eventual DEB;
+the graph does not add codecs, udev rules, a GNOME service or a global loader
+path. This private library still needs a clean target build and Glycin runtime
+test before it can be considered part of a supported package closure.
+
+The first Ubuntu 22.04 GTK attempt exposed another host floor: GTK 4.14.5
+requires Wayland client 1.21, while Jammy provides 1.20. The compatibility
+manifest now builds the repository's pinned Wayland 1.26 and Wayland Protocols
+1.48 before GTK.
+
+A later clean-image CI run built the private Wayland, GTK 4, and GCR graph on
+both Debian 12 and Ubuntu 22.04. The private `PKG_CONFIG_PATH` resolved
+Wayland 1.26.0, GTK 4.14.5 and GCR 4.4.0.1 on Debian 12.
+
+That CI result is still only a dependency-closure build. It does not build the
+compositor or DEB, load private GTK/GCR typelibs in GJS, install alongside GNOME,
+or start a graphical session. Debian 12's GCR configure step also required a
+host `gpg` executable, so the disposable builder now installs `gnupg`.
 
 ## Boundary: what can be private
 

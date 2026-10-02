@@ -1,0 +1,23 @@
+From 6a83db4a7e16e62fd4454a7e006836f3028c6797 Mon Sep 17 00:00:00 2001
+From: Kieran Andrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 00:00:00 +0100
+Subject: [PATCH] test: allow disabling logind in headless sessions
+
+---
+ js/misc/loginManager.js | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/js/misc/loginManager.js b/js/misc/loginManager.js
+index 4717c72f1..89f4793ad 100644
+--- a/js/misc/loginManager.js
++++ b/js/misc/loginManager.js
+@@ -16,5 +16,7 @@ function haveSystemd() {
+ 
+ function haveSystemd() {
++    if (GLib.getenv('GNOBLIN_TEST_NO_LOGIND') === '1')
++        return false;
+     return GLib.access('/run/systemd/seats', 0) >= 0;
+ }
+ 
+-- 
+2.53.0

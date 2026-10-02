@@ -150,15 +150,13 @@ gnoblin.configure {
     -- entry; fields you omit keep their earlier values. Set enable = false
     -- to disable one. Compositor actions use wm.*, mutter.*, or wayland.*;
     -- use command for applications and utilities.
-    -- Media and brightness bindings use optional playerctl/brightnessctl
-    -- commands. Install them or point those bindings at your preferred tools.
+        -- Media bindings use optional wpctl/playerctl commands. Install them
+        -- or point those bindings at your preferred tools.
     shortcuts = {
         ["volume-up"] = {binding = "XF86AudioRaiseVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"}},
         ["volume-down"] = {binding = "XF86AudioLowerVolume", command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%-"}},
         ["volume-mute"] = {binding = "XF86AudioMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"}},
         ["microphone-mute"] = {binding = "XF86AudioMicMute", command = {"wpctl", "set-mute", "@DEFAULT_AUDIO_SOURCE@", "toggle"}},
-        ["brightness-up"] = {binding = "XF86MonBrightnessUp", command = {"brightnessctl", "set", "5%+"}},
-        ["brightness-down"] = {binding = "XF86MonBrightnessDown", command = {"brightnessctl", "set", "5%-"}},
         ["media-play-pause"] = {binding = "XF86AudioPlay", command = {"playerctl", "play-pause"}},
         ["media-next"] = {binding = "XF86AudioNext", command = {"playerctl", "next"}},
         ["media-previous"] = {binding = "XF86AudioPrev", command = {"playerctl", "previous"}},

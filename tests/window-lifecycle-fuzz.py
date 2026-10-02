@@ -28,7 +28,9 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = Path(__file__).resolve()
 sys.path.insert(0, str(ROOT / "tests"))
 from gnoblin_test_session import (  # noqa: E402
+    FRAME_ACTION_CLOSE,
     eval_shell,
+    frame_button_center,
     send_pointer,
     shell_window,
     shell_windows,
@@ -57,7 +59,8 @@ VALID_OPERATIONS = {
 }
 FATAL_LOG = re.compile(
     r"GNOME Shell-CRITICAL|(?:Clutter|Mutter|Meta)-CRITICAL|JS ERROR|"
-    r"Traceback \(most recent call last\)|assertion .* failed|SIG(SEGV|ABRT)|"
+    r"Traceback \(most recent call last\)|assertion .* failed|"
+    r"GNOBLIN_GDB_(?:FATAL|ABORT): SIG(?:SEGV|ABRT|BUS|ILL)|"
     r"segmentation fault|runtime check failed|core dumped|GNOBLIN_GDB_CRITICAL",
     re.IGNORECASE,
 )
@@ -103,18 +106,6 @@ def window_operation_expression(action: dict, window_expr: str) -> str:
     if op in operations:
         return operations[op]
     raise ValueError(f"unsupported operation: {op}")
-
-
-def frame_button_center(state: dict, action: int) -> tuple[int, int]:
-    """Get a frame button's actual input region from the compositor layout."""
-    regions = state["layout"]["presentation"]["regions"]
-    region = next((item for item in regions if item[0] == action), None)
-    if region is None:
-        raise RuntimeError(f"frame button action {action} has no input region")
-    return (
-        state["x"] + region[1] + region[3] // 2,
-        state["y"] + region[2] + region[4] // 2,
-    )
 
 
 def validate_plan(value: object) -> dict:
@@ -517,7 +508,7 @@ def run_inside() -> int:
             return
         if op == "frame_click":
             state = prepare_frame(window_id)
-            x, y = frame_button_center(state, 2)
+            x, y = frame_button_center(state, FRAME_ACTION_CLOSE)
             wait_for(
                 lambda: frame_button_is_pickable(window_id, x, y),
                 f"close button hit target on window {window_id}",

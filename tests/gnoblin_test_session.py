@@ -9,6 +9,8 @@ import select
 import subprocess
 import time
 
+FRAME_ACTION_CLOSE = 2
+
 
 def eval_shell(code: str, timeout: float = 5) -> object:
     result = subprocess.run(
@@ -52,8 +54,10 @@ def window_by_sequence_expression(sequence: int) -> str:
 def shell_window(title: str) -> dict | None:
     return eval_shell(
         f"(()=>{{const a=global.get_window_actors().find(a=>a.meta_window.title==={json.dumps(title)});"
-        "if(!a)return null;const w=a.meta_window,r=w.get_frame_rect();"
+        "if(!a)return null;const w=a.meta_window,r=w.get_frame_rect(),f=a.get_children()"
+        ".find(c=>c.get_name()==='gnoblin-native-frame'),p=f?.get_transformed_position();"
         "return {x:r.x,y:r.y,width:r.width,height:r.height,minimized:w.minimized,mapped:a.is_mapped(),"
+        "frame_actor_position:p?[Math.round(p[0]),Math.round(p[1])]:null,"
         "ready:w.is_ready(),fullscreen:w.fullscreen,maximized:!!w.get_maximize_flags(),"
         "layout:imports.gi.Meta.gnoblin_window_frame_get(w).recursiveUnpack()};})()"
     )
@@ -64,13 +68,127 @@ def shell_windows() -> list[dict]:
         "(()=>global.get_window_actors().map(a=>{const w=a.meta_window,r=w.get_frame_rect();"
         "return {sequence:w.get_stable_sequence(),title:w.get_title(),wm_class:w.get_wm_class(),"
         "pid:w.get_pid(),type:w.get_window_type(),x:r.x,y:r.y,width:r.width,height:r.height,"
-        "ready:w.is_ready(),mapped:a.is_mapped(),"
+        "ready:w.is_ready(),mapped:a.is_mapped(),focused:global.display.focus_window===w,"
         "minimized:w.minimized,fullscreen:w.fullscreen,"
         "maximized:!!w.get_maximize_flags(),"
         "can_move:w.allows_move(),can_resize:w.allows_resize(),"
         "can_maximize:w.can_maximize(),can_minimize:w.can_minimize()};}))()"
     )
     return result or []
+
+
+def application_window_candidates(
+    windows: list[dict], baseline: set[int], splashscreen_type: int, modal_dialog_type: int
+) -> list[dict]:
+    """Return mapped app toplevels, testing modal dialogs before their parents."""
+    candidates = [
+        window
+        for window in windows
+        if window["sequence"] not in baseline
+        and window["title"]
+        and window["type"] != splashscreen_type
+        and window["ready"]
+        and window["mapped"]
+    ]
+    return sorted(
+        candidates,
+        key=lambda window: (
+            window["type"] != modal_dialog_type,
+            not window.get("focused", False),
+            window["sequence"],
+        ),
+    )
+
+
+def gnoblin_frame_visible(state: dict) -> bool:
+    """Report a native frame from its presentation state, not its border width."""
+    layout = state.get("layout", {})
+    presentation = layout.get("presentation", {})
+    return bool(layout.get("native") and presentation.get("visible"))
+
+
+def constrain_move_to_monitor(state: dict, x: int, y: int) -> tuple[int, int]:
+    """Keep as much of an E2E move target as possible within the current monitor."""
+    monitor = state["monitor_rect"]
+    left = monitor["x"]
+    top = monitor["y"]
+    right = max(left, left + monitor["width"] - state["width"])
+    bottom = max(top, top + monitor["height"] - state["height"])
+    return max(left, min(x, right)), max(top, min(y, bottom))
+
+
+def frame_button_center(state: dict, action: int) -> tuple[int, int]:
+    """Return a native-frame button center in stage coordinates."""
+    regions = state["layout"]["presentation"]["regions"]
+    region = next((item for item in regions if item[0] == action), None)
+    if region is None:
+        raise RuntimeError(f"frame button action {action} has no input region")
+    # Mutter's frame rectangle and MetaWindowActor are not the presentation
+    # origin. Regions are local to the named native frame child actor.
+    origin = state.get("frame_actor_position", (state["x"], state["y"]))
+    if origin is None:
+        raise RuntimeError("native frame actor has no transformed stage position")
+    origin_x, origin_y = origin
+    return (
+        origin_x + region[1] + region[3] // 2,
+        origin_y + region[2] + region[4] // 2,
+    )
+
+
+def close_target_state_ready(state: dict | None) -> bool:
+    """Reject stale fullscreen geometry until a requested native frame returns."""
+    if state is None or state.get("fullscreen"):
+        return False
+    layout = state.get("layout") or {}
+    if not layout.get("supported") or not layout.get("native"):
+        return True
+    presentation = layout.get("presentation") or {}
+    return bool(
+        presentation.get("visible")
+        and any(
+            region[0] == FRAME_ACTION_CLOSE and region[3] > 0 and region[4] > 0
+            for region in presentation.get("regions", [])
+            if len(region) == 5
+        )
+    )
+
+
+def wait_for_settled_close_target(get_state, stable_seconds: float = 0.15, timeout: float = 4) -> dict | None:
+    """Wait for nonfullscreen geometry and its close target to remain stable."""
+    last_signature = None
+    stable_since = None
+
+    def settled_state() -> dict | None:
+        nonlocal last_signature, stable_since
+        state = get_state()
+        now = time.monotonic()
+        if not close_target_state_ready(state):
+            last_signature = None
+            stable_since = None
+            return None
+
+        layout = state.get("layout") or {}
+        presentation = layout.get("presentation") or {}
+        signature = (
+            *(state.get(key) for key in ("sequence", "x", "y", "width", "height", "fullscreen")),
+            tuple(state.get("frame_actor_position") or ()),
+            layout.get("supported"),
+            layout.get("native"),
+            layout.get("mode"),
+            tuple(layout.get("border") or ()),
+            presentation.get("visible"),
+            tuple(tuple(region) for region in presentation.get("regions", [])),
+            presentation.get("serial"),
+        )
+        if signature != last_signature:
+            last_signature = signature
+            stable_since = now
+            return None
+        if stable_since is not None and now - stable_since >= stable_seconds:
+            return state
+        return None
+
+    return wait_for(settled_state, "settled window close target", timeout=timeout)
 
 
 def wait_for(predicate, description: str, timeout: float = 5) -> object:

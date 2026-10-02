@@ -1,0 +1,82 @@
+From f26cd6c2847665c5951cdf81da1b47448f0a0cea Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 01:13:39 +0100
+Subject: [PATCH] wayland: retain surfaces for xdg resources
+
+Wayland resource destruction order can drop the wl_surface before its xdg_toplevel, xdg_popup, or xdg_surface resource. Those resources store a raw pointer to the role, and the role stores a non-owning pointer back to its surface. Keep the owning MetaWaylandSurface alive once per resource, then release it from that resource's destructor.
+---
+ src/wayland/meta-wayland-xdg-shell.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/src/wayland/meta-wayland-xdg-shell.c b/src/wayland/meta-wayland-xdg-shell.c
+index f191021c95..8e526cffee 100644
+--- a/src/wayland/meta-wayland-xdg-shell.c
++++ b/src/wayland/meta-wayland-xdg-shell.c
+@@ -218,9 +218,13 @@ xdg_toplevel_destructor (struct wl_resource *resource)
+   MetaWaylandXdgToplevel *xdg_toplevel = wl_resource_get_user_data (resource);
+   MetaWaylandShellSurface *shell_surface =
+     META_WAYLAND_SHELL_SURFACE (xdg_toplevel);
++  MetaWaylandSurface *surface =
++    meta_wayland_surface_role_get_surface (META_WAYLAND_SURFACE_ROLE (xdg_toplevel));
+ 
+   meta_wayland_shell_surface_destroy_window (shell_surface);
+   xdg_toplevel->resource = NULL;
++
++  g_object_unref (surface);
+ }
+ 
+ static void
+@@ -609,6 +613,8 @@ xdg_popup_destructor (struct wl_resource *resource)
+   xdg_popup->resource = NULL;
+ 
+   meta_wayland_compositor_sync_focus (wayland_compositor);
++
++  g_object_unref (surface);
+ }
+ 
+ static void
+@@ -1854,12 +1860,16 @@ xdg_surface_destructor (struct wl_resource *resource)
+   MetaWaylandXdgSurface *xdg_surface = wl_resource_get_user_data (resource);
+   MetaWaylandXdgSurfacePrivate *priv =
+     meta_wayland_xdg_surface_get_instance_private (xdg_surface);
++  MetaWaylandSurface *surface =
++    meta_wayland_surface_role_get_surface (META_WAYLAND_SURFACE_ROLE (xdg_surface));
+ 
+   priv->shell_client->surfaces = g_list_remove (priv->shell_client->surfaces,
+                                                 xdg_surface);
+ 
+   priv->resource = NULL;
+   priv->first_buffer_attached = FALSE;
++
++  g_object_unref (surface);
+ }
+ 
+ static void
+@@ -2252,6 +2262,8 @@ meta_wayland_xdg_surface_constructor_finalize (MetaWaylandXdgSurfaceConstructor
+                                   &meta_wayland_xdg_surface_interface,
+                                   xdg_surface,
+                                   xdg_surface_destructor);
++  g_object_ref (meta_wayland_surface_role_get_surface (
++    META_WAYLAND_SURFACE_ROLE (xdg_surface)));
+ 
+   g_free (constructor);
+ }
+@@ -2300,6 +2312,7 @@ xdg_surface_constructor_get_toplevel (struct wl_client   *client,
+                                   &meta_wayland_xdg_toplevel_interface,
+                                   xdg_toplevel,
+                                   xdg_toplevel_destructor);
++  g_object_ref (surface);
+ 
+   xdg_surface = META_WAYLAND_XDG_SURFACE (xdg_toplevel);
+   meta_wayland_xdg_surface_constructor_finalize (constructor, xdg_surface);
+@@ -2376,6 +2389,7 @@ xdg_surface_constructor_get_popup (struct wl_client   *client,
+                                   &meta_wayland_xdg_popup_interface,
+                                   xdg_popup,
+                                   xdg_popup_destructor);
++  g_object_ref (surface);
+ 
+   xdg_surface = META_WAYLAND_XDG_SURFACE (xdg_popup);
+   meta_wayland_xdg_surface_constructor_finalize (constructor, xdg_surface);
+-- 
+2.55.0
+

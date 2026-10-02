@@ -20,14 +20,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             "BuildRequires:  pkgconfig(udev)",
             (SPECS / "mutter.spec").read_text(),
         )
-        self.assertIn(
-            "BuildRequires:  python3dist(argcomplete)",
-            (SPECS / "mutter.spec").read_text(),
-        )
-        self.assertIn(
-            "BuildRequires:  pkgconfig(hyprcursor) >= 0.1.13",
-            (SPECS / "mutter.spec").read_text(),
-        )
+        self.assertNotIn("python3dist(argcomplete)", content)
         self.assertIn(
             "BuildRequires:  pkgconfig(glycin-2) >= 2.0.beta.2",
             (SPECS / "mutter.spec").read_text(),
@@ -47,20 +40,24 @@ class OpenSUSEPackagingTests(unittest.TestCase):
     def test_session_is_standalone_and_uses_gnoblin_names(self):
         content = (SPECS / "gnoblin.spec").read_text()
         self.assertIn("/usr/share/wayland-sessions/gnoblin.desktop", content)
-        self.assertIn("gnoblin-session.target", content)
+        self.assertIn("scripts/install-session.sh %{_prefix}", content)
+        install = (ROOT / "scripts/install-session.sh").read_text()
+        self.assertIn("systemd-user/gnoblin-session.target", install)
         self.assertIn("does not require GNOME Shell or GJS", content)
         self.assertNotIn("org.gnome.Shell@wayland.service", content)
         self.assertFalse((SPECS / "gnoblin-shell.spec").exists())
 
     def test_meta_uses_tumbleweed_runtime_library_names(self):
         meta = (SPECS / "gnoblin.spec").read_text()
-        self.assertIn("Requires:       libinput10 >= 1.31", meta)
-        self.assertIn("Requires:       libwayland-client0 >= 1.26", meta)
+        self.assertIn("Requires:       libinput10 >= 1.30", meta)
+        self.assertIn("Requires:       libwayland-client0 >= 1.25", meta)
 
     def test_check_script_keeps_the_probe_non_installing(self):
         check = (SPECS / "check-buildrequires.sh").read_text()
         self.assertIn("--without gnoblin_stack", check)
         self.assertIn("install --dry-run --no-recommends", check)
+        self.assertNotIn("--compat-runtime", check)
+        self.assertIn("for attempt in 1 2 3", check)
 
     def test_build_chain_respects_internal_dependency_order(self):
         chain = (SPECS / "build-chain.sh").read_text()

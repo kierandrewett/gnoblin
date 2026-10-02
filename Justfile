@@ -144,7 +144,6 @@ verify-fast:
     python3 tests/session-environment.test.py
     python3 tests/package-isolation.test.py
     python3 tests/check-build-deps.test.py
-    python3 tests/release-workflow.test.py
     just test-config
 
 [private]

@@ -6,7 +6,13 @@ root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
 version="$("$root/scripts/gnoblin-version.py" get version)"
 tag="${1:?release tag required}"
 if [ "$tag" = "gnoblin-v$version" ]; then
-    echo 1
+    # Debian revisions 1 through 5 are already published and immutable.
+    # Keep the SemVer tag while publishing this corrected build as revision 6.
+    if [ "$version" = "0.1.7" ]; then
+        echo 6
+    else
+        echo 1
+    fi
 else
     echo "Expected gnoblin-v$version, got $tag" >&2
     exit 2
