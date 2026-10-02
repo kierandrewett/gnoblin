@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(53):
+                    for _ in range(56):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -316,6 +316,21 @@ def main() -> int:
                                 }
                             elif request["method"] == "permissions.policy":
                                 result = {"default": "default", "rules": [], "revision": 9}
+                            elif request["method"] == "portals.grants":
+                                result = [
+                                    {
+                                        "id": "grant-17",
+                                        "kind": "remote-desktop",
+                                        "requester": "app-id:org.example.Remote",
+                                        "devices": ["keyboard", "pointer"],
+                                        "clipboard": True,
+                                        "has_screen_streams": True,
+                                        "created_at": 1720000000123,
+                                        "revision": 12,
+                                    }
+                                ]
+                            elif request["method"] == "grant.revoke":
+                                result = {"request_id": 29, "method": "grant.revoke"}
                             elif request["method"] == "window.move_to_monitor":
                                 result = {"id": "42", "monitor_id": "HDMI-1"}
                             elif request["method"] == "window.restore_or_minimize":
@@ -357,6 +372,7 @@ def main() -> int:
                                 "workspace.rename",
                                 "workspace.move_window",
                                 "workspace.remove",
+                                "grant.revoke",
                             }:
                                 operation_id = result["request_id"]
                                 method = result["method"]
@@ -446,6 +462,8 @@ def main() -> int:
                                     value = {"workspace": "codex-probe", "window": "42"}
                                 elif method == "workspace.remove":
                                     value = {"id": "codex-probe"}
+                                elif method == "grant.revoke":
+                                    value = {"ok": True, "id": request["arguments"]["id"]}
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
@@ -875,11 +893,32 @@ def main() -> int:
         )
         animation_lua = run(binary, "--socket", socket_path, "lua", str(animation_lua_file))
         assert animation_lua.returncode == 0, animation_lua.stderr
+        grants_lua_file = Path(temporary) / "portal-grants.lua"
+        grants_lua_file.write_text(
+            "local grants = gnoblin.portals.grants()\n"
+            'assert(#grants == 1 and tostring(grants[1]) == "PortalGrant<grant-17>")\n'
+            'assert(grants[1].kind == "remote-desktop" and grants[1].requester == "app-id:org.example.Remote")\n'
+            'assert(grants[1].devices[1] == "keyboard" and grants[1].devices[2] == "pointer")\n'
+            "assert(grants[1].clipboard and grants[1].has_screen_streams)\n"
+            "assert(grants[1].created_at == 1720000000123 and grants[1].revision == 12)\n"
+            'assert(not pcall(function() grants[1].kind = "screen-cast" end))\n'
+            'assert(not pcall(function() grants[1].devices[1] = "touchscreen" end))\n'
+            'assert(not pcall(function() rawset(grants[1].devices, 1, "touchscreen") end))\n'
+            'assert(not pcall(function() gnoblin.portals.grants { requester = "invalid" } end))\n'
+            'local grant = gnoblin.grant.list { kind = "remote-desktop" }[1]\n'
+            'assert(grant.id == "grant-17" and type(grant.revoke) == "function")\n'
+            "local revoked = grant:revoke()\n"
+            'assert(revoked.ok and revoked.id == "grant-17")\n'
+            "assert(not pcall(function() grant:revoke(true) end))\n",
+            encoding="utf-8",
+        )
+        grants_lua = run(binary, "--socket", socket_path, "lua", str(grants_lua_file))
+        assert grants_lua.returncode == 0, grants_lua.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 53
-        assert len(subscriptions) == 53
+        assert len(received) == 56
+        assert len(subscriptions) == 56
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -936,6 +975,19 @@ def main() -> int:
         assert animation_calls[2]["arguments"] == {"session": "preview-17", "milliseconds": 250}
         for call in animation_calls[3:]:
             assert call["arguments"] == {"session": "preview-17"}
+        assert received[53]["method"] == "portals.grants"
+        assert received[53]["api_version"] == {"major": 1, "minor": 45}
+        assert received[53]["arguments"] == {}
+        assert received[54]["method"] == "portals.grants"
+        assert received[54]["api_version"] == {"major": 1, "minor": 45}
+        assert received[54]["arguments"] == {"kind": "remote-desktop"}
+        assert received[55]["method"] == "grant.revoke"
+        assert received[55]["api_version"] == {"major": 1, "minor": 14}
+        assert received[55]["arguments"] == {
+            "id": "grant-17",
+            "kind": "remote-desktop",
+            "created_at": 1720000000123,
+        }
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {

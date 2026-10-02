@@ -336,6 +336,7 @@ static guint api_minor_for_method(const char* method) {
         {"permissions.policy", 44},
         {"grant.list", 14},
         {"grant.revoke", 14},
+        {"portals.grants", 45},
         {"layer.list", 2},
         {"input.devices", 46},
         {"input.sources", 46},
@@ -382,6 +383,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "shortcuts.actions") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "shortcut.list") ||
         g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke") ||
+        g_str_equal(method_name, "portals.grants") ||
         g_str_equal(method_name, "permissions.policy") ||
         g_str_equal(method_name, "permissions.list") || g_str_equal(method_name, "privacy.state") ||
         g_str_equal(method_name, "permissions.check") || g_str_equal(method_name, "version") ||
@@ -392,7 +394,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "launch.status") ||
         g_str_equal(method_name, "launches.snapshot") ||
         g_str_equal(method_name, "shortcuts.actions") ||
-        g_str_equal(method_name, "shortcuts.list") ||
+        g_str_equal(method_name, "shortcuts.list") || g_str_equal(method_name, "portals.grants") ||
         g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "windows.list") ||
         g_str_equal(method_name, "workspaces.list") || g_str_equal(method_name, "monitors.list") ||
         g_str_equal(method_name, "layers.list") || g_str_equal(method_name, "focus.history") ||
@@ -550,6 +552,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
                                         word_in("capabilities.list focus.history windows.list "
                                                 "workspaces.list monitors.list layers.list "
                                                 "shortcuts.actions shortcut.actions shortcut.list "
+                                                "portals.grants "
                                                 "shortcuts.list",
                                                 method_name);
                 gboolean null_result = result_node && JSON_NODE_HOLDS_NULL(result_node) &&
@@ -1589,8 +1592,10 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_MONITOR_RECORD_METATABLE "gnoblinctl.Monitor"
 #define GNOBLINCTL_LAYER_SURFACE_RECORD_METATABLE "gnoblinctl.LayerSurface"
 #define GNOBLINCTL_ANIMATION_PREVIEW_RECORD_METATABLE "gnoblinctl.AnimationPreview"
+#define GNOBLINCTL_PORTAL_GRANT_RECORD_METATABLE "gnoblinctl.PortalGrant"
 
 static int lua_cli_animation_preview_method(lua_State* state);
+static int lua_cli_portal_grant_revoke(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
  * tables. An empty proxy table would still allow rawset() to shadow fields,
@@ -2220,6 +2225,153 @@ static void lua_cli_push_layer_surface_record(lua_State* state, JsonObject* obje
     lua_remove(state, backing);
 }
 
+static gboolean lua_cli_portal_grant_valid(JsonObject* object) {
+    static const char* const string_fields[] = {"id", "kind", "requester"};
+    for (guint i = 0; i < G_N_ELEMENTS(string_fields); i++) {
+        JsonNode* field = json_object_get_member(object, string_fields[i]);
+        if (!field || !JSON_NODE_HOLDS_VALUE(field) ||
+            json_node_get_value_type(field) != G_TYPE_STRING)
+            return FALSE;
+    }
+    const char* kind = member_string(object, "kind", NULL);
+    if (!member_string(object, "id", NULL) || !*member_string(object, "id", "") ||
+        !member_string(object, "requester", NULL) ||
+        (!g_str_equal(kind, "screen-cast") && !g_str_equal(kind, "remote-desktop")))
+        return FALSE;
+
+    JsonNode* devices = json_object_get_member(object, "devices");
+    JsonNode* clipboard = json_object_get_member(object, "clipboard");
+    JsonNode* streams = json_object_get_member(object, "has_screen_streams");
+    JsonNode* created_at = json_object_get_member(object, "created_at");
+    JsonNode* revision = json_object_get_member(object, "revision");
+    if (!devices || !JSON_NODE_HOLDS_ARRAY(devices) || !clipboard ||
+        !JSON_NODE_HOLDS_VALUE(clipboard) ||
+        json_node_get_value_type(clipboard) != G_TYPE_BOOLEAN || !streams ||
+        !JSON_NODE_HOLDS_VALUE(streams) || json_node_get_value_type(streams) != G_TYPE_BOOLEAN ||
+        !created_at || !JSON_NODE_HOLDS_VALUE(created_at) ||
+        (json_node_get_value_type(created_at) != G_TYPE_INT64 &&
+         json_node_get_value_type(created_at) != G_TYPE_INT) ||
+        !revision || !JSON_NODE_HOLDS_VALUE(revision) ||
+        (json_node_get_value_type(revision) != G_TYPE_INT64 &&
+         json_node_get_value_type(revision) != G_TYPE_INT))
+        return FALSE;
+
+    JsonArray* device_array = json_node_get_array(devices);
+    for (guint i = 0; i < json_array_get_length(device_array); i++) {
+        JsonNode* device = json_array_get_element(device_array, i);
+        if (!device || !JSON_NODE_HOLDS_VALUE(device) ||
+            json_node_get_value_type(device) != G_TYPE_STRING)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static void lua_cli_push_portal_grant_record(lua_State* state, Cli* cli, JsonObject* object) {
+    if (!lua_cli_portal_grant_valid(object))
+        luaL_error(state, "gnoblin.portals.grants returned an invalid PortalGrant");
+
+    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(node, object);
+    json_to_lua(state, node);
+    int backing = lua_absindex(state, -1);
+    lua_newuserdatauv(state, 1, 2);
+    int record = lua_absindex(state, -1);
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, record, 1);
+    lua_newtable(state);
+    lua_pushlightuserdata(state, cli);
+    lua_pushcclosure(state, lua_cli_portal_grant_revoke, 1);
+    lua_setfield(state, -2, "revoke");
+    lua_setiuservalue(state, record, 2);
+    luaL_getmetatable(state, GNOBLINCTL_PORTAL_GRANT_RECORD_METATABLE);
+    lua_setmetatable(state, record);
+    lua_remove(state, backing);
+}
+
+static int lua_cli_portal_grant_revoke(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    luaL_checkudata(state, 1, GNOBLINCTL_PORTAL_GRANT_RECORD_METATABLE);
+    if (lua_gettop(state) != 1)
+        return luaL_error(state, "PortalGrant:revoke takes no arguments");
+
+    lua_getiuservalue(state, 1, 1);
+    JsonObject* arguments = json_object_new();
+    const char* kind = NULL;
+    const char* id = NULL;
+    lua_getfield(state, -1, "kind");
+    kind = lua_tostring(state, -1);
+    if (kind)
+        json_object_set_string_member(arguments, "kind", kind);
+    lua_pop(state, 1);
+    lua_getfield(state, -1, "id");
+    id = lua_tostring(state, -1);
+    if (id)
+        json_object_set_string_member(arguments, "id", id);
+    lua_pop(state, 1);
+    lua_getfield(state, -1, "created_at");
+    if (lua_isinteger(state, -1))
+        json_object_set_int_member(arguments, "created_at", lua_tointeger(state, -1));
+    else {
+        json_object_unref(arguments);
+        return luaL_error(state, "PortalGrant record has no creation timestamp");
+    }
+    lua_pop(state, 2);
+
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "grant.revoke", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "grant.revoke failed: %s", call_error->message);
+    json_to_lua(state, result);
+    return 1;
+}
+
+static int lua_cli_portal_grants(lua_State* state) {
+    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
+        return luaL_error(state, "gnoblin.portals.grants accepts one optional filter table");
+
+    JsonObject* arguments = json_object_new();
+    if (lua_gettop(state) == 1) {
+        lua_pushnil(state);
+        while (lua_next(state, 1)) {
+            gboolean valid = lua_type(state, -2) == LUA_TSTRING &&
+                             g_str_equal(lua_tostring(state, -2), "kind") &&
+                             lua_type(state, -1) == LUA_TSTRING &&
+                             (g_str_equal(lua_tostring(state, -1), "screen-cast") ||
+                              g_str_equal(lua_tostring(state, -1), "remote-desktop"));
+            if (!valid) {
+                json_object_unref(arguments);
+                return luaL_error(
+                    state, "portal grant filter accepts only kind = screen-cast or remote-desktop");
+            }
+            json_object_set_string_member(arguments, "kind", lua_tostring(state, -1));
+            lua_pop(state, 1);
+        }
+    }
+
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "portals.grants", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.portals.grants failed: %s", call_error->message);
+    if (!JSON_NODE_HOLDS_ARRAY(result))
+        return luaL_error(state, "gnoblin.portals.grants returned an invalid snapshot");
+
+    JsonArray* grants = json_node_get_array(result);
+    lua_createtable(state, json_array_get_length(grants), 0);
+    for (guint i = 0; i < json_array_get_length(grants); i++) {
+        JsonObject* grant = json_array_get_object_element(grants, i);
+        if (!grant)
+            return luaL_error(state, "gnoblin.portals.grants returned an invalid record");
+        lua_cli_push_portal_grant_record(state, cli, grant);
+        lua_rawseti(state, -2, i + 1);
+    }
+    return 1;
+}
+
 static int lua_cli_layers_list(lua_State* state) {
     if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
         return luaL_error(state, "gnoblin.layers.list accepts one optional filter table");
@@ -2309,6 +2461,36 @@ static void register_lua_cli_animation_preview_record(lua_State* state) {
     lua_pushcfunction(state, lua_cli_window_pairs);
     lua_setfield(state, -2, "__pairs");
     lua_pushcfunction(state, lua_cli_animation_preview_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static int lua_cli_portal_grant_tostring(lua_State* state) {
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "id");
+    const char* id = lua_tostring(state, -1);
+    lua_pushfstring(state, "PortalGrant<%s>", id ? id : "unknown");
+    return 1;
+}
+
+static int lua_cli_portal_grant_newindex(lua_State* state) {
+    return luaL_error(state, "PortalGrant records are read-only");
+}
+
+static void register_lua_cli_portal_grant_record(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_PORTAL_GRANT_RECORD_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_window_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_portal_grant_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_portal_grant_tostring);
     lua_setfield(state, -2, "__tostring");
     lua_pop(state, 1);
 }
@@ -2617,6 +2799,16 @@ static int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_cli_animations_preview, 1);
         return 1;
     }
+    if (g_str_equal(prefix, "portals") && g_str_equal(name, "grants")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_portal_grants, 1);
+        return 1;
+    }
+    if (g_str_equal(prefix, "grant") && g_str_equal(name, "list")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_portal_grants, 1);
+        return 1;
+    }
     if (g_str_equal(prefix, "layer") && g_str_equal(name, "list")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_layers_list, 1);
@@ -2760,6 +2952,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_monitor_record(state);
     register_lua_cli_layer_surface_record(state);
     register_lua_cli_animation_preview_record(state);
+    register_lua_cli_portal_grant_record(state);
     lua_newtable(state);
     lua_newtable(state);
     lua_pushstring(state, "");
