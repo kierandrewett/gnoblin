@@ -3925,7 +3925,7 @@ static int lua_cli_grant_revoke(lua_State* state) {
     JsonNode* created_at = json_object_get_member(options, "created_at");
     if (!lua_cli_workspace_object_has_only_keys(options, allowed_fields) || !kind ||
         (!g_str_equal(kind, "screen-cast") && !g_str_equal(kind, "remote-desktop")) || !id ||
-        !*id || !g_utf8_validate(id, -1, NULL) || g_utf8_strlen(id, -1) > 512 ||
+        !*id ||
         (created_at && (!JSON_NODE_HOLDS_VALUE(created_at) ||
                         (json_node_get_value_type(created_at) != G_TYPE_INT &&
                          json_node_get_value_type(created_at) != G_TYPE_INT64) ||
