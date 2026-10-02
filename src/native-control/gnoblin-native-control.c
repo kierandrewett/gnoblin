@@ -2364,7 +2364,6 @@ static gboolean issue_focus_context_for_session_key(GnoblinNativeControl* contro
     context->generation = generation;
     context->expires_at_us = now + FOCUS_CONTEXT_LIFETIME_US;
     context->timestamp = clutter_event_get_time(event);
-    context->socket_owner_client_id = client ? client->client_id : 0;
     capture_focus_identity(control, context, event);
     g_hash_table_insert(control->focus_contexts, key_copy, context);
 
