@@ -168,7 +168,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(95):
+                    for _ in range(97):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -429,6 +429,17 @@ def main() -> int:
                                     ],
                                     "revision": 4,
                                 }
+                            elif request["method"] == "launch.begin":
+                                result = {
+                                    "token": request["arguments"]["token"],
+                                    "application": request["arguments"]["application"],
+                                    "started_at": 1720000000456,
+                                    "timeout_ms": request["arguments"].get("milliseconds", 3000),
+                                    "state": "pending",
+                                    "revision": 5,
+                                }
+                            elif request["method"] == "launch.end":
+                                result = {"ok": True, "token": request["arguments"]["token"]}
                             elif request["method"] == "shortcuts.list":
                                 result = [
                                     {
@@ -1488,6 +1499,22 @@ def main() -> int:
         )
         launches_result = run(binary, "--socket", socket_path, "lua", str(launches_file))
         assert launches_result.returncode == 0, launches_result.stderr
+        launch_operations_file = Path(temporary) / "launch-operations.lua"
+        launch_operations_file.write_text(
+            'local launch = gnoblin.launches.begin {token = "lua-start", application = "org.example.Editor", timeout_ms = 750}\n'
+            'assert(launch.token == "lua-start" and launch.application == "org.example.Editor")\n'
+            'assert(launch.timeout_ms == 750 and launch.state == "pending")\n'
+            'assert(not pcall(function() launch.state = "ended" end))\n'
+            'local ended = gnoblin.launches.finish("lua-start")\n'
+            'assert(ended.ok and ended.token == "lua-start")\n'
+            "assert(not pcall(function() ended.ok = false end))\n"
+            'assert(not pcall(function() gnoblin.launches.begin {token = "bad", application = "app", timeout_ms = 99} end))\n'
+            'assert(not pcall(function() gnoblin.launches.begin {token = "bad", application = "app", extra = true} end))\n'
+            "assert(not pcall(function() gnoblin.launches.finish(42) end))\n",
+            encoding="utf-8",
+        )
+        launch_operations_result = run(binary, "--socket", socket_path, "lua", str(launch_operations_file))
+        assert launch_operations_result.returncode == 0, launch_operations_result.stderr
         permission_list_file = Path(temporary) / "permission-list.lua"
         permission_list_file.write_text(
             "local permissions = gnoblin.permissions.list()\n"
@@ -1590,8 +1617,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 95
-        assert len(subscriptions) == 95
+        assert len(received) == 97
+        assert len(subscriptions) == 97
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1654,6 +1681,16 @@ def main() -> int:
             "launches.snapshot",
         ]
         assert all(call["api_version"] == {"major": 1, "minor": 39} for call in launch_calls)
+        launch_operations = [call for call in received if call["method"] in {"launch.begin", "launch.end"}]
+        assert [call["method"] for call in launch_operations] == ["launch.begin", "launch.end"]
+        assert launch_operations[0]["api_version"] == {"major": 1, "minor": 50}
+        assert launch_operations[0]["arguments"] == {
+            "token": "lua-start",
+            "application": "org.example.Editor",
+            "milliseconds": 750,
+        }
+        assert launch_operations[1]["api_version"] == {"major": 1, "minor": 50}
+        assert launch_operations[1]["arguments"] == {"token": "lua-start"}
         permission_list_request = [call for call in received if call["method"] == "permissions.list"][-1]
         assert permission_list_request["api_version"] == {"major": 1, "minor": 42}
         assert permission_list_request["arguments"] == {}

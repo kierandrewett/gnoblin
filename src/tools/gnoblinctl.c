@@ -325,6 +325,8 @@ static guint api_minor_for_method(const char* method) {
         {"monitors.list", 37},
         {"layers.list", 37},
         {"launches.snapshot", 39},
+        {"launch.begin", 50},
+        {"launch.end", 50},
         {"shortcuts.list", 40},
         {"shortcuts.actions", 41},
         {"permissions.list", 42},
@@ -403,6 +405,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings") ||
         g_str_equal(method_name, "layer.animation_policy") ||
         g_str_equal(method_name, "runtime.reload_config") ||
+        g_str_equal(method_name, "launch.begin") || g_str_equal(method_name, "launch.end") ||
         g_str_has_prefix(method_name, "window.") || g_str_has_prefix(method_name, "workspace.") ||
         g_str_has_prefix(method_name, "animation.")) {
         json_builder_set_member_name(builder, "api_version");
@@ -1616,6 +1619,9 @@ static int lua_cli_animations_get(lua_State* state);
 static int lua_cli_animations_inspect(lua_State* state);
 static int lua_cli_animations_surfaces(lua_State* state);
 static int lua_cli_launches_read(lua_State* state);
+static int lua_cli_launches_operation(lua_State* state);
+static gboolean lua_cli_workspace_object_has_only_keys(JsonObject* object,
+                                                       const char* const* allowed);
 static int lua_cli_portal_grant_revoke(lua_State* state);
 static int lua_cli_input_snapshot(lua_State* state);
 static int lua_cli_input_select_source(lua_State* state);
@@ -2179,6 +2185,72 @@ static int lua_cli_launches_read(lua_State* state) {
         lua_remove(state, -2);
         lua_rawseti(state, -2, i + 1);
     }
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static int lua_cli_launches_operation(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    gboolean beginning = g_str_equal(method, "launch.begin");
+    JsonObject* arguments = NULL;
+    static const char* const begin_fields[] = {"token", "application", "timeout_ms", NULL};
+
+    if (beginning) {
+        if (lua_gettop(state) != 1 || !lua_istable(state, 1))
+            return luaL_error(state, "gnoblin.launches.begin requires an options table");
+        g_autoptr(JsonObject) options = lua_cli_table_object(state, 1, "launch options");
+        const char* token = member_string(options, "token", NULL);
+        const char* application = member_string(options, "application", NULL);
+        JsonNode* timeout = json_object_get_member(options, "timeout_ms");
+        gboolean valid = lua_cli_workspace_object_has_only_keys(options, begin_fields) && token &&
+                         *token && g_utf8_validate(token, -1, NULL) &&
+                         g_utf8_strlen(token, -1) <= 128 && application && *application &&
+                         g_utf8_validate(application, -1, NULL) &&
+                         g_utf8_strlen(application, -1) <= 512;
+        if (timeout)
+            valid = valid && JSON_NODE_HOLDS_VALUE(timeout) &&
+                    (json_node_get_value_type(timeout) == G_TYPE_INT ||
+                     json_node_get_value_type(timeout) == G_TYPE_INT64) &&
+                    json_node_get_int(timeout) >= 100 && json_node_get_int(timeout) <= 10000;
+        if (!valid)
+            return luaL_error(state, "gnoblin.launches.begin received invalid launch options");
+
+        arguments = json_object_new();
+        json_object_set_string_member(arguments, "token", token);
+        json_object_set_string_member(arguments, "application", application);
+        if (timeout)
+            json_object_set_int_member(arguments, "milliseconds", json_node_get_int(timeout));
+    } else {
+        if (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING ||
+            !*lua_tostring(state, 1) || g_utf8_strlen(lua_tostring(state, 1), -1) > 128)
+            return luaL_error(state,
+                              "gnoblin.launches.finish requires a non-empty launch token of at "
+                              "most 128 characters");
+        arguments = json_object_new();
+        json_object_set_string_member(arguments, "token", lua_tostring(state, 1));
+    }
+
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "%s failed: %s", method, call_error->message);
+
+    JsonObject* response = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    if (beginning) {
+        if (!response || !lua_cli_launch_record_valid(response))
+            return luaL_error(state, "launch.begin returned an invalid Launch record");
+    } else {
+        JsonNode* ok = response ? json_object_get_member(response, "ok") : NULL;
+        if (!response || json_object_get_size(response) != 2 || !ok || !JSON_NODE_HOLDS_VALUE(ok) ||
+            json_node_get_value_type(ok) != G_TYPE_BOOLEAN || !json_node_get_boolean(ok) ||
+            !g_str_equal(member_string(response, "token", ""), lua_tostring(state, 1)))
+            return luaL_error(state, "launch.end returned an invalid result");
+    }
+
+    json_to_lua(state, result);
     lua_cli_push_readonly_value(state, -1);
     lua_remove(state, -2);
     return 1;
@@ -4557,6 +4629,14 @@ static int lua_api_index(lua_State* state) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushboolean(state, g_str_equal(name, "snapshot"));
         lua_pushcclosure(state, lua_cli_launches_read, 2);
+        return 1;
+    }
+    if (g_str_equal(prefix, "launches") &&
+        (g_str_equal(name, "begin") || g_str_equal(name, "finish") || g_str_equal(name, "end"))) {
+        const char* method = g_str_equal(name, "begin") ? "launch.begin" : "launch.end";
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushstring(state, method);
+        lua_pushcclosure(state, lua_cli_launches_operation, 2);
         return 1;
     }
     if (g_str_equal(prefix, "input")) {
