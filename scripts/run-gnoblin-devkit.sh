@@ -37,7 +37,7 @@ if "$prepare_devkit"; then
         echo 'This prefix has no nested development viewer. Use a writable source-build prefix for --preview.' >&2
         exit 1
     fi
-    GNOBLIN_DEVKIT=enabled "$ROOT/build.sh" --prefix "$PREFIX" --target gnoblin-session
+    GNOBLIN_DEVKIT=enabled "$ROOT/build.sh" --prefix "$PREFIX" --target standalone-session
 fi
 [[ -x "$RUNTIME" && -x "$GNOBLINCTL" ]] || {
     echo "No standalone Gnoblin build found in $PREFIX. Run './build.sh' first." >&2
@@ -142,6 +142,8 @@ WAYLAND_DISPLAY="$DISP" dbus-update-activation-environment \
     2>/dev/null || true
 
 if [[ -n ${GNOBLIN_DEVKIT_EXEC:-} ]]; then
+    GNOBLIN_DEVKIT_RUNTIME_LOG="$DK/runtime.log"
+    export GNOBLIN_DEVKIT_RUNTIME_LOG
     WAYLAND_DISPLAY="$DISP" bash -c "$GNOBLIN_DEVKIT_EXEC"
     exit $?
 fi
