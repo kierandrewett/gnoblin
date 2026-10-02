@@ -1663,6 +1663,15 @@ The session uses the standalone Mutter runtime. It does not start GNOME Shell,
 load GJS, or include a Shell compatibility adapter. Historical Shell-backed
 rows elsewhere in this file describe migration input, not a supported runtime.
 
+`gnoblinctl lua` exposes `windows.list()`, `windows.focused()`, and
+`windows.by_id(id)` as read-only `Window` records with the runtime's typed
+colon methods. Window mutations wait for compositor completion and return the
+completed value instead of an `Operation` handle. The console rejects focus and
+interactive move or resize because it cannot obtain a live `FocusContext` from
+a runtime callback. Event subscriptions and callback dispatch remain exclusive
+to the supervised Lua runtime; full CLI parity with the shared API is still
+incomplete.
+
 Native-control API 1.17 implements `gnoblin.privacy.state()` as an immutable
 snapshot with `available`, a stable `revision`, and activity fields only for
 sources marked available. The current session reports screen-sharing and

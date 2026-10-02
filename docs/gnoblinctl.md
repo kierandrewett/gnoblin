@@ -69,6 +69,22 @@ console commands and `:quit` to exit.
 :quit
 ```
 
+Window reads return read-only records with the same properties and typed
+methods as the supervised runtime:
+
+```lua
+local window = gnoblin.windows.focused()
+if window then
+    print(window.id .. ": " .. window.title)
+    print(window:minimize().id)
+end
+```
+
+Window actions wait for compositor completion and return the completed value.
+They do not return an asynchronous `Operation` handle. `focus`, `begin_move`,
+and `begin_resize` require a trusted `FocusContext` from a runtime callback, so
+the terminal console rejects those calls.
+
 To run a Lua file with the same API, pass its path:
 
 ```sh
@@ -79,10 +95,10 @@ The Lua code runs in the local `gnoblinctl` process. Session calls go through
 the compositor's typed API, which validates methods and arguments. `gnoblinctl`
 never sends Lua source to the compositor.
 
-Calls return results after asynchronous operations complete. The terminal
-console cannot create the trusted input context required for focusing a window
-from a click. Use a configuration event handler or external shell client when
-an operation needs that context or must react to events over time.
+The terminal console cannot subscribe to runtime events or create the trusted
+input context required for focus and interactive window grabs. Use a
+configuration event handler or external shell client when an operation needs
+that context or must react to events over time.
 
 ## Windows
 
