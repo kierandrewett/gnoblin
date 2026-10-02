@@ -4,12 +4,12 @@
     "gnoblin": {
       "requires": ["cursor-theme", "dbus-tools", "dconf", "glib", "json-glib", "lua", "systemd", "wireplumber"],
       "requiresSameMajor": ["gnoblin-mutter", "gnoblin-portal"],
-      "version": "0.1.7"
+      "version": "0.1.10"
     },
     "gnoblin-gnome-integration": {
       "requires": ["gvfs", "gnome-keyring", "xdg-user-dirs"],
       "requiresExact": ["gnoblin"],
-      "version": "0.1.7"
+      "version": "0.1.10"
     },
     "gnoblin-mutter": {
       "requires": ["glib", "gsettings-desktop-schemas", "wayland", "libinput", "pipewire"],
@@ -30,7 +30,7 @@
   },
   "release": {
     "archPkgRelease": 29,
-    "gnoblinVersion": "0.1.7",
+    "gnoblinVersion": "0.1.10",
     "gnomeMajor": 51,
     "gnomeVersion": "51.0",
     "gnoblinRpmRelease": 21,

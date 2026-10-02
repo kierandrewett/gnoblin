@@ -4,9 +4,9 @@
 %global _datadir %{_prefix}/share
 
 Name:           gnoblin
-Version:        0.1.10
-Epoch:          1
-Release:        21%{?dist}
+Version:        @VERSION@
+Epoch:          @EPOCH@
+Release:        @GNOBLIN_RELEASE@%{?dist}
 Summary:        Standalone Gnoblin desktop session
 License:        GPL-2.0-or-later
 URL:            https://github.com/kierandrewett/gnoblin
@@ -14,25 +14,8 @@ Source0:        gnoblin-%{version}-source.tar.xz
 Provides:       gnoblin-session = %{version}
 Obsoletes:      gnoblin-session <= %{version}-%{release}
 
-Requires:       gnoblin-mutter >= 51
-Requires:       gnoblin-portal >= 51
-Requires:       gnoblin-mutter < 52
-Requires:       gnoblin-portal < 52
-Requires:       adwaita-cursor-theme
-Requires:       dbus-tools
-Requires:       dconf
-Requires:       glib2 >= 2.86.0
-Requires:       gsettings-desktop-schemas >= 51.0
-Requires:       gtk4 >= 4.22.0
-Requires:       json-glib
-Requires:       libinput >= 1.30.0
-Requires:       lua-libs >= 5.4
-Requires:       pipewire >= 1.6.0
-Requires:       systemd
-Requires:       libwayland-client >= 1.25
-Requires:       wireplumber
-Requires:       xdg-desktop-portal >= 1.21.1
-Requires:       gnoblin-mutter = 51.0-44.gnoblin%{?dist}
+@RUNTIME_REQUIRES@
+Requires:       gnoblin-mutter = @MUTTER_VERSION@-@MUTTER_RELEASE@%{?dist}
 
 BuildRequires:  cmake
 BuildRequires:  desktop-file-utils
@@ -111,10 +94,7 @@ desktop-file-validate gnoblin-validation.desktop
 
 %package -n gnoblin-gnome-integration
 Summary:        Optional GNOME application services for Gnoblin
-Requires:       gnoblin = 1:0.1.10
-Requires:       gvfs
-Requires:       gnome-keyring
-Requires:       xdg-user-dirs
+@INTEGRATION_REQUIRES@
 
 %description -n gnoblin-gnome-integration
 Adds GNOME Keyring, GVfs, and standard user directories to a Gnoblin session.
