@@ -13,7 +13,11 @@ class HyprcursorSessionPredicateTests(unittest.TestCase):
         source = (ROOT / "src/cursor/gnoblin-hyprcursor.cpp").read_text()
         fixture = (ROOT / "src/cursor/test-hyprcursor.cpp").read_text()
 
-        self.assertIn('#include "core/gnoblin-native-control.h"', source)
+        self.assertIn("typedef struct _MetaDisplay MetaDisplay;", source)
+        self.assertIn(
+            'extern "C" gboolean gnoblin_native_control_is_session(MetaDisplay* display);',
+            source,
+        )
         self.assertIn("!gnoblin_native_control_is_session(nullptr)", source)
         self.assertNotIn("GNOME_SHELL_SESSION_MODE", source)
         self.assertIn('g_unsetenv("GNOME_SHELL_SESSION_MODE")', fixture)
