@@ -1131,7 +1131,10 @@ API 1.44 routes that socket method through the Lua runtime.
 levels, and the configuration path. Its socket method uses the Lua runtime
 starting at API 1.42.
 
-Use `grant.revoke` with the `kind` and `id` from a listed portal grant.
+Use `gnoblin.grant.revoke {kind, id}` with the `kind` and `id` from a listed
+portal grant. The optional `created_at` timestamp rejects a stale record if a
+new grant reuses its ID. `gnoblinctl lua` exposes this operation and returns a
+deeply read-only result after the compositor confirms completion.
 
 Each grant record contains:
 

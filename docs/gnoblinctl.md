@@ -352,6 +352,20 @@ end
 
 Revocation uses the record's creation time, so a stale record cannot revoke a
 new grant that reuses its ID. The console waits for each revoke to complete.
+Scripts can also use the shared `gnoblin.grant.revoke` call directly; pass the
+timestamp from the snapshot to keep the same stale-record check:
+
+```lua
+local grants = gnoblin.portals.grants { kind = "remote-desktop" }
+local grant = grants[1]
+if grant then
+    gnoblin.grant.revoke {
+        kind = grant.kind,
+        id = grant.id,
+        created_at = grant.created_at,
+    }
+end
+```
 
 Shortcut snapshots return read-only `ShortcutState` and `ShortcutAction`
 records. `gnoblin.shortcuts.actions(group?)` accepts an optional `wm`,
