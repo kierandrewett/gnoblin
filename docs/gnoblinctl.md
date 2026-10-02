@@ -421,6 +421,8 @@ Launch feedback does not start an application.
 Run `gnoblinctl privacy` to see one status per source. Each status is active,
 inactive or unavailable. Unavailable sources have no activity value. Camera
 activity follows running PipeWire nodes marked with the `Camera` media role.
+
+Location activity follows GeoClue's service state and `InUse` property.
 Add `--json` to print the `PrivacyState` record. It contains a revision, an
 availability flag for each source, and an activity value only when that source
 is available.
