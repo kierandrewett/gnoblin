@@ -1623,6 +1623,7 @@ static int lua_cli_launches_operation(lua_State* state);
 static gboolean lua_cli_workspace_object_has_only_keys(JsonObject* object,
                                                        const char* const* allowed);
 static int lua_cli_portal_grant_revoke(lua_State* state);
+static int lua_cli_grant_revoke(lua_State* state);
 static int lua_cli_input_snapshot(lua_State* state);
 static int lua_cli_input_select_source(lua_State* state);
 static int lua_cli_shortcuts_list(lua_State* state);
@@ -3914,6 +3915,46 @@ static int lua_cli_portal_grant_revoke(lua_State* state) {
     return 1;
 }
 
+static int lua_cli_grant_revoke(lua_State* state) {
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
+        return luaL_error(state, "gnoblin.grant.revoke requires an options table");
+    static const char* const allowed_fields[] = {"kind", "id", "created_at", NULL};
+    g_autoptr(JsonObject) options = lua_cli_table_object(state, 1, "grant options");
+    const char* kind = member_string(options, "kind", NULL);
+    const char* id = member_string(options, "id", NULL);
+    JsonNode* created_at = json_object_get_member(options, "created_at");
+    if (!lua_cli_workspace_object_has_only_keys(options, allowed_fields) || !kind ||
+        (!g_str_equal(kind, "screen-cast") && !g_str_equal(kind, "remote-desktop")) || !id ||
+        !*id || !g_utf8_validate(id, -1, NULL) || g_utf8_strlen(id, -1) > 512 ||
+        (created_at && (!JSON_NODE_HOLDS_VALUE(created_at) ||
+                        (json_node_get_value_type(created_at) != G_TYPE_INT &&
+                         json_node_get_value_type(created_at) != G_TYPE_INT64) ||
+                        json_node_get_int(created_at) < 0)))
+        return luaL_error(state, "gnoblin.grant.revoke received invalid grant options");
+
+    JsonObject* arguments = json_object_new();
+    json_object_set_string_member(arguments, "kind", kind);
+    json_object_set_string_member(arguments, "id", id);
+    if (created_at)
+        json_object_set_member(arguments, "created_at", json_node_copy(created_at));
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "grant.revoke", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.grant.revoke failed: %s", call_error->message);
+    JsonObject* response = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonNode* ok = response ? json_object_get_member(response, "ok") : NULL;
+    if (!ok || !JSON_NODE_HOLDS_VALUE(ok) || json_node_get_value_type(ok) != G_TYPE_BOOLEAN ||
+        !json_node_get_boolean(ok) || !g_str_equal(member_string(response, "id", ""), id))
+        return luaL_error(state, "gnoblin.grant.revoke returned an invalid result");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
 static int lua_cli_portal_grants(lua_State* state) {
     if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
         return luaL_error(state, "gnoblin.portals.grants accepts one optional filter table");
@@ -4796,6 +4837,11 @@ static int lua_api_index(lua_State* state) {
     if (g_str_equal(prefix, "grant") && g_str_equal(name, "list")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_portal_grants, 1);
+        return 1;
+    }
+    if (g_str_equal(prefix, "grant") && g_str_equal(name, "revoke")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_grant_revoke, 1);
         return 1;
     }
     if (g_str_equal(prefix, "layer") && g_str_equal(name, "list")) {

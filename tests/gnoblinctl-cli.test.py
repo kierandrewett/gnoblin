@@ -168,7 +168,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(102):
+                    for _ in range(103):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -1680,11 +1680,22 @@ def main() -> int:
         )
         session_operations_result = run(binary, "--socket", socket_path, "lua", str(session_operations_script))
         assert session_operations_result.returncode == 0, session_operations_result.stderr
+        grant_revoke_script = Path(temporary) / "grant-revoke.lua"
+        grant_revoke_script.write_text(
+            'local result = gnoblin.grant.revoke {kind = "remote-desktop", id = "grant-cli", created_at = 1720000000123}\n'
+            'assert(result.ok and result.id == "grant-cli")\n'
+            "assert(not pcall(function() result.ok = false end))\n"
+            'assert(not pcall(function() gnoblin.grant.revoke {kind = "other", id = "x"} end))\n'
+            'assert(not pcall(function() gnoblin.grant.revoke {kind = "screen-cast", id = "x", extra = true} end))\n',
+            encoding="utf-8",
+        )
+        grant_revoke_result = run(binary, "--socket", socket_path, "lua", str(grant_revoke_script))
+        assert grant_revoke_result.returncode == 0, grant_revoke_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 102
-        assert len(subscriptions) == 102
+        assert len(received) == 103
+        assert len(subscriptions) == 103
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -2013,6 +2024,16 @@ def main() -> int:
             {"major": 1, "minor": 32},
         ]
         assert all(call["arguments"] == {} for call in session_calls)
+        grant_revoke_calls = [
+            call for call in received if call["method"] == "grant.revoke" and call["arguments"].get("id") == "grant-cli"
+        ]
+        assert len(grant_revoke_calls) == 1
+        assert grant_revoke_calls[0]["api_version"] == {"major": 1, "minor": 14}
+        assert grant_revoke_calls[0]["arguments"] == {
+            "kind": "remote-desktop",
+            "id": "grant-cli",
+            "created_at": 1720000000123,
+        }
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0
