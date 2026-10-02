@@ -247,7 +247,13 @@ status_script.write_text(
 )
 
 def children(pid):
-    return [int(value) for value in Path(f"/proc/{pid}/task/{pid}/children").read_text().split()]
+    try:
+        path = Path(f"/proc/{pid}/task/{pid}/children")
+        return [int(value) for value in path.read_text().split()]
+    except (FileNotFoundError, ProcessLookupError):
+        # The process may exit after enumeration but before its children file
+        # is read. It no longer has descendants worth tracking.
+        return []
 
 def descendants(pid):
     result = []
