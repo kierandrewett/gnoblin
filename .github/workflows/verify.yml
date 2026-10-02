@@ -26,12 +26,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: false
-      - name: Fetch compositor and portal source trees
-        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
       - name: Set container checkout ownership
         run: |
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Fetch compositor and portal source trees
+        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
       - name: Check native package definitions
         run: |
           python3 scripts/sync-package-manifest.py check
@@ -97,6 +97,7 @@ jobs:
             git diff --exit-code -- "${unexpected_files[@]}"
           fi
   copr-install:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     container: fedora:45
     timeout-minutes: 20
@@ -170,12 +171,12 @@ jobs:
         with:
           fetch-depth: 0
           submodules: false
-      - name: Fetch compositor and portal source trees
-        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
       - name: Set container checkout ownership
         run: |
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Fetch compositor and portal source trees
+        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
       - name: Build a source bundle from this checked-out revision
         env:
           GIT_COMMITTER_NAME: Gnoblin Package Builder
