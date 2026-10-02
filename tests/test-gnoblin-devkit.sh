@@ -2,6 +2,7 @@
 # Verify that Lua settings and the native control API reach a fresh session.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+GNOBLIN_TEST_PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 mkdir -p "$ROOT/build/tmp"
 fixture_root="$(mktemp -d "$ROOT/build/tmp/devkit-e2e-config.XXXXXX")"
 mkdir -p "$fixture_root/gnoblin"
@@ -185,10 +186,10 @@ SCRIPT
 # so this test isolates session-supervisor recovery.
 output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     GNOBLIN_STATE_DIR="$fixture_root/state" \
-    GNOBLIN_PREFIX="$ROOT/install" \
+    GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$fixture_root" \
     GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
-    GNOBLIN_DEVKIT_CTL="$ROOT/install/bin/gnoblinctl" \
+    GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
     GNOBLIN_DEVKIT_EXEC="$devkit_exec" \
     timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1)" || {
     printf '%s\n' "$output" >&2
@@ -333,10 +334,10 @@ SCRIPT
 
 guardian_output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     GNOBLIN_STATE_DIR="$fixture_root/guardian-state" \
-    GNOBLIN_PREFIX="$ROOT/install" \
+    GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$guardian_fixture" \
     GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
-    GNOBLIN_DEVKIT_CTL="$ROOT/install/bin/gnoblinctl" \
+    GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
     GNOBLIN_AUTOSTART_MARKER="$guardian_marker" \
     GNOBLIN_DEVKIT_EXEC="$guardian_exec" \
     timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1)" || {
