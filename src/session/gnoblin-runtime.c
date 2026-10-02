@@ -322,6 +322,7 @@ static gboolean activate_session(void) {
                                    "GNOME_SETUP_DISPLAY", NULL};
     run_command(unset_display, FALSE);
     const char* sync[] = {"GNOME_SHELL_SESSION_MODE",
+                          "XDG_CONFIG_HOME",
                           "XDG_CURRENT_DESKTOP",
                           "XDG_SESSION_DESKTOP",
                           "XDG_SESSION_CLASS",
@@ -493,6 +494,10 @@ static void runtime_reload_finish(Runtime* runtime, gboolean commit, const char*
     runtime->pending_reload = NULL;
     gnoblin_config_finish_deferred_load(commit);
     if (commit) {
+        g_autoptr(GError) portal_error = NULL;
+        if (!gnoblin_config_sync_portal_selection(reload->document, NULL, &portal_error))
+            g_warning("gnoblin: could not update portal selection from Lua config: %s",
+                      portal_error ? portal_error->message : "unknown error");
         GVariantBuilder builder;
         g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
         g_variant_builder_add(&builder, "{sv}", "ok", g_variant_new_boolean(TRUE));
@@ -2703,6 +2708,18 @@ static int session_guardian_main(int argc, char** argv) {
     if (!config_path)
         config_path = gnoblin_config_path();
     g_setenv("GNOBLIN_CONFIG", config_path, TRUE);
+    g_autoptr(GError) config_error = NULL;
+    g_autoptr(GVariant) initial_document =
+        gnoblin_config_load_document(config_path, NULL, NULL, &config_error);
+    if (!initial_document) {
+        g_printerr("gnoblin: could not load %s: %s\n", config_path,
+                   config_error ? config_error->message : "invalid configuration");
+        return EXIT_FAILURE;
+    }
+    g_autoptr(GError) portal_error = NULL;
+    if (!gnoblin_config_sync_portal_selection(initial_document, NULL, &portal_error))
+        g_warning("gnoblin: could not update portal selection from Lua config: %s",
+                  portal_error ? portal_error->message : "unknown error");
     if (!g_file_test(compositor_path, G_FILE_TEST_IS_EXECUTABLE)) {
         g_printerr("gnoblin: installed compositor is unavailable: %s\n", compositor_path);
         return EXIT_FAILURE;
