@@ -343,10 +343,13 @@ The Lua code runs in the local `gnoblinctl` process. Session calls go through
 the compositor's typed API, which validates methods and arguments. `gnoblinctl`
 never sends Lua source to the compositor.
 
-The terminal console cannot subscribe to runtime events or create the trusted
-input context required for focus and interactive window grabs. Use a
-configuration event handler or external shell client when an operation needs
-that context or must react to events over time.
+The terminal console cannot subscribe to runtime events, keep shortcut
+registrations alive, or create the trusted input context required for focus
+and interactive window grabs. Calls to `gnoblin.events.on`,
+`gnoblin.events.once`, `gnoblin.shortcuts.bind`, `unbind`, and `end_session`
+explain this runtime boundary instead of sending an unsupported request. Use a
+configuration event handler when an operation needs trusted input or must
+react to events over time.
 
 ## Windows
 
