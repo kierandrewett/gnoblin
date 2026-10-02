@@ -585,6 +585,8 @@ int main(void) {
         "g.on('mutter.touchpad.gesture', function(event)\n"
         "  if event.phase == 'begin' then g.workspaces.next() end\n"
         "end)\n"
+        "g.on('pointer_window_changed', function() g.workspaces.next() end)\n"
+        "g.on('mutter.wayland.pointer-window-changed', function() g.workspaces.previous() end)\n"
         "g.on('gnoblin.animation.started', function(event)\n"
         "  assert(event.name == 'gnoblin.animation.started')\n"
         "  assert(event.animation == 'test-open' and event.target == 'window-1')\n"
@@ -687,6 +689,19 @@ int main(void) {
     g_assert_true(
         g_variant_lookup(end_session_arguments, "session_id", "x", &requested_session_id));
     g_assert_cmpint(requested_session_id, ==, 9);
+    gnoblin_config_finish_event(TRUE);
+
+    g_autoptr(GVariant) pointer_window_result = gnoblin_config_dispatch_event(
+        "mutter.wayland.pointer-window-changed", bind_event_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(pointer_window_result);
+    g_autoptr(GVariant) pointer_window_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(pointer_window_operations), ==, 1);
+    g_autoptr(GVariant) pointer_window_operation =
+        g_variant_get_child_value(pointer_window_operations, 0);
+    g_autoptr(GVariant) pointer_window_method =
+        g_variant_lookup_value(pointer_window_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(pointer_window_method, NULL), ==, "workspace.previous");
     gnoblin_config_finish_event(TRUE);
 
     GVariantBuilder trusted_shortcut;

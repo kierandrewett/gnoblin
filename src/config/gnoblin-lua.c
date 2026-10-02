@@ -1617,11 +1617,6 @@ static int lua_on(lua_State* state) {
     if (event_length == 0 || event_length > 128 || memchr(event, '\0', event_length) ||
         !g_utf8_validate(event, event_length, NULL))
         return luaL_error(state, "event name must contain 1 to 128 bytes");
-    /* Keep the former built-in event as an input alias while listeners are
-     * stored under the canonical event name. */
-    if (event_length == strlen("pointer_window_changed") &&
-        !memcmp(event, "pointer_window_changed", event_length))
-        event = "mutter.wayland.pointer-window-changed";
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "listeners");
     int listeners = lua_absindex(state, -1);
