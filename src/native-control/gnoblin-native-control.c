@@ -194,6 +194,7 @@ struct _GnoblinNativeControl {
     guint portal_owner_subscription_id;
     guint ibus_signal_subscription_id;
     guint ibus_owner_subscription_id;
+    guint ibus_retry_source_id;
     guint portal_grant_retry_id;
     guint runtime_read_source_id;
     guint runtime_write_source_id;
@@ -302,6 +303,7 @@ static void dynamic_shortcut_end_session(GnoblinNativeControl* control,
                                          NativeDynamicShortcut* shortcut, const char* reason);
 static void native_corner_toolkit_cache_shutdown(GnoblinNativeControl* control);
 static void clear_pending_location_authorizations(GnoblinNativeControl* control);
+static void start_ibus_input_source_tracking(GnoblinNativeControl* control);
 
 static void native_runtime_abort(GnoblinNativeControl* control) {
     if (!control)
@@ -1517,12 +1519,29 @@ static gboolean start_native_policy_dbus(GnoblinNativeControl* control) {
 }
 
 static void stop_native_policy_dbus(GnoblinNativeControl* control) {
-    if (!control->session_bus)
-        return;
     if (control->portal_grant_retry_id) {
         g_source_remove(control->portal_grant_retry_id);
         control->portal_grant_retry_id = 0;
     }
+    if (control->ibus_retry_source_id) {
+        g_source_remove(control->ibus_retry_source_id);
+        control->ibus_retry_source_id = 0;
+    }
+    if (control->ibus_bus && control->ibus_signal_subscription_id) {
+        g_dbus_connection_signal_unsubscribe(control->ibus_bus,
+                                             control->ibus_signal_subscription_id);
+        control->ibus_signal_subscription_id = 0;
+    }
+    if (control->ibus_bus && control->ibus_owner_subscription_id) {
+        g_dbus_connection_signal_unsubscribe(control->ibus_bus,
+                                             control->ibus_owner_subscription_id);
+        control->ibus_owner_subscription_id = 0;
+    }
+    if (control->ibus_bus)
+        g_signal_handlers_disconnect_by_data(control->ibus_bus, control);
+    g_clear_object(&control->ibus_bus);
+    if (!control->session_bus)
+        return;
     if (control->portal_grant_added_subscription_id) {
         g_dbus_connection_signal_unsubscribe(control->session_bus,
                                              control->portal_grant_added_subscription_id);
@@ -1537,16 +1556,6 @@ static void stop_native_policy_dbus(GnoblinNativeControl* control) {
         g_dbus_connection_signal_unsubscribe(control->session_bus,
                                              control->portal_owner_subscription_id);
         control->portal_owner_subscription_id = 0;
-    }
-    if (control->ibus_signal_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->ibus_bus,
-                                             control->ibus_signal_subscription_id);
-        control->ibus_signal_subscription_id = 0;
-    }
-    if (control->ibus_owner_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->ibus_bus,
-                                             control->ibus_owner_subscription_id);
-        control->ibus_owner_subscription_id = 0;
     }
     if (control->session_activity_subscription_id) {
         g_dbus_connection_signal_unsubscribe(control->session_bus,
@@ -1571,7 +1580,6 @@ static void stop_native_policy_dbus(GnoblinNativeControl* control) {
         control->policy_bus_name_owned = FALSE;
     }
     g_clear_object(&control->session_bus);
-    g_clear_object(&control->ibus_bus);
     g_clear_pointer(&control->portal_grant_snapshot, g_variant_unref);
     native_publish_runtime_snapshot(control, "portal-grants", NULL, control->portal_grant_revision);
     g_clear_pointer(&control->session_activity_snapshot, g_variant_unref);
@@ -4531,26 +4539,23 @@ static char* ibus_bus_address(void) {
     if (!*machine_id)
         return NULL;
     g_autofree char* filename = g_strdup_printf("%s-unix-%s", machine_id, display_name);
-    const char* config_dir = g_getenv("XDG_CONFIG_HOME");
-    g_autofree char* default_config_dir = NULL;
-    if (!config_dir || !*config_dir) {
-        default_config_dir = g_build_filename(g_get_home_dir(), ".config", NULL);
-        config_dir = default_config_dir;
-    }
-    g_autofree char* path = g_build_filename(config_dir, "ibus", "bus", filename, NULL);
-    g_autofree char* contents = NULL;
-    if (!g_file_get_contents(path, &contents, NULL, NULL)) {
-        g_debug("gnoblin-native-control: IBus address file was not found at %s", path);
-        return NULL;
-    }
-
-    g_auto(GStrv) lines = g_strsplit(contents, "\n", -1);
-    for (char** line = lines; *line; line++) {
-        if (!g_str_has_prefix(*line, "IBUS_ADDRESS="))
+    const char* address_dirs[] = {g_get_user_cache_dir(), g_get_user_config_dir()};
+    for (guint i = 0; i < G_N_ELEMENTS(address_dirs); i++) {
+        g_autofree char* path = g_build_filename(address_dirs[i], "ibus", "bus", filename, NULL);
+        g_autofree char* contents = NULL;
+        if (!g_file_get_contents(path, &contents, NULL, NULL))
             continue;
-        const char* value = *line + strlen("IBUS_ADDRESS=");
-        return *value ? g_strdup(value) : NULL;
+
+        g_auto(GStrv) lines = g_strsplit(contents, "\n", -1);
+        for (char** line = lines; *line; line++) {
+            if (!g_str_has_prefix(*line, "IBUS_ADDRESS="))
+                continue;
+            const char* value = *line + strlen("IBUS_ADDRESS=");
+            return *value ? g_strdup(value) : NULL;
+        }
     }
+    g_debug("gnoblin-native-control: IBus address file was not found under the XDG cache or config "
+            "directories");
     return NULL;
 }
 
@@ -4568,6 +4573,42 @@ static GDBusConnection* connect_ibus_bus(void) {
     if (!connection)
         g_debug("gnoblin-native-control: IBus is unavailable: %s", error->message);
     return connection;
+}
+
+static gboolean ibus_retry_connection(gpointer user_data) {
+    GnoblinNativeControl* control = user_data;
+    control->ibus_retry_source_id = 0;
+    if (!control->stopping)
+        start_ibus_input_source_tracking(control);
+    return G_SOURCE_REMOVE;
+}
+
+static void schedule_ibus_connection_retry(GnoblinNativeControl* control) {
+    if (control->stopping || control->ibus_bus || control->ibus_retry_source_id)
+        return;
+    control->ibus_retry_source_id = g_timeout_add_seconds(1, ibus_retry_connection, control);
+}
+
+static void ibus_bus_closed(GDBusConnection* connection, gboolean remote_peer_vanished,
+                            GError* error, gpointer user_data) {
+    (void)remote_peer_vanished;
+    (void)error;
+    GnoblinNativeControl* control = user_data;
+    if (control->stopping || control->ibus_bus != connection)
+        return;
+    if (control->ibus_signal_subscription_id) {
+        g_dbus_connection_signal_unsubscribe(connection, control->ibus_signal_subscription_id);
+        control->ibus_signal_subscription_id = 0;
+    }
+    if (control->ibus_owner_subscription_id) {
+        g_dbus_connection_signal_unsubscribe(connection, control->ibus_owner_subscription_id);
+        control->ibus_owner_subscription_id = 0;
+    }
+    g_signal_handlers_disconnect_by_data(connection, control);
+    g_clear_object(&control->ibus_bus);
+    g_clear_pointer(&control->current_ibus_source_id, g_free);
+    publish_input_source_changes(control, control->state_revision);
+    schedule_ibus_connection_retry(control);
 }
 
 static void ibus_global_engine_query_done(GObject* source_object, GAsyncResult* result,
@@ -4629,9 +4670,14 @@ static void ibus_name_owner_changed(GDBusConnection* connection, const char* sen
 }
 
 static void start_ibus_input_source_tracking(GnoblinNativeControl* control) {
-    control->ibus_bus = connect_ibus_bus();
-    if (!control->ibus_bus)
+    if (!control || control->stopping || control->ibus_bus)
         return;
+    control->ibus_bus = connect_ibus_bus();
+    if (!control->ibus_bus) {
+        schedule_ibus_connection_retry(control);
+        return;
+    }
+    g_signal_connect(control->ibus_bus, "closed", G_CALLBACK(ibus_bus_closed), control);
     control->ibus_signal_subscription_id = g_dbus_connection_signal_subscribe(
         control->ibus_bus, IBUS_BUS_NAME, IBUS_INTERFACE, "GlobalEngineChanged", IBUS_OBJECT_PATH,
         NULL, G_DBUS_SIGNAL_FLAGS_NONE, ibus_global_engine_changed, control, NULL);
