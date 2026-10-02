@@ -48,12 +48,20 @@ API.
 
 ### OSDs
 
-The standalone shell should subscribe to `gnoblin.osd.requested` on the
-compositor socket and render the requested OSD in Bingux. The event supplies
-compositor state, not a popup or a prescribed appearance. Keep
-`shell/bingux/osd-bridge.js`, which patches GNOME Shell's private OSD manager,
-inside the GNOME compatibility path only. Remove the standalone dependency on
-`org.gnoblin.Shell` OSD forwarding once the socket event is wired up.
+The standalone shell receives `gnoblin.osd.requested` on the compositor socket
+and renders the request in Bingux. This event is available from native-control
+API 1.27.
+
+It includes a stable `monitor_id` and may include `icon` and `label`; it does
+not include an OSD level, maximum, or output list. The event is sent
+when Gnoblin delegates OSD presentation to the shell. See the
+[compositor bridge reference](/compositor-bridge#api-127-shell-presentation-requests)
+for the full contract.
+
+Keep `shell/bingux/osd-bridge.js`, which patches GNOME Shell's private OSD
+manager, inside the GNOME compatibility path. It is only a fallback for older
+Gnoblin builds that suppress native OSDs without emitting the socket event; do
+not start it in a standalone session.
 
 ### Compatibility GJS modules
 
@@ -85,8 +93,8 @@ instructions, not as compositor socket features.
 2. Keep socket subscriptions on a persistent connection. On disconnect, clear
    connection-owned shortcut and focus contexts, reconnect, request fresh
    snapshots, and register bindings again.
-3. Route OSD events from `gnoblin.osd.requested` to Bingux's own OSD surfaces.
-   Keep the GJS OSD adapter out of this startup path.
+3. Render `gnoblin.osd.requested` events in Bingux's own OSD surfaces. Keep the
+   GJS OSD adapter out of the standalone startup path.
 4. Replace the calendar helper's private `CalendarServer` client or expose an
    explicit no-provider state.
 5. Keep GNOME-specific adapters outside the standalone Gnoblin startup path.
