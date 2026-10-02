@@ -1612,6 +1612,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_animations_list(lua_State* state);
 static int lua_cli_animations_get(lua_State* state);
+static int lua_cli_launches_read(lua_State* state);
 static int lua_cli_portal_grant_revoke(lua_State* state);
 static int lua_cli_input_snapshot(lua_State* state);
 static int lua_cli_input_select_source(lua_State* state);
@@ -1981,6 +1982,70 @@ static int lua_cli_animations_get(lua_State* state) {
     if (!name || !g_str_equal(name, lua_tostring(state, 1)))
         return luaL_error(state, "gnoblin.animations.get returned an invalid AnimationInfo");
     json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static gboolean lua_cli_launch_record_valid(JsonObject* launch) {
+    const char* token = member_string(launch, "token", NULL);
+    const char* application = member_string(launch, "application", NULL);
+    const char* state_name = member_string(launch, "state", NULL);
+    static const char* const integer_fields[] = {"started_at", "timeout_ms", "revision", NULL};
+    if (!token || !*token || !application || !*application || !state_name || !*state_name)
+        return FALSE;
+    for (guint i = 0; integer_fields[i]; i++) {
+        JsonNode* field = json_object_get_member(launch, integer_fields[i]);
+        if (!field || !JSON_NODE_HOLDS_VALUE(field) ||
+            (json_node_get_value_type(field) != G_TYPE_INT64 &&
+             json_node_get_value_type(field) != G_TYPE_INT) ||
+            json_node_get_int(field) < 0 ||
+            (g_str_equal(integer_fields[i], "timeout_ms") && json_node_get_int(field) == 0))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static int lua_cli_launches_read(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.launches reads take no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    gboolean return_snapshot = lua_toboolean(state, lua_upvalueindex(2));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "launches.snapshot", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.launches read failed: %s", call_error->message);
+    JsonObject* snapshot = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonArray* launches = snapshot ? json_object_get_array_member(snapshot, "launches") : NULL;
+    JsonNode* revision = snapshot ? json_object_get_member(snapshot, "revision") : NULL;
+    if (!launches || !revision || !JSON_NODE_HOLDS_VALUE(revision) ||
+        (json_node_get_value_type(revision) != G_TYPE_INT64 &&
+         json_node_get_value_type(revision) != G_TYPE_INT) ||
+        json_node_get_int(revision) < 0)
+        return luaL_error(state, "gnoblin.launches returned an invalid snapshot");
+    for (guint i = 0; i < json_array_get_length(launches); i++) {
+        JsonNode* value = json_array_get_element(launches, i);
+        if (!JSON_NODE_HOLDS_OBJECT(value) ||
+            !lua_cli_launch_record_valid(json_node_get_object(value)))
+            return luaL_error(state, "gnoblin.launches returned an invalid Launch record");
+    }
+    if (return_snapshot) {
+        json_to_lua(state, result);
+        lua_cli_push_readonly_value(state, -1);
+        lua_remove(state, -2);
+        return 1;
+    }
+    lua_createtable(state, json_array_get_length(launches), 0);
+    for (guint i = 0; i < json_array_get_length(launches); i++) {
+        JsonNode* value = json_array_get_element(launches, i);
+        json_to_lua(state, value);
+        lua_cli_push_readonly_value(state, -1);
+        lua_remove(state, -2);
+        lua_rawseti(state, -2, i + 1);
+    }
     lua_cli_push_readonly_value(state, -1);
     lua_remove(state, -2);
     return 1;
@@ -3967,6 +4032,13 @@ static int lua_api_index(lua_State* state) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(
             state, g_str_equal(name, "list") ? lua_cli_animations_list : lua_cli_animations_get, 1);
+        return 1;
+    }
+    if (g_str_equal(prefix, "launches") &&
+        (g_str_equal(name, "list") || g_str_equal(name, "snapshot"))) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushboolean(state, g_str_equal(name, "snapshot"));
+        lua_pushcclosure(state, lua_cli_launches_read, 2);
         return 1;
     }
     if (g_str_equal(prefix, "input")) {

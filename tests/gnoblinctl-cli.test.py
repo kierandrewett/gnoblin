@@ -142,7 +142,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(77):
+                    for _ in range(79):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -356,7 +356,16 @@ def main() -> int:
                                 result = {"request_id": 20, "method": "window.thumbnail"}
                             elif request["method"] == "launches.snapshot":
                                 result = {
-                                    "launches": [{"token": "one", "application": "app", "state": "pending"}],
+                                    "launches": [
+                                        {
+                                            "token": "one",
+                                            "application": "app",
+                                            "started_at": 1720000000123,
+                                            "timeout_ms": 3000,
+                                            "state": "pending",
+                                            "revision": 4,
+                                        }
+                                    ],
                                     "revision": 4,
                                 }
                             elif request["method"] == "shortcuts.list":
@@ -754,7 +763,16 @@ def main() -> int:
         )
         assert launch_status.returncode == 0, launch_status.stderr
         assert json.loads(launch_status.stdout) == {
-            "launches": [{"token": "one", "application": "app", "state": "pending"}],
+            "launches": [
+                {
+                    "token": "one",
+                    "application": "app",
+                    "started_at": 1720000000123,
+                    "timeout_ms": 3000,
+                    "state": "pending",
+                    "revision": 4,
+                }
+            ],
             "revision": 4,
         }
         move_active_monitor = run(
@@ -1292,11 +1310,28 @@ def main() -> int:
         )
         animation_reads_result = run(binary, "--socket", socket_path, "lua", str(animation_reads_file))
         assert animation_reads_result.returncode == 0, animation_reads_result.stderr
+        launches_file = Path(temporary) / "launches.lua"
+        launches_file.write_text(
+            "local launches = gnoblin.launches.list()\n"
+            'assert(#launches == 1 and launches[1].token == "one")\n'
+            'assert(launches[1].application == "app" and launches[1].state == "pending")\n'
+            "assert(launches[1].started_at == 1720000000123 and launches[1].timeout_ms == 3000)\n"
+            'assert(not pcall(function() launches[1].state = "ended" end))\n'
+            "local snapshot = gnoblin.launches.snapshot()\n"
+            'assert(snapshot.revision == 4 and snapshot.launches[1].token == "one")\n'
+            "assert(not pcall(function() snapshot.revision = 5 end))\n"
+            'assert(not pcall(function() rawset(snapshot.launches[1], "token", "changed") end))\n'
+            "assert(not pcall(function() gnoblin.launches.list(true) end))\n"
+            "assert(not pcall(function() gnoblin.launches.snapshot({}) end))\n",
+            encoding="utf-8",
+        )
+        launches_result = run(binary, "--socket", socket_path, "lua", str(launches_file))
+        assert launches_result.returncode == 0, launches_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 77
-        assert len(subscriptions) == 77
+        assert len(received) == 79
+        assert len(subscriptions) == 79
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1353,6 +1388,12 @@ def main() -> int:
         assert animation_calls[2]["arguments"] == {"session": "preview-17", "milliseconds": 250}
         for call in animation_calls[3:]:
             assert call["arguments"] == {"session": "preview-17"}
+        launch_calls = received[-2:]
+        assert [call["method"] for call in launch_calls] == [
+            "launches.snapshot",
+            "launches.snapshot",
+        ]
+        assert all(call["api_version"] == {"major": 1, "minor": 39} for call in launch_calls)
         assert received[53]["method"] == "portals.grants"
         assert received[53]["api_version"] == {"major": 1, "minor": 45}
         assert received[53]["arguments"] == {}
