@@ -108,7 +108,7 @@ endif()
 add_executable(gnoblin-idle src/session/gnoblin-idle.c)
 target_link_libraries(gnoblin-idle PRIVATE PkgConfig::GNOBLIN_GIO)
 add_executable(gnoblinctl src/tools/gnoblinctl.c)
-target_link_libraries(gnoblinctl PRIVATE PkgConfig::GNOBLIN_CONTROL)
+target_link_libraries(gnoblinctl PRIVATE PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_LUA)
 add_test(NAME gnoblinctl-cli
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/gnoblinctl-cli.test.py"
     "$<TARGET_FILE:gnoblinctl>" "${CMAKE_BINARY_DIR}")

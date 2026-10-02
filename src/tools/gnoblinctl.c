@@ -3,6 +3,9 @@
 #include <gio/gunixsocketaddress.h>
 #include <json-glib/json-glib.h>
 #include <glib/gstdio.h>
+#include <lauxlib.h>
+#include <lua.h>
+#include <lualib.h>
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -58,6 +61,7 @@ static const CommandSpec commands[] = {
     {"grant", "list revoke"},
     {"launch", "status begin end"},
     {"animation", "list get surfaces inspect preview seek step play pause stop"},
+    {"lua", NULL},
 };
 
 static const CommandSpec* find_command(const char* name) {
@@ -1415,6 +1419,305 @@ invalid:
     return NULL;
 }
 
+static JsonNode* lua_to_json(lua_State* state, int index, guint depth, GError** error) {
+    if (depth > 64) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "Lua values may be nested at most 64 levels");
+        return NULL;
+    }
+    index = lua_absindex(state, index);
+    switch (lua_type(state, index)) {
+    case LUA_TNIL: {
+        return json_node_new(JSON_NODE_NULL);
+    }
+    case LUA_TBOOLEAN: {
+        JsonNode* node = json_node_new(JSON_NODE_VALUE);
+        json_node_set_boolean(node, lua_toboolean(state, index));
+        return node;
+    }
+    case LUA_TNUMBER: {
+        if (lua_isinteger(state, index)) {
+            JsonNode* node = json_node_new(JSON_NODE_VALUE);
+            json_node_set_int(node, lua_tointeger(state, index));
+            return node;
+        }
+        lua_Number number = lua_tonumber(state, index);
+        if (!isfinite(number)) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "Lua numbers must be finite");
+            return NULL;
+        }
+        JsonNode* node = json_node_new(JSON_NODE_VALUE);
+        json_node_set_double(node, number);
+        return node;
+    }
+    case LUA_TSTRING: {
+        size_t length = 0;
+        const char* value = lua_tolstring(state, index, &length);
+        if (!g_utf8_validate(value, length, NULL) || memchr(value, '\0', length)) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "Lua strings must be valid UTF-8 without NUL bytes");
+            return NULL;
+        }
+        JsonNode* node = json_node_new(JSON_NODE_VALUE);
+        json_node_set_string(node, value);
+        return node;
+    }
+    case LUA_TTABLE: {
+        guint array_length = lua_rawlen(state, index);
+        guint entries = 0;
+        gboolean array = array_length > 0;
+        lua_pushnil(state);
+        while (lua_next(state, index)) {
+            entries++;
+            if (!lua_isinteger(state, -2) || lua_tointeger(state, -2) < 1 ||
+                lua_tointeger(state, -2) > array_length)
+                array = FALSE;
+            lua_pop(state, 1);
+        }
+        if (array && entries != array_length)
+            array = FALSE;
+        if (array) {
+            JsonArray* values = json_array_new();
+            for (guint i = 1; i <= array_length; i++) {
+                lua_rawgeti(state, index, i);
+                JsonNode* value = lua_to_json(state, -1, depth + 1, error);
+                lua_pop(state, 1);
+                if (!value) {
+                    json_array_unref(values);
+                    return NULL;
+                }
+                json_array_add_element(values, value);
+            }
+            JsonNode* node = json_node_new(JSON_NODE_ARRAY);
+            json_node_take_array(node, values);
+            return node;
+        }
+
+        JsonObject* object = json_object_new();
+        lua_pushnil(state);
+        while (lua_next(state, index)) {
+            if (lua_type(state, -2) != LUA_TSTRING) {
+                lua_pop(state, 2);
+                json_object_unref(object);
+                g_set_error_literal(
+                    error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                    "Lua object keys must be strings; array keys must be dense integers");
+                return NULL;
+            }
+            const char* key = lua_tostring(state, -2);
+            JsonNode* value = lua_to_json(state, -1, depth + 1, error);
+            if (!value) {
+                lua_pop(state, 2);
+                json_object_unref(object);
+                return NULL;
+            }
+            json_object_set_member(object, key, value);
+            lua_pop(state, 1);
+        }
+        JsonNode* node = json_node_new(JSON_NODE_OBJECT);
+        json_node_take_object(node, object);
+        return node;
+    }
+    default:
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "Lua API arguments must contain only JSON values");
+        return NULL;
+    }
+}
+
+static void json_to_lua(lua_State* state, JsonNode* node) {
+    if (!node || JSON_NODE_HOLDS_NULL(node)) {
+        lua_pushnil(state);
+    } else if (JSON_NODE_HOLDS_OBJECT(node)) {
+        JsonObject* object = json_node_get_object(node);
+        lua_createtable(state, 0, json_object_get_size(object));
+        GList* members = json_object_get_members(object);
+        for (GList* item = members; item; item = item->next) {
+            const char* key = item->data;
+            json_to_lua(state, json_object_get_member(object, key));
+            lua_setfield(state, -2, key);
+        }
+        g_list_free(members);
+    } else if (JSON_NODE_HOLDS_ARRAY(node)) {
+        JsonArray* array = json_node_get_array(node);
+        guint length = json_array_get_length(array);
+        lua_createtable(state, length, 0);
+        for (guint i = 0; i < length; i++) {
+            json_to_lua(state, json_array_get_element(array, i));
+            lua_rawseti(state, -2, i + 1);
+        }
+    } else {
+        GType type = json_node_get_value_type(node);
+        if (type == G_TYPE_BOOLEAN)
+            lua_pushboolean(state, json_node_get_boolean(node));
+        else if (type == G_TYPE_INT || type == G_TYPE_INT64)
+            lua_pushinteger(state, json_node_get_int(node));
+        else if (type == G_TYPE_DOUBLE)
+            lua_pushnumber(state, json_node_get_double(node));
+        else if (type == G_TYPE_STRING)
+            lua_pushstring(state, json_node_get_string(node));
+        else
+            lua_pushnil(state);
+    }
+}
+
+static int lua_api_call(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    const char* method = lua_tostring(state, lua_upvalueindex(2));
+    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
+        return luaL_error(state, "Gnoblin API methods accept one optional argument table");
+
+    JsonObject* arguments = json_object_new();
+    if (lua_gettop(state) == 1) {
+        g_autoptr(GError) conversion_error = NULL;
+        g_autoptr(JsonNode) encoded = lua_to_json(state, 1, 0, &conversion_error);
+        if (!encoded)
+            return luaL_error(state, "invalid API arguments: %s", conversion_error->message);
+        if (!JSON_NODE_HOLDS_OBJECT(encoded))
+            return luaL_error(state, "Gnoblin API arguments must be a named Lua table");
+        json_object_unref(arguments);
+        arguments = json_object_ref(json_node_get_object(encoded));
+    }
+
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "Gnoblin API call failed: %s", call_error->message);
+    json_to_lua(state, result);
+    return 1;
+}
+
+static int lua_api_index(lua_State* state) {
+    const char* prefix = lua_tostring(state, lua_upvalueindex(1));
+    const char* name = luaL_checkstring(state, 2);
+    if (!*prefix) {
+        lua_newtable(state);
+        lua_newtable(state);
+        lua_pushstring(state, name);
+        lua_pushvalue(state, lua_upvalueindex(2));
+        lua_pushcclosure(state, lua_api_index, 2);
+        lua_setfield(state, -2, "__index");
+        lua_setmetatable(state, -2);
+        return 1;
+    }
+    g_autofree char* method = g_strdup_printf("%s.%s", prefix, name);
+    lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+    lua_pushstring(state, method);
+    lua_pushcclosure(state, lua_api_call, 2);
+    return 1;
+}
+
+static void print_lua_error(lua_State* state, const char* prefix) {
+    const char* message = lua_tostring(state, -1);
+    g_printerr("%s%s\n", prefix, message ? message : "Lua evaluation failed");
+    lua_pop(state, 1);
+}
+
+static gboolean evaluate_lua_line(lua_State* state, const char* line, guint line_number) {
+    g_autofree char* expression = NULL;
+    const char* chunk = line;
+    if (line[0] == '=')
+        chunk = expression = g_strdup_printf("return %s", line + 1);
+    else
+        chunk = expression = g_strdup_printf("return %s", line);
+
+    if (luaL_loadbuffer(state, chunk, strlen(chunk), "=gnoblinctl") != LUA_OK) {
+        lua_pop(state, 1);
+        if (line[0] == '=') {
+            g_autofree char* statement = g_strdup(line + 1);
+            if (luaL_loadbuffer(state, statement, strlen(statement), "=gnoblinctl") != LUA_OK) {
+                print_lua_error(state, "gnoblinctl lua: ");
+                return FALSE;
+            }
+        } else if (luaL_loadbuffer(state, line, strlen(line), "=gnoblinctl") != LUA_OK) {
+            print_lua_error(state, "gnoblinctl lua: ");
+            return FALSE;
+        }
+    }
+
+    if (lua_pcall(state, 0, LUA_MULTRET, 0) != LUA_OK) {
+        print_lua_error(state, "gnoblinctl lua: ");
+        return FALSE;
+    }
+    int result_count = lua_gettop(state);
+    if (result_count > 0) {
+        lua_getglobal(state, "print");
+        lua_insert(state, 1);
+        if (lua_pcall(state, result_count, 0, 0) != LUA_OK) {
+            print_lua_error(state, "gnoblinctl lua: ");
+            return FALSE;
+        }
+    }
+    (void)line_number;
+    return TRUE;
+}
+
+static int run_lua_console(Cli* cli, const char* file) {
+    lua_State* state = luaL_newstate();
+    if (!state) {
+        g_printerr("gnoblinctl lua: could not create Lua state\n");
+        return 1;
+    }
+    luaL_openlibs(state);
+    lua_newtable(state);
+    lua_newtable(state);
+    lua_pushstring(state, "");
+    lua_pushlightuserdata(state, cli);
+    lua_pushcclosure(state, lua_api_index, 2);
+    lua_setfield(state, -2, "__index");
+    lua_setmetatable(state, -2);
+    lua_setglobal(state, "gnoblin");
+
+    if (file) {
+        if (luaL_loadfile(state, file) != LUA_OK || lua_pcall(state, 0, 0, 0) != LUA_OK) {
+            print_lua_error(state, "gnoblinctl lua: ");
+            lua_close(state);
+            return 1;
+        }
+        lua_close(state);
+        return 0;
+    }
+
+    gboolean interactive = isatty(STDIN_FILENO);
+    if (interactive)
+        g_print("Gnoblin Lua console. Type :help for commands, :quit to exit.\n");
+    char* line = NULL;
+    size_t capacity = 0;
+    ssize_t length;
+    guint line_number = 0;
+    int exit_status = 0;
+    while (TRUE) {
+        if (interactive) {
+            g_print("gnoblin> ");
+            fflush(stdout);
+        }
+        length = getline(&line, &capacity, stdin);
+        if (length < 0)
+            break;
+        line_number++;
+        g_strchomp(line);
+        g_strstrip(line);
+        if (!*line)
+            continue;
+        if (g_str_equal(line, ":quit") || g_str_equal(line, ":q"))
+            break;
+        if (g_str_equal(line, ":help")) {
+            g_print("Enter Lua expressions or statements. Use gnoblin.<area>.<method>{...} "
+                    "to call the typed session API.\n"
+                    "Example: =gnoblin.windows.list{focused = true}\n"
+                    "Calls use the running compositor's API validation. :quit exits.\n");
+            continue;
+        }
+        if (!evaluate_lua_line(state, line, line_number))
+            exit_status = 1;
+    }
+    free(line);
+    lua_close(state);
+    return exit_status;
+}
+
 static char* node_text(JsonNode* node) {
     if (!node)
         return g_strdup("-");
@@ -1790,6 +2093,11 @@ static void print_help(const char* command, const char* action) {
         g_print("\nUse 'gnoblinctl help COMMAND' to see its actions.\n");
         return;
     }
+    if (g_str_equal(command, "lua")) {
+        g_print("Usage: gnoblinctl lua [FILE]\n\n"
+                "Run a local Lua console or execute a Lua file with the Gnoblin session API.\n");
+        return;
+    }
     if (action && word_in(spec->actions, action)) {
         const char* arguments = action_usage(command, action);
         g_print("Usage: gnoblinctl %s %s%s%s\n\n", command, action, arguments ? " " : "",
@@ -1896,6 +2204,13 @@ int main(int argc, char** argv) {
         }
         print_completion(arg(&cli, 0));
         return 0;
+    }
+    if (g_str_equal(cli.command, "lua")) {
+        if (arg_count(&cli) > 1) {
+            g_printerr("gnoblinctl lua accepts at most one Lua file\n");
+            return 1;
+        }
+        return run_lua_console(&cli, arg(&cli, 0));
     }
     result = dispatch(&cli, &error);
     if (!result)
