@@ -218,7 +218,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.launches` | `list()`, `snapshot()`, `begin(args)`, `end(args)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` supports read-only `list()` and revisioned `snapshot()`. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
 | `gnoblin.privacy.state()` | `() -> PrivacyState` | **Current.** Read the immutable privacy activity snapshot in the native runtime or `gnoblinctl lua`; the console returns a deeply read-only record. |
-| `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only `PermissionPolicy` and `PermissionDecision` records from the matching reads. |
+| `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only permission-list, `PermissionPolicy`, and `PermissionDecision` snapshots from the matching reads. |
 | `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` returns deeply read-only `SessionStatus` and `SessionActivity` records from the matching reads. |
 | `gnoblin.runtime.reload_config()` | `() -> Operation<Result>` | **Current; native runtime only.** Reload the active configuration. |
 | `gnoblin.listeners` | map of event names to callback arrays | **Current; inspect only.** Do not edit this table directly. |
@@ -1688,6 +1688,9 @@ collection revision.
 
 `permissions.policy()` uses native-control API 1.44 and returns a deeply
 read-only `PermissionPolicy`, including its ordered rules array.
+
+`permissions.list()` uses native-control API 1.42 and returns a deeply
+read-only policy-list snapshot with capabilities, levels, and config path.
 
 `permissions.check(capability, identity)` accepts both the runtime's two
 string arguments and its `{capability, identity}` table form in the console.
