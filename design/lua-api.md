@@ -217,7 +217,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current; native runtime only.** Read and control declared compositor animation previews. |
 | `gnoblin.launches` | `list()`, `begin(args)`, `end(args)` | **Current; native runtime only.** Read and report tracked application launches. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records too. |
-| `gnoblin.privacy.state()` | `() -> PrivacyState` | **Current; native runtime only.** Read screen-sharing and recording state. |
+| `gnoblin.privacy.state()` | `() -> PrivacyState` | **Current.** Read the immutable privacy activity snapshot in the native runtime or `gnoblinctl lua`; the console returns a deeply read-only record. |
 | `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current; native runtime only.** Inspect permission policy, check requests, list grants, and revoke grants. |
 | `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current; native runtime only.** Control or read the supervised session. |
 | `gnoblin.runtime.reload_config()` | `() -> Operation<Result>` | **Current; native runtime only.** Reload the active configuration. |
@@ -1725,7 +1725,9 @@ configuration tables.
 
 Native-control API 1.17 implements `gnoblin.privacy.state()` as an immutable
 snapshot with `available`, a stable `revision`, and activity fields only for
-sources marked available. The current session reports screen-sharing and
+sources marked available. `gnoblinctl lua` routes the call through API 1.47 and
+returns a deeply read-only `PrivacyState` record, including a read-only
+`available` record. The current session reports screen-sharing and
 recording from Mutter's tracked remote-access handles, and microphone activity
 from running PipeWire audio-capture streams when Mutter has remote-desktop
 support and can connect to PipeWire. Meter streams may count as active, because

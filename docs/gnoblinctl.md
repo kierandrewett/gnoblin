@@ -110,6 +110,17 @@ local settings = gnoblin.settings
 print(settings.window_management.focus_mode, settings.revision)
 ```
 
+`gnoblin.privacy.state()` returns a deeply read-only `PrivacyState` record.
+Check `available` before reading an activity field; unavailable sources omit
+their activity value:
+
+```lua
+local privacy = gnoblin.privacy.state()
+if privacy.available.screen_sharing then
+    print(privacy.screen_sharing and "Sharing" or "Not sharing")
+end
+```
+
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
 read-only `Workspace` records. A workspace can be activated, renamed, removed,
