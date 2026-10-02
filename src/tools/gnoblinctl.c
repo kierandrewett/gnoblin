@@ -3911,7 +3911,14 @@ static int lua_cli_portal_grant_revoke(lua_State* state) {
     json_object_unref(arguments);
     if (!result)
         return luaL_error(state, "grant.revoke failed: %s", call_error->message);
+    JsonObject* response = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonNode* ok = response ? json_object_get_member(response, "ok") : NULL;
+    if (!ok || !JSON_NODE_HOLDS_VALUE(ok) || json_node_get_value_type(ok) != G_TYPE_BOOLEAN ||
+        !json_node_get_boolean(ok) || !g_str_equal(member_string(response, "id", ""), id))
+        return luaL_error(state, "grant.revoke returned an invalid result");
     json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
     return 1;
 }
 

@@ -1303,6 +1303,7 @@ def main() -> int:
             'assert(grant.id == "grant-17" and type(grant.revoke) == "function")\n'
             "local revoked = grant:revoke()\n"
             'assert(revoked.ok and revoked.id == "grant-17")\n'
+            "assert(not pcall(function() revoked.ok = false end))\n"
             "assert(not pcall(function() grant:revoke(true) end))\n",
             encoding="utf-8",
         )
