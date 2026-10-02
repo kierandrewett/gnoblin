@@ -130,6 +130,17 @@ for _, capability in ipairs(gnoblin.capabilities.list()) do
 end
 ```
 
+Read launch feedback with `gnoblin.launches.list()`. Use
+`gnoblin.launches.snapshot()` when you also need the collection revision. Both
+calls return deeply read-only launch records:
+
+```lua
+local snapshot = gnoblin.launches.snapshot()
+for _, launch in ipairs(snapshot.launches) do
+    print(launch.application, launch.state, snapshot.revision)
+end
+```
+
 `gnoblin.permissions.policy()` returns the committed permission policy as a
 deeply read-only `PermissionPolicy` record:
 

@@ -1171,10 +1171,12 @@ API 1.15 clients can subscribe to `gnoblin.portal.grant-added` and
 Use `gnoblin.launches` to read launch feedback and track a launch request.
 `list()` returns the latest cached native snapshot as immutable `Launch`
 records. `snapshot()` returns those records together with the collection
-revision, including when the collection is empty. The native controller seeds
-an empty snapshot during startup and refreshes it before dispatching
-launch-change events. Both methods are unavailable before native startup
-completes.
+revision, including when the collection is empty.
+
+The native controller seeds an empty snapshot during startup and refreshes it
+before dispatching launch-change events. Both methods are unavailable before
+native startup completes. `gnoblinctl lua` also exposes both reads through
+native-control API 1.39, with deeply read-only launch records and snapshots.
 
 | Method                            | Arguments                                     | Result                                          |
 | --------------------------------- | --------------------------------------------- | ----------------------------------------------- |
