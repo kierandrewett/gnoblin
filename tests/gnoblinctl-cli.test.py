@@ -184,6 +184,7 @@ def main() -> int:
                                 stream.flush()
                                 request = json.loads(stream.readline())
                             received.append(request)
+                            completion_value = None
                             if request["method"] == "version":
                                 result = {
                                     "gnoblin": "0.2.0",
@@ -430,7 +431,7 @@ def main() -> int:
                                     "revision": 4,
                                 }
                             elif request["method"] == "launch.begin":
-                                result = {
+                                completion_value = {
                                     "token": request["arguments"]["token"],
                                     "application": request["arguments"]["application"],
                                     "started_at": 1720000000456,
@@ -438,8 +439,10 @@ def main() -> int:
                                     "state": "pending",
                                     "revision": 5,
                                 }
+                                result = {"request_id": 34, "method": request["method"]}
                             elif request["method"] == "launch.end":
-                                result = {"ok": True, "token": request["arguments"]["token"]}
+                                completion_value = {"ok": True, "token": request["arguments"]["token"]}
+                                result = {"request_id": 35, "method": request["method"]}
                             elif request["method"] == "shortcuts.list":
                                 result = [
                                     {
@@ -598,6 +601,8 @@ def main() -> int:
                                 "workspace.move_active",
                                 "grant.revoke",
                                 "shortcut.capture",
+                                "launch.begin",
+                                "launch.end",
                             }:
                                 operation_id = result["request_id"]
                                 method = result["method"]
@@ -782,6 +787,8 @@ def main() -> int:
                                     value = {"ok": True, "id": request["arguments"]["id"]}
                                 elif method == "shortcut.capture":
                                     value = {"accelerator": "<Super>Return"}
+                                elif method in {"launch.begin", "launch.end"}:
+                                    value = completion_value
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
                                 completion = {
