@@ -141,7 +141,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(68):
+                    for _ in range(69):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -385,7 +385,18 @@ def main() -> int:
                                     "revision": 9,
                                 }
                             elif request["method"] == "permissions.policy":
-                                result = {"default": "default", "rules": [], "revision": 9}
+                                result = {
+                                    "default": "default",
+                                    "rules": [
+                                        {
+                                            "name": "remote-example",
+                                            "match": "^app%-id:org%.example%.Remote$",
+                                            "capabilities": ["remote-desktop"],
+                                            "level": "allow",
+                                        }
+                                    ],
+                                    "revision": 9,
+                                }
                             elif request["method"] == "portals.grants":
                                 result = [
                                     {
@@ -841,7 +852,14 @@ def main() -> int:
         assert permissions_policy.returncode == 0, permissions_policy.stderr
         assert json.loads(permissions_policy.stdout) == {
             "default": "default",
-            "rules": [],
+            "rules": [
+                {
+                    "name": "remote-example",
+                    "match": "^app%-id:org%.example%.Remote$",
+                    "capabilities": ["remote-desktop"],
+                    "level": "allow",
+                }
+            ],
             "revision": 9,
         }
         input_devices = run(binary, "--socket", socket_path, "--format", "json", "input", "devices")
@@ -1147,11 +1165,26 @@ def main() -> int:
         )
         capability_result = run(binary, "--socket", socket_path, "lua", str(capabilities_file))
         assert capability_result.returncode == 0, capability_result.stderr
+        policy_file = Path(temporary) / "permission-policy.lua"
+        policy_file.write_text(
+            "local policy = gnoblin.permissions.policy()\n"
+            'assert(tostring(policy) == "PermissionPolicy" and policy.default == "default")\n'
+            "assert(policy.revision == 9 and #policy.rules == 1)\n"
+            'assert(policy.rules[1].name == "remote-example" and policy.rules[1].level == "allow")\n'
+            'assert(policy.rules[1].capabilities[1] == "remote-desktop")\n'
+            'assert(not pcall(function() policy.default = "deny" end))\n'
+            'assert(not pcall(function() policy.rules[1].level = "deny" end))\n'
+            'assert(not pcall(function() rawset(policy.rules[1].capabilities, 1, "access") end))\n'
+            "assert(not pcall(function() gnoblin.permissions.policy(true) end))\n",
+            encoding="utf-8",
+        )
+        policy_result = run(binary, "--socket", socket_path, "lua", str(policy_file))
+        assert policy_result.returncode == 0, policy_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 68
-        assert len(subscriptions) == 68
+        assert len(received) == 69
+        assert len(subscriptions) == 69
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -1257,6 +1290,9 @@ def main() -> int:
         assert received[67]["method"] == "capabilities.list"
         assert received[67]["api_version"] == {"major": 1, "minor": 19}
         assert received[67]["arguments"] == {}
+        assert received[68]["method"] == "permissions.policy"
+        assert received[68]["api_version"] == {"major": 1, "minor": 44}
+        assert received[68]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
