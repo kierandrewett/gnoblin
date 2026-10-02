@@ -13,9 +13,11 @@ The usual path is `~/.config/gnoblin/init.lua`, or
 `$XDG_CONFIG_HOME/gnoblin/init.lua` when that variable is set.
 The compositor's `GNOBLIN_CONFIG` environment variable overrides it.
 
-Without that override, Gnoblin checks `init.lua`, `gnoblin.toml`, then
-`gnoblin.conf`. The TOML names are kept for existing installations. New configs
-should use `init.lua`; any selected file without a `.lua` suffix is parsed as TOML.
+Without that override, Gnoblin checks `init.lua`, then the old
+`gnoblin.toml` and `gnoblin.conf` names. Those names are detected only so Gnoblin
+can report that the file must be converted; TOML and CONF are not parsed. Rename
+or remove an old file after converting it to Lua. Every selected root and
+included configuration file must use the `.lua` suffix.
 
 For packaged logins, `gnoblin` copies
 `/usr/share/gnoblin/init.lua.example` to `init.lua` when no user config exists.
