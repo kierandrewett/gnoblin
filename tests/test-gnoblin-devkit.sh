@@ -428,10 +428,66 @@ while time.monotonic() < deadline:
     time.sleep(0.05)
 assert generation_after_reload is not None, "accepted config did not advance runtime generation"
 expect_status_event("running", generation_after_reload)
+
+worker_current, compositor_current = worker_and_compositor()
+assert worker_current and compositor_current == compositor_before, (
+    worker_current, compositor_current, compositor_before
+)
+for retry in range(5):
+    os.kill(worker_current, signal.SIGKILL)
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        status = runtime_status()
+        if status and status.startswith("restarting:"):
+            assert int(status.split(":", 1)[1]) == generation_after_reload, status
+            break
+        time.sleep(0.01)
+    else:
+        raise AssertionError(f"runtime recovery {retry + 2} did not report restarting")
+    expect_status_event("restarting", generation_after_reload)
+
+    if retry < 4:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            worker_after, compositor_after = worker_and_compositor()
+            status = runtime_status()
+            if (
+                worker_after
+                and worker_after != worker_current
+                and compositor_after == compositor_current
+                and status == f"running:{generation_after_reload}"
+            ):
+                worker_current = worker_after
+                expect_status_event("running", generation_after_reload)
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError(f"runtime recovery {retry + 2} did not restart the worker")
+    else:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            status = runtime_status()
+            if status == f"unavailable:{generation_after_reload}":
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError("runtime status did not become unavailable after retry exhaustion")
+        expect_status_event("unavailable", generation_after_reload)
+        assert config_snapshot() is not None, "Mutter stopped answering after runtime failure"
+        ping = subprocess.run(
+            [gnoblinctl, "--timeout", "1", "ping"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        assert ping.stdout.strip() == "pong", ping.stdout
+        print("WORKER:retry-exhaustion-reported-unavailable")
+
 event_socket.shutdown(socket.SHUT_RDWR)
 event_stream.close()
 event_socket.close()
-print("RUNTIME_STATUS_EVENT:recovery-and-config-reload")
+print("RUNTIME_STATUS_EVENT:recovery-config-reload-and-terminal-failure")
 PY
 SCRIPT
 )
@@ -468,7 +524,8 @@ require_output 'CONFIG:click'
 require_output 'WINDOWS:json'
 require_output 'WORKSPACE:next'
 require_output 'WORKER:recovered-with-compositor-alive'
-require_output 'RUNTIME_STATUS_EVENT:recovery-and-config-reload'
+require_output 'RUNTIME_STATUS_EVENT:recovery-config-reload-and-terminal-failure'
+require_output 'WORKER:retry-exhaustion-reported-unavailable'
 require_output 'INPUT_SOURCE:empty-without-lua-setting'
 require_output 'INPUT_SOURCE:configured-from-lua'
 require_output 'INPUT_SOURCE:selected-through-cli'
@@ -647,6 +704,59 @@ while time.monotonic() < deadline:
     time.sleep(0.1)
 else:
     raise AssertionError("session supervisor did not recover with the compositor alive")
+
+supervisor_current = supervisor_after
+for retry in range(5):
+    os.kill(supervisor_current, signal.SIGKILL)
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        status = runtime_status()
+        if status and status.startswith("restarting:"):
+            assert int(status.split(":", 1)[1]) == generation_before, status
+            break
+        time.sleep(0.01)
+    else:
+        raise AssertionError(f"supervisor recovery {retry + 2} did not report restarting")
+
+    if retry < 4:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            compositor_after, supervisor_after = processes()
+            config_after = config_snapshot()
+            status = runtime_status()
+            if (
+                supervisor_after
+                and supervisor_after != supervisor_current
+                and compositor_after == compositor_before
+                and config_after == config_before
+                and status == f"running:{generation_before}"
+            ):
+                supervisor_current = supervisor_after
+                break
+            time.sleep(0.1)
+        else:
+            raise AssertionError(f"supervisor recovery {retry + 2} did not restart")
+    else:
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            status = runtime_status()
+            if status == f"unavailable:{generation_before}":
+                break
+            time.sleep(0.05)
+        else:
+            raise AssertionError(
+                "runtime status did not become unavailable after supervisor retry exhaustion"
+            )
+        assert config_snapshot() == config_before
+        ping = subprocess.run(
+            [gnoblinctl, "--timeout", "1", "ping"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        )
+        assert ping.stdout.strip() == "pong", ping.stdout
+        print("SUPERVISOR:retry-exhaustion-reported-unavailable")
 PY
 SCRIPT
 )
@@ -664,6 +774,7 @@ guardian_output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     exit 1
 }
 grep -q 'SUPERVISOR:recovered-with-compositor-alive' <<<"$guardian_output"
+grep -q 'SUPERVISOR:retry-exhaustion-reported-unavailable' <<<"$guardian_output"
 grep -q 'AUTOSTART:ran-once-across-supervisor-recovery' <<<"$guardian_output"
 grep -q 'SESSION_STATUS:available-with-supervisor-stopped' <<<"$guardian_output"
-printf '%s\n' 'PASS: session supervisor recovers without restarting Mutter or login autostart'
+printf '%s\n' 'PASS: session supervisor recovery and terminal status preserve the Mutter session'
