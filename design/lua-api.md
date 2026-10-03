@@ -210,7 +210,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.shortcuts.bind(args)` / `unbind(args)` | `(table) -> runtime: Operation<Result>; CLI: Result`                             | **Current; supervised runtime and `gnoblinctl lua`.** Bind or remove a Gnoblin shortcut. In the CLI, the process owns one persistent compositor connection and stays open while its bindings remain registered.                                            |
 | `gnoblin.shortcuts.end_session(args)`           | `({id: string, session_id: integer}) -> runtime: Operation<Result>; CLI: Result` | **Current; supervised runtime and `gnoblinctl lua`.** End the matching active session while keeping its binding registered. The CLI sends the operation on the same connection that owns the session.                                                      |
 
-| `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current.** The native runtime exposes snapshots and trusted snapping. `gnoblinctl lua` exposes snapshots and typed window methods; event callbacks can use trusted focus, move, resize, and snapping contexts on the event connection. |
+| `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current.** The native runtime exposes snapshots and trusted snapping. `gnoblinctl lua` exposes snapshots and typed window methods; event callbacks can use trusted focus, menu, move, resize, and snapping contexts on their originating connection. |
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current.** The native runtime exposes read-only revisioned snapshots and typed operations. `gnoblinctl lua` exposes the same reads and namespace mutations; operations wait for completion and return read-only records. |
 | `gnoblin.monitors` | `list()`, `primary()` | **Current.** Both the supervised runtime and `gnoblinctl lua` expose read-only revisioned monitor snapshots. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
@@ -894,6 +894,9 @@ callback, expires after five seconds, and is revoked by lock or runtime/config
 teardown. App-menu events carry no authority. Socket clients receive a
 per-connection opaque `menu_context` token and use the same operations without
 passing a window ID; see the runtime API and compositor bridge references.
+`gnoblinctl lua` wraps the socket token as opaque `MenuContext` userdata and
+routes its typed methods over the originating subscription connection. App-menu
+events do not expose a context in either Lua interface.
 
 #### Pointer and keyboard snapping
 
@@ -1749,6 +1752,10 @@ contexts. `TextTarget:insert_text` keeps its one-use token private and uses that
 same connection. The console supports `events.on`, `events.once`, and the
 matching Mutter subscriptions, dispatches callbacks in the local CLI process,
 and stays open while subscriptions remain active.
+For WM-menu events it wraps the per-connection socket token as opaque
+`MenuContext` userdata and exposes `begin_move()` and `begin_resize(edge)`;
+application-menu payloads never receive the token. Calls require the active
+originating event subscription and consume the context once.
 `gnoblinctl lua` also supports shortcut bindings that it owns over a persistent
 compositor connection and event-bound operations sent through the connection
 that delivered their context. The CLI remains a separate Lua process; it does
