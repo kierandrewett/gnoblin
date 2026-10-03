@@ -22,8 +22,35 @@ cat >"$schema_dir/org.gnome.desktop.input-sources.gschema.xml" <<'XML'
 </schemalist>
 XML
 glib-compile-schemas "$schema_dir"
+
+activation_protocol_dir="$(pkg-config --variable=pkgdatadir wayland-protocols)"
+activation_protocol="$activation_protocol_dir/staging/xdg-activation/xdg-activation-v1.xml"
+test -f "$activation_protocol"
+wayland-scanner client-header "$activation_protocol" \
+    "$fixture_root/xdg-activation-v1-client-protocol.h"
+wayland-scanner private-code "$activation_protocol" \
+    "$fixture_root/xdg-activation-v1-client-protocol.c"
+xdg_shell_protocol="$activation_protocol_dir/stable/xdg-shell/xdg-shell.xml"
+test -f "$xdg_shell_protocol"
+wayland-scanner client-header "$xdg_shell_protocol" \
+    "$fixture_root/xdg-shell-client-protocol.h"
+wayland-scanner private-code "$xdg_shell_protocol" \
+    "$fixture_root/xdg-shell-client-protocol.c"
+read -r -a activation_cflags <<<"$(pkg-config --cflags wayland-client)"
+read -r -a activation_libs <<<"$(pkg-config --libs wayland-client)"
+cc "${activation_cflags[@]}" -I"$fixture_root" \
+    "$ROOT/tests/focus-transfer-client.c" \
+    "$fixture_root/xdg-activation-v1-client-protocol.c" \
+    "$fixture_root/xdg-shell-client-protocol.c" \
+    "${activation_libs[@]}" -o "$fixture_root/focus-transfer-client"
+
 cat >"$fixture_root/gnoblin/init.lua" <<'LUA'
-gnoblin.configure {window_management = {focus_mode = "click"}}
+gnoblin.configure {
+    window_management = {
+        focus_mode = "click",
+        focus_new_windows = "strict",
+    },
+}
 gnoblin.events.once("gnoblin.config.reloaded", function()
     assert(type(gnoblin.settings) == "userdata")
     assert(gnoblin.settings.window_management.focus_mode == "click")
@@ -118,6 +145,7 @@ print("LUA_API:runtime-status")
 print("LUA_API:snapshots")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/lua-api.lua"
+python3 "$GNOBLIN_FOCUS_TEST_SCRIPT"
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/config-reload.txt"
 gnoblinctl --json window list > "$XDG_RUNTIME_DIR/windows.json"
 python3 - "$XDG_RUNTIME_DIR/windows.json" <<'PY'
@@ -178,7 +206,7 @@ def worker_and_compositor():
     for pid, executable, args in display_processes():
         if "--internal-runtime-worker" in args:
             worker = pid
-        if executable in {"gnoblin-mutter", "gnome-shell"}:
+        if executable == "gnoblin-mutter":
             compositor = pid
     return worker, compositor
 
@@ -260,6 +288,8 @@ output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$fixture_root" \
     GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
     GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
+    GNOBLIN_FOCUS_TEST_CLIENT="$fixture_root/focus-transfer-client" \
+    GNOBLIN_FOCUS_TEST_SCRIPT="$ROOT/tests/test-focus-transfer.py" \
     GNOBLIN_DEVKIT_EXEC="$devkit_exec" \
     timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1)" || {
     printf '%s\n' "$output" >&2
@@ -277,6 +307,7 @@ grep -q 'INPUT_SOURCE:selected-through-cli' <<<"$output"
 grep -q 'INPUT_SOURCE:cleared-with-lua-config' <<<"$output"
 grep -q 'LUA_API:runtime-status' <<<"$output"
 grep -q 'LUA_API:snapshots' <<<"$output"
+grep -q 'PASS: Gnoblin denied activation without user context and emitted the denial event' <<<"$output"
 grep -q 'restarting Lua runtime worker' "$fixture_root/state/devkit-last.log"
 printf '%s\n' 'PASS: Lua config and native control API work in the supervised nested runtime'
 
@@ -334,7 +365,7 @@ def processes():
     for pid, executable, args in display_processes():
         if "--internal-session-supervisor" in args:
             supervisor = pid
-        if executable in {"gnoblin-mutter", "gnome-shell"}:
+        if executable == "gnoblin-mutter":
             compositor = pid
     return compositor, supervisor
 
