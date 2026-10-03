@@ -103,11 +103,13 @@ source list. Revisit the schema package and its version requirement only after
 other consumers and build-time schema checks have been accounted for.
 
 Window interaction policy such as `window_management.auto_maximize`,
-`window_management.mouse_button_modifier`, and
-`window_management.resize_with_right_button` belongs in Lua. Mutter applies
-these values through its preference adapter and ignores the matching desktop
+`window_management.mouse_button_modifier`,
+`window_management.resize_with_right_button`, and
+`window_management.check_alive_timeout` belongs in Lua. Mutter applies these
+values through its preference adapter and ignores the matching desktop
 settings while Gnoblin is running. The drag modifier defaults to `<Super>`;
-the resize-button swap defaults to `false`.
+the resize-button swap defaults to `false`; the client liveness timeout defaults
+to 5000 ms and accepts `0` to disable the check.
 
 The session package does not require `gnoblin-portal`; users can install and
 select another XDG portal backend. The GTK-based Gnoblin backend is a separate
