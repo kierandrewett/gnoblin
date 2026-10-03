@@ -4586,6 +4586,8 @@ static int lua_cli_input_snapshot(lua_State* state) {
             revision < 0)
             return luaL_error(state, "%s returned an invalid OrientationLock", method);
         json_to_lua(state, result);
+        lua_cli_push_readonly_value(state, -1);
+        lua_remove(state, -2);
         return 1;
     }
     if (g_str_equal(method, "input.current_source")) {
@@ -4689,6 +4691,8 @@ static int lua_cli_input_set_orientation_lock(lua_State* state) {
     if (!JSON_NODE_HOLDS_OBJECT(result))
         return luaL_error(state, "input.set_orientation_lock returned an invalid snapshot");
     json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
     return 1;
 }
 

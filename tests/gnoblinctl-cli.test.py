@@ -2249,8 +2249,10 @@ def main() -> int:
         orientation_lua_file.write_text(
             "local lock = gnoblin.input.orientation_lock()\n"
             'assert(lock.available and not lock.locked and lock.source == "system")\n'
+            "assert(not pcall(function() lock.locked = true end))\n"
             "local updated = gnoblin.input.set_orientation_lock(true)\n"
-            'assert(updated.available and updated.locked and updated.source == "runtime")\n',
+            'assert(updated.available and updated.locked and updated.source == "runtime")\n'
+            "assert(not pcall(function() updated.locked = false end))\n",
             encoding="utf-8",
         )
         orientation_lua = run(binary, "--socket", socket_path, "lua", str(orientation_lua_file))
