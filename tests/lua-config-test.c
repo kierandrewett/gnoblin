@@ -340,6 +340,33 @@ int main(void) {
     g_assert_true(g_variant_lookup(window_management, "auto-maximize", "b", &auto_maximize));
     g_assert_false(auto_maximize);
 
+    g_assert_true(g_file_set_contents(
+        explicit_root,
+        "gnoblin.configure {window_management = {mouse_button_modifier = '<Super><Shift>'}}\n", -1,
+        &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_clear_pointer(&window_management, g_variant_unref);
+    window_management =
+        g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(window_management);
+    const char* mouse_button_modifier = NULL;
+    g_assert_true(
+        g_variant_lookup(window_management, "mouse-button-modifier", "&s", &mouse_button_modifier));
+    g_assert_cmpstr(mouse_button_modifier, ==, "<Super><Shift>");
+
+    g_assert_true(g_file_set_contents(
+        explicit_root,
+        "gnoblin.configure {window_management = {mouse_button_modifier = '<NotAModifier>'}}\n", -1,
+        &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_null(document);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_clear_error(&error);
+
     g_assert_true(g_file_set_contents(explicit_root, "return {}\n", -1, &error));
     g_clear_pointer(&document, g_variant_unref);
     document = load(explicit_root, NULL, &error);

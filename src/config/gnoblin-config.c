@@ -328,6 +328,36 @@ static gboolean variant_string_without_nul(GVariant* value, gboolean nonempty) {
     return (!nonempty || length > 0) && !memchr(string, '\0', length);
 }
 
+static gboolean window_modifier_valid(const char* modifier) {
+    static const char* const modifiers[] = {
+        "<Primary>", "<Control>", "<Shift>", "<Shft>", "<Ctrl>", "<Ctl>",   "<Mod1>",  "<Mod2>",
+        "<Mod3>",    "<Mod4>",    "<Mod5>",  "<Alt>",  "<Meta>", "<Hyper>", "<Super>", NULL,
+    };
+    if (g_str_equal(modifier, "disabled") || !modifier[0])
+        return TRUE;
+    const char* current = modifier;
+    while (*current) {
+        if (*current != '<')
+            return FALSE;
+        const char* end = strchr(current, '>');
+        if (!end)
+            return FALSE;
+        gsize length = end - current + 1;
+        gboolean known = FALSE;
+        for (guint i = 0; modifiers[i]; i++) {
+            if (strlen(modifiers[i]) == length &&
+                g_ascii_strncasecmp(current, modifiers[i], length) == 0) {
+                known = TRUE;
+                break;
+            }
+        }
+        if (!known)
+            return FALSE;
+        current = end + 1;
+    }
+    return TRUE;
+}
+
 static gboolean touchpad_gesture_fields_allowed(GVariant* gesture) {
     static const char* const fields[] = {
         "name",    "gesture", "fingers",   "direction", "path", "action",
@@ -1082,6 +1112,8 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
                     valid = FALSE;
                     for (guint i = 0; titlebar[i]; i++)
                         valid |= g_str_equal(string, titlebar[i]);
+                } else if (g_str_equal(name, "mouse-button-modifier")) {
+                    valid = window_modifier_valid(string);
                 } else
                     valid = FALSE;
             } else
