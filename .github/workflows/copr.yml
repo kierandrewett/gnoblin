@@ -110,7 +110,7 @@ jobs:
             ! rpm -q "$package" >/dev/null 2>&1
           done
           test -f /usr/share/wayland-sessions/gnoblin.desktop
-          grep -q '^Exec=env GNOBLIN_STANDALONE_SESSION=1 ' /usr/share/wayland-sessions/gnoblin.desktop
+          grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
           for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon gdm; do
             ! rpm -q "$stock_package" >/dev/null 2>&1
           done

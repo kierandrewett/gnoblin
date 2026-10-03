@@ -272,7 +272,7 @@ jobs:
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -x /usr/bin/gnoblinctl
           test -f /usr/share/wayland-sessions/gnoblin.desktop
-          grep -q '^Exec=env GNOBLIN_STANDALONE_SESSION=1 ' /usr/share/wayland-sessions/gnoblin.desktop
+          grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/lib/systemd/user/gnoblin-session.target
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf

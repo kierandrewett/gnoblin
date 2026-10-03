@@ -298,17 +298,14 @@ its native privacy snapshot currently reports camera activity as unavailable.
    `gnome-settings-daemon` services the session actually needs. Replace or
    make each one optional only with an equivalent user-visible behavior for
    input, accessibility, hardware controls, and XSettings.
-3. **Retire the GNOME Shell bridge and its old runtime path.** The standalone
-   `gnoblin` binary now owns the Lua worker, configuration reload, operation
-   completions, and the native control socket. Native-control validates
-   requests and dispatches compositor-owned operations through Mutter's
-   versioned API; `gnoblinctl` is a native client. Keep compositor policy in
-   Lua and use standard Wayland interfaces where they cover the operation.
-   GNOME Shell compatibility is not a supported product path. Compare any
-   remaining bridge behavior with the native API, preserve only documented
-   Gnoblin socket responses, then remove the GJS bridge, its resource patches,
-   and Shell-only build and test paths. Track the remaining retirement in
-   `gnoblin-0zx`.
+3. **Keep the standalone session native.** The supported build, login entry,
+   and control API use `gnoblin` and Lua; they do not run GNOME Shell or GJS.
+   Native-control validates requests and dispatches compositor-owned
+   operations through Mutter's versioned API; `gnoblinctl` is a native client.
+   Keep compositor policy in Lua and use standard Wayland interfaces where
+   they cover the operation. Preserve old-prefix cleanup while existing
+   installations upgrade. Put any newly found behavior gap in the Lua/native
+   API rather than restoring the retired Shell runtime path.
    The tracked GNOME Shell corner and border geometry helpers and their
    JavaScript-only unit fixtures have been removed. Lua owns the window-rule
    policy, Mutter owns clipping and effects, and the standalone devkit keeps
@@ -428,8 +425,8 @@ its native privacy snapshot currently reports camera activity as unavailable.
    `gnoblinctl window workspace`; the window snapshot reported
    `workspace_id: "@session-2"`. The devkit now supplies a 1280×720 virtual
    output. This verifies the native build and nested control path, not a real
-   login on a seat; GJS compatibility handlers and the standalone login
-   lifecycle remain open. On October 1, 2026, a clean worktree at `6415a974`
+   login on a seat; real-seat login lifecycle verification remains open. On
+   October 1, 2026, a clean worktree at `6415a974`
    rebuilt the complete session on Fedora 43 with GCC 15.3.1 and the existing
    local GNOME 51 and Lua development prefixes. A fresh devkit session listed
    configured `us` and `gb` XKB sources. It selected `gb` with
@@ -449,10 +446,9 @@ its native privacy snapshot currently reports camera activity as unavailable.
    This verifies the source build and nested development session. Fedora 43's
    configured repositories still provide older versions, so the build needs
    those newer development packages supplied through a prefix. A real-seat
-   login and retirement of the remaining GJS compatibility handlers are still
-   open. On October 2, commit `cf4c29ff` built the full session in a second
-   fresh worktree with the same private dependency prefix. The updated
-   `gnoblinctl lua` CLI smoke test passed against the installed client, and
+   login is still open. On October 2, commit `cf4c29ff` built the full session
+   in a second fresh worktree with the same private dependency prefix. The
+   updated `gnoblinctl lua` CLI smoke test passed against the installed client, and
    `tests/test-gnoblin-devkit.sh` passed. A separate nested devkit session
    opened a Foot window and verified Lua window lookup, immutable properties,
    minimize, and restore through the live compositor socket. This validates

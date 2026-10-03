@@ -121,9 +121,7 @@ import sys
 source, destination = map(Path, sys.argv[1:])
 lines = []
 for line in source.read_text().splitlines():
-    if line.startswith('Exec='):
-        line = 'Exec=env GNOBLIN_STANDALONE_SESSION=1 ' + line[5:]
-    elif line.startswith('DesktopNames='):
+    if line.startswith('DesktopNames='):
         line = 'DesktopNames=Gnoblin;'
     lines.append(line)
 destination.write_text('\n'.join(lines) + '\n')
