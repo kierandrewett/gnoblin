@@ -4573,6 +4573,12 @@ static gboolean lua_cli_session_status_valid(JsonObject* object) {
         !JSON_NODE_HOLDS_VALUE(lock_available) ||
         json_node_get_value_type(lock_available) != G_TYPE_BOOLEAN)
         return FALSE;
+    JsonNode* revision = json_object_get_member(object, "revision");
+    if (revision && (!JSON_NODE_HOLDS_VALUE(revision) ||
+                     (json_node_get_value_type(revision) != G_TYPE_INT64 &&
+                      json_node_get_value_type(revision) != G_TYPE_INT) ||
+                     json_node_get_int(revision) < 0))
+        return FALSE;
     JsonNode* lock_state_node = json_object_get_member(object, "lock_state");
     if (!json_node_get_boolean(lock_available))
         return lock_state_node == NULL;

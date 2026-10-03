@@ -795,7 +795,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(115):
+                    for _ in range(116):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -825,10 +825,16 @@ def main() -> int:
                                 }
                             elif request["method"] == "session.status":
                                 status_request_count += 1
-                                result = {"state": "running", "lock_available": False}
+                                result = {
+                                    "state": "running",
+                                    "lock_available": False,
+                                    "revision": status_request_count,
+                                }
                                 if status_request_count > 2:
                                     result["lock_available"] = True
                                     result["lock_state"] = "covering"
+                                if status_request_count > 3:
+                                    result["revision"] = "invalid"
                             elif request["method"] == "session.activity":
                                 result = {
                                     "available": True,
@@ -1483,7 +1489,11 @@ def main() -> int:
         assert ready.wait(timeout=5), repr(server_error)
         result = run(binary, "--socket", socket_path, "--format", "json", "status")
         assert result.returncode == 0, result.stderr
-        assert json.loads(result.stdout) == {"state": "running", "lock_available": False}
+        assert json.loads(result.stdout) == {
+            "state": "running",
+            "lock_available": False,
+            "revision": 1,
+        }
         monitor_result = run(binary, "--socket", socket_path, "--format", "json", "monitor", "list")
         assert monitor_result.returncode == 0, monitor_result.stderr
         assert json.loads(monitor_result.stdout) == {
@@ -2110,10 +2120,12 @@ def main() -> int:
         session_status_file.write_text(
             "local unavailable = gnoblin.session.status()\n"
             'assert(tostring(unavailable) == "SessionStatus" and unavailable.state == "running")\n'
+            "assert(unavailable.revision == 2)\n"
             "assert(not unavailable.lock_available and unavailable.lock_state == nil)\n"
             'assert(not pcall(function() unavailable.lock_state = "unlocked" end))\n'
             'assert(not pcall(function() rawset(unavailable, "lock_state", "unlocked") end))\n'
             "local available = gnoblin.session.status()\n"
+            "assert(available.revision == 3)\n"
             'assert(available.lock_available and available.lock_state == "covering")\n'
             'assert(not pcall(function() available.lock_state = "unlocked" end))\n'
             "assert(not pcall(function() gnoblin.session.status(true) end))\n",
@@ -2416,13 +2428,19 @@ def main() -> int:
         )
         runtime_status_result = run(binary, "--socket", socket_path, "lua", str(runtime_status_script))
         assert runtime_status_result.returncode == 0, runtime_status_result.stderr
+        invalid_session_status_file = Path(temporary) / "invalid-session-status.lua"
+        invalid_session_status_file.write_text("gnoblin.session.status()\n", encoding="utf-8")
+        invalid_session_status_result = run(binary, "--socket", socket_path, "lua", str(invalid_session_status_file))
+        assert invalid_session_status_result.returncode != 0
+        assert "invalid SessionStatus" in invalid_session_status_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 115
-        assert len(subscriptions) == 115
-        assert received[-1]["method"] == "runtime.status"
-        assert received[-1]["api_version"] == {"major": 1, "minor": 67}
+        assert len(received) == 116
+        assert len(subscriptions) == 116
+        assert received[-2]["method"] == "runtime.status"
+        assert received[-2]["api_version"] == {"major": 1, "minor": 67}
+        assert received[-1]["method"] == "session.status"
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
