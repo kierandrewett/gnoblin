@@ -11017,6 +11017,50 @@ static gboolean native_api_read_method(const char* method) {
             g_str_equal(method, "input.orientation_lock"));
 }
 
+static gboolean runtime_config_values_equal(GVariant* left, GVariant* right) {
+    if (!left || !right ||
+        !g_variant_type_equal(g_variant_get_type(left), g_variant_get_type(right)))
+        return FALSE;
+
+    if (g_variant_is_of_type(left, G_VARIANT_TYPE_VARIANT)) {
+        g_autoptr(GVariant) left_value = g_variant_get_variant(left);
+        g_autoptr(GVariant) right_value = g_variant_get_variant(right);
+        return runtime_config_values_equal(left_value, right_value);
+    }
+
+    if (g_variant_is_of_type(left, G_VARIANT_TYPE_VARDICT)) {
+        if (g_variant_n_children(left) != g_variant_n_children(right))
+            return FALSE;
+
+        GVariantIter iter;
+        const char* key;
+        GVariant* value;
+        g_variant_iter_init(&iter, left);
+        while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+            g_autoptr(GVariant) left_value = value;
+            g_autoptr(GVariant) right_value = g_variant_lookup_value(right, key, NULL);
+            if (!runtime_config_values_equal(left_value, right_value))
+                return FALSE;
+        }
+        return TRUE;
+    }
+
+    if (g_variant_is_container(left)) {
+        if (g_variant_n_children(left) != g_variant_n_children(right))
+            return FALSE;
+
+        for (gsize i = 0; i < g_variant_n_children(left); i++) {
+            g_autoptr(GVariant) left_value = g_variant_get_child_value(left, i);
+            g_autoptr(GVariant) right_value = g_variant_get_child_value(right, i);
+            if (!runtime_config_values_equal(left_value, right_value))
+                return FALSE;
+        }
+        return TRUE;
+    }
+
+    return g_variant_equal(left, right);
+}
+
 static gboolean runtime_reload_document_supported(GVariant* current, GVariant* candidate) {
     static const char* const reloadable_settings[] = {
         "animations",        "input",        "input-sources", "permissions",
@@ -11035,7 +11079,7 @@ static gboolean runtime_reload_document_supported(GVariant* current, GVariant* c
             continue;
 
         g_autoptr(GVariant) candidate_value = g_variant_lookup_value(candidate, key, NULL);
-        if (!candidate_value || !g_variant_equal(current_value, candidate_value))
+        if (!candidate_value || !runtime_config_values_equal(current_value, candidate_value))
             return FALSE;
     }
 
@@ -11049,7 +11093,7 @@ static gboolean runtime_reload_document_supported(GVariant* current, GVariant* c
             continue;
 
         g_autoptr(GVariant) current_value = g_variant_lookup_value(current, key, NULL);
-        if (!current_value || !g_variant_equal(current_value, candidate_value))
+        if (!current_value || !runtime_config_values_equal(current_value, candidate_value))
             return FALSE;
     }
 
@@ -13507,7 +13551,7 @@ static gboolean native_runtime_resume_snapshot_matches(GnoblinNativeControl* con
            revision == gnoblin_runtime_cache_get_settings_revision(control->runtime_cache) &&
            generation == control->runtime_generation &&
            operation_id_watermark == control->last_runtime_operation_id &&
-           g_variant_equal(document, current_document);
+           runtime_config_values_equal(document, current_document);
 }
 
 static gboolean native_runtime_reject_resume(GnoblinNativeControl* control, const char* message,
@@ -14088,9 +14132,10 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                         : NULL;
                 g_autoptr(GVariant) new_workspaces =
                     g_variant_lookup_value(document, "workspaces", NULL);
-                gboolean workspaces_changed = (!old_workspaces != !new_workspaces) ||
-                                              (old_workspaces && new_workspaces &&
-                                               !g_variant_equal(old_workspaces, new_workspaces));
+                gboolean workspaces_changed =
+                    (!old_workspaces != !new_workspaces) ||
+                    (old_workspaces && new_workspaces &&
+                     !runtime_config_values_equal(old_workspaces, new_workspaces));
                 g_autoptr(GVariant) old_input_sources =
                     previous_document
                         ? g_variant_lookup_value(previous_document, "input-sources", NULL)
@@ -14100,9 +14145,9 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                 gboolean input_sources_changed =
                     (!old_input_sources != !new_input_sources) ||
                     (old_input_sources && new_input_sources &&
-                     !g_variant_equal(old_input_sources, new_input_sources));
+                     !runtime_config_values_equal(old_input_sources, new_input_sources));
                 if (revision == previous_revision && previous_document &&
-                    !g_variant_equal(previous_document, document)) {
+                    !runtime_config_values_equal(previous_document, document)) {
                     g_set_error_literal(
                         &config_error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                         "supervisor changed configuration without advancing its revision");

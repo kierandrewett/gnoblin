@@ -131,6 +131,10 @@ assert source and source.get("type") == "xkb" and source.get("id") == "us", curr
 assert source.get("current") is True, current
 print("INPUT_SOURCE:selected-through-cli")
 PY
+for reload_attempt in {1..8}; do
+    gnoblinctl config reload > "$XDG_RUNTIME_DIR/reload-$reload_attempt.txt"
+done
+printf 'CONFIG_RELOAD:stable\n'
 cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
     window_management = {
@@ -316,6 +320,7 @@ grep -q 'INPUT_SOURCE:empty-without-lua-setting' <<<"$output"
 grep -q 'INPUT_SOURCE:configured-from-lua' <<<"$output"
 grep -q 'INPUT_SOURCE:selected-through-cli' <<<"$output"
 grep -q 'INPUT_SOURCE:cleared-with-lua-config' <<<"$output"
+grep -q 'CONFIG_RELOAD:stable' <<<"$output"
 grep -q 'LUA_API:runtime-status' <<<"$output"
 grep -q 'LUA_API:snapshots' <<<"$output"
 grep -q 'PASS: Gnoblin denied activation without user context and emitted the denial event' <<<"$output"
