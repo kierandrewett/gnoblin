@@ -19,8 +19,6 @@ See [choose a shell](bring-your-own-shell.md) and [native feature settings](/gui
 - Keyring, network and mount prompts
 - Accessibility services
 - Portal permission and selection dialogs
-- Desktop right-click recovery menu
-- Recovery panel when no shell surface is visible
 
 ## Removed from this session
 
