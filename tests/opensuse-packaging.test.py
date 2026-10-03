@@ -39,11 +39,12 @@ class OpenSUSEPackagingTests(unittest.TestCase):
 
     def test_session_is_standalone_and_uses_gnoblin_names(self):
         content = (SPECS / "gnoblin.spec").read_text()
+        normalized_content = " ".join(content.split())
         self.assertIn("/usr/share/wayland-sessions/gnoblin.desktop", content)
         self.assertIn("scripts/install-session.sh %{_prefix}", content)
         install = (ROOT / "scripts/install-session.sh").read_text()
         self.assertIn("systemd-user/gnoblin-session.target", install)
-        self.assertIn("does not require GNOME Shell or GJS", content)
+        self.assertIn("does not require GNOME Shell or GJS", normalized_content)
         self.assertNotIn("org.gnome.Shell@wayland.service", content)
         self.assertFalse((SPECS / "gnoblin-shell.spec").exists())
 
