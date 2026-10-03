@@ -357,7 +357,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.48            | Adds Lua operation for `window.restore_or_minimize`; all clients now use it                      |
 | 1.49            | Lua runtime operation for `session.lock`                                                         |
 | 1.50            | Lua operations for `launch.begin` and `launch.end`                                               |
-| 1.51            | Adds Lua-backed `session.status`; all client versions now use it                                 |
+| 1.51            | Added a Lua-backed response adapter; current builds answer directly from Mutter                  |
 | 1.52            | Adds Lua-backed `workspace.list`; all client versions now use it                                 |
 | 1.53            | Adds Lua-backed `window.list`; all client versions now use it                                    |
 | 1.54            | Adds Lua-backed `launch.status`; all client versions now use it                                  |
@@ -588,6 +588,8 @@ The socket exposes these reads at the listed API versions:
 
 - `state: "running"` when the compositor answers the request.
 - `lock_available`, plus `lock_state` when that value is true.
+- `revision`, which identifies the lock-state snapshot and matches the
+  `revision` on the corresponding lock-state event.
 
 Mutter answers this socket read directly from its current state, so the read
 does not require the Lua supervisor. It reports compositor availability, not
@@ -1211,9 +1213,10 @@ API 1.54 adds the Lua-backed `launch.status` route. Every supported client
 version now reads through `gnoblin.launches.snapshot()`. The request still
 enables launch-change events for the connection.
 
-API 1.51 adds the Lua-backed `session.status` route. Every supported client
-version now reads through Lua. The response contains `state`,
-`lock_available`, and `lock_state` when locking is available.
+Clients with API 1.29 or newer read `session.status` directly from Mutter
+without the Lua supervisor. The response contains `state`, `lock_available`,
+`revision`, and `lock_state` when locking is available. The revision matches
+the lock-state event and remains unchanged between lock transitions.
 
 API 1.52 and newer serve `workspace.list` from the Lua workspace snapshot.
 The reply keeps the `{ "workspaces": [...] }` wrapper and `windows` count.

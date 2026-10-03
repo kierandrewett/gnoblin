@@ -108,6 +108,9 @@ Native-control API 1.33 adds the `microphone-monitor` capability and the
 
 - `state` is `"running"` while the compositor answers the request.
 - `lock_available` says whether Mutter can report its lock state.
+- `revision` identifies the current lock-state snapshot. It starts at `0` and
+  advances when the lock state changes. The matching event has the same
+  revision.
 - When `lock_available` is true, `lock_state` is `unlocked`, `covering`,
   `locked`, or `failsafe`.
 
@@ -115,9 +118,9 @@ When lock state is unavailable, the record omits `lock_state`; unavailable does
 not mean unlocked.
 
 The read cannot report why a stopped session exited. The socket is unavailable
-after the compositor stops. Socket clients of every supported API version get
-this record through the Lua supervisor; it reports compositor state, not
-supervisor health. Subscribe to
+after the compositor stops. Socket clients with API 1.29 or newer read this
+record directly from Mutter, so it remains available while the Lua supervisor
+is recovering. It reports compositor state, not supervisor health. Subscribe to
 `gnoblin.session.lock-state-changed` for lock transitions.
 
 `gnoblin.session.logout()` takes no arguments and returns an operation whose
