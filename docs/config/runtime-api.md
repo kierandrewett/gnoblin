@@ -165,7 +165,8 @@ The method uses native-control API 1.67. It returns a read-only record with
 - `starting` before the worker connects;
 - `running` while it serves requests;
 - `restarting` while Mutter suspends it for replacement;
-- `unavailable` when the supervisor is disconnected or stopping.
+- `unavailable` when the supervisor is disconnected, stopping, or reports that
+  it will not restart the worker.
 
 The compositor answers the read while the Lua worker is restarting, so shell
 clients can use `gnoblinctl lua` to poll recovery. A call from the live Lua
@@ -188,10 +189,14 @@ end)
 ```
 
 Events are not replayed, so subscribe before reading `runtime.status()` and
-read it again after reconnecting. A Lua worker cannot run a callback while it
-is suspended; external socket clients such as `gnoblinctl lua` can observe
-`restarting`, and the replacement worker receives `running` after it restores
-state. Mutter may close its socket without sending a final `unavailable` event.
+read it again after reconnecting.
+
+A Lua worker cannot run callbacks while suspended. External clients can read
+`restarting` during that time.
+
+When the supervisor reports that it will not restart the worker, Mutter reports
+`unavailable` and emits a final event while it remains alive. The event is not
+sent if the compositor exits first and closes the socket.
 
 The native open-animation matcher uses updated rules for windows mapped after
 reload. Reload does not replay open animations for windows already mapped.

@@ -197,11 +197,13 @@ event revision.
 by `gnoblin.runtime.status()`.
 
 External clients can observe `restarting`. A Lua worker cannot run callbacks
-while suspended; its replacement receives `running` after restoring state.
+while suspended. Its replacement receives `running` after restoring state.
+When the supervisor reports that it will not restart the worker, Mutter emits a
+final `unavailable` event while it remains alive.
 
 Events are not replayed. Subscribe before reading the status snapshot, and
-read it again after reconnecting. Mutter can close the socket before sending a
-final `unavailable` event.
+read it again after reconnecting. The compositor can close the socket without
+a final event if it exits first.
 
 Structured event values are read-only snapshots. Call methods on a lifecycle
 event's `window` record to act on that window:
