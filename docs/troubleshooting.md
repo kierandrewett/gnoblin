@@ -34,11 +34,9 @@ its private binaries from that directory.
 Gnoblin does not include a desktop shell.
 [Install one](bring-your-own-shell.md) if you have not already.
 
-Right-click the desktop to open a terminal. With no visible layer surface,
-the recovery panel appears after eight seconds. It cannot detect a frozen
-shell that still has a visible surface.
-
-For Bingux:
+Gnoblin does not provide a desktop menu, terminal launcher, or recovery panel.
+If the shell fails to start, switch to another session or a text console and
+inspect the shell's service and logs. For Bingux:
 
 ```sh
 systemctl --user status bingux.service

@@ -61,8 +61,9 @@ package adds shared desktop services such as GVfs and GNOME Keyring.
    and choose **Gnoblin**.
 3. Log in and [configure Gnoblin](/config).
 
-If there is no bar or launcher, right-click the desktop and choose **Open
-Terminal**. See [first-login troubleshooting](troubleshooting.md#no-bar-dock-or-launcher).
+If the shell does not appear after login, use another session or a text console
+to inspect its service and logs. See
+[shell troubleshooting](troubleshooting.md#no-bar-dock-or-launcher).
 
 For development builds, see [source installation](install-source.md).
 Release maintainers should use the [packaging guide](distribution.md).
