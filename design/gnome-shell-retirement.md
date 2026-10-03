@@ -50,7 +50,11 @@ and shell presentation belongs to external shell clients.
 | `94-animation-engine`, `95-workspace-animation`                                                                                                                                                                                                                                          | Native open/close and normal-window minimize/restore use Mutter plugin hooks. Workspace switches use Mutter's switch and interruption hooks with `workspace-switch` progress. Resize uses Mutter size-change hooks and `resize` progress to interpolate old-to-new buffer geometry; build and visual proof remain outstanding. Dialog dimming and tile-preview actors were Shell presentation. Their event IDs have been removed from the Lua and Mutter animation registries; the old Shell patch is retained as migration history and is not built or applied. Verify workspace and resize transitions visually; keep this audit active until that proof exists. |
 | `99z-wallpaper-runtime` and wallpaper-host patches                                                                                                                                                                                                                                       | Wallpaper is owned by a shell client, as documented in `docs/guides/wallpapers.md`; it is outside the compositor Lua API.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
-The patch directories `78-headless-testing`, `79-shutdown-order`,
+The `78-headless-testing` patch was removed on 2026-10-03. It only added a
+GNOME Shell test override for `loginManager.haveSystemd()`; the standalone
+session does not read `GNOBLIN_TEST_NO_LOGIND`.
+
+The patch directories `79-shutdown-order`,
 `79z-background-manager-shutdown`, `99zzzz-session-mode-startup`,
 `99zzzzz-no-session-presence`, `99zzzzzz-logind-actions`,
 `99zzzzzzz-session-ready`, `99zzzzzzzz-no-session-dialog`,
