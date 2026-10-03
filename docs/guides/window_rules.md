@@ -229,7 +229,7 @@ see [load order](/guides/files_and_load_order#override-or-append).
 
 ## What can a rule change?
 
-- [Effects](/guides/window_effects): blur, opacity, corners, borders, shadows and shaders.
+- [Effects](/guides/window_effects): blur, opacity, rounded corners and outlines, shadows and shaders.
 - [Titlebars](/guides/window_frames): decoration policy and renderer.
 - [Layer animations](/guides/animations#per-surface-animations): entry, exit and timing.
 
