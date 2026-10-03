@@ -51,7 +51,9 @@ gnoblin.configure {
         focus_new_windows = "strict",
     },
 }
-gnoblin.events.once("gnoblin.config.reloaded", function()
+gnoblin.events.once("gnoblin.config.reloaded", function(event)
+    assert(type(event.sequence) == "number" and event.sequence > 0)
+    assert(type(event.time) == "number" and event.time > 0)
     assert(type(gnoblin.settings) == "userdata")
     assert(gnoblin.settings.window_management.focus_mode == "click")
     assert(not pcall(function()

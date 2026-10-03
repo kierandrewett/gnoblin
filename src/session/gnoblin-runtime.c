@@ -1022,6 +1022,10 @@ static void dispatch_reload_event(Runtime* runtime, const char* event, const cha
     GVariantBuilder payload_builder;
     g_variant_builder_init(&payload_builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&payload_builder, "{sv}", "path", g_variant_new_string(path));
+    g_variant_builder_add(&payload_builder, "{sv}", "sequence",
+                          g_variant_new_int64((gint64)++runtime->event_sequence));
+    g_variant_builder_add(&payload_builder, "{sv}", "time",
+                          g_variant_new_int64(g_get_monotonic_time()));
     if (g_str_equal(event, "gnoblin.config.reloaded"))
         g_variant_builder_add(&payload_builder, "{sv}", "revision", g_variant_new_uint64(revision));
     else
