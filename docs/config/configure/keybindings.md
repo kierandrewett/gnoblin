@@ -37,31 +37,21 @@ restores its default binding on reload.
 
 ### Find an action
 
-List the keys in the schema for the group you want. For example, this command
-lists window-manager actions:
+List the built-in actions available in the running Gnoblin session:
 
 ```sh
-gsettings list-keys org.gnome.desktop.wm.keybindings
+gnoblinctl shortcut actions wm
 ```
 
-GSettings prints names with hyphens; use underscores in Lua. To read an
-action's description, pass its schema and native key to `gsettings describe`:
+Pass `mutter` or `wayland` to list another group. Add `--json` to keep the full
+action records in a pipe. Each record includes its `id`, description, and
+default bindings. The same records are available to Lua through
+`gnoblin.shortcuts.actions(group?)`.
 
-```sh
-gsettings describe org.gnome.desktop.wm.keybindings close
-```
-
-Examples from the supported groups:
-
-- `wm.close`
-- `mutter.toggle_tiled_left`
-- `wayland.restore_shortcuts`
-
-Use `gsettings list-keys` to confirm an action exists on your GNOME version.
-These commands show available GNOME actions, not Gnoblin's current bindings.
-GSettings schemas define each key's type and default; see the official
-[Gio.Settings reference](https://docs.gtk.org/gio/class.Settings.html) and
-[GSettings schema API](https://docs.gtk.org/gio/struct.SettingsSchema.html).
+Use an action's `id` in a named shortcut. Use its `key` with underscores under
+`keybindings`; for example, `toggle_tiled_left` is the Lua key for the
+`mutter.toggle_tiled_left` action. The available actions and defaults come
+from the schemas installed with this Mutter version.
 
 See the [shortcuts guide](/guides/shortcuts) to bind commands, use media keys,
 and resolve conflicts between shortcuts.
