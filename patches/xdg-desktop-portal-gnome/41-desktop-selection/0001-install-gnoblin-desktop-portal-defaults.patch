@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 20:59:15 +0000
+Subject: [PATCH] portal: install the Gnoblin desktop backend default
+
+---
+diff --git a/data/meson.build b/data/meson.build
+index 33f55f4..d93013b 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -37,6 +37,11 @@ configure_file(
+   install_dir: portal_dir,
+ )
+ 
++install_data(
++  'gnoblin-portals.conf',
++  install_dir: datadir / 'xdg-desktop-portal',
++)
++
+ # Service
+ configure_file(
+   input: 'org.freedesktop.impl.portal.desktop.gnoblin.service.in',
