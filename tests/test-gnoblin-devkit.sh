@@ -229,6 +229,16 @@ assert(current and current.type == "ibus" and current.id == "xkb:us::eng")
 print("IBUS:selected-through-cli")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/ibus-current.lua"
+gnoblinctl input select xkb us > "$XDG_RUNTIME_DIR/xkb-source-after-ibus.txt"
+cat > "$XDG_RUNTIME_DIR/xkb-current.lua" <<'LUA'
+local current = gnoblin.input.current_source()
+assert(current and current.type == "xkb" and current.id == "us")
+print("INPUT_SOURCE:ibus-to-xkb")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/xkb-current.lua"
+select_ibus_source "$XDG_RUNTIME_DIR/ibus-source-reselected.txt"
+gnoblinctl lua "$XDG_RUNTIME_DIR/ibus-current.lua"
+printf 'INPUT_SOURCE:xkb-to-ibus\n'
 gnoblin_test_ibus_stop "$ibus_pid_file"
 cat > "$XDG_RUNTIME_DIR/ibus-lost.lua" <<'LUA'
 local current = gnoblin.input.current_source()
@@ -680,6 +690,8 @@ require_output 'INPUT_SOURCE:configured-from-lua'
 require_output 'INPUT_SOURCE:selected-through-cli'
 require_output 'INPUT:mouse-drag-threshold-inherited'
 require_output 'IBUS:selected-through-cli'
+require_output 'INPUT_SOURCE:ibus-to-xkb'
+require_output 'INPUT_SOURCE:xkb-to-ibus'
 require_output 'IBUS:owner-lost'
 require_output 'IBUS:reconnected-after-owner-restart'
 require_output 'INPUT_SOURCE:cleared-with-lua-config'

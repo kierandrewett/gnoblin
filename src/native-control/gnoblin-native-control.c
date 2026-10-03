@@ -99,6 +99,11 @@ typedef struct _NativeCornerToolkitCache NativeCornerToolkitCache;
 typedef struct _NativeWindowShaderFile NativeWindowShaderFile;
 
 typedef struct {
+    char* type;
+    char* id;
+} NativeWindowInputSource;
+
+typedef struct {
     GnoblinNativeControl* control;
     GnoblinLocationRequest* request;
     GHashTable* recipient_client_ids;
@@ -157,6 +162,7 @@ struct _GnoblinNativeControl {
     NativeDynamicShortcut* active_shortcut_session;
     GPtrArray* launches;
     GHashTable* focus_contexts;
+    GHashTable* window_input_sources;
     GHashTable* menu_contexts;
     GHashTable* text_targets;
     GHashTable* window_drags;
@@ -188,7 +194,10 @@ struct _GnoblinNativeControl {
     GDBusConnection* ibus_bus;
     char* last_published_input_source;
     char* current_ibus_source_id;
+    char* active_input_source_type;
+    char* focused_input_window_id;
     guint64 next_input_device_id;
+    guint64 input_source_selection_generation;
     guint publish_id;
     guint launch_tick_id;
     guint shortcut_capture_timeout_id;
@@ -247,6 +256,7 @@ struct _GnoblinNativeControl {
     gboolean monitor_state_initialized;
     gboolean input_device_state_initialized;
     gboolean input_source_state_initialized;
+    gboolean per_window_input_sources;
     GHashTable* privacy_handles;
     gboolean privacy_screen_sharing;
     gboolean privacy_recording;
@@ -301,6 +311,9 @@ struct _GnoblinNativeControl {
 static GnoblinRuntimeCache* bootstrap_runtime_cache;
 static guint64 bootstrap_runtime_generation;
 static void native_cancel_window_drags(GnoblinNativeControl* control, const char* reason);
+static char* native_window_id(MetaWindow* window);
+static void native_input_source_focus_changed(GnoblinNativeControl* control);
+static void native_input_source_restore_focused(GnoblinNativeControl* control);
 static void revoke_focus_contexts(GnoblinNativeControl* control);
 static void revoke_menu_contexts(GnoblinNativeControl* control);
 static void revoke_text_targets(GnoblinNativeControl* control);
@@ -548,16 +561,20 @@ typedef struct {
     GPtrArray* source_ids;
     char* selected_type;
     char* selected_id;
+    char* target_window_id;
     gint64 request_id;
     char* method;
     guint group;
     guint64 ibus_owner_generation;
+    guint64 ibus_engine_generation;
+    gboolean internal_restore;
 } PendingInputSource;
 
 typedef struct {
     GnoblinNativeControl* control;
     guint64 ibus_owner_generation;
     guint64 ibus_engine_generation;
+    guint64 input_source_selection_generation;
 } PendingIBusQuery;
 
 typedef struct {
@@ -4303,7 +4320,9 @@ static NativeInputSource* ibus_input_source_by_id(GnoblinNativeControl* control,
 }
 
 static NativeInputSource* current_input_source(GnoblinNativeControl* control) {
-    if (control->current_ibus_source_id) {
+    if ((!control->active_input_source_type ||
+         g_str_equal(control->active_input_source_type, "ibus")) &&
+        control->current_ibus_source_id) {
         for (guint i = 0; control->ibus_sources && i < control->ibus_sources->len; i++) {
             NativeInputSource* source = g_ptr_array_index(control->ibus_sources, i);
             if (g_str_equal(source->id, control->current_ibus_source_id))
@@ -4311,6 +4330,8 @@ static NativeInputSource* current_input_source(GnoblinNativeControl* control) {
         }
         return NULL;
     }
+    if (control->active_input_source_type && g_str_equal(control->active_input_source_type, "ibus"))
+        return NULL;
     if (!control->backend || !control->input_keymap_description ||
         meta_backend_get_keymap_description(control->backend) !=
             control->input_keymap_description ||
@@ -4394,6 +4415,69 @@ static gboolean input_source_id_lists_equal(GPtrArray* first, GPtrArray* second)
     return TRUE;
 }
 
+static void native_window_input_source_free(gpointer data) {
+    NativeWindowInputSource* source = data;
+    if (!source)
+        return;
+    g_free(source->type);
+    g_free(source->id);
+    g_free(source);
+}
+
+static gboolean input_source_is_configured(GnoblinNativeControl* control, const char* type,
+                                           const char* id) {
+    return g_str_equal(type, "ibus") ? ibus_input_source_by_id(control, id) != NULL
+                                     : input_source_by_id(control, id) != NULL;
+}
+
+static gboolean input_window_is_managed(GnoblinNativeControl* control, const char* window_id) {
+    if (!window_id || !control->windows)
+        return FALSE;
+    GHashTableIter iter;
+    gpointer window;
+    g_hash_table_iter_init(&iter, control->windows);
+    while (g_hash_table_iter_next(&iter, &window, NULL)) {
+        g_autofree char* candidate_id = native_window_id(META_WINDOW(window));
+        if (g_str_equal(candidate_id, window_id))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static void remember_window_input_source(GnoblinNativeControl* control, const char* window_id,
+                                         const char* type, const char* id) {
+    if (!control->per_window_input_sources || !window_id || !*window_id || !type || !id ||
+        !input_window_is_managed(control, window_id) ||
+        !input_source_is_configured(control, type, id))
+        return;
+    NativeWindowInputSource* source = g_new0(NativeWindowInputSource, 1);
+    source->type = g_strdup(type);
+    source->id = g_strdup(id);
+    g_hash_table_replace(control->window_input_sources, g_strdup(window_id), source);
+}
+
+static NativeWindowInputSource* remembered_window_input_source(GnoblinNativeControl* control,
+                                                               const char* window_id) {
+    return window_id && control->window_input_sources
+               ? g_hash_table_lookup(control->window_input_sources, window_id)
+               : NULL;
+}
+
+static void prune_window_input_sources(GnoblinNativeControl* control) {
+    if (!control->window_input_sources)
+        return;
+    GHashTableIter iter;
+    gpointer key;
+    gpointer value;
+    g_hash_table_iter_init(&iter, control->window_input_sources);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        NativeWindowInputSource* source = value;
+        if (!control->per_window_input_sources ||
+            !input_source_is_configured(control, source->type, source->id))
+            g_hash_table_iter_remove(&iter);
+    }
+}
+
 static gboolean refresh_input_sources(GnoblinNativeControl* control, GVariant* document) {
     g_autoptr(GVariant) current_document = NULL;
     if (!document) {
@@ -4402,10 +4486,18 @@ static gboolean refresh_input_sources(GnoblinNativeControl* control, GVariant* d
     }
     GPtrArray* xkb_ids = read_configured_input_source_ids(document, "xkb");
     GPtrArray* ibus_ids = read_configured_input_source_ids(document, "ibus");
+    g_autoptr(GVariant) config =
+        document ? g_variant_lookup_value(document, "input-sources", G_VARIANT_TYPE_VARDICT) : NULL;
+    gboolean per_window = FALSE;
+    if (config)
+        g_variant_lookup(config, "per_window", "b", &per_window);
     gboolean changed =
         !input_source_id_lists_equal(control->configured_input_source_ids, xkb_ids) ||
-        !input_source_id_lists_equal(control->configured_ibus_source_ids, ibus_ids);
+        !input_source_id_lists_equal(control->configured_ibus_source_ids, ibus_ids) ||
+        control->per_window_input_sources != per_window;
+    control->per_window_input_sources = per_window;
     if (!changed) {
+        prune_window_input_sources(control);
         g_ptr_array_unref(xkb_ids);
         g_ptr_array_unref(ibus_ids);
         return FALSE;
@@ -4433,6 +4525,7 @@ static gboolean refresh_input_sources(GnoblinNativeControl* control, GVariant* d
     }
     g_clear_pointer(&control->ibus_sources, g_ptr_array_unref);
     control->ibus_sources = sources;
+    prune_window_input_sources(control);
     return TRUE;
 }
 
@@ -4443,6 +4536,7 @@ static void pending_input_source_free(PendingInputSource* pending) {
     g_clear_pointer(&pending->source_ids, g_ptr_array_unref);
     g_free(pending->selected_type);
     g_free(pending->selected_id);
+    g_free(pending->target_window_id);
     g_free(pending->method);
     g_free(pending);
 }
@@ -4457,6 +4551,8 @@ static void release_input_source_state(GnoblinNativeControl* control) {
     g_clear_object(&control->appearance_settings);
     g_clear_pointer(&control->last_published_input_source, g_free);
     g_clear_pointer(&control->current_ibus_source_id, g_free);
+    g_clear_pointer(&control->active_input_source_type, g_free);
+    g_clear_pointer(&control->focused_input_window_id, g_free);
 }
 
 static const char* native_operation_error_code(const GError* error) {
@@ -4624,6 +4720,20 @@ static void dispatch_input_source_operation(GnoblinNativeControl* control, gint6
     dispatch_operation_completion(control, request_id, method, ok, result, error_code, message);
 }
 
+static void remember_completed_window_input_source(GnoblinNativeControl* control,
+                                                   PendingInputSource* pending,
+                                                   gboolean confirmed) {
+    if (confirmed)
+        remember_window_input_source(control, pending->target_window_id, pending->selected_type,
+                                     pending->selected_id);
+}
+
+static gboolean should_restore_after_input_source_completion(GnoblinNativeControl* control,
+                                                             PendingInputSource* pending) {
+    return !pending->internal_restore ||
+           g_strcmp0(pending->target_window_id, control->focused_input_window_id) != 0;
+}
+
 static char* ibus_engine_name_from_value(GVariant* value) {
     if (!value)
         return NULL;
@@ -4742,6 +4852,7 @@ static void ibus_bus_closed(GDBusConnection* connection, gboolean remote_peer_va
         return;
     control->ibus_owner_generation++;
     control->ibus_engine_generation++;
+    control->input_source_selection_generation++;
     if (control->ibus_signal_subscription_id) {
         g_dbus_connection_signal_unsubscribe(connection, control->ibus_signal_subscription_id);
         control->ibus_signal_subscription_id = 0;
@@ -4753,6 +4864,10 @@ static void ibus_bus_closed(GDBusConnection* connection, gboolean remote_peer_va
     g_signal_handlers_disconnect_by_data(connection, control);
     g_clear_object(&control->ibus_bus);
     g_clear_pointer(&control->current_ibus_source_id, g_free);
+    if (g_strcmp0(control->active_input_source_type, "ibus") == 0) {
+        g_free(control->active_input_source_type);
+        control->active_input_source_type = NULL;
+    }
     publish_input_source_changes(control, control->state_revision);
     schedule_ibus_connection_retry(control);
 }
@@ -4771,9 +4886,25 @@ static void ibus_global_engine_query_done(GObject* source_object, GAsyncResult* 
                        control->ibus_engine_generation == pending->ibus_engine_generation;
     if (current) {
         g_autofree char* engine = reply ? ibus_engine_name_from_value(reply) : NULL;
+        gboolean selection_unchanged = control->input_source_selection_generation ==
+                                       pending->input_source_selection_generation;
+        gboolean configured_engine = engine && ibus_input_source_by_id(control, engine);
         g_free(control->current_ibus_source_id);
-        control->current_ibus_source_id = g_steal_pointer(&engine);
+        control->current_ibus_source_id = configured_engine ? g_strdup(engine) : NULL;
+        if (selection_unchanged) {
+            if (configured_engine) {
+                if (g_strcmp0(control->active_input_source_type, "xkb") != 0) {
+                    g_free(control->active_input_source_type);
+                    control->active_input_source_type = g_strdup("ibus");
+                }
+            } else if (g_strcmp0(control->active_input_source_type, "ibus") == 0) {
+                g_free(control->active_input_source_type);
+                control->active_input_source_type = NULL;
+            }
+            control->input_source_selection_generation++;
+        }
         publish_input_source_changes(control, control->state_revision);
+        native_input_source_restore_focused(control);
     }
     g_free(pending);
     native_control_maybe_free_stopped(control);
@@ -4786,6 +4917,7 @@ static void query_ibus_global_engine(GnoblinNativeControl* control) {
     pending->control = control;
     pending->ibus_owner_generation = control->ibus_owner_generation;
     pending->ibus_engine_generation = control->ibus_engine_generation;
+    pending->input_source_selection_generation = control->input_source_selection_generation;
     control->pending_ibus_queries++;
     g_dbus_connection_call(control->ibus_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
                            "GetGlobalEngine", NULL, G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE,
@@ -4803,7 +4935,16 @@ static void ibus_global_engine_changed(GDBusConnection* connection, const char* 
     control->ibus_engine_generation++;
     g_variant_get(parameters, "(&s)", &engine);
     g_free(control->current_ibus_source_id);
-    control->current_ibus_source_id = *engine ? g_strdup(engine) : NULL;
+    gboolean configured_engine = *engine && ibus_input_source_by_id(control, engine);
+    control->current_ibus_source_id = configured_engine ? g_strdup(engine) : NULL;
+    if (configured_engine) {
+        g_free(control->active_input_source_type);
+        control->active_input_source_type = g_strdup("ibus");
+    } else if (g_strcmp0(control->active_input_source_type, "ibus") == 0) {
+        g_free(control->active_input_source_type);
+        control->active_input_source_type = NULL;
+    }
+    control->input_source_selection_generation++;
     publish_input_source_changes(control, control->state_revision);
 }
 
@@ -4821,7 +4962,12 @@ static void ibus_name_owner_changed(GDBusConnection* connection, const char* sen
         return;
     control->ibus_owner_generation++;
     control->ibus_engine_generation++;
+    control->input_source_selection_generation++;
     g_clear_pointer(&control->current_ibus_source_id, g_free);
+    if (g_strcmp0(control->active_input_source_type, "ibus") == 0) {
+        g_free(control->active_input_source_type);
+        control->active_input_source_type = NULL;
+    }
     publish_input_source_changes(control, control->state_revision);
     if (*new_owner)
         query_ibus_global_engine(control);
@@ -5636,24 +5782,38 @@ static void input_source_keymap_set_done(GObject* source_object, GAsyncResult* r
         control->input_keymap_description = meta_keymap_description_ref(pending->description);
         g_clear_pointer(&control->active_input_source_ids, g_ptr_array_unref);
         control->active_input_source_ids = g_steal_pointer(&pending->source_ids);
+        /* An IBus engine signal received while this request was in flight is
+         * newer evidence of the globally active source than the XKB request. */
+        if (control->ibus_engine_generation == pending->ibus_engine_generation) {
+            g_free(control->active_input_source_type);
+            control->active_input_source_type = g_strdup("xkb");
+            control->input_source_selection_generation++;
+        }
         schedule_windows(control);
     }
     if (!confirmed && ok)
         error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_FAILED,
                                     "Mutter did not confirm the requested keymap group");
     publish_input_source_changes(control, control->state_revision);
-    dispatch_input_source_operation(control, pending->request_id, pending->method,
-                                    pending->selected_type, confirmed,
-                                    confirmed ? pending->selected_id : NULL,
-                                    confirmed ? NULL : native_operation_error_code(error),
-                                    confirmed ? NULL
-                                    : error   ? error->message
-                                              : "keymap request failed");
+    remember_completed_window_input_source(control, pending, confirmed);
+    if (!pending->internal_restore)
+        dispatch_input_source_operation(control, pending->request_id, pending->method,
+                                        pending->selected_type, confirmed,
+                                        confirmed ? pending->selected_id : NULL,
+                                        confirmed ? NULL : native_operation_error_code(error),
+                                        confirmed ? NULL
+                                        : error   ? error->message
+                                                  : "keymap request failed");
+    /* Focus may have changed while Mutter was completing the request. Reconcile
+     * only after reporting the selection result, so its result reflects the
+     * source that was actually confirmed for the requesting window. */
+    if (should_restore_after_input_source_completion(control, pending))
+        native_input_source_restore_focused(control);
     pending_input_source_free(pending);
 }
 
 static gboolean select_xkb_source(GnoblinNativeControl* control, const char* id, gint64 request_id,
-                                  const char* method, GError** error) {
+                                  const char* method, gboolean internal_restore, GError** error) {
     NativeInputSource* selected = input_source_by_id(control, id);
     if (!selected) {
         g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -5728,6 +5888,9 @@ static gboolean select_xkb_source(GnoblinNativeControl* control, const char* id,
     pending->source_ids = ids;
     pending->selected_type = g_strdup("xkb");
     pending->selected_id = g_strdup(id);
+    pending->target_window_id = g_strdup(control->focused_input_window_id);
+    pending->internal_restore = internal_restore;
+    pending->ibus_engine_generation = control->ibus_engine_generation;
     pending->request_id = request_id;
     pending->method = g_strdup(method);
     pending->group = selected_index - chunk_start;
@@ -5737,6 +5900,72 @@ static gboolean select_xkb_source(GnoblinNativeControl* control, const char* id,
     return TRUE;
 }
 
+static void complete_ibus_input_source_selection(GnoblinNativeControl* control,
+                                                 PendingInputSource* pending, gboolean confirmed,
+                                                 const GError* error) {
+    control->pending_input_source_ops--;
+    gboolean selected_source_still_configured =
+        ibus_input_source_by_id(control, pending->selected_id) != NULL;
+    confirmed = confirmed && selected_source_still_configured;
+    if (confirmed) {
+        g_free(control->active_input_source_type);
+        control->active_input_source_type = g_strdup("ibus");
+        control->input_source_selection_generation++;
+        publish_input_source_changes(control, control->state_revision);
+        remember_completed_window_input_source(control, pending, TRUE);
+    }
+
+    if (!control->stopping && !pending->internal_restore)
+        dispatch_input_source_operation(control, pending->request_id, pending->method, "ibus",
+                                        confirmed, confirmed ? pending->selected_id : NULL,
+                                        confirmed ? NULL : native_operation_error_code(error),
+                                        confirmed ? NULL
+                                        : error   ? error->message
+                                                  : "IBus selection was not confirmed");
+    if (!control->stopping && should_restore_after_input_source_completion(control, pending))
+        native_input_source_restore_focused(control);
+    pending_input_source_free(pending);
+    native_control_maybe_free_stopped(control);
+}
+
+static void ibus_input_source_get_engine_done(GObject* source_object, GAsyncResult* result,
+                                              gpointer user_data) {
+    PendingInputSource* pending = user_data;
+    GnoblinNativeControl* control = pending->control;
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) reply =
+        g_dbus_connection_call_finish(G_DBUS_CONNECTION(source_object), result, &error);
+    gboolean current = !control->stopping &&
+                       control->ibus_bus == G_DBUS_CONNECTION(source_object) &&
+                       control->ibus_owner_generation == pending->ibus_owner_generation;
+    g_autofree char* engine = reply ? ibus_engine_name_from_value(reply) : NULL;
+    gboolean signal_matches_query =
+        control->ibus_engine_generation == pending->ibus_engine_generation ||
+        g_strcmp0(control->current_ibus_source_id, pending->selected_id) == 0;
+    gboolean confirmed = current && reply && engine && g_str_equal(engine, pending->selected_id) &&
+                         signal_matches_query &&
+                         ibus_input_source_by_id(control, pending->selected_id);
+
+    if (!confirmed && !control->stopping && !current) {
+        g_clear_error(&error);
+        error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
+                                    "IBus owner changed before source selection was confirmed");
+    } else if (!confirmed && !control->stopping && reply &&
+               !ibus_input_source_by_id(control, pending->selected_id)) {
+        error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                                    "IBus source was removed before selection was confirmed");
+    } else if (!confirmed && !control->stopping && reply) {
+        error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_FAILED,
+                                    "IBus did not confirm the requested global engine");
+    }
+
+    if (confirmed) {
+        g_free(control->current_ibus_source_id);
+        control->current_ibus_source_id = g_strdup(engine);
+    }
+    complete_ibus_input_source_selection(control, pending, confirmed, error);
+}
+
 static void ibus_input_source_set_done(GObject* source_object, GAsyncResult* result,
                                        gpointer user_data) {
     PendingInputSource* pending = user_data;
@@ -5744,37 +5973,33 @@ static void ibus_input_source_set_done(GObject* source_object, GAsyncResult* res
     g_autoptr(GError) error = NULL;
     g_autoptr(GVariant) reply =
         g_dbus_connection_call_finish(G_DBUS_CONNECTION(source_object), result, &error);
-    control->pending_input_source_ops--;
-    NativeInputSource* source = ibus_input_source_by_id(control, pending->selected_id);
     gboolean current = !control->stopping &&
                        control->ibus_bus == G_DBUS_CONNECTION(source_object) &&
                        control->ibus_owner_generation == pending->ibus_owner_generation;
-    gboolean confirmed = current && reply && source;
-    if (confirmed) {
-        g_free(control->current_ibus_source_id);
-        control->current_ibus_source_id = g_strdup(pending->selected_id);
-        publish_input_source_changes(control, control->state_revision);
-    } else if (!control->stopping && !current) {
-        g_clear_error(&error);
-        error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
-                                    "IBus owner changed before source selection completed");
-    } else if (!control->stopping && reply) {
-        error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-                                    "IBus source was removed before selection completed");
+    if (!current) {
+        if (!control->stopping) {
+            g_clear_error(&error);
+            error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
+                                        "IBus owner changed before source selection completed");
+        }
+        complete_ibus_input_source_selection(control, pending, FALSE, error);
+        return;
     }
-    if (!control->stopping)
-        dispatch_input_source_operation(control, pending->request_id, pending->method, "ibus",
-                                        confirmed, confirmed ? pending->selected_id : NULL,
-                                        confirmed ? NULL : native_operation_error_code(error),
-                                        confirmed ? NULL
-                                        : error   ? error->message
-                                                  : "IBus selection failed");
-    pending_input_source_free(pending);
-    native_control_maybe_free_stopped(control);
+    if (!reply) {
+        complete_ibus_input_source_selection(control, pending, FALSE, error);
+        return;
+    }
+
+    /* SetGlobalEngine acknowledges the request but does not return the active
+     * engine. Query the same owner before treating the selection as confirmed. */
+    pending->ibus_engine_generation = control->ibus_engine_generation;
+    g_dbus_connection_call(control->ibus_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
+                           "GetGlobalEngine", NULL, G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE,
+                           1000, NULL, ibus_input_source_get_engine_done, pending);
 }
 
 static gboolean select_ibus_source(GnoblinNativeControl* control, const char* id, gint64 request_id,
-                                   const char* method, GError** error) {
+                                   const char* method, gboolean internal_restore, GError** error) {
     if (!ibus_input_source_by_id(control, id)) {
         g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                     "IBus input source is not configured: %s", id);
@@ -5794,9 +6019,11 @@ static gboolean select_ibus_source(GnoblinNativeControl* control, const char* id
     pending->control = control;
     pending->selected_type = g_strdup("ibus");
     pending->selected_id = g_strdup(id);
+    pending->target_window_id = g_strdup(control->focused_input_window_id);
     pending->request_id = request_id;
     pending->method = g_strdup(method);
     pending->ibus_owner_generation = control->ibus_owner_generation;
+    pending->internal_restore = internal_restore;
     control->pending_input_source_ops++;
     g_dbus_connection_call(control->ibus_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
                            "SetGlobalEngine", g_variant_new("(s)", id), G_VARIANT_TYPE_UNIT,
@@ -5824,7 +6051,7 @@ gboolean gnoblin_native_control_select_input_source(MetaDisplay* display, GVaria
         return FALSE;
     }
     if (g_str_equal(type, "ibus")) {
-        return select_ibus_source(control, source_id, request_id, method, error);
+        return select_ibus_source(control, source_id, request_id, method, FALSE, error);
     }
     if (!g_str_equal(type, "xkb")) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -5832,7 +6059,64 @@ gboolean gnoblin_native_control_select_input_source(MetaDisplay* display, GVaria
         return FALSE;
     }
 
-    return select_xkb_source(control, source_id, request_id, method, error);
+    return select_xkb_source(control, source_id, request_id, method, FALSE, error);
+}
+
+static void native_input_source_restore_focused(GnoblinNativeControl* control) {
+    if (!control || control->stopping || !control->per_window_input_sources ||
+        control->pending_input_source_ops > 0)
+        return;
+    const char* window_id = control->focused_input_window_id;
+    if (!window_id || !input_window_is_managed(control, window_id))
+        return;
+
+    NativeWindowInputSource* remembered = remembered_window_input_source(control, window_id);
+    NativeInputSource* current = current_input_source(control);
+    if (!remembered) {
+        /* A first-seen window starts with the source already active. */
+        if (current)
+            remember_window_input_source(control, window_id, current->type, current->id);
+        return;
+    }
+    if (!input_source_is_configured(control, remembered->type, remembered->id)) {
+        g_hash_table_remove(control->window_input_sources, window_id);
+        return;
+    }
+    if (current && g_str_equal(current->type, remembered->type) &&
+        g_str_equal(current->id, remembered->id))
+        return;
+
+    g_autoptr(GError) error = NULL;
+    gboolean started =
+        g_str_equal(remembered->type, "ibus")
+            ? select_ibus_source(control, remembered->id, 0, "input.select_source", TRUE, &error)
+            : select_xkb_source(control, remembered->id, 0, "input.select_source", TRUE, &error);
+    if (!started && error && !g_error_matches(error, G_IO_ERROR, G_IO_ERROR_BUSY))
+        g_debug("gnoblin-native-control: cannot restore input source for window %s: %s", window_id,
+                error->message);
+}
+
+static void native_input_source_focus_changed(GnoblinNativeControl* control) {
+    if (!control || control->stopping)
+        return;
+    MetaWindow* focused = meta_display_get_focus_window(control->display);
+    g_autofree char* next_id = focused ? native_window_id(focused) : NULL;
+    if (g_strcmp0(control->focused_input_window_id, next_id) == 0)
+        return;
+
+    /* Capture the departing window before updating identity or starting an
+     * asynchronous switch. A pending user selection will overwrite this with
+     * its confirmed source in its completion callback. */
+    if (control->per_window_input_sources && control->focused_input_window_id) {
+        NativeInputSource* current = current_input_source(control);
+        if (current)
+            remember_window_input_source(control, control->focused_input_window_id, current->type,
+                                         current->id);
+    }
+    g_free(control->focused_input_window_id);
+    control->focused_input_window_id = g_steal_pointer(&next_id);
+    if (control->per_window_input_sources)
+        native_input_source_restore_focused(control);
 }
 
 static GHashTable* input_device_state_from_snapshot(JsonNode* snapshot) {
@@ -7873,8 +8157,6 @@ static gboolean run_native_touchpad_command(GVariant* gesture, GError** error) {
     }
     return g_spawn_async(NULL, argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, NULL, error);
 }
-
-static char* native_window_id(MetaWindow* window);
 
 static void run_native_touchpad_action(GnoblinNativeControl* control, GVariant* gesture) {
     g_autoptr(GVariant) action = g_variant_lookup_value(gesture, "action", NULL);
@@ -13043,6 +13325,9 @@ static void window_notified(GObject* window, GParamSpec* property, gpointer user
 
 static void window_unmanaged(MetaWindow* window, gpointer user_data) {
     GnoblinNativeControl* control = user_data;
+    g_autofree char* window_id = native_window_id(window);
+    if (control->window_input_sources)
+        g_hash_table_remove(control->window_input_sources, window_id);
     GArray* handler_ids = g_hash_table_lookup(control->window_signal_handler_ids, window);
     clear_object_signal_watches(G_OBJECT(window), handler_ids);
     g_hash_table_remove(control->window_signal_handler_ids, window);
@@ -13089,8 +13374,10 @@ static void window_created(MetaDisplay* display, MetaWindow* window, gpointer us
 }
 
 static void display_notified(GObject* display, GParamSpec* property, gpointer user_data) {
-    if (g_str_equal(property->name, "focus-window"))
+    if (g_str_equal(property->name, "focus-window")) {
+        native_input_source_focus_changed(user_data);
         native_apply_all_window_rules(user_data);
+    }
     schedule_windows(user_data);
 }
 
@@ -14543,8 +14830,11 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                 }
                 if (handled && revision > previous_revision) {
                     native_settings_changed(revision, control);
-                    if (input_sources_changed)
+                    if (input_sources_changed) {
+                        publish_input_source_changes(control, control->state_revision);
+                        native_input_source_restore_focused(control);
                         schedule_windows(control);
+                    }
                 }
                 if (handled) {
                     control->runtime_generation = runtime_generation;
@@ -14738,6 +15028,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, native_dynamic_shortcut_free);
     control->touchpad_router = gnoblin_touchpad_router_new();
     control->focus_contexts = g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, g_free);
+    control->window_input_sources =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_window_input_source_free);
     control->menu_contexts =
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, native_menu_context_free);
     control->text_targets = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
@@ -14900,6 +15192,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     windows = meta_display_list_all_windows(control->display);
     for (GList* item = windows; item; item = item->next)
         track_window(control, item->data);
+    native_input_source_focus_changed(control);
     initial_snapshot = window_snapshot_json(control, TRUE, &snapshot_error);
     if (!initial_snapshot)
         g_warning("gnoblin-native-control: cannot seed Lua window snapshot: %s",
@@ -14960,7 +15253,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     if (control->input_sources && control->input_sources->len > 0 &&
         !control->input_keymap_description) {
         NativeInputSource* first = g_ptr_array_index(control->input_sources, 0);
-        if (!select_xkb_source(control, first->id, 0, "input.select_source", error))
+        if (!select_xkb_source(control, first->id, 0, "input.select_source", FALSE, error))
             goto fail;
     }
     if (!apply_native_input(control, context, document, error))
@@ -15156,6 +15449,8 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         g_ptr_array_unref(control->launches);
     if (control->focus_contexts)
         g_hash_table_unref(control->focus_contexts);
+    g_clear_pointer(&control->window_input_sources, g_hash_table_unref);
+    g_clear_pointer(&control->focused_input_window_id, g_free);
     if (control->menu_contexts)
         g_hash_table_unref(control->menu_contexts);
     if (control->window_drags)
