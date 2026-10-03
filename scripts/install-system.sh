@@ -7,6 +7,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RPM_DIR="${GNOBLIN_RPM_DIR:-$HOME/rpmbuild/RPMS}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+# Exact artifact from older source installs; use only to recognize and remove it.
+LEGACY_GNOME_SESSION_DROPIN="$ROOT/scripts/legacy/gnome-session@gnoblin.target.d.conf"
+LEGACY_GNOME_SESSION_DROPIN_PATH="$UNIT_DIR/gnome-session@gnoblin.target.d/gnoblin.conf"
 COPR_OWNER="${GNOBLIN_COPR_OWNER:-kierandrewett}"
 COPR_PROJECT="${GNOBLIN_COPR_PROJECT:-gnoblin}"
 SOURCE=copr
@@ -34,18 +37,25 @@ command -v dnf >/dev/null || {
 
 # Existing local overrides would hide the packaged session. Stop before making
 # any changes if they are user-written files rather than registration symlinks.
-units=(gnoblin-session.target org.gnoblin.Shell.target org.gnoblin.Shell@wayland.service xdg-desktop-portal-gnoblin.service gnome-session@gnoblin.target.d/gnoblin.conf)
+units=(gnoblin-session.target org.gnoblin.Shell.target org.gnoblin.Shell@wayland.service xdg-desktop-portal-gnoblin.service)
 for unit in "${units[@]}"; do
     if [ -e "$UNIT_DIR/$unit" ] && [ ! -L "$UNIT_DIR/$unit" ]; then
-        if [ "$unit" = gnome-session@gnoblin.target.d/gnoblin.conf ] &&
-            cmp -s "$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf" "$UNIT_DIR/$unit"; then
-            echo "Recognized managed Gnoblin user drop-in: $UNIT_DIR/$unit"
-        else
-            echo "Move the custom Gnoblin override aside first: $UNIT_DIR/$unit" >&2
-            exit 1
-        fi
+        echo "Move the custom Gnoblin override aside first: $UNIT_DIR/$unit" >&2
+        exit 1
     fi
 done
+
+# Remove only the exact old source-build drop-in after the package update. A
+# user-edited file remains protected by the same preflight used for unit files.
+if [ -e "$LEGACY_GNOME_SESSION_DROPIN_PATH" ] &&
+    [ ! -L "$LEGACY_GNOME_SESSION_DROPIN_PATH" ]; then
+    if cmp -s "$LEGACY_GNOME_SESSION_DROPIN" "$LEGACY_GNOME_SESSION_DROPIN_PATH"; then
+        echo "Recognized old managed Gnoblin drop-in: $LEGACY_GNOME_SESSION_DROPIN_PATH"
+    else
+        echo "Move the custom Gnoblin override aside first: $LEGACY_GNOME_SESSION_DROPIN_PATH" >&2
+        exit 1
+    fi
+fi
 
 if [ "$SOURCE" = copr ]; then
     copr="$COPR_OWNER/$COPR_PROJECT"
@@ -121,6 +131,13 @@ for unit in "${units[@]}"; do
         unlink "$UNIT_DIR/$unit"
     fi
 done
+if [ -L "$LEGACY_GNOME_SESSION_DROPIN_PATH" ]; then
+    unlink "$LEGACY_GNOME_SESSION_DROPIN_PATH"
+elif [ -f "$LEGACY_GNOME_SESSION_DROPIN_PATH" ] &&
+    cmp -s "$LEGACY_GNOME_SESSION_DROPIN" "$LEGACY_GNOME_SESSION_DROPIN_PATH"; then
+    rm -- "$LEGACY_GNOME_SESSION_DROPIN_PATH"
+    echo 'Removed the obsolete managed GNOME session drop-in.'
+fi
 systemctl --user daemon-reload
 rpm -q gnoblin gnoblin-mutter gnoblin-portal
 printf '%s\n' 'Installed. Select Gnoblin at login; GNOME remains available.' \
