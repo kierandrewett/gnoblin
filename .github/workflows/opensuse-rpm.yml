@@ -152,11 +152,14 @@ jobs:
           rpm -q gnoblin gnoblin-mutter
           ! rpm -q gnoblin-portal
           ! rpm -q gnoblin-gnome-integration
-          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           portal_rpm="$(find rpms -type f -name 'gnoblin-portal-[0-9]*.rpm' -print -quit)"
           test -n "$portal_rpm"
           zypper --non-interactive install --no-recommends --allow-unsigned-rpm "$portal_rpm"
           rpm -q gnoblin-portal
+          test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           set -x
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
@@ -185,6 +188,7 @@ jobs:
           zypper --non-interactive remove \
             gnoblin-gnome-integration gnoblin gnoblin-portal gnoblin-mutter
           ! test -e /usr/share/wayland-sessions/gnoblin.desktop
+          ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           ! test -e /usr/lib/systemd/user/gnoblin-session.target
           ! test -e /usr/lib/systemd/user/gnoblin-idle.service
           rpm -q gnome-session gnome-shell mutter

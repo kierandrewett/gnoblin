@@ -264,7 +264,9 @@ jobs:
           pacman -U --noconfirm "$package"
           pacman -Q gnoblin
           ! pacman -Q gnoblin-portal >/dev/null 2>&1
-          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           pacman -U --noconfirm "$portal_package"
           pacman -Q gnoblin-portal
           ! pacman -Q gnoblin-gnome-integration
@@ -276,7 +278,7 @@ jobs:
           test -f /usr/lib/systemd/user/gnoblin-session.target
           test -f /usr/lib/systemd/user/gnoblin-idle.service
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           ! pacman -Q xdg-desktop-portal-gtk >/dev/null 2>&1
@@ -299,6 +301,7 @@ jobs:
           pacman -R --noconfirm gnoblin-gnome-integration
           pacman -R --noconfirm gnoblin-portal gnoblin
           ! pacman -Q gnoblin
+          ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           ! test -e /usr/lib/systemd/user/gnoblin-session.target
           ! test -e /usr/lib/systemd/user/gnoblin-idle.service
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
@@ -336,12 +339,15 @@ jobs:
           pacman -U --noconfirm "${packages[0]}"
           pacman -Q gnoblin
           ! pacman -Q gnoblin-portal >/dev/null 2>&1
-          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           test -x /usr/lib/gnoblin/bin/gnoblin-mutter
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           pacman -U --noconfirm "${portal_packages[0]}"
           pacman -Q gnoblin-portal
+          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
@@ -370,6 +376,7 @@ jobs:
           pacman -R --noconfirm gnoblin-gnome-integration gnoblin-portal gnoblin
           ! pacman -Q gnoblin >/dev/null 2>&1
           ! pacman -Q gnoblin-gnome-integration >/dev/null 2>&1
+          ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
 
   github-release:
     if: ${{ always() && needs.publish-sources.result == 'success' }}

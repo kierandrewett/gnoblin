@@ -115,11 +115,13 @@ jobs:
           dnf -y --setopt=install_weak_deps=False install --refresh gnoblin
           rpm -q gnoblin gnoblin-mutter
           ! rpm -q gnoblin-portal
-          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           dnf -y install gnoblin-portal
           rpm -q gnoblin-portal
           rpm -q --whatprovides "gnoblin-session = $(rpm -q --qf '%{VERSION}' gnoblin)"
-          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
@@ -239,7 +241,9 @@ jobs:
           pacman -U --noconfirm "$package"
           pacman -Q gnoblin
           ! pacman -Q gnoblin-portal >/dev/null 2>&1
-          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           portal_package="$(find "$RUNNER_TEMP/gnoblin-arch-portal-package" -maxdepth 1 -name 'gnoblin-portal-[0-9]*.pkg.tar.zst' -print -quit)"
           test -n "$portal_package"
           pacman -U --noconfirm "$portal_package"
@@ -250,13 +254,14 @@ jobs:
           grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/lib/systemd/user/gnoblin-session.target
           test -f /usr/lib/systemd/user/gnoblin-idle.service
-          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
           pacman -R --noconfirm gnoblin-portal gnoblin
           ! pacman -Q gnoblin
+          ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           ! test -e /usr/lib/systemd/user/gnoblin-session.target
           ! test -e /usr/lib/systemd/user/gnoblin-idle.service
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)

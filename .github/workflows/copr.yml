@@ -97,11 +97,13 @@ jobs:
           test "$installed_version" = "$expected_version"
           rpm -q gnoblin gnoblin-mutter
           ! rpm -q gnoblin-portal
-          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           dnf -y install gnoblin-portal
           rpm -q gnoblin-portal
           ! rpm -q gnoblin-gnome-integration
-          test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+          test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
