@@ -1106,6 +1106,12 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
                     : g_variant_is_of_type(value, G_VARIANT_TYPE_INT64) ? g_variant_get_int64(value)
                                                                         : -1;
                 valid = number >= 0 && number <= 10000;
+            } else if (g_str_equal(name, "check-alive-timeout")) {
+                gint64 number =
+                    g_variant_is_of_type(value, G_VARIANT_TYPE_INT32)   ? g_variant_get_int32(value)
+                    : g_variant_is_of_type(value, G_VARIANT_TYPE_INT64) ? g_variant_get_int64(value)
+                                                                        : -1;
+                valid = number >= 0 && (guint64)number <= G_MAXUINT;
             } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
                 const char* string = g_variant_get_string(value, NULL);
                 if (g_str_equal(name, "focus-mode"))

@@ -341,6 +341,52 @@ int main(void) {
     g_assert_false(auto_maximize);
 
     g_assert_true(g_file_set_contents(
+        explicit_root, "gnoblin.configure {window_management = {check_alive_timeout = 0}}\n", -1,
+        &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_clear_pointer(&window_management, g_variant_unref);
+    window_management =
+        g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(window_management);
+    gint64 check_alive_timeout = -1;
+    g_assert_true(
+        g_variant_lookup(window_management, "check-alive-timeout", "x", &check_alive_timeout));
+    g_assert_cmpint(check_alive_timeout, ==, 0);
+
+    g_assert_true(g_file_set_contents(
+        explicit_root,
+        "gnoblin.configure {window_management = {check_alive_timeout = 4294967295}}\n", -1,
+        &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_clear_pointer(&window_management, g_variant_unref);
+    window_management =
+        g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(window_management);
+    g_assert_true(
+        g_variant_lookup(window_management, "check-alive-timeout", "x", &check_alive_timeout));
+    g_assert_cmpint(check_alive_timeout, ==, G_MAXUINT);
+
+    const char* invalid_timeouts[] = {
+        "gnoblin.configure {window_management = {check_alive_timeout = -1}}\n",
+        "gnoblin.configure {window_management = {check_alive_timeout = 4294967296}}\n",
+        NULL,
+    };
+    for (guint i = 0; invalid_timeouts[i]; i++) {
+        g_assert_true(g_file_set_contents(explicit_root, invalid_timeouts[i], -1, &error));
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(explicit_root, NULL, &error);
+        g_assert_null(document);
+        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+        g_clear_error(&error);
+    }
+
+    g_assert_true(g_file_set_contents(
         explicit_root,
         "gnoblin.configure {window_management = {mouse_button_modifier = '<Super><Shift>', "
         "resize_with_right_button = true}}\n",
