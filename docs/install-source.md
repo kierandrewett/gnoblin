@@ -178,8 +178,8 @@ The lean path needs a fresh Wayland login managed by logind. The login manager
 must set `XDG_SESSION_TYPE=wayland` when it starts Gnoblin.
 
 `./build.sh --register-session` asks for sudo to install the login entry and,
-when the prefix includes Gnoblin's portal backend, its system portal metadata.
-It then links Gnoblin's user services.
+when the prefix includes Gnoblin's portal backend, its backend descriptor and
+desktop-specific default route. It then links Gnoblin's user services.
 
 [Install a shell](bring-your-own-shell.md), log out, and select **Gnoblin**.
 This registration changes the Gnoblin login entry; it does not change a
