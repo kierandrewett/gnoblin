@@ -310,17 +310,19 @@ def run_inside() -> int:
     subprocess.run(["cc", str(ROOT / "tests/window-lifecycle-client.c"), "-o", str(fixture), *flags], check=True)
     processes: dict[int, subprocess.Popen] = {}
 
+    def run_ctl(*arguments: str) -> subprocess.CompletedProcess[str]:
+        command = [gnoblinctl, *arguments]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+        if result.returncode:
+            detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic output"
+            raise RuntimeError(f"gnoblinctl {shlex.join(arguments)} failed: {detail}")
+        return result
+
     def title_for(window_id: int) -> str:
         return f"Gnoblin Fuzz {window_id:04d}"
 
     def list_windows(title: str) -> list[dict]:
-        result = subprocess.run(
-            [gnoblinctl, "--json", "window", "list", "--title", title],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+        result = run_ctl("--json", "window", "list", "--title", title)
         return json.loads(result.stdout)["windows"]
 
     def window_state(window_id: int) -> dict | None:
@@ -347,13 +349,7 @@ def run_inside() -> int:
         state = window_state(window_id)
         if state is None:
             raise RuntimeError(f"target window {window_id} is not mapped")
-        subprocess.run(
-            [gnoblinctl, "window", action, state["id"], "--json"],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+        run_ctl("window", action, state["id"], "--json")
 
     def operate(action: dict) -> None:
         op = action["op"]
@@ -397,13 +393,10 @@ def run_inside() -> int:
         if op == "resize":
             # Geometry changes need a normal, visible window. Random prior
             # actions can leave it minimized, maximized, or fullscreen.
-            for restore_op, flag in (
-                ("unminimize", "minimized"),
-                ("unfullscreen", "fullscreen"),
-                ("unmaximize", "maximized"),
-            ):
-                if state.get(flag):
-                    call_window(restore_op, window_id)
+            if state.get("minimized") or state.get("maximized"):
+                call_window("restore", window_id)
+            if state.get("fullscreen"):
+                call_window("unfullscreen", window_id)
             wait_for(
                 lambda: (
                     current
@@ -415,28 +408,8 @@ def run_inside() -> int:
                 ),
                 f"window {window_id} to become movable before resize",
             )
-            subprocess.run(
-                [gnoblinctl, "window", "move", state["id"], str(action["x"]), str(action["y"]), "--json"],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            subprocess.run(
-                [
-                    gnoblinctl,
-                    "window",
-                    "resize",
-                    state["id"],
-                    str(action["width"]),
-                    str(action["height"]),
-                    "--json",
-                ],
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
+            run_ctl("window", "move", state["id"], str(action["x"]), str(action["y"]), "--json")
+            run_ctl("window", "resize", state["id"], str(action["width"]), str(action["height"]), "--json")
             return
         call_window(op, window_id)
         property_name, expected = {
