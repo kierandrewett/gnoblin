@@ -40,6 +40,7 @@ typedef struct {
     guint source_id;
     guint pending_source_id;
     gboolean once;
+    gboolean once_fired;
     gboolean active;
     gboolean dispatching;
 } CliLuaEventSubscription;
@@ -47,6 +48,15 @@ typedef struct {
 typedef struct {
     CliLuaEventSubscription* subscription;
 } LuaCliEventSubscriptionHandle;
+
+typedef struct {
+    guint64 magic;
+    CliLuaEventSubscription* subscription;
+    char* token;
+    gboolean consumed;
+} LuaCliFocusContext;
+
+#define LUA_CLI_FOCUS_CONTEXT_MAGIC G_GUINT64_CONSTANT(0x474e4f424c494e46)
 
 static gboolean is_flag(const char* name) {
     return g_str_equal(name, "focused") || g_str_equal(name, "activate") ||
@@ -625,6 +635,122 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT,
         "Request timed out; it was not retried. Check current state before repeating an action.");
     return NULL;
+}
+
+static JsonNode* cli_lua_call_compositor_on_subscription(CliLuaEventSubscription* subscription,
+                                                         const char* method, JsonObject* arguments,
+                                                         GError** error) {
+    if (!subscription || !subscription->active || !subscription->connection || !method ||
+        !arguments) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CLOSED,
+                            "FocusContext subscription is no longer active");
+        return NULL;
+    }
+
+    Cli* cli = subscription->cli;
+    g_autofree char* id = g_uuid_string_random();
+    g_autoptr(JsonBuilder) builder = json_builder_new();
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "op");
+    json_builder_add_string_value(builder, "api");
+    json_builder_set_member_name(builder, "id");
+    json_builder_add_string_value(builder, id);
+    json_builder_set_member_name(builder, "method");
+    json_builder_add_string_value(builder, method);
+    json_builder_set_member_name(builder, "api_version");
+    json_builder_begin_object(builder);
+    json_builder_set_member_name(builder, "major");
+    json_builder_add_int_value(builder, 1);
+    json_builder_set_member_name(builder, "minor");
+    json_builder_add_int_value(builder, api_minor_for_method(method));
+    json_builder_end_object(builder);
+    json_builder_set_member_name(builder, "arguments");
+    json_builder_add_value(builder, json_node_init_object(json_node_alloc(), arguments));
+    json_builder_end_object(builder);
+    g_autoptr(JsonNode) request = json_builder_get_root(builder);
+    g_autofree char* encoded = json_to_string(request, FALSE);
+    g_autofree char* payload = g_strconcat(encoded, "\n", NULL);
+
+    GSocket* socket = g_socket_connection_get_socket(subscription->connection);
+    g_socket_set_timeout(socket, cli->timeout);
+    g_socket_set_blocking(socket, TRUE);
+
+    JsonNode* result = NULL;
+    g_autoptr(GString) incoming =
+        g_string_new_len(subscription->pending->str, subscription->pending->len);
+    g_string_truncate(subscription->pending, 0);
+    if (!g_output_stream_write_all(
+            g_io_stream_get_output_stream(G_IO_STREAM(subscription->connection)), payload,
+            strlen(payload), NULL, NULL, error))
+        goto out;
+
+    gint64 deadline = g_get_monotonic_time() + (gint64)cli->timeout * G_USEC_PER_SEC;
+    GInputStream* input = g_io_stream_get_input_stream(G_IO_STREAM(subscription->connection));
+    while (g_get_monotonic_time() < deadline) {
+        char* line_end;
+        while ((line_end = memchr(incoming->str, '\n', incoming->len))) {
+            g_autofree char* line = g_strndup(incoming->str, line_end - incoming->str);
+            g_string_erase(incoming, 0, line_end - incoming->str + 1);
+            g_autoptr(JsonParser) parser = json_parser_new();
+            if (!json_parser_load_from_data(parser, line, -1, NULL) ||
+                !JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
+                g_string_append_printf(subscription->pending, "%s\n", line);
+                g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                    "Invalid compositor response on FocusContext connection");
+                goto out;
+            }
+
+            JsonObject* response = json_node_get_object(json_parser_get_root(parser));
+            if (g_str_equal(member_string(response, "id", ""), id)) {
+                const char* event = member_string(response, "event", "");
+                if (g_str_equal(event, "error")) {
+                    g_set_error(error, G_IO_ERROR, G_IO_ERROR_FAILED, "%s",
+                                member_string(response, "message", "Compositor rejected request"));
+                    goto out;
+                }
+                JsonNode* response_result = json_object_get_member(response, "result");
+                if (!g_str_equal(event, "reply") || !response_result) {
+                    g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                        "Invalid compositor reply on FocusContext connection");
+                    goto out;
+                }
+                result = json_node_copy(response_result);
+                goto out;
+            }
+
+            g_string_append_printf(subscription->pending, "%s\n", line);
+        }
+
+        if (incoming->len > 4 * 1024 * 1024 || subscription->pending->len > 4 * 1024 * 1024) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
+                                "Compositor data exceeded 4 MiB during FocusContext request");
+            goto out;
+        }
+
+        char chunk[4096];
+        g_autoptr(GError) read_error = NULL;
+        gssize count = g_input_stream_read(input, chunk, sizeof chunk, NULL, &read_error);
+        if (count < 0) {
+            g_propagate_error(error, g_steal_pointer(&read_error));
+            goto out;
+        }
+        if (count == 0) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CLOSED,
+                                "Compositor disconnected before replying to FocusContext request");
+            goto out;
+        }
+        g_string_append_len(incoming, chunk, count);
+    }
+
+    g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT,
+                        "FocusContext request timed out; the token cannot be reused");
+
+out:
+    if (incoming->len > 0)
+        g_string_append_len(subscription->pending, incoming->str, incoming->len);
+    g_socket_set_timeout(socket, 0);
+    g_socket_set_blocking(socket, FALSE);
+    return result;
 }
 
 static char* focused_window_id(Cli* cli, GError** error) {
@@ -1668,6 +1794,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_SESSION_ACTIVITY_RECORD_METATABLE "gnoblinctl.SessionActivity"
 #define GNOBLINCTL_PERMISSION_DECISION_RECORD_METATABLE "gnoblinctl.PermissionDecision"
 #define GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE "gnoblinctl.EventSubscription"
+#define GNOBLINCTL_FOCUS_CONTEXT_METATABLE "gnoblinctl.FocusContext"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_animations_list(lua_State* state);
@@ -1704,6 +1831,8 @@ static int lua_cli_session_activity(lua_State* state);
 static int lua_cli_permissions_check(lua_State* state);
 static int lua_cli_events_subscribe(lua_State* state);
 static int lua_cli_event_subscription_unsubscribe(lua_State* state);
+static void lua_cli_push_focus_context(lua_State* state, CliLuaEventSubscription* subscription,
+                                       const char* token);
 static int lua_cli_version(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
@@ -2404,22 +2533,54 @@ static int lua_cli_window_method(lua_State* state) {
     g_autofree char* id = g_strdup(lua_cli_window_id(state));
     lua_settop(state, supplied + 1);
 
-    /* Focus contexts are minted for a particular client connection and this
-     * console opens a fresh connection for each request. Do not accept a
-     * caller-supplied string or fabricate a capability that cannot work. */
-    if (g_str_equal(method, "window.focus") || g_str_equal(method, "window.begin_move") ||
-        g_str_equal(method, "window.begin_resize"))
-        return luaL_error(state,
-                          "%s requires a live FocusContext from a supervised runtime callback; "
-                          "gnoblinctl cannot mint or reuse one",
-                          method);
+    gboolean uses_focus_context = g_str_equal(method, "window.focus") ||
+                                  g_str_equal(method, "window.begin_move") ||
+                                  g_str_equal(method, "window.begin_resize");
+    LuaCliFocusContext* focus_context = NULL;
+    if (uses_focus_context) {
+        int context_index = g_str_equal(method, "window.begin_resize") ? 3 : 2;
+        int expected_arguments = g_str_equal(method, "window.begin_resize") ? 2 : 1;
+        if (supplied != expected_arguments) {
+            return luaL_error(state, "%s requires %sFocusContext as its final argument", method,
+                              g_str_equal(method, "window.begin_resize") ? "an edge and a " : "a ");
+        }
+        if (!luaL_testudata(state, context_index, GNOBLINCTL_FOCUS_CONTEXT_METATABLE) ||
+            lua_rawlen(state, context_index) != sizeof(LuaCliFocusContext))
+            return luaL_error(state, "%s requires a FocusContext received from a Gnoblin event",
+                              method);
+        focus_context = lua_touserdata(state, context_index);
+        if (focus_context->magic != LUA_CLI_FOCUS_CONTEXT_MAGIC)
+            return luaL_error(state, "%s requires a FocusContext received from a Gnoblin event",
+                              method);
+        if (focus_context->consumed)
+            return luaL_error(state, "%s cannot reuse a consumed FocusContext", method);
+        if (!focus_context->subscription || !focus_context->subscription->active ||
+            !focus_context->subscription->connection || focus_context->subscription->cli != cli)
+            return luaL_error(state, "%s requires a FocusContext from an active event subscription",
+                              method);
+    }
 
     JsonObject* arguments = json_object_new();
     lua_cli_set_window_id(arguments, id);
-    if (g_str_equal(method, "window.close") || g_str_equal(method, "window.minimize") ||
-        g_str_equal(method, "window.toggle_minimize") || g_str_equal(method, "window.unminimize") ||
-        g_str_equal(method, "window.restore") ||
-        g_str_equal(method, "window.restore_or_minimize")) {
+    if (uses_focus_context) {
+        json_object_set_string_member(arguments, "focus_context", focus_context->token);
+        if (g_str_equal(method, "window.begin_resize")) {
+            const char* edge = lua_type(state, 2) == LUA_TSTRING ? lua_tostring(state, 2) : NULL;
+            gboolean valid_edge =
+                edge && (g_str_equal(edge, "north") || g_str_equal(edge, "south") ||
+                         g_str_equal(edge, "east") || g_str_equal(edge, "west") ||
+                         g_str_equal(edge, "north_east") || g_str_equal(edge, "north_west") ||
+                         g_str_equal(edge, "south_east") || g_str_equal(edge, "south_west"));
+            if (!valid_edge) {
+                json_object_unref(arguments);
+                return luaL_error(state, "window.begin_resize requires a valid ResizeEdge");
+            }
+            json_object_set_string_member(arguments, "edge", edge);
+        }
+    } else if (g_str_equal(method, "window.close") || g_str_equal(method, "window.minimize") ||
+               g_str_equal(method, "window.toggle_minimize") ||
+               g_str_equal(method, "window.unminimize") || g_str_equal(method, "window.restore") ||
+               g_str_equal(method, "window.restore_or_minimize")) {
         if (supplied != 0) {
             json_object_unref(arguments);
             return luaL_error(state, "%s takes no arguments", method);
@@ -2504,7 +2665,17 @@ static int lua_cli_window_method(lua_State* state) {
     }
 
     g_autoptr(GError) call_error = NULL;
-    g_autoptr(JsonNode) result = call_compositor(cli, "api", method, arguments, &call_error);
+    JsonNode* raw_result;
+    if (focus_context) {
+        /* The server consumes a focus grant on the first valid request, even
+         * when the requested action is denied, so never offer local reuse. */
+        focus_context->consumed = TRUE;
+        raw_result = cli_lua_call_compositor_on_subscription(focus_context->subscription, method,
+                                                             arguments, &call_error);
+    } else {
+        raw_result = call_compositor(cli, "api", method, arguments, &call_error);
+    }
+    g_autoptr(JsonNode) result = raw_result;
     json_object_unref(arguments);
     if (!result)
         return luaL_error(state, "%s failed: %s", method, call_error->message);
@@ -4784,6 +4955,17 @@ static void cli_lua_event_subscription_free(gpointer data) {
     g_free(subscription);
 }
 
+static void lua_cli_push_focus_context(lua_State* state, CliLuaEventSubscription* subscription,
+                                       const char* token) {
+    LuaCliFocusContext* context = lua_newuserdatauv(state, sizeof *context, 0);
+    context->magic = LUA_CLI_FOCUS_CONTEXT_MAGIC;
+    context->subscription = subscription;
+    context->token = g_strdup(token);
+    context->consumed = FALSE;
+    luaL_getmetatable(state, GNOBLINCTL_FOCUS_CONTEXT_METATABLE);
+    lua_setmetatable(state, -2);
+}
+
 static gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, JsonNode* event) {
     if (!subscription || !subscription->cli || !subscription->cli->lua_state || !event)
         return FALSE;
@@ -4791,12 +4973,17 @@ static gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, Js
     lua_State* state = cli->lua_state;
     int stack_top = lua_gettop(state);
     subscription->dispatching = TRUE;
-    if (subscription->once) {
-        cli_lua_event_subscription_detach(subscription);
-        subscription->dispatching = TRUE;
-    }
+    if (subscription->once)
+        subscription->once_fired = TRUE;
     lua_rawgeti(state, LUA_REGISTRYINDEX, subscription->callback_ref);
     json_to_lua(state, event);
+    if (JSON_NODE_HOLDS_OBJECT(event)) {
+        const char* token = member_string(json_node_get_object(event), "focus_context", NULL);
+        if (token && *token) {
+            lua_cli_push_focus_context(state, subscription, token);
+            lua_setfield(state, -2, "focus_context");
+        }
+    }
     gboolean succeeded = lua_pcall(state, 1, 0, 0) == LUA_OK;
     if (!succeeded) {
         const char* message = lua_tostring(state, -1);
@@ -4805,6 +4992,8 @@ static gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, Js
     }
     lua_settop(state, stack_top);
     subscription->dispatching = FALSE;
+    if (subscription->once && subscription->active)
+        cli_lua_event_subscription_detach(subscription);
     if (!subscription->active && subscription->callback_ref != LUA_NOREF) {
         luaL_unref(state, LUA_REGISTRYINDEX, subscription->callback_ref);
         subscription->callback_ref = LUA_NOREF;
@@ -4813,7 +5002,7 @@ static gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, Js
 }
 
 static gboolean cli_lua_event_process_pending(CliLuaEventSubscription* subscription) {
-    while (subscription->active) {
+    while (subscription->active && !subscription->once_fired) {
         char* line_end = memchr(subscription->pending->str, '\n', subscription->pending->len);
         if (!line_end)
             return TRUE;
@@ -5090,6 +5279,46 @@ static int lua_cli_event_subscription_tostring(lua_State* state) {
                     subscription && subscription->active ? "active" : "ended",
                     subscription ? subscription->event_name : "unknown");
     return 1;
+}
+
+static int lua_cli_focus_context_gc(lua_State* state) {
+    LuaCliFocusContext* context = luaL_testudata(state, 1, GNOBLINCTL_FOCUS_CONTEXT_METATABLE);
+    if (!context || lua_rawlen(state, 1) != sizeof(LuaCliFocusContext) ||
+        context->magic != LUA_CLI_FOCUS_CONTEXT_MAGIC)
+        return 0;
+    g_clear_pointer(&context->token, g_free);
+    context->subscription = NULL;
+    context->magic = 0;
+    return 0;
+}
+
+static int lua_cli_focus_context_newindex(lua_State* state) {
+    return luaL_error(state, "FocusContext values are opaque and read-only");
+}
+
+static int lua_cli_focus_context_tostring(lua_State* state) {
+    LuaCliFocusContext* context = luaL_testudata(state, 1, GNOBLINCTL_FOCUS_CONTEXT_METATABLE);
+    if (!context || lua_rawlen(state, 1) != sizeof(LuaCliFocusContext) ||
+        context->magic != LUA_CLI_FOCUS_CONTEXT_MAGIC) {
+        lua_pushliteral(state, "FocusContext<invalid>");
+        return 1;
+    }
+    lua_pushfstring(state, "FocusContext<%s>", context->consumed ? "consumed" : "available");
+    return 1;
+}
+
+static void register_lua_cli_focus_context(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_FOCUS_CONTEXT_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_focus_context_gc);
+    lua_setfield(state, -2, "__gc");
+    lua_pushcfunction(state, lua_cli_focus_context_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_focus_context_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
 }
 
 static void register_lua_cli_event_subscription(lua_State* state) {
@@ -5612,6 +5841,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     luaL_openlibs(state);
     register_lua_cli_readonly_table(state);
     register_lua_cli_event_subscription(state);
+    register_lua_cli_focus_context(state);
     register_lua_cli_window_record(state);
     register_lua_cli_workspace_record(state);
     register_lua_cli_monitor_record(state);

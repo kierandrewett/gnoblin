@@ -4,11 +4,13 @@
 import base64
 import json
 import os
+import select
 import socket
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 
@@ -73,6 +75,196 @@ def run_event_subscription(
         thread.join(5)
         assert not thread.is_alive(), "event fixture did not finish"
         assert not errors, errors
+        return result
+
+
+def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="focus-context-", dir=build_directory) as temporary:
+        root = Path(temporary)
+        socket_path = str(root / "s")
+        script_path = root / "focus.lua"
+        script_path.write_text(
+            'local window = gnoblin.windows.by_id("window-1")\n'
+            'assert(window and window.id == "window-1")\n'
+            "local subscription\n"
+            'gnoblin.events.once("gnoblin.shortcut.activated", function(event)\n'
+            '  assert(type(event.focus_context) == "userdata")\n'
+            "  assert(not pcall(function() window:focus(tostring(event.focus_context)) end))\n"
+            '  assert(not pcall(function() event.focus_context.token = "forged" end))\n'
+            "  local original_metatable = getmetatable(subscription)\n"
+            "  debug.setmetatable(subscription, getmetatable(event.focus_context))\n"
+            "  assert(not pcall(function() window:focus(subscription) end))\n"
+            "  debug.setmetatable(subscription, original_metatable)\n"
+            "  local result = window:focus(event.focus_context)\n"
+            "  assert(result.id == window.id)\n"
+            '  assert(tostring(event.focus_context) == "FocusContext<consumed>")\n'
+            "  assert(not pcall(function() window:focus(event.focus_context) end))\n"
+            '  print("FOCUS_CONTEXT_ONCE_OK")\n'
+            "end)\n"
+            "local count = 0\n"
+            'subscription = gnoblin.events.on("gnoblin.shortcut.activated", function(event)\n'
+            '  assert(type(event.focus_context) == "userdata")\n'
+            "  local result\n"
+            '  if event.action == "move" then\n'
+            "    result = window:begin_move(event.focus_context)\n"
+            "    assert(result.started)\n"
+            '    print("FOCUS_CONTEXT_MOVE_OK")\n'
+            '  elseif event.action == "resize" then\n'
+            '    result = window:begin_resize("north_east", event.focus_context)\n'
+            "    assert(result.started)\n"
+            '    print("FOCUS_CONTEXT_RESIZE_OK")\n'
+            '  else error("unexpected action: " .. tostring(event.action)) end\n'
+            "  count = count + 1\n"
+            "  if count == 2 then subscription:unsubscribe() end\n"
+            "end)\n",
+            encoding="utf-8",
+        )
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def read_line(connection: socket.socket, buffered: bytes = b"") -> tuple[dict[str, object], bytes]:
+            while b"\n" not in buffered:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    raise AssertionError("compositor client disconnected before sending a request")
+                buffered += chunk
+            line, _, remaining = buffered.partition(b"\n")
+            value = json.loads(line)
+            assert isinstance(value, dict), value
+            return value, remaining
+
+        def send(connection: socket.socket, value: dict[str, object]) -> None:
+            connection.sendall((json.dumps(value) + "\n").encode())
+
+        def read_bound_request(
+            server: socket.socket,
+            connection: socket.socket,
+            buffered: bytes,
+        ) -> tuple[dict[str, object], bytes]:
+            deadline = time.monotonic() + 4
+            while time.monotonic() < deadline:
+                if b"\n" in buffered:
+                    return read_line(connection, buffered)
+                readable, _, _ = select.select([server, connection], [], [], 0.1)
+                if server in readable:
+                    unexpected, _ = server.accept()
+                    unexpected.close()
+                    raise AssertionError("FocusContext request opened a different socket connection")
+                if connection in readable:
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        raise AssertionError("FocusContext socket closed before its API request")
+                    buffered += chunk
+            raise AssertionError("timed out waiting for FocusContext API request")
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(4)
+                    ready.set()
+
+                    # The Lua script fetches a Window record before it subscribes.
+                    connection, _ = server.accept()
+                    with connection:
+                        buffered = b""
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "events", request
+                        send(connection, {"event": "subscribed", "events": request["events"]})
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "api" and request["method"] == "windows.list", request
+                        send(
+                            connection,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": [{"id": "window-1", "title": "Test window"}],
+                            },
+                        )
+
+                    # events.once and events.on each keep their own connection.
+                    once_connection, _ = server.accept()
+                    once_buffer = b""
+                    once_request, once_buffer = read_line(once_connection, once_buffer)
+                    assert once_request["events"] == ["gnoblin.shortcut.activated"], once_request
+                    send(once_connection, {"event": "subscribed", "events": once_request["events"]})
+
+                    on_connection, _ = server.accept()
+                    on_buffer = b""
+                    on_request, on_buffer = read_line(on_connection, on_buffer)
+                    assert on_request["events"] == ["gnoblin.shortcut.activated"], on_request
+                    send(on_connection, {"event": "subscribed", "events": on_request["events"]})
+
+                    send(
+                        once_connection,
+                        {"event": "gnoblin.shortcut.activated", "focus_context": "once-token"},
+                    )
+                    request, once_buffer = read_bound_request(server, once_connection, once_buffer)
+                    assert request["op"] == "api" and request["method"] == "window.focus", request
+                    assert request["arguments"] == {
+                        "id": "window-1",
+                        "focus_context": "once-token",
+                    }, request
+                    send(once_connection, {"event": "reply", "id": request["id"], "result": {"id": "window-1"}})
+                    once_connection.settimeout(3)
+                    assert once_connection.recv(1) == b"", "events.once kept its connection after callback"
+                    once_connection.close()
+
+                    on_connection.sendall(
+                        b"".join(
+                            (json.dumps(event) + "\n").encode()
+                            for event in (
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "move",
+                                    "focus_context": "move-token",
+                                },
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "resize",
+                                    "focus_context": "resize-token",
+                                },
+                            )
+                        )
+                    )
+                    for expected_method, expected_arguments, result in (
+                        (
+                            "window.begin_move",
+                            {"id": "window-1", "focus_context": "move-token"},
+                            {"started": True},
+                        ),
+                        (
+                            "window.begin_resize",
+                            {
+                                "id": "window-1",
+                                "edge": "north_east",
+                                "focus_context": "resize-token",
+                            },
+                            {"started": True},
+                        ),
+                    ):
+                        request, on_buffer = read_bound_request(server, on_connection, on_buffer)
+                        assert request["op"] == "api" and request["method"] == expected_method, request
+                        assert request["arguments"] == expected_arguments, request
+                        send(on_connection, {"event": "reply", "id": request["id"], "result": result})
+
+                    on_connection.settimeout(3)
+                    assert on_connection.recv(1) == b"", "event subscription did not close after unsubscribe"
+                    on_connection.close()
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), f"FocusContext fixture did not start: {errors}"
+        result = run(binary, "--socket", socket_path, "lua", str(script_path))
+        thread.join(8)
+        assert not thread.is_alive(), "FocusContext fixture did not finish"
+        assert not errors, errors
+        assert result.returncode == 0, result.stderr
+        assert "FOCUS_CONTEXT_ONCE_OK" in result.stdout, result.stdout
+        assert "FOCUS_CONTEXT_MOVE_OK" in result.stdout, result.stdout
+        assert "FOCUS_CONTEXT_RESIZE_OK" in result.stdout, result.stdout
         return result
 
 
@@ -229,6 +421,9 @@ def main() -> int:
     )
     assert mutter_result.returncode == 0, mutter_result.stderr
     assert "MUTTER:mutter.test.signal" in mutter_result.stdout, mutter_result.stdout
+
+    focus_context_result = run_focus_context_cli_test(binary, build_directory)
+    assert focus_context_result.returncode == 0, focus_context_result.stderr
 
     with tempfile.TemporaryDirectory(prefix="gnoblinctl-", dir=build_directory) as temporary:
         socket_path = str(Path(temporary) / "compositor.sock")
