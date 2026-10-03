@@ -44,12 +44,14 @@ Set portal routes in your Gnoblin Lua config,
 `~/.config/gnoblin/init.lua`. This is the only file you edit for Gnoblin
 settings.
 
-The portal service accepts routes through its own configuration format, so
-Gnoblin translates this setting into a generated adapter automatically. You do
-not need to create or edit a portal configuration file. See the [XDG portal
-configuration
+The portal service does not read Gnoblin Lua. It accepts backend routes through
+its standard `portals.conf` format, so Gnoblin generates
+`$XDG_CONFIG_HOME/xdg-desktop-portal/gnoblin-portals.conf` from this setting
+(normally `~/.config/xdg-desktop-portal/gnoblin-portals.conf`). Do not edit
+that generated file. Your Lua config remains the only file you maintain for
+Gnoblin settings. See the [XDG portal configuration
 reference](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html)
-for how the service resolves backend preferences.
+for the portal service's configuration interface.
 
 Gnoblin writes portal preferences before starting session services. A
 configuration reload updates the generated preference, but an already running
