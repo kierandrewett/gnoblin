@@ -59,6 +59,7 @@ BuildRequires:  pkgconfig(libsystemd)
 BuildRequires:  pkgconfig(libwacom)
 BuildRequires:  pkgconfig(pixman-1)
 BuildRequires:  pkgconfig(sm)
+BuildRequires:  pkgconfig(xkbregistry)
 BuildRequires:  pkgconfig(xkeyboard-config)
 BuildRequires:  pkgconfig(udev)
 BuildRequires:  pkgconfig(wayland-protocols) >= %{wayland_protocols_version}
