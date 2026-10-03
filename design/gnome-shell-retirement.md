@@ -94,11 +94,11 @@ assigned applications spawned by GNOME Shell to transient systemd scopes.
 Shell-client launch policy belongs to the shell; Gnoblin's standalone session
 does not build or run Shell.
 
-The patch directories `99zzzzzzzzzzzz-native-xkb`,
-`99zzzzzzzzzzzzz-timezone`,
-`99zzzzzzzzzzzzzz-native-slideshow`, and
-`99zzzzzzzzzzzzzzzz-wallpaper-host-defaults` still need individual review.
-The input-specific unresolved patches are listed below.
+The Shell-only wallpaper runtime, timezone watcher, slideshow parser, and
+host-default patches were removed on 2026-10-03. They changed GNOME Shell's
+wallpaper client, which is not part of the standalone session.
+
+The remaining input-specific patches are listed below.
 
 ## Still needs a decision or stronger evidence
 
