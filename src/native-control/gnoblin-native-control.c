@@ -198,6 +198,8 @@ struct _GnoblinNativeControl {
     guint ibus_signal_subscription_id;
     guint ibus_owner_subscription_id;
     guint ibus_retry_source_id;
+    guint64 ibus_owner_generation;
+    guint64 ibus_engine_generation;
     guint portal_grant_retry_id;
     guint runtime_read_source_id;
     guint runtime_write_source_id;
@@ -544,7 +546,14 @@ typedef struct {
     gint64 request_id;
     char* method;
     guint group;
+    guint64 ibus_owner_generation;
 } PendingInputSource;
+
+typedef struct {
+    GnoblinNativeControl* control;
+    guint64 ibus_owner_generation;
+    guint64 ibus_engine_generation;
+} PendingIBusQuery;
 
 typedef struct {
     GnoblinNativeControl* control;
@@ -4682,6 +4691,8 @@ static void ibus_bus_closed(GDBusConnection* connection, gboolean remote_peer_va
     GnoblinNativeControl* control = user_data;
     if (control->stopping || control->ibus_bus != connection)
         return;
+    control->ibus_owner_generation++;
+    control->ibus_engine_generation++;
     if (control->ibus_signal_subscription_id) {
         g_dbus_connection_signal_unsubscribe(connection, control->ibus_signal_subscription_id);
         control->ibus_signal_subscription_id = 0;
@@ -4699,27 +4710,37 @@ static void ibus_bus_closed(GDBusConnection* connection, gboolean remote_peer_va
 
 static void ibus_global_engine_query_done(GObject* source_object, GAsyncResult* result,
                                           gpointer user_data) {
-    GnoblinNativeControl* control = user_data;
+    PendingIBusQuery* pending = user_data;
+    GnoblinNativeControl* control = pending->control;
     g_autoptr(GError) error = NULL;
     g_autoptr(GVariant) reply =
         g_dbus_connection_call_finish(G_DBUS_CONNECTION(source_object), result, &error);
     control->pending_ibus_queries--;
-    if (!control->stopping) {
+    gboolean current = !control->stopping &&
+                       control->ibus_bus == G_DBUS_CONNECTION(source_object) &&
+                       control->ibus_owner_generation == pending->ibus_owner_generation &&
+                       control->ibus_engine_generation == pending->ibus_engine_generation;
+    if (current) {
         g_autofree char* engine = reply ? ibus_engine_name_from_value(reply) : NULL;
         g_free(control->current_ibus_source_id);
         control->current_ibus_source_id = g_steal_pointer(&engine);
         publish_input_source_changes(control, control->state_revision);
     }
+    g_free(pending);
     native_control_maybe_free_stopped(control);
 }
 
 static void query_ibus_global_engine(GnoblinNativeControl* control) {
     if (!control || control->stopping || !control->ibus_bus)
         return;
+    PendingIBusQuery* pending = g_new0(PendingIBusQuery, 1);
+    pending->control = control;
+    pending->ibus_owner_generation = control->ibus_owner_generation;
+    pending->ibus_engine_generation = control->ibus_engine_generation;
     control->pending_ibus_queries++;
     g_dbus_connection_call(control->ibus_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
                            "GetGlobalEngine", NULL, G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE,
-                           1000, NULL, ibus_global_engine_query_done, control);
+                           1000, NULL, ibus_global_engine_query_done, pending);
 }
 
 static void ibus_global_engine_changed(GDBusConnection* connection, const char* sender_name,
@@ -4728,8 +4749,9 @@ static void ibus_global_engine_changed(GDBusConnection* connection, const char* 
                                        gpointer user_data) {
     GnoblinNativeControl* control = user_data;
     const char* engine = NULL;
-    if (control->stopping)
+    if (control->stopping || control->ibus_bus != connection)
         return;
+    control->ibus_engine_generation++;
     g_variant_get(parameters, "(&s)", &engine);
     g_free(control->current_ibus_source_id);
     control->current_ibus_source_id = *engine ? g_strdup(engine) : NULL;
@@ -4745,14 +4767,15 @@ static void ibus_name_owner_changed(GDBusConnection* connection, const char* sen
     const char* old_owner = NULL;
     const char* new_owner = NULL;
     g_variant_get(parameters, "(&s&s&s)", &name, &old_owner, &new_owner);
-    if (control->stopping || !g_str_equal(name, IBUS_BUS_NAME))
+    if (control->stopping || control->ibus_bus != connection || !g_str_equal(name, IBUS_BUS_NAME) ||
+        g_str_equal(old_owner, new_owner))
         return;
+    control->ibus_owner_generation++;
+    control->ibus_engine_generation++;
+    g_clear_pointer(&control->current_ibus_source_id, g_free);
+    publish_input_source_changes(control, control->state_revision);
     if (*new_owner)
         query_ibus_global_engine(control);
-    else {
-        g_clear_pointer(&control->current_ibus_source_id, g_free);
-        publish_input_source_changes(control, control->state_revision);
-    }
 }
 
 static void start_ibus_input_source_tracking(GnoblinNativeControl* control) {
@@ -4763,6 +4786,8 @@ static void start_ibus_input_source_tracking(GnoblinNativeControl* control) {
         schedule_ibus_connection_retry(control);
         return;
     }
+    control->ibus_owner_generation++;
+    control->ibus_engine_generation++;
     g_signal_connect(control->ibus_bus, "closed", G_CALLBACK(ibus_bus_closed), control);
     control->ibus_signal_subscription_id = g_dbus_connection_signal_subscribe(
         control->ibus_bus, IBUS_BUS_NAME, IBUS_INTERFACE, "GlobalEngineChanged", IBUS_OBJECT_PATH,
@@ -5669,11 +5694,18 @@ static void ibus_input_source_set_done(GObject* source_object, GAsyncResult* res
         g_dbus_connection_call_finish(G_DBUS_CONNECTION(source_object), result, &error);
     control->pending_input_source_ops--;
     NativeInputSource* source = ibus_input_source_by_id(control, pending->selected_id);
-    gboolean confirmed = !control->stopping && reply && source;
+    gboolean current = !control->stopping &&
+                       control->ibus_bus == G_DBUS_CONNECTION(source_object) &&
+                       control->ibus_owner_generation == pending->ibus_owner_generation;
+    gboolean confirmed = current && reply && source;
     if (confirmed) {
         g_free(control->current_ibus_source_id);
         control->current_ibus_source_id = g_strdup(pending->selected_id);
         publish_input_source_changes(control, control->state_revision);
+    } else if (!control->stopping && !current) {
+        g_clear_error(&error);
+        error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_CONNECTED,
+                                    "IBus owner changed before source selection completed");
     } else if (!control->stopping && reply) {
         error = g_error_new_literal(G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                                     "IBus source was removed before selection completed");
@@ -5712,6 +5744,7 @@ static gboolean select_ibus_source(GnoblinNativeControl* control, const char* id
     pending->selected_id = g_strdup(id);
     pending->request_id = request_id;
     pending->method = g_strdup(method);
+    pending->ibus_owner_generation = control->ibus_owner_generation;
     control->pending_input_source_ops++;
     g_dbus_connection_call(control->ibus_bus, IBUS_BUS_NAME, IBUS_OBJECT_PATH, IBUS_INTERFACE,
                            "SetGlobalEngine", g_variant_new("(s)", id), G_VARIANT_TYPE_UNIT,
