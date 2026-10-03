@@ -271,6 +271,7 @@ systemctl --user daemon-reload
 sudo rm -f /usr/share/wayland-sessions/gnoblin.desktop
 sudo rm -f /usr/share/gnome-session/sessions/gnoblin.session
 sudo rm -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
+# Remove the system default installed by earlier Gnoblin builds.
 sudo rm -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
 sudo rm -f /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
 ```
