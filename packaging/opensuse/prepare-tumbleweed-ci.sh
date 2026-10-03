@@ -19,4 +19,11 @@ zypper --non-interactive addlock glib2-stage1-devel libudev-mini1
 # dependencies such as PCRE2 on one repository snapshot before installing the
 # build or verification tools.
 zypper --non-interactive dist-upgrade --allow-downgrade --no-recommends
+
+# The container image carries this BusyBox applet, which conflicts with the
+# full gawk required by rpm-build and is excluded by OBS's Tumbleweed policy.
+if rpm -q busybox-gawk >/dev/null 2>&1; then
+    zypper --non-interactive remove busybox-gawk
+fi
+
 zypper --non-interactive install --no-recommends "$@"
