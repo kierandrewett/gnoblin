@@ -45,7 +45,7 @@ gnoblin.events.on("gnoblin.appearance.color-scheme-changed", function(event)
     local border = event.color_scheme == "prefer-dark" and "#aab2bd99" or "#35405299"
     rules[#rules + 1] = {
         match = {type = "window"},
-        borders = {inner_width = 1, inner_color = border},
+        corners = {border_width = 1, border_color = border},
     }
     gnoblin.configure {window_rules = rules}
 end)

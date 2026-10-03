@@ -31,7 +31,7 @@ gnoblin.window_rule {
         workspace_id = "write",
         focused = true,
     },
-    borders = {inner_width = 2, inner_color = "#72c7ce"},
+    corners = {border_width = 2, border_color = "#72c7ce"},
 }
 ```
 
