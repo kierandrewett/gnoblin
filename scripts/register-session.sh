@@ -37,7 +37,7 @@ PORTAL_DBUS="$PREFIX/share/dbus-1/services/org.freedesktop.impl.portal.desktop.g
 USER_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 
 required=("$DESKTOP" "$PREFIX/bin/gnoblin" "$PREFIX/libexec/gnoblin-env.sh"
-    "$STANDALONE_TARGET" "$IDLE_SERVICE" "$IDLE_BINARY")
+    "$STANDALONE_TARGET" "$IDLE_SERVICE" "$IDLE_BINARY" "$PORTAL_CONFIGURATION")
 for f in "${required[@]}"; do
     [ -f "$f" ] || {
         echo "Missing $f -- run ./build.sh first" >&2
@@ -49,7 +49,6 @@ portal_files=(
     "$PORTAL_UNIT"
     "$PORTAL_BINARY"
     "$PORTAL_DESCRIPTOR"
-    "$PORTAL_CONFIGURATION"
     "$PORTAL_DBUS"
 )
 portal_count=0
@@ -135,12 +134,12 @@ destination.write_text('\n'.join(lines) + '\n')
 PY
 systemctl --user daemon-reload
 sudo install -Dm644 "$desktop_to_install" /usr/share/wayland-sessions/gnoblin.desktop
+sudo install -Dm644 "$PORTAL_CONFIGURATION" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
 printf '%sGnoblin is available%s at login. Choose the existing GNOME session to switch back to GNOME.\n' "$green" "$reset"
 if "$with_portal"; then
     sudo install -Dm644 "$PORTAL_DESCRIPTOR" /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-    sudo install -Dm644 "$PORTAL_CONFIGURATION" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
     sudo install -Dm644 "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
 else
-    echo 'No Gnoblin portal backend in this build; using your installed backend.'
-    echo 'To choose another, set gnoblin.configure.portals in your Lua config.'
+    echo 'Gnoblin portal backend not built; the default route will select another installed backend.'
+    echo 'Set gnoblin.configure.portals in Lua to choose a specific backend.'
 fi

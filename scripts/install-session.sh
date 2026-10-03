@@ -91,6 +91,8 @@ if [ -L "$INSTALL_PREFIX/bin/gnoblin-session" ] &&
 fi
 install -Dm755 "$ROOT/src/tools/gnoblin-seed-config" "$INSTALL_PREFIX/libexec/gnoblin-seed-config"
 install -Dm644 "$ROOT/src/data/init.lua.example" "$INSTALL_PREFIX/share/gnoblin/init.lua.example"
+install -Dm644 "$ROOT/src/data/gnoblin-portals.conf" \
+    "$INSTALL_PREFIX/share/xdg-desktop-portal/gnoblin-portals.conf"
 install -Dm644 "$SRC/gnoblin.desktop" "$INSTALL_PREFIX/share/wayland-sessions/gnoblin.desktop"
 sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin|" \
     "$INSTALL_PREFIX/share/wayland-sessions/gnoblin.desktop"
