@@ -126,8 +126,11 @@ The remaining input-specific patches are listed below.
   clients. GeoClue must allow the `gnoblin` agent ID. Packaging that allowlist
   without replacing distro defaults is tracked in `gnoblin-mc6`.
 - `77-keymap-initialization`, `78-ibus-disconnect-guard`,
-  `zzzzzzz-on-demand-ibus`, and shutdown-order patches: verify native input
-  initialization, IBus recovery, and teardown on a real seat.
+  `zzzzzzz-on-demand-ibus`, and shutdown-order patches: a nested-session E2E
+  with a synthetic GNOME source schema confirms Lua-only input-source listing,
+  configuration, and removal on reload. Verify actual keymap initialization,
+  IBus recovery, and teardown on a real seat before retiring these historical
+  patches.
 - `96-touchpad-gestures`: removed on 2026-10-02. The patch only connected
   GNOME Shell swipe trackers for its Overview, app grid, emoji pager, and lock
   screen to the old GJS configuration bridge. The standalone runtime exposes

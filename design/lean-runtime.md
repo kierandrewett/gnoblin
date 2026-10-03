@@ -95,8 +95,11 @@ than public GIO APIs. Keep the existing GSettings fallback during migration so
 omitted fields retain their current behavior. This adapter does not remove the
 schema package by itself: GSettings still needs key types, enum definitions,
 and defaults, and other Mutter or portal consumers may continue reading
-schemas. Revisit the schema package and its version requirement only after
-those consumers and build-time schema checks have been accounted for.
+schemas. The configured input-source list is an exception: it comes only from
+Gnoblin's `input_sources.sources`; omitting it leaves Mutter's current keymap
+in place and does not import GNOME's saved source list. Revisit the schema
+package and its version requirement only after other consumers and build-time
+schema checks have been accounted for.
 
 The session package does not require `gnoblin-portal`; users can install and
 select another XDG portal backend. The GTK-based Gnoblin backend is a separate
