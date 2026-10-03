@@ -40,6 +40,11 @@ jobs:
     container: registry.opensuse.org/opensuse/tumbleweed:latest
     timeout-minutes: 90
     steps:
+      - name: Install Git for source checkout
+        run: |
+          sed -i 's#http://#https://#g' /etc/zypp/repos.d/*.repo
+          zypper --non-interactive refresh
+          zypper --non-interactive install git
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
@@ -109,6 +114,11 @@ jobs:
     container: registry.opensuse.org/opensuse/tumbleweed:latest
     timeout-minutes: 30
     steps:
+      - name: Install Git for source checkout
+        run: |
+          sed -i 's#http://#https://#g' /etc/zypp/repos.d/*.repo
+          zypper --non-interactive refresh
+          zypper --non-interactive install git
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.sha }}
