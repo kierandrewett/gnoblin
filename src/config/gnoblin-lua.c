@@ -7440,7 +7440,11 @@ void gnoblin_config_finish_event(gboolean commit) {
 }
 
 char** gnoblin_config_runtime_events(void) {
-    LuaRuntime* runtime = pending_runtime ? pending_runtime : active_runtime;
+    /* Use the staged config being sent to Mutter before falling back to the
+     * currently active runtime. */
+    LuaRuntime* runtime = pending_runtime ? pending_runtime : deferred_runtime;
+    if (!runtime)
+        runtime = active_runtime;
     if (!runtime)
         return g_new0(char*, 1);
     GPtrArray* events = g_ptr_array_new_with_free_func(g_free);
