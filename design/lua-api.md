@@ -1482,12 +1482,14 @@ button press/release uses `button`, `x`, and `y`; scroll uses `x`,
 `y`, `scroll_x`, `scroll_y`, and `scroll_direction`; key
 press/release uses `key_symbol`.
 
-### Proposed stable events
+### Current stable events
 
-The events below are the proposed stable `gnoblin.*` contract. Each event
-record also includes `name`, monotonic `sequence`, and monotonic-clock
-`time`. Events describing state changes include `revision`. Raw
-`mutter.*` and `gnome.*` events are not included in this stable catalog.
+The events below are the stable `gnoblin.*` names emitted by the standalone
+native runtime. Lua listeners receive the fields shown here; socket clients can
+subscribe to these events when their negotiated API version supports them.
+Each event record also includes `name`, monotonic `sequence`, and
+monotonic-clock `time`. Events describing state changes include `revision`.
+Raw `mutter.*` and `gnome.*` events are not included in this stable catalog.
 
 | Event                                      | Additional fields                                                                  | Emitted when                                                                                                                                                                    |
 | ------------------------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1518,6 +1520,8 @@ record also includes `name`, monotonic `sequence`, and monotonic-clock
 | `gnoblin.input.orientation-lock-changed`   | `available`, `locked`, `orientation`, `source`, `revision`, `sequence`, `time`     | Orientation-lock state or its source changes.                                                                                                                                   |
 | `gnoblin.input.gesture`                    | `gesture`, `phase`, `fingers`, gesture-specific deltas                             | A touchpad gesture phase arrives.                                                                                                                                               |
 | `gnoblin.shortcut.activated`               | `shortcut`, `trigger`, `focus_context: FocusContext`                               | A registered Gnoblin shortcut activates; its context can authorize one focus, interactive move, or interactive resize operation.                                                |
+| `gnoblin.shortcut.binding-activated`       | `id`, `accelerator`, `trigger`, `first`, optional `focus_context`                  | A dynamic shortcut activates. Only the first trusted activation can carry focus authority; see its detailed field list above.                                                   |
+| `gnoblin.shortcut.binding-deactivated`     | `id`, `accelerator`, `input_time`                                                  | The physical accelerator is released after a press-triggered activation; socket clients need API 1.36.                                                                          |
 | `gnoblin.shortcut.session.activated`       | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                        | A held dynamic shortcut starts or repeats its modal session.                                                                                                                    |
 | `gnoblin.shortcut.session.key`             | `key fields`, optional `focus_context`                                             | A modal keyboard event; real, non-repeated input may carry one-use focus authority. See the API 1.22 section for the full field list.                                           |
 | `gnoblin.shortcut.session.ended`           | `id`, `session_id`, `reason`, `time`                                               | A held shortcut session ends or is cancelled.                                                                                                                                   |
@@ -1538,6 +1542,11 @@ record also includes `name`, monotonic `sequence`, and monotonic-clock
 | `gnoblin.session.lock-state-changed`       | `state: SessionLockState`, `revision`, `sequence`, `time`                          | Mutter reports a session-lock state transition; `revision` matches its state snapshot and request delivery is not lock confirmation.                                            |
 | `gnoblin.session.activity-changed`         | `available`, `idle`, `threshold_ms`, `idle_for_ms`, `revision`, `sequence`, `time` | Native idle-monitor state changes; `idle_for_ms` is sampled at the transition.                                                                                                  |
 | `gnoblin.appearance.color-scheme-changed`  | `color_scheme`: `default`, `prefer-dark`, or `prefer-light`                        | Native API 1.34; emitted when the desktop appearance preference changes.                                                                                                        |
+
+`gnoblin.session.lock-requested` is a socket-only event sent to subscribed
+shell clients by `session.lock()`; Lua config listeners do not receive it.
+The socket retains `gnoblin.api.operation-completed` as a compatibility alias
+for older clients. Lua listeners use `gnoblin.operation.completed`.
 
 The standalone implementation forwards open-ended Mutter GObject signals
 through the explicitly unstable `gnoblin.events.mutter.on(...)` namespace. It
