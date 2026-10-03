@@ -871,6 +871,7 @@ static const char* native_socket_events[] = {
     "gnoblin.window.focused",
     "gnoblin.window.unfocused",
     "gnoblin.window.attention-changed",
+    "gnoblin.window.activation-denied",
     "gnoblin.window.closed",
     "gnoblin.window.drag.started",
     "gnoblin.window.drag.updated",
@@ -6113,6 +6114,8 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
              g_str_equal(name, "gnoblin.osd.requested")) &&
             client->event_api_minor < 27)
             subscribed = FALSE;
+        if (g_str_equal(name, "gnoblin.window.activation-denied") && client->event_api_minor < 69)
+            subscribed = FALSE;
         if (subscribed)
             send_response(client, g_strdup(line));
     }
@@ -7824,7 +7827,8 @@ static void native_native_event(MetaDisplay* display, const char* event, GVarian
     GnoblinNativeControl* control = user_data;
     if (!event ||
         (!g_str_equal(event, "gnoblin.animation.started") &&
-         !g_str_equal(event, "gnoblin.animation.finished")) ||
+         !g_str_equal(event, "gnoblin.animation.finished") &&
+         !g_str_equal(event, "gnoblin.window.activation-denied")) ||
         !payload || !g_variant_is_of_type(payload, G_VARIANT_TYPE_VARDICT))
         return;
 
@@ -11468,6 +11472,11 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 client->api_minor < 27) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "shell request events require API version 1.27");
+            }
+            if (g_str_equal(name, "gnoblin.window.activation-denied") && client->api_minor < 69) {
+                g_hash_table_unref(subscriptions);
+                return encode_response("", NULL,
+                                       "activation denial events require API version 1.69");
             }
             if (g_str_equal(name, "gnoblin.session.activity-changed") && client->api_minor < 24) {
                 g_hash_table_unref(subscriptions);
