@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] mutter: resolve monitor vendors with libudev when GNOME Desktop is disabled
+
+---
+diff --git a/src/backends/meta-backend.c b/src/backends/meta-backend.c
+index 1ae9654ca..12fafe657 100644
+--- a/src/backends/meta-backend.c
++++ b/src/backends/meta-backend.c
+@@ -51,6 +51,10 @@
+ 
+ #include <stdlib.h>
+ 
++#ifndef HAVE_GNOME_DESKTOP
++#include <libudev.h>
++#endif
++
+ #include "backends/meta-a11y-manager.h"
+ #include "backends/meta-barrier-private.h"
+ #include "backends/meta-color-manager-private.h"
+@@ -167,6 +171,9 @@ struct _MetaBackendPrivate
+ #endif
+ #ifdef HAVE_GNOME_DESKTOP
+   GnomePnpIds *pnp_ids;
++#else
++  struct udev *vendor_udev;
++  struct udev_hwdb *vendor_hwdb;
+ #endif
+ 
+   ClutterContext *clutter_context;
+@@ -286,6 +293,9 @@ meta_backend_finalize (GObject *object)
+ #endif
+ #ifdef HAVE_GNOME_DESKTOP
+   g_clear_object (&priv->pnp_ids);
++#else
++  g_clear_pointer (&priv->vendor_hwdb, udev_hwdb_unref);
++  g_clear_pointer (&priv->vendor_udev, udev_unref);
+ #endif
+ 
+   G_OBJECT_CLASS (meta_backend_parent_class)->finalize (object);
+@@ -2173,7 +2183,32 @@ meta_backend_get_vendor_name (MetaBackend *backend,
+ 
+   return gnome_pnp_ids_get_pnp_id (priv->pnp_ids, pnp_id);
+ #else
+-  return g_strdup (pnp_id);
++  MetaBackendPrivate *priv = meta_backend_get_instance_private (backend);
++  struct udev_list_entry *properties;
++  struct udev_list_entry *entry;
++  g_autofree char *modalias = NULL;
++
++  if (!pnp_id)
++    return NULL;
++
++  if (!priv->vendor_udev)
++    priv->vendor_udev = udev_new ();
++  if (!priv->vendor_hwdb && priv->vendor_udev)
++    priv->vendor_hwdb = udev_hwdb_new (priv->vendor_udev);
++  if (!priv->vendor_hwdb)
++    return g_strdup (pnp_id);
++
++  modalias = g_strdup_printf ("acpi:%s:", pnp_id);
++  properties = udev_hwdb_get_properties_list_entry (priv->vendor_hwdb,
++                                                     modalias, 0);
++  if (!properties)
++    return g_strdup (pnp_id);
++
++  entry = udev_list_entry_get_by_name (properties, "ID_MODEL_FROM_DATABASE");
++  if (!entry)
++    entry = udev_list_entry_get_by_name (properties, "ID_VENDOR_FROM_DATABASE");
++
++  return g_strdup (entry ? udev_list_entry_get_value (entry) : pnp_id);
+ #endif
+ }
+ 

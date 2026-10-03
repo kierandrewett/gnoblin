@@ -40,7 +40,8 @@ available on your system.
 `remember_numlock_state` controls whether GNOME remembers the Num Lock LED
 state between sessions. `numlock_state` temporarily overrides that state while
 Gnoblin's config is active. Omitted fields keep their current GNOME/Mutter
-values.
+values. Every field also accepts `"inherit"` to restore that value when an
+earlier config file supplied an override.
 
 ## Type definition
 

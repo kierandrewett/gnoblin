@@ -44,23 +44,9 @@ The fallback mask only estimates adjacent material at a silhouette edge with
 matching colour. Explicit [standard regions](background-effects.md) give the
 client direct control of that shape.
 
-## Tests
+## Verify a change
 
-```sh
-GNOBLIN_PREFIX="$PWD/install" \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-blur-fade-protocol.sh" \
-bash scripts/run-gnome-shell.sh
-```
-
-Repeat with `GNOBLIN_TEST_MODE=user` for stock-session isolation.
-
-For client fades, run `tests/test-blur-fade.py` with
-`GNOBLIN_TEST_CLIENT_FADE=1` and a Qt-matched `QS_TEST_BIN`.
-
-Bingux's `tests/panel-blur-fade.py` and `tests/shared-buffer-fades.py`
-cover intermediate opacity, closing and reversal. They require its effects
-plugin in the matching Quickshell import path.
-
-`tests/test-blur-detail-coverage.py` checks foreground details.
-Optional `STEAM_ICON` and `LOCALSEND_ICON` paths add real icon samples;
-synthetic cases always run.
+Use the [devkit](/devkit) to inspect fades with the shell client that owns the
+affected layer surface. `just test-all` builds the standalone session and runs
+the native runtime checks; it does not measure a shell client's rendered fade.
+See [testing](/testing) for the available checks and their limits.

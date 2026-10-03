@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: focus windows with verified activation tokens
+
+---
+diff --git a/src/wayland/meta-wayland-activation.c b/src/wayland/meta-wayland-activation.c
+index f0939b5ff..91d715f26 100644
+--- a/src/wayland/meta-wayland-activation.c
++++ b/src/wayland/meta-wayland-activation.c
+@@ -22,9 +22,11 @@
+ #include "wayland/meta-wayland-activation.h"
+ #include "core/util-private.h"
+ #include "meta/prefs.h"
++#include "wayland/meta-wayland-session-lock.h"
+ 
+ #include <glib.h>
+ #include <wayland-server.h>
++#include <sys/types.h>
+ 
+ #include "wayland/meta-wayland-private.h"
+ #include "wayland/meta-wayland-versions.h"
+@@ -52,9 +54,11 @@ struct _MetaXdgActivationToken
+   char *app_id;
+   char *token;
+   uint32_t serial;
++  pid_t requesting_pid;
+   gulong sequence_complete_id;
+   gulong sequence_timeout_id;
+   gboolean committed;
++  gboolean consumed;
+ };
+ 
+ static MetaDisplay *
+@@ -159,6 +163,8 @@ token_commit (struct wl_client   *client,
+   MetaWaylandActivation *activation = token->activation;
+   MetaDisplay *display = display_from_activation (activation);
+   uint64_t timestamp;
++  uid_t uid;
++  gid_t gid;
+ 
+   if (token->committed)
+     {
+@@ -170,6 +176,8 @@ token_commit (struct wl_client   *client,
+ 
+   timestamp = meta_display_get_current_time_roundtrip (display);
+ 
++  wl_client_get_credentials (client, &token->requesting_pid, &uid, &gid);
++
+   token->committed = TRUE;
+   token->token = create_startup_token (activation, display);
+   token->sequence = g_object_new (META_TYPE_STARTUP_SEQUENCE,
+@@ -312,6 +320,46 @@ token_can_activate (MetaXdgActivationToken *token)
+                                           NULL, NULL, NULL);
+ }
+ 
++gboolean
++meta_wayland_activation_focus_window_with_token (MetaWaylandCompositor *compositor,
++                                                 MetaWindow            *window,
++                                                 const char            *token_str,
++                                                 pid_t                  peer_pid)
++{
++  MetaWaylandActivation *activation;
++  MetaXdgActivationToken *token;
++  uint32_t timestamp;
++  gboolean seat_valid;
++  gboolean unlocked;
++
++  if (!compositor || !window || !token_str || peer_pid <= 0 ||
++      window->unmanaging || !window->mapped)
++    return FALSE;
++
++  activation = compositor->activation;
++  if (!activation)
++    return FALSE;
++
++  token = g_hash_table_lookup (activation->tokens, token_str);
++  if (!token || token->consumed || token->requesting_pid != peer_pid)
++    return FALSE;
++
++  /* Consume the proof before any focus side effect. Completing the startup
++   * sequence removes the token from the table, so it cannot be replayed. */
++  token->consumed = TRUE;
++  timestamp = meta_startup_sequence_get_timestamp (token->sequence);
++  seat_valid = token_can_activate (token);
++  unlocked = !meta_wayland_session_lock_is_active (compositor);
++  meta_startup_sequence_complete (token->sequence);
++
++  if (!seat_valid || !unlocked)
++    return FALSE;
++
++  meta_window_activate_full (window, timestamp,
++                             META_CLIENT_TYPE_APPLICATION, NULL);
++  return TRUE;
++}
++
+ static gboolean
+ startup_sequence_is_recent (MetaDisplay         *display,
+                             MetaStartupSequence *sequence)
+diff --git a/src/wayland/meta-wayland-activation.h b/src/wayland/meta-wayland-activation.h
+index 53cef4526..e00c6ec55 100644
+--- a/src/wayland/meta-wayland-activation.h
++++ b/src/wayland/meta-wayland-activation.h
+@@ -22,10 +22,17 @@
+ #pragma once
+ 
+ #include <glib.h>
++#include <sys/types.h>
+ #include <wayland-server.h>
+ 
++#include "meta/types.h"
+ #include "wayland/meta-wayland-types.h"
+ 
+ void meta_wayland_activation_finalize (MetaWaylandCompositor *compositor);
+ 
+ void meta_wayland_activation_init (MetaWaylandCompositor *compositor);
++
++gboolean meta_wayland_activation_focus_window_with_token (MetaWaylandCompositor *compositor,
++                                                         MetaWindow            *window,
++                                                         const char            *token,
++                                                         pid_t                  peer_pid);

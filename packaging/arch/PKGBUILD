@@ -1,103 +1,47 @@
-# Generated from nix/native-packages.nix; do not edit.
+# Generated from packaging/native-packages.json; do not edit.
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=gnoblin
 pkgver=0.1.10
-pkgrel=1
-pkgdesc='Gnoblin desktop session with a private GNOME runtime'
+pkgrel=29
+pkgdesc='Standalone Gnoblin desktop session'
 arch=('x86_64')
 url='https://github.com/kierandrewett/gnoblin'
 license=('GPL-2.0-or-later')
-makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'evolution-data-server' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4' 'hyprcursor' 'libadwaita' 'libdisplay-info' 'libei' 'libxkbcommon' 'libxkbfile' 'libxres' 'lua' 'meson' 'ninja' 'patchelf' 'pkgconf' 'python' 'python-docutils' 'python-packaging' 'sassc' 'sysprof' 'xorg-xwayland')
-depends=('brightnessctl' 'gjs' 'glib2>=2.86.0' 'gnome-session' 'gnome-settings-daemon' 'libinput>=1.30.0' 'pipewire>=1.4.0' 'playerctl' 'wayland>=1.26' 'wireplumber' 'xdg-desktop-portal-gnome')
+makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4>=4.14.0' 'json-glib' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' 'lua>=5.4' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
+depends=('adwaita-cursors' 'dbus' 'dconf' 'glib2>=2.86.0' 'gsettings-desktop-schemas>=49.1' 'json-glib' 'libinput>=1.30.0' 'lua>=5.4' 'pipewire>=1.4.11' 'systemd-libs' 'wayland>=1.25' 'wireplumber' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'polkit' 'startup-notification')
 
-source=("$pkgname-$pkgver-gnome-51.0-arch-source.tar.xz::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v$pkgver/$pkgname-$pkgver-gnome-51.0-arch-source.tar.xz")
+source=("$pkgname-$pkgver-gnome-51.0-source.tar.xz::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v$pkgver/$pkgname-$pkgver-gnome-51.0-source.tar.xz")
 sha256sums=('SKIP')
 
 _prefix=/usr/lib/gnoblin
 
 prepare() {
     cd "$srcdir/$pkgname-$pkgver" || return
-    for project in gsettings-desktop-schemas mutter gnome-shell; do
-        archive=(sources/"$project"-*.tar.xz)
-        test ${#archive[@]} -eq 1
-        mkdir -p "subprojects/$project"
-        tar -xf "${archive[0]}" -C "subprojects/$project" --strip-components=1
-    done
-    tar -xf sources/Adwaita-Hyprcursor.tar.xz -C .
-    test -f Adwaita-Hyprcursor/manifest.hl
+    archive=(sources/mutter-*.tar.xz)
+    test ${#archive[@]} -eq 1
+    mkdir -p subprojects/mutter
+    tar -xf "${archive[0]}" -C subprojects/mutter --strip-components=1
 }
 
 build() {
-    local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"
-    local _schema_prefix="$_build_prefix/schemas"
-    local _mutter_stage="$_build_prefix/mutter-stage"
-    local _mutter_pkgconfig="$_build_prefix/mutter-pkgconfig"
     cd "$srcdir/$pkgname-$pkgver" || return
-    python3 scripts/build-private-deps.py --prefix "$_build_prefix/deps" --cache "$srcdir/gnoblin-dependencies"
-    _private_pkgconfig="$_build_prefix/deps/lib64/pkgconfig:$_build_prefix/deps/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
-    _private_gir="$_build_prefix/deps/share/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}"
-    _private_typelib="$_build_prefix/deps/lib64/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
-    meson setup build/schemas subprojects/gsettings-desktop-schemas --prefix="$_schema_prefix" --libdir=lib --buildtype=release
-    meson compile -C build/schemas
-    meson install -C build/schemas --no-rebuild
-    _schema_pkgconfig="$_schema_prefix/lib/pkgconfig:$_schema_prefix/share/pkgconfig"
-    _schema_gir="$_schema_prefix/share/gir-1.0"
-    _schema_typelib="$_schema_prefix/lib/girepository-1.0"
-    test "$(env PKG_CONFIG_PATH="$_schema_pkgconfig:$_private_pkgconfig" pkg-config --modversion gsettings-desktop-schemas)" = "51.0"
-    _private_pkgconfig="$_schema_pkgconfig:$_private_pkgconfig"
-    _private_gir="$_schema_gir:$_private_gir"
-    _private_typelib="$_schema_typelib:$_private_typelib"
-    env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib" meson setup build/mutter subprojects/mutter --prefix="$_prefix" --libdir=lib --buildtype=release -Ddevkit=enabled -Dtests=disabled -Ddocs=false -Dprofiler=false -Dudev_dir="$_prefix/lib/udev"
-    meson compile -C build/mutter
-    meson install -C build/mutter --destdir "$_mutter_stage" --no-rebuild
-    install -d "$_mutter_pkgconfig"
-    cp "$_mutter_stage$_prefix/lib/pkgconfig/"*.pc "$_mutter_pkgconfig/"
-    sed -i "s|$_prefix|$_mutter_stage$_prefix|g" "$_mutter_pkgconfig/"*.pc
-    test -f "$_mutter_pkgconfig/mutter-clutter-51.pc"
-    _mutter_gir="$_mutter_stage$_prefix/lib/mutter-51"
-    _mutter_pc_path="$_mutter_pkgconfig:$_private_pkgconfig"
-    env PKG_CONFIG_PATH="$_mutter_pc_path" pkg-config --exists mutter-clutter-51
-    env PKG_CONFIG_PATH="$_mutter_pc_path" pkg-config --cflags mutter-clutter-51 | grep -F -- "-I$_mutter_stage$_prefix/include/mutter-51"
-    env PKG_CONFIG_PATH="$_mutter_pc_path" pkg-config --libs mutter-clutter-51 | grep -F -- "-L$_mutter_stage$_prefix/lib/mutter-51"
-    env PKG_CONFIG_PATH="$_mutter_pc_path" pkg-config --libs mutter-clutter-51 | grep -F -- "-L$_build_prefix/deps/lib64"
-    _private_pkgconfig="$_mutter_pc_path"
-    _private_gir="$_mutter_gir:$_private_gir"
-    _private_typelib="$_mutter_gir:$_private_typelib"
-    env PKG_CONFIG_PATH="$_private_pkgconfig" GI_GIR_PATH="$_private_gir" GI_TYPELIB_PATH="$_private_typelib" meson setup build/gnome-shell subprojects/gnome-shell --prefix="$_prefix" --libdir=lib --buildtype=release -Dextensions_tool=false -Dtests=false -Dman=false -Dgtk_doc=false
-    meson compile -C build/gnome-shell
+    cmake -S . -B build/ninja -G Ninja -DGNOBLIN_PREFIX="$_prefix" -DGNOBLIN_LIBDIR=lib -DGNOBLIN_BUILD_TYPE=release -DGNOBLIN_SOURCE_MODE=release-archive -DGNOBLIN_STAGE_ROOT="$srcdir/$pkgname-$pkgver/stage" -DGNOBLIN_JOBS="$(nproc)"
+    cmake --build build/ninja --target gnoblin-session --parallel "$(nproc)"
 }
 
 package() {
-    local _build_prefix="$srcdir/$pkgname-$pkgver/build-prefix"
     cd "$srcdir/$pkgname-$pkgver" || return
-    install -d "$pkgdir$_prefix/lib/girepository-1.0" "$pkgdir$_prefix/share/glib-2.0/schemas"
-    cp -a --no-preserve=ownership "$_build_prefix/schemas/lib/girepository-1.0/." "$pkgdir$_prefix/lib/girepository-1.0/"
-    cp -a --no-preserve=ownership "$_build_prefix/schemas/share/glib-2.0/schemas/." "$pkgdir$_prefix/share/glib-2.0/schemas/"
-    meson install -C build/mutter --destdir "$pkgdir" --no-rebuild
-    meson install -C build/gnome-shell --destdir "$pkgdir" --no-rebuild
-    rm -f "$pkgdir$_prefix/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
-    install -d "$pkgdir$_prefix/deps"
-    cp -a "$_build_prefix/deps/." "$pkgdir$_prefix/deps/"
-    install -d "$pkgdir$_prefix/share/icons/Adwaita-Hyprcursor"
-    cp -a Adwaita-Hyprcursor/. "$pkgdir$_prefix/share/icons/Adwaita-Hyprcursor/"
-    install -Dm644 src/data/session/modes/gnoblin.json "$pkgdir$_prefix/share/gnome-shell/modes/gnoblin.json"
-    install -Dm644 src/data/session/gnome-session/gnoblin.session "$pkgdir/usr/share/gnome-session/sessions/gnoblin.session"
-    install -Dm644 src/data/session/gnoblin.desktop "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
-    sed -i 's|^Exec=.*|Exec=/usr/lib/gnoblin/bin/gnoblin-session|' "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
-    install -Dm644 src/tools/gnoblin-env.sh "$pkgdir$_prefix/libexec/gnoblin-env.sh"
-    install -Dm755 src/tools/gnoblin-session "$pkgdir$_prefix/bin/gnoblin-session"
-    install -Dm755 src/tools/gnoblin-shell-service "$pkgdir$_prefix/bin/gnoblin-shell-service"
-    install -Dm755 src/tools/gnoblin-seed-config "$pkgdir$_prefix/libexec/gnoblin-seed-config"
-    install -Dm755 src/tools/gnoblinctl "$pkgdir/usr/bin/gnoblinctl"
-    install -Dm644 src/data/init.lua.example "$pkgdir$_prefix/share/gnoblin/init.lua.example"
-    install -Dm644 src/data/session/schemas/00_org.gnoblin.mutter.gschema.override "$pkgdir$_prefix/share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override"
-    install -Dm644 src/data/session/systemd-user/org.gnoblin.Shell.target "$pkgdir/usr/lib/systemd/user/org.gnoblin.Shell.target"
-    install -Dm644 src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf "$pkgdir/usr/lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
-    sed 's|@PREFIX@|/usr/lib/gnoblin|g' src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in >"$pkgdir/usr/lib/systemd/user/org.gnoblin.Shell@wayland.service"
-    printf '%s\n' lib >"$pkgdir$_prefix/libexec/gnoblin-libdir"
-    glib-compile-schemas "$pkgdir$_prefix/share/glib-2.0/schemas"
+    cp -a stage/. "$pkgdir/"
+    install -d "$pkgdir/usr/bin"
+    ln -s "$_prefix/bin/gnoblin" "$pkgdir/usr/bin/gnoblin"
+    ln -s "$_prefix/bin/gnoblinctl" "$pkgdir/usr/bin/gnoblinctl"
+    install -Dm644 "$pkgdir$_prefix/lib/systemd/user/gnoblin-session.target" "$pkgdir/usr/lib/systemd/user/gnoblin-session.target"
+    install -Dm644 "$pkgdir$_prefix/lib/systemd/user/gnoblin-idle.service" "$pkgdir/usr/lib/systemd/user/gnoblin-idle.service"
+    install -Dm644 "$pkgdir$_prefix/share/wayland-sessions/gnoblin.desktop" "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
+    sed -i -e 's|^Exec=.*|Exec=/usr/lib/gnoblin/bin/gnoblin|' -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
+    api="$(scripts/gnome-versions.py get mutter api)"
     find "$pkgdir$_prefix" -type f -print0 | while IFS= read -r -d '' file; do
-        head -c 4 "$file" | grep -qx $'\177ELF' || continue
-        patchelf --set-rpath '/usr/lib/gnoblin/lib:/usr/lib/gnoblin/deps/lib64' "$file"
+        head -c 4 "$file" | grep -qx $'ELF' || continue
+        patchelf --set-rpath "$_prefix/lib:$_prefix/lib/mutter-$api" "$file"
     done
 }

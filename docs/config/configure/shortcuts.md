@@ -14,6 +14,10 @@ gnoblin.configure {
 ```
 
 See the [shortcuts guide](/guides/shortcuts) for key names, conflicts and command behavior.
+The native compositor preview accepts command shortcuts at startup. It
+supports release triggers and bare Super on release.
+
+It also applies named actions from the `wm`, `mutter`, and `wayland` groups.
 
 ![Fuzzel searching for Firefox on a clean Waybar desktop, with the pointer visible](../../images/gnoblin-waybar-launcher.png)
 
@@ -21,18 +25,22 @@ _The Gnoblin shortcut opens Fuzzel; Firefox is the selected result._
 
 ## Run a built-in action
 
-An `action` names an existing GNOME keybinding as `group.key`. Accepted
-namespaces are `gnome:shell`, `wm`, `mutter`, and `wayland`. Each maps to a
-GSettings schema, and the key must exist in that schema on your GNOME version.
+An `action` names an existing Mutter keybinding as `group.key`. Accepted
+groups are `wm`, `mutter`, and `wayland`. Each maps to a GSettings schema, and
+the key must exist in that schema on your system.
 
 Run `gsettings list-keys SCHEMA` to discover keys. Run
 `gsettings describe SCHEMA KEY` to read one key's purpose.
 
-| Field     | Accepted values                                                     | Meaning                                                                       |
-| --------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `action`  | `"gnome:shell.KEY"`, `"wm.KEY"`, `"mutter.KEY"`, or `"wayland.KEY"` | Selects a built-in action from that schema. Use underscores in Lua key names. |
-| `binding` | GTK accelerator string for a command; array for an action           | Required. An empty action list disables its current binding.                  |
-| `command` | Nonempty array of strings                                           | Alternative to `action`; runs the program directly without shell expansion.   |
+| Field     | Accepted values                                           | Meaning                                                                       |
+| --------- | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `action`  | `"wm.KEY"`, `"mutter.KEY"`, or `"wayland.KEY"`            | Selects a built-in action from that schema. Use underscores in Lua key names. |
+| `binding` | GTK accelerator string for a command; array for an action | Required. An empty action list disables its current binding.                  |
+| `command` | Nonempty array of strings                                 | Alternative to `action`; runs the program directly without shell expansion.   |
+| `trigger` | `"press"` or `"release"`                                  | `"press"` by default; selects which key edge launches a command.              |
+
+Input capture is available to transient runtime bindings, not named config
+entries. See [shortcut state and capture](/config/runtime-api#shortcut-state-and-capture).
 
 Set exactly one of `action` or `command`:
 
@@ -52,6 +60,9 @@ explains schema-backed settings; Gnoblin's
 [keybinding reference](/config/configure/keybindings) lists all groups and
 shows how to find keys on your system.
 
+In the standalone session, `wm`, `mutter`, and `wayland` actions are applied by
+Mutter at startup.
+
 The named view lets later files inspect and edit imported shortcuts. Each
 entry exposes public `snake_case` fields. `pairs` visits the names already
 loaded:
@@ -70,9 +81,9 @@ The bundled config supplies these names:
 | Playback | `media-play-pause`, `media-next`, `media-previous`           |
 | Files    | `files`                                                      |
 
-GNOME Shell handles the brightness keys itself, in 5% steps, and requests an
-OSD for each press. To rebind them, set `shell.screen_brightness_up` and
-`shell.screen_brightness_down` in [`keybindings`](/config/configure/keybindings).
+The standalone session does not assign brightness keys by default. Bind them
+to a command such as `brightnessctl` with
+[`gnoblin.configure.shortcuts`](/config/configure/shortcuts).
 
 To disable one after loading the bundled config:
 
@@ -95,7 +106,6 @@ gnoblin.configure {
             command = {string, ...}?,
             action = string | {schema = string, key = string}?,
             trigger = "press" | "release"?,
-            capture_input = boolean?,
             enable = boolean?,
         }, ...,
     },

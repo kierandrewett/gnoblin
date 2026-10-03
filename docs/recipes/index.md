@@ -39,8 +39,6 @@ After editing the file, apply the changes with `gnoblinctl config reload`.
   shortcuts into loaded Lua files.
 - [Route new app windows to named workspaces](/recipes/put-apps-on-named-workspaces):
   send new editor, browser and chat windows to stable workspace IDs.
-- [Animate the developer console](/recipes/animate-the-developer-console):
-  customize the built-in console's entrance and exit.
 - [Give an app a springy entrance](/recipes/springy-app-entrance): register
   keyframes and apply them to one application.
 

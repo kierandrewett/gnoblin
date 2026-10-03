@@ -118,7 +118,7 @@ class PackageLayoutTests(unittest.TestCase):
             prefix = root / "runtime"
             for name in (
                 "bin/gnome-shell",
-                "bin/gnoblin-session",
+                "bin/gnoblin",
                 "bin/gnoblinctl",
                 "share/gnoblin/version.json",
                 "share/gnoblin/init.lua.example",

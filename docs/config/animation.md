@@ -41,9 +41,8 @@ properties are described in the linked guide.
 gnoblin.animation {
     name = string,
     event = "minimize" | "restore" | "open" | "close" | "dialog-open" | "dialog-close"
-        | "layer-open" | "layer-close" | "workspace-switch" | "console-open"
-        | "console-close" | "shadow-change" | "layer-companion-close" | "resize"
-        | "tile-preview-open" | "tile-preview-close" | "dialog-dim" | "dialog-undim",
+        | "layer-open" | "layer-close" | "workspace-switch"
+        | "shadow-change" | "resize",
     enable = boolean?,
     duration = integer?, -- 0–10000 ms
     ease = "linear" | "ease-in-quad" | "ease-out-quad" | "ease-in-out-cubic"

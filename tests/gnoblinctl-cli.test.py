@@ -1,0 +1,2989 @@
+#!/usr/bin/env python3
+"""Exercise the compiled gnoblinctl client without a running desktop session."""
+
+import base64
+import json
+import os
+import select
+import socket
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from pathlib import Path
+
+
+def run(
+    binary: str,
+    *arguments: str,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [binary, *arguments],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        env=env,
+    )
+
+
+def run_event_subscription(
+    binary: str,
+    build_directory: str,
+    source: str,
+    event_name: str,
+    event_values: list[int],
+) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="evt-", dir=build_directory) as temporary:
+        root = Path(temporary)
+        socket_path = str(root / "s")
+        script_path = root / "listen.lua"
+        script_path.write_text(source, encoding="utf-8")
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(1)
+                    ready.set()
+                    connection, _ = server.accept()
+                    with connection:
+                        request = json.loads(connection.makefile("rb").readline())
+                        assert request["op"] == "events", request
+                        assert request["events"] == [event_name], request
+                        assert request["api_version"]["major"] == 1, request
+                        acknowledgement = {
+                            "event": "subscribed",
+                            "events": [event_name],
+                            "api_version": request["api_version"],
+                        }
+                        frames = [acknowledgement]
+                        frames.extend({"event": event_name, "value": value} for value in event_values)
+                        connection.sendall(b"".join((json.dumps(frame) + "\n").encode() for frame in frames))
+                        connection.shutdown(socket.SHUT_WR)
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), f"event fixture did not start: {errors}"
+        result = run(binary, "--socket", socket_path, "lua", str(script_path))
+        thread.join(5)
+        assert not thread.is_alive(), "event fixture did not finish"
+        assert not errors, errors
+        return result
+
+
+def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="focus-context-", dir=build_directory) as temporary:
+        root = Path(temporary)
+        socket_path = str(root / "s")
+        script_path = root / "focus.lua"
+        script_path.write_text(
+            'local window = gnoblin.windows.by_id("window-1")\n'
+            'assert(window and window.id == "window-1")\n'
+            "local subscription\n"
+            'gnoblin.events.once("gnoblin.shortcut.activated", function(event)\n'
+            '  assert(type(event.focus_context) == "userdata")\n'
+            "  assert(not pcall(function() window:focus(tostring(event.focus_context)) end))\n"
+            '  assert(not pcall(function() event.focus_context.token = "forged" end))\n'
+            "  local original_metatable = getmetatable(subscription)\n"
+            "  debug.setmetatable(subscription, getmetatable(event.focus_context))\n"
+            "  assert(not pcall(function() window:focus(subscription) end))\n"
+            "  debug.setmetatable(subscription, original_metatable)\n"
+            "  local result = window:focus(event.focus_context)\n"
+            "  assert(result.id == window.id)\n"
+            '  assert(tostring(event.focus_context) == "FocusContext<consumed>")\n'
+            "  assert(not pcall(function() window:focus(event.focus_context) end))\n"
+            '  print("FOCUS_CONTEXT_ONCE_OK")\n'
+            "end)\n"
+            "local count = 0\n"
+            'subscription = gnoblin.events.on("gnoblin.shortcut.activated", function(event)\n'
+            '  assert(type(event.focus_context) == "userdata")\n'
+            "  local result\n"
+            '  if event.action == "move" then\n'
+            "    result = window:begin_move(event.focus_context)\n"
+            "    assert(result.started)\n"
+            '    print("FOCUS_CONTEXT_MOVE_OK")\n'
+            '  elseif event.action == "resize" then\n'
+            '    result = window:begin_resize("north_east", event.focus_context)\n'
+            "    assert(result.started)\n"
+            '    print("FOCUS_CONTEXT_RESIZE_OK")\n'
+            '  elseif event.action == "snap" then\n'
+            "    local snap = gnoblin.windows.snap_context(event.focus_context)\n"
+            '    assert(type(snap) == "userdata" and snap.window_id == window.id)\n'
+            '    assert(snap.monitor_id == "HDMI-1" and snap.monitor.width == 1920)\n'
+            "    assert(snap.work_area.height == 1040 and snap.context == nil)\n"
+            "    assert(snap.expires_at_us == nil)\n"
+            '    assert(tostring(snap) == "SnapContext<window-1>")\n'
+            '    assert(not pcall(function() snap.window_id = "forged" end))\n'
+            "    local target = {monitor_id = snap.monitor_id, frame = {x = 0, y = 0, width = 960, height = 1040}}\n"
+            "    assert(not pcall(function() snap:commit({monitor_id = snap.monitor_id}) end))\n"
+            "    result = snap:commit(target)\n"
+            "    assert(result.committed and result.window_id == window.id)\n"
+            "    assert(not pcall(function() snap:commit(target) end))\n"
+            '    print("FOCUS_CONTEXT_SNAP_OK")\n'
+            '  elseif event.action == "text" then\n'
+            "    local original_metatable = debug.getmetatable(event.focus_context)\n"
+            "    debug.setmetatable(event.focus_context, debug.getmetatable(subscription))\n"
+            "    assert(not pcall(function() gnoblin.input.text_target(event.focus_context) end))\n"
+            "    debug.setmetatable(event.focus_context, original_metatable)\n"
+            "    local target = gnoblin.input.text_target(event.focus_context)\n"
+            '    assert(type(target) == "userdata" and target.window_id == window.id)\n'
+            "    assert(target.caret.x == 4.5 and target.caret.height == 18)\n"
+            "    assert(target.target == nil and target.token == nil)\n"
+            '    assert(tostring(target) == "TextTarget<window-1>")\n'
+            '    assert(not pcall(function() target.window_id = "forged" end))\n'
+            "    assert(not pcall(function() target.caret.x = 0 end))\n"
+            '    local inserted = target:insert_text("hello 😀")\n'
+            "    assert(inserted.inserted)\n"
+            "    assert(not pcall(function() inserted.inserted = false end))\n"
+            '    assert(not pcall(function() target:insert_text("again") end))\n'
+            '    assert(tostring(event.focus_context) == "FocusContext<consumed>")\n'
+            '    print("FOCUS_CONTEXT_TEXT_OK")\n'
+            '  elseif event.action == "text-invalid" then\n'
+            "    local target = gnoblin.input.text_target(event.focus_context)\n"
+            '    assert(tostring(target) == "TextTarget<unknown>")\n'
+            "    assert(target.window_id == nil)\n"
+            "    assert(target.caret == nil)\n"
+            "    local ok, err = pcall(function() target:insert_text('bad\\ntext') end)\n"
+            '    assert(not ok and err:match("without control characters"))\n'
+            '    assert(not pcall(function() target:insert_text("again") end))\n'
+            '    print("FOCUS_CONTEXT_TEXT_INVALID_OK")\n'
+            '  else error("unexpected action: " .. tostring(event.action)) end\n'
+            "  count = count + 1\n"
+            "  if count == 5 then subscription:unsubscribe() end\n"
+            "end)\n",
+            encoding="utf-8",
+        )
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def read_line(connection: socket.socket, buffered: bytes = b"") -> tuple[dict[str, object], bytes]:
+            while b"\n" not in buffered:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    raise AssertionError("compositor client disconnected before sending a request")
+                buffered += chunk
+            line, _, remaining = buffered.partition(b"\n")
+            value = json.loads(line)
+            assert isinstance(value, dict), value
+            return value, remaining
+
+        def send(connection: socket.socket, value: dict[str, object]) -> None:
+            connection.sendall((json.dumps(value) + "\n").encode())
+
+        def read_bound_request(
+            server: socket.socket,
+            connection: socket.socket,
+            buffered: bytes,
+        ) -> tuple[dict[str, object], bytes]:
+            deadline = time.monotonic() + 4
+            while time.monotonic() < deadline:
+                if b"\n" in buffered:
+                    return read_line(connection, buffered)
+                readable, _, _ = select.select([server, connection], [], [], 0.1)
+                if server in readable:
+                    unexpected, _ = server.accept()
+                    unexpected.close()
+                    raise AssertionError("FocusContext request opened a different socket connection")
+                if connection in readable:
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        raise AssertionError("FocusContext socket closed before its API request")
+                    buffered += chunk
+            raise AssertionError("timed out waiting for FocusContext API request")
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(4)
+                    ready.set()
+
+                    # The Lua script fetches a Window record before it subscribes.
+                    connection, _ = server.accept()
+                    with connection:
+                        buffered = b""
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "events", request
+                        send(connection, {"event": "subscribed", "events": request["events"]})
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "api" and request["method"] == "windows.list", request
+                        send(
+                            connection,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": [{"id": "window-1", "title": "Test window"}],
+                            },
+                        )
+
+                    # events.once and events.on each keep their own connection.
+                    once_connection, _ = server.accept()
+                    once_buffer = b""
+                    once_request, once_buffer = read_line(once_connection, once_buffer)
+                    assert once_request["events"] == ["gnoblin.shortcut.activated"], once_request
+                    send(once_connection, {"event": "subscribed", "events": once_request["events"]})
+
+                    on_connection, _ = server.accept()
+                    on_buffer = b""
+                    on_request, on_buffer = read_line(on_connection, on_buffer)
+                    assert on_request["events"] == ["gnoblin.shortcut.activated"], on_request
+                    send(on_connection, {"event": "subscribed", "events": on_request["events"]})
+
+                    send(
+                        once_connection,
+                        {"event": "gnoblin.shortcut.activated", "focus_context": "once-token"},
+                    )
+                    request, once_buffer = read_bound_request(server, once_connection, once_buffer)
+                    assert request["op"] == "api" and request["method"] == "window.focus", request
+                    assert request["arguments"] == {
+                        "id": "window-1",
+                        "focus_context": "once-token",
+                    }, request
+                    send(once_connection, {"event": "reply", "id": request["id"], "result": {"id": "window-1"}})
+                    once_connection.settimeout(3)
+                    assert once_connection.recv(1) == b"", "events.once kept its connection after callback"
+                    once_connection.close()
+
+                    on_connection.sendall(
+                        b"".join(
+                            (json.dumps(event) + "\n").encode()
+                            for event in (
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "move",
+                                    "focus_context": "move-token",
+                                },
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "resize",
+                                    "focus_context": "resize-token",
+                                },
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "snap",
+                                    "focus_context": "snap-token",
+                                },
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "text",
+                                    "focus_context": "text-token",
+                                },
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "text-invalid",
+                                    "focus_context": "invalid-text-token",
+                                },
+                            )
+                        )
+                    )
+                    for expected_method, expected_arguments, result in (
+                        (
+                            "window.begin_move",
+                            {"id": "window-1", "focus_context": "move-token"},
+                            {"started": True},
+                        ),
+                        (
+                            "window.begin_resize",
+                            {
+                                "id": "window-1",
+                                "edge": "north_east",
+                                "focus_context": "resize-token",
+                            },
+                            {"started": True},
+                        ),
+                        (
+                            "window.snap_context",
+                            {"focus_context": "snap-token"},
+                            {
+                                "context": "a" * 64,
+                                "window_id": "window-1",
+                                "monitor_id": "HDMI-1",
+                                "monitor": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+                                "work_area": {"x": 0, "y": 0, "width": 1920, "height": 1040},
+                                "expires_at_us": 123,
+                            },
+                        ),
+                        (
+                            "window.snap",
+                            {
+                                "context": "a" * 64,
+                                "monitor_id": "HDMI-1",
+                                "frame": {"x": 0, "y": 0, "width": 960, "height": 1040},
+                            },
+                            {"window_id": "window-1", "monitor_id": "HDMI-1", "committed": True},
+                        ),
+                        (
+                            "input.text_target",
+                            {"focus_context": "text-token"},
+                            {
+                                "target": "b" * 64,
+                                "window_id": "window-1",
+                                "caret": {"x": 4.5, "y": 2.0, "width": 0.0, "height": 18.0},
+                            },
+                        ),
+                        (
+                            "input.insert_text",
+                            {"target": "b" * 64, "text": "hello 😀"},
+                            {"inserted": True},
+                        ),
+                        (
+                            "input.text_target",
+                            {"focus_context": "invalid-text-token"},
+                            {
+                                "target": "c" * 64,
+                            },
+                        ),
+                    ):
+                        request, on_buffer = read_bound_request(server, on_connection, on_buffer)
+                        assert request["op"] == "api" and request["method"] == expected_method, request
+                        assert request["arguments"] == expected_arguments, request
+                        if expected_method in {"input.text_target", "input.insert_text"}:
+                            assert request["api_version"] == {"major": 1, "minor": 28}, request
+                        send(on_connection, {"event": "reply", "id": request["id"], "result": result})
+
+                    on_connection.settimeout(3)
+                    assert on_connection.recv(1) == b"", "event subscription did not close after unsubscribe"
+                    on_connection.close()
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), f"FocusContext fixture did not start: {errors}"
+        result = run(binary, "--socket", socket_path, "lua", str(script_path))
+        thread.join(8)
+        assert not thread.is_alive(), "FocusContext fixture did not finish"
+        assert not errors, errors
+        assert result.returncode == 0, result.stderr
+        assert "FOCUS_CONTEXT_ONCE_OK" in result.stdout, result.stdout
+        assert "FOCUS_CONTEXT_MOVE_OK" in result.stdout, result.stdout
+        assert "FOCUS_CONTEXT_RESIZE_OK" in result.stdout, result.stdout
+        assert "FOCUS_CONTEXT_SNAP_OK" in result.stdout, result.stdout
+        assert "FOCUS_CONTEXT_TEXT_OK" in result.stdout, result.stdout
+        assert "FOCUS_CONTEXT_TEXT_INVALID_OK" in result.stdout, result.stdout
+        return result
+
+
+def run_menu_context_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="menu-context-", dir=build_directory) as temporary:
+        root = Path(temporary)
+        socket_path = str(root / "s")
+        script_path = root / "menu.lua"
+        script_path.write_text(
+            "local subscription\n"
+            'subscription = gnoblin.events.on("gnoblin.window.menu-requested", function(event)\n'
+            '  if event.menu_type == "wm" then\n'
+            '    assert(type(event.menu_context) == "userdata")\n'
+            "    assert(event.menu_context.token == nil)\n"
+            "    local original = debug.getmetatable(subscription)\n"
+            "    debug.setmetatable(subscription, debug.getmetatable(event.menu_context))\n"
+            "    assert(not pcall(function() subscription:begin_move() end))\n"
+            "    debug.setmetatable(subscription, original)\n"
+            '    if event.action == "move" then\n'
+            "      local result = event.menu_context:begin_move()\n"
+            "      assert(result.started)\n"
+            '      assert(tostring(event.menu_context) == "MenuContext<consumed>")\n'
+            "      assert(not pcall(function() event.menu_context:begin_move() end))\n"
+            '      print("MENU_CONTEXT_MOVE_OK")\n'
+            '    elseif event.action == "resize" then\n'
+            '      local result = event.menu_context:begin_resize("south_west")\n'
+            "      assert(result.started)\n"
+            '      assert(tostring(event.menu_context) == "MenuContext<consumed>")\n'
+            '      print("MENU_CONTEXT_RESIZE_OK")\n'
+            '    elseif event.action == "detach" then\n'
+            "      local saved = event.menu_context\n"
+            "      subscription:unsubscribe()\n"
+            "      assert(not pcall(function() saved:begin_move() end))\n"
+            '      print("MENU_CONTEXT_INACTIVE_SUBSCRIPTION_REJECTED")\n'
+            '    else error("unexpected WM menu action") end\n'
+            '  elseif event.menu_type == "app" then\n'
+            "    assert(event.menu_context == nil)\n"
+            '    print("MENU_CONTEXT_APP_HAS_NO_AUTHORITY")\n'
+            '  else error("unexpected menu type") end\n'
+            "end)\n",
+            encoding="utf-8",
+        )
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def read_line(connection: socket.socket, buffered: bytes = b"") -> tuple[dict[str, object], bytes]:
+            while b"\n" not in buffered:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    raise AssertionError("menu event connection closed before request")
+                buffered += chunk
+            line, _, remaining = buffered.partition(b"\n")
+            value = json.loads(line)
+            assert isinstance(value, dict), value
+            return value, remaining
+
+        def send(connection: socket.socket, value: dict[str, object]) -> None:
+            connection.sendall((json.dumps(value) + "\n").encode())
+
+        def read_api_request(
+            server: socket.socket,
+            connection: socket.socket,
+            buffered: bytes,
+        ) -> tuple[dict[str, object], bytes]:
+            deadline = time.monotonic() + 4
+            while time.monotonic() < deadline:
+                if b"\n" in buffered:
+                    return read_line(connection, buffered)
+                readable, _, _ = select.select([server, connection], [], [], 0.1)
+                if server in readable:
+                    unexpected, _ = server.accept()
+                    unexpected.close()
+                    raise AssertionError("MenuContext request used a different socket connection")
+                if connection in readable:
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        raise AssertionError("menu event connection closed before API request")
+                    buffered += chunk
+            raise AssertionError("timed out waiting for MenuContext API request")
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(2)
+                    ready.set()
+                    connection, _ = server.accept()
+                    with connection:
+                        buffered = b""
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "events", request
+                        assert request["events"] == ["gnoblin.window.menu-requested"], request
+                        send(connection, {"event": "subscribed", "events": request["events"]})
+
+                        for action, token, method, arguments in (
+                            ("move", "wm-move-token", "window.begin_move", {"menu_context": "wm-move-token"}),
+                            (
+                                "resize",
+                                "wm-resize-token",
+                                "window.begin_resize",
+                                {"menu_context": "wm-resize-token", "edge": "south_west"},
+                            ),
+                        ):
+                            send(
+                                connection,
+                                {
+                                    "event": "gnoblin.window.menu-requested",
+                                    "menu_type": "wm",
+                                    "menu_context": token,
+                                    "action": action,
+                                },
+                            )
+                            request, buffered = read_api_request(server, connection, buffered)
+                            assert request["op"] == "api" and request["method"] == method, request
+                            assert request["arguments"] == arguments, request
+                            send(
+                                connection,
+                                {"event": "reply", "id": request["id"], "result": {"started": True}},
+                            )
+
+                        # A context-like field on an app menu must not become a usable capability
+                        # or remain visible to Lua code.
+                        send(
+                            connection,
+                            {
+                                "event": "gnoblin.window.menu-requested",
+                                "menu_type": "app",
+                                "menu_context": "must-not-be-exposed",
+                            },
+                        )
+                        send(
+                            connection,
+                            {
+                                "event": "gnoblin.window.menu-requested",
+                                "menu_type": "wm",
+                                "menu_context": "detached-token",
+                                "action": "detach",
+                            },
+                        )
+                        connection.settimeout(3)
+                        assert connection.recv(1) == b"", "menu event subscription did not close"
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), f"MenuContext fixture did not start: {errors}"
+        result = run(binary, "--socket", socket_path, "lua", str(script_path))
+        thread.join(8)
+        assert not thread.is_alive(), "MenuContext fixture did not finish"
+        assert not errors, f"{errors}; gnoblinctl exited {result.returncode}: {result.stderr}"
+        assert result.returncode == 0, result.stderr
+        assert "MENU_CONTEXT_MOVE_OK" in result.stdout, result.stdout
+        assert "MENU_CONTEXT_RESIZE_OK" in result.stdout, result.stdout
+        assert "MENU_CONTEXT_APP_HAS_NO_AUTHORITY" in result.stdout, result.stdout
+        assert "MENU_CONTEXT_INACTIVE_SUBSCRIPTION_REJECTED" in result.stdout, result.stdout
+        return result
+
+
+def run_shortcut_binding_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="shortcut-owner-", dir=build_directory) as temporary:
+        root = Path(temporary)
+        socket_path = str(root / "s")
+        script_path = root / "shortcuts.lua"
+        script_path.write_text(
+            'local binding = gnoblin.shortcuts.bind({id = "cli-test", accelerator = "<Super>F12"})\n'
+            'assert(binding.id == "cli-test" and binding.accelerator == "<Super>F12")\n'
+            'assert(not pcall(function() binding.id = "changed" end))\n'
+            'gnoblin.events.once("gnoblin.shortcut.session.activated", function(event)\n'
+            '  assert(event.id == "cli-test" and event.session_id == 9)\n'
+            "  local ended = gnoblin.shortcuts.end_session({id = event.id, session_id = event.session_id})\n"
+            "  assert(ended.ended and ended.session_id == event.session_id)\n"
+            "  local unbound = gnoblin.shortcuts.unbind({id = event.id})\n"
+            "  assert(unbound.unbound and unbound.id == event.id)\n"
+            '  print("SHORTCUT_OWNER_OK")\n'
+            "end)\n",
+            encoding="utf-8",
+        )
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def read_line(connection: socket.socket, buffered: bytes = b"") -> tuple[dict[str, object], bytes]:
+            while b"\n" not in buffered:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    raise AssertionError("shortcut owner disconnected before request")
+                buffered += chunk
+            line, _, remaining = buffered.partition(b"\n")
+            value = json.loads(line)
+            assert isinstance(value, dict), value
+            return value, remaining
+
+        def send(connection: socket.socket, value: dict[str, object]) -> None:
+            connection.sendall((json.dumps(value) + "\n").encode())
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(1)
+                    ready.set()
+                    connection, _ = server.accept()
+                    with connection:
+                        buffered = b""
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "events", request
+                        expected_events = [
+                            "gnoblin.shortcut.binding-activated",
+                            "gnoblin.shortcut.binding-deactivated",
+                            "gnoblin.shortcut.session.activated",
+                            "gnoblin.shortcut.session.key",
+                            "gnoblin.shortcut.session.ended",
+                        ]
+                        assert request["events"] == expected_events, request
+                        send(connection, {"event": "subscribed", "events": expected_events})
+
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "api" and request["method"] == "shortcut.bind", request
+                        assert request["api_version"] == {"major": 1, "minor": 22}, request
+                        assert request["arguments"] == {
+                            "id": "cli-test",
+                            "accelerator": "<Super>F12",
+                        }, request
+                        send(
+                            connection,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": {"id": "cli-test", "accelerator": "<Super>F12"},
+                            },
+                        )
+
+                        send(
+                            connection,
+                            {
+                                "event": "gnoblin.shortcut.session.activated",
+                                "id": "cli-test",
+                                "session_id": 9,
+                            },
+                        )
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "api" and request["method"] == "shortcut.session.end", request
+                        assert request["api_version"] == {"major": 1, "minor": 64}, request
+                        assert request["arguments"] == {"id": "cli-test", "session_id": 9}, request
+                        send(
+                            connection,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": {"id": "cli-test", "session_id": 9, "ended": True},
+                            },
+                        )
+
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "api" and request["method"] == "shortcut.unbind", request
+                        assert request["api_version"] == {"major": 1, "minor": 11}, request
+                        assert request["arguments"] == {"id": "cli-test"}, request
+                        send(
+                            connection,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": {"id": "cli-test", "unbound": True},
+                            },
+                        )
+                        connection.settimeout(3)
+                        assert connection.recv(1) == b"", "shortcut owner stayed open after final unbind"
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), f"shortcut owner fixture did not start: {errors}"
+        result = run(binary, "--socket", socket_path, "lua", str(script_path))
+        thread.join(5)
+        assert not thread.is_alive(), "shortcut owner fixture did not finish"
+        assert not errors, errors
+        return result
+
+
+def run_location_authorization_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="location-auth-", dir=build_directory) as temporary:
+        root = Path(temporary)
+        socket_path = str(root / "s")
+        script_path = root / "location.lua"
+        script_path.write_text(
+            "local subscription\n"
+            'subscription = gnoblin.events.on("gnoblin.location.authorization-requested", function(event)\n'
+            '  assert(event.app_id == "org.example.App" and event.requested_accuracy == 6)\n'
+            "  local ok, err = pcall(function()\n"
+            "    gnoblin.location.authorize_app({request_id = event.request_id + 1, allow = false, accuracy = 0})\n"
+            "  end)\n"
+            '  assert(not ok and err:match("not received"), tostring(err))\n'
+            "  ok, err = pcall(function()\n"
+            "    gnoblin.location.authorize_app({request_id = event.request_id, allow = true, accuracy = 8})\n"
+            "  end)\n"
+            '  assert(not ok and err:match("must not exceed"), tostring(err))\n'
+            "  local result = gnoblin.location.authorize_app({request_id = event.request_id, allow = true, accuracy = 5})\n"
+            "  assert(result.request_id == event.request_id and result.submitted)\n"
+            "  assert(not pcall(function() result.submitted = false end))\n"
+            "  ok, err = pcall(function()\n"
+            "    gnoblin.location.authorize_app({request_id = event.request_id, allow = false, accuracy = 0})\n"
+            "  end)\n"
+            '  assert(not ok and err:match("not received"), tostring(err))\n'
+            '  print("LOCATION_AUTHORIZATION_OK")\n'
+            "  subscription:unsubscribe()\n"
+            "end)\n",
+            encoding="utf-8",
+        )
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def read_line(connection: socket.socket, buffered: bytes = b"") -> tuple[dict[str, object], bytes]:
+            while b"\n" not in buffered:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    raise AssertionError("location authorization client disconnected before request")
+                buffered += chunk
+            line, _, remaining = buffered.partition(b"\n")
+            value = json.loads(line)
+            assert isinstance(value, dict), value
+            return value, remaining
+
+        def send(connection: socket.socket, value: dict[str, object]) -> None:
+            connection.sendall((json.dumps(value) + "\n").encode())
+
+        def read_bound_request(
+            server: socket.socket,
+            connection: socket.socket,
+            buffered: bytes,
+        ) -> tuple[dict[str, object], bytes]:
+            deadline = time.monotonic() + 4
+            while time.monotonic() < deadline:
+                if b"\n" in buffered:
+                    return read_line(connection, buffered)
+                readable, _, _ = select.select([server, connection], [], [], 0.1)
+                if server in readable:
+                    unexpected, _ = server.accept()
+                    unexpected.close()
+                    raise AssertionError("location authorization opened a different socket")
+                if connection in readable:
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        raise AssertionError("location event socket closed before API request")
+                    buffered += chunk
+            raise AssertionError("timed out waiting for location authorization API request")
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(2)
+                    ready.set()
+                    connection, _ = server.accept()
+                    with connection:
+                        buffered = b""
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "events", request
+                        assert request["events"] == ["gnoblin.location.authorization-requested"], request
+                        assert request["api_version"]["major"] == 1, request
+                        assert request["api_version"]["minor"] >= 65, request
+                        send(connection, {"event": "subscribed", "events": request["events"]})
+                        send(
+                            connection,
+                            {
+                                "event": "gnoblin.location.authorization-requested",
+                                "request_id": 481516,
+                                "app_id": "org.example.App",
+                                "requested_accuracy": 6,
+                                "expires_at_us": time.monotonic_ns() // 1000 + 20_000_000,
+                            },
+                        )
+                        request, buffered = read_bound_request(server, connection, buffered)
+                        assert request["op"] == "api" and request["method"] == "location.authorize_app", request
+                        assert request["api_version"] == {"major": 1, "minor": 65}, request
+                        assert request["arguments"] == {
+                            "request_id": 481516,
+                            "allow": True,
+                            "accuracy": 5,
+                        }, request
+                        send(
+                            connection,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": {"request_id": 481516, "submitted": True},
+                            },
+                        )
+                        connection.settimeout(3)
+                        assert connection.recv(1) == b"", "location event subscription stayed open after unsubscribe"
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), f"location authorization fixture did not start: {errors}"
+        result = run(binary, "--socket", socket_path, "lua", str(script_path))
+        thread.join(8)
+        assert not thread.is_alive(), "location authorization fixture did not finish"
+        assert not errors, errors
+        assert result.returncode == 0, result.stderr
+        assert "LOCATION_AUTHORIZATION_OK" in result.stdout, result.stdout
+        return result
+
+
+def main() -> int:
+    if len(sys.argv) != 3:
+        raise SystemExit("usage: gnoblinctl-cli.test.py BINARY BUILD_DIRECTORY")
+
+    binary, build_directory = sys.argv[1:]
+
+    help_result = run(binary, "--help")
+    assert help_result.returncode == 0, help_result.stderr
+    assert "Usage: gnoblinctl" in help_result.stdout
+
+    lua_help = run(binary, "lua", "--help")
+    assert lua_help.returncode == 0, lua_help.stderr
+    assert "gnoblinctl lua [FILE]" in lua_help.stdout
+    lua_repl = subprocess.run(
+        [binary, "lua"],
+        check=False,
+        capture_output=True,
+        text=True,
+        input='=1 + 1\n={name = "Gnoblin", values = {1, 2}}\n:quit\n',
+        timeout=5,
+    )
+    assert lua_repl.returncode == 0, lua_repl.stderr
+    assert "2\n" in lua_repl.stdout
+    assert '"name" : "Gnoblin"' in lua_repl.stdout
+
+    interactive_result = run(binary, "window", "interactive-move")
+    assert interactive_result.returncode != 0
+    assert "require a trusted shell input context" in interactive_result.stderr
+    assert "cannot create one" in interactive_result.stderr
+
+    version_result = run(binary, "--version", "--format", "json")
+    assert version_result.returncode == 0, version_result.stderr
+    identity = json.loads(version_result.stdout)
+    for field in (
+        "version",
+        "gnomeVersion",
+        "mutterApi",
+        "luaVersion",
+        "apiVersion",
+        "buildId",
+        "gitRemote",
+        "gitSha",
+    ):
+        assert isinstance(identity.get(field), str) and identity[field], field
+    assert isinstance(identity.get("sourceModified"), bool)
+    components = identity.get("components")
+    assert isinstance(components, dict)
+    for component in ("mutter", "xdg-desktop-portal-gnome"):
+        assert isinstance(components.get(component), str) and components[component], component
+    component_commits = identity.get("componentCommits")
+    assert isinstance(component_commits, dict)
+    for component in ("mutter", "xdg-desktop-portal-gnome"):
+        assert isinstance(component_commits.get(component), str) and component_commits[component], component
+
+    human_version = run(binary, "--version")
+    assert human_version.returncode == 0, human_version.stderr
+    for label, field in (
+        ("Lua", "luaVersion"),
+        ("Native API", "apiVersion"),
+        ("Build ID", "buildId"),
+    ):
+        assert f"{label}: {identity[field]}" in human_version.stdout
+
+    config_path = Path(build_directory) / "test-config" / "init.lua"
+    config_result = run(
+        binary,
+        "--format",
+        "json",
+        "config",
+        "path",
+        env={**os.environ, "GNOBLIN_CONFIG": str(config_path)},
+    )
+    assert config_result.returncode == 0, config_result.stderr
+    assert json.loads(config_result.stdout) == str(config_path)
+
+    legacy_config_directory = Path(build_directory) / "legacy-config-home" / "gnoblin"
+    legacy_config_directory.mkdir(parents=True, exist_ok=True)
+    legacy_config = legacy_config_directory / "gnoblin.toml"
+    legacy_config.touch()
+    (legacy_config_directory / "gnoblin.conf").touch()
+    legacy_config_result = run(
+        binary,
+        "--format",
+        "json",
+        "config",
+        "path",
+        env={
+            **os.environ,
+            "GNOBLIN_CONFIG": "",
+            "XDG_CONFIG_HOME": str(legacy_config_directory.parent),
+        },
+    )
+    assert legacy_config_result.returncode == 0, legacy_config_result.stderr
+    assert json.loads(legacy_config_result.stdout) == str(legacy_config)
+
+    invalid_result = run(binary, "not-a-command")
+    assert invalid_result.returncode != 0
+    assert "unknown command:" in invalid_result.stderr
+
+    runtime_scope_script = Path(build_directory) / "runtime-scope.lua"
+    runtime_scope_script.write_text(
+        'assert(type(gnoblin.shortcuts.bind) == "function")\n'
+        'assert(type(gnoblin.shortcuts.unbind) == "function")\n'
+        'assert(type(gnoblin.shortcuts.end_session) == "function")\n'
+        'local ok, err = pcall(function() gnoblin.shortcuts.unbind({id = "missing"}) end)\n'
+        'assert(not ok and err:match("no active owner connection"), tostring(err))\n'
+        'ok, err = pcall(function() gnoblin.shortcuts.end_session({id = "missing", session_id = 1}) end)\n'
+        'assert(not ok and err:match("no active owner connection"), tostring(err))\n'
+    )
+    runtime_scope_result = run(
+        binary,
+        "--socket",
+        str(Path(build_directory) / "no-compositor.sock"),
+        "lua",
+        str(runtime_scope_script),
+    )
+    assert runtime_scope_result.returncode == 0, runtime_scope_result.stderr
+
+    once_result = run_event_subscription(
+        binary,
+        build_directory,
+        'gnoblin.events.once("gnoblin.test.once", function(event) '
+        'print("ONCE:" .. event.event .. ":" .. event.value) end)\n',
+        "gnoblin.test.once",
+        [42],
+    )
+    assert once_result.returncode == 0, once_result.stderr
+    assert "ONCE:gnoblin.test.once:42" in once_result.stdout, once_result.stdout
+
+    unsubscribe_result = run_event_subscription(
+        binary,
+        build_directory,
+        "local subscription\n"
+        'subscription = gnoblin.on("gnoblin.test.unsubscribe", function(event) '
+        'print("ON:" .. event.value); subscription:unsubscribe() end)\n',
+        "gnoblin.test.unsubscribe",
+        [1, 2],
+    )
+    assert unsubscribe_result.returncode == 0, unsubscribe_result.stderr
+    assert unsubscribe_result.stdout.count("ON:1") == 1, unsubscribe_result.stdout
+    assert "ON:2" not in unsubscribe_result.stdout, unsubscribe_result.stdout
+
+    mutter_result = run_event_subscription(
+        binary,
+        build_directory,
+        'gnoblin.events.mutter.once("mutter.test.signal", function(event) print("MUTTER:" .. event.event) end)\n',
+        "mutter.test.signal",
+        [1],
+    )
+    assert mutter_result.returncode == 0, mutter_result.stderr
+    assert "MUTTER:mutter.test.signal" in mutter_result.stdout, mutter_result.stdout
+
+    focus_context_result = run_focus_context_cli_test(binary, build_directory)
+    assert focus_context_result.returncode == 0, focus_context_result.stderr
+
+    menu_context_result = run_menu_context_cli_test(binary, build_directory)
+    assert menu_context_result.returncode == 0, menu_context_result.stderr
+
+    location_authorization_result = run_location_authorization_cli_test(binary, build_directory)
+    assert location_authorization_result.returncode == 0, location_authorization_result.stderr
+
+    shortcut_binding_result = run_shortcut_binding_cli_test(binary, build_directory)
+    assert shortcut_binding_result.returncode == 0, shortcut_binding_result.stderr
+    assert "SHORTCUT_OWNER_OK" in shortcut_binding_result.stdout, shortcut_binding_result.stdout
+
+    with tempfile.TemporaryDirectory(prefix="gnoblinctl-", dir=build_directory) as temporary:
+        socket_path = str(Path(temporary) / "compositor.sock")
+        received: list[dict[str, object]] = []
+        subscriptions: list[dict[str, object]] = []
+        server_error: list[BaseException] = []
+        ready = threading.Event()
+        monitor_request_count = 0
+        status_request_count = 0
+
+        def serve_once() -> None:
+            nonlocal monitor_request_count, status_request_count
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(9)
+                    ready.set()
+                    for _ in range(116):
+                        connection, _ = server.accept()
+                        with connection:
+                            stream = connection.makefile("rwb")
+                            request = json.loads(stream.readline())
+                            if request["op"] == "events":
+                                subscriptions.append(request)
+                                response = {
+                                    "event": "reply",
+                                    "id": request["id"],
+                                    "result": {"subscribed": True},
+                                }
+                                stream.write(json.dumps(response).encode() + b"\n")
+                                stream.flush()
+                                request = json.loads(stream.readline())
+                            received.append(request)
+                            completion_value = None
+                            if request["method"] == "version":
+                                result = {
+                                    "gnoblin": "0.2.0",
+                                    "gnome": "51.0",
+                                    "mutter": "51.0",
+                                    "lua": "Lua 5.4",
+                                    "api": "1.64",
+                                    "git_remote": "https://example.invalid/gnoblin.git",
+                                    "git_sha": "0123456789abcdef",
+                                    "build_id": "20261002.1",
+                                }
+                            elif request["method"] == "session.status":
+                                status_request_count += 1
+                                result = {
+                                    "state": "running",
+                                    "lock_available": False,
+                                    "revision": status_request_count,
+                                }
+                                if status_request_count > 2:
+                                    result["lock_available"] = True
+                                    result["lock_state"] = "covering"
+                                if status_request_count > 3:
+                                    result["revision"] = "invalid"
+                            elif request["method"] == "session.activity":
+                                result = {
+                                    "available": True,
+                                    "idle": True,
+                                    "threshold_ms": 300000,
+                                    "idle_for_ms": 1000,
+                                    "revision": 7,
+                                }
+                            elif request["method"] == "monitors.list":
+                                monitor_request_count += 1
+                                if monitor_request_count >= 6:
+                                    result = []
+                                elif monitor_request_count <= 2:
+                                    result = [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
+                                else:
+                                    result = [
+                                        {
+                                            "id": "HDMI-1",
+                                            "index": 0,
+                                            "name": "Test Display",
+                                            "make": "Acme",
+                                            "model": "Panel 1",
+                                            "serial": "ABC123",
+                                            "primary": True,
+                                            "enabled": True,
+                                            "x": 10,
+                                            "y": 20,
+                                            "width": 1920,
+                                            "height": 1080,
+                                            "scale": 1.5,
+                                            "refresh_rate": 144.0,
+                                            "transform": "normal",
+                                            "revision": 5,
+                                        }
+                                    ]
+                            elif request["method"] == "windows.list":
+                                result = [
+                                    {
+                                        "id": "42",
+                                        "focused": True,
+                                        "workspace_id": "workspace-1",
+                                        "app_id": "org.example.Editor.desktop",
+                                        "gtk_app_id": "org.example.Editor",
+                                        "wm_class": "Editor",
+                                        "rule_app_id": "org.example.Editor",
+                                        "title": "Notes",
+                                        "frame": {"x": 12, "y": 24, "width": 800, "height": 600},
+                                        "revision": 5,
+                                    }
+                                ]
+                            elif request["method"] == "animation.surfaces":
+                                result = {
+                                    "surfaces": [
+                                        {
+                                            "id": "42",
+                                            "namespace": "bingux-panel",
+                                            "title": "Panel",
+                                        }
+                                    ]
+                                }
+                            elif request["method"] == "animation.list":
+                                result = {
+                                    "animations": [
+                                        {
+                                            "name": "fade",
+                                            "enable": True,
+                                            "event": "open",
+                                            "duration": 150,
+                                            "ease": "ease-out-expo",
+                                            "builtin": True,
+                                            "previewable": True,
+                                            "from": {"opacity": 0.0},
+                                            "to": {"opacity": 1.0},
+                                            "origin": "center",
+                                            "target": "none",
+                                            "revision": 5,
+                                        }
+                                    ]
+                                }
+                            elif request["method"] == "animation.get":
+                                result = (
+                                    {
+                                        "name": "fade",
+                                        "enable": True,
+                                        "event": "open",
+                                        "duration": 150,
+                                        "ease": "ease-out-expo",
+                                        "builtin": True,
+                                        "previewable": True,
+                                        "from": {"opacity": 0.0},
+                                        "to": {"opacity": 1.0},
+                                        "origin": "center",
+                                        "target": "none",
+                                        "revision": 5,
+                                    }
+                                    if request["arguments"].get("name") == "fade"
+                                    else None
+                                )
+                            elif request["method"] == "animation.inspect":
+                                result = {
+                                    "name": "fade",
+                                    "event": "open",
+                                    "target": "42",
+                                    "target_type": "window",
+                                    "duration": 150,
+                                    "ease": "ease-out-expo",
+                                    "from": {"opacity": 0.0},
+                                    "to": {"opacity": 1.0},
+                                    "properties": {"opacity": 1.0},
+                                    "context": {"window": {"id": "42"}},
+                                    "spec": {"name": "fade", "event": "open"},
+                                }
+                            elif request["method"] in {
+                                "animation.preview",
+                                "animation.seek",
+                                "animation.step",
+                                "animation.play",
+                                "animation.pause",
+                                "animation.stop",
+                            }:
+                                result = {"request_id": 17, "method": request["method"]}
+                            elif request["method"] == "workspace.create":
+                                result = {"request_id": 18, "method": "workspace.create"}
+                            elif request["method"] == "workspaces.list":
+                                result = [
+                                    {
+                                        "id": "codex-probe",
+                                        "number": 1,
+                                        "name": "Codex Probe",
+                                        "active": True,
+                                        "window_count": 2,
+                                        "revision": 5,
+                                    }
+                                ]
+                            elif request["method"] == "layers.list":
+                                result = [
+                                    {
+                                        "id": "surface-1",
+                                        "title": "Panel",
+                                        "namespace": "panel:top",
+                                        "layer": "top",
+                                        "monitor_id": "HDMI-1",
+                                        "keyboard_interactive": "on_demand",
+                                        "exclusive_zone": 32,
+                                        "anchor": ["top", "left", "right"],
+                                        "geometry": {"x": 0, "y": 0, "width": 1920, "height": 32},
+                                        "mapped": True,
+                                        "revision": 5,
+                                    }
+                                ]
+                            elif request["method"] == "input.sources":
+                                result = {
+                                    "sources": [
+                                        {
+                                            "type": "xkb",
+                                            "id": "us",
+                                            "short_name": "en",
+                                            "name": "English (US)",
+                                            "current": True,
+                                        }
+                                    ],
+                                    "revision": 5,
+                                }
+                            elif request["method"] == "input.current_source":
+                                result = {
+                                    "available": True,
+                                    "source": {
+                                        "type": "xkb",
+                                        "id": "us",
+                                        "short_name": "en",
+                                        "name": "English (US)",
+                                        "current": True,
+                                    },
+                                    "revision": 5,
+                                }
+                            elif request["method"] == "input.orientation_lock":
+                                result = {
+                                    "available": True,
+                                    "locked": False,
+                                    "orientation": "normal",
+                                    "source": "system",
+                                    "revision": 17,
+                                }
+                            elif request["method"] == "input.devices":
+                                result = {
+                                    "devices": [
+                                        {
+                                            "id": "input:1",
+                                            "name": "Test keyboard",
+                                            "device_type": "keyboard",
+                                            "capabilities": ["keyboard"],
+                                        }
+                                    ],
+                                    "revision": 11,
+                                }
+                            elif request["method"] == "privacy.state":
+                                result = {
+                                    "available": {
+                                        "screen_sharing": True,
+                                        "recording": True,
+                                        "microphone_in_use": False,
+                                        "camera_in_use": False,
+                                        "location_in_use": False,
+                                    },
+                                    "screen_sharing": True,
+                                    "recording": False,
+                                    "revision": 42,
+                                }
+                            elif request["method"] in {"privacy.stop_sharing", "privacy.stop_recording"}:
+                                result = {
+                                    "request_id": 36 if request["method"] == "privacy.stop_sharing" else 37,
+                                    "method": request["method"],
+                                }
+                            elif request["method"] == "runtime.reload_config":
+                                result = {"request_id": 38, "method": request["method"]}
+                            elif request["method"] == "runtime.status":
+                                result = {"state": "running", "generation": 7}
+                            elif request["method"] in {"session.lock", "session.logout"}:
+                                result = {
+                                    "request_id": 39 if request["method"] == "session.lock" else 40,
+                                    "method": request["method"],
+                                }
+                            elif request["method"] == "capabilities.list":
+                                result = [
+                                    {
+                                        "id": "microphone-monitor",
+                                        "description": "PipeWire microphone activity monitoring",
+                                        "available": False,
+                                        "reason": "pipewire_unavailable",
+                                        "revision": 18,
+                                    }
+                                ]
+                            elif request["method"] == "input.select":
+                                result = {"request_id": 23, "method": "input.select"}
+                            elif request["method"] == "input.set_orientation_lock":
+                                result = {"request_id": 24, "method": request["method"]}
+                            elif request["method"] == "window.thumbnail":
+                                result = {"request_id": 20, "method": "window.thumbnail"}
+                            elif request["method"] == "launches.snapshot":
+                                result = {
+                                    "launches": [
+                                        {
+                                            "token": "one",
+                                            "application": "app",
+                                            "started_at": 1720000000123,
+                                            "timeout_ms": 3000,
+                                            "state": "pending",
+                                            "revision": 4,
+                                        }
+                                    ],
+                                    "revision": 4,
+                                }
+                            elif request["method"] == "launch.begin":
+                                completion_value = {
+                                    "token": request["arguments"]["token"],
+                                    "application": request["arguments"]["application"],
+                                    "started_at": 1720000000456,
+                                    "timeout_ms": request["arguments"].get("milliseconds", 3000),
+                                    "state": "pending",
+                                    "revision": 5,
+                                }
+                                result = {"request_id": 34, "method": request["method"]}
+                            elif request["method"] == "launch.end":
+                                completion_value = {"ok": True, "token": request["arguments"]["token"]}
+                                result = {"request_id": 35, "method": request["method"]}
+                            elif request["method"] == "shortcuts.list":
+                                result = [
+                                    {
+                                        "name": "test.shortcut",
+                                        "binding": "<Super>space",
+                                        "enabled": True,
+                                        "trigger": "press",
+                                        "action": "test.action",
+                                        "revision": 6,
+                                    }
+                                ]
+                            elif request["method"] == "shortcuts.actions":
+                                result = [
+                                    {
+                                        "id": "wm.close",
+                                        "group": "wm",
+                                        "key": "close",
+                                        "default_bindings": ["<Alt>F4"],
+                                    }
+                                ]
+                            elif request["method"] == "focus.policy":
+                                result = {
+                                    "focus_mode": "sloppy",
+                                    "focus_new_windows": "smart",
+                                    "raise_on_click": False,
+                                    "auto_raise": True,
+                                    "focus_change_on_pointer_rest": True,
+                                    "auto_raise_delay": 750,
+                                    "revision": 42,
+                                }
+                            elif request["method"] == "settings":
+                                result = {
+                                    "revision": 43,
+                                    "window_management": {"focus_mode": "sloppy"},
+                                    "shortcuts": {"terminal": {"binding": "<Super>Return"}},
+                                }
+                            elif request["method"] == "focus.history":
+                                result = [
+                                    {
+                                        "id": "42",
+                                        "title": "Notes",
+                                        "app_id": "org.example.Editor",
+                                        "focused": True,
+                                        "geometry": {"x": 8, "y": 12, "width": 640, "height": 480},
+                                    }
+                                ]
+                            elif request["method"] == "layer.animation_policy":
+                                result = {
+                                    "namespace": request["arguments"]["namespace"],
+                                    "enter": {
+                                        "animation": "fade",
+                                        "duration": 240,
+                                        "easing": {"type": "cubic-bezier", "x1": 0.2, "y1": 0.0, "x2": 0.0, "y2": 1.0},
+                                    },
+                                    "exit": {"animation": "slide"},
+                                    "window_shadow": {"opacity": 0.4},
+                                    "revision": 19,
+                                }
+                                if request["arguments"]["namespace"] == "bad-easing":
+                                    result["enter"]["easing"] = True
+                                elif request["arguments"]["namespace"] == "negative-duration":
+                                    result["enter"]["duration"] = -1
+                            elif request["method"] == "permissions.list":
+                                result = {
+                                    "policy": {"default": "deny", "rules": []},
+                                    "capabilities": ["screen-cast", "remote-desktop"],
+                                    "levels": ["deny", "ask", "allow"],
+                                    "path": "/tmp/gnoblin-permissions.json",
+                                }
+                            elif request["method"] == "permissions.check":
+                                result = {
+                                    "level": "allow",
+                                    "rule": "remote-test",
+                                    "monitors": [],
+                                    "devices": ["keyboard"],
+                                    "clipboard": True,
+                                    "revision": 9,
+                                }
+                            elif request["method"] == "permissions.policy":
+                                result = {
+                                    "default": "default",
+                                    "rules": [
+                                        {
+                                            "name": "remote-example",
+                                            "match": "^app%-id:org%.example%.Remote$",
+                                            "capabilities": ["remote-desktop"],
+                                            "level": "allow",
+                                        }
+                                    ],
+                                    "revision": 9,
+                                }
+                            elif request["method"] == "portals.grants":
+                                result = [
+                                    {
+                                        "id": "grant-17",
+                                        "kind": "remote-desktop",
+                                        "requester": "app-id:org.example.Remote",
+                                        "devices": ["keyboard", "pointer"],
+                                        "clipboard": True,
+                                        "has_screen_streams": True,
+                                        "created_at": 1720000000123,
+                                        "revision": 12,
+                                    }
+                                ]
+                            elif request["method"] == "grant.revoke":
+                                result = {"request_id": 29, "method": "grant.revoke"}
+                            elif request["method"] == "shortcut.capture":
+                                result = {"request_id": 30, "method": "shortcut.capture"}
+                            elif request["method"] == "window.move_to_monitor":
+                                result = {"id": "42", "monitor_id": "HDMI-1"}
+                            elif request["method"] == "window.restore_or_minimize":
+                                result = {"id": "42", "action": "restore"}
+                            elif request["method"] == "window.unminimize":
+                                result = {"id": "42"}
+                            elif request["method"] == "window.minimize":
+                                result = {"request_id": 24, "method": "window.minimize"}
+                            elif request["method"] == "workspace.switch":
+                                result = {"request_id": 25, "method": "workspace.switch"}
+                            elif request["method"] == "workspace.rename":
+                                result = {"request_id": 26, "method": "workspace.rename"}
+                            elif request["method"] == "workspace.move_window":
+                                result = {"request_id": 27, "method": "workspace.move_window"}
+                            elif request["method"] == "workspace.remove":
+                                result = {"request_id": 28, "method": "workspace.remove"}
+                            elif request["method"] in {"workspace.next", "workspace.previous"}:
+                                result = {"request_id": 32, "method": request["method"]}
+                            elif request["method"] == "workspace.move_active":
+                                result = {"request_id": 33, "method": request["method"]}
+                            else:
+                                result = {
+                                    "request_id": 17,
+                                    "method": "animation.preview",
+                                    "target_type": "namespace",
+                                    "target": "panel:test",
+                                }
+                            response = {"event": "reply", "id": request["id"], "result": result}
+                            stream.write(json.dumps(response).encode() + b"\n")
+                            stream.flush()
+                            if request.get("method") in {
+                                "animation.preview",
+                                "animation.seek",
+                                "animation.step",
+                                "animation.play",
+                                "animation.pause",
+                                "animation.stop",
+                                "workspace.create",
+                                "window.thumbnail",
+                                "input.select",
+                                "input.set_orientation_lock",
+                                "window.minimize",
+                                "workspace.switch",
+                                "workspace.rename",
+                                "workspace.move_window",
+                                "workspace.remove",
+                                "workspace.next",
+                                "workspace.previous",
+                                "workspace.move_active",
+                                "grant.revoke",
+                                "shortcut.capture",
+                                "launch.begin",
+                                "launch.end",
+                                "privacy.stop_sharing",
+                                "privacy.stop_recording",
+                                "runtime.reload_config",
+                                "session.lock",
+                                "session.logout",
+                            }:
+                                operation_id = result["request_id"]
+                                method = result["method"]
+                                if method == "animation.preview":
+                                    if request.get("arguments", {}).get("target_type") == "namespace":
+                                        value = {"session": "preview-17"}
+                                    else:
+                                        value = {
+                                            "id": "preview-17",
+                                            "session": "preview-17",
+                                            "name": "gnoblin-window-open",
+                                            "event": "open",
+                                            "target": "42",
+                                            "target_type": "window",
+                                            "progress": 0.0,
+                                            "playing": False,
+                                            "revision": 5,
+                                        }
+                                elif method == "animation.seek":
+                                    value = {
+                                        "id": "preview-17",
+                                        "session": "preview-17",
+                                        "name": "gnoblin-window-open",
+                                        "event": "open",
+                                        "target": "42",
+                                        "target_type": "window",
+                                        "progress": request["arguments"]["progress"],
+                                        "playing": False,
+                                        "revision": 5,
+                                    }
+                                elif method == "animation.step":
+                                    value = {
+                                        "id": "preview-17",
+                                        "session": "preview-17",
+                                        "name": "gnoblin-window-open",
+                                        "event": "open",
+                                        "target": "42",
+                                        "target_type": "window",
+                                        "progress": 0.75,
+                                        "playing": False,
+                                        "revision": 5,
+                                    }
+                                elif method == "animation.play":
+                                    value = {
+                                        "id": "preview-17",
+                                        "session": "preview-17",
+                                        "name": "gnoblin-window-open",
+                                        "event": "open",
+                                        "target": "42",
+                                        "target_type": "window",
+                                        "progress": 0.75,
+                                        "playing": True,
+                                        "revision": 5,
+                                    }
+                                elif method == "animation.pause":
+                                    value = {
+                                        "id": "preview-17",
+                                        "session": "preview-17",
+                                        "name": "gnoblin-window-open",
+                                        "event": "open",
+                                        "target": "42",
+                                        "target_type": "window",
+                                        "progress": 0.75,
+                                        "playing": False,
+                                        "revision": 5,
+                                    }
+                                elif method == "animation.stop":
+                                    value = {"ok": True, "session": "preview-17"}
+                                elif method == "workspace.create":
+                                    if request.get("arguments", {}).get("id") == "lua-api":
+                                        value = {
+                                            "id": "lua-api",
+                                            "number": 3,
+                                            "name": request["arguments"]["name"],
+                                            "active": False,
+                                            "windows": 0,
+                                            "persistent": True,
+                                        }
+                                    else:
+                                        value = {"id": "codex-probe", "name": "Codex Probe"}
+                                elif method == "window.thumbnail":
+                                    value = {
+                                        "window_id": "42",
+                                        "width": 1,
+                                        "height": 1,
+                                        "data": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p1sAAAAASUVORK5CYII=",
+                                    }
+                                elif method == "input.select":
+                                    value = {
+                                        "type": "xkb",
+                                        "id": "us",
+                                        "short_name": "en",
+                                        "name": "English (US)",
+                                        "current": True,
+                                        "revision": 5,
+                                    }
+                                elif method == "input.set_orientation_lock":
+                                    value = {
+                                        "available": True,
+                                        "locked": request["arguments"]["value"],
+                                        "orientation": "normal",
+                                        "source": "runtime",
+                                        "revision": 18,
+                                    }
+                                elif method == "window.minimize":
+                                    value = {"id": "42"}
+                                elif method == "workspace.switch":
+                                    if request.get("arguments", {}).get("id") == "lua-api":
+                                        value = {
+                                            "id": "lua-api",
+                                            "number": 3,
+                                            "name": "Lua Workspace",
+                                            "active": True,
+                                            "windows": 0,
+                                            "persistent": True,
+                                        }
+                                    else:
+                                        value = {"id": "codex-probe", "active": True}
+                                elif method == "workspace.rename":
+                                    if request.get("arguments", {}).get("id") == "lua-api":
+                                        value = {
+                                            "id": "lua-api",
+                                            "number": 3,
+                                            "name": request["arguments"]["name"],
+                                            "active": False,
+                                            "windows": 0,
+                                            "persistent": True,
+                                        }
+                                    else:
+                                        value = {"id": "codex-probe", "name": "Renamed"}
+                                elif method == "workspace.move_window":
+                                    if request.get("arguments", {}).get("window") == "active":
+                                        value = {
+                                            "workspace": {
+                                                "id": "lua-api",
+                                                "number": 3,
+                                                "name": "Lua Workspace",
+                                                "active": False,
+                                                "windows": 1,
+                                                "persistent": True,
+                                            },
+                                            "window": "42",
+                                            "follow": True,
+                                        }
+                                    else:
+                                        value = {"workspace": "codex-probe", "window": "42"}
+                                elif method == "workspace.remove":
+                                    if request.get("arguments", {}).get("id") == "lua-api":
+                                        value = {
+                                            "id": "lua-api",
+                                            "number": 3,
+                                            "name": "Lua Workspace",
+                                            "active": False,
+                                            "windows": 0,
+                                            "persistent": True,
+                                        }
+                                    else:
+                                        value = {"id": "codex-probe"}
+                                elif method in {
+                                    "workspace.next",
+                                    "workspace.previous",
+                                    "workspace.move_active",
+                                } and (
+                                    method
+                                    in {
+                                        "workspace.next",
+                                        "workspace.previous",
+                                        "workspace.move_active",
+                                    }
+                                    or request.get("arguments", {}).get("id") == "lua-api"
+                                    or request.get("arguments", {}).get("window") == "active"
+                                ):
+                                    workspace = {
+                                        "id": "lua-api",
+                                        "number": 3,
+                                        "name": request.get("arguments", {}).get("name", "Lua Workspace"),
+                                        "active": method == "workspace.next",
+                                        "windows": 1 if method.startswith("workspace.move_") else 0,
+                                        "persistent": True,
+                                    }
+                                    if method in {"workspace.move_active", "workspace.move_window"}:
+                                        value = {
+                                            "workspace": workspace,
+                                            "window": "42",
+                                            "follow": request.get("arguments", {}).get("follow", False),
+                                        }
+                                    else:
+                                        value = workspace
+                                elif method == "grant.revoke":
+                                    value = {"ok": True, "id": request["arguments"]["id"]}
+                                elif method == "shortcut.capture":
+                                    value = {"accelerator": "<Super>Return"}
+                                elif method in {"launch.begin", "launch.end"}:
+                                    value = completion_value
+                                elif method in {"privacy.stop_sharing", "privacy.stop_recording"}:
+                                    value = {"requested": 2 if method == "privacy.stop_sharing" else 0}
+                                elif method == "runtime.reload_config":
+                                    value = {"ok": True, "action": "reloaded", "runtime_generation": 7}
+                                elif method == "runtime.status":
+                                    value = {"state": "running", "generation": 7}
+                                elif method == "session.lock":
+                                    value = {"dispatched": True, "subscribers": 1}
+                                elif method == "session.logout":
+                                    value = {"accepted": True}
+                                else:
+                                    value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
+                                completion = {
+                                    "event": "gnoblin.operation.completed",
+                                    "operation_id": operation_id,
+                                    "method": method,
+                                    "ok": True,
+                                    "value": value,
+                                }
+                                stream.write(json.dumps(completion).encode() + b"\n")
+                                stream.flush()
+            except BaseException as error:  # propagate background-thread failures
+                server_error.append(error)
+
+        server_thread = threading.Thread(target=serve_once, daemon=True)
+        server_thread.start()
+        assert ready.wait(timeout=5), repr(server_error)
+        result = run(binary, "--socket", socket_path, "--format", "json", "status")
+        assert result.returncode == 0, result.stderr
+        assert json.loads(result.stdout) == {
+            "state": "running",
+            "lock_available": False,
+            "revision": 1,
+        }
+        monitor_result = run(binary, "--socket", socket_path, "--format", "json", "monitor", "list")
+        assert monitor_result.returncode == 0, monitor_result.stderr
+        assert json.loads(monitor_result.stdout) == {
+            "monitors": [{"id": "HDMI-1", "index": 0, "primary": True, "revision": 5}]
+        }
+        window_list = run(binary, "--socket", socket_path, "--format", "table", "window", "list")
+        assert window_list.returncode == 0, window_list.stderr
+        assert "APP ID" in window_list.stdout, window_list.stdout
+        assert "org.example.Editor" in window_list.stdout
+        window_list_json = run(binary, "--socket", socket_path, "--format", "json", "window", "list")
+        assert window_list_json.returncode == 0, window_list_json.stderr
+        listed_windows = json.loads(window_list_json.stdout)
+        assert listed_windows["windows"][0]["id"] == "42"
+        assert listed_windows["windows"][0]["workspace_id"] == "workspace-1"
+        assert listed_windows["windows"][0]["revision"] == 5
+        animation_get = run(binary, "--socket", socket_path, "--format", "json", "animation", "get", "missing")
+        assert animation_get.returncode == 0, animation_get.stderr
+        assert json.loads(animation_get.stdout) is None
+        animation_preview = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "animation",
+            "preview",
+            "gnoblin-layer-open",
+            "--namespace",
+            "panel:test",
+        )
+        assert animation_preview.returncode == 0, animation_preview.stderr
+        assert json.loads(animation_preview.stdout) == {"session": "preview-17"}
+        workspace_create = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "workspace",
+            "create",
+            "--id",
+            "codex-probe",
+            "--name",
+            "Codex Probe",
+        )
+        assert workspace_create.returncode == 0, workspace_create.stderr
+        assert json.loads(workspace_create.stdout) == {
+            "id": "codex-probe",
+            "name": "Codex Probe",
+        }
+        workspace_list = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "workspace",
+            "list",
+        )
+        assert workspace_list.returncode == 0, workspace_list.stderr
+        assert json.loads(workspace_list.stdout) == {
+            "workspaces": [
+                {
+                    "id": "codex-probe",
+                    "number": 1,
+                    "name": "Codex Probe",
+                    "active": True,
+                    "windows": 2,
+                    "revision": 5,
+                }
+            ]
+        }
+        window_match = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "window",
+            "match",
+            "42",
+        )
+        assert window_match.returncode == 0, window_match.stderr
+        assert json.loads(window_match.stdout) == {
+            "id": "42",
+            "app_id": "org.example.Editor.desktop",
+            "gtk_app_id": "org.example.Editor",
+            "wm_class": "Editor",
+            "rule_app_id": "org.example.Editor",
+            "match": {
+                "type": "window",
+                "app_id": "org.example.Editor",
+                "title": "Notes",
+                "focused": True,
+            },
+        }
+        thumbnail_path = Path(temporary) / "window.png"
+        thumbnail = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "window",
+            "thumbnail",
+            "42",
+            "--output",
+            str(thumbnail_path),
+            "--width",
+            "64",
+            "--height",
+            "64",
+        )
+        assert thumbnail.returncode == 0, thumbnail.stderr
+        assert json.loads(thumbnail.stdout) == {
+            "path": str(thumbnail_path),
+            "width": 1,
+            "height": 1,
+        }
+        assert thumbnail_path.read_bytes() == base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p1sAAAAASUVORK5CYII="
+        )
+        launch_status = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "launch",
+            "status",
+        )
+        assert launch_status.returncode == 0, launch_status.stderr
+        assert json.loads(launch_status.stdout) == {
+            "launches": [
+                {
+                    "token": "one",
+                    "application": "app",
+                    "started_at": 1720000000123,
+                    "timeout_ms": 3000,
+                    "state": "pending",
+                    "revision": 4,
+                }
+            ],
+            "revision": 4,
+        }
+        move_active_monitor = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "window",
+            "monitor",
+            "active",
+            "0",
+        )
+        assert move_active_monitor.returncode == 0, move_active_monitor.stderr
+        assert json.loads(move_active_monitor.stdout) == {"id": "42", "monitor_id": "HDMI-1"}
+        restore_or_minimize = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "window",
+            "restore-or-minimize",
+            "42",
+        )
+        assert restore_or_minimize.returncode == 0, restore_or_minimize.stderr
+        assert json.loads(restore_or_minimize.stdout) == {"id": "42", "action": "restore"}
+        layer_list = run(binary, "--socket", socket_path, "--format", "json", "layer", "list")
+        assert layer_list.returncode == 0, layer_list.stderr
+        assert json.loads(layer_list.stdout) == {
+            "layers": [
+                {
+                    "id": "surface-1",
+                    "title": "Panel",
+                    "namespace": "panel:top",
+                    "layer": "top",
+                    "monitor_id": "HDMI-1",
+                    "keyboard_interactive": "on_demand",
+                    "exclusive_zone": 32,
+                    "anchor": ["top", "left", "right"],
+                    "geometry": {"x": 0, "y": 0, "width": 1920, "height": 32},
+                    "mapped": True,
+                    "revision": 5,
+                }
+            ]
+        }
+        input_list = run(binary, "--socket", socket_path, "--format", "json", "input", "list")
+        assert input_list.returncode == 0, input_list.stderr
+        assert json.loads(input_list.stdout) == {
+            "sources": [
+                {
+                    "type": "xkb",
+                    "id": "us",
+                    "short_name": "en",
+                    "name": "English (US)",
+                    "current": True,
+                }
+            ],
+            "revision": 5,
+        }
+        input_current = run(binary, "--socket", socket_path, "--format", "json", "input", "current")
+        assert input_current.returncode == 0, input_current.stderr
+        assert json.loads(input_current.stdout) == {
+            "available": True,
+            "source": {
+                "type": "xkb",
+                "id": "us",
+                "short_name": "en",
+                "name": "English (US)",
+                "current": True,
+            },
+            "revision": 5,
+        }
+        input_select = run(binary, "--socket", socket_path, "--format", "json", "input", "select", "xkb", "us")
+        assert input_select.returncode == 0, input_select.stderr
+        assert json.loads(input_select.stdout) == {
+            "type": "xkb",
+            "id": "us",
+            "short_name": "en",
+            "name": "English (US)",
+            "current": True,
+            "revision": 5,
+        }
+        shortcut_list = run(binary, "--socket", socket_path, "--format", "json", "shortcut", "list")
+        assert shortcut_list.returncode == 0, shortcut_list.stderr
+        assert json.loads(shortcut_list.stdout) == [
+            {
+                "name": "test.shortcut",
+                "binding": "<Super>space",
+                "enabled": True,
+                "trigger": "press",
+                "action": "test.action",
+                "revision": 6,
+            }
+        ]
+        shortcut_actions = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "shortcut",
+            "actions",
+            "wm",
+        )
+        assert shortcut_actions.returncode == 0, shortcut_actions.stderr
+        assert json.loads(shortcut_actions.stdout) == [
+            {
+                "id": "wm.close",
+                "group": "wm",
+                "key": "close",
+                "default_bindings": ["<Alt>F4"],
+            }
+        ]
+        permissions_list = run(binary, "--socket", socket_path, "--format", "json", "permissions", "list")
+        assert permissions_list.returncode == 0, permissions_list.stderr
+        assert json.loads(permissions_list.stdout) == {
+            "policy": {"default": "deny", "rules": []},
+            "capabilities": ["screen-cast", "remote-desktop"],
+            "levels": ["deny", "ask", "allow"],
+            "path": "/tmp/gnoblin-permissions.json",
+        }
+        permissions_check = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "permissions",
+            "check",
+            "remote-desktop",
+            "app-id:org.example.Remote",
+        )
+        assert permissions_check.returncode == 0, permissions_check.stderr
+        assert json.loads(permissions_check.stdout) == {
+            "level": "allow",
+            "rule": "remote-test",
+            "monitors": [],
+            "devices": ["keyboard"],
+            "clipboard": True,
+            "revision": 9,
+        }
+        permissions_policy = run(binary, "--socket", socket_path, "--format", "json", "permissions", "policy")
+        assert permissions_policy.returncode == 0, permissions_policy.stderr
+        assert json.loads(permissions_policy.stdout) == {
+            "default": "default",
+            "rules": [
+                {
+                    "name": "remote-example",
+                    "match": "^app%-id:org%.example%.Remote$",
+                    "capabilities": ["remote-desktop"],
+                    "level": "allow",
+                }
+            ],
+            "revision": 9,
+        }
+        input_devices = run(binary, "--socket", socket_path, "--format", "json", "input", "devices")
+        assert input_devices.returncode == 0, input_devices.stderr
+        assert json.loads(input_devices.stdout) == {
+            "devices": [
+                {
+                    "id": "input:1",
+                    "name": "Test keyboard",
+                    "device_type": "keyboard",
+                    "capabilities": ["keyboard"],
+                }
+            ],
+            "revision": 11,
+        }
+        privacy = run(binary, "--socket", socket_path, "--format", "json", "privacy")
+        assert privacy.returncode == 0, privacy.stderr
+        assert privacy.stdout, (privacy.returncode, privacy.stderr)
+        assert json.loads(privacy.stdout) == {
+            "available": {
+                "screen_sharing": True,
+                "recording": True,
+                "microphone_in_use": False,
+                "camera_in_use": False,
+                "location_in_use": False,
+            },
+            "screen_sharing": True,
+            "recording": False,
+            "revision": 42,
+        }
+        lua_file = Path(temporary) / "inspect.lua"
+        lua_file.write_text(
+            "local windows = gnoblin.windows.list { focused = true }\n"
+            'assert(#windows == 1 and windows[1].id == "42")\n'
+            "local window = windows[1]\n"
+            'assert(window.title == "Notes")\n'
+            "assert(window.frame.x == 12 and window.frame.width == 800)\n"
+            "assert(not pcall(function() window.frame.x = 99 end))\n"
+            'assert(not pcall(function() rawset(window.frame, "x", 99) end))\n'
+            "assert(window.frame.x == 12)\n"
+            "local frame_fields = {}\n"
+            "for key, value in pairs(window.frame) do frame_fields[key] = value end\n"
+            "assert(frame_fields.x == 12 and frame_fields.height == 600)\n"
+            "local window_fields = {}\n"
+            "for key, value in pairs(window) do window_fields[key] = value end\n"
+            'assert(window_fields.title == "Notes" and window_fields.frame.x == 12)\n'
+            'assert(not pcall(function() window.title = "changed" end))\n'
+            'assert(gnoblin.windows.focused().id == "42")\n'
+            'assert(gnoblin.windows.by_id("42").title == "Notes")\n'
+            'assert(gnoblin.windows.by_id("missing") == nil)\n'
+            'assert(window:minimize().id == "42")\n'
+            "local focus_ok, focus_error = pcall(function() window:focus() end)\n"
+            'assert(not focus_ok and focus_error:match("FocusContext"))\n'
+            "local workspaces = gnoblin.workspaces.list()\n"
+            'assert(#workspaces == 1 and workspaces[1].id == "codex-probe")\n'
+            "local workspace = workspaces[1]\n"
+            'assert(workspace.name == "Codex Probe")\n'
+            'assert(not pcall(function() workspace.name = "changed" end))\n'
+            'assert(gnoblin.workspaces.active().id == "codex-probe")\n'
+            'assert(gnoblin.workspaces.by_id("codex-probe").number == 1)\n'
+            'assert(gnoblin.workspaces.by_id("missing") == nil)\n'
+            "assert(workspace:activate().active)\n"
+            'assert(workspace:rename("Renamed").name == "Renamed")\n'
+            'assert(workspace:move_here(window, {follow = true}).window == "42")\n'
+            'assert(workspace:remove().id == "codex-probe")\n'
+            "local monitors = gnoblin.monitors.list()\n"
+            'assert(#monitors == 1 and monitors[1].id == "HDMI-1")\n'
+            "local monitor = monitors[1]\n"
+            'assert(monitor.name == "Test Display" and monitor.make == "Acme")\n'
+            'assert(monitor.model == "Panel 1" and monitor.serial == "ABC123")\n'
+            "assert(monitor.primary and monitor.enabled)\n"
+            "assert(monitor.x == 10 and monitor.y == 20)\n"
+            "assert(monitor.width == 1920 and monitor.height == 1080)\n"
+            "assert(monitor.scale == 1.5 and monitor.refresh_rate == 144.0)\n"
+            'assert(monitor.transform == "normal" and monitor.revision == 5)\n'
+            'assert(not pcall(function() monitor.id = "DP-1" end))\n'
+            "assert(not pcall(function() monitor.missing = true end))\n"
+            'assert(tostring(monitor) == "Monitor<HDMI-1>")\n'
+            "local compatibility_monitors = gnoblin.monitor.list()\n"
+            'assert(#compatibility_monitors == 1 and compatibility_monitors[1].id == "HDMI-1")\n'
+            'assert(not pcall(function() compatibility_monitors[1].id = "DP-1" end))\n'
+            'assert(gnoblin.monitors.primary().id == "HDMI-1")\n'
+            "assert(gnoblin.monitors.primary() == nil)\n"
+            "local layers = gnoblin.layers.list()\n"
+            'assert(#layers == 1 and layers[1].id == "surface-1")\n'
+            "local layer = layers[1]\n"
+            'assert(layer.title == "Panel" and layer.namespace == "panel:top")\n'
+            'assert(layer.layer == "top" and layer.monitor_id == "HDMI-1")\n'
+            'assert(layer.keyboard_interactive == "on_demand" and layer.exclusive_zone == 32)\n'
+            'assert(layer.anchor[1] == "top" and layer.anchor[2] == "left" and layer.anchor[3] == "right")\n'
+            'assert(not pcall(function() layer.anchor[1] = "bottom" end))\n'
+            'assert(not pcall(function() rawset(layer.anchor, 1, "bottom") end))\n'
+            'assert(layer.anchor[1] == "top" and #layer.anchor == 3)\n'
+            "local anchors = {}\n"
+            "for index, anchor in ipairs(layer.anchor) do anchors[index] = anchor end\n"
+            'assert(anchors[1] == "top" and anchors[2] == "left" and anchors[3] == "right")\n'
+            "assert(layer.geometry.x == 0 and layer.geometry.y == 0)\n"
+            "assert(layer.geometry.width == 1920 and layer.geometry.height == 32)\n"
+            "assert(not pcall(function() layer.geometry.width = 1 end))\n"
+            'assert(not pcall(function() rawset(layer.geometry, "width", 1) end))\n'
+            "assert(layer.geometry.width == 1920)\n"
+            "assert(layer.mapped and layer.revision == 5)\n"
+            'assert(not pcall(function() layer.title = "changed" end))\n'
+            "assert(not pcall(function() layer.missing = true end))\n"
+            'assert(tostring(layer) == "LayerSurface<surface-1>")\n'
+            'local filtered_layers = gnoblin.layers.list { monitor_id = "HDMI-1", namespace = "panel:top", layer = "top" }\n'
+            'assert(#filtered_layers == 1 and filtered_layers[1].id == "surface-1")\n'
+            'assert(not pcall(function() gnoblin.layers.list { app_id = "org.example.Panel" } end))\n'
+            "assert(not pcall(function() gnoblin.layers.list { layer = 2 } end))\n"
+            'assert(not pcall(function() gnoblin.layers.list { [1] = "top" } end))\n'
+            "local compatibility_layers = gnoblin.layer.list()\n"
+            'assert(#compatibility_layers == 1 and compatibility_layers[1].id == "surface-1")\n'
+            'assert(not pcall(function() compatibility_layers[1].id = "changed" end))\n'
+        )
+        lua_api = run(binary, "--socket", socket_path, "lua", str(lua_file))
+        assert lua_api.returncode == 0, lua_api.stderr
+        unminimize = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "window",
+            "unminimize",
+            "42",
+        )
+        assert unminimize.returncode == 0, unminimize.stderr
+        assert json.loads(unminimize.stdout) == {"id": "42"}
+        animation_lua_file = Path(temporary) / "animation-preview.lua"
+        animation_lua_file.write_text(
+            'local preview = gnoblin.animations.preview { name = "gnoblin-window-open", '
+            'event = "open", target_type = "window", target = "42", autoplay = false }\n'
+            'assert(tostring(preview) == "AnimationPreview<preview-17>")\n'
+            'assert(preview.id == "preview-17" and preview.name == "gnoblin-window-open")\n'
+            'assert(preview.event == "open" and preview.target == "42" and preview.target_type == "window")\n'
+            "assert(preview.progress == 0 and not preview.playing and preview.revision == 5)\n"
+            "assert(preview.session == nil)\n"
+            "assert(not pcall(function() preview.progress = 0.5 end))\n"
+            "assert(not pcall(function() preview.missing = true end))\n"
+            "local sought = preview:seek(0.5)\n"
+            'assert(sought.progress == 0.5 and not sought.playing and type(sought.step) == "function")\n'
+            "local stepped = sought:step(250)\n"
+            'assert(stepped.progress == 0.75 and type(stepped.play) == "function")\n'
+            "local playing = stepped:play()\n"
+            'assert(playing.playing and type(playing.pause) == "function")\n'
+            "local paused = playing:pause()\n"
+            'assert(not paused.playing and type(paused.stop) == "function")\n'
+            "local stopped = paused:stop()\n"
+            'assert(stopped.ok and stopped.session == "preview-17")\n'
+            "assert(not pcall(function() preview:seek(1.1) end))\n"
+            "assert(not pcall(function() preview:step(0) end))\n"
+            "assert(not pcall(function() preview:play(true) end))\n",
+            encoding="utf-8",
+        )
+        animation_lua = run(binary, "--socket", socket_path, "lua", str(animation_lua_file))
+        assert animation_lua.returncode == 0, animation_lua.stderr
+        grants_lua_file = Path(temporary) / "portal-grants.lua"
+        grants_lua_file.write_text(
+            "local grants = gnoblin.portals.grants()\n"
+            'assert(#grants == 1 and tostring(grants[1]) == "PortalGrant<grant-17>")\n'
+            'assert(grants[1].kind == "remote-desktop" and grants[1].requester == "app-id:org.example.Remote")\n'
+            'assert(grants[1].devices[1] == "keyboard" and grants[1].devices[2] == "pointer")\n'
+            "assert(grants[1].clipboard and grants[1].has_screen_streams)\n"
+            "assert(grants[1].created_at == 1720000000123 and grants[1].revision == 12)\n"
+            'assert(not pcall(function() grants[1].kind = "screen-cast" end))\n'
+            'assert(not pcall(function() grants[1].devices[1] = "touchscreen" end))\n'
+            'assert(not pcall(function() rawset(grants[1].devices, 1, "touchscreen") end))\n'
+            'assert(not pcall(function() gnoblin.portals.grants { requester = "invalid" } end))\n'
+            'local grant = gnoblin.grant.list { kind = "remote-desktop" }[1]\n'
+            'assert(grant.id == "grant-17" and type(grant.revoke) == "function")\n'
+            "local revoked = grant:revoke()\n"
+            'assert(revoked.ok and revoked.id == "grant-17")\n'
+            "assert(not pcall(function() revoked.ok = false end))\n"
+            "assert(not pcall(function() grant:revoke(true) end))\n",
+            encoding="utf-8",
+        )
+        grants_lua = run(binary, "--socket", socket_path, "lua", str(grants_lua_file))
+        assert grants_lua.returncode == 0, grants_lua.stderr
+        input_lua_file = Path(temporary) / "input-snapshots.lua"
+        input_lua_file.write_text(
+            "local devices = gnoblin.input.devices()\n"
+            'assert(#devices == 1 and tostring(devices[1]) == "InputDevice<input:1>")\n'
+            'assert(devices[1].name == "Test keyboard" and devices[1].device_type == "keyboard")\n'
+            'assert(devices[1].capabilities[1] == "keyboard" and devices[1].revision == 11)\n'
+            'assert(not pcall(function() devices[1].name = "changed" end))\n'
+            'assert(not pcall(function() devices[1].capabilities[1] = "pointer" end))\n'
+            "local sources = gnoblin.input.sources()\n"
+            'assert(#sources == 1 and tostring(sources[1]) == "InputSource<us>")\n'
+            'assert(sources[1].type == "xkb" and sources[1].short_name == "en" and sources[1].current)\n'
+            "assert(sources[1].revision == 5 and not pcall(function() sources[1].current = false end))\n"
+            "local current = gnoblin.input.current_source()\n"
+            'assert(current.id == "us" and current.current and current.revision == 5)\n'
+            'local selected = gnoblin.input.select_source {type = "xkb", id = "us"}\n'
+            'assert(selected.id == "us" and selected.current and selected.revision == 5)\n'
+            'assert(not pcall(function() gnoblin.input.select_source {type = "xkb", id = "us", extra = true} end))\n'
+            "local source_alias = gnoblin.input.list()\n"
+            "assert(#source_alias == 1 and source_alias[1].id == sources[1].id and source_alias[1].revision == sources[1].revision)\n"
+            "local current_alias = gnoblin.input.current()\n"
+            "assert(current_alias.id == current.id and current_alias.current and current_alias.revision == current.revision)\n",
+            encoding="utf-8",
+        )
+        input_lua = run(binary, "--socket", socket_path, "lua", str(input_lua_file))
+        assert input_lua.returncode == 0, input_lua.stderr
+        shortcuts_lua_file = Path(temporary) / "shortcut-snapshots.lua"
+        shortcuts_lua_file.write_text(
+            "local shortcuts = gnoblin.shortcuts.list()\n"
+            'assert(#shortcuts == 1 and tostring(shortcuts[1]) == "ShortcutState<test.shortcut>")\n'
+            'assert(shortcuts[1].binding == "<Super>space" and shortcuts[1].enabled)\n'
+            'assert(shortcuts[1].action == "test.action" and shortcuts[1].revision == 6)\n'
+            "assert(not pcall(function() shortcuts[1].enabled = false end))\n"
+            'local actions = gnoblin.shortcuts.actions("wm")\n'
+            'assert(#actions == 1 and tostring(actions[1]) == "ShortcutAction<wm.close>")\n'
+            'assert(actions[1].group == "wm" and actions[1].key == "close")\n'
+            'assert(actions[1].default_bindings[1] == "<Alt>F4")\n'
+            'assert(not pcall(function() actions[1].group = "wayland" end))\n'
+            'assert(not pcall(function() actions[1].default_bindings[1] = "<Alt>Tab" end))\n'
+            'assert(not pcall(function() rawset(actions[1].default_bindings, 1, "<Alt>Tab") end))\n'
+            "assert(not pcall(function() gnoblin.shortcuts.list(true) end))\n"
+            'assert(not pcall(function() gnoblin.shortcuts.actions({group = "wm"}) end))\n',
+            encoding="utf-8",
+        )
+        shortcuts_lua = run(binary, "--socket", socket_path, "lua", str(shortcuts_lua_file))
+        assert shortcuts_lua.returncode == 0, shortcuts_lua.stderr
+        focus_policy_file = Path(temporary) / "focus-policy.lua"
+        focus_policy_file.write_text(
+            "local policy = gnoblin.focus.policy\n"
+            'assert(tostring(policy) == "FocusPolicy")\n'
+            'assert(policy.focus_mode == "sloppy" and policy.focus_new_windows == "smart")\n'
+            "assert(not policy.raise_on_click and policy.auto_raise)\n"
+            "assert(policy.focus_change_on_pointer_rest and policy.auto_raise_delay == 750)\n"
+            "assert(policy.revision == 42)\n"
+            'assert(not pcall(function() policy.focus_mode = "click" end))\n'
+            'assert(not pcall(function() rawset(policy, "focus_mode", "click") end))\n'
+            "assert(not pcall(function() policy() end))\n",
+            encoding="utf-8",
+        )
+        focus_policy = run(binary, "--socket", socket_path, "lua", str(focus_policy_file))
+        assert focus_policy.returncode == 0, focus_policy.stderr
+        settings_file = Path(temporary) / "settings-property.lua"
+        settings_file.write_text(
+            "local settings = gnoblin.settings\n"
+            'assert(tostring(settings) == "Settings" and settings.revision == 43)\n'
+            'assert(settings.window_management.focus_mode == "sloppy")\n'
+            'assert(settings.shortcuts.terminal.binding == "<Super>Return")\n'
+            "assert(not pcall(function() settings.revision = 44 end))\n"
+            'assert(not pcall(function() settings.window_management.focus_mode = "click" end))\n'
+            'assert(not pcall(function() rawset(settings.shortcuts.terminal, "binding", "x") end))\n'
+            "assert(not pcall(function() settings() end))\n",
+            encoding="utf-8",
+        )
+        settings = run(binary, "--socket", socket_path, "lua", str(settings_file))
+        assert settings.returncode == 0, settings.stderr
+        focus_history_file = Path(temporary) / "focus-history.lua"
+        focus_history_file.write_text(
+            "local history = gnoblin.focus.history { limit = 1 }\n"
+            'assert(#history == 1 and tostring(history[1]) == "Window<42>")\n'
+            'assert(history[1].title == "Notes" and history[1].focused)\n'
+            'assert(history[1].geometry.width == 640 and type(history[1].minimize) == "function")\n'
+            'assert(not pcall(function() history[1].title = "Changed" end))\n'
+            "assert(not pcall(function() history[1].geometry.width = 1 end))\n",
+            encoding="utf-8",
+        )
+        focus_history = run(binary, "--socket", socket_path, "lua", str(focus_history_file))
+        assert focus_history.returncode == 0, focus_history.stderr
+        layer_policy_file = Path(temporary) / "layer-animation-policy.lua"
+        layer_policy_file.write_text(
+            'local policy = gnoblin.layers.animation_policy("bingux-panel")\n'
+            'assert(tostring(policy) == "LayerAnimationPolicy<bingux-panel>")\n'
+            'assert(policy.namespace == "bingux-panel" and policy.revision == 19)\n'
+            'assert(policy.enter.animation == "fade" and policy.enter.duration == 240)\n'
+            'assert(policy.enter.easing.type == "cubic-bezier" and policy.enter.easing.x2 == 0)\n'
+            'assert(policy.exit.animation == "slide" and policy.window_shadow.opacity == 0.4)\n'
+            'assert(not pcall(function() policy.enter.animation = "slide" end))\n'
+            'assert(not pcall(function() rawset(policy.enter.easing, "x1", 0) end))\n'
+            "assert(not pcall(function() policy.window_shadow.opacity = 0 end))\n"
+            "assert(not pcall(function() gnoblin.layers.animation_policy() end))\n"
+            "assert(not pcall(function() gnoblin.layers.animation_policy(2) end))\n"
+            'assert(not pcall(function() gnoblin.layers.animation_policy(string.rep("x", 129)) end))\n',
+            encoding="utf-8",
+        )
+        layer_policy = run(binary, "--socket", socket_path, "lua", str(layer_policy_file))
+        assert layer_policy.returncode == 0, layer_policy.stderr
+        privacy_file = Path(temporary) / "privacy-state.lua"
+        privacy_file.write_text(
+            "local state = gnoblin.privacy.state()\n"
+            'assert(tostring(state) == "PrivacyState" and state.revision == 42)\n'
+            "assert(state.available.screen_sharing and state.screen_sharing)\n"
+            "assert(state.available.recording and not state.recording)\n"
+            "assert(not pcall(function() state.revision = 1 end))\n"
+            "assert(not pcall(function() state.available.screen_sharing = false end))\n"
+            'assert(not pcall(function() rawset(state.available, "recording", false) end))\n'
+            "assert(not pcall(function() gnoblin.privacy.state(true) end))\n",
+            encoding="utf-8",
+        )
+        privacy = run(binary, "--socket", socket_path, "lua", str(privacy_file))
+        assert privacy.returncode == 0, privacy.stderr
+        capabilities_file = Path(temporary) / "capabilities.lua"
+        capabilities_file.write_text(
+            "local capabilities = gnoblin.capabilities.list()\n"
+            'assert(#capabilities == 1 and tostring(capabilities[1]) == "Capability<microphone-monitor>")\n'
+            'assert(capabilities[1].description == "PipeWire microphone activity monitoring")\n'
+            'assert(not capabilities[1].available and capabilities[1].reason == "pipewire_unavailable")\n'
+            "assert(capabilities[1].revision == 18)\n"
+            "assert(not pcall(function() capabilities[1].available = true end))\n"
+            'assert(not pcall(function() rawset(capabilities[1], "reason", "changed") end))\n'
+            "assert(not pcall(function() gnoblin.capabilities.list(true) end))\n",
+            encoding="utf-8",
+        )
+        capability_result = run(binary, "--socket", socket_path, "lua", str(capabilities_file))
+        assert capability_result.returncode == 0, capability_result.stderr
+        policy_file = Path(temporary) / "permission-policy.lua"
+        policy_file.write_text(
+            "local policy = gnoblin.permissions.policy()\n"
+            'assert(tostring(policy) == "PermissionPolicy" and policy.default == "default")\n'
+            "assert(policy.revision == 9 and #policy.rules == 1)\n"
+            'assert(policy.rules[1].name == "remote-example" and policy.rules[1].level == "allow")\n'
+            'assert(policy.rules[1].capabilities[1] == "remote-desktop")\n'
+            'assert(not pcall(function() policy.default = "deny" end))\n'
+            'assert(not pcall(function() policy.rules[1].level = "deny" end))\n'
+            'assert(not pcall(function() rawset(policy.rules[1].capabilities, 1, "access") end))\n'
+            "assert(not pcall(function() gnoblin.permissions.policy(true) end))\n",
+            encoding="utf-8",
+        )
+        policy_result = run(binary, "--socket", socket_path, "lua", str(policy_file))
+        assert policy_result.returncode == 0, policy_result.stderr
+        session_status_file = Path(temporary) / "session-status.lua"
+        session_status_file.write_text(
+            "local unavailable = gnoblin.session.status()\n"
+            'assert(tostring(unavailable) == "SessionStatus" and unavailable.state == "running")\n'
+            "assert(unavailable.revision == 2)\n"
+            "assert(not unavailable.lock_available and unavailable.lock_state == nil)\n"
+            'assert(not pcall(function() unavailable.lock_state = "unlocked" end))\n'
+            'assert(not pcall(function() rawset(unavailable, "lock_state", "unlocked") end))\n'
+            "local available = gnoblin.session.status()\n"
+            "assert(available.revision == 3)\n"
+            'assert(available.lock_available and available.lock_state == "covering")\n'
+            'assert(not pcall(function() available.lock_state = "unlocked" end))\n'
+            "assert(not pcall(function() gnoblin.session.status(true) end))\n",
+            encoding="utf-8",
+        )
+        session_status_result = run(binary, "--socket", socket_path, "lua", str(session_status_file))
+        assert session_status_result.returncode == 0, session_status_result.stderr
+        session_activity_file = Path(temporary) / "session-activity.lua"
+        session_activity_file.write_text(
+            "local activity = gnoblin.session.activity()\n"
+            'assert(tostring(activity) == "SessionActivity" and activity.available and activity.idle)\n'
+            "assert(activity.threshold_ms == 300000 and activity.idle_for_ms >= 1000)\n"
+            "assert(activity.revision == 7)\n"
+            "assert(not pcall(function() activity.idle = false end))\n"
+            'assert(not pcall(function() rawset(activity, "idle", false) end))\n'
+            "assert(not pcall(function() gnoblin.session.activity(true) end))\n",
+            encoding="utf-8",
+        )
+        session_activity_result = run(binary, "--socket", socket_path, "lua", str(session_activity_file))
+        assert session_activity_result.returncode == 0, session_activity_result.stderr
+        permission_decision_file = Path(temporary) / "permission-decision.lua"
+        permission_decision_file.write_text(
+            'local decision = gnoblin.permissions.check {capability = "remote-desktop", identity = "app-id:org.example.Remote"}\n'
+            'assert(tostring(decision) == "PermissionDecision" and decision.level == "allow")\n'
+            'assert(decision.rule == "remote-test" and decision.devices[1] == "keyboard")\n'
+            "assert(decision.clipboard and decision.revision == 9)\n"
+            'assert(not pcall(function() decision.level = "deny" end))\n'
+            'assert(not pcall(function() rawset(decision.devices, 1, "pointer") end))\n'
+            'local positional = gnoblin.permissions.check("remote-desktop", "app-id:org.example.Remote")\n'
+            'assert(positional.level == "allow" and positional.revision == 9)\n'
+            "assert(not pcall(function() gnoblin.permissions.check() end))\n"
+            'assert(not pcall(function() gnoblin.permissions.check {capability = "remote-desktop", identity = "app-id:test", extra = true} end))\n',
+            encoding="utf-8",
+        )
+        permission_decision_result = run(binary, "--socket", socket_path, "lua", str(permission_decision_file))
+        assert permission_decision_result.returncode == 0, permission_decision_result.stderr
+        animation_reads_file = Path(temporary) / "animation-reads.lua"
+        animation_reads_file.write_text(
+            "local animations = gnoblin.animations.list()\n"
+            'assert(#animations == 1 and animations[1].name == "fade")\n'
+            "assert(animations[1].from.opacity == 0 and animations[1].revision == 5)\n"
+            'assert(not pcall(function() animations[1].name = "changed" end))\n'
+            "assert(not pcall(function() animations[1].from.opacity = 0.5 end))\n"
+            'assert(not pcall(function() rawset(animations[1].from, "opacity", 0.5) end))\n'
+            'local fade = gnoblin.animations.get("fade")\n'
+            'assert(fade.name == "fade" and fade.to.opacity == 1)\n'
+            "assert(not pcall(function() fade.enable = false end))\n"
+            'assert(gnoblin.animations.get("missing") == nil)\n'
+            "assert(not pcall(function() gnoblin.animations.list(true) end))\n"
+            "assert(not pcall(function() gnoblin.animations.get() end))\n"
+            "assert(not pcall(function() gnoblin.animations.get(2) end))\n",
+            encoding="utf-8",
+        )
+        animation_reads_result = run(binary, "--socket", socket_path, "lua", str(animation_reads_file))
+        assert animation_reads_result.returncode == 0, animation_reads_result.stderr
+        launches_file = Path(temporary) / "launches.lua"
+        launches_file.write_text(
+            "local launches = gnoblin.launches.list()\n"
+            'assert(#launches == 1 and launches[1].token == "one")\n'
+            'assert(launches[1].application == "app" and launches[1].state == "pending")\n'
+            "assert(launches[1].started_at == 1720000000123 and launches[1].timeout_ms == 3000)\n"
+            'assert(not pcall(function() launches[1].state = "ended" end))\n'
+            "local snapshot = gnoblin.launches.snapshot()\n"
+            'assert(snapshot.revision == 4 and snapshot.launches[1].token == "one")\n'
+            "assert(not pcall(function() snapshot.revision = 5 end))\n"
+            'assert(not pcall(function() rawset(snapshot.launches[1], "token", "changed") end))\n'
+            "assert(not pcall(function() gnoblin.launches.list(true) end))\n"
+            "assert(not pcall(function() gnoblin.launches.snapshot({}) end))\n",
+            encoding="utf-8",
+        )
+        launches_result = run(binary, "--socket", socket_path, "lua", str(launches_file))
+        assert launches_result.returncode == 0, launches_result.stderr
+        launch_operations_file = Path(temporary) / "launch-operations.lua"
+        launch_operations_file.write_text(
+            'local launch = gnoblin.launches.begin {token = "lua-start", application = "org.example.Editor", timeout_ms = 750}\n'
+            'assert(launch.token == "lua-start" and launch.application == "org.example.Editor")\n'
+            'assert(launch.timeout_ms == 750 and launch.state == "pending")\n'
+            'assert(not pcall(function() launch.state = "ended" end))\n'
+            'local ended = gnoblin.launches.finish("lua-start")\n'
+            'assert(ended.ok and ended.token == "lua-start")\n'
+            "assert(not pcall(function() ended.ok = false end))\n"
+            'assert(not pcall(function() gnoblin.launches.begin {token = "bad", application = "app", timeout_ms = 99} end))\n'
+            'assert(not pcall(function() gnoblin.launches.begin {token = "bad", application = "app", extra = true} end))\n'
+            "assert(not pcall(function() gnoblin.launches.finish(42) end))\n",
+            encoding="utf-8",
+        )
+        launch_operations_result = run(binary, "--socket", socket_path, "lua", str(launch_operations_file))
+        assert launch_operations_result.returncode == 0, launch_operations_result.stderr
+        permission_list_file = Path(temporary) / "permission-list.lua"
+        permission_list_file.write_text(
+            "local permissions = gnoblin.permissions.list()\n"
+            'assert(permissions.policy.default == "deny")\n'
+            'assert(permissions.capabilities[1] == "screen-cast" and permissions.levels[2] == "ask")\n'
+            'assert(permissions.path == "/tmp/gnoblin-permissions.json")\n'
+            'assert(not pcall(function() permissions.policy.default = "allow" end))\n'
+            'assert(not pcall(function() rawset(permissions.capabilities, 1, "changed") end))\n'
+            "assert(not pcall(function() gnoblin.permissions.list(true) end))\n",
+            encoding="utf-8",
+        )
+        permission_list_result = run(binary, "--socket", socket_path, "lua", str(permission_list_file))
+        assert permission_list_result.returncode == 0, permission_list_result.stderr
+        version_file = Path(temporary) / "version.lua"
+        version_file.write_text(
+            "local version = gnoblin.version()\n"
+            'assert(version.gnoblin == "0.2.0" and version.gnome == "51.0")\n'
+            'assert(version.mutter == "51.0" and version.lua == "Lua 5.4" and version.api == "1.64")\n'
+            'assert(version.git_remote == "https://example.invalid/gnoblin.git")\n'
+            'assert(version.git_sha == "0123456789abcdef" and version.build_id == "20261002.1")\n'
+            'assert(not pcall(function() version.git_sha = "changed" end))\n'
+            "assert(not pcall(function() gnoblin.version(true) end))\n",
+            encoding="utf-8",
+        )
+        version_result = run(binary, "--socket", socket_path, "lua", str(version_file))
+        assert version_result.returncode == 0, version_result.stderr
+        shortcut_capture_file = Path(temporary) / "shortcut-capture.lua"
+        shortcut_capture_file.write_text(
+            "local captured = gnoblin.shortcuts.capture()\n"
+            'assert(captured.accelerator == "<Super>Return")\n'
+            "local timed = gnoblin.shortcuts.capture {timeout = 10}\n"
+            'assert(timed.accelerator == "<Super>Return")\n'
+            "assert(not pcall(function() gnoblin.shortcuts.capture {timeout = 0} end))\n"
+            "assert(not pcall(function() gnoblin.shortcuts.capture {timeout = 61} end))\n"
+            "assert(not pcall(function() gnoblin.shortcuts.capture {timeout = 1.5} end))\n"
+            "assert(not pcall(function() gnoblin.shortcuts.capture {timeout = true} end))\n"
+            "assert(not pcall(function() gnoblin.shortcuts.capture {unexpected = true} end))\n"
+            'assert(not pcall(function() gnoblin.shortcuts.capture("10") end))\n',
+            encoding="utf-8",
+        )
+        shortcut_capture_result = run(binary, "--socket", socket_path, "lua", str(shortcut_capture_file))
+        assert shortcut_capture_result.returncode == 0, shortcut_capture_result.stderr
+        animation_surfaces_file = Path(temporary) / "animation-surfaces.lua"
+        animation_surfaces_file.write_text(
+            "local snapshot = gnoblin.animations.surfaces()\n"
+            "local surface = snapshot.surfaces[1]\n"
+            'assert(surface.id == "42" and surface.namespace == "bingux-panel" and surface.title == "Panel")\n'
+            'assert(not pcall(function() surface.namespace = "changed" end))\n'
+            'assert(not pcall(function() rawset(surface, "namespace", "changed") end))\n'
+            "assert(not pcall(function() rawset(snapshot.surfaces, 1, {}) end))\n"
+            "assert(not pcall(function() gnoblin.animations.surfaces(true) end))\n",
+            encoding="utf-8",
+        )
+        animation_surfaces_result = run(binary, "--socket", socket_path, "lua", str(animation_surfaces_file))
+        assert animation_surfaces_result.returncode == 0, animation_surfaces_result.stderr
+        workspace_api_file = Path(temporary) / "workspace-api.lua"
+        workspace_api_file.write_text(
+            'local created = gnoblin.workspaces.create {id = "lua-api", name = "Lua Workspace", activate = false}\n'
+            'assert(created.id == "lua-api" and created.number == 3 and created.persistent)\n'
+            'assert(not pcall(function() created.name = "changed" end))\n'
+            'local renamed = gnoblin.workspaces.rename {id = "lua-api", name = "Renamed Lua Workspace"}\n'
+            'assert(renamed.name == "Renamed Lua Workspace")\n'
+            'local active = gnoblin.workspaces.activate {id = "lua-api"}\n'
+            "assert(active.active)\n"
+            'assert(gnoblin.workspaces.next().id == "lua-api")\n'
+            'assert(gnoblin.workspaces.previous().id == "lua-api")\n'
+            'local moved_active = gnoblin.workspaces.move_active {workspace = {id = "lua-api"}, follow = false}\n'
+            'assert(moved_active.workspace.id == "lua-api" and moved_active.follow == false)\n'
+            'assert(not pcall(function() rawset(moved_active, "follow", true) end))\n'
+            'local moved_window = gnoblin.workspaces.move_window {window = "active", workspace = {number = 1}, follow = true}\n'
+            'assert(moved_window.window == "42" and moved_window.follow)\n'
+            'assert(gnoblin.workspaces.remove {id = "lua-api"}.id == "lua-api")\n'
+            'assert(not pcall(function() gnoblin.workspaces.create {id = 42, name = "invalid"} end))\n'
+            'assert(not pcall(function() gnoblin.workspaces.move_window {window = "42", workspace = {id = "x", number = 1}} end))\n'
+            "assert(not pcall(function() gnoblin.workspaces.next(true) end))\n",
+            encoding="utf-8",
+        )
+        workspace_api_result = run(binary, "--socket", socket_path, "lua", str(workspace_api_file))
+        assert workspace_api_result.returncode == 0, workspace_api_result.stderr
+        invalid_policy_file = Path(temporary) / "invalid-layer-policy.lua"
+        invalid_policy_file.write_text(
+            'assert(not pcall(function() gnoblin.layers.animation_policy("bad-easing") end))\n'
+            'assert(not pcall(function() gnoblin.layers.animation_policy("negative-duration") end))\n',
+            encoding="utf-8",
+        )
+        invalid_policy_result = run(binary, "--socket", socket_path, "lua", str(invalid_policy_file))
+        assert invalid_policy_result.returncode == 0, invalid_policy_result.stderr
+        animation_inspect_file = Path(temporary) / "animation-inspect.lua"
+        animation_inspect_file.write_text(
+            'local inspection = gnoblin.animations.inspect {name = "fade", target = "active", event = "open", target_type = "window"}\n'
+            'assert(inspection.name == "fade" and inspection.event == "open" and inspection.target == "42")\n'
+            'assert(inspection.spec.name == "fade" and inspection.context.window.id == "42")\n'
+            'assert(not pcall(function() inspection.spec.event = "close" end))\n'
+            'assert(not pcall(function() gnoblin.animations.inspect {name = "fade", target = 42} end))\n'
+            'assert(not pcall(function() gnoblin.animations.inspect {name = "fade", extra = true} end))\n',
+            encoding="utf-8",
+        )
+        animation_inspect_result = run(binary, "--socket", socket_path, "lua", str(animation_inspect_file))
+        assert animation_inspect_result.returncode == 0, animation_inspect_result.stderr
+        privacy_stop_script = Path(temporary) / "privacy-stop.lua"
+        privacy_stop_script.write_text(
+            "local sharing = gnoblin.privacy.stop_sharing()\n"
+            "assert(sharing.requested == 2 and not pcall(function() sharing.requested = 0 end))\n"
+            "assert(not pcall(function() gnoblin.privacy.stop_sharing(true) end))\n"
+            "local recording = gnoblin.privacy.stop_recording()\n"
+            'assert(recording.requested == 0 and not pcall(function() rawset(recording, "requested", 1) end))\n',
+            encoding="utf-8",
+        )
+        privacy_stop_result = run(binary, "--socket", socket_path, "lua", str(privacy_stop_script))
+        assert privacy_stop_result.returncode == 0, privacy_stop_result.stderr
+        runtime_reload_script = Path(temporary) / "runtime-reload.lua"
+        runtime_reload_script.write_text(
+            "local result = gnoblin.runtime.reload_config()\n"
+            'assert(result.ok and result.action == "reloaded" and result.runtime_generation == 7)\n'
+            "assert(not pcall(function() result.ok = false end))\n"
+            "assert(not pcall(function() gnoblin.runtime.reload_config(true) end))\n",
+            encoding="utf-8",
+        )
+        runtime_reload_result = run(binary, "--socket", socket_path, "lua", str(runtime_reload_script))
+        assert runtime_reload_result.returncode == 0, runtime_reload_result.stderr
+        session_operations_script = Path(temporary) / "session-operations.lua"
+        session_operations_script.write_text(
+            "local lock = gnoblin.session.lock()\n"
+            "assert(lock.dispatched and lock.subscribers == 1)\n"
+            "assert(not pcall(function() lock.dispatched = false end))\n"
+            "assert(not pcall(function() gnoblin.session.lock(true) end))\n"
+            "local logout = gnoblin.session.logout()\n"
+            "assert(logout.accepted and not pcall(function() logout.accepted = false end))\n"
+            "assert(not pcall(function() gnoblin.session.logout({}) end))\n",
+            encoding="utf-8",
+        )
+        session_operations_result = run(binary, "--socket", socket_path, "lua", str(session_operations_script))
+        assert session_operations_result.returncode == 0, session_operations_result.stderr
+        grant_revoke_script = Path(temporary) / "grant-revoke.lua"
+        grant_revoke_script.write_text(
+            'local result = gnoblin.grant.revoke {kind = "remote-desktop", id = "grant-cli", created_at = 1720000000123}\n'
+            'assert(result.ok and result.id == "grant-cli")\n'
+            "assert(not pcall(function() result.ok = false end))\n"
+            'assert(not pcall(function() gnoblin.grant.revoke {kind = "other", id = "x"} end))\n'
+            'assert(not pcall(function() gnoblin.grant.revoke {kind = "screen-cast", id = "x", extra = true} end))\n',
+            encoding="utf-8",
+        )
+        grant_revoke_result = run(binary, "--socket", socket_path, "lua", str(grant_revoke_script))
+        assert grant_revoke_result.returncode == 0, grant_revoke_result.stderr
+        orientation_read = run(binary, "--socket", socket_path, "--format", "json", "input", "orientation-lock")
+        assert orientation_read.returncode == 0, orientation_read.stderr
+        assert json.loads(orientation_read.stdout) == {
+            "available": True,
+            "locked": False,
+            "orientation": "normal",
+            "source": "system",
+            "revision": 17,
+        }
+        orientation_set = run(
+            binary,
+            "--socket",
+            socket_path,
+            "--format",
+            "json",
+            "input",
+            "orientation-lock",
+            "on",
+        )
+        assert orientation_set.returncode == 0, orientation_set.stderr
+        assert json.loads(orientation_set.stdout) == {
+            "available": True,
+            "locked": True,
+            "orientation": "normal",
+            "source": "runtime",
+            "revision": 18,
+        }
+        orientation_lua_file = Path(temporary) / "orientation-lock.lua"
+        orientation_lua_file.write_text(
+            "local lock = gnoblin.input.orientation_lock()\n"
+            'assert(lock.available and not lock.locked and lock.source == "system")\n'
+            "assert(not pcall(function() lock.locked = true end))\n"
+            'assert(not pcall(function() rawset(lock, "locked", true) end))\n'
+            "local updated = gnoblin.input.set_orientation_lock(true)\n"
+            'assert(updated.available and updated.locked and updated.source == "runtime")\n'
+            "assert(not pcall(function() updated.locked = false end))\n"
+            'assert(not pcall(function() rawset(updated, "locked", false) end))\n',
+            encoding="utf-8",
+        )
+        orientation_lua = run(binary, "--socket", socket_path, "lua", str(orientation_lua_file))
+        assert orientation_lua.returncode == 0, orientation_lua.stderr
+        animation_controls_file = Path(temporary) / "animation-controls.lua"
+        animation_controls_file.write_text(
+            'local seek = gnoblin.animations.seek {session = "preview-17", progress = 0.4}\n'
+            'assert(seek.progress == 0.4 and type(seek.step) == "function")\n'
+            'local step = gnoblin.animations.step {session = "preview-17", milliseconds = 250}\n'
+            'assert(step.progress == 0.75 and type(step.play) == "function")\n'
+            'local play = gnoblin.animations.play {session = "preview-17"}\n'
+            'assert(play.playing and type(play.pause) == "function")\n'
+            'local pause = gnoblin.animations.pause {session = "preview-17"}\n'
+            'assert(not pause.playing and type(pause.stop) == "function")\n'
+            'local stop = gnoblin.animations.stop {session = "preview-17"}\n'
+            'assert(stop.ok and stop.session == "preview-17")\n'
+            'assert(not pcall(function() gnoblin.animations.seek {session = "preview-17", progress = 1.1} end))\n'
+            'assert(not pcall(function() gnoblin.animations.step {session = "preview-17", milliseconds = 0} end))\n'
+            'assert(not pcall(function() gnoblin.animations.play {session = "preview-17", extra = true} end))\n',
+            encoding="utf-8",
+        )
+        animation_controls = run(binary, "--socket", socket_path, "lua", str(animation_controls_file))
+        assert animation_controls.returncode == 0, animation_controls.stderr
+        runtime_status_script = Path(temporary) / "runtime-status.lua"
+        runtime_status_script.write_text(
+            "local status = gnoblin.runtime.status()\n"
+            'assert(status.state == "running" and status.generation == 7)\n'
+            'assert(not pcall(function() status.state = "restarting" end))\n'
+            "assert(not pcall(function() gnoblin.runtime.status(true) end))\n",
+            encoding="utf-8",
+        )
+        runtime_status_result = run(binary, "--socket", socket_path, "lua", str(runtime_status_script))
+        assert runtime_status_result.returncode == 0, runtime_status_result.stderr
+        invalid_session_status_file = Path(temporary) / "invalid-session-status.lua"
+        invalid_session_status_file.write_text("gnoblin.session.status()\n", encoding="utf-8")
+        invalid_session_status_result = run(binary, "--socket", socket_path, "lua", str(invalid_session_status_file))
+        assert invalid_session_status_result.returncode != 0
+        assert "invalid SessionStatus" in invalid_session_status_result.stderr
+        server_thread.join(timeout=5)
+        assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
+        assert not server_error, repr(server_error)
+        assert len(received) == 116
+        assert len(subscriptions) == 116
+        assert received[-2]["method"] == "runtime.status"
+        assert received[-2]["api_version"] == {"major": 1, "minor": 67}
+        assert received[-1]["method"] == "session.status"
+        for subscription in subscriptions:
+            assert subscription["op"] == "events"
+            assert subscription["api_version"] == {"major": 1, "minor": 11}
+            assert subscription["events"] == [
+                "gnoblin.operation.completed",
+                "gnoblin.api.operation-completed",
+            ]
+        request = received[0]
+        assert request["op"] == "api"
+        assert request["method"] == "session.status"
+        assert request["api_version"] == {"major": 1, "minor": 29}
+        assert request["arguments"] == {}
+        monitor_request = received[1]
+        assert monitor_request["op"] == "api"
+        assert monitor_request["method"] == "monitors.list"
+        assert monitor_request["api_version"] == {"major": 1, "minor": 37}
+        assert monitor_request["arguments"] == {}
+        window_request = received[2]
+        assert window_request["method"] == "windows.list"
+        assert window_request["api_version"] == {"major": 1, "minor": 37}
+        assert window_request["arguments"] == {}
+        window_list_json_request = received[3]
+        assert window_list_json_request["method"] == "windows.list"
+        assert window_list_json_request["arguments"] == {}
+        get_request = received[4]
+        assert get_request["method"] == "animation.get"
+        assert get_request["api_version"] == {"major": 1, "minor": 18}
+        assert get_request["arguments"] == {"name": "missing"}
+        preview_request = received[5]
+        assert preview_request["method"] == "animation.preview"
+        assert preview_request["arguments"] == {
+            "name": "gnoblin-layer-open",
+            "target_type": "namespace",
+            "target": "panel:test",
+            "autoplay": False,
+        }
+        animation_calls = received[47:53]
+        assert [call["method"] for call in animation_calls] == [
+            "animation.preview",
+            "animation.seek",
+            "animation.step",
+            "animation.play",
+            "animation.pause",
+            "animation.stop",
+        ]
+        assert animation_calls[0]["arguments"] == {
+            "name": "gnoblin-window-open",
+            "event": "open",
+            "target_type": "window",
+            "target": "42",
+            "autoplay": False,
+        }
+        assert animation_calls[1]["arguments"] == {"session": "preview-17", "progress": 0.5}
+        assert animation_calls[2]["arguments"] == {"session": "preview-17", "milliseconds": 250}
+        for call in animation_calls[3:]:
+            assert call["arguments"] == {"session": "preview-17"}
+        launch_calls = [call for call in received if call["method"] == "launches.snapshot"][-2:]
+        assert [call["method"] for call in launch_calls] == [
+            "launches.snapshot",
+            "launches.snapshot",
+        ]
+        assert all(call["api_version"] == {"major": 1, "minor": 39} for call in launch_calls)
+        launch_operations = [call for call in received if call["method"] in {"launch.begin", "launch.end"}]
+        assert [call["method"] for call in launch_operations] == ["launch.begin", "launch.end"]
+        assert launch_operations[0]["api_version"] == {"major": 1, "minor": 50}
+        assert launch_operations[0]["arguments"] == {
+            "token": "lua-start",
+            "application": "org.example.Editor",
+            "milliseconds": 750,
+        }
+        assert launch_operations[1]["api_version"] == {"major": 1, "minor": 50}
+        assert launch_operations[1]["arguments"] == {"token": "lua-start"}
+        permission_list_request = [call for call in received if call["method"] == "permissions.list"][-1]
+        assert permission_list_request["api_version"] == {"major": 1, "minor": 42}
+        assert permission_list_request["arguments"] == {}
+        version_request = [call for call in received if call["method"] == "version"][-1]
+        assert version_request["api_version"] == {"major": 1, "minor": 19}
+        assert version_request["arguments"] == {}
+        assert received[53]["method"] == "portals.grants"
+        assert received[53]["api_version"] == {"major": 1, "minor": 45}
+        assert received[53]["arguments"] == {}
+        assert received[54]["method"] == "portals.grants"
+        assert received[54]["api_version"] == {"major": 1, "minor": 45}
+        assert received[54]["arguments"] == {"kind": "remote-desktop"}
+        assert received[55]["method"] == "grant.revoke"
+        assert received[55]["api_version"] == {"major": 1, "minor": 14}
+        assert received[55]["arguments"] == {
+            "id": "grant-17",
+            "kind": "remote-desktop",
+            "created_at": 1720000000123,
+        }
+        assert received[56]["method"] == "input.devices"
+        assert received[56]["api_version"] == {"major": 1, "minor": 46}
+        assert received[56]["arguments"] == {}
+        assert received[57]["method"] == "input.sources"
+        assert received[57]["api_version"] == {"major": 1, "minor": 46}
+        assert received[57]["arguments"] == {}
+        assert received[58]["method"] == "input.current_source"
+        assert received[58]["api_version"] == {"major": 1, "minor": 46}
+        assert received[58]["arguments"] == {}
+        assert received[59]["method"] == "input.select"
+        assert received[59]["api_version"] == {"major": 1, "minor": 6}
+        assert received[59]["arguments"] == {"type": "xkb", "id": "us"}
+        assert received[60]["method"] == "input.sources"
+        assert received[60]["api_version"] == {"major": 1, "minor": 46}
+        assert received[60]["arguments"] == {}
+        assert received[61]["method"] == "input.current_source"
+        assert received[61]["api_version"] == {"major": 1, "minor": 46}
+        assert received[61]["arguments"] == {}
+        assert received[62]["method"] == "shortcuts.list"
+        assert received[62]["api_version"] == {"major": 1, "minor": 40}
+        assert received[62]["arguments"] == {}
+        assert received[63]["method"] == "shortcuts.actions"
+        assert received[63]["api_version"] == {"major": 1, "minor": 41}
+        assert received[63]["arguments"] == {"group": "wm"}
+        assert received[64]["method"] == "focus.policy"
+        assert received[64]["api_version"] == {"major": 1, "minor": 19}
+        assert received[64]["arguments"] == {}
+        assert received[65]["method"] == "settings"
+        assert received[65]["api_version"] == {"major": 1, "minor": 19}
+        assert received[65]["arguments"] == {}
+        assert received[66]["method"] == "focus.history"
+        assert received[66]["api_version"] == {"major": 1, "minor": 19}
+        assert received[66]["arguments"] == {"limit": 1}
+        assert received[67]["method"] == "layer.animation_policy"
+        assert received[67]["api_version"] == {"major": 1, "minor": 31}
+        assert received[67]["arguments"] == {"namespace": "bingux-panel"}
+        assert received[105]["method"] == "input.orientation_lock"
+        assert received[105]["api_version"] == {"major": 1, "minor": 66}
+        assert received[105]["arguments"] == {}
+        assert received[106]["method"] == "input.set_orientation_lock"
+        assert received[106]["api_version"] == {"major": 1, "minor": 66}
+        assert received[106]["arguments"] == {"value": True}
+        assert received[107]["method"] == "input.orientation_lock"
+        assert received[108]["method"] == "input.set_orientation_lock"
+        assert received[108]["api_version"] == {"major": 1, "minor": 66}
+        assert received[108]["arguments"] == {"value": True}
+        animation_control_requests = [
+            request
+            for request in received
+            if request["method"]
+            in {
+                "animation.seek",
+                "animation.step",
+                "animation.play",
+                "animation.pause",
+                "animation.stop",
+            }
+            and request.get("arguments", {}).get("session") == "preview-17"
+        ][-5:]
+        assert [request["method"] for request in animation_control_requests] == [
+            "animation.seek",
+            "animation.step",
+            "animation.play",
+            "animation.pause",
+            "animation.stop",
+        ]
+        assert all(request["api_version"] == {"major": 1, "minor": 18} for request in animation_control_requests)
+        assert animation_control_requests[0]["arguments"] == {"session": "preview-17", "progress": 0.4}
+        assert animation_control_requests[1]["arguments"] == {"session": "preview-17", "milliseconds": 250}
+        assert animation_control_requests[2]["arguments"] == {"session": "preview-17"}
+        assert animation_control_requests[3]["arguments"] == {"session": "preview-17"}
+        assert animation_control_requests[4]["arguments"] == {"session": "preview-17"}
+        assert received[68]["method"] == "privacy.state"
+        assert received[68]["api_version"] == {"major": 1, "minor": 47}
+        assert received[68]["arguments"] == {}
+        assert received[69]["method"] == "capabilities.list"
+        assert received[69]["api_version"] == {"major": 1, "minor": 19}
+        assert received[69]["arguments"] == {}
+        assert received[70]["method"] == "permissions.policy"
+        assert received[70]["api_version"] == {"major": 1, "minor": 44}
+        assert received[70]["arguments"] == {}
+        assert received[71]["method"] == "session.status"
+        assert received[71]["api_version"] == {"major": 1, "minor": 29}
+        assert received[71]["arguments"] == {}
+        assert received[72]["method"] == "session.status"
+        assert received[72]["api_version"] == {"major": 1, "minor": 29}
+        assert received[72]["arguments"] == {}
+        assert received[73]["method"] == "session.activity"
+        assert received[73]["api_version"] == {"major": 1, "minor": 24}
+        assert received[73]["arguments"] == {}
+        assert received[74]["method"] == "permissions.check"
+        assert received[74]["api_version"] == {"major": 1, "minor": 43}
+        assert received[74]["arguments"] == {
+            "capability": "remote-desktop",
+            "identity": "app-id:org.example.Remote",
+        }
+        assert received[75]["method"] == "permissions.check"
+        assert received[75]["api_version"] == {"major": 1, "minor": 43}
+        assert received[75]["arguments"] == {
+            "capability": "remote-desktop",
+            "identity": "app-id:org.example.Remote",
+        }
+        create_request = received[6]
+        assert create_request["method"] == "workspace.create"
+        assert create_request["arguments"] == {
+            "id": "codex-probe",
+            "name": "Codex Probe",
+            "activate": False,
+        }
+        list_request = received[7]
+        assert list_request["method"] == "workspaces.list"
+        assert list_request["api_version"] == {"major": 1, "minor": 37}
+        assert list_request["arguments"] == {}
+        match_request = received[8]
+        assert match_request["method"] == "windows.list"
+        assert match_request["api_version"] == {"major": 1, "minor": 37}
+        assert match_request["arguments"] == {}
+        thumbnail_request = received[9]
+        assert thumbnail_request["method"] == "window.thumbnail"
+        assert thumbnail_request["api_version"] == {"major": 1, "minor": 23}
+        assert thumbnail_request["arguments"] == {"id": "42", "width": 64, "height": 64}
+        launch_status_request = received[10]
+        assert launch_status_request["method"] == "launches.snapshot"
+        assert launch_status_request["api_version"] == {"major": 1, "minor": 39}
+        assert launch_status_request["arguments"] == {}
+        assert received[11]["method"] == "windows.list"
+        assert received[11]["api_version"] == {"major": 1, "minor": 37}
+        assert received[11]["arguments"] == {"focused": True}
+        assert received[12]["method"] == "monitors.list"
+        assert received[12]["api_version"] == {"major": 1, "minor": 37}
+        assert received[12]["arguments"] == {}
+        assert received[13]["method"] == "window.move_to_monitor"
+        assert received[13]["arguments"] == {"id": "42", "monitor": "HDMI-1"}
+        assert received[14]["method"] == "window.restore_or_minimize"
+        assert received[14]["api_version"] == {"major": 1, "minor": 48}
+        assert received[14]["arguments"] == {"id": "42"}
+        assert received[15]["method"] == "layers.list"
+        assert received[15]["api_version"] == {"major": 1, "minor": 37}
+        assert received[15]["arguments"] == {}
+        assert received[16]["method"] == "input.sources"
+        assert received[16]["api_version"] == {"major": 1, "minor": 46}
+        assert received[16]["arguments"] == {}
+        assert received[17]["method"] == "input.current_source"
+        assert received[17]["api_version"] == {"major": 1, "minor": 46}
+        assert received[17]["arguments"] == {}
+        assert received[18]["method"] == "input.select"
+        assert received[18]["api_version"] == {"major": 1, "minor": 6}
+        assert received[18]["arguments"] == {"type": "xkb", "id": "us"}
+        assert received[19]["method"] == "shortcuts.list"
+        assert received[19]["api_version"] == {"major": 1, "minor": 40}
+        assert received[19]["arguments"] == {}
+        assert received[20]["method"] == "shortcuts.actions"
+        assert received[20]["api_version"] == {"major": 1, "minor": 41}
+        assert received[20]["arguments"] == {"group": "wm"}
+        assert received[21]["method"] == "permissions.list"
+        assert received[21]["api_version"] == {"major": 1, "minor": 42}
+        assert received[21]["arguments"] == {}
+        assert received[22]["method"] == "permissions.check"
+        assert received[22]["api_version"] == {"major": 1, "minor": 43}
+        assert received[22]["arguments"] == {
+            "capability": "remote-desktop",
+            "identity": "app-id:org.example.Remote",
+        }
+        assert received[23]["method"] == "permissions.policy"
+        assert received[23]["api_version"] == {"major": 1, "minor": 44}
+        assert received[23]["arguments"] == {}
+        assert received[24]["method"] == "input.devices"
+        assert received[24]["api_version"] == {"major": 1, "minor": 46}
+        assert received[24]["arguments"] == {}
+        assert received[25]["method"] == "privacy.state"
+        assert received[25]["api_version"] == {"major": 1, "minor": 47}
+        assert received[25]["arguments"] == {}
+        lua_request = received[26]
+        assert lua_request["op"] == "api"
+        assert lua_request["method"] == "windows.list"
+        assert lua_request["arguments"] == {"focused": True}
+        assert "source" not in lua_request and "code" not in lua_request
+        assert received[27]["method"] == "windows.list"
+        assert received[27]["arguments"] == {"focused": True}
+        assert received[28]["method"] == "windows.list"
+        assert received[28]["arguments"] == {}
+        assert received[29]["method"] == "windows.list"
+        assert received[29]["arguments"] == {}
+        assert received[30]["method"] == "window.minimize"
+        assert received[30]["api_version"] == {"major": 1, "minor": 64}
+        assert received[30]["arguments"] == {"id": "42"}
+        assert received[31]["method"] == "workspaces.list"
+        assert received[31]["arguments"] == {}
+        assert received[32]["method"] == "workspaces.list"
+        assert received[32]["arguments"] == {}
+        assert received[33]["method"] == "workspaces.list"
+        assert received[33]["arguments"] == {}
+        assert received[34]["method"] == "workspaces.list"
+        assert received[34]["arguments"] == {}
+        assert received[35]["method"] == "workspace.switch"
+        assert received[35]["api_version"] == {"major": 1, "minor": 64}
+        assert received[35]["arguments"] == {"id": "codex-probe"}
+        assert received[36]["method"] == "workspace.rename"
+        assert received[36]["arguments"] == {"id": "codex-probe", "name": "Renamed"}
+        assert received[37]["method"] == "workspace.move_window"
+        assert received[37]["arguments"] == {
+            "window": "42",
+            "workspace": {"id": "codex-probe"},
+            "follow": True,
+        }
+        assert received[38]["method"] == "workspace.remove"
+        assert received[38]["arguments"] == {"id": "codex-probe"}
+        assert received[39]["method"] == "monitors.list"
+        assert received[39]["api_version"] == {"major": 1, "minor": 37}
+        assert received[39]["arguments"] == {}
+        assert received[40]["method"] == "monitors.list"
+        assert received[40]["arguments"] == {}
+        assert received[41]["method"] == "monitors.list"
+        assert received[41]["arguments"] == {}
+        assert received[42]["method"] == "monitors.list"
+        assert received[42]["arguments"] == {}
+        assert received[43]["method"] == "layers.list"
+        assert received[43]["api_version"] == {"major": 1, "minor": 37}
+        assert received[43]["arguments"] == {}
+        assert received[44]["method"] == "layers.list"
+        assert received[44]["arguments"] == {
+            "monitor_id": "HDMI-1",
+            "namespace": "panel:top",
+            "layer": "top",
+        }
+        assert received[45]["method"] == "layers.list"
+        assert received[45]["arguments"] == {}
+        unminimize_request = received[46]
+        assert unminimize_request["method"] == "window.unminimize"
+        assert unminimize_request["arguments"] == {"id": "42"}
+        capture_calls = [call for call in received if call["method"] == "shortcut.capture"]
+        assert len(capture_calls) == 2
+        assert all(call["api_version"] == {"major": 1, "minor": 8} for call in capture_calls)
+        assert capture_calls[0]["arguments"] == {}
+        assert capture_calls[1]["arguments"] == {"timeout": 10}
+        surfaces_calls = [call for call in received if call["method"] == "animation.surfaces"]
+        assert len(surfaces_calls) == 1
+        assert surfaces_calls[0]["api_version"] == {"major": 1, "minor": 18}
+        assert surfaces_calls[0]["arguments"] == {}
+        workspace_calls = [call for call in received if call["method"].startswith("workspace.")]
+        assert [call["method"] for call in workspace_calls[-8:]] == [
+            "workspace.create",
+            "workspace.rename",
+            "workspace.switch",
+            "workspace.next",
+            "workspace.previous",
+            "workspace.move_active",
+            "workspace.move_window",
+            "workspace.remove",
+        ]
+        inspect_calls = [call for call in received if call["method"] == "animation.inspect"]
+        assert len(inspect_calls) == 1
+        assert inspect_calls[0]["api_version"] == {"major": 1, "minor": 18}
+        assert inspect_calls[0]["arguments"] == {
+            "name": "fade",
+            "target": "active",
+            "event": "open",
+            "target_type": "window",
+        }
+        privacy_stop_calls = [
+            call for call in received if call["method"] in {"privacy.stop_sharing", "privacy.stop_recording"}
+        ]
+        assert [call["method"] for call in privacy_stop_calls] == [
+            "privacy.stop_sharing",
+            "privacy.stop_recording",
+        ]
+        assert all(call["api_version"] == {"major": 1, "minor": 31} for call in privacy_stop_calls)
+        assert all(call["arguments"] == {} for call in privacy_stop_calls)
+        runtime_reload_calls = [call for call in received if call["method"] == "runtime.reload_config"]
+        assert len(runtime_reload_calls) == 1
+        assert runtime_reload_calls[0]["api_version"] == {"major": 1, "minor": 20}
+        assert runtime_reload_calls[0]["arguments"] == {}
+        session_calls = [call for call in received if call["method"] in {"session.lock", "session.logout"}]
+        assert [call["method"] for call in session_calls] == ["session.lock", "session.logout"]
+        assert [call["api_version"] for call in session_calls] == [
+            {"major": 1, "minor": 21},
+            {"major": 1, "minor": 32},
+        ]
+        assert all(call["arguments"] == {} for call in session_calls)
+        grant_revoke_calls = [
+            call for call in received if call["method"] == "grant.revoke" and call["arguments"].get("id") == "grant-cli"
+        ]
+        assert len(grant_revoke_calls) == 1
+        assert grant_revoke_calls[0]["api_version"] == {"major": 1, "minor": 14}
+        assert grant_revoke_calls[0]["arguments"] == {
+            "kind": "remote-desktop",
+            "id": "grant-cli",
+            "created_at": 1720000000123,
+        }
+
+    print("compiled gnoblinctl CLI smoke checks passed")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -35,17 +35,21 @@ Press Super+Down on a maximised or snapped window to return it to its previous
 size. Press it again to minimise. On an ordinary floating window, the first
 press minimises immediately.
 
-## Square maximised windows
+## Disable compositor corner effects on maximised windows
 
 ```lua
 gnoblin.window_rule {
     match = {type = "window"},
-    corners = {radius = 12, keep_maximized = false},
-    borders = {inner_width = 1, inner_color = "#505050ff", keep_maximized = true},
+    corners = {
+        radius = 12,
+        border_width = 1,
+        border_color = "#505050ff",
+        keep_maximized = false,
+    },
 }
 ```
 
-Maximised borders become square. Sides touching the physical monitor edge are
-omitted; sides beside reserved panels remain visible.
+When a window is maximised, Gnoblin disables its configured rounding and
+outline. This does not change rounded corners drawn by the application itself.
 
 See [shortcuts](/guides/shortcuts) for conflicts and persistent bindings.

@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: preserve user semantics for typed window moves
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 15d70fa98..be1a47489 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -2287,13 +2287,15 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+       gint64 x, y;
+       g_variant_lookup (arguments, "x", "x", &x);
+       g_variant_lookup (arguments, "y", "x", &y);
+-      if (!meta_window_allows_move (window))
++      if (!meta_window_allows_move (window) ||
++          meta_window_is_fullscreen (window) ||
++          meta_window_get_maximize_flags (window) != META_MAXIMIZE_NONE)
+         {
+           g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
+-                               "window cannot be moved");
++                               "window cannot move; unmaximize or leave fullscreen first");
+           return NULL;
+         }
+-      meta_window_move_frame (window, FALSE, (int) x, (int) y);
++      meta_window_move_frame (window, TRUE, (int) x, (int) y);
+     }
+   else if (g_str_equal (method, "window.resize"))
+     {

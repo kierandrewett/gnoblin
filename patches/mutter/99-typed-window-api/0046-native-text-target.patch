@@ -1,0 +1,269 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 29 Sep 2026 09:09:03 +0100
+Subject: [PATCH] add secure native text insertion targets
+
+---
+diff --git a/src/wayland/meta-wayland-client-private.h b/src/wayland/meta-wayland-client-private.h
+index a07152e..01d5cfa 100644
+--- a/src/wayland/meta-wayland-client-private.h
++++ b/src/wayland/meta-wayland-client-private.h
+@@ -76,3 +76,4 @@ void meta_wayland_client_set_window_tag (MetaWaylandClient *client,
+                                          const char *window_tag);
+ 
+ const char * meta_wayland_client_get_window_tag (MetaWaylandClient *client);
++guint64 meta_wayland_client_get_gnoblin_id (MetaWaylandClient *client);
+diff --git a/src/wayland/meta-wayland-client.c b/src/wayland/meta-wayland-client.c
+index 3c36928..efc51ed 100644
+--- a/src/wayland/meta-wayland-client.c
++++ b/src/wayland/meta-wayland-client.c
+@@ -75,8 +75,20 @@ struct _MetaWaylandClient
+   char *window_tag;
+ 
+   pid_t pid;
++  guint64 gnoblin_id;
+ };
+ 
++static guint64 next_gnoblin_client_id;
++
++static guint64
++allocate_gnoblin_client_id (void)
++{
++  next_gnoblin_client_id++;
++  if (G_UNLIKELY (next_gnoblin_client_id == 0))
++    next_gnoblin_client_id++;
++  return next_gnoblin_client_id;
++}
++
+ G_DEFINE_TYPE (MetaWaylandClient, meta_wayland_client, G_TYPE_OBJECT)
+ 
+ static void
+@@ -153,6 +165,7 @@ meta_wayland_client_new_from_wl (MetaContext      *context,
+   MetaWaylandClient *client;
+ 
+   client = g_object_new (META_TYPE_WAYLAND_CLIENT, NULL);
++  client->gnoblin_id = allocate_gnoblin_client_id ();
+   client->context = context;
+   client->kind = META_WAYLAND_CLIENT_KIND_PUBLIC;
+   wl_client_get_credentials (wayland_client, &client->pid, NULL, NULL);
+@@ -181,6 +194,7 @@ meta_wayland_client_new_create (MetaContext  *context,
+     }
+ 
+   client = g_object_new (META_TYPE_WAYLAND_CLIENT, NULL);
++  client->gnoblin_id = allocate_gnoblin_client_id ();
+   client->context = context;
+   client->kind = META_WAYLAND_CLIENT_KIND_CREATED;
+   client->created.client_fd = client_fd[1];
+@@ -379,6 +393,12 @@ meta_wayland_client_get_window_tag (MetaWaylandClient *client)
+   return client->window_tag;
+ }
+ 
++guint64
++meta_wayland_client_get_gnoblin_id (MetaWaylandClient *client)
++{
++  return client ? client->gnoblin_id : 0;
++}
++
+ pid_t
+ meta_wayland_client_get_pid (MetaWaylandClient *client)
+ {
+diff --git a/src/wayland/meta-wayland-seat.c b/src/wayland/meta-wayland-seat.c
+index 0d5770c..19cb7e0 100644
+--- a/src/wayland/meta-wayland-seat.c
++++ b/src/wayland/meta-wayland-seat.c
+@@ -23,6 +23,8 @@
+ 
+ #include "wayland/meta-wayland-data-device.h"
+ #include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-surface-private.h"
++#include "wayland/meta-wayland-client-private.h"
+ #include "wayland/meta-wayland-tablet-seat.h"
+ #include "wayland/meta-wayland-versions.h"
+ 
+@@ -580,6 +582,9 @@ meta_wayland_seat_set_input_focus (MetaWaylandSeat    *seat,
+     }
+ 
+   seat->input_focus = surface;
++  seat->gnoblin_focus_epoch++;
++  if (G_UNLIKELY (seat->gnoblin_focus_epoch == 0))
++    seat->gnoblin_focus_epoch++;
+ 
+   if (surface)
+     {
+@@ -601,6 +606,30 @@ meta_wayland_seat_get_input_focus (MetaWaylandSeat *seat)
+   return seat->input_focus;
+ }
+ 
++guint64
++meta_wayland_seat_get_gnoblin_focus_epoch (MetaWaylandSeat *seat)
++{
++  return seat ? seat->gnoblin_focus_epoch : 0;
++}
++
++gboolean
++meta_wayland_seat_get_gnoblin_focus_identity (MetaWaylandSeat *seat,
++                                              guint64 *surface_id,
++                                              guint64 *client_id,
++                                              guint64 *focus_epoch)
++{
++  MetaWaylandSurface *surface;
++
++  if (!seat || !surface_id || !client_id || !focus_epoch ||
++      !(surface = seat->input_focus) || !surface->resource || !surface->client)
++    return FALSE;
++
++  *surface_id = wl_resource_get_id (surface->resource);
++  *client_id = meta_wayland_client_get_gnoblin_id (surface->client);
++  *focus_epoch = seat->gnoblin_focus_epoch;
++  return *client_id != 0 && *focus_epoch != 0;
++}
++
+ gboolean
+ meta_wayland_seat_get_grab_info (MetaWaylandSeat       *seat,
+                                  MetaWaylandSurface    *surface,
+diff --git a/src/wayland/meta-wayland-seat.h b/src/wayland/meta-wayland-seat.h
+index d9dd2ac..1024519 100644
+--- a/src/wayland/meta-wayland-seat.h
++++ b/src/wayland/meta-wayland-seat.h
+@@ -59,6 +59,7 @@ struct _MetaWaylandSeat
+ 
+   MetaWaylandSurface *input_focus;
+   gulong input_focus_destroy_id;
++  guint64 gnoblin_focus_epoch;
+ 
+   guint capabilities;
+ };
+@@ -86,6 +87,11 @@ void meta_wayland_seat_set_input_focus (MetaWaylandSeat    *seat,
+                                         MetaWaylandSurface *surface);
+ 
+ MetaWaylandSurface * meta_wayland_seat_get_input_focus (MetaWaylandSeat *seat);
++guint64 meta_wayland_seat_get_gnoblin_focus_epoch (MetaWaylandSeat *seat);
++gboolean meta_wayland_seat_get_gnoblin_focus_identity (MetaWaylandSeat *seat,
++                                                        guint64 *surface_id,
++                                                        guint64 *client_id,
++                                                        guint64 *focus_epoch);
+ 
+ gboolean meta_wayland_seat_get_grab_info (MetaWaylandSeat     *seat,
+                                           MetaWaylandSurface  *surface,
+diff --git a/src/wayland/meta-wayland-text-input.c b/src/wayland/meta-wayland-text-input.c
+index ef1866a..05e45a4 100644
+--- a/src/wayland/meta-wayland-text-input.c
++++ b/src/wayland/meta-wayland-text-input.c
+@@ -22,10 +22,12 @@
+ #include "wayland/meta-wayland-text-input.h"
+ 
+ #include <wayland-server.h>
++#include "clutter/clutter-input-focus-private.h"
+ 
+ #include "compositor/meta-surface-actor-wayland.h"
+ #include "mtk/mtk.h"
+ #include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-client-private.h"
+ #include "wayland/meta-wayland-seat.h"
+ #include "wayland/meta-wayland-versions.h"
+ 
+@@ -1240,3 +1242,77 @@ meta_wayland_text_input_handle_event (MetaWaylandTextInput *text_input,
+ 
+   return retval;
+ }
++
++static gboolean
++text_input_matches_gnoblin_focus (MetaWaylandTextInput *text_input,
++                                  guint64 surface_id,
++                                  guint64 client_id,
++                                  guint64 focus_epoch)
++{
++  MetaWaylandSeat *seat;
++  MetaWaylandSurface *surface;
++
++  if (!text_input)
++    return FALSE;
++
++  seat = text_input->seat;
++  surface = text_input->surface;
++
++  return surface && surface->resource && surface->client &&
++         meta_wayland_seat_get_input_focus (seat) == surface &&
++         wl_resource_get_id (surface->resource) == surface_id &&
++         meta_wayland_client_get_gnoblin_id (surface->client) == client_id &&
++         meta_wayland_seat_get_gnoblin_focus_epoch (seat) == focus_epoch &&
++         text_input->enabled &&
++         clutter_input_focus_is_focused (text_input->input_focus);
++}
++
++gboolean
++meta_wayland_text_input_get_gnoblin_state (MetaWaylandTextInput *text_input,
++                                           guint64 *surface_id,
++                                           guint64 *client_id,
++                                           guint64 *focus_epoch,
++                                           graphene_rect_t *caret_rect)
++{
++  float x1, y1, x2, y2;
++
++  if (!text_input || !surface_id || !client_id || !focus_epoch ||
++      !text_input->surface || !text_input->surface->resource ||
++      !text_input_matches_gnoblin_focus (
++        text_input, wl_resource_get_id (text_input->surface->resource),
++        meta_wayland_client_get_gnoblin_id (text_input->surface->client),
++        meta_wayland_seat_get_gnoblin_focus_epoch (text_input->seat)))
++    return FALSE;
++
++  *surface_id = wl_resource_get_id (text_input->surface->resource);
++  *client_id = meta_wayland_client_get_gnoblin_id (text_input->surface->client);
++  *focus_epoch = meta_wayland_seat_get_gnoblin_focus_epoch (text_input->seat);
++  if (caret_rect)
++    {
++      meta_wayland_surface_get_absolute_coordinates (text_input->surface,
++                                                     text_input->cursor_rect.x,
++                                                     text_input->cursor_rect.y,
++                                                     &x1, &y1);
++      meta_wayland_surface_get_absolute_coordinates (text_input->surface,
++                                                     text_input->cursor_rect.x + text_input->cursor_rect.width,
++                                                     text_input->cursor_rect.y + text_input->cursor_rect.height,
++                                                     &x2, &y2);
++      graphene_rect_init (caret_rect, x1, y1, x2 - x1, y2 - y1);
++    }
++  return TRUE;
++}
++
++gboolean
++meta_wayland_text_input_insert_gnoblin_text (MetaWaylandTextInput *text_input,
++                                             guint64 surface_id,
++                                             guint64 client_id,
++                                             guint64 focus_epoch,
++                                             const char *text)
++{
++  if (!text || !text_input_matches_gnoblin_focus (text_input, surface_id,
++                                                   client_id, focus_epoch))
++    return FALSE;
++
++  clutter_input_focus_commit (text_input->input_focus, text);
++  return TRUE;
++}
+diff --git a/src/wayland/meta-wayland-text-input.h b/src/wayland/meta-wayland-text-input.h
+index 458614c..17945ac 100644
+--- a/src/wayland/meta-wayland-text-input.h
++++ b/src/wayland/meta-wayland-text-input.h
+@@ -20,6 +20,7 @@
+ #pragma once
+ 
+ #include <wayland-server.h>
++#include <graphene.h>
+ 
+ #include "meta/window.h"
+ #include "wayland/meta-wayland-types.h"
+@@ -43,3 +44,14 @@ gboolean meta_wayland_text_input_update (MetaWaylandTextInput *text_input,
+ 
+ gboolean meta_wayland_text_input_handle_event (MetaWaylandTextInput *text_input,
+                                                const ClutterEvent   *event);
++
++gboolean meta_wayland_text_input_get_gnoblin_state (MetaWaylandTextInput *text_input,
++                                                     guint64 *surface_id,
++                                                     guint64 *client_id,
++                                                     guint64 *focus_epoch,
++                                                     graphene_rect_t *caret_rect);
++gboolean meta_wayland_text_input_insert_gnoblin_text (MetaWaylandTextInput *text_input,
++                                                       guint64 surface_id,
++                                                       guint64 client_id,
++                                                       guint64 focus_epoch,
++                                                       const char *text);

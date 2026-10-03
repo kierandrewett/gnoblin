@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 20:59:15 +0000
+Subject: [PATCH] portal: give Gnoblin its own backend identity
+
+---
+diff --git a/data/meson.build b/data/meson.build
+index 33504d1..bcbc8d5 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -29,16 +29,16 @@ gnome_portal_conf.set('PORTALS', ';'.join(gnome_portal_interfaces))
+ 
+ portal_dir = datadir / 'xdg-desktop-portal' / 'portals'
+ configure_file(
+-  input: 'gnome.portal.in',
+-  output: 'gnome.portal',
++  input: 'gnoblin.portal.in',
++  output: 'gnoblin.portal',
+   configuration: gnome_portal_conf,
+   install_dir: portal_dir,
+ )
+ 
+ # Service
+ configure_file(
+-  input: 'org.freedesktop.impl.portal.desktop.gnome.service.in',
+-  output: 'org.freedesktop.impl.portal.desktop.gnome.service',
++  input: 'org.freedesktop.impl.portal.desktop.gnoblin.service.in',
++  output: 'org.freedesktop.impl.portal.desktop.gnoblin.service',
+   configuration: libexecdir_conf,
+   install_dir: dbus_service_dir,
+ )
+@@ -46,8 +47,8 @@ configure_file(
+ # systemd unit
+ if systemduserunitdir != ''
+   configure_file(
+-    input: 'xdg-desktop-portal-gnome.service.in',
+-    output: 'xdg-desktop-portal-gnome.service',
++    input: 'xdg-desktop-portal-gnoblin.service.in',
++    output: 'xdg-desktop-portal-gnoblin.service',
+     configuration: libexecdir_conf,
+     install_dir: systemduserunitdir,
+   )
+@@ -55,15 +56,15 @@ endif
+ 
+ # Desktop file
+ desktop_in = configure_file(
+-  input: 'xdg-desktop-portal-gnome.desktop.in.in',
+-  output: 'xdg-desktop-portal-gnome.desktop.in',
++  input: 'xdg-desktop-portal-gnoblin.desktop.in.in',
++  output: 'xdg-desktop-portal-gnoblin.desktop.in',
+   configuration: libexecdir_conf,
+ )
+ 
+ i18n.merge_file(
+   type: 'desktop',
+   input: desktop_in,
+-  output: 'xdg-desktop-portal-gnome.desktop',
++  output: 'xdg-desktop-portal-gnoblin.desktop',
+   po_dir: meson.project_source_root() / 'po',
+   install: true,
+   install_dir: datadir / 'applications',
+diff --git a/src/meson.build b/src/meson.build
+index 4582a7e..8103dc5 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -141,7 +141,7 @@ common_flags = []
+ add_project_arguments(common_flags, language: 'c')
+ 
+ executable(
+-  'xdg-desktop-portal-gnome',
++  'xdg-desktop-portal-gnoblin',
+   sources,
+   dependencies: deps,
+   install: true,
+diff --git a/src/xdg-desktop-portal-gnome.c b/src/xdg-desktop-portal-gnome.c
+index 8f0d15c..bd1a3f7 100644
+--- a/src/xdg-desktop-portal-gnome.c
++++ b/src/xdg-desktop-portal-gnome.c
+@@ -232,7 +232,7 @@ on_name_acquired (GDBusConnection *connection,
+                   const gchar     *name,
+                   gpointer         user_data)
+ {
+-  g_debug ("org.freedesktop.impl.portal.desktop.gnome acquired");
++  g_debug ("org.freedesktop.impl.portal.desktop.gnoblin acquired");
+ }
+ 
+ static void
+@@ -315,7 +315,7 @@ main (int argc, char *argv[])
+   if (opt_verbose)
+     g_log_set_handler (NULL, G_LOG_LEVEL_DEBUG, message_handler, NULL);
+ 
+-  g_set_prgname ("xdg-desktop-portal-gnome");
++  g_set_prgname ("xdg-desktop-portal-gnoblin");
+ 
+   loop = g_main_loop_new (NULL, FALSE);
+ 
+@@ -329,7 +329,7 @@ main (int argc, char *argv[])
+   outstanding_handles = g_hash_table_new (g_str_hash, g_str_equal);
+ 
+   owner_id = g_bus_own_name (G_BUS_TYPE_SESSION,
+-                             "org.freedesktop.impl.portal.desktop.gnome",
++                             "org.freedesktop.impl.portal.desktop.gnoblin",
+                              G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT | (opt_replace ? G_BUS_NAME_OWNER_FLAGS_REPLACE : 0),
+                              on_bus_acquired,
+                              on_name_acquired,

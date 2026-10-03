@@ -3,13 +3,12 @@
 `autostart` maps each entry name to a command Gnoblin starts in the user
 session. Put these settings in `~/.config/gnoblin/init.lua`.
 
-| Field     | Accepted values                       | Default and effect                                   |
-| --------- | ------------------------------------- | ---------------------------------------------------- |
-| Name      | 1–80 letters, numbers, `_` or `-`     | Identifies the entry when another config merges it.  |
-| `command` | Nonempty array of strings             | Required. Runs directly, without shell expansion.    |
-| `when`    | `"on_login"`                          | `"on_login"`; currently the only supported trigger.  |
-| `restart` | `"never"`, `"on_failure"`, `"always"` | `"never"`; retry after 2 seconds when selected.      |
-| `enable`  | Boolean                               | `true`; set to `false` to disable an imported entry. |
+| Field     | Accepted values                   | Default and effect                                   |
+| --------- | --------------------------------- | ---------------------------------------------------- |
+| Name      | 1–80 letters, numbers, `_` or `-` | Identifies the entry when another config merges it.  |
+| `command` | Nonempty array of strings         | Required. Runs directly, without shell expansion.    |
+| `when`    | `"on_login"`                      | `"on_login"`; currently the only supported trigger.  |
+| `enable`  | Boolean                           | `true`; set to `false` to disable an imported entry. |
 
 Use the same name to override an imported command. Omitted fields keep their
 earlier values. Disabling an entry prevents future launches but does not stop
@@ -49,6 +48,9 @@ redirection and other shell syntax require explicitly launching a shell. See
 [command syntax](/guides/shortcuts#commands-and-shell-syntax) and the
 [autostart guide](/guides/autostart) for launch timing and overrides.
 
+An invalid command logs a warning and does not prevent other entries from
+starting. Gnoblin does not restart a command after it exits.
+
 ## Type definition
 
 This is schema pseudocode in Lua table form. `?` marks an optional field;
@@ -60,7 +62,6 @@ gnoblin.configure {
         ["entry-name"] = {
             command = {string, ...},
             when = "on_login"?,
-            restart = "never" | "on_failure" | "always"?,
             enable = boolean?,
         },
     },

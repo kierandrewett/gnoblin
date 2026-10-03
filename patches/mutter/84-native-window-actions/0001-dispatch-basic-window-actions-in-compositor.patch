@@ -1,0 +1,180 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] mutter: dispatch basic window actions natively
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 13c783e9..3198a834 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -41,6 +41,9 @@
+ #include "cogl/cogl.h"
+ #include "meta/common.h"
+ #include "meta/main.h"
++#include "meta/meta-backend.h"
++#include "meta/meta-context.h"
++#include "meta/window.h"
+ 
+ static const GDebugKey meta_debug_keys[] = {
+   { "focus", META_DEBUG_FOCUS },
+@@ -705,15 +708,146 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
+ #endif
+ }
+ 
++static GVariant *
++gnoblin_native_window_action (MetaDisplay *display,
++                              GVariant    *arguments,
++                              GError     **error)
++{
++  static const char * const supported[] = {
++    "above", "unabove", "stick", "unstick", "close", "minimize",
++    "restore", "maximize", "unmaximize", "fullscreen", "unfullscreen", NULL
++  };
++  const char *action = NULL;
++  const char *selector = "active";
++  MetaWindow *window = NULL;
++  g_autoptr (GList) windows = NULL;
++  g_autoptr (GVariant) window_value = NULL;
++  g_autofree char *window_id = NULL;
++  guint32 stable_sequence;
++  GVariantBuilder result;
++
++  if (!arguments || !g_variant_is_of_type (arguments, G_VARIANT_TYPE_VARDICT) ||
++      !g_variant_lookup (arguments, "action", "&s", &action) ||
++      !g_strv_contains (supported, action))
++    return NULL;
++
++  MetaBackend *backend = meta_context_get_backend (meta_display_get_context (display));
++  if (meta_backend_get_gnoblin_session_lock_active (backend))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                           "window management is unavailable while the session is locked");
++      return NULL;
++    }
++
++  window_value = g_variant_lookup_value (arguments, "window", NULL);
++  if (window_value)
++    {
++      if (!g_variant_is_of_type (window_value, G_VARIANT_TYPE_STRING))
++        goto missing_window;
++      selector = g_variant_get_string (window_value, NULL);
++    }
++  if (g_str_equal (selector, "active"))
++    window = meta_display_get_focus_window (display);
++  else
++    {
++      char *end = NULL;
++      guint64 sequence = g_ascii_strtoull (selector, &end, 10);
++      if (end == selector || *end || sequence > G_MAXUINT32)
++        goto missing_window;
++      windows = meta_display_list_all_windows (display);
++      for (GList *item = windows; item; item = item->next)
++        {
++          MetaWindow *candidate = item->data;
++          if (meta_window_get_stable_sequence (candidate) == sequence)
++            {
++              window = candidate;
++              break;
++            }
++        }
++    }
++
++  if (!window || meta_window_is_skip_taskbar (window) ||
++      meta_window_is_override_redirect (window))
++    goto missing_window;
++
++  stable_sequence = meta_window_get_stable_sequence (window);
++  if (g_str_equal (action, "close"))
++    {
++      if (!meta_window_can_close (window))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window cannot be closed");
++          return NULL;
++        }
++      meta_window_delete (window, meta_display_get_current_time (display));
++    }
++  else if (g_str_equal (action, "minimize"))
++    {
++      if (!meta_window_can_minimize (window))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window cannot be minimized");
++          return NULL;
++        }
++      meta_window_minimize (window);
++    }
++  else if (g_str_equal (action, "restore"))
++    meta_window_unminimize (window);
++  else if (g_str_equal (action, "maximize"))
++    {
++      if (!meta_window_can_maximize (window))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window cannot be maximized");
++          return NULL;
++        }
++      meta_window_maximize (window);
++    }
++  else if (g_str_equal (action, "unmaximize"))
++    meta_window_unmaximize (window);
++  else if (g_str_equal (action, "fullscreen"))
++    meta_window_make_fullscreen (window);
++  else if (g_str_equal (action, "unfullscreen"))
++    meta_window_unmake_fullscreen (window);
++  else if (g_str_equal (action, "above"))
++    meta_window_make_above (window);
++  else if (g_str_equal (action, "unabove"))
++    meta_window_unmake_above (window);
++  else if (g_str_equal (action, "stick"))
++    meta_window_stick (window);
++  else
++    meta_window_unstick (window);
++
++  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
++  window_id = g_strdup_printf ("%u", stable_sequence);
++  g_variant_builder_add (&result, "{sv}", "ok", g_variant_new_boolean (TRUE));
++  g_variant_builder_add (&result, "{sv}", "pending", g_variant_new_boolean (TRUE));
++  g_variant_builder_add (&result, "{sv}", "window", g_variant_new_string (window_id));
++  g_variant_builder_add (&result, "{sv}", "action", g_variant_new_string (action));
++  return g_variant_ref_sink (g_variant_builder_end (&result));
++
++missing_window:
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                       "window no longer available; list windows first");
++  return NULL;
++}
++
++
+ GVariant *
+ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+-                                  const char  *method)
++                                  const char  *method,
++                                  GVariant    *arguments,
++                                  GError     **error)
+ {
+   GVariantBuilder result;
+   GVariantBuilder monitors;
+   int n_monitors;
+   int primary;
+ 
++  g_return_val_if_fail (META_IS_DISPLAY (display), NULL);
++
++  if (g_strcmp0 (method, "window.action") == 0)
++    return gnoblin_native_window_action (display, arguments, error);
+   if (g_strcmp0 (method, "monitor.list") != 0)
+     return NULL;
+ 
+diff --git a/src/meta/util.h b/src/meta/util.h
+index 62d9bc66..e43aefe3 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -126,4 +126,6 @@ gboolean meta_gnoblin_frame_renderers_configure (GVariant *services, gboolean re
+ 
+ META_EXPORT
+ GVariant *meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+-                                            const char  *method);
++                                            const char  *method,
++                                            GVariant    *arguments,
++                                            GError     **error);

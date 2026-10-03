@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: preserve user resize semantics for typed window operations
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 1ae372933..15d70fa98 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -2308,7 +2308,7 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+           return NULL;
+         }
+       meta_window_get_frame_rect (window, &frame);
+-      meta_window_move_resize_frame (window, FALSE, frame.x, frame.y,
++      meta_window_move_resize_frame (window, TRUE, frame.x, frame.y,
+                                      (int) width, (int) height);
+     }
+   else if (g_str_equal (method, "window.move_to_workspace"))

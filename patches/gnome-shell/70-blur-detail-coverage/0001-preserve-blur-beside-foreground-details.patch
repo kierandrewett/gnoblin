@@ -1,5 +1,5 @@
 From efffd255af2bece246d435efb2fe00ab4c65e1f5 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:55:56 +0100
 Subject: [PATCH] Preserve backdrop blur beside foreground alpha changes
 

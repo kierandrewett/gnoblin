@@ -1,30 +1,88 @@
 # Build from source
 
-Use this route for current development code. It does not make Gnoblin supported
-on your distribution. For package candidates and their current test status, see
+Use the release source tarball or a Git checkout. This route does not make
+Gnoblin supported on your distribution. For distribution package status, see
 [platform support](platform-support.md).
 
-The build goes into `./install` inside your checkout.
-Keep the checkout there if you register it as a login session.
+The build uses your installed development libraries and writes to `./install`
+inside the source tree. Keep that directory there if you register the build as
+a login session.
 
 ## Prerequisites
 
-This is a native source build. You still need a C/C++ toolchain, Python 3.11 or
-newer, Meson, Ninja, Git, Just and the base development libraries for GNOME.
-The bundled Adwaita-Hyprcursor theme uses librsvg and hyprcursor-util.
-Inkscape is not required.
+### Build tools and libraries
 
-The private build supplies GLib, GJS, Wayland, Wayland protocols, libinput,
-mtdev, Lua, gnome-desktop and the PipeWire client libraries. Other development libraries must already be installed on the host.
+For a native build, you need a C/C++ toolchain, Python 3.11 or newer, CMake,
+Meson, Ninja, tar, xz and the development libraries required by the pinned
+GNOME sources. A Git checkout also needs Git. Install these packages through
+your distribution. The build reports missing libraries and minimum versions.
 
-Fedora, Arch, Debian/Ubuntu and openSUSE use the same private build path.
-The required library versions are checked during the build. If a base dependency
-does not meet the minimum version, the build stops and reports it without
-changing host packages.
+Python is used while building; the installed control command is a native
+GLib/GIO program.
+
+The installed `gsettings-desktop-schemas` development package must be at least
+the version pinned in `gnome-versions.json`. The pinned Mutter compatibility
+patches build remote-desktop support with
+`libpipewire-0.3` version 1.4.11 or newer. PipeWire 1.5.84 and 1.6 add
+optional color-capability and device-ID negotiation.
+
+Mutter uses the shared schemas for settings such as keyboard, pointer, and
+accessibility behavior. The package also supplies enum headers used while
+building Mutter. This does not install or start GNOME Shell.
+
+Gnoblin builds its runtime and patched Mutter into a separate prefix. It uses
+the pinned sources and your installed development libraries; you do not need
+the distribution's `gnome-shell` or `mutter` packages to build or run Gnoblin.
+
+Mutter reads monitor vendor names from the system's udev hardware database.
+Gnoblin builds without the gnome-desktop development package.
+
+### Portal backend
+
+The default build works with any portal frontend and backend installed on your
+system. Applications continue to call the standard portal frontend. You can
+choose an installed backend for Gnoblin with
+[`gnoblin.configure.portals`](/config/configure/portals).
+
+Gnoblin's optional backend uses GTK4 and libadwaita for its dialogs and capture
+features. It uses Glycin for wallpaper previews. Build it with
+`./build.sh --with-portal`.
+
+The pinned `libgxdp` source requires GTK4 development files version 4.22.0 or
+newer. The portal source also requires `xdg-desktop-portal` 1.21.1 or newer.
+These versions are not requirements for the default Gnoblin build.
+
+### Optional features
+
+Mutter's development viewer is built only for `./build.sh --preview`.
+
+The default build uses an installed Xcursor theme. Install a cursor theme if
+your system does not have one. To include Gnoblin's optional Adwaita vector
+theme, install librsvg, hyprcursor-util and the Adwaita cursor theme, then run
+`./build.sh --with-vector-cursors`. Inkscape is not required.
+
+Portal screen sharing uses the compositor's PipeWire support and connects to
+the PipeWire service installed on your system.
 
 ## 1. Get the source
 
-Install Git with your distribution's package manager, then:
+Download one `gnoblin-*-source.tar.xz` from the
+[Gnoblin releases](https://github.com/kierandrewett/gnoblin/releases) into
+`~/Downloads`. From that directory:
+
+```sh
+cd ~/Downloads
+tar -xf gnoblin-*-source.tar.xz
+cd gnoblin-[0-9]*/
+./build.sh
+```
+
+The tarball includes Gnoblin and the pinned, patched Mutter and portal sources.
+`./build.sh` unpacks and builds Mutter. Add `--with-portal` to unpack and build
+Gnoblin's portal backend too. Neither command needs Git. Keep the extracted
+directory if you register it as a login session.
+
+For current development code, install Git and clone the repository instead:
 
 ```sh
 git clone https://github.com/kierandrewett/gnoblin.git
@@ -32,61 +90,152 @@ cd gnoblin
 ./build.sh
 ```
 
-The script builds pinned dependency versions in `./install/deps`, then builds
-Mutter, GNOME Shell and the Gnoblin session in `./install`. It never calls your
-system package manager. Run it as your normal user.
+The script uses CMake and Ninja and checks the installed library versions
+against the pinned source requirements. It never calls your system package
+manager. Run it as your normal user.
 
-The dependency sources and checksums are in `build-dependencies.json`. Completed dependency
-builds are reused. Settings and the patched portal remain
-[optional builds](source-development.md#optional-components).
+The default build includes the session and Mutter. Add `--with-portal` to build
+Gnoblin's optional backend before registering the session. Registration
+installs its portal metadata when the backend is present in the prefix.
 
 ## 2. Try it in a window
 
 From an existing Wayland desktop:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just preview
+./build.sh --preview
 ```
 
-A nested desktop and terminal open. Launch your layer-shell client from that
-terminal. Close the terminal to end the test. See [Devkit](devkit.md) for help.
+The first preview builds Mutter's optional development viewer, then opens a
+nested desktop and terminal. Launch your layer-shell client from that terminal.
+Close the terminal to end the preview. See [Devkit](devkit.md) for help.
 
 ## 3. Add a login session {#login-session}
 
-After the build and nested test succeed:
+### Choose a session
+
+After the build and nested test succeed, install the session runtime packages
+from your distribution: `xdg-desktop-portal` and WirePlumber. Install dconf or
+another persistent GSettings backend so desktop
+settings survive logout. The source build does not install host packages.
+GNOME Settings is optional.
+
+The example configuration binds media keys to `wpctl` and `playerctl`. To add
+brightness shortcuts, bind the keys to a command such as `brightnessctl`.
+Install the commands used by your configuration.
+
+Register the standalone Gnoblin login:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just register-session
+./build.sh --register-session
 ```
 
-Run the `sudo install` commands it prints. Then
-[install a shell](bring-your-own-shell.md), log out and select **Gnoblin**.
+Registration adds only the standalone Gnoblin login. The normal GNOME session
+remains a separate login-screen choice, so you can switch back to GNOME without
+installing a Gnoblin compatibility session.
+
+The lean launcher needs `dbus-update-activation-environment` to update the
+shared user bus. Install `dbus-tools` on Fedora or `dbus` on Arch before
+registering the login.
+
+### Lean session behavior
+
+The lean login launches Gnoblin directly. After the compositor is ready, it gives
+user services the Wayland display address and logind session class, then starts
+its session target and XDG autostart.
+
+The session target starts Gnoblin's idle service. It uses these installed
+desktop settings:
+
+- `org.gnome.desktop.session idle-delay`: seconds before idle activation;
+  `0` disables it.
+- `org.gnome.desktop.screensaver lock-enabled`: `true` locks the screen after
+  activation; `false` leaves it unlocked.
+- `org.gnome.desktop.screensaver lock-delay`: requested seconds before locking;
+  the compositor applies the delay after idle activation.
+
+Run `gsettings get org.gnome.desktop.session idle-delay` to see the current
+timeout. Applications can prevent idle activation through the ScreenSaver
+`Inhibit` method or the desktop portal. Portal apps can also prevent suspension.
+Portal inhibition ends when the request closes or its caller disconnects.
+Direct ScreenSaver inhibition ends at `UnInhibit` or caller disconnect.
+
+The login reports logout and user-switch inhibition as unsupported. It uses
+`Gnoblin` as its desktop identity so GNOME-only autostart entries stay out of
+the session. The launcher
+clears display addresses left by a previous login before the compositor starts.
+
+If Xwayland is absent, the lean login starts without X11 application support.
+Install Xwayland through your distribution if you need X11 applications.
+
+Logout ends the compositor and returns to the login manager. Save your work
+before logging out.
+
+The Gnoblin login does not start GNOME Settings Daemon services. Select the
+separate GNOME login at the login screen when you need those services.
+
+The lean path needs a fresh Wayland login managed by logind. The login manager
+must set `XDG_SESSION_TYPE=wayland` when it starts Gnoblin.
+
+`./build.sh --register-session` asks for sudo to install the login entry and,
+when the prefix includes Gnoblin's portal backend, its system portal metadata.
+It then links Gnoblin's user services.
+
+[Install a shell](bring-your-own-shell.md), log out, and select **Gnoblin**.
+This registration changes the Gnoblin login entry; it does not change a
+separate GNOME session.
 
 Registration only adds session files; it does not build a missing runtime.
 
 ## Build options
 
-| Command                  | Behaviour                                |
-| ------------------------ | ---------------------------------------- |
-| `./build.sh`             | Build private dependencies, then Gnoblin |
-| `./build.sh --deps-only` | Build only the private dependencies      |
-| `./build.sh --no-deps`   | Reuse dependencies and rebuild Gnoblin   |
-| `./build.sh --dry-run`   | Show what will be built                  |
+| Command                            | Behaviour                                   |
+| ---------------------------------- | ------------------------------------------- |
+| `./build.sh`                       | Build Gnoblin and its session data          |
+| `./build.sh --jobs N`              | Use N parallel compilation jobs             |
+| `./build.sh --prefix DIR`          | Build into DIR instead of `./install`       |
+| `./build.sh --without-xwayland`    | Omit X11 application support                |
+| `./build.sh --with-portal`         | Build Gnoblin's optional GTK portal backend |
+| `./build.sh --with-vector-cursors` | Include the optional vector cursor theme    |
+| `./build.sh --dry-run`             | Show what will be built                     |
+| `./build.sh --verbose`             | Show all build output as it runs            |
+| `./build.sh --preview`             | Try the build in a nested Wayland session   |
+| `./build.sh --register-session`    | Add the standalone Gnoblin login entry      |
+
+Use `./build.sh --preview --terminal kitty` to choose a terminal.
+Use `--without-xwayland` only if you run Wayland-native applications; X11-only
+applications cannot open in that build. Rebuild without the option to restore
+XWayland support.
+
+The build shows each top-level Ninja entry, compilation progress at roughly
+10% intervals, and up to 14 recent lines of other output per entry. It saves
+every line under `build/logs/` and points to that log on failure. Use
+`--verbose` to watch every command and diagnostic as it runs.
+
+Stage and result colors appear in a terminal. Set `NO_COLOR=1` to disable them;
+redirected output and log files contain plain text.
+
+Compiler temporary files use `build/tmp` so a separate `/tmp` quota does not
+interrupt a build with space available in the checkout.
 
 ## How GNOME stays separate
 
-Dependency headers, libraries and tools stay in `./install/deps`. Gnoblin's
-binaries link to that directory. Its library paths are not written to your
-shell profile or the system loader configuration. The dependency tool directory
-is not added to application launch paths.
+Gnoblin's patched Mutter stays in the private build prefix. The runtime and
+optional portal backend use development libraries installed by your
+distribution. The build does not add library paths to your shell profile or
+the system loader configuration.
+
+Gnoblin adds its own login entry and leaves the distribution's GNOME session
+available. Select the GNOME entry at login to return to the normal GNOME
+desktop.
 
 The host still provides the kernel, graphics drivers, system services and
-compatible base libraries. The private PipeWire client connects to the existing
+compatible base libraries. The installed PipeWire client connects to the existing
 audio service; the build does not register another PipeWire service.
 
 ## Update
 
-From the checkout:
+For a Git checkout:
 
 ```sh
 git pull --ff-only
@@ -96,17 +245,37 @@ git pull --ff-only
 Preserve local changes if Git refuses the update. Log out and back in after
 rebuilding; configuration reload cannot replace compositor libraries.
 
+For a release tarball, download the newer source tarball, extract it into a
+new directory, and run `./build.sh` there. If the old build was registered as
+a login session, register the new build with the same registration option you
+used before: `./build.sh --register-session`.
+
+Registration updates Gnoblin's user-unit links to the new build. If a custom
+unit uses one of those names, move it aside first.
+Log out and back in to use the new compositor.
+
 ## Remove the local session
 
-Log into another session. Remove only the files created by local registration:
+Log into another session. Remove only the files created by local registration.
+The `org.gnoblin.Shell*` and `gnome-session@gnoblin` paths below are included to
+clean up registrations created by older Gnoblin builds. When you use
+`scripts/install-system.sh`, it removes the exact managed GNOME session drop-in
+after a successful DNF transaction. It stops if that file was edited.
 
 ```sh
-rm ~/.config/systemd/user/org.gnoblin.Shell.target
-rm ~/.config/systemd/user/org.gnoblin.Shell@wayland.service
-rm ~/.config/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf
+rm -f ~/.config/systemd/user/gnoblin-session.target
+rm -f ~/.config/systemd/user/gnoblin-idle.service
+rm -f ~/.config/systemd/user/org.gnoblin.Shell.target
+rm -f ~/.config/systemd/user/org.gnoblin.Shell@wayland.service
+rm -f ~/.config/systemd/user/xdg-desktop-portal-gnoblin.service
+rm -f ~/.config/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf
 systemctl --user daemon-reload
-sudo rm /usr/share/wayland-sessions/gnoblin.desktop
-sudo rm /usr/share/gnome-session/sessions/gnoblin.session
+sudo rm -f /usr/share/wayland-sessions/gnoblin.desktop
+sudo rm -f /usr/share/gnome-session/sessions/gnoblin.session
+sudo rm -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
+# Remove the system default installed by earlier Gnoblin builds.
+sudo rm -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+sudo rm -f /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
 ```
 
 You can then remove the checkout's `build` and `install` directories.
@@ -115,7 +284,31 @@ For a packaged install, use the package manager instead.
 ## Missing or outdated dependencies
 
 The build stops at a missing dependency instead of changing host packages.
-Keep the error and the Meson log path when reporting a build problem.
+To check the versioned libraries before building, run:
+
+```sh
+python3 scripts/check-build-deps.py
+```
+
+This check reads the pinned GNOME source requirements for the default build.
+Add `--without-xwayland` if building without X11 application support, or
+`--with-vector-cursors` if enabling the optional vector cursor theme. You can
+combine the flags. Meson checks other build requirements as it configures each
+component. Keep the error and the Meson log path when reporting a build problem.
 
 The pinned GNOME versions are in [gnome-versions.json](https://github.com/kierandrewett/gnoblin/blob/main/gnome-versions.json).
 See [source development](source-development.md) for component rebuilds.
+
+## Build reports disk quota exceeded
+
+Check space and your user quota on the filesystem containing the extracted
+source:
+
+```sh
+df -h .
+quota -s
+```
+
+Move the extracted source directory to a filesystem with enough quota, then
+run `./build.sh` there. The build keeps compiler temporary files under
+`build/tmp` inside that directory.

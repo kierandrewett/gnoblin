@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 19:00:00 +0100
+Subject: [PATCH] core: host compositor control socket in native process
+
+---
+diff --git a/src/core/mutter.c b/src/core/mutter.c
+index 7471966f2..5acd5c4a5 100644
+--- a/src/core/mutter.c
++++ b/src/core/mutter.c
+@@ -25,6 +25,7 @@
+ #include <stdlib.h>
+ 
+ #include "compositor/meta-plugin-manager.h"
++#include "core/gnoblin-native-control.h"
+ #include "meta/main.h"
+ #include "meta/meta-backend.h"
+ #include "meta/meta-context.h"
+@@ -225,6 +226,7 @@ main (int argc, char **argv)
+   g_autoptr (MetaContext) context = NULL;
+   g_autoptr (GError) error = NULL;
+   g_auto (GStrv) command_argv = NULL;
++  GnoblinNativeControl *native_control = NULL;
+ 
+   context = meta_create_context ("Mutter");
+ 
+@@ -259,6 +261,16 @@ main (int argc, char **argv)
+       return EXIT_FAILURE;
+     }
+ 
++  if (gnoblin_config)
++    {
++      native_control = gnoblin_native_control_start (context, &error);
++      if (!native_control)
++        {
++          g_printerr ("Failed to start Gnoblin control: %s\n", error->message);
++          return EXIT_FAILURE;
++        }
++    }
++
+   meta_context_notify_ready (context);
+ 
+   if (command_argv)
+@@ -277,9 +289,11 @@ main (int argc, char **argv)
+ 
+   if (!meta_context_run_main_loop (context, &error))
+     {
++      gnoblin_native_control_stop (native_control);
+       g_printerr ("Mutter terminated with a failure: %s\n", error->message);
+       return EXIT_FAILURE;
+     }
+ 
++  gnoblin_native_control_stop (native_control);
+   return EXIT_SUCCESS;
+ }
+diff --git a/src/meson.build b/src/meson.build
+index 8a31d5b84..c4977682e 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1211,13 +1211,14 @@ libmutter_dep = declare_dependency(
+ mutter = executable('mutter',
+   sources: [
+     files('core/mutter.c'),
++    files('core/gnoblin-native-control.c'),
+   ],
+   include_directories: mutter_includes,
+   c_args: [
+     mutter_c_args,
+     '-DG_LOG_DOMAIN="mutter"',
+   ],
+-  dependencies: [libmutter_dep],
++  dependencies: [libmutter_dep, dependency('json-glib-1.0')],
+   install_dir: bindir,
+   install: true,
+ )

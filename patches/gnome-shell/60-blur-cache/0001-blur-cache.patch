@@ -1,5 +1,5 @@
 From 97867b96ba5b683ab62aab1c2b4929ace2231997 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:51:37 +0100
 Subject: [PATCH] Cache Gaussian backdrops and track bounded scene damage
 

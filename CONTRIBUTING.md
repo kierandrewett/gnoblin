@@ -9,11 +9,10 @@ the Bingux repository.
 
 First install the dependencies listed in the
 [source installation guide](docs/install-source.md).
-Initialise the pinned upstream trees and build a private prefix:
+Build the pinned upstream sources into a separate prefix:
 
 ```sh
-just setup
-just build-source
+./build.sh
 ```
 
 Run the fast checks before sending a change:
@@ -39,12 +38,28 @@ Keep upstream submodules at their pinned commits. Put Gnoblin overlays in
 `patches/`. Do not commit build prefixes, generated tarballs or local session
 configuration.
 
+Export a committed subproject change through `scripts/manage-patches.py` so its
+mail header uses the Gnoblin patch identity:
+
+```sh
+scripts/manage-patches.py export mutter HEAD \
+  patches/mutter/90-example/0001-example.patch
+```
+
+The source build patches Mutter and `xdg-desktop-portal-gnome`; it does not
+build or patch GNOME Shell. For uncommitted tracked changes, use
+`scripts/manage-patches.py export-worktree PROJECT OUTPUT --subject "..."`.
+For a patch that follows existing patches on the same lines, use a temporary
+subproject worktree. Apply the earlier patches, stage that state as the baseline,
+make the new edit, then export with `--source-tree WORKTREE --against-index`.
+`scripts/apply-patches.sh` checks every patch header before use.
+
 ## Packaging
 
 Fedora packages use the specs in `packaging/rpm/`. The COPR project is
 `kierandrewett/gnoblin`; publish only after the local release gate and a clean
-install test pass. Debian and Arch files describe the planned package split
-until their build and install checks are complete.
+install test pass. The Arch recipe uses the same CMake/Ninja source build;
+its package still needs clean installation and removal verification.
 
 Use small conventional commits. Keep unrelated working-tree changes out of a
 commit, and explain the user-visible result in the commit body.

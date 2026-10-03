@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Seeded Wayland window lifecycle fuzzer for an isolated Gnoblin session.
+"""Seeded Wayland window lifecycle fuzzer for an isolated Gnoblin devkit.
 
-Each run saves its seed, generated action plan, executed prefix, and shell log.
-Replay a run with `python3 tests/window-lifecycle-fuzz.py --replay repro.json`.
+Each run saves its seed, generated action plan, executed prefix, and compositor
+log. Replay a run with `python3 tests/window-lifecycle-fuzz.py --replay repro.json`.
 """
 
 from __future__ import annotations
@@ -26,21 +26,9 @@ import traceback
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = Path(__file__).resolve()
-sys.path.insert(0, str(ROOT / "tests"))
-from gnoblin_test_session import (  # noqa: E402
-    FRAME_ACTION_CLOSE,
-    eval_shell,
-    frame_button_center,
-    send_pointer,
-    shell_window,
-    shell_windows,
-    start_minimal_testing_shell,
-    wait_for,
-)
 
 VALID_OPERATIONS = {
     "open",
-    "activate",
     "minimize",
     "unminimize",
     "maximize",
@@ -48,64 +36,20 @@ VALID_OPERATIONS = {
     "fullscreen",
     "unfullscreen",
     "resize",
-    "hover",
-    "frame_click",
-    "drag_resize",
-    "frame_policy",
     "wm_close",
     "graceful_close",
     "abrupt_close",
-    "shell_shutdown",
 }
+CLOSE_OPERATIONS = {"wm_close", "graceful_close", "abrupt_close"}
+# These require user input or supervisor lifecycle interfaces that the native
+# window API intentionally does not provide. Keep them in a separate test path.
+SEPARATE_TEST_OPERATIONS = {"activate", "hover", "frame_click", "drag_resize", "frame_policy", "shell_shutdown"}
 FATAL_LOG = re.compile(
-    r"GNOME Shell-CRITICAL|(?:Clutter|Mutter|Meta)-CRITICAL|JS ERROR|"
-    r"Traceback \(most recent call last\)|assertion .* failed|"
-    r"GNOBLIN_GDB_(?:FATAL|ABORT): SIG(?:SEGV|ABRT|BUS|ILL)|"
-    r"segmentation fault|runtime check failed|core dumped|GNOBLIN_GDB_CRITICAL",
+    r"(?:Mutter|Meta|Gnoblin)-CRITICAL|Traceback \(most recent call last\)|"
+    r"assertion .* failed|segmentation fault|runtime check failed|core dumped|"
+    r"GNOBLIN_GDB_(?:FATAL|ABORT): SIG(?:SEGV|ABRT|BUS|ILL)|GNOBLIN_GDB_CRITICAL",
     re.IGNORECASE,
 )
-FRAME_MODES = {0: "off", 1: "auto", 2: "prefer-server", 3: "replace"}
-
-
-def write_frame_config(path: Path, policies: dict[int, list[int]]) -> None:
-    """Set fuzz-window frames through Gnoblin's normal window-rule config path."""
-    rules = [
-        '        {match = {title = "^Gnoblin Fuzz [0-9][0-9][0-9][0-9]$"}, '
-        'frame = {mode = "replace", extents = {36, 2, 2, 2}}},'
-    ]
-    for window_id, policy in sorted(policies.items()):
-        mode = FRAME_MODES[policy[0]]
-        crop = ", ".join(str(value) for value in policy[1:5])
-        extents = ", ".join(str(value) for value in policy[5:9])
-        rules.append(
-            f'        {{match = {{title = "^Gnoblin Fuzz {window_id:04d}$"}}, '
-            f'frame = {{mode = "{mode}", crop = {{{crop}}}, extents = {{{extents}}}}}}},'
-        )
-    contents = 'return { ["window-rules"] = {\n' + "\n".join(rules) + "\n    } }\n"
-    temporary = path.with_suffix(".tmp")
-    temporary.write_text(contents)
-    temporary.replace(path)
-
-
-def window_operation_expression(action: dict, window_expr: str) -> str:
-    """Build the shell call for one lifecycle action without reading unrelated fields."""
-    op = action["op"]
-    operations = {
-        "activate": f"{window_expr}.activate(global.get_current_time())",
-        "minimize": f"{window_expr}.minimize()",
-        "unminimize": f"{window_expr}.unminimize()",
-        "maximize": f"{window_expr}.maximize()",
-        "unmaximize": f"{window_expr}.unmaximize()",
-        "fullscreen": f"{window_expr}.make_fullscreen()",
-        "unfullscreen": f"{window_expr}.unmake_fullscreen()",
-    }
-    if op == "resize":
-        return (
-            f"{window_expr}.move_resize_frame(false,{action['x']},{action['y']},{action['width']},{action['height']})"
-        )
-    if op in operations:
-        return operations[op]
-    raise ValueError(f"unsupported operation: {op}")
 
 
 def validate_plan(value: object) -> dict:
@@ -120,9 +64,10 @@ def validate_plan(value: object) -> dict:
             raise ValueError(f"invalid delay at index {index}")
         if action["op"] != "open" and not isinstance(action.get("window"), int):
             raise ValueError(f"action {index} requires an integer window id")
-    shutdowns = [i for i, action in enumerate(value["actions"]) if action["op"] == "shell_shutdown"]
-    if shutdowns and shutdowns != [len(value["actions"]) - 1]:
-        raise ValueError("shell_shutdown must be the final action")
+        if action["op"] == "resize" and any(
+            not isinstance(action.get(key), int) for key in ("x", "y", "width", "height")
+        ):
+            raise ValueError(f"resize action {index} requires integer x, y, width, and height")
     return value
 
 
@@ -143,7 +88,6 @@ def generate_plan(seed: int, steps: int, max_windows: int) -> dict:
     open_window()
     weights = [
         ("open", 12),
-        ("activate", 10),
         ("minimize", 4),
         ("unminimize", 4),
         ("maximize", 4),
@@ -151,15 +95,10 @@ def generate_plan(seed: int, steps: int, max_windows: int) -> dict:
         ("fullscreen", 2),
         ("unfullscreen", 2),
         ("resize", 8),
-        ("hover", 10),
-        ("frame_click", 5),
-        ("drag_resize", 4),
-        ("frame_policy", 5),
         ("wm_close", 4),
         ("graceful_close", 7),
         ("abrupt_close", 5),
     ]
-    closes = {"wm_close", "graceful_close", "abrupt_close", "frame_click"}
 
     for _ in range(steps):
         choices = [item for item in weights if item[0] != "open" or len(active) < max_windows]
@@ -180,28 +119,9 @@ def generate_plan(seed: int, steps: int, max_windows: int) -> dict:
                 width=rng.randrange(220, 760),
                 height=rng.randrange(180, 520),
             )
-        elif op == "hover":
-            action["point"] = rng.randrange(5)
-        elif op == "frame_policy":
-            mode = rng.choice([0, 2, 3])
-            action["policy"] = [
-                mode,
-                8 if mode == 2 else 0,
-                0,
-                0,
-                0,
-                36 if mode else 0,
-                2 if mode else 0,
-                2 if mode else 0,
-                2 if mode else 0,
-            ]
         actions.append(action)
-        if op in closes:
+        if op in CLOSE_OPERATIONS:
             active.remove(window)
-
-    if not active:
-        open_window()
-    actions.append({"op": "shell_shutdown", "window": rng.choice(active), "delay_ms": rng.randrange(30, 100)})
 
     return {"schema": 1, "seed": seed, "steps": steps, "max_windows": max_windows, "actions": actions}
 
@@ -234,8 +154,6 @@ def run_parent(args: argparse.Namespace) -> int:
     if plan_path.exists():
         raise FileExistsError(f"refusing to overwrite existing run artifact: {plan_path}")
     save_json(plan_path, plan)
-    config_path = artifact_dir / "window-rules.lua"
-    write_frame_config(config_path, {})
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True)
     monitor = "1280x800"
     extra_monitor = os.environ.get("EXTRA_MONITOR")
@@ -253,28 +171,30 @@ def run_parent(args: argparse.Namespace) -> int:
             "prefix": os.environ.get("GNOBLIN_PREFIX", str(ROOT / "install")),
             "monitor": monitor,
             "extra_monitor": extra_monitor,
-            "gnoblin_config": str(config_path),
             "plan": str(plan_path),
             "replay_command": replay_command,
         },
     )
-    state_dir = artifact_dir / "private-state"
-    state_dir.mkdir(mode=0o700)
+
     env = os.environ.copy()
     env.update(
         {
-            "GNOBLIN_CONFIG": str(config_path),
-            "GNOBLIN_TEST_UNSAFE_MODE": "1",
-            "GNOBLIN_TEST_CLIENT": str(SCRIPT),
-            "GNOBLIN_LIFECYCLE_FUZZ_INNER": "1",
             "GNOBLIN_LIFECYCLE_FUZZ_PLAN": str(plan_path),
             "GNOBLIN_LIFECYCLE_FUZZ_EVENTS": str(artifact_dir / "events.jsonl"),
-            "GNOBLIN_STATE_DIR": str(state_dir),
-            "GNOBLIN_TEST_CLIENT_EXPECTS_SHELL_EXIT": "1" if plan["actions"][-1]["op"] == "shell_shutdown" else "0",
-            "MONITOR": "1280x800",
+            "GNOBLIN_LIFECYCLE_FUZZ_ARTIFACTS": str(artifact_dir),
+            "GNOBLIN_DEVKIT_EXEC": f"python3 {shlex.quote(str(SCRIPT))} --inner",
+            # Headless hosts may lack PipeWire, which makes Mutter's optional
+            # viewer exit. Keep the compositor alive for the fuzzer's run.
+            "GNOBLIN_DEVKIT_KEEP_SESSION": "1",
+            "MONITOR": monitor,
             "PYTHONUNBUFFERED": "1",
         }
     )
+    if extra_monitor:
+        env["EXTRA_MONITOR"] = extra_monitor
+    else:
+        env.pop("EXTRA_MONITOR", None)
+
     print(f"Gnoblin lifecycle fuzzer: seed={seed}, actions={len(plan['actions'])}", flush=True)
     print(f"Artifacts: {artifact_dir}", flush=True)
     print(f"Replay: {replay_command}", flush=True)
@@ -282,7 +202,7 @@ def run_parent(args: argparse.Namespace) -> int:
     log_path = artifact_dir / "runner.log"
     with log_path.open("w") as log:
         process = subprocess.Popen(
-            [str(ROOT / "scripts/run-gnome-shell.sh")],
+            [str(ROOT / "scripts/run-gnoblin-devkit.sh")],
             cwd=ROOT,
             env=env,
             stdout=subprocess.PIPE,
@@ -312,13 +232,14 @@ def run_parent(args: argparse.Namespace) -> int:
                 return_code = process.wait()
         reader.join()
 
-    published_log = state_dir / "gnome-shell-last.log"
-    if published_log.exists():
-        shutil.copy2(published_log, artifact_dir / "shell.log")
-    shell_log = (
-        (artifact_dir / "shell.log").read_text(errors="replace") if (artifact_dir / "shell.log").exists() else ""
-    )
-    diagnostics = [line for line in shell_log.splitlines() if FATAL_LOG.search(line)]
+    runtime_log = artifact_dir / "compositor.log"
+    if not runtime_log.exists():
+        state_dir = Path(os.environ.get("GNOBLIN_STATE_DIR", Path.home() / ".local/state/gnoblin"))
+        published_log = state_dir / "devkit-last.log"
+        if published_log.exists():
+            shutil.copy2(published_log, runtime_log)
+    compositor_log = runtime_log.read_text(errors="replace") if runtime_log.exists() else ""
+    diagnostics = [line for line in compositor_log.splitlines() if FATAL_LOG.search(line)]
     failed = return_code != 0 or timed_out or bool(diagnostics)
     if failed:
         executed = []
@@ -351,366 +272,198 @@ def run_parent(args: argparse.Namespace) -> int:
                 "client_failure": client_failure,
                 "repro": str(artifact_dir / "repro.json"),
                 "runner_log": str(log_path),
-                "shell_log": str(artifact_dir / "shell.log"),
+                "compositor_log": str(runtime_log),
             },
         )
         (artifact_dir / "repair-request.md").write_text(
             "# Gnoblin lifecycle failure\n\n"
             f"Seed: `{seed}`\n\n"
             f"Replay: `python3 {SCRIPT} --replay {artifact_dir / 'repro.json'}`\n\n"
-            "Inspect `shell.log`, `runner.log`, and `events.jsonl`; reproduce the failure, "
+            "Inspect `compositor.log`, `runner.log`, and `events.jsonl`; reproduce the failure, "
             "make the smallest source fix, then rerun this exact replay and the relevant "
             "headless integration checks. Keep the patch isolated and reviewable.\n"
         )
-        print(f"FAIL: compositor/session did not survive; repro: {artifact_dir / 'repro.json'}", file=sys.stderr)
+        print(f"FAIL: devkit lifecycle run did not survive; repro: {artifact_dir / 'repro.json'}", file=sys.stderr)
         return 1
 
-    print(f"PASS: compositor survived seed {seed}; replayable run: {plan_path}", flush=True)
+    print(
+        f"PASS: native window lifecycle survived seed {seed}; frame interaction and supervisor shutdown remain separate tests; replay: {plan_path}",
+        flush=True,
+    )
     return 0
 
 
 def run_inside() -> int:
-    if not os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-"):
-        raise RuntimeError("the lifecycle driver must run inside run-gnome-shell.sh")
+    if not os.environ.get("GNOBLIN_COMPOSITOR_SOCKET") or not os.environ.get("WAYLAND_DISPLAY", "").startswith(
+        "gnoblin-devkit-"
+    ):
+        raise RuntimeError("the lifecycle driver must run inside run-gnoblin-devkit.sh")
     plan_path = Path(os.environ["GNOBLIN_LIFECYCLE_FUZZ_PLAN"])
     event_path = Path(os.environ["GNOBLIN_LIFECYCLE_FUZZ_EVENTS"])
-    config_path = Path(os.environ["GNOBLIN_CONFIG"])
+    artifact_dir = Path(os.environ["GNOBLIN_LIFECYCLE_FUZZ_ARTIFACTS"])
     plan = read_plan(plan_path)
     fixture_dir = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin-lifecycle-fuzz"
     fixture_dir.mkdir(parents=True, exist_ok=True)
     fixture = fixture_dir / "window-client"
+    gnoblinctl = os.environ.get("GNOBLINCTL") or shutil.which("gnoblinctl") or "gnoblinctl"
     flags = subprocess.check_output(["pkg-config", "--cflags", "--libs", "gtk4"], text=True).split()
     subprocess.run(["cc", str(ROOT / "tests/window-lifecycle-client.c"), "-o", str(fixture), *flags], check=True)
     processes: dict[int, subprocess.Popen] = {}
-    test_shell: subprocess.Popen | None = None
-    frame_policies: dict[int, list[int]] = {}
+
+    def run_ctl(*arguments: str) -> subprocess.CompletedProcess[str]:
+        command = [gnoblinctl, *arguments]
+        result = subprocess.run(command, capture_output=True, text=True, timeout=10)
+        if result.returncode:
+            detail = result.stderr.strip() or result.stdout.strip() or "no diagnostic output"
+            raise RuntimeError(f"gnoblinctl {shlex.join(arguments)} failed: {detail}")
+        return result
 
     def title_for(window_id: int) -> str:
         return f"Gnoblin Fuzz {window_id:04d}"
 
-    def state_for(window_id: int) -> dict | None:
-        return shell_window(title_for(window_id))
+    def list_windows(title: str) -> list[dict]:
+        result = run_ctl("--json", "window", "list", "--title", title)
+        return json.loads(result.stdout)["windows"]
 
-    def frame_interaction(window_id: int, field: str) -> int | None:
-        state = state_for(window_id)
-        return state["layout"]["presentation"][field] if state else None
-
-    def frame_button_is_pickable(window_id: int, x: int, y: int) -> bool:
-        title = json.dumps(title_for(window_id))
-        return bool(
-            eval_shell(
-                "(()=>{const C=imports.gi.Clutter;let a=global.stage.get_actor_at_pos("
-                f"C.PickMode.REACTIVE,{x},{y});while(a){{if(a.get_name()==='gnoblin-native-frame')"
-                f"return a.get_parent()?.meta_window.title==={title};a=a.get_parent();}}return false;}})()"
-            )
-        )
-
-    def frame_pick_diagnostic(window_id: int, x: int, y: int) -> dict:
-        title = json.dumps(title_for(window_id))
-        return eval_shell(
-            "(()=>{const C=imports.gi.Clutter,p=global.get_pointer();"
-            f"const w=global.get_window_actors().find(a=>a.meta_window.title==={title});"
-            f"let actor=global.stage.get_actor_at_pos(C.PickMode.REACTIVE,{x},{y});"
-            "const pick=[];while(actor){pick.push(String(actor));actor=actor.get_parent();}"
-            "const r=w?.meta_window.get_frame_rect();return {requested:["
-            f"{x},{y}],pointer:[p[0],p[1]],pick,minimized:w?.meta_window.minimized,"
-            "mapped:w?.is_mapped(),frame:r&&[r.x,r.y,r.width,r.height],"
-            "layout:w&&imports.gi.Meta.gnoblin_window_frame_get(w.meta_window).recursiveUnpack()};})()"
-        )
-
-    def set_frame_policy(window_id: int, policy: list[int]) -> None:
-        frame_policies[window_id] = policy
-        write_frame_config(config_path, frame_policies)
-        result = subprocess.run(["gnoblinctl", "config", "reload"], capture_output=True, text=True, timeout=15)
-        if result.returncode:
-            raise RuntimeError(f"could not apply window frame policy: {result.stderr.strip() or result.stdout.strip()}")
-
-    def wait_frame_disabled(window_id: int) -> dict:
-        def disabled_state() -> dict | None:
-            state = state_for(window_id)
-            if state and not state["layout"]["presentation"]["visible"] and not any(state["layout"]["border"]):
-                return state
-            return None
-
-        return wait_for(disabled_state, f"native frame to be disabled on window {window_id}")
-
-    def wait_frame(window_id: int, top: int) -> dict:
-        deadline = time.monotonic() + 5
-        state = None
-        while time.monotonic() < deadline:
-            state = state_for(window_id)
-            presentation = state["layout"]["presentation"] if state else {}
-            if (
-                state
-                and state["ready"]
-                and not state["minimized"]
-                and state["mapped"]
-                and presentation["visible"]
-                and state["layout"]["border"][0] == top
-            ):
-                return state
-            time.sleep(0.04)
-        raise TimeoutError(f"timed out waiting for native frame on window {window_id}; last state={state!r}")
-
-    def prepare_frame(window_id: int) -> dict:
+    def window_state(window_id: int) -> dict | None:
         title = title_for(window_id)
-        expression = (
-            "(()=>{const w=global.get_window_actors().find(a=>a.meta_window.title==="
-            f"{json.dumps(title)})?.meta_window;if(!w)throw new Error('fuzz target disappeared');"
-            "if(w.minimized)w.unminimize();if(w.fullscreen)w.unmake_fullscreen();"
-            "w.activate(global.get_current_time());return true;})()"
-        )
-        eval_shell(expression)
-        set_frame_policy(window_id, [3, 0, 0, 0, 0, 36, 2, 2, 2])
-        return wait_frame(window_id, 36)
+        return next((window for window in list_windows(title) if window.get("title") == title), None)
 
-    def wait_window(window_id: int, present: bool) -> None:
-        wait_for(
-            lambda: state_for(window_id) is not None if present else state_for(window_id) is None,
+    def wait_for(predicate, description: str, timeout: float = 8.0):
+        deadline = time.monotonic() + timeout
+        last = None
+        while time.monotonic() < deadline:
+            last = predicate()
+            if last:
+                return last
+            time.sleep(0.05)
+        raise TimeoutError(f"timed out waiting for {description}; last state={last!r}")
+
+    def wait_window(window_id: int, present: bool) -> dict | None:
+        return wait_for(
+            lambda: (state if (state := window_state(window_id)) else None) if present else not window_state(window_id),
             f"window {window_id} {'to map' if present else 'to close'}",
         )
 
-    def close_client(window_id: int, op: str) -> None:
-        process = processes[window_id]
-        if process.poll() is None:
-            process.send_signal(signal.SIGUSR1) if op == "graceful_close" else process.kill()
-            try:
-                process.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=3)
-        wait_window(window_id, False)
+    def call_window(action: str, window_id: int) -> None:
+        state = window_state(window_id)
+        if state is None:
+            raise RuntimeError(f"target window {window_id} is not mapped")
+        run_ctl("window", action, state["id"], "--json")
 
     def operate(action: dict) -> None:
         op = action["op"]
         window_id = action.get("window")
         if op == "open":
-            title = title_for(window_id)
-            process = subprocess.Popen([str(fixture), title], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            process = subprocess.Popen(
+                [str(fixture), title_for(window_id)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
             processes[window_id] = process
-            wait_window(window_id, True)
-            wait_frame(window_id, 36)
-            return
-
-        title = title_for(window_id)
-        state = state_for(window_id)
-        if state is None:
-            raise RuntimeError(f"target window {window_id} is not mapped")
-        title_js = json.dumps(title)
-        window_expr = f"global.get_window_actors().find(a=>a.meta_window.title==={title_js})?.meta_window"
-        if op in {"wm_close", "graceful_close", "abrupt_close"}:
-            if op == "wm_close":
-                eval_shell(f"(()=>{{{window_expr}.delete(global.get_current_time());return true;}})()")
-                wait_window(window_id, False)
-                processes[window_id].wait(timeout=3)
-            else:
-                close_client(window_id, op)
-            return
-        if op == "frame_click":
-            state = prepare_frame(window_id)
-            x, y = frame_button_center(state, FRAME_ACTION_CLOSE)
-            wait_for(
-                lambda: frame_button_is_pickable(window_id, x, y),
-                f"close button hit target on window {window_id}",
-            )
-            # Move from the titlebar into the button so Clutter sees a real
-            # action transition even if the pointer was already over the button.
-            send_pointer("move", state["x"] + state["width"] // 2, y)
-            time.sleep(0.05)
-            send_pointer("move", x, y)
-            try:
-                wait_for(
-                    lambda: frame_interaction(window_id, "hover") == 2,
-                    f"close button hover on window {window_id}",
-                )
-            except TimeoutError as error:
-                diagnostic = eval_shell(
-                    "(()=>{const C=imports.gi.Clutter,p=global.get_pointer();"
-                    f"const w=global.get_window_actors().find(a=>a.meta_window.title==={json.dumps(title)});"
-                    f"let actor=global.stage.get_actor_at_pos(C.PickMode.REACTIVE,{x},{y});"
-                    "const pick=[];while(actor){pick.push(String(actor));actor=actor.get_parent();}"
-                    "const r=w?.meta_window.get_frame_rect();return {requested:["
-                    f"{x},{y}],pointer:[p[0],p[1]],pick,minimized:w?.meta_window.minimized,"
-                    "mapped:w?.is_mapped(),frame:r&&[r.x,r.y,r.width,r.height],"
-                    "layout:w&&imports.gi.Meta.gnoblin_window_frame_get(w.meta_window).recursiveUnpack()};})()"
-                )
-                raise TimeoutError(f"{error}; input diagnostic={diagnostic!r}") from error
-            send_pointer("press", x, y)
-            wait_for(
-                lambda: frame_interaction(window_id, "pressed") == 2,
-                f"close button press on window {window_id}",
-            )
-            time.sleep(0.12)
-            send_pointer("release", x, y)
-            time.sleep(0.3)
-            wait_window(window_id, False)
-            processes[window_id].wait(timeout=3)
-            return
-        if op == "shell_shutdown":
-            state = prepare_frame(window_id)
-            send_pointer("move", state["x"] + state["width"] - 20, state["y"] + 18)
-            time.sleep(0.05)
-            pid_file = Path(os.environ["GNOBLIN_TEST_SHELL_PID_FILE"])
-            launcher_pid = int(pid_file.read_text())
-            shell_pid = launcher_pid
-            if os.environ.get("GNOBLIN_TEST_GDB_LOG_CRITICALS") == "1":
-                shell_pid = wait_for(
-                    lambda: next(
-                        (
-                            int(pid)
-                            for pid in Path(f"/proc/{launcher_pid}/task/{launcher_pid}/children").read_text().split()
-                        ),
-                        None,
-                    ),
-                    "GDB compositor inferior",
-                )
-            marker = {
-                "requested": True,
-                "shell_pid": shell_pid,
-                "launcher_pid": launcher_pid,
-                "window": window_id,
-            }
-            save_json(plan_path.parent / "expected-shell-exit.json", marker)
-            os.kill(shell_pid, signal.SIGTERM)
-            deadline = time.monotonic() + 10
-            wait_pid = launcher_pid if launcher_pid != shell_pid else shell_pid
-            while Path(f"/proc/{wait_pid}").exists() and time.monotonic() < deadline:
-                time.sleep(0.05)
-            if Path(f"/proc/{wait_pid}").exists():
-                raise TimeoutError(f"shell launcher pid {wait_pid} did not exit after SIGTERM")
-            marker["observed_exit"] = True
-            save_json(plan_path.parent / "expected-shell-exit.json", marker)
-            return
-        if op == "frame_policy":
-            policy = action["policy"]
-            set_frame_policy(window_id, policy)
-            if not state["minimized"] and not state["fullscreen"]:
-                if policy[0]:
-                    wait_frame(window_id, policy[5])
-                else:
-                    wait_frame_disabled(window_id)
-            return
-        if op == "hover":
-            state = prepare_frame(window_id)
-            points = [
-                (state["x"] + 1, state["y"] + 1),
-                (state["x"] + 12, state["y"] + 18),
-                (state["x"] + state["width"] // 2, state["y"] + 18),
-                (state["x"] + state["width"] - 2, state["y"] + 18),
-                (state["x"] + state["width"] - 2, state["y"] + state["height"] - 2),
-            ]
-            send_pointer("move", *points[action["point"]])
-            return
-        if op == "drag_resize":
-            state = prepare_frame(window_id)
-            if state["maximized"]:
-                eval_shell(f"(()=>{{{window_expr}.unmaximize();return true;}})()")
-                wait_for(
-                    lambda: current if (current := state_for(window_id)) and not current["maximized"] else None,
-                    f"window {window_id} to leave maximized state before resizing",
-                )
-                state = wait_frame(window_id, 36)
-
-            # Keep the synthetic drag inside the monitor's work area and make
-            # the target the topmost window. Fuzzed resize/move operations can
-            # otherwise place a frame at the output edge, where Mutter must
-            # clamp the requested drag, or under another overlapping fixture.
-            eval_shell(
-                f"(()=>{{const w={window_expr};const m=global.display.get_monitor_geometry(w.get_monitor());"
-                "w.move_frame(false,m.x+40,m.y+40);w.raise();return true;})()"
-            )
-            state = wait_frame(window_id, 36)
-            x, y = state["x"] + state["width"] - 2, state["y"] + state["height"] - 2
-
-            # A virtual pointer motion to its current coordinates emits no
-            # Clutter motion event. Move into the frame first so the corner
-            # transition is observable even when a previous action left the
-            # pointer at this exact point.
-            send_pointer("move", state["x"] + state["width"] // 2, state["y"] + 18)
-            wait_for(
-                lambda: frame_button_is_pickable(window_id, x, y),
-                f"southeast resize hit target on window {window_id}",
-            )
-            send_pointer("move", x, y)
-            try:
-                wait_for(
-                    lambda: frame_interaction(window_id, "hover") == 8,
-                    f"southeast resize hover on window {window_id}",
-                )
-            except TimeoutError as error:
-                raise TimeoutError(f"{error}; input diagnostic={frame_pick_diagnostic(window_id, x, y)!r}") from error
-            send_pointer("press", x, y)
-            wait_for(
-                lambda: frame_interaction(window_id, "pressed") == 8,
-                f"southeast resize press on window {window_id}",
-            )
-            time.sleep(0.05)
-            send_pointer("move", x + 18, y + 16)
-            time.sleep(0.05)
-            send_pointer("release", x + 18, y + 16)
-            expected = (state["width"] + 18, state["height"] + 16)
             wait_for(
                 lambda: (
                     current
-                    if (current := state_for(window_id))
-                    and (current["width"], current["height"]) == expected
-                    and frame_interaction(window_id, "pressed") == 0
+                    if (current := window_state(window_id)) and current.get("frame") and current.get("monitor_id")
                     else None
                 ),
-                f"southeast resize completion on window {window_id}",
+                f"window {window_id} to map with native geometry",
             )
+            # The snapshot can become visible before the first Wayland configure
+            # has reached GTK. Give the client a short turn before mutating it.
+            time.sleep(0.25)
             return
 
-        expression = window_operation_expression(action, window_expr)
-        eval_shell(f"(()=>{{{expression};return true;}})()")
+        state = window_state(window_id)
+        if state is None:
+            raise RuntimeError(f"target window {window_id} is not mapped")
+        if op in CLOSE_OPERATIONS:
+            process = processes[window_id]
+            if op == "wm_close":
+                call_window("close", window_id)
+            elif process.poll() is None:
+                process.send_signal(signal.SIGUSR1) if op == "graceful_close" else process.kill()
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=3)
+            wait_window(window_id, False)
+            if op == "wm_close":
+                processes[window_id].wait(timeout=3)
+            return
+        if op == "resize":
+            # Geometry changes need a normal, visible window. Random prior
+            # actions can leave it minimized, maximized, or fullscreen.
+            if state.get("minimized") or state.get("maximized"):
+                call_window("restore", window_id)
+            if state.get("fullscreen"):
+                call_window("unfullscreen", window_id)
+            wait_for(
+                lambda: (
+                    current
+                    if (current := window_state(window_id))
+                    and not current.get("minimized")
+                    and not current.get("fullscreen")
+                    and not current.get("maximized")
+                    else None
+                ),
+                f"window {window_id} to become movable before resize",
+            )
+            run_ctl("window", "move", state["id"], str(action["x"]), str(action["y"]), "--json")
+            run_ctl("window", "resize", state["id"], str(action["width"]), str(action["height"]), "--json")
+            return
+        call_window(op, window_id)
+        property_name, expected = {
+            "minimize": ("minimized", True),
+            "unminimize": ("minimized", False),
+            "maximize": ("maximized", True),
+            "unmaximize": ("maximized", False),
+            "fullscreen": ("fullscreen", True),
+            "unfullscreen": ("fullscreen", False),
+        }[op]
+        wait_for(
+            lambda: (
+                current if (current := window_state(window_id)) and current.get(property_name) is expected else None
+            ),
+            f"window {window_id} {property_name}={expected}",
+        )
 
     failure = None
     event_path.write_text("")
-    shell_stopped = False
     try:
-        test_shell = start_minimal_testing_shell(fixture_dir, plan_path.parent / "minimal-testing-shell.log")
-        wait_for(
-            lambda: eval_shell(
-                "(()=>{const M=imports.gi.Meta;return global.get_window_actors().some("
-                "a=>a.is_mapped()&&a.meta_window&&M.gnoblin_layer_anchor(a.meta_window)>=0);})()"
-            ),
-            "minimal testing layer-shell panel",
-        )
         with event_path.open("a") as events:
-            events.write(json.dumps({"phase": "test-shell-ready", "pid": test_shell.pid}) + "\n")
+            events.write(json.dumps({"phase": "devkit-ready", "pid": os.getpid()}) + "\n")
         for index, action in enumerate(plan["actions"]):
             with event_path.open("a") as events:
                 events.write(json.dumps({"phase": "start", "index": index, "action": action}) + "\n")
             operate(action)
-            if action["op"] == "shell_shutdown":
-                shell_stopped = True
-                with event_path.open("a") as events:
-                    events.write(json.dumps({"phase": "done", "index": index, "action": action}) + "\n")
-                break
             time.sleep(action.get("delay_ms", 0) / 1000)
-            eval_shell("true")
             with event_path.open("a") as events:
                 events.write(json.dumps({"phase": "done", "index": index, "action": action}) + "\n")
             if index % 25 == 0:
                 print(f"lifecycle fuzz: action {index + 1}/{len(plan['actions'])}", flush=True)
-        if not shell_stopped:
-            for window_id, process in processes.items():
-                if process.poll() is None:
-                    close_client(window_id, "graceful_close")
-            time.sleep(0.3)
-            eval_shell("true")
+
+        for window_id, process in processes.items():
+            if process.poll() is None:
+                process.send_signal(signal.SIGUSR1)
+                try:
+                    process.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=3)
+                wait_window(window_id, False)
     except Exception as error:
         failure = {"error": str(error), "traceback": traceback.format_exc(), "seed": plan["seed"]}
         try:
-            failure["windows_at_failure"] = shell_windows()
+            failure["windows_at_failure"] = json.loads(
+                subprocess.check_output([gnoblinctl, "--json", "window", "list"], text=True, timeout=10)
+            )["windows"]
         except Exception as diagnostic_error:
             failure["windows_diagnostic_error"] = str(diagnostic_error)
         failure["fixture_processes"] = {
             str(window_id): {"pid": process.pid, "returncode": process.poll()}
             for window_id, process in processes.items()
         }
-        failure["window_states_at_failure"] = {str(window_id): state_for(window_id) for window_id in processes}
-        save_json(plan_path.parent / "client-failure.json", failure)
+        save_json(artifact_dir / "client-failure.json", failure)
         print(f"lifecycle fuzz failure: {error}\n{failure['traceback']}", file=sys.stderr, flush=True)
     finally:
         for process in processes.values():
@@ -720,17 +473,13 @@ def run_inside() -> int:
                     process.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     pass
-        if test_shell and test_shell.poll() is None:
-            test_shell.terminate()
-            try:
-                test_shell.wait(timeout=2)
-            except subprocess.TimeoutExpired:
-                test_shell.kill()
-                test_shell.wait(timeout=2)
+        runtime_log = os.environ.get("GNOBLIN_DEVKIT_RUNTIME_LOG")
+        if runtime_log and Path(runtime_log).exists():
+            shutil.copy2(runtime_log, artifact_dir / "compositor.log")
 
     if failure:
         return 1
-    print(f"PASS: survived {len(plan['actions'])} lifecycle operations and compositor shutdown", flush=True)
+    print(f"PASS: survived {len(plan['actions'])} native window lifecycle operations", flush=True)
     return 0
 
 
@@ -741,14 +490,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max-windows", type=int, default=6, help="maximum live fixture windows")
     parser.add_argument("--replay", type=Path, help="replay a saved plan.json or repro.json")
     parser.add_argument("--artifact-dir", type=Path, help="where to keep logs and reproduction data")
-    parser.add_argument("--timeout", type=int, default=300, help="whole-session timeout in seconds")
+    parser.add_argument("--timeout", type=int, default=300, help="whole-devkit timeout in seconds")
+    parser.add_argument("--inner", action="store_true", help=argparse.SUPPRESS)
     return parser.parse_args()
 
 
 def main() -> int:
-    if os.environ.get("GNOBLIN_LIFECYCLE_FUZZ_INNER") == "1":
-        return run_inside()
-    return run_parent(parse_args())
+    args = parse_args()
+    return run_inside() if args.inner else run_parent(args)
 
 
 if __name__ == "__main__":

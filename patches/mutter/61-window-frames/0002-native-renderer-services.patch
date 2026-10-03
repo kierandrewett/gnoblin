@@ -1,42 +1,34 @@
-From 538e00625701dc1d4f7314b98ab153fc55bd3951 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
-Date: Sun, 13 Sep 2026 03:05:31 +0100
-Subject: [PATCH] Attach native frames and isolated external renderer services
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 19 Sep 2026 22:05:00 +0100
+Subject: [PATCH] mutter: attach native frames and isolated renderer services
 
 ---
- src/meson.build                    | 2 ++
- src/meta/util.h                    | 2 ++
- src/wayland/meta-wayland-surface.c | 4 ++++
- 3 files changed, 8 insertions(+)
-
 diff --git a/src/meson.build b/src/meson.build
-index 2c70138d7..79a2e752f 100644
+index d3040817..b6b68b89 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -601,6 +601,8 @@ mutter_sources += [
-   'wayland/gnoblin-glob.c',
+@@ -599,6 +599,8 @@ mutter_sources += [
+   'wayland/meta-gnoblin-protocols.h',
    'wayland/meta-gnoblin-window-frame.c',
    'wayland/meta-gnoblin-window-frame.h',
 +  'wayland/meta-gnoblin-frame-renderer.c',
 +  'wayland/meta-gnoblin-frame-renderer.h',
-   'wayland/gnoblin-config.h',
-   'wayland/meta-gnoblin-protocols.c',
-   'wayland/meta-gnoblin-protocols.h',
+   'wayland/meta-wayland-blur-fade.c',
+   'wayland/meta-wayland-blur-fade.h',
+   'wayland/meta-wayland-idle-notify.c',
 diff --git a/src/meta/util.h b/src/meta/util.h
-index 758684b32..1efda07da 100644
+index 66ba95e0..03b6dd43 100644
 --- a/src/meta/util.h
 +++ b/src/meta/util.h
-@@ -125,6 +125,8 @@ META_EXPORT
+@@ -119,3 +119,5 @@ META_EXPORT
  gboolean meta_gnoblin_window_frame_set (MetaWindow *window, GVariant *policy, GError **error);
  META_EXPORT
  GVariant *meta_gnoblin_window_frame_get (MetaWindow *window);
 +META_EXPORT
 +void meta_gnoblin_window_frame_style (MetaWindow *window, GVariant *options);
- 
- META_EXPORT
- void meta_gnoblin_fullscreen_return_guard_set (MetaDisplay *display,
 diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
-index 47a3de39c..98724cc5b 100644
+index 47a3de39..98724cc5 100644
 --- a/src/wayland/meta-wayland-surface.c
 +++ b/src/wayland/meta-wayland-surface.c
 @@ -19,6 +19,7 @@
@@ -64,6 +56,3 @@ index 47a3de39c..98724cc5b 100644
    if (from->has_new_color_state)
      {
        g_set_object (&to->color_state, from->color_state);
--- 
-2.55.0
-

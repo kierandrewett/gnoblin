@@ -9,7 +9,7 @@
 #include <string.h>
 #include <wayland-server.h>
 #include "core/window-private.h"
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-surface-private.h"
 #include "wayland/meta-wayland-shell-surface.h"
@@ -375,7 +375,7 @@ void meta_gnoblin_window_frame_init(MetaWaylandCompositor* compositor) {
     meta_gnoblin_frame_renderer_init(compositor);
     g_signal_new("gnoblin-frame-changed", META_TYPE_WINDOW, G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                  G_TYPE_NONE, 0);
-    if (gnoblin_config_protocol_enabled("xdg-decoration"))
+    if (gnoblin_native_control_protocol_enabled("xdg-decoration"))
         wl_global_create(compositor->wayland_display, &zxdg_decoration_manager_v1_interface, 1,
                          NULL, bind_manager);
 }

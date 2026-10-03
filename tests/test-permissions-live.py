@@ -4,14 +4,19 @@
 import time
 import json
 import os
-import re
 from pathlib import Path
+import shutil
 import subprocess
 
 from gi.repository import Gio, GLib
 
 ROOT = Path(__file__).resolve().parents[1]
-CTL = ROOT / "src/tools/gnoblinctl"
+CTL = Path(os.environ.get("GNOBLINCTL") or shutil.which("gnoblinctl") or ROOT / "build/ninja/gnoblinctl")
+LUA_PATTERN_SPECIAL = frozenset("^$().[]*+-?%")
+
+
+def lua_pattern_escape(value):
+    return "".join("%" + character if character in LUA_PATTERN_SPECIAL else character for character in value)
 
 
 def ctl(*args, ok=True):
@@ -45,15 +50,15 @@ def lua(value):
 
 
 def apply_policy(default, rules, ok=True):
-    settings = {"shell": {"osd": False}, "permissions": {"default": default, "rules": rules}}
-    config.write_text('local g = require("gnoblin")\ng.set(' + lua(settings) + ")\n")
+    settings = {"permissions": {"default": default, "rules": rules}}
+    config.write_text('local g = require("gnoblin")\ng.configure(' + lua(settings) + ")\n")
     return ctl("config", "reload", ok=ok)
 
 
 rustdesk = {
     "name": "rustdesk",
     "level": "allow",
-    "match": "^host-exe:/usr/bin/rustdesk$",
+    "match": "^host%-exe:/usr/bin/rustdesk$",
     "capabilities": ["screen-cast", "remote-desktop"],
     "monitors": ["primary"],
     "devices": ["keyboard", "pointer"],
@@ -69,7 +74,7 @@ assert ctl("permissions", "check", "screen-cast", identity)["rule"] == "blocked"
 apply_policy("ask", [rustdesk])
 assert ctl("permissions", "check", "screen-cast", identity)["level"] == "allow"
 saved = config.read_text()
-config.write_text('local g = require("gnoblin")\ng.set({permissions = {rules = {{match = "["}}}})\n')
+config.write_text('local g = require("gnoblin")\ng.configure({permissions = {rules = {{match = "["}}}})\n')
 ctl("config", "reload", ok=False)
 assert ctl("permissions", "check", "screen-cast", identity)["level"] == "allow"
 config.write_text(saved)
@@ -129,8 +134,8 @@ backend = subprocess.Popen(
     env={**os.environ, "G_MESSAGES_DEBUG": "all"},
 )
 app = os.environ.get("GNOBLIN_PERMISSION_TEST_APP", "com.example.PermissionProbe")
-app_identity = "^app-id:" + re.escape(app) + "$"
-app_match = re.escape(app)
+app_identity = "^app%-id:" + lua_pattern_escape(app) + "$"
+app_match = lua_pattern_escape(app)
 owner = bus.get_unique_name().removeprefix(":").replace(".", "_")
 serial = 0
 
@@ -375,7 +380,7 @@ try:
         {
             "name": "native",
             "level": "allow",
-            "match": "^host-exe:" + re.escape(executable) + "$",
+            "match": "^host%-exe:" + lua_pattern_escape(executable) + "$",
             "capabilities": ["access"],
         }
     )

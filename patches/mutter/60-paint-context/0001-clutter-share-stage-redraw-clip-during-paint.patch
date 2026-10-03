@@ -1,5 +1,5 @@
 From 4a00b9db9cc3c4d3d9551e647e55d0fe57916e95 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:05:00 +0100
 Subject: [PATCH] clutter: share the stage redraw clip during paint
 

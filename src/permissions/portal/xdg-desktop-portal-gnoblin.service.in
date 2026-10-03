@@ -1,0 +1,10 @@
+[Unit]
+Description=Portal service (Gnoblin implementation)
+After=graphical-session.target
+Requisite=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=dbus
+BusName=org.freedesktop.impl.portal.desktop.gnoblin
+ExecStart=@libexecdir@/xdg-desktop-portal-gnoblin

@@ -1,8 +1,9 @@
 # gnoblin.configure.input_sources
 
 Set the active input sources with `gnoblin.configure {input_sources = {...}}`.
-On reload, this replaces the active source list in memory. Remove the table to
-restore GNOME's session sources.
+On reload, this replaces the active source list in memory. Without this table,
+Gnoblin exposes no switchable input sources and leaves Mutter's current keymap
+in place. It does not load the saved GNOME input-source list.
 
 - `sources` is required. It is an array of records with a `type` and a
   nonempty `id`.
@@ -10,6 +11,10 @@ restore GNOME's session sources.
   input method.
 - `sources[].id` is an installed XKB layout ID or IBus engine ID, depending on
   `type`.
+- In the direct Gnoblin session, XKB-only sources do not need `ibus-daemon`.
+  Gnoblin does not start the daemon. Start it in your session and install the
+  selected engine before using an IBus source. Gnoblin reconnects when the
+  IBus service becomes available or restarts.
 - `per_window` is optional and defaults to `false`. Set it to `true` to
   remember a different source for each window. With the default `false`, all
   windows share the same active source; switching layouts in one window changes
@@ -28,12 +33,14 @@ XKB data installed on your system.
 | US International | `"us+intl"` | The US layout with the `intl` variant.               |
 | Anthy            | `"anthy"`   | An IBus Japanese input engine; it must be installed. |
 
-Find layouts and variants in **Settings → Keyboard → Input Sources**. GNOME's
-[`GnomeXkbInfo`](https://gnome.pages.gitlab.gnome.org/gnome-desktop/html/gnome-desktop3/gnome-desktop3-GnomeXkbInfo.html)
-API lists the layout IDs GNOME recognizes. The
+Find layouts and variants in **Settings → Keyboard → Input Sources**. Gnoblin
+reads the installed XKB rules through libxkbregistry. The
 [XKB introduction](https://xkbcommon.org/doc/current/xkb-intro.html) explains
 how layouts and variants combine. For an overview of available layouts, see the
 [XKB layout gallery](https://xkeyboard-config.freedesktop.org/layouts/).
+
+When it needs a spare layout in an XKB group, Gnoblin chooses the base layout
+for the locale's country where one is available, then falls back to `us`.
 
 To find installed IBus engine IDs, run:
 

@@ -1,20 +1,13 @@
 #!/usr/bin/env bash
 # Install gnoblin's session data into a prefix:
-#   - the `gnoblin` GNOME Shell session mode (strips the stock UI declaratively)
-#   - the gnome-session definition (required components: org.gnoblin.Shell,
-#     not the shared org.gnome.Shell -- see the comment in gnoblin.session)
+#   - the standalone `gnoblin` C session supervisor and compositor entry
 #   - the wayland-session .desktop entry (shown at the login manager)
-#   - gnoblin-session, the .desktop's Exec= target: points gnome-session's own
-#     lookups (PATH, session-mode env) at this prefix (see src/tools/gnoblin-session)
-#   - org.gnoblin.Shell.target / org.gnoblin.Shell@wayland.service, the
-#     systemd --user units gnome-session's RequiredComponents needs to
-#     actually start the patched gnome-shell -- gnoblin-specific unit names
-#     so they never shadow a system GNOME Shell install's own units
+#   - gnoblin-session.target for services used by the standalone login
 #
 # This step is additive: everything lands under <prefix> and can be removed by
 # deleting it. No system files are touched, and nothing here registers with
 # your live login manager or systemd --user instance. That is handled by
-# `scripts/register-session.sh` (see docs/installation.md), a separate explicit
+# `./build.sh --register-session` (see docs/install-source.md), a separate explicit
 # step because it changes state outside <prefix>.
 set -euo pipefail
 
@@ -23,124 +16,123 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/src/data/session"
 source "$ROOT/src/tools/gnoblin-env.sh"
 gnoblin_env_validate_install_prefix "$PREFIX" || exit
-PREFIX="$(mkdir -p "$PREFIX" && cd "$PREFIX" && pwd)"
+STAGE_ROOT="${GNOBLIN_STAGE_ROOT:-}"
+INSTALL_PREFIX="$STAGE_ROOT$PREFIX"
+INSTALL_PREFIX="$(mkdir -p "$INSTALL_PREFIX" && cd "$INSTALL_PREFIX" && pwd)"
 LIBDIR="${GNOBLIN_LIBDIR:-lib64}"
 gnoblin_env_validate_libdir "$LIBDIR" || exit
+IDLE_BINARY="${GNOBLIN_IDLE_BINARY:?Build the session with ./build.sh}"
+GNOBLINCTL_BINARY="${GNOBLINCTL_BINARY:?Build the session with ./build.sh}"
+GNOBLIN_IDENTITY_FILE="${GNOBLIN_IDENTITY_FILE:?Build the session with ./build.sh}"
+GNOBLIN_VERSION_METADATA_FILE="${GNOBLIN_VERSION_METADATA_FILE:?Build the session with ./build.sh}"
+GNOBLIN_BINARY="${GNOBLIN_BINARY:?Build the session with ./build.sh}"
 
-# A prior development install may have included GNOME's extension manager.
+# A prior development install may have included GNOME's extension manager,
+# captive-network portal helper, calendar server, or test tools.
 # Remove only the old Gnoblin-prefix artefacts. System GNOME files are never
 # considered by this script.
 rm -f \
-    "$PREFIX/bin/gnome-extensions" \
-    "$PREFIX/bin/gnome-extensions-app" \
-    "$PREFIX/share/applications/org.gnome.Extensions.desktop" \
-    "$PREFIX/share/dbus-1/services/org.gnome.Extensions.service" \
-    "$PREFIX/share/glib-2.0/schemas/org.gnome.Extensions.gschema.xml" \
-    "$PREFIX/share/metainfo/org.gnome.Extensions.metainfo.xml" \
-    "$PREFIX/share/gnome-shell/org.gnome.Extensions" \
-    "$PREFIX/share/gnome-shell/org.gnome.Extensions.data.gresource" \
-    "$PREFIX/share/gnome-shell/org.gnome.Extensions.src.gresource" \
-    "$PREFIX/share/gnome-shell/org.gnome.Shell.Extensions" \
-    "$PREFIX/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource" \
-    "$PREFIX/share/bash-completion/completions/gnome-extensions" \
-    "$PREFIX/share/applications/org.gnome.Shell.Extensions.desktop" \
-    "$PREFIX/share/dbus-1/services/org.gnome.Shell.Extensions.service" \
-    "$PREFIX/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
-if [ -d "$PREFIX/share/icons/hicolor" ]; then
-    find "$PREFIX/share/icons/hicolor" -type f \( -name 'org.gnome.Extensions*' -o -name 'org.gnome.Shell.Extensions*' \) -delete
+    "$INSTALL_PREFIX/bin/gnome-shell" \
+    "$INSTALL_PREFIX/bin/gnome-extensions" \
+    "$INSTALL_PREFIX/bin/gnome-extensions-app" \
+    "$INSTALL_PREFIX/share/applications/org.gnome.Extensions.desktop" \
+    "$INSTALL_PREFIX/share/dbus-1/services/org.gnome.Extensions.service" \
+    "$INSTALL_PREFIX/share/glib-2.0/schemas/org.gnome.Extensions.gschema.xml" \
+    "$INSTALL_PREFIX/share/metainfo/org.gnome.Extensions.metainfo.xml" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.Extensions" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.Extensions.data.gresource" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.Extensions.src.gresource" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.Shell.Extensions" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.Shell.Extensions.src.gresource" \
+    "$INSTALL_PREFIX/share/gnome-shell/modes/gnoblin.json" \
+    "$INSTALL_PREFIX/share/gnome-shell/gnome-shell-dbus-interfaces.gresource" \
+    "$INSTALL_PREFIX/share/gnome-shell/gnome-shell-icons.gresource" \
+    "$INSTALL_PREFIX/share/gnome-shell/gnome-shell-osk-layouts.gresource" \
+    "$INSTALL_PREFIX/share/gnome-shell/gnome-shell-theme.gresource" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.ScreenSaver" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.ScreenSaver.src.gresource" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.Shell.Notifications" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.Shell.Notifications.src.gresource" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.Shell.Screencast" \
+    "$INSTALL_PREFIX/share/gnome-shell/org.gnome.Shell.Screencast.src.gresource" \
+    "$INSTALL_PREFIX/share/gnome-shell/perf-background.xml" \
+    "$INSTALL_PREFIX/share/bash-completion/completions/gnome-extensions" \
+    "$INSTALL_PREFIX/share/applications/org.gnome.Shell.Extensions.desktop" \
+    "$INSTALL_PREFIX/share/dbus-1/services/org.gnome.Shell.Extensions.service" \
+    "$INSTALL_PREFIX/lib/systemd/user/org.gnome.Shell-disable-extensions.service"
+rm -f \
+    "$INSTALL_PREFIX/libexec/gnoblin-runtime" \
+    "$INSTALL_PREFIX/libexec/gnome-shell-hotplug-sniffer" \
+    "$INSTALL_PREFIX/libexec/gnome-shell-portal-helper" \
+    "$INSTALL_PREFIX/share/applications/org.gnome.Shell.PortalHelper.desktop" \
+    "$INSTALL_PREFIX/share/dbus-1/services/org.gnome.Shell.PortalHelper.service" \
+    "$INSTALL_PREFIX/libexec/gnome-shell-calendar-server" \
+    "$INSTALL_PREFIX/share/dbus-1/services/org.gnome.Shell.CalendarServer.service" \
+    "$INSTALL_PREFIX/bin/gnome-shell-test-tool" \
+    "$INSTALL_PREFIX/libexec/gnome-shell-perf-helper"
+# Remove only now-empty directories left by the old Shell payload. Unknown
+# files under this private prefix are preserved.
+rmdir --ignore-fail-on-non-empty \
+    "$INSTALL_PREFIX/share/gnome-shell/modes" \
+    "$INSTALL_PREFIX/share/gnome-shell" \
+    2>/dev/null || true
+if [ -d "$INSTALL_PREFIX/share/icons/hicolor" ]; then
+    find "$INSTALL_PREFIX/share/icons/hicolor" -type f \( -name 'org.gnome.Extensions*' -o -name 'org.gnome.Shell.Extensions*' \) -delete
 fi
 
-install -Dm644 "$SRC/modes/gnoblin.json" \
-    "$PREFIX/share/gnome-shell/modes/gnoblin.json"
-install -Dm644 "$SRC/gnome-session/gnoblin.session" \
-    "$PREFIX/share/gnome-session/sessions/gnoblin.session"
-
-# Shared env helper first: gnoblin-session/gnoblin-shell-service both source
-# it from their installed location.
-install -Dm644 "$ROOT/src/tools/gnoblin-env.sh" "$PREFIX/libexec/gnoblin-env.sh"
-install -Dm644 /dev/null "$PREFIX/libexec/gnoblin-libdir"
-printf '%s\n' "$LIBDIR" >"$PREFIX/libexec/gnoblin-libdir"
-# A privately built GIRepository searches its own prefix. Keep access to the
-# host's service bindings (AccountsService, NetworkManager, UPower, and others).
-# Link only namespaces not supplied privately. Exporting the entire host
-# typelib directory would make its GLib/Gio bindings override our private ones.
-if [ -d "$PREFIX/deps" ]; then
-    typelib_dir="$(pkg-config --variable=typelibdir gobject-introspection-1.0)"
-    [ -d "$typelib_dir" ] || {
-        echo "Missing system typelib directory: $typelib_dir" >&2
-        exit 1
-    }
-    mkdir -p "$PREFIX/$LIBDIR/girepository-1.0"
-    for typelib in "$typelib_dir"/*.typelib; do
-        [ -f "$typelib" ] || continue
-        name="${typelib##*/}"
-        target="$PREFIX/$LIBDIR/girepository-1.0/$name"
-        if [ -e "$PREFIX/deps/$LIBDIR/girepository-1.0/$name" ]; then
-            if [ -L "$target" ] && [ "$(readlink "$target")" = "$typelib" ]; then
-                rm "$target"
-            fi
-            continue
-        fi
-        [ ! -e "$target" ] || continue
-        ln -s "$typelib" "$target"
-    done
+# Retain the shared environment helper for developer tools using this prefix.
+install -Dm644 "$ROOT/src/tools/gnoblin-env.sh" "$INSTALL_PREFIX/libexec/gnoblin-env.sh"
+install -Dm644 /dev/null "$INSTALL_PREFIX/libexec/gnoblin-libdir"
+printf '%s\n' "$LIBDIR" >"$INSTALL_PREFIX/libexec/gnoblin-libdir"
+install -Dm755 "$GNOBLIN_BINARY" "$INSTALL_PREFIX/bin/gnoblin"
+if [ -L "$INSTALL_PREFIX/bin/gnoblin-session" ] &&
+    [ "$(readlink "$INSTALL_PREFIX/bin/gnoblin-session")" = gnoblin ]; then
+    rm "$INSTALL_PREFIX/bin/gnoblin-session"
 fi
-install -Dm755 "$ROOT/src/tools/gnoblin-session" "$PREFIX/bin/gnoblin-session"
-install -Dm755 "$ROOT/src/tools/gnoblin-seed-config" "$PREFIX/libexec/gnoblin-seed-config"
-install -Dm644 "$ROOT/src/data/init.lua.example" "$PREFIX/share/gnoblin/init.lua.example"
-install -Dm644 "$SRC/gnoblin.desktop" "$PREFIX/share/wayland-sessions/gnoblin.desktop"
-sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin-session|" \
-    "$PREFIX/share/wayland-sessions/gnoblin.desktop"
+install -Dm755 "$ROOT/src/tools/gnoblin-seed-config" "$INSTALL_PREFIX/libexec/gnoblin-seed-config"
+install -Dm644 "$ROOT/src/data/init.lua.example" "$INSTALL_PREFIX/share/gnoblin/init.lua.example"
+install -Dm644 "$SRC/gnoblin.desktop" "$INSTALL_PREFIX/share/wayland-sessions/gnoblin.desktop"
+sed -i "s|^Exec=.*|Exec=$PREFIX/bin/gnoblin|" \
+    "$INSTALL_PREFIX/share/wayland-sessions/gnoblin.desktop"
 
-# Install Gnoblin's vector Adwaita cursor theme beside the session data. The
-# compiled theme includes Xcursor fallbacks from the host's Adwaita package.
-theme_build="$(mktemp -d)"
-trap 'rm -rf -- "$theme_build"' EXIT
-python3 "$ROOT/scripts/build-adwaita-hyprcursor.py" \
-    --output "$theme_build/Adwaita-Hyprcursor" \
-    --fallback "${ADWAITA_CURSOR_FALLBACK:-/usr/share/icons/Adwaita}"
-install -d "$PREFIX/share/icons/Adwaita-Hyprcursor"
-cp -a "$theme_build/Adwaita-Hyprcursor/." "$PREFIX/share/icons/Adwaita-Hyprcursor/"
+# Normal Xcursor themes work without compiling extra artwork. Keep the custom
+# vector theme available to users who explicitly request it from build.sh.
+case "${GNOBLIN_VECTOR_CURSORS:-OFF}" in
+    ON | TRUE | true | 1) vector_cursors_enabled=true ;;
+    OFF | FALSE | false | 0) vector_cursors_enabled=false ;;
+    *)
+        echo "invalid vector cursor setting: $GNOBLIN_VECTOR_CURSORS" >&2
+        exit 2
+        ;;
+esac
+if "$vector_cursors_enabled"; then
+    theme_build="$(mktemp -d)"
+    trap 'rm -rf -- "$theme_build"' EXIT
+    python3 "$ROOT/scripts/build-adwaita-hyprcursor.py" \
+        --output "$theme_build/Adwaita-Hyprcursor" \
+        --fallback "${ADWAITA_CURSOR_FALLBACK:-/usr/share/icons/Adwaita}"
+    install -d "$INSTALL_PREFIX/share/icons/Adwaita-Hyprcursor"
+    cp -a "$theme_build/Adwaita-Hyprcursor/." "$INSTALL_PREFIX/share/icons/Adwaita-Hyprcursor/"
+fi
 
-# Gnoblin-specific systemd --user units (ExecStart/Environment= need the
-# resolved absolute prefix, so the *.service is generated from its .in).
-install -Dm755 "$ROOT/src/tools/gnoblin-shell-service" "$PREFIX/bin/gnoblin-shell-service"
-install -Dm644 "$SRC/systemd-user/org.gnoblin.Shell.target" \
-    "$PREFIX/lib/systemd/user/org.gnoblin.Shell.target"
-# The drop-in that actually pulls the shell target into the session. Modern
-# systemd-managed gnome-session ignores the .session RequiredComponents= line;
-# gnome-session@gnoblin.target takes its deps from this .d/ drop-in instead.
-# Without it the session logs in to a frozen screen with no compositor.
-install -Dm644 "$SRC/systemd-user/gnome-session@gnoblin.target.d.conf" \
-    "$PREFIX/lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
-sed "s|@PREFIX@|$PREFIX|g" "$SRC/systemd-user/org.gnoblin.Shell@wayland.service.in" \
-    >"$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp"
-install -Dm644 "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp" \
-    "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service"
-rm -f "$PREFIX/lib/systemd/user/org.gnoblin.Shell@wayland.service.tmp"
-
-# Desktop-specific schema defaults. This runs after mutter/gnome-shell have
+# Standalone session services.
+install -Dm644 "$SRC/systemd-user/gnoblin-session.target" \
+    "$INSTALL_PREFIX/lib/systemd/user/gnoblin-session.target"
+install -Dm755 "$IDLE_BINARY" "$INSTALL_PREFIX/libexec/gnoblin-idle"
+sed "s|@PREFIX@|$PREFIX|g" "$SRC/systemd-user/gnoblin-idle.service.in" \
+    >"$INSTALL_PREFIX/lib/systemd/user/gnoblin-idle.service.tmp"
+install -Dm644 "$INSTALL_PREFIX/lib/systemd/user/gnoblin-idle.service.tmp" \
+    "$INSTALL_PREFIX/lib/systemd/user/gnoblin-idle.service"
+rm -f "$INSTALL_PREFIX/lib/systemd/user/gnoblin-idle.service.tmp"
+# Desktop-specific schema defaults. This runs after Mutter has
 # installed their schemas, so the override is compiled into the prefix used by
-# Gnoblin's wrappers (`XDG_CURRENT_DESKTOP=GNOME:Gnoblin`).
+# Gnoblin's session (`XDG_CURRENT_DESKTOP=Gnoblin`).
 install -Dm644 "$SRC/schemas/00_org.gnoblin.mutter.gschema.override" \
-    "$PREFIX/share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override"
-glib-compile-schemas "$PREFIX/share/glib-2.0/schemas"
-# The gnoblinctl CLI (org.gnoblin.Shell control front-end).
-install -Dm755 "$ROOT/src/tools/gnoblinctl" "$PREFIX/bin/gnoblinctl"
-install -Dm644 "$ROOT/gnoblin-version.json" "$PREFIX/share/gnoblin/version.json"
+    "$INSTALL_PREFIX/share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override"
+glib-compile-schemas "$INSTALL_PREFIX/share/glib-2.0/schemas"
+# The gnoblinctl CLI for controlling the active Gnoblin session.
+install -Dm755 "$GNOBLINCTL_BINARY" "$INSTALL_PREFIX/bin/gnoblinctl"
+install -Dm644 "$GNOBLIN_IDENTITY_FILE" "$INSTALL_PREFIX/share/gnoblin/version.json"
+install -Dm644 "$GNOBLIN_VERSION_METADATA_FILE" "$INSTALL_PREFIX/share/gnoblin/version.ini"
 
-echo ">> installed gnoblin session data into $PREFIX:"
-echo "     share/gnome-shell/modes/gnoblin.json     (UI-strip session mode)"
-echo "     share/gnome-session/sessions/gnoblin.session (required components)"
-echo "     share/wayland-sessions/gnoblin.desktop   (login entry, Exec= -> bin/gnoblin-session)"
-echo "     libexec/gnoblin-env.sh                   (shared prefix lookup-path helper)"
-echo "     libexec/gnoblin-libdir                  (installed library-directory contract)"
-echo "     bin/gnoblin-session                      (login-manager wrapper)"
-echo "     share/gnoblin/init.lua.example           (first-login user config template)"
-echo "     share/icons/Adwaita-Hyprcursor           (vector and Xcursor theme)"
-echo "     bin/gnoblin-shell-service                (systemd unit ExecStart wrapper)"
-echo "     share/glib-2.0/schemas/00_org.gnoblin.mutter.gschema.override (Gnoblin schema defaults)"
-echo "     lib/systemd/user/org.gnoblin.Shell{.target,@wayland.service} (patched shell unit)"
-echo "     bin/gnoblinctl                           (control CLI)"
-echo ">> not yet registered with your login manager / systemd --user instance."
-echo "   Run: ./scripts/register-session.sh $PREFIX"
+echo "Session data installed in $PREFIX"

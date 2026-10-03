@@ -1,5 +1,5 @@
 From f0734e3abb84080df5495b91f83d80d7a25ef741 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:10:19 +0100
 Subject: [PATCH] build: generate Gnoblin window frame protocol
 

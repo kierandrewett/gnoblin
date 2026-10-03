@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: declare work-area drag policy state
+
+---
+diff --git a/src/compositor/meta-window-drag.c b/src/compositor/meta-window-drag.c
+index 059785ab..72b565da 100644
+--- a/src/compositor/meta-window-drag.c
++++ b/src/compositor/meta-window-drag.c
+@@ -73,6 +73,7 @@ struct _MetaWindowDrag {
+   int initial_x, initial_y;            /* These are only relevant for */
+   gboolean threshold_movement_reached; /* raise_on_click == FALSE.    */
+   unsigned int last_edge_resistance_flags;
++  gboolean constrain_drag_to_work_area;
+   unsigned int move_resize_later_id;
+   /* if TRUE, window was maximized at start of current grab op */
+   gboolean shaken_loose;

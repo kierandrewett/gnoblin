@@ -115,8 +115,8 @@ See [session settings](/guides/session_settings#native-features).
 
 ## If the shell does not appear
 
-Right-click the desktop and choose **Open Terminal**. If no layer surface appears
-for eight seconds, Gnoblin also shows a recovery panel.
+Gnoblin has no desktop menu, terminal launcher, or recovery panel. Switch to
+another session or a text console and inspect the shell's service and logs.
 
 For Bingux, inspect its service:
 

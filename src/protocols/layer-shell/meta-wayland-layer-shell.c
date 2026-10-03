@@ -37,7 +37,7 @@
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-seat.h"
 #include "wayland/meta-wayland-input.h"
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 #include "wayland/meta-wayland-shell-surface.h"
 #include "wayland/meta-wayland-surface-private.h"
 #include "wayland/meta-wayland-window-configuration.h"
@@ -60,6 +60,11 @@
 #define CLOSED_LAYER_WINDOW_DESTROY_DELAY_MS 250
 
 #define META_WAYLAND_LAYER_SHELL_PROPERTIES_APPLIED_KEY "gnoblin-layer-shell-properties-applied"
+#define META_WAYLAND_LAYER_SHELL_SNAPSHOT_KEY "gnoblin-layer-shell-snapshot"
+#define META_WAYLAND_LAYER_SHELL_SNAPSHOT_LAYER_KEY "gnoblin-layer-shell-snapshot-layer"
+#define META_WAYLAND_LAYER_SHELL_SNAPSHOT_KEYBOARD_KEY "gnoblin-layer-shell-snapshot-keyboard"
+#define META_WAYLAND_LAYER_SHELL_SNAPSHOT_ZONE_KEY "gnoblin-layer-shell-snapshot-exclusive-zone"
+#define META_WAYLAND_LAYER_SHELL_SNAPSHOT_ANCHOR_KEY "gnoblin-layer-shell-snapshot-anchor"
 
 #define META_LAYER_SURFACE_ANCHOR_MASK                                                             \
     (ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP | ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM |                      \
@@ -125,6 +130,134 @@ static gboolean borrows_keyboard(MetaWaylandLayerSurface* layer_surface) {
     return layer_surface->current.keyboard_interactivity !=
                ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND &&
            preserve_active_window;
+}
+
+static void update_snapshot_fields(MetaWaylandLayerSurface* layer_surface, MetaWindow* window) {
+    g_object_set_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_SNAPSHOT_KEY, GINT_TO_POINTER(1));
+    g_object_set_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_SNAPSHOT_LAYER_KEY,
+                      GUINT_TO_POINTER(layer_surface->current.layer + 1));
+    g_object_set_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_SNAPSHOT_KEYBOARD_KEY,
+                      GUINT_TO_POINTER(layer_surface->current.keyboard_interactivity + 1));
+    g_object_set_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_SNAPSHOT_ZONE_KEY,
+                      GINT_TO_POINTER(layer_surface->current.exclusive_zone + 1));
+    g_object_set_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_SNAPSHOT_ANCHOR_KEY,
+                      GUINT_TO_POINTER(layer_surface->current.anchor + 1));
+}
+
+static const char* snapshot_layer_name(guint layer) {
+    switch (layer) {
+    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+        return "background";
+    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+        return "bottom";
+    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+        return "top";
+    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+        return "overlay";
+    default:
+        return NULL;
+    }
+}
+
+static const char* snapshot_keyboard_name(guint keyboard_interactivity) {
+    switch (keyboard_interactivity) {
+    case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE:
+        return "none";
+    case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE:
+        return "exclusive";
+    case ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND:
+        return "on_demand";
+    default:
+        return NULL;
+    }
+}
+
+GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const char* monitor_id) {
+    guint layer_value;
+    guint keyboard_value;
+    guint anchor_value;
+    gint zone_value;
+    guint32 stable_sequence;
+    const char* layer_name;
+    const char* keyboard_name;
+    const char* title;
+    const char* namespace;
+    MtkRectangle frame;
+    GVariantBuilder record;
+    GVariantBuilder geometry;
+    GVariantBuilder anchors;
+    static const struct {
+        guint32 bit;
+        const char* name;
+    } anchor_names[] = {
+        {ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP, "top"},
+        {ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT, "right"},
+        {ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM, "bottom"},
+        {ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT, "left"},
+    };
+
+    if (!window || !g_object_get_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_SNAPSHOT_KEY))
+        return NULL;
+
+    layer_value = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(window),
+                                                     META_WAYLAND_LAYER_SHELL_SNAPSHOT_LAYER_KEY)) -
+                  1;
+    keyboard_value = GPOINTER_TO_UINT(g_object_get_data(
+                         G_OBJECT(window), META_WAYLAND_LAYER_SHELL_SNAPSHOT_KEYBOARD_KEY)) -
+                     1;
+    zone_value = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(window),
+                                                   META_WAYLAND_LAYER_SHELL_SNAPSHOT_ZONE_KEY)) -
+                 1;
+    anchor_value = GPOINTER_TO_UINT(g_object_get_data(
+                       G_OBJECT(window), META_WAYLAND_LAYER_SHELL_SNAPSHOT_ANCHOR_KEY)) -
+                   1;
+    layer_name = snapshot_layer_name(layer_value);
+    keyboard_name = snapshot_keyboard_name(keyboard_value);
+    if (!layer_name || !keyboard_name)
+        return NULL;
+
+    stable_sequence = meta_window_get_stable_sequence(window);
+    meta_window_get_frame_rect(window, &frame);
+    title = meta_window_get_title(window);
+    namespace = g_object_get_data(G_OBJECT(window), "gnoblin-layer-namespace");
+
+    g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&record, "{sv}", "id",
+                          g_variant_new_take_string(g_strdup_printf("layer:%u", stable_sequence)));
+    if (title && *title)
+        g_variant_builder_add(&record, "{sv}", "title", g_variant_new_string(title));
+    if (namespace && *namespace)
+        g_variant_builder_add(&record, "{sv}", "namespace", g_variant_new_string(namespace));
+    if (monitor_id && *monitor_id)
+        g_variant_builder_add(&record, "{sv}", "monitor_id", g_variant_new_string(monitor_id));
+    g_variant_builder_add(&record, "{sv}", "layer", g_variant_new_string(layer_name));
+    g_variant_builder_add(&record, "{sv}", "keyboard_interactive",
+                          g_variant_new_string(keyboard_name));
+    g_variant_builder_add(&record, "{sv}", "exclusive_zone", g_variant_new_int32(zone_value));
+
+    g_variant_builder_init(&anchors, G_VARIANT_TYPE("as"));
+    for (guint i = 0; i < G_N_ELEMENTS(anchor_names); i++)
+        if (anchor_value & anchor_names[i].bit)
+            g_variant_builder_add(&anchors, "s", anchor_names[i].name);
+    g_variant_builder_add(&record, "{sv}", "anchor", g_variant_builder_end(&anchors));
+
+    g_variant_builder_init(&geometry, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&geometry, "{sv}", "x", g_variant_new_int32(frame.x));
+    g_variant_builder_add(&geometry, "{sv}", "y", g_variant_new_int32(frame.y));
+    g_variant_builder_add(&geometry, "{sv}", "width", g_variant_new_int32(frame.width));
+    g_variant_builder_add(&geometry, "{sv}", "height", g_variant_new_int32(frame.height));
+    g_variant_builder_add(&record, "{sv}", "geometry", g_variant_builder_end(&geometry));
+    g_variant_builder_add(&record, "{sv}", "mapped", g_variant_new_boolean(window->mapped));
+
+    return g_variant_ref_sink(g_variant_builder_end(&record));
+}
+
+MetaSurfaceActor* meta_wayland_layer_shell_get_actor(MetaWindow* window) {
+    MetaWaylandLayerSurface* layer_surface =
+        window ? g_object_get_data(G_OBJECT(window), "gnoblin-layer-surface") : NULL;
+    if (!META_IS_WAYLAND_LAYER_SURFACE(layer_surface))
+        return NULL;
+    return meta_wayland_actor_surface_get_actor(META_WAYLAND_ACTOR_SURFACE(layer_surface));
 }
 
 static MetaWaylandSurface* menu_get_focus_surface(MetaWaylandEventHandler* handler,
@@ -999,6 +1132,8 @@ static void meta_wayland_layer_surface_apply_state(MetaWaylandSurfaceRole* surfa
         layer_surface->has_pending_state = FALSE;
     }
 
+    update_snapshot_fields(layer_surface, window);
+
     g_object_set_data(G_OBJECT(window), "gnoblin-layer-anchor",
                       GUINT_TO_POINTER(layer_surface->current.anchor + 1));
 
@@ -1225,11 +1360,13 @@ static void layer_shell_get_layer_surface(struct wl_client* client, struct wl_re
     if (layer_surface->namespace)
         g_object_set_data_full(G_OBJECT(window), "gnoblin-layer-namespace",
                                g_strdup(layer_surface->namespace), g_free);
+    update_snapshot_fields(layer_surface, window);
     g_object_set_data(G_OBJECT(window), "gnoblin-layer-surface", layer_surface);
     g_object_set_data(G_OBJECT(window), "gnoblin-layer-dismiss",
                       (gpointer)gnoblin_layer_dismiss_trampoline);
     apply_window_type_and_layer(layer_surface, window);
     meta_wayland_shell_surface_set_window(META_WAYLAND_SHELL_SURFACE(layer_surface), window);
+    gnoblin_native_control_track_layer_window(display_from_surface(surface), window);
 }
 
 static void layer_shell_destroy(struct wl_client* client, struct wl_resource* resource) {
@@ -1249,9 +1386,10 @@ static void bind_layer_shell(struct wl_client* client, void* data, uint32_t vers
 }
 
 void meta_wayland_init_layer_shell(MetaWaylandCompositor* compositor) {
-    preserve_active_window = gnoblin_config_get_bool("layer-shell", "preserve-active-window", TRUE);
+    preserve_active_window =
+        gnoblin_native_control_get_config_bool(NULL, "layer-shell", "preserve-active-window", TRUE);
 
-    if (!gnoblin_config_protocol_enabled("wlr-layer-shell")) {
+    if (!gnoblin_native_control_protocol_enabled("wlr-layer-shell")) {
         g_message("Gnoblin wlr-layer-shell protocol disabled by settings");
         return;
     }

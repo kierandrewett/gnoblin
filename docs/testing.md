@@ -1,246 +1,51 @@
-# Testing
+# Testing Gnoblin
 
-Use a focused test while editing. Run the broader checks before a release.
+Choose a check based on the code you changed. The source build, native tests,
+nested preview, and real login each verify a different part of the session.
 
-## Choose a check
+## Available checks
 
-| Command                      | Checks                                         | Requires                         |
-| ---------------------------- | ---------------------------------------------- | -------------------------------- |
-| `just check`                 | Syntax, logic, config parser and script tests  | Test dependencies                |
-| `just test-session`          | All isolated Shell integration tests           | Current local build              |
-| `just test-all`              | Fast checks, fresh build, headless integration | Build dependencies               |
-| `just test-window-manager`   | Mutter native/Wayland/focus suites             | Working seat and file monitoring |
-| `just test-release`          | Full checks plus native tests and RPM builds   | Real host and packaging tools    |
-| `just test-script-lifecycle` | User-script recovery and async startup         | Node.js                          |
+| Command                           | What it checks                                                                                         | Requirement                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `just check`                      | Source manifests, patch metadata, scripts, configuration, and packaging checks                         | Python and repository tooling                                      |
+| `just test-runtime`               | CTest runtime, Lua configuration, protocol, and CLI tests                                              | A configured build in `build/ninja`                                |
+| `just test-all`                   | Builds the standalone session, then runs the native runtime checks                                     | Installed source-build dependencies                                |
+| `just test-preview`               | Config and native control behavior in a fresh nested Gnoblin session                                   | A working Wayland desktop                                          |
+| `just test-window-csd`            | Lua `remove_csd` pixel behavior in a fresh nested Gnoblin session                                      | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
+| `just test-window-borders`        | Lua border rule pixels in a fresh nested Gnoblin session                                               | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
+| `just test-window-rule-lifecycle` | Repeated Lua window-rule reloads preserve a live window in a fresh nested session                      | Source-build prefix, Wayland desktop, and Quickshell               |
+| `just test-window-shadows`        | Lua replacement shadow pixels, rule removal, and translucent content in a fresh nested Gnoblin session | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
+| `just test-window-manager`        | Mutter unit, Wayland, backend, and focus tests                                                         | A working seat and file-monitoring support                         |
+| `just test-release`               | Build and run the native release verification checks                                                   | Source dependencies and test tools                                 |
 
-A passing headless build does not prove login, visible shell controls or portal
-consent. Use [hardware verification](real-hardware-verification.md) for those.
+## Test the Lua runtime in a preview
 
-## Focused integration checks
+Run `just test-preview` to build or reuse the private nested viewer and check
+that a Lua configuration loads and that `gnoblinctl` can query and mutate
+compositor state. It uses temporary home and XDG directories, a private D-Bus
+session, and the host Wayland display. It is not a login or a sandbox.
 
-Run against the prefix built from your current source:
-
-| Command                     | Covers                                     |
-| --------------------------- | ------------------------------------------ |
-| `just test-startup`         | Gnoblin startup and protocol advertisement |
-| `just test-stock-gnome`     | Stock GNOME behavior stays separate        |
-| `just test-protocols`       | Wayland object and geometry contracts      |
-| `just test-control-api`     | Control API                                |
-| `just test-preview`         | Devkit environment and connectivity        |
-| `just fuzz-lifecycle`       | Seeded window and frame lifecycle stress   |
-| `just test-native-chrome`   | Removed native UI stays absent             |
-| `just test-scripting`       | User script load/reload lifecycle          |
-| `just test-notifications`   | Notification service ownership             |
-| `just test-protocol-gating` | Startup protocol switches                  |
-
-## Run a private test
+For an interactive preview, run:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" \
-GNOBLIN_TEST_DBUS_CLIENT="$PWD/tests/test-permissions-live.py" \
-bash scripts/run-gnome-shell.sh
+./build.sh --preview
 ```
 
-Choose the test matching your change. Tests live in `tests/`; build and launch
-helpers live in `scripts/`.
+See the [devkit guide](/devkit) for launching shell clients and choosing a
+configuration snapshot.
 
-The private harness uses temporary HOME and XDG directories. The
-[devkit](devkit.md#isolation) keeps the real HOME; do not confuse the two.
+## Test compositor changes
+
+Run `just test-window-manager` for Mutter and Wayland changes. These tests need
+access to a real seat; a successful CMake build or CTest run alone does not
+verify input, output hotplug, or a graphical login.
+
+Use [hardware verification](real-hardware-verification.md) to check a fresh
+login, display configuration, input, lock, and logout on a supported machine.
 
 ## CI
 
-The verification workflow provisions disposable Fedora and Arch images, then
-runs `./build.sh` as an unprivileged user. Package provisioning is confined to
-the CI images; the user-facing build script never runs it.
-
-A separate matrix checks dependency provisioning and build tests on Debian,
-Ubuntu and openSUSE. It does not prove a complete desktop installation. Run `python3 tests/build-deps.test.py` and `python3 tests/private-deps.test.py`
-to check command planning, checksums and private library links.
-
-Graphical login and interactive checks still need a host.
-
-## Window lifecycle fuzzing
-
-`just fuzz-lifecycle` runs a seeded state-machine fuzzer in a private headless
-Gnoblin session. It opens real GTK Wayland windows, enables native Gnoblin
-frames, then mixes pointer crossing/click/resize, window state changes, and
-graceful, compositor-requested, and abrupt client closes.
-
-Every run finishes by
-exiting Gnoblin while a native frame is under the pointer. The run fails if the
-shell stops responding unexpectedly or logs a fatal compositor diagnostic.
-
-Use `just fuzz-lifecycle SEED=1738 STEPS=1000` to control a run. Every run keeps
-its seed, action plan, executed action prefix, runner output, and shell log under
-`$XDG_STATE_HOME/gnoblin/lifecycle-fuzz/` (normally
-`~/.local/state/gnoblin/lifecycle-fuzz/`). Replay a failure with the command
-printed by the runner, or run:
-
-```sh
-python3 tests/window-lifecycle-fuzz.py --replay /path/to/repro.json
-```
-
-The harness reports failures and prepares a repair request alongside the exact
-replay. A generated patch still needs to pass that replay and the relevant
-compositor checks before it is accepted.
-
-## Broad application E2E
-
-`.github/workflows/application-e2e.yml` is the app-compatibility workflow;
-`.github/workflows/compositor-fuzz.yml` is the separate seeded state-machine
-workflow. Fuzzing runs nightly at 02:41 UTC or on manual dispatch, not on
-pushes or pull requests.
-
-The app sweep runs one shard on pull requests and all shards weekly. Manual
-dispatch can run one shard or the full catalog. Add the `gnoblin-full-e2e` label
-to run all 40 shards (800 apps) on a pull request.
-
-For manual dispatch, set `app_ids` to a comma-separated list to isolate an app
-or replay an ordered sequence within the selected shard. Every ID must belong to
-that shard. For example, select shard 24 and `com.tencent.WeChat` to replay
-WeChat by itself.
-
-At workflow start, `tests/e2e/app-catalog.py` refreshes two independent sources:
-
-- The first 500 unique desktop apps in Flathub's Popular collection.
-- 300 launchable Fedora RPM applications from `appstream-data`, balanced over
-  the metadata categories and excluding duplicate desktop IDs from Flathub.
-  Alacritty is included as a pinned window-close regression case.
-
-That makes an 800-application catalog without committing a stale popularity
-snapshot. The workflow divides it into 40 shards. Each app is installed or its
-installation failure is recorded, then launched in a disposable user session
-on the built Gnoblin Mutter compositor.
-
-A real `zwlr-layer-shell` panel stays mapped for the duration. The driver records
-whether each app maps a window, then captures a screenshot and checks activation,
-native frames, move/resize, titlebar dragging, resize handles, maximize,
-minimize, fullscreen and close. It also saves the app's stdout and stderr.
-
-After the first window maps, the driver waits for the app's window set and
-geometry to remain unchanged for four seconds, with a 15-second bound. This lets
-startup splash windows hand off to the real app window before controls begin; the
-trace records whether the window set settled before the bound.
-
-The driver exercises Meta modal-dialog windows first, then the focused app
-window, then other app windows. This lets the test handle setup and confirmation
-dialogs before testing a parent window they may block.
-
-Resize traces include the requested frame rectangle, before/after bounds and
-the app's minimum and maximum size hints. A request is recorded as constrained
-if either requested dimension is below its matching minimum hint; each resizable
-app must still complete a valid resize request.
-
-Window-state traces also include all monitor bounds. Before the physical
-resize-handle probe, the driver positions a window to expose a visible right
-edge when its current placement leaves no room for the pointer drag. It uses a
-visible bottom-right or top-right corner when available, then falls back to the
-right edge.
-
-If the window or monitor leaves no valid drag path, the trace
-records that constraint instead of sending pointer events outside the display.
-
-If an app window disappears during an operation, the trace records the
-operation, client PID status and any remaining app windows, then skips the
-remaining controls for that window. Outcomes also include the launcher's exit
-code and mapped client PID status at sequence end.
-
-After state changes, the driver records the before and after window bounds,
-monitor, frame mode and frame presentation. Before clicking close, it waits for
-the nonfullscreen window geometry and any requested native close-button region
-to settle. This avoids using fullscreen bounds during the compositor's restore
-transition.
-
-Click native frame buttons from the frame actor's stage coordinates after restore.
-Record both the actor and frame positions in the trace.
-
-The close check clicks a Gnoblin or client-drawn titlebar button before sending
-a window-manager close request. A close timeout records
-whether the window still exists and whether Mutter reports it can close.
-If it remains after the titlebar click, the trace records the post-click frame
-action and other mapped windows from the same app process before the fallback.
-
-If a Gnoblin close click opens a new modal from that app process, the trace
-records the dialog and a screenshot as an application response and skips a
-second close request blocked by the modal.
-
-The pull-request run attempts every app in shard 0 but gates on the pinned
-Alacritty close regression. The repair artifact still records outcomes from
-the other apps.
-
-Scheduled and manually dispatched runs use strict gating. A shard fails if an
-app cannot be installed or mapped, a supported window operation is rejected,
-a window cannot close, or the compositor fails. Those runs keep the full
-per-app report for follow-up.
-
-Flathub apps keep their Flatpak sandbox and run without network access, so this
-suite measures desktop-window behavior rather than online service behavior.
-The private session bus provides Flatpak's runtime portal for sandboxed clients
-and the IBus daemon for Shell input-method integration. The runner activates and
-probes IBus on that bus before launching Shell.
-
-The Actions runner uses Fedora 44 and Gnoblin's actual Mutter/Wayland code on a
-virtual 1280x800 monitor. Its Fedora app container runs without Docker's
-privileged mode. It grants `SYS_ADMIN` to mount a fresh procfs inside the
-container's private PID namespace for Bubblewrap. The container does not receive
-host GPU or audio devices.
-
-Each shard records and rejects GPU/audio device nodes before launching clients.
-It uses Mesa software OpenGL and the lavapipe Vulkan ICD.
-
-Flatpak clients select the extension's lavapipe manifest through
-`VK_DRIVER_FILES` and its legacy `VK_ICD_FILENAMES` name. They also set
-`SLINT_WGPU_CPU=1` so Slint can consider CPU adapters such as lavapipe. App
-logs retain Vulkan loader diagnostics. RPM clients use the host ICD.
-
-Even-numbered shards add a 1024x768 monitor. Manual runs can set
-`extra_monitor` to a different secondary size for monitor-size checks.
-
-Each shard starts private PipeWire, WirePlumber and PulseAudio compatibility
-services. It disables hardware monitors, selects the `gnoblin_e2e` null sink,
-and waits until both `pactl get-default-sink` and PulseAudio server info report
-that sink before launching Gnoblin. Audio is discarded, and startup fails with
-diagnostics if the default selection does not settle.
-
-The suite exercises real Flatpak and RPM clients against real Gnoblin windows
-without a physical GPU, audio device or logged-in desktop.
-
-Hardware GPU and audio drivers, physical input devices and a hardware login need
-separate coverage using the [hardware verification](real-hardware-verification.md)
-checklist.
-
-Each shard artifact contains its exact catalog slice, installation report,
-per-app logs and screenshots, JSONL operation trace, summary, shell log and a
-reproduction/repair request when it fails. A missed titlebar close also saves a
-screenshot and window/frame state before fallback cleanup. Re-run a shard
-locally after installing its recorded apps with:
-
-Flatpak apps that fail to map also include a `flatpak-runtime-diagnostics/`
-log with the app's Flatpak runtime and extension metadata and locations, plus
-the sandbox's Vulkan ICD manifests,
-libraries, environment and device nodes. The log records the shell-probe
-command and exit code; the probe runs inside the app sandbox and runs
-`vulkaninfo` when the app runtime provides it.
-
-```sh
-GNOBLIN_PREFIX="$PWD/install" \
-GNOBLIN_E2E_CATALOG=/path/to/app-catalog.json \
-GNOBLIN_E2E_SHARD_INDEX=0 GNOBLIN_E2E_SHARD_COUNT=40 \
-python3 tests/e2e/app-e2e.py
-```
-
-The test workflows produce machine-readable repair packets and exact replays.
-Source patching still needs a configured repair worker that can run the replay,
-check the fix and open a reviewable change.
-
-## Environment failures
-
-Mutter backend tests need a seat and working local file monitoring.
-If they fail with `Unable to find default local file monitor type` (exit 251),
-fix that environment before treating the run as compositor evidence.
-
-## Add a test
-
-Use an existing `tests/test-*.sh` as a starting point.
-Assert observable behavior, keep session state private, and preserve literal
-errors. Add an appropriate Just recipe and include it in the relevant suite.
+The release workflows build the source archive without Git metadata, run the
+source build as an unprivileged user, and check package installation and
+removal. Separate workflows assess build dependencies and run application
+compatibility checks. A passing CI job does not prove behavior on a real seat.

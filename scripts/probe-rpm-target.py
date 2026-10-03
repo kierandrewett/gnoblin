@@ -13,29 +13,9 @@ from typing import Any, Dict, List, Optional, Union
 REQUIREMENTS = {
     "glib": {
         "capability": "pkgconfig(glib-2.0)",
-        "minimum": "2.86.0",
+        "minimum": "2.81.1",
         "declaredScope": "host-runtime-contract",
-        "floorSource": "subprojects/gnome-shell/meson.build:24",
-    },
-    "gjs": {
-        "capability": "pkgconfig(gjs-1.0)",
-        "minimum": "1.87.1",
-        "declaredScope": "host-runtime-contract",
-        "floorSource": "subprojects/gnome-shell/meson.build:25",
-        "rpmSpecDeclarations": [
-            {
-                "location": "packaging/opensuse/gnome-shell.spec:45,66",
-                "kind": "BuildRequires and Requires",
-                "minimum": "1.87.1",
-                "note": "matches-source-floor",
-            },
-            {
-                "location": "packaging/rpm/gnome-shell.spec:60,116",
-                "kind": "BuildRequires and Requires",
-                "minimum": "1.87.1",
-                "note": "matches-source-floor",
-            },
-        ],
+        "floorSource": "subprojects/mutter/meson.build:19",
     },
     "wayland": {
         "capability": "pkgconfig(wayland-client)",
@@ -68,13 +48,13 @@ REQUIREMENTS = {
         "capability": "pkgconfig(libinput)",
         "minimum": "1.30.0",
         "declaredScope": "host-runtime-contract",
-        "floorSource": "patches/mutter/74-fedora43-compat/0001-input-allow-libinput-1.30.patch:19-20",
+        "floorSource": "subprojects/mutter/meson.build:53",
     },
     "pipewire": {
         "capability": "pkgconfig(libpipewire-0.3)",
-        "minimum": "1.4.0",
+        "minimum": "1.6.0",
         "declaredScope": "host-runtime-contract",
-        "floorSource": "patches/mutter/74-fedora43-compat/0001-input-allow-libinput-1.30.patch:25-26",
+        "floorSource": "subprojects/mutter/meson.build:58",
     },
     "gtk4": {
         "capability": "pkgconfig(gtk4)",
@@ -83,41 +63,21 @@ REQUIREMENTS = {
         "floorSource": "subprojects/mutter/meson.build:23",
     },
     "girepository": {
-        "capability": "pkgconfig(girepository-2.0)",
-        "minimum": "2.86.0",
+        "capability": "pkgconfig(gobject-introspection-1.0)",
+        "minimum": "1.41.4",
         "declaredScope": "build-closure",
-        "floorSource": "subprojects/gnome-shell/meson.build:27,78",
+        "floorSource": "subprojects/mutter/meson.build:18,299",
         "rpmSpecDeclarations": [
             {
-                "location": "packaging/opensuse/gnome-shell.spec:43",
+                "location": "packaging/opensuse/mutter.spec:13,43",
                 "kind": "BuildRequires",
-                "minimum": "2.86.0",
+                "minimum": "1.41.4",
                 "note": "matches-source-floor",
             },
             {
-                "location": "packaging/rpm/gnome-shell.spec:61,83",
+                "location": "packaging/rpm/mutter.spec:12,58",
                 "kind": "BuildRequires",
-                "minimum": "2.86.0",
-                "note": "matches-source-floor",
-            },
-        ],
-    },
-    "gcr4": {
-        "capability": "pkgconfig(gcr-4)",
-        "minimum": "3.90.0",
-        "declaredScope": "build-closure",
-        "floorSource": "subprojects/gnome-shell/meson.build:26,76",
-        "rpmSpecDeclarations": [
-            {
-                "location": "packaging/opensuse/gnome-shell.spec:41",
-                "kind": "BuildRequires",
-                "minimum": "3.90.0",
-                "note": "matches-source-floor",
-            },
-            {
-                "location": "packaging/rpm/gnome-shell.spec:62,82",
-                "kind": "BuildRequires",
-                "minimum": "3.90.0",
+                "minimum": "1.41.4",
                 "note": "matches-source-floor",
             },
         ],
@@ -138,26 +98,6 @@ REQUIREMENTS = {
                 "location": "packaging/rpm/mutter.spec:15,89",
                 "kind": "BuildRequires",
                 "minimum": "2.0.beta.2",
-                "note": "matches-source-floor",
-            },
-        ],
-    },
-    "hyprcursor": {
-        "capability": "pkgconfig(hyprcursor)",
-        "minimum": "0.1.11",
-        "declaredScope": "build-closure",
-        "floorSource": "patches/mutter/43-hyprcursor/0001-cursor-themes-and-launch-feedback.patch:38",
-        "rpmSpecDeclarations": [
-            {
-                "location": "packaging/opensuse/mutter.spec:54",
-                "kind": "BuildRequires",
-                "minimum": "0.1.11",
-                "note": "matches-source-floor",
-            },
-            {
-                "location": "packaging/rpm/mutter.spec:16,63",
-                "kind": "BuildRequires",
-                "minimum": "0.1.11",
                 "note": "matches-source-floor",
             },
         ],

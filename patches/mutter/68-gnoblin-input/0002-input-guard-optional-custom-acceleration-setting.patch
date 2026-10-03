@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] guard optional custom acceleration setting
+
+---
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+index dbaaf5ec..2dd20257 100644
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -599,11 +599,19 @@ update_pointer_accel_profile (MetaInputSettings  *input_settings,
+     }
+   else
+     {
+-      custom_accel_config = g_settings_get_value (settings, "custom-accel-config");
+-      step_variant = g_variant_lookup_value (custom_accel_config, "pointer-step",
+-                                             G_VARIANT_TYPE ("d"));
+-      speeds_variant = g_variant_lookup_value (custom_accel_config, "pointer-speeds",
+-                                               G_VARIANT_TYPE ("ad"));
++      g_autoptr (GSettingsSchema) schema =
++        g_settings_schema_source_lookup (g_settings_schema_source_get_default (),
++                                         "org.gnome.desktop.peripherals.mouse",
++                                         TRUE);
++
++      if (schema && g_settings_schema_has_key (schema, "custom-accel-config"))
++        {
++          custom_accel_config = g_settings_get_value (settings, "custom-accel-config");
++          step_variant = g_variant_lookup_value (custom_accel_config, "pointer-step",
++                                                 G_VARIANT_TYPE ("d"));
++          speeds_variant = g_variant_lookup_value (custom_accel_config, "pointer-speeds",
++                                                   G_VARIANT_TYPE ("ad"));
++        }
+     }
+ 
+   if (!step_variant || !speeds_variant)

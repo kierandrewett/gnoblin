@@ -28,7 +28,7 @@
 #include "meta/meta-context.h"
 #include "meta/meta-idle-monitor.h"
 #include "wayland/meta-wayland-private.h"
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 
 #include "ext-idle-notify-v1-server-protocol.h"
 
@@ -177,7 +177,7 @@ static void bind_idle_notifier(struct wl_client* client, void* data, uint32_t ve
 }
 
 void meta_wayland_init_idle_notify(MetaWaylandCompositor* compositor) {
-    if (!gnoblin_config_protocol_enabled("ext-idle-notify")) {
+    if (!gnoblin_native_control_protocol_enabled("ext-idle-notify")) {
         g_message("Gnoblin ext-idle-notify protocol disabled by settings");
         return;
     }

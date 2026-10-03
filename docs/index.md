@@ -1,8 +1,9 @@
 # Gnoblin
 
-Gnoblin is a Wayland desktop built on Mutter and a fork of GNOME Shell, with
-layer-shell support. Build your own shell or try Bingux, one separate project
-that uses Gnoblin.
+Gnoblin is a standalone Wayland compositor session built on Mutter. Its Lua
+configuration and runtime API control compositor state; independent shell
+projects such as Bingux provide the panels, launchers, and other desktop UI.
+Build your own shell or try Bingux, a separate project that uses Gnoblin.
 
 ![GNOME Files open above the Bingux dock](images/gnoblin-bingux-files.png)
 

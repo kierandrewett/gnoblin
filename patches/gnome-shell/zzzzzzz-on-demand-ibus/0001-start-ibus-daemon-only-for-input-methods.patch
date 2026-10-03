@@ -1,0 +1,68 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 07:28:02 +0100
+Subject: [PATCH] shell: start IBus daemon only when input methods need it
+
+---
+diff --git a/js/misc/ibusManager.js b/js/misc/ibusManager.js
+index b3279d5..8abb6de 100644
+--- a/js/misc/ibusManager.js
++++ b/js/misc/ibusManager.js
+@@ -77,6 +77,17 @@ class IBusManager extends Signals.EventEmitter {
+         this._ibus.set_watch_ibus_signal(true);
+         this._ibus.connect('global-engine-changed', this._engineChanged.bind(this));
+ 
++        this._standaloneGnoblin = GLib.getenv('GNOME_SHELL_SESSION_MODE') === 'gnoblin' &&
++            GLib.getenv('GNOBLIN_STANDALONE_SESSION') === '1';
++        this._autoStartDaemon = !this._standaloneGnoblin;
++        if (this._autoStartDaemon)
++            this._queueSpawn();
++    }
++
++    enableDaemon() {
++        if (this._autoStartDaemon)
++            return;
++        this._autoStartDaemon = true;
+         this._queueSpawn();
+     }
+ 
+@@ -96,6 +107,13 @@ class IBusManager extends Signals.EventEmitter {
+     }
+ 
+     async _queueSpawn() {
++        // A GNOME-specific user unit may be installed but inactive in the
++        // direct Gnoblin session. Start the daemon ourselves when needed.
++        if (this._standaloneGnoblin) {
++            if (!this._ibus.is_connected())
++                this._spawn([]);
++            return;
++        }
+         const isSystemdService = await this._ibusSystemdServiceExists();
+         if (!isSystemdService)
+             this._spawn([]);
+@@ -128,8 +146,10 @@ class IBusManager extends Signals.EventEmitter {
+     }
+ 
+     async restartDaemon(extraArgs = []) {
++        if (!this._autoStartDaemon)
++            return;
+         const isSystemdService = await this._ibusSystemdServiceExists();
+-        if (!isSystemdService)
++        if (this._standaloneGnoblin || !isSystemdService)
+             this._spawn(['-r', ...extraArgs]);
+     }
+ 
+diff --git a/js/ui/status/keyboard.js b/js/ui/status/keyboard.js
+index 72bf283..d739d87 100644
+--- a/js/ui/status/keyboard.js
++++ b/js/ui/status/keyboard.js
+@@ -680,6 +680,9 @@ export class InputSourceManager extends Signals.EventEmitter {
+         let sources = this._settings.inputSources;
+         let nSources = sources.length;
+ 
++        if (sources.some(source => source.type === INPUT_SOURCE_TYPE_IBUS))
++            this._ibusManager.enableDaemon();
++
+         this._currentSource = null;
+         this._inputSources = {};
+         this._ibusSources = {};

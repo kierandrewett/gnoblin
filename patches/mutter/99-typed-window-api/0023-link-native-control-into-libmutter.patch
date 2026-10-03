@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] mutter: link native control into libmutter
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index cc9cac5..aeaea8a 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1182,6 +1182,7 @@ subdir('third_party')
+ libmutter = library(libmutter_name,
+   mutter_sources,
+   mutter_built_sources,
++  files('core/gnoblin-native-control.c'),
+   version: '0.0.0',
+   soversion: 0,
+   gnu_symbol_visibility: 'hidden',
+@@ -1195,6 +1196,7 @@ libmutter = library(libmutter_name,
+     libmutter_clutter_dep,
+     mutter_deps,
+     gvdb_dep,
++    dependency('json-glib-1.0'),
+   ],
+   install_rpath: pkglibdir,
+   install_dir: libdir,
+@@ -1215,14 +1217,13 @@ libmutter_dep = declare_dependency(
+ mutter = executable('mutter',
+   sources: [
+     files('core/mutter.c'),
+-    files('core/gnoblin-native-control.c'),
+   ],
+   include_directories: mutter_includes,
+   c_args: [
+     mutter_c_args,
+     '-DG_LOG_DOMAIN="mutter"',
+   ],
+-  dependencies: [libmutter_dep, dependency('json-glib-1.0')],
++  dependencies: [libmutter_dep],
+   install_dir: bindir,
+   install: true,
+ )

@@ -7,16 +7,16 @@ Configure the compositor cursor theme and size in Gnoblin's config:
 ```lua
 gnoblin.configure {
     cursor = {
-        theme = "Adwaita-Hyprcursor",
+        theme = "default",
         size = 24,
     },
 }
 ```
 
-| Setting | Accepted value                       | Default              |
-| ------- | ------------------------------------ | -------------------- |
-| `theme` | Installed Hyprcursor theme name      | `Adwaita-Hyprcursor` |
-| `size`  | Integer from 1 to 256 logical pixels | `24`                 |
+| Setting | Accepted value                             | Default   |
+| ------- | ------------------------------------------ | --------- |
+| `theme` | Installed Xcursor or Hyprcursor theme name | `default` |
+| `size`  | Integer from 1 to 256 logical pixels       | `24`      |
 
 Changes apply on config reload. See the [cursor themes guide](/guides/cursors)
 for installation paths and theme details.
