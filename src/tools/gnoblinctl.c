@@ -425,6 +425,7 @@ static guint api_minor_for_method(const char* method) {
         {"input.sources", 46},
         {"input.current_source", 46},
         {"input.orientation_lock", 66},
+        {"appearance.color_scheme", 70},
         {"input.set_orientation_lock", 66},
         {"shortcut.bind", 22},
         {"shortcut.unbind", 11},
@@ -489,6 +490,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         g_str_equal(method_name, "workspaces.list") || g_str_equal(method_name, "monitors.list") ||
         g_str_equal(method_name, "layers.list") || g_str_equal(method_name, "focus.history") ||
         g_str_equal(method_name, "focus.policy") || g_str_equal(method_name, "settings") ||
+        g_str_equal(method_name, "appearance.color_scheme") ||
         g_str_equal(method_name, "layer.animation_policy") ||
         g_str_equal(method_name, "runtime.reload_config") ||
         g_str_equal(method_name, "runtime.status") || g_str_equal(method_name, "launch.begin") ||
@@ -1896,6 +1898,7 @@ static int lua_cli_focus_policy_property(lua_State* state);
 static int lua_cli_settings_property(lua_State* state);
 static int lua_cli_layer_animation_policy(lua_State* state);
 static int lua_cli_privacy_state(lua_State* state);
+static int lua_cli_appearance_color_scheme(lua_State* state);
 static int lua_cli_privacy_stop(lua_State* state);
 static int lua_cli_location_authorize_app(lua_State* state);
 static int lua_cli_runtime_reload_config(lua_State* state);
@@ -4906,6 +4909,45 @@ static int lua_cli_input_snapshot(lua_State* state) {
     return 1;
 }
 
+static int lua_cli_appearance_color_scheme(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.appearance.color_scheme takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result =
+        call_compositor(cli, "api", "appearance.color_scheme", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "gnoblin.appearance.color_scheme failed: %s",
+                          call_error ? call_error->message : "compositor request failed");
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "gnoblin.appearance.color_scheme returned an invalid result");
+
+    JsonObject* response = json_node_get_object(result);
+    JsonNode* available = json_object_get_member(response, "available");
+    if (!available || !JSON_NODE_HOLDS_VALUE(available) ||
+        json_node_get_value_type(available) != G_TYPE_BOOLEAN)
+        return luaL_error(state, "gnoblin.appearance.color_scheme returned invalid availability");
+    if (!json_node_get_boolean(available)) {
+        if (json_object_has_member(response, "color_scheme"))
+            return luaL_error(state, "unavailable appearance result included a color scheme");
+        lua_pushnil(state);
+        return 1;
+    }
+
+    JsonNode* color_scheme_node = json_object_get_member(response, "color_scheme");
+    if (!color_scheme_node || !JSON_NODE_HOLDS_VALUE(color_scheme_node) ||
+        json_node_get_value_type(color_scheme_node) != G_TYPE_STRING)
+        return luaL_error(state, "gnoblin.appearance.color_scheme omitted its string value");
+    const char* color_scheme = json_node_get_string(color_scheme_node);
+    if (!g_str_equal(color_scheme, "default") && !g_str_equal(color_scheme, "prefer-dark") &&
+        !g_str_equal(color_scheme, "prefer-light"))
+        return luaL_error(state, "gnoblin.appearance.color_scheme returned an unsupported value");
+    lua_pushstring(state, color_scheme);
+    return 1;
+}
+
 static int lua_cli_input_select_source(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 1 || !lua_istable(state, 1))
@@ -6577,6 +6619,11 @@ static int lua_api_index(lua_State* state) {
             lua_pop(state, 1);
         if (g_str_equal(name, "list") || g_str_equal(name, "animation_policy"))
             return 1;
+    }
+    if (g_str_equal(prefix, "appearance") && g_str_equal(name, "color_scheme")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        lua_pushcclosure(state, lua_cli_appearance_color_scheme, 1);
+        return 1;
     }
     if (g_str_equal(prefix, "privacy") && g_str_equal(name, "state")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
