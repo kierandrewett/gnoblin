@@ -298,8 +298,13 @@ Shell's native code no longer calls libxml2. The source patch stack removes its
 remaining Meson links, and the source-build dependency installer and Fedora
 Shell recipe no longer request its development package. That Shell build
 retained its camera monitor because its PipeWire state fed `cameraInUse` in the
-compositor bridge. The standalone session has no such bridge or camera monitor;
-its native privacy snapshot currently reports camera activity as unavailable.
+compositor bridge. The standalone session now monitors camera and microphone
+activity in native code. With remote-desktop support enabled and PipeWire
+connected, native-control publishes activity through `gnoblin.privacy.state()`
+and the `camera-monitor` and `microphone-monitor` capabilities. Camera activity
+remains active for 500 ms after the last camera node stops. The native socket
+contract test checks the snapshot and capability wiring; a live PipeWire
+activity transition is not covered by a dedicated integration fixture yet.
 
 ## Replacement order
 
