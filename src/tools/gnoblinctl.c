@@ -14,6 +14,8 @@
 #include <sys/ioctl.h>
 #include <unistd.h>
 
+typedef struct _CliLuaEventSubscription CliLuaEventSubscription;
+
 typedef struct {
     const char* command;
     const char* action;
@@ -26,12 +28,14 @@ typedef struct {
     gboolean version;
     lua_State* lua_state;
     GPtrArray* lua_event_subscriptions;
+    GHashTable* lua_shortcut_bindings;
     GMainLoop* lua_event_loop;
     guint active_lua_event_subscriptions;
     gboolean lua_event_failed;
+    CliLuaEventSubscription* lua_shortcut_owner;
 } Cli;
 
-typedef struct {
+struct _CliLuaEventSubscription {
     Cli* cli;
     GSocketConnection* connection;
     GString* pending;
@@ -43,7 +47,9 @@ typedef struct {
     gboolean once_fired;
     gboolean active;
     gboolean dispatching;
-} CliLuaEventSubscription;
+    gboolean shortcut_owner;
+    gboolean shortcut_owner_transport;
+};
 
 typedef struct {
     CliLuaEventSubscription* subscription;
@@ -404,6 +410,9 @@ static guint api_minor_for_method(const char* method) {
         {"input.current_source", 46},
         {"input.orientation_lock", 66},
         {"input.set_orientation_lock", 66},
+        {"shortcut.bind", 22},
+        {"shortcut.unbind", 11},
+        {"shortcut.session.end", 64},
         {"input.select", 6},
         {"input.text_target", 28},
         {"input.insert_text", 28},
@@ -663,11 +672,18 @@ static JsonNode* cli_lua_call_compositor_on_subscription(CliLuaEventSubscription
     if (!subscription || !subscription->active || !subscription->connection || !method ||
         !arguments) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CLOSED,
-                            "FocusContext subscription is no longer active");
+                            "Lua event subscription is no longer active");
         return NULL;
     }
 
     Cli* cli = subscription->cli;
+    CliLuaEventSubscription* transport =
+        subscription->shortcut_owner ? cli->lua_shortcut_owner : subscription;
+    if (!transport || !transport->active || !transport->connection) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CLOSED,
+                            "shortcut owner connection is no longer active");
+        return NULL;
+    }
     g_autofree char* id = g_uuid_string_random();
     g_autoptr(JsonBuilder) builder = json_builder_new();
     json_builder_begin_object(builder);
@@ -691,21 +707,21 @@ static JsonNode* cli_lua_call_compositor_on_subscription(CliLuaEventSubscription
     g_autofree char* encoded = json_to_string(request, FALSE);
     g_autofree char* payload = g_strconcat(encoded, "\n", NULL);
 
-    GSocket* socket = g_socket_connection_get_socket(subscription->connection);
+    GSocket* socket = g_socket_connection_get_socket(transport->connection);
     g_socket_set_timeout(socket, cli->timeout);
     g_socket_set_blocking(socket, TRUE);
 
     JsonNode* result = NULL;
     g_autoptr(GString) incoming =
-        g_string_new_len(subscription->pending->str, subscription->pending->len);
-    g_string_truncate(subscription->pending, 0);
+        g_string_new_len(transport->pending->str, transport->pending->len);
+    g_string_truncate(transport->pending, 0);
     if (!g_output_stream_write_all(
-            g_io_stream_get_output_stream(G_IO_STREAM(subscription->connection)), payload,
+            g_io_stream_get_output_stream(G_IO_STREAM(transport->connection)), payload,
             strlen(payload), NULL, NULL, error))
         goto out;
 
     gint64 deadline = g_get_monotonic_time() + (gint64)cli->timeout * G_USEC_PER_SEC;
-    GInputStream* input = g_io_stream_get_input_stream(G_IO_STREAM(subscription->connection));
+    GInputStream* input = g_io_stream_get_input_stream(G_IO_STREAM(transport->connection));
     while (g_get_monotonic_time() < deadline) {
         char* line_end;
         while ((line_end = memchr(incoming->str, '\n', incoming->len))) {
@@ -714,9 +730,9 @@ static JsonNode* cli_lua_call_compositor_on_subscription(CliLuaEventSubscription
             g_autoptr(JsonParser) parser = json_parser_new();
             if (!json_parser_load_from_data(parser, line, -1, NULL) ||
                 !JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser))) {
-                g_string_append_printf(subscription->pending, "%s\n", line);
+                g_string_append_printf(transport->pending, "%s\n", line);
                 g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                                    "Invalid compositor response on FocusContext connection");
+                                    "Invalid compositor response on event connection");
                 goto out;
             }
 
@@ -731,19 +747,19 @@ static JsonNode* cli_lua_call_compositor_on_subscription(CliLuaEventSubscription
                 JsonNode* response_result = json_object_get_member(response, "result");
                 if (!g_str_equal(event, "reply") || !response_result) {
                     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                                        "Invalid compositor reply on FocusContext connection");
+                                        "Invalid compositor reply on event connection");
                     goto out;
                 }
                 result = json_node_copy(response_result);
                 goto out;
             }
 
-            g_string_append_printf(subscription->pending, "%s\n", line);
+            g_string_append_printf(transport->pending, "%s\n", line);
         }
 
-        if (incoming->len > 4 * 1024 * 1024 || subscription->pending->len > 4 * 1024 * 1024) {
+        if (incoming->len > 4 * 1024 * 1024 || transport->pending->len > 4 * 1024 * 1024) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
-                                "Compositor data exceeded 4 MiB during FocusContext request");
+                                "Compositor data exceeded 4 MiB during event request");
             goto out;
         }
 
@@ -756,18 +772,18 @@ static JsonNode* cli_lua_call_compositor_on_subscription(CliLuaEventSubscription
         }
         if (count == 0) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CLOSED,
-                                "Compositor disconnected before replying to FocusContext request");
+                                "Compositor disconnected before replying to the event request");
             goto out;
         }
         g_string_append_len(incoming, chunk, count);
     }
 
     g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT,
-                        "FocusContext request timed out; the token cannot be reused");
+                        "Compositor event request timed out; a one-use context may have expired");
 
 out:
     if (incoming->len > 0)
-        g_string_append_len(subscription->pending, incoming->str, incoming->len);
+        g_string_append_len(transport->pending, incoming->str, incoming->len);
     g_socket_set_timeout(socket, 0);
     g_socket_set_blocking(socket, FALSE);
     return result;
@@ -1837,6 +1853,11 @@ static int lua_cli_input_text_target(lua_State* state);
 static int lua_cli_shortcuts_list(lua_State* state);
 static int lua_cli_shortcuts_actions(lua_State* state);
 static int lua_cli_shortcuts_capture(lua_State* state);
+static int lua_cli_shortcuts_bind(lua_State* state);
+static int lua_cli_shortcuts_unbind(lua_State* state);
+static int lua_cli_shortcuts_end_session(lua_State* state);
+static gboolean cli_lua_shortcut_owner_ensure(Cli* cli, GError** error);
+static gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, JsonNode* event);
 static int lua_cli_workspaces_operation(lua_State* state);
 static int lua_cli_focus_policy_property(lua_State* state);
 static int lua_cli_settings_property(lua_State* state);
@@ -3457,6 +3478,109 @@ static int lua_cli_shortcuts_capture(lua_State* state) {
         return luaL_error(state, "gnoblin.shortcuts.capture returned an invalid result");
 
     json_to_lua(state, result);
+    return 1;
+}
+
+static JsonObject* lua_cli_shortcut_owner_call(Cli* cli, const char* method, JsonObject* arguments,
+                                               GError** error) {
+    if (!cli->lua_shortcut_owner && !cli_lua_shortcut_owner_ensure(cli, error))
+        return NULL;
+    g_autoptr(JsonNode) result =
+        cli_lua_call_compositor_on_subscription(cli->lua_shortcut_owner, method, arguments, error);
+    if (!result || !JSON_NODE_HOLDS_OBJECT(result)) {
+        if (result)
+            g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA, "%s returned an invalid result",
+                        method);
+        return NULL;
+    }
+    return json_object_ref(json_node_get_object(result));
+}
+
+static void lua_cli_push_readonly_json_object(lua_State* state, JsonObject* object) {
+    g_autoptr(JsonNode) node = json_node_new(JSON_NODE_OBJECT);
+    json_node_take_object(node, json_object_ref(object));
+    json_to_lua(state, node);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+}
+
+static int lua_cli_shortcuts_bind(lua_State* state) {
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
+        return luaL_error(state, "gnoblin.shortcuts.bind requires one options table");
+    static const char* const allowed[] = {"id",   "accelerator",   "hold", "trigger",
+                                          "mode", "capture_input", NULL};
+    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "shortcut binding options");
+    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed))
+        return luaL_error(state, "gnoblin.shortcuts.bind accepts only id, accelerator, hold, "
+                                 "trigger, mode, and capture_input");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    g_autoptr(GError) error = NULL;
+    if (!cli_lua_shortcut_owner_ensure(cli, &error))
+        return luaL_error(state, "gnoblin.shortcuts.bind could not create its owner connection: %s",
+                          error ? error->message : "unknown error");
+    g_autoptr(JsonObject) result =
+        lua_cli_shortcut_owner_call(cli, "shortcut.bind", arguments, &error);
+    if (!result)
+        return luaL_error(state, "gnoblin.shortcuts.bind failed: %s",
+                          error ? error->message : "invalid result");
+    const char* id = member_string(result, "id", NULL);
+    const char* accelerator = member_string(result, "accelerator", NULL);
+    if (!id || !*id || !accelerator || !*accelerator)
+        return luaL_error(state, "gnoblin.shortcuts.bind returned an invalid binding");
+    if (!cli->lua_shortcut_bindings)
+        cli->lua_shortcut_bindings = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    g_hash_table_add(cli->lua_shortcut_bindings, g_strdup(id));
+    lua_cli_push_readonly_json_object(state, result);
+    return 1;
+}
+
+static int lua_cli_shortcuts_unbind(lua_State* state) {
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
+        return luaL_error(state, "gnoblin.shortcuts.unbind requires one {id} table");
+    static const char* const allowed[] = {"id", NULL};
+    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "shortcut unbind options");
+    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed))
+        return luaL_error(state, "gnoblin.shortcuts.unbind accepts only id");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    if (!cli->lua_shortcut_owner)
+        return luaL_error(state, "gnoblin.shortcuts.unbind has no active owner connection");
+    g_autoptr(GError) error = NULL;
+    g_autoptr(JsonObject) result =
+        lua_cli_shortcut_owner_call(cli, "shortcut.unbind", arguments, &error);
+    if (!result)
+        return luaL_error(state, "gnoblin.shortcuts.unbind failed: %s",
+                          error ? error->message : "invalid result");
+    const char* id = member_string(result, "id", NULL);
+    if (!id || !json_object_get_boolean_member_with_default(result, "unbound", FALSE))
+        return luaL_error(state, "gnoblin.shortcuts.unbind returned an invalid result");
+    if (cli->lua_shortcut_bindings)
+        g_hash_table_remove(cli->lua_shortcut_bindings, id);
+    lua_cli_push_readonly_json_object(state, result);
+    return 1;
+}
+
+static int lua_cli_shortcuts_end_session(lua_State* state) {
+    if (lua_gettop(state) != 1 || !lua_istable(state, 1))
+        return luaL_error(state,
+                          "gnoblin.shortcuts.end_session requires one {id, session_id} table");
+    static const char* const allowed[] = {"id", "session_id", NULL};
+    g_autoptr(JsonObject) arguments = lua_cli_table_object(state, 1, "shortcut session options");
+    if (!lua_cli_workspace_object_has_only_keys(arguments, allowed))
+        return luaL_error(state, "gnoblin.shortcuts.end_session accepts only id and session_id");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    if (!cli->lua_shortcut_owner)
+        return luaL_error(state, "gnoblin.shortcuts.end_session has no active owner connection");
+    g_autoptr(GError) error = NULL;
+    g_autoptr(JsonObject) result =
+        lua_cli_shortcut_owner_call(cli, "shortcut.session.end", arguments, &error);
+    if (!result)
+        return luaL_error(state, "gnoblin.shortcuts.end_session failed: %s",
+                          error ? error->message : "invalid result");
+    const char* id = member_string(result, "id", NULL);
+    if (!id || !json_object_get_boolean_member_with_default(result, "ended", FALSE) ||
+        json_object_get_int_member_with_default(result, "session_id", 0) <= 0)
+        return luaL_error(state, "gnoblin.shortcuts.end_session returned an invalid result");
+    lua_cli_push_readonly_json_object(state, result);
     return 1;
 }
 
@@ -5329,10 +5453,15 @@ static void cli_lua_event_subscription_detach(CliLuaEventSubscription* subscript
         subscription->pending_source_id = 0;
     }
     if (subscription->connection) {
-        g_io_stream_close(G_IO_STREAM(subscription->connection), NULL, NULL);
+        if (!subscription->shortcut_owner)
+            g_io_stream_close(G_IO_STREAM(subscription->connection), NULL, NULL);
         g_clear_object(&subscription->connection);
     }
-    if (subscription->cli && subscription->cli->active_lua_event_subscriptions > 0) {
+    if (subscription->shortcut_owner_transport && subscription->cli &&
+        subscription->cli->lua_shortcut_owner == subscription)
+        subscription->cli->lua_shortcut_owner = NULL;
+    if (!subscription->shortcut_owner_transport && subscription->cli &&
+        subscription->cli->active_lua_event_subscriptions > 0) {
         subscription->cli->active_lua_event_subscriptions--;
         if (subscription->cli->active_lua_event_subscriptions == 0 &&
             subscription->cli->lua_event_loop &&
@@ -5343,6 +5472,22 @@ static void cli_lua_event_subscription_detach(CliLuaEventSubscription* subscript
         luaL_unref(subscription->cli->lua_state, LUA_REGISTRYINDEX, subscription->callback_ref);
         subscription->callback_ref = LUA_NOREF;
     }
+}
+
+static gboolean cli_lua_shortcut_owner_dispatch(CliLuaEventSubscription* owner, JsonNode* event) {
+    if (!owner || !owner->cli || !event || !JSON_NODE_HOLDS_OBJECT(event))
+        return FALSE;
+    const char* name = member_string(json_node_get_object(event), "event", "");
+    Cli* cli = owner->cli;
+    if (!cli->lua_event_subscriptions)
+        return TRUE;
+    for (guint i = 0; i < cli->lua_event_subscriptions->len; i++) {
+        CliLuaEventSubscription* listener = g_ptr_array_index(cli->lua_event_subscriptions, i);
+        if (listener != owner && listener->shortcut_owner && listener->active &&
+            !listener->once_fired && g_str_equal(listener->event_name, name))
+            cli_lua_event_dispatch(listener, event);
+    }
+    return TRUE;
 }
 
 static void cli_lua_event_subscription_free(gpointer data) {
@@ -5434,7 +5579,9 @@ static gboolean cli_lua_event_process_pending(CliLuaEventSubscription* subscript
             subscription->cli->lua_event_failed = TRUE;
             return FALSE;
         }
-        if (g_str_equal(event_name, subscription->event_name))
+        if (subscription->shortcut_owner_transport)
+            cli_lua_shortcut_owner_dispatch(subscription, event_node);
+        else if (g_str_equal(event_name, subscription->event_name))
             cli_lua_event_dispatch(subscription, event_node);
     }
     return TRUE;
@@ -5512,6 +5659,11 @@ static gboolean cli_lua_event_ready(gint fd, GIOCondition condition, gpointer da
 
 static gboolean cli_lua_event_subscribe_socket(CliLuaEventSubscription* subscription,
                                                GError** error) {
+    static const char* const shortcut_owner_events[] = {
+        "gnoblin.shortcut.binding-activated", "gnoblin.shortcut.binding-deactivated",
+        "gnoblin.shortcut.session.activated", "gnoblin.shortcut.session.key",
+        "gnoblin.shortcut.session.ended",
+    };
     Cli* cli = subscription->cli;
     g_autofree char* request_id = g_uuid_string_random();
     g_autoptr(JsonBuilder) builder = json_builder_new();
@@ -5529,7 +5681,12 @@ static gboolean cli_lua_event_subscribe_socket(CliLuaEventSubscription* subscrip
     json_builder_end_object(builder);
     json_builder_set_member_name(builder, "events");
     json_builder_begin_array(builder);
-    json_builder_add_string_value(builder, subscription->event_name);
+    if (subscription->shortcut_owner_transport) {
+        for (guint i = 0; i < G_N_ELEMENTS(shortcut_owner_events); i++)
+            json_builder_add_string_value(builder, shortcut_owner_events[i]);
+    } else {
+        json_builder_add_string_value(builder, subscription->event_name);
+    }
     json_builder_end_array(builder);
     json_builder_end_object(builder);
     g_autoptr(JsonNode) request = json_builder_get_root(builder);
@@ -5588,15 +5745,23 @@ static gboolean cli_lua_event_subscribe_socket(CliLuaEventSubscription* subscrip
             return FALSE;
         }
         JsonArray* accepted = member_array(response, "events");
-        JsonNode* accepted_node = accepted && json_array_get_length(accepted) == 1
-                                      ? json_array_get_element(accepted, 0)
-                                      : NULL;
-        const char* accepted_name = accepted_node && JSON_NODE_HOLDS_VALUE(accepted_node) &&
-                                            json_node_get_value_type(accepted_node) == G_TYPE_STRING
-                                        ? json_node_get_string(accepted_node)
-                                        : NULL;
-        if (!g_str_equal(response_event, "subscribed") || !accepted || !accepted_name ||
-            !g_str_equal(accepted_name, subscription->event_name)) {
+        gboolean accepted_matches =
+            accepted &&
+            json_array_get_length(accepted) ==
+                (subscription->shortcut_owner_transport ? G_N_ELEMENTS(shortcut_owner_events) : 1);
+        for (guint i = 0; accepted_matches && i < json_array_get_length(accepted); i++) {
+            JsonNode* accepted_node = json_array_get_element(accepted, i);
+            const char* accepted_name =
+                accepted_node && JSON_NODE_HOLDS_VALUE(accepted_node) &&
+                        json_node_get_value_type(accepted_node) == G_TYPE_STRING
+                    ? json_node_get_string(accepted_node)
+                    : NULL;
+            const char* expected_name = subscription->shortcut_owner_transport
+                                            ? shortcut_owner_events[i]
+                                            : subscription->event_name;
+            accepted_matches = accepted_name && g_str_equal(accepted_name, expected_name);
+        }
+        if (!g_str_equal(response_event, "subscribed") || !accepted_matches) {
             g_set_error_literal(
                 error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                 "compositor returned an invalid event subscription acknowledgement");
@@ -5608,7 +5773,8 @@ static gboolean cli_lua_event_subscribe_socket(CliLuaEventSubscription* subscrip
     g_socket_set_timeout(socket, 0);
     g_socket_set_blocking(socket, FALSE);
     subscription->active = TRUE;
-    cli->active_lua_event_subscriptions++;
+    if (!subscription->shortcut_owner_transport)
+        cli->active_lua_event_subscriptions++;
     subscription->source_id = g_unix_fd_add_full(G_PRIORITY_DEFAULT, g_socket_get_fd(socket),
                                                  G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
                                                  cli_lua_event_ready, subscription, NULL);
@@ -5617,6 +5783,44 @@ static gboolean cli_lua_event_subscribe_socket(CliLuaEventSubscription* subscrip
             G_PRIORITY_DEFAULT_IDLE, cli_lua_event_process_pending_idle, subscription, NULL);
     }
     return TRUE;
+}
+
+static gboolean cli_lua_shortcut_owner_ensure(Cli* cli, GError** error) {
+    if (cli->lua_shortcut_owner && cli->lua_shortcut_owner->active &&
+        cli->lua_shortcut_owner->connection)
+        return TRUE;
+    if (!cli->lua_event_subscriptions) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CLOSED,
+                            "Lua event transport is unavailable");
+        return FALSE;
+    }
+
+    CliLuaEventSubscription* owner = g_new0(CliLuaEventSubscription, 1);
+    owner->cli = cli;
+    owner->event_name = g_strdup("gnoblin.shortcut");
+    owner->pending = g_string_new(NULL);
+    owner->callback_ref = LUA_NOREF;
+    owner->shortcut_owner_transport = TRUE;
+    cli->lua_shortcut_owner = owner;
+    if (!cli_lua_event_subscribe_socket(owner, error)) {
+        cli->lua_shortcut_owner = NULL;
+        cli_lua_event_subscription_free(owner);
+        return FALSE;
+    }
+    g_ptr_array_add(cli->lua_event_subscriptions, owner);
+    return TRUE;
+}
+
+static gboolean cli_lua_is_owned_shortcut_event(const char* event_name) {
+    static const char* const names[] = {
+        "gnoblin.shortcut.binding-activated", "gnoblin.shortcut.binding-deactivated",
+        "gnoblin.shortcut.session.activated", "gnoblin.shortcut.session.key",
+        "gnoblin.shortcut.session.ended",
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(names); i++)
+        if (g_str_equal(event_name, names[i]))
+            return TRUE;
+    return FALSE;
 }
 
 static int lua_cli_events_subscribe(lua_State* state) {
@@ -5642,7 +5846,22 @@ static int lua_cli_events_subscribe(lua_State* state) {
     subscription->callback_ref = luaL_ref(state, LUA_REGISTRYINDEX);
 
     g_autoptr(GError) error = NULL;
-    if (!cli_lua_event_subscribe_socket(subscription, &error)) {
+    if (cli_lua_is_owned_shortcut_event(event_name)) {
+        if (!cli_lua_shortcut_owner_ensure(cli, &error)) {
+            cli_lua_event_subscription_free(subscription);
+            return luaL_error(state, "could not subscribe to %s: %s", event_name,
+                              error ? error->message : "unknown error");
+        }
+        subscription->shortcut_owner = TRUE;
+        subscription->connection = g_object_ref(cli->lua_shortcut_owner->connection);
+        subscription->active = TRUE;
+        cli->active_lua_event_subscriptions++;
+        if (cli->lua_shortcut_owner->pending->len > 0 &&
+            !cli->lua_shortcut_owner->pending_source_id)
+            cli->lua_shortcut_owner->pending_source_id =
+                g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, cli_lua_event_process_pending_idle,
+                                cli->lua_shortcut_owner, NULL);
+    } else if (!cli_lua_event_subscribe_socket(subscription, &error)) {
         cli_lua_event_subscription_free(subscription);
         return luaL_error(state, "could not subscribe to %s: %s", event_name,
                           error ? error->message : "unknown error");
@@ -5787,7 +6006,9 @@ static void register_lua_cli_event_subscription(lua_State* state) {
 }
 
 static gboolean cli_lua_event_loop(Cli* cli) {
-    while (cli->active_lua_event_subscriptions > 0 && !cli->lua_event_failed)
+    while ((cli->active_lua_event_subscriptions > 0 ||
+            (cli->lua_shortcut_bindings && g_hash_table_size(cli->lua_shortcut_bindings) > 0)) &&
+           !cli->lua_event_failed)
         g_main_loop_run(cli->lua_event_loop);
     return !cli->lua_event_failed;
 }
@@ -5798,6 +6019,8 @@ static void cli_lua_events_clear(Cli* cli) {
     g_ptr_array_unref(cli->lua_event_subscriptions);
     cli->lua_event_subscriptions = NULL;
     cli->active_lua_event_subscriptions = 0;
+    cli->lua_shortcut_owner = NULL;
+    g_clear_pointer(&cli->lua_shortcut_bindings, g_hash_table_unref);
     g_clear_pointer(&cli->lua_event_loop, g_main_loop_unref);
 }
 
@@ -6126,8 +6349,12 @@ static int lua_api_index(lua_State* state) {
     if (g_str_equal(prefix, "shortcuts")) {
         if (g_str_equal(name, "bind") || g_str_equal(name, "unbind") ||
             g_str_equal(name, "end_session")) {
-            g_autofree char* method = g_strdup_printf("gnoblin.shortcuts.%s", name);
-            lua_cli_push_runtime_scope_error(state, method);
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state,
+                             g_str_equal(name, "bind")     ? lua_cli_shortcuts_bind
+                             : g_str_equal(name, "unbind") ? lua_cli_shortcuts_unbind
+                                                           : lua_cli_shortcuts_end_session,
+                             1);
             return 1;
         }
         if (g_str_equal(name, "list") || g_str_equal(name, "actions")) {
@@ -6376,7 +6603,9 @@ static int run_lua_console(Cli* cli, const char* file) {
         }
         if (!evaluate_lua_line(state, line))
             exit_status = 1;
-        if (cli->active_lua_event_subscriptions && !cli_lua_event_loop(cli))
+        if ((cli->active_lua_event_subscriptions ||
+             (cli->lua_shortcut_bindings && g_hash_table_size(cli->lua_shortcut_bindings) > 0)) &&
+            !cli_lua_event_loop(cli))
             exit_status = 1;
     }
     free(line);

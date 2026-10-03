@@ -371,6 +371,127 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
         return result
 
 
+def run_shortcut_binding_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="shortcut-owner-", dir=build_directory) as temporary:
+        root = Path(temporary)
+        socket_path = str(root / "s")
+        script_path = root / "shortcuts.lua"
+        script_path.write_text(
+            'local binding = gnoblin.shortcuts.bind({id = "cli-test", accelerator = "<Super>F12"})\n'
+            'assert(binding.id == "cli-test" and binding.accelerator == "<Super>F12")\n'
+            'assert(not pcall(function() binding.id = "changed" end))\n'
+            'gnoblin.events.once("gnoblin.shortcut.session.activated", function(event)\n'
+            '  assert(event.id == "cli-test" and event.session_id == 9)\n'
+            "  local ended = gnoblin.shortcuts.end_session({id = event.id, session_id = event.session_id})\n"
+            "  assert(ended.ended and ended.session_id == event.session_id)\n"
+            "  local unbound = gnoblin.shortcuts.unbind({id = event.id})\n"
+            "  assert(unbound.unbound and unbound.id == event.id)\n"
+            '  print("SHORTCUT_OWNER_OK")\n'
+            "end)\n",
+            encoding="utf-8",
+        )
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def read_line(connection: socket.socket, buffered: bytes = b"") -> tuple[dict[str, object], bytes]:
+            while b"\n" not in buffered:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    raise AssertionError("shortcut owner disconnected before request")
+                buffered += chunk
+            line, _, remaining = buffered.partition(b"\n")
+            value = json.loads(line)
+            assert isinstance(value, dict), value
+            return value, remaining
+
+        def send(connection: socket.socket, value: dict[str, object]) -> None:
+            connection.sendall((json.dumps(value) + "\n").encode())
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(1)
+                    ready.set()
+                    connection, _ = server.accept()
+                    with connection:
+                        buffered = b""
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "events", request
+                        expected_events = [
+                            "gnoblin.shortcut.binding-activated",
+                            "gnoblin.shortcut.binding-deactivated",
+                            "gnoblin.shortcut.session.activated",
+                            "gnoblin.shortcut.session.key",
+                            "gnoblin.shortcut.session.ended",
+                        ]
+                        assert request["events"] == expected_events, request
+                        send(connection, {"event": "subscribed", "events": expected_events})
+
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "api" and request["method"] == "shortcut.bind", request
+                        assert request["api_version"] == {"major": 1, "minor": 22}, request
+                        assert request["arguments"] == {
+                            "id": "cli-test",
+                            "accelerator": "<Super>F12",
+                        }, request
+                        send(
+                            connection,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": {"id": "cli-test", "accelerator": "<Super>F12"},
+                            },
+                        )
+
+                        send(
+                            connection,
+                            {
+                                "event": "gnoblin.shortcut.session.activated",
+                                "id": "cli-test",
+                                "session_id": 9,
+                            },
+                        )
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "api" and request["method"] == "shortcut.session.end", request
+                        assert request["api_version"] == {"major": 1, "minor": 64}, request
+                        assert request["arguments"] == {"id": "cli-test", "session_id": 9}, request
+                        send(
+                            connection,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": {"id": "cli-test", "session_id": 9, "ended": True},
+                            },
+                        )
+
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "api" and request["method"] == "shortcut.unbind", request
+                        assert request["api_version"] == {"major": 1, "minor": 11}, request
+                        assert request["arguments"] == {"id": "cli-test"}, request
+                        send(
+                            connection,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": {"id": "cli-test", "unbound": True},
+                            },
+                        )
+                        connection.settimeout(3)
+                        assert connection.recv(1) == b"", "shortcut owner stayed open after final unbind"
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), f"shortcut owner fixture did not start: {errors}"
+        result = run(binary, "--socket", socket_path, "lua", str(script_path))
+        thread.join(5)
+        assert not thread.is_alive(), "shortcut owner fixture did not finish"
+        assert not errors, errors
+        return result
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         raise SystemExit("usage: gnoblinctl-cli.test.py BINARY BUILD_DIRECTORY")
@@ -472,15 +593,13 @@ def main() -> int:
 
     runtime_scope_script = Path(build_directory) / "runtime-scope.lua"
     runtime_scope_script.write_text(
-        "local calls = {\n"
-        "    function() gnoblin.shortcuts.bind {} end,\n"
-        "    function() gnoblin.shortcuts.unbind {} end,\n"
-        "    function() gnoblin.shortcuts.end_session {} end,\n"
-        "}\n"
-        "for _, call in ipairs(calls) do\n"
-        "    local ok, err = pcall(call)\n"
-        '    assert(not ok and err:match("requires the supervised Lua runtime"), tostring(err))\n'
-        "end\n"
+        'assert(type(gnoblin.shortcuts.bind) == "function")\n'
+        'assert(type(gnoblin.shortcuts.unbind) == "function")\n'
+        'assert(type(gnoblin.shortcuts.end_session) == "function")\n'
+        'local ok, err = pcall(function() gnoblin.shortcuts.unbind({id = "missing"}) end)\n'
+        'assert(not ok and err:match("no active owner connection"), tostring(err))\n'
+        'ok, err = pcall(function() gnoblin.shortcuts.end_session({id = "missing", session_id = 1}) end)\n'
+        'assert(not ok and err:match("no active owner connection"), tostring(err))\n'
     )
     runtime_scope_result = run(
         binary,
@@ -527,6 +646,10 @@ def main() -> int:
 
     focus_context_result = run_focus_context_cli_test(binary, build_directory)
     assert focus_context_result.returncode == 0, focus_context_result.stderr
+
+    shortcut_binding_result = run_shortcut_binding_cli_test(binary, build_directory)
+    assert shortcut_binding_result.returncode == 0, shortcut_binding_result.stderr
+    assert "SHORTCUT_OWNER_OK" in shortcut_binding_result.stdout, shortcut_binding_result.stdout
 
     with tempfile.TemporaryDirectory(prefix="gnoblinctl-", dir=build_directory) as temporary:
         socket_path = str(Path(temporary) / "compositor.sock")
