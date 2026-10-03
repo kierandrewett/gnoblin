@@ -145,6 +145,7 @@ event revision.
 | Event name                                 | Fields                                                                             | Dispatched when                                                                                     |
 | ------------------------------------------ | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
 | `gnoblin.session.lock-state-changed`       | `state`, `revision`, `sequence`, `time`                                            | Mutter reports a lock-state transition in a native session.                                         |
+| `gnoblin.runtime.status-changed`           | `state`, `generation`, `sequence`, `time`                                          | The worker state or accepted runtime generation changes; matches `gnoblin.runtime.status()`.        |
 | `gnoblin.config.reloaded`                  | `path`, `revision`, `sequence`, `time`                                             | The candidate config commits and becomes active.                                                    |
 | `gnoblin.config.reload-failed`             | `path`, `error`, `sequence`, `time`                                                | Candidate loading, validation, or apply fails while the active runtime stays available.             |
 | `gnoblin.workspace.created`                | `workspace`                                                                        | A runtime workspace is created.                                                                     |
@@ -191,6 +192,16 @@ event revision.
 | `gnoblin.animation.started`                | `animation`, `target`, `event`                                                     | A configured lifecycle animation or preview begins playback; socket subscription requires API 1.18. |
 | `gnoblin.animation.finished`               | `animation`, `target`, `event`, `cancelled`                                        | A configured lifecycle animation or preview completes or is interrupted; API 1.18.                  |
 | `gnoblin.operation.completed`              | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | Native API 1.11 completion event; `error` is an `Error` record.                                     |
+
+`gnoblin.runtime.status-changed` mirrors the `state` and `generation` returned
+by `gnoblin.runtime.status()`.
+
+External clients can observe `restarting`. A Lua worker cannot run callbacks
+while suspended; its replacement receives `running` after restoring state.
+
+Events are not replayed. Subscribe before reading the status snapshot, and
+read it again after reconnecting. Mutter can close the socket before sending a
+final `unavailable` event.
 
 Structured event values are read-only snapshots. Call methods on a lifecycle
 event's `window` record to act on that window:

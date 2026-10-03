@@ -377,6 +377,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.69            | Adds `gnoblin.window.activation-denied` for strict focus-policy denials                          |
 | 1.70            | Adds the shared `appearance.color_scheme` read                                                   |
 | 1.71            | Layer lifecycle events                                                                           |
+| 1.72            | `gnoblin.runtime.status-changed`                                                                 |
 
 ### API 1.27: shell presentation requests
 
@@ -1575,6 +1576,34 @@ records use the fields from [`layer.list`](#api-version-12-layer-surfaces).
 
 Lua receives the same events, with its layer snapshot refreshed before each
 callback.
+
+### API version 1.72: runtime status changes
+
+The `gnoblin.runtime.status-changed` event mirrors the state and generation
+returned by `runtime.status()`.
+
+Each event includes `sequence` and monotonic-clock `time`. Mutter sends it for
+these transitions:
+
+- `running` when a worker starts serving;
+- `restarting` after Mutter suspends a worker for replacement;
+- `running` after the replacement finishes restoring state; or
+- `running` with a new generation after an accepted configuration change.
+
+Rejected and rolled-back changes do not emit a generation update.
+
+```json
+{
+    "op": "events",
+    "api_version": { "major": 1, "minor": 72 },
+    "events": ["gnoblin.runtime.status-changed"]
+}
+```
+
+Events are not replayed. Subscribe, then call `runtime.status` to get the
+current values; repeat that read after reconnecting. Mutter may close the
+socket before it can send a final `unavailable` event when the compositor
+stops.
 
 ## Limits and disconnects
 
