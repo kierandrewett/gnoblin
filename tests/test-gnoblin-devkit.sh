@@ -83,6 +83,21 @@ assert(#sources == 1 and sources[1].id == "us")
 print("INPUT_SOURCE:configured-from-lua")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/input-sources.lua"
+gnoblinctl input select xkb us > "$XDG_RUNTIME_DIR/input-source-select.txt"
+gnoblinctl --json input current > "$XDG_RUNTIME_DIR/input-source-current.json"
+python3 - "$XDG_RUNTIME_DIR/input-source-current.json" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    current = json.load(stream)
+
+source = current.get("source")
+assert current.get("available") is True, current
+assert source and source.get("type") == "xkb" and source.get("id") == "us", current
+assert source.get("current") is True, current
+print("INPUT_SOURCE:selected-through-cli")
+PY
 cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {window_management = {focus_mode = "click"}}
 LUA
@@ -258,6 +273,7 @@ grep -q 'WORKSPACE:next' <<<"$output"
 grep -q 'WORKER:recovered-with-compositor-alive' <<<"$output"
 grep -q 'INPUT_SOURCE:empty-without-lua-setting' <<<"$output"
 grep -q 'INPUT_SOURCE:configured-from-lua' <<<"$output"
+grep -q 'INPUT_SOURCE:selected-through-cli' <<<"$output"
 grep -q 'INPUT_SOURCE:cleared-with-lua-config' <<<"$output"
 grep -q 'LUA_API:runtime-status' <<<"$output"
 grep -q 'LUA_API:snapshots' <<<"$output"
