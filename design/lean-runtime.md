@@ -303,8 +303,10 @@ activity in native code. With remote-desktop support enabled and PipeWire
 connected, native-control publishes activity through `gnoblin.privacy.state()`
 and the `camera-monitor` and `microphone-monitor` capabilities. Camera activity
 remains active for 500 ms after the last camera node stops. The native socket
-contract test checks the snapshot and capability wiring; a live PipeWire
-activity transition is not covered by a dedicated integration fixture yet.
+contract test checks the snapshot and capability wiring. The isolated
+`tests/test-privacy-pipewire.py` fixture also drives a synthetic microphone and
+camera-role stream through a private PipeWire graph and verifies the live Lua
+privacy state transitions without changing the host graph.
 
 ## Replacement order
 
