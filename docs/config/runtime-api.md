@@ -596,6 +596,27 @@ gnoblin.events.on("gnoblin.shortcut.activated", function(event)
 end)
 ```
 
+The `gnoblinctl lua` console can use the same capability inside an event
+callback. Save this as `insert-text.lua` and run it from a Gnoblin session:
+
+```lua
+gnoblin.events.once("gnoblin.shortcut.activated", function(event)
+    if not event.focus_context then
+        return
+    end
+
+    local target = gnoblin.input.text_target(event.focus_context)
+    target:insert_text("hello from Gnoblin")
+end)
+```
+
+```sh
+gnoblinctl lua insert-text.lua
+```
+
+The console returns completed results synchronously. It keeps the target token
+private and sends both requests over the connection that delivered the event.
+
 The compositor consumes the `FocusContext` when it handles the request. It
 creates a target only when the same Wayland surface and client still have
 keyboard focus and have an active text-input-v3 session. The target expires

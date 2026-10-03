@@ -214,7 +214,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current.** The native runtime exposes read-only revisioned snapshots and typed operations. `gnoblinctl lua` exposes the same reads and namespace mutations; operations wait for completion and return read-only records. |
 | `gnoblin.monitors` | `list()`, `primary()` | **Current.** Both the supervised runtime and `gnoblinctl lua` expose read-only revisioned monitor snapshots. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
-| `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `orientation_lock()`, `set_orientation_lock(value)`, `text_target(context)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` exposes device/source and orientation-lock reads and changes. Trusted text targets remain callback-only. |
+| `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `orientation_lock()`, `set_orientation_lock(value)`, `text_target(context)` | **Current.** The native runtime and `gnoblinctl lua` expose all methods. The console creates and consumes trusted text targets only from a live event `FocusContext`, over the connection that delivered it. |
 | `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` supports read-only `list()`, `get(name)`, `inspect(args)`, and the deeply read-only `{surfaces = Surface[]}` snapshot, plus `preview(spec)` and typed preview controls. |
 | `gnoblin.launches` | `list()`, `snapshot()`, `begin(args)`, `finish(token)` | **Current.** The supervised runtime and `gnoblinctl lua` support all methods. The bracket form `gnoblin.launches["end"](token)` remains as a compatibility alias because `end` is a Lua keyword. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records with stale-safe revoke methods. |
@@ -1011,7 +1011,10 @@ event's live `FocusContext`. The compositor consumes the context when it
 handles the request and returns an opaque, one-use `TextTarget` only if the
 same Wayland surface and client still have focus and an active text-input-v3
 session. Socket clients have equivalent `input.text_target` and
-`input.insert_text` methods that use connection-bound tokens; see the
+`input.insert_text` methods that use connection-bound tokens. `gnoblinctl lua`
+wraps those calls as `gnoblin.input.text_target(context)` and
+`TextTarget:insert_text(text)` for event callbacks, keeping the token private;
+both calls return completed results synchronously in the console. See the
 [compositor bridge](/compositor-bridge#api-128-text-insertion-and-keyboard-snapping).
 X11 is unsupported.
 
@@ -1697,11 +1700,13 @@ rows elsewhere in this file describe migration input, not a supported runtime.
 colon methods. Asynchronous window mutations wait for compositor completion and
 return the completed value instead of an `Operation` handle. Event callbacks
 receive an opaque `FocusContext` userdata when the subscribed event carries a
-trusted grant. `Window:focus`, `Window:begin_move`, and `Window:begin_resize`
-send that grant over its originating event connection; the CLI rejects
-strings, forged userdata, and reused contexts. The console supports `events.on`,
-`events.once`, and the matching Mutter subscriptions, dispatches callbacks in
-the local CLI process, and stays open while subscriptions remain active.
+trusted grant. `Window:focus`, `Window:begin_move`, `Window:begin_resize`, and
+`gnoblin.input.text_target` send trusted capabilities over the originating
+event connection; the CLI rejects strings, forged userdata, and reused
+contexts. `TextTarget:insert_text` keeps its one-use token private and uses that
+same connection. The console supports `events.on`, `events.once`, and the
+matching Mutter subscriptions, dispatches callbacks in the local CLI process,
+and stays open while subscriptions remain active.
 Shortcut ownership and other supervised-runtime-only APIs remain exclusive to
 the runtime; full CLI parity with the shared API is still incomplete.
 
