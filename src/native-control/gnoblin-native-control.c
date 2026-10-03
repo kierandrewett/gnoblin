@@ -5458,6 +5458,7 @@ static void native_session_lock_changed(MetaWaylandCompositor* compositor,
     GVariantBuilder payload_builder;
     g_variant_builder_init(&payload_builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&payload_builder, "{sv}", "state", g_variant_new_string(state_name));
+    g_variant_builder_add(&payload_builder, "{sv}", "revision", g_variant_new_uint64(sequence));
     g_variant_builder_add(&payload_builder, "{sv}", "sequence", g_variant_new_int64(sequence));
     g_variant_builder_add(&payload_builder, "{sv}", "time", g_variant_new_int64(time));
     g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&payload_builder));
@@ -5468,6 +5469,7 @@ static void native_session_lock_changed(MetaWaylandCompositor* compositor,
     json_node_take_object(root, object);
     json_object_set_string_member(object, "name", "gnoblin.session.lock-state-changed");
     json_object_set_string_member(object, "state", state_name);
+    json_object_set_int_member(object, "revision", sequence);
     json_object_set_int_member(object, "sequence", sequence);
     json_object_set_int_member(object, "time", time);
     publish_native_socket_event(control, root);

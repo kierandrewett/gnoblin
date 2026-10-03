@@ -57,6 +57,17 @@ class SessionLockApiTests(unittest.TestCase):
             self.assertIn(f'return "{state}";', state_names)
         self.assertIn("native_session_lock_state_name(state)", body)
         self.assertIn('"gnoblin.session.lock-state-changed"', body)
+        self.assertRegex(
+            body,
+            r'g_variant_builder_add\(&payload_builder, "\{sv\}", "revision",\s*'
+            r"g_variant_new_uint64\(sequence\)\);",
+        )
+        self.assertRegex(body, r'json_object_set_int_member\(object, "revision", sequence\);')
+        self.assertRegex(
+            body,
+            r'native_publish_runtime_snapshot\(control, "session-lock", status_snapshot,\s*'
+            r"sequence\);",
+        )
         self.assertIn("publish_native_socket_event", body)
         self.assertIn("native_runtime_dispatch_event", body)
         self.assertNotIn("session.unlock", LUA.read_text())
