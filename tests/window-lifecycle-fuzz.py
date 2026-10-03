@@ -395,6 +395,26 @@ def run_inside() -> int:
                 processes[window_id].wait(timeout=3)
             return
         if op == "resize":
+            # Geometry changes need a normal, visible window. Random prior
+            # actions can leave it minimized, maximized, or fullscreen.
+            for restore_op, flag in (
+                ("unminimize", "minimized"),
+                ("unfullscreen", "fullscreen"),
+                ("unmaximize", "maximized"),
+            ):
+                if state.get(flag):
+                    call_window(restore_op, window_id)
+            wait_for(
+                lambda: (
+                    current
+                    if (current := window_state(window_id))
+                    and not current.get("minimized")
+                    and not current.get("fullscreen")
+                    and not current.get("maximized")
+                    else None
+                ),
+                f"window {window_id} to become movable before resize",
+            )
             subprocess.run(
                 [gnoblinctl, "window", "move", state["id"], str(action["x"]), str(action["y"]), "--json"],
                 check=True,
