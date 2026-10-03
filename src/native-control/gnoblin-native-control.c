@@ -183,6 +183,7 @@ struct _GnoblinNativeControl {
     GVariant* native_touchpad_gestures;
     MetaKeymapDescription* input_keymap_description;
     GSettings* appearance_settings;
+    guint64 appearance_revision;
     GDBusConnection* ibus_bus;
     char* last_published_input_source;
     char* current_ibus_source_id;
@@ -6187,20 +6188,42 @@ static void native_publish_request_event(GnoblinNativeControl* control, const ch
     native_runtime_dispatch_event(control, name, payload);
 }
 
+static GVariant* appearance_snapshot_new(GnoblinNativeControl* control) {
+    if (!control || !control->appearance_settings)
+        return NULL;
+    g_autofree char* color_scheme =
+        g_settings_get_string(control->appearance_settings, "color-scheme");
+    if (!g_str_equal(color_scheme, "default") && !g_str_equal(color_scheme, "prefer-dark") &&
+        !g_str_equal(color_scheme, "prefer-light")) {
+        g_warning("gnoblin-native-control: ignoring unsupported desktop color scheme '%s'",
+                  color_scheme);
+        return NULL;
+    }
+
+    GVariantBuilder snapshot;
+    g_variant_builder_init(&snapshot, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&snapshot, "{sv}", "color_scheme", g_variant_new_string(color_scheme));
+    return g_variant_ref_sink(g_variant_builder_end(&snapshot));
+}
+
 static void appearance_color_scheme_changed(GSettings* settings, const char* key,
                                             gpointer user_data) {
+    (void)settings;
     (void)key;
     GnoblinNativeControl* control = user_data;
     if (!control || control->stopping)
         return;
 
-    g_autofree char* color_scheme = g_settings_get_string(settings, "color-scheme");
-    if (!g_str_equal(color_scheme, "default") && !g_str_equal(color_scheme, "prefer-dark") &&
-        !g_str_equal(color_scheme, "prefer-light")) {
-        g_warning("gnoblin-native-control: ignoring unsupported desktop color scheme '%s'",
-                  color_scheme);
+    g_autoptr(GVariant) snapshot = appearance_snapshot_new(control);
+    if (!snapshot)
         return;
-    }
+    const char* color_scheme = NULL;
+    if (!g_variant_lookup(snapshot, "color_scheme", "&s", &color_scheme))
+        return;
+    control->appearance_revision++;
+    if (control->appearance_revision == 0)
+        control->appearance_revision++;
+    native_publish_runtime_snapshot(control, "appearance", snapshot, control->appearance_revision);
 
     GVariantBuilder fields;
     g_variant_builder_init(&fields, G_VARIANT_TYPE_VARDICT);
@@ -11044,8 +11067,9 @@ static gboolean native_api_read_method(const char* method) {
            (g_str_equal(method, "window.list") || g_str_equal(method, "windows.list") ||
             g_str_equal(method, "version") || g_str_equal(method, "capabilities.list") ||
             g_str_equal(method, "focus.history") || g_str_equal(method, "settings") ||
-            g_str_equal(method, "focus.policy") || g_str_equal(method, "session.activity") ||
-            g_str_equal(method, "session.status") || g_str_equal(method, "runtime.status") ||
+            g_str_equal(method, "appearance.color_scheme") || g_str_equal(method, "focus.policy") ||
+            g_str_equal(method, "session.activity") || g_str_equal(method, "session.status") ||
+            g_str_equal(method, "runtime.status") ||
             g_str_equal(method, "layer.animation_policy") ||
             g_str_equal(method, "workspaces.list") || g_str_equal(method, "monitors.list") ||
             g_str_equal(method, "layers.list") || g_str_equal(method, "launches.list") ||
@@ -11618,6 +11642,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
          g_str_equal(method, "input.set_orientation_lock")) &&
         client->api_minor < 66)
         return encode_response(id, NULL, "orientation lock methods require API version 1.66");
+    if (g_str_equal(method, "appearance.color_scheme") && client->api_minor < 70)
+        return encode_response(id, NULL, "appearance.color_scheme requires API version 1.70");
     if (g_str_equal(method, "shortcut.actions") && client->api_minor < 5)
         return encode_response(id, NULL, "shortcut.actions requires API version 1.5");
     if (g_str_equal(method, "shortcut.capture") && client->api_minor < 8)
@@ -13033,6 +13059,7 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         "session.activity",
         "session.logout",
         "session.status",
+        "appearance.color_scheme",
         "layer.animation_policy",
         "version",
         NULL,
@@ -13661,6 +13688,9 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
     native_publish_runtime_snapshot(control, "input-devices", devices, revision);
     g_autoptr(GVariant) sources = input_source_snapshot(control);
     native_publish_runtime_snapshot(control, "input-sources", sources, revision);
+    g_autoptr(GVariant) appearance = appearance_snapshot_new(control);
+    native_publish_runtime_snapshot(control, "appearance", appearance,
+                                    control->appearance_revision);
     g_autoptr(GVariant) orientation_lock =
         native_orientation_lock_snapshot(control, control->orientation_lock_revision);
     native_publish_runtime_snapshot(control, "input-orientation-lock", orientation_lock,
@@ -14384,6 +14414,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     g_autoptr(GVariant) capabilities = NULL;
     g_autoptr(GVariant) input_devices = NULL;
     g_autoptr(GVariant) input_sources = NULL;
+    g_autoptr(GVariant) appearance = NULL;
     g_autoptr(JsonNode) initial_input_devices = NULL;
     if (runtime_fd < 0 || !document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -14603,10 +14634,14 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     } else {
         g_warning(
             "gnoblin-native-control: org.gnome.desktop.interface/color-scheme is unavailable; "
-            "Lua appearance change events are disabled");
+            "Lua appearance reads and change events are unavailable");
     }
     if (appearance_schema)
         g_settings_schema_unref(appearance_schema);
+    control->appearance_revision = 1;
+    appearance = appearance_snapshot_new(control);
+    native_publish_runtime_snapshot(control, "appearance", appearance,
+                                    control->appearance_revision);
     refresh_input_sources(control, document);
     start_ibus_input_source_tracking(control);
     windows = meta_display_list_all_windows(control->display);
@@ -14702,8 +14737,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         if (!native_runtime_send(control, GNOBLIN_RUNTIME_PACKET_HELLO, 0, payload, error))
             goto fail;
         control->runtime_hello_sent = TRUE;
-        if (!native_runtime_flush_pending_events(control, error) ||
-            !native_runtime_flush_state_snapshots(control, error))
+        if (!native_runtime_flush_state_snapshots(control, error) ||
+            !native_runtime_flush_pending_events(control, error))
             goto fail;
     }
     return control;
