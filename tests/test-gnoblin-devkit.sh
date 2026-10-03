@@ -185,6 +185,7 @@ if [[ "$ibus_lost" != true ]]; then
     echo 'IBus source did not clear after its owner exited' >&2
     exit 1
 fi
+cat "$XDG_RUNTIME_DIR/ibus-lost.txt"
 DISPLAY='' WAYLAND_DISPLAY="$GNOBLIN_TEST_IBUS_WAYLAND_DISPLAY" \
     gnoblin_test_ibus_start "$ibus_pid_file" "$ibus_log_file"
 select_ibus_source "$XDG_RUNTIME_DIR/ibus-source-reselect.txt"
