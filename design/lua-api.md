@@ -210,7 +210,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.shortcuts.bind(args)` / `unbind(args)` | `(table) -> Operation<Result>`                              | **Current; supervised runtime.** Bind or remove a Gnoblin shortcut. `gnoblinctl lua` cannot own the persistent connection that keeps a binding registered.                                                                                                 |
 | `gnoblin.shortcuts.end_session(args)`           | `({id: string, session_id: integer}) -> Operation<Result>`  | **Current; supervised runtime.** End the matching active session while keeping its binding registered. `gnoblinctl lua` cannot own the connection that owns the session.                                                                                   |
 
-| `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current.** The native runtime exposes snapshots and trusted snapping. `gnoblinctl lua` exposes snapshots and typed window methods; event callbacks can use trusted focus, move, and resize contexts, while snapping remains supervised-runtime-only. |
+| `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current.** The native runtime exposes snapshots and trusted snapping. `gnoblinctl lua` exposes snapshots and typed window methods; event callbacks can use trusted focus, move, resize, and snapping contexts on the event connection. |
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current.** The native runtime exposes read-only revisioned snapshots and typed operations. `gnoblinctl lua` exposes the same reads and namespace mutations; operations wait for completion and return read-only records. |
 | `gnoblin.monitors` | `list()`, `primary()` | **Current.** Both the supervised runtime and `gnoblinctl lua` expose read-only revisioned monitor snapshots. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
@@ -910,7 +910,8 @@ gets a different unpredictable token for the live drag. The first accepted
 offer, from Lua or a socket client, owns the target list; only that owner can
 replace it. A socket owner's disconnect or event-subscription replacement
 clears its offer. The compositor validates the actual release state before
-applying a target. Keyboard `SnapContext` remains Lua-only.
+applying a target. Keyboard `SnapContext` uses shortcut focus authority and is
+available through the supervised runtime and native-control API 1.28.
 
 `event.drag:offer_targets(targets)` accepts between 1 and 128 targets. Each
 target has a unique `id`, `hit` and `frame` rectangles, and optional `maximize`,
