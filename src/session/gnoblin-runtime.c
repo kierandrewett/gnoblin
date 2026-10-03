@@ -1933,12 +1933,12 @@ static gboolean drain_worker_ready_fd(int fd, gboolean* start_packet_sent) {
     return ready;
 }
 
-static gboolean send_worker_disconnected(int channel_fd, GError** error) {
+static gboolean send_runtime_control_packet(int channel_fd, GnoblinRuntimePacketType type,
+                                            const char* notification, GError** error) {
     g_autoptr(GnoblinRuntimeWriter) writer = gnoblin_runtime_writer_new();
     g_autoptr(GVariant) empty =
         g_variant_ref_sink(g_variant_new_array(G_VARIANT_TYPE("{sv}"), NULL, 0));
-    if (!gnoblin_runtime_writer_queue(writer, GNOBLIN_RUNTIME_PACKET_WORKER_DISCONNECTED, 0, empty,
-                                      error))
+    if (!gnoblin_runtime_writer_queue(writer, type, 0, empty, error))
         return FALSE;
     gint64 deadline = g_get_monotonic_time() + SUSPEND_TIMEOUT_MS * 1000;
     for (;;) {
@@ -1951,8 +1951,7 @@ static gboolean send_worker_disconnected(int channel_fd, GError** error) {
         }
         gint64 remaining = deadline - g_get_monotonic_time();
         if (remaining <= 0) {
-            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT,
-                                "Mutter did not accept worker disconnect notification");
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT, notification);
             return FALSE;
         }
         struct pollfd pfd = {.fd = channel_fd, .events = POLLOUT};
@@ -1963,6 +1962,21 @@ static gboolean send_worker_disconnected(int channel_fd, GError** error) {
             return FALSE;
         }
     }
+}
+
+static gboolean send_worker_disconnected(int channel_fd, GError** error) {
+    return send_runtime_control_packet(channel_fd, GNOBLIN_RUNTIME_PACKET_WORKER_DISCONNECTED,
+                                       "Mutter did not accept worker disconnect notification",
+                                       error);
+}
+
+static void notify_runtime_recovery_failed(int channel_fd) {
+    g_autoptr(GError) error = NULL;
+    if (!send_runtime_control_packet(channel_fd, GNOBLIN_RUNTIME_PACKET_RECOVERY_FAILED,
+                                     "Mutter did not accept runtime recovery failure notification",
+                                     &error))
+        g_printerr("gnoblin: could not report terminal runtime recovery failure: %s\n",
+                   error ? error->message : "notification failed");
 }
 
 static gboolean wait_for_worker_suspended(int channel_fd, Runtime* host, guint64* settings_revision,
@@ -2513,6 +2527,7 @@ static int session_supervisor_main(int argc, char** argv) {
                                    "session host and compositor alive: %s\n",
                                    suspend_error ? suspend_error->message
                                                  : "Mutter did not suspend");
+                        notify_runtime_recovery_failed(host.channel_fd);
                         leave_session_alive = TRUE;
                         break;
                     }
@@ -2520,6 +2535,7 @@ static int session_supervisor_main(int argc, char** argv) {
                 if (restart_count > WORKER_MAX_RESTARTS) {
                     g_printerr("gnoblin: Lua runtime recovery failed repeatedly; leaving Mutter "
                                "and session targets running\n");
+                    notify_runtime_recovery_failed(host.channel_fd);
                     leave_session_alive = TRUE;
                     break;
                 }
@@ -2539,6 +2555,7 @@ static int session_supervisor_main(int argc, char** argv) {
                 if (!worker_pid) {
                     g_printerr("gnoblin: could not restart Lua runtime worker: %s\n",
                                error ? error->message : "spawn failed");
+                    notify_runtime_recovery_failed(host.channel_fd);
                     leave_session_alive = TRUE;
                     break;
                 }
@@ -2887,6 +2904,7 @@ static int session_guardian_main(int argc, char** argv) {
         if (WIFEXITED(supervisor_status) &&
             WEXITSTATUS(supervisor_status) == EXIT_RESUME_REJECTED) {
             g_printerr("gnoblin: Mutter rejected supervisor recovery; keeping the session alive\n");
+            notify_runtime_recovery_failed(guardian.channel_fd);
             retain_session = TRUE;
             break;
         }
@@ -2908,6 +2926,7 @@ static int session_guardian_main(int argc, char** argv) {
                 g_printerr("gnoblin: could not suspend Mutter for supervisor recovery; keeping the "
                            "session alive: %s\n",
                            suspend_error ? suspend_error->message : "no acknowledgement");
+                notify_runtime_recovery_failed(guardian.channel_fd);
                 retain_session = TRUE;
                 break;
             }
@@ -2918,6 +2937,7 @@ static int session_guardian_main(int argc, char** argv) {
         if (restart_count > WORKER_MAX_RESTARTS) {
             g_printerr("gnoblin: session supervisor recovery failed repeatedly; keeping Mutter "
                        "and the session alive\n");
+            notify_runtime_recovery_failed(guardian.channel_fd);
             retain_session = TRUE;
             break;
         }

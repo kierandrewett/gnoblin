@@ -260,6 +260,7 @@ struct _GnoblinNativeControl {
     gboolean supervised_runtime;
     gboolean runtime_hello_sent;
     gboolean runtime_worker_suspended;
+    gboolean runtime_recovery_failed;
     gboolean stopping;
     gboolean teardown_complete;
     gboolean shortcut_capture_active;
@@ -6265,7 +6266,8 @@ static void native_publish_request_event(GnoblinNativeControl* control, const ch
 }
 
 static const char* native_runtime_status_state(GnoblinNativeControl* control) {
-    if (!control || !control->supervised_runtime || control->stopping)
+    if (!control || !control->supervised_runtime || control->stopping ||
+        control->runtime_recovery_failed)
         return "unavailable";
     if (control->runtime_worker_suspended)
         return "restarting";
@@ -14288,8 +14290,26 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
         if (!available)
             return G_SOURCE_CONTINUE;
         gboolean handled = FALSE;
-        if (control->runtime_worker_suspended &&
-            packet.type == GNOBLIN_RUNTIME_PACKET_WORKER_DISCONNECTED) {
+        if (packet.type == GNOBLIN_RUNTIME_PACKET_RECOVERY_FAILED) {
+            if (!control->supervised_runtime || packet.request_id != 0 ||
+                g_variant_n_children(packet.payload) != 0) {
+                g_set_error_literal(&error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                    "supervisor sent an invalid recovery failure signal");
+            } else {
+                gboolean status_changed = !control->runtime_recovery_failed;
+                control->runtime_recovery_failed = TRUE;
+                if (status_changed)
+                    native_runtime_publish_status(control);
+                handled = TRUE;
+            }
+        } else if (control->runtime_recovery_failed &&
+                   packet.type != GNOBLIN_RUNTIME_PACKET_WORKER_RESUME) {
+            /* A terminal notification means no runtime worker will service
+             * further packets. Discard frames queued before recovery ended. */
+            gnoblin_runtime_packet_clear(&packet);
+            continue;
+        } else if (control->runtime_worker_suspended &&
+                   packet.type == GNOBLIN_RUNTIME_PACKET_WORKER_DISCONNECTED) {
             /* A replacement can die before Mutter receives its RESUME. The
              * host cannot tell whether RESUME reached us, so acknowledge a
              * repeated DISCONNECTED while already suspended. */
@@ -14326,6 +14346,7 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                 /* Also discard any gesture that began while the worker was
                  * absent, so it cannot cross into the resumed generation. */
                 gnoblin_touchpad_router_reset(control->touchpad_router);
+                control->runtime_recovery_failed = FALSE;
                 control->runtime_worker_suspended = FALSE;
                 GVariantBuilder hello;
                 g_variant_builder_init(&hello, G_VARIANT_TYPE_VARDICT);
