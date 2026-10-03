@@ -18,6 +18,10 @@ A desktop viewer and terminal open. Programs started from that terminal connect
 to the nested compositor. The devkit provides a 1280×720 output inside the
 viewer.
 
+With the default config, that output is empty until you start a client. Gnoblin
+provides the compositor, not a built-in panel, launcher, or desktop shell. The
+terminal is a separate window on your host desktop.
+
 ![GNOME Settings in a Gnoblin devkit desktop with Waybar](images/gnoblin-waybar-settings.png)
 
 _The nested session can run a separate bar and stock desktop applications._
@@ -30,7 +34,8 @@ To choose a terminal explicitly:
 
 ## Try your shell
 
-From the devkit terminal, launch an installed layer-shell client:
+From the host terminal opened by the devkit, launch an installed shell or
+layer-shell client:
 
 ```sh
 waybar
