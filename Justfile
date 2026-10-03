@@ -34,6 +34,10 @@ preview *TERMINAL:
 test-preview:
     ./tests/test-gnoblin-devkit.sh
 
+# Verify live PipeWire microphone and camera activity through Lua.
+test-privacy-pipewire:
+    python3 tests/test-privacy-pipewire.py
+
 # Verify compositor-native reconstruction of client-drawn transparent corners.
 test-window-csd:
     GNOBLIN_DEVKIT_EXEC='python3 {{justfile_directory()}}/tests/test-window-csd-reconstruction.py' ./scripts/run-gnoblin-devkit.sh

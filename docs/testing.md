@@ -11,6 +11,7 @@ nested preview, and real login each verify a different part of the session.
 | `just test-runtime`               | CTest runtime, Lua configuration, protocol, and CLI tests                                              | A configured build in `build/ninja`                                |
 | `just test-all`                   | Builds the standalone session, then runs the native runtime checks                                     | Installed source-build dependencies                                |
 | `just test-preview`               | Config and native control behavior in a fresh nested Gnoblin session                                   | A working Wayland desktop                                          |
+| `just test-privacy-pipewire`      | Live microphone and camera activity through `gnoblin.privacy.state()`                                  | Source build, Wayland desktop, PipeWire tools                      |
 | `just test-window-csd`            | Lua `remove_csd` pixel behavior in a fresh nested Gnoblin session                                      | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
 | `just test-window-borders`        | Lua border rule pixels in a fresh nested Gnoblin session                                               | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
 | `just test-window-rule-lifecycle` | Repeated Lua window-rule reloads preserve a live window in a fresh nested session                      | Source-build prefix, Wayland desktop, and Quickshell               |
@@ -33,6 +34,16 @@ For an interactive preview, run:
 
 See the [devkit guide](/devkit) for launching shell clients and choosing a
 configuration snapshot.
+
+Run `just test-privacy-pipewire` to check live microphone and camera
+transitions. It starts a private PipeWire graph for the nested session, so the
+test does not connect to or change the host audio graph. A virtual audio source
+and an active stream with the PipeWire media role set to `Camera` let the test
+run without capture hardware.
+
+The test requires `pipewire`, `wireplumber`, `pipewire-pulse`, `pactl`,
+`pw-cat`, and `pw-cli`. Its source build prefix defaults to `install`. Set
+`GNOBLIN_TEST_PREFIX` to use a different prefix.
 
 ## Test compositor changes
 
