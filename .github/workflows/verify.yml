@@ -130,6 +130,7 @@ jobs:
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/lib/systemd/user/gnoblin-session.target
+          test -f /usr/lib/systemd/user/gnoblin-idle.service
           test -x /usr/lib/gnoblin/bin/gnoblin
           for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon gdm; do
             ! rpm -q "$stock_package" >/dev/null 2>&1
@@ -149,6 +150,7 @@ jobs:
             dnf -y remove "${gnoblin_packages[@]}"
           fi
           ! test -e /usr/lib/systemd/user/gnoblin-session.target
+          ! test -e /usr/lib/systemd/user/gnoblin-idle.service
           rpm -q gnome-shell mutter gnome-session gdm > /tmp/gnome-packages-after-removal
           diff -u /tmp/stock-gnome-packages /tmp/gnome-packages-after-removal
           rpm -qf /usr/bin/gnome-shell /usr/bin/mutter > /tmp/gnome-owners-after-removal
@@ -246,6 +248,8 @@ jobs:
           test -x /usr/bin/gnoblinctl
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
+          test -f /usr/lib/systemd/user/gnoblin-session.target
+          test -f /usr/lib/systemd/user/gnoblin-idle.service
           test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
@@ -253,6 +257,8 @@ jobs:
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
           pacman -R --noconfirm gnoblin-portal gnoblin
           ! pacman -Q gnoblin
+          ! test -e /usr/lib/systemd/user/gnoblin-session.target
+          ! test -e /usr/lib/systemd/user/gnoblin-idle.service
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)

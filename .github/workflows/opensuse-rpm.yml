@@ -165,6 +165,7 @@ jobs:
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/lib/systemd/user/gnoblin-session.target
+          test -f /usr/lib/systemd/user/gnoblin-idle.service
           for stock_package in gdm gnome-session gnome-shell mutter gnome-settings-daemon xdg-desktop-portal-gnome; do
             ! rpm -q "$stock_package" >/dev/null 2>&1
           done
@@ -185,5 +186,6 @@ jobs:
             gnoblin-gnome-integration gnoblin gnoblin-portal gnoblin-mutter
           ! test -e /usr/share/wayland-sessions/gnoblin.desktop
           ! test -e /usr/lib/systemd/user/gnoblin-session.target
+          ! test -e /usr/lib/systemd/user/gnoblin-idle.service
           rpm -q gnome-session gnome-shell mutter
           rpm -V gnome-session gnome-shell mutter
