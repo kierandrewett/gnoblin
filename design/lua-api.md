@@ -1155,18 +1155,17 @@ record from the current session; stale grants fail with `not_found`.
 
 ### Session, launch feedback, and reload
 
-| Lua call                                      | Arguments                                      | Result                    | Canonical operation          |
-| --------------------------------------------- | ---------------------------------------------- | ------------------------- | ---------------------------- |
-| `gnoblin.session.status()`                    | none                                           | `SessionStatus`           | state read                   |
-| `gnoblin.session.activity()`                  | none                                           | `SessionActivity`         | native activity snapshot     |
-| `gnoblin.session.lock()`                      | none                                           | `Operation<LockRequest>`  | `session.lock`               |
-| `gnoblin.session.logout()`                    | none                                           | `Operation<{accepted}>`   | `session.logout`             |
-| `gnoblin.session.restart_compositor(reason?)` | optional reason string, at most 256 characters | `Operation<nil>`          | `session.restart_compositor` |
-| `gnoblin.runtime.reload_config()`             | none                                           | `Operation<ReloadResult>` | `runtime.reload_config`      |
-| `gnoblin.launches.list()`                     | none                                           | `Launch[]`                | native launch snapshot       |
-| `gnoblin.launches.snapshot()`                 | none                                           | `{launches, revision}`    | collection snapshot          |
-| `gnoblin.launches.begin(options)`             | `token`, `application`, optional `timeout_ms`  | `Operation<Launch>`       | `launch.begin`               |
-| `gnoblin.launches.finish(token)`              | launch token                                   | `Operation<{ok, token}>`  | `launch.end`                 |
+| Lua call                          | Arguments                                     | Result                    | Canonical operation      |
+| --------------------------------- | --------------------------------------------- | ------------------------- | ------------------------ |
+| `gnoblin.session.status()`        | none                                          | `SessionStatus`           | state read               |
+| `gnoblin.session.activity()`      | none                                          | `SessionActivity`         | native activity snapshot |
+| `gnoblin.session.lock()`          | none                                          | `Operation<LockRequest>`  | `session.lock`           |
+| `gnoblin.session.logout()`        | none                                          | `Operation<{accepted}>`   | `session.logout`         |
+| `gnoblin.runtime.reload_config()` | none                                          | `Operation<ReloadResult>` | `runtime.reload_config`  |
+| `gnoblin.launches.list()`         | none                                          | `Launch[]`                | native launch snapshot   |
+| `gnoblin.launches.snapshot()`     | none                                          | `{launches, revision}`    | collection snapshot      |
+| `gnoblin.launches.begin(options)` | `token`, `application`, optional `timeout_ms` | `Operation<Launch>`       | `launch.begin`           |
+| `gnoblin.launches.finish(token)`  | launch token                                  | `Operation<{ok, token}>`  | `launch.end`             |
 
 `ReloadResult` contains `ok = true`, `action = "config reload"`, the committed
 `settings_revision`, and the new `runtime_generation`. Reload stages the

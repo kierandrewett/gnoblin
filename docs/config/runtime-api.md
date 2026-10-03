@@ -140,6 +140,7 @@ native session, reload applies changes to these settings:
 
 - `animations`
 - `input`
+- `input-sources`
 - `permissions`
 - `touchpad-gestures`
 - `window-rules`
