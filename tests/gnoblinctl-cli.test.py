@@ -371,6 +371,162 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
         return result
 
 
+def run_menu_context_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="menu-context-", dir=build_directory) as temporary:
+        root = Path(temporary)
+        socket_path = str(root / "s")
+        script_path = root / "menu.lua"
+        script_path.write_text(
+            "local subscription\n"
+            'subscription = gnoblin.events.on("gnoblin.window.menu-requested", function(event)\n'
+            '  if event.menu_type == "wm" then\n'
+            '    assert(type(event.menu_context) == "userdata")\n'
+            "    assert(event.menu_context.token == nil)\n"
+            "    local original = debug.getmetatable(subscription)\n"
+            "    debug.setmetatable(subscription, debug.getmetatable(event.menu_context))\n"
+            "    assert(not pcall(function() subscription:begin_move() end))\n"
+            "    debug.setmetatable(subscription, original)\n"
+            '    if event.action == "move" then\n'
+            "      local result = event.menu_context:begin_move()\n"
+            "      assert(result.started)\n"
+            '      assert(tostring(event.menu_context) == "MenuContext<consumed>")\n'
+            "      assert(not pcall(function() event.menu_context:begin_move() end))\n"
+            '      print("MENU_CONTEXT_MOVE_OK")\n'
+            '    elseif event.action == "resize" then\n'
+            '      local result = event.menu_context:begin_resize("south_west")\n'
+            "      assert(result.started)\n"
+            '      assert(tostring(event.menu_context) == "MenuContext<consumed>")\n'
+            '      print("MENU_CONTEXT_RESIZE_OK")\n'
+            '    elseif event.action == "detach" then\n'
+            "      local saved = event.menu_context\n"
+            "      subscription:unsubscribe()\n"
+            "      assert(not pcall(function() saved:begin_move() end))\n"
+            '      print("MENU_CONTEXT_INACTIVE_SUBSCRIPTION_REJECTED")\n'
+            '    else error("unexpected WM menu action") end\n'
+            '  elseif event.menu_type == "app" then\n'
+            "    assert(event.menu_context == nil)\n"
+            '    print("MENU_CONTEXT_APP_HAS_NO_AUTHORITY")\n'
+            '  else error("unexpected menu type") end\n'
+            "end)\n",
+            encoding="utf-8",
+        )
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def read_line(connection: socket.socket, buffered: bytes = b"") -> tuple[dict[str, object], bytes]:
+            while b"\n" not in buffered:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    raise AssertionError("menu event connection closed before request")
+                buffered += chunk
+            line, _, remaining = buffered.partition(b"\n")
+            value = json.loads(line)
+            assert isinstance(value, dict), value
+            return value, remaining
+
+        def send(connection: socket.socket, value: dict[str, object]) -> None:
+            connection.sendall((json.dumps(value) + "\n").encode())
+
+        def read_api_request(
+            server: socket.socket,
+            connection: socket.socket,
+            buffered: bytes,
+        ) -> tuple[dict[str, object], bytes]:
+            deadline = time.monotonic() + 4
+            while time.monotonic() < deadline:
+                if b"\n" in buffered:
+                    return read_line(connection, buffered)
+                readable, _, _ = select.select([server, connection], [], [], 0.1)
+                if server in readable:
+                    unexpected, _ = server.accept()
+                    unexpected.close()
+                    raise AssertionError("MenuContext request used a different socket connection")
+                if connection in readable:
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        raise AssertionError("menu event connection closed before API request")
+                    buffered += chunk
+            raise AssertionError("timed out waiting for MenuContext API request")
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(2)
+                    ready.set()
+                    connection, _ = server.accept()
+                    with connection:
+                        buffered = b""
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "events", request
+                        assert request["events"] == ["gnoblin.window.menu-requested"], request
+                        send(connection, {"event": "subscribed", "events": request["events"]})
+
+                        for action, token, method, arguments in (
+                            ("move", "wm-move-token", "window.begin_move", {"menu_context": "wm-move-token"}),
+                            (
+                                "resize",
+                                "wm-resize-token",
+                                "window.begin_resize",
+                                {"menu_context": "wm-resize-token", "edge": "south_west"},
+                            ),
+                        ):
+                            send(
+                                connection,
+                                {
+                                    "event": "gnoblin.window.menu-requested",
+                                    "menu_type": "wm",
+                                    "menu_context": token,
+                                    "action": action,
+                                },
+                            )
+                            request, buffered = read_api_request(server, connection, buffered)
+                            assert request["op"] == "api" and request["method"] == method, request
+                            assert request["arguments"] == arguments, request
+                            send(
+                                connection,
+                                {"event": "reply", "id": request["id"], "result": {"started": True}},
+                            )
+
+                        # A context-like field on an app menu must not become a usable capability
+                        # or remain visible to Lua code.
+                        send(
+                            connection,
+                            {
+                                "event": "gnoblin.window.menu-requested",
+                                "menu_type": "app",
+                                "menu_context": "must-not-be-exposed",
+                            },
+                        )
+                        send(
+                            connection,
+                            {
+                                "event": "gnoblin.window.menu-requested",
+                                "menu_type": "wm",
+                                "menu_context": "detached-token",
+                                "action": "detach",
+                            },
+                        )
+                        connection.settimeout(3)
+                        assert connection.recv(1) == b"", "menu event subscription did not close"
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), f"MenuContext fixture did not start: {errors}"
+        result = run(binary, "--socket", socket_path, "lua", str(script_path))
+        thread.join(8)
+        assert not thread.is_alive(), "MenuContext fixture did not finish"
+        assert not errors, f"{errors}; gnoblinctl exited {result.returncode}: {result.stderr}"
+        assert result.returncode == 0, result.stderr
+        assert "MENU_CONTEXT_MOVE_OK" in result.stdout, result.stdout
+        assert "MENU_CONTEXT_RESIZE_OK" in result.stdout, result.stdout
+        assert "MENU_CONTEXT_APP_HAS_NO_AUTHORITY" in result.stdout, result.stdout
+        assert "MENU_CONTEXT_INACTIVE_SUBSCRIPTION_REJECTED" in result.stdout, result.stdout
+        return result
+
+
 def run_shortcut_binding_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
     with tempfile.TemporaryDirectory(prefix="shortcut-owner-", dir=build_directory) as temporary:
         root = Path(temporary)
@@ -771,6 +927,9 @@ def main() -> int:
 
     focus_context_result = run_focus_context_cli_test(binary, build_directory)
     assert focus_context_result.returncode == 0, focus_context_result.stderr
+
+    menu_context_result = run_menu_context_cli_test(binary, build_directory)
+    assert menu_context_result.returncode == 0, menu_context_result.stderr
 
     location_authorization_result = run_location_authorization_cli_test(binary, build_directory)
     assert location_authorization_result.returncode == 0, location_authorization_result.stderr

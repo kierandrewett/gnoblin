@@ -75,6 +75,15 @@ typedef struct {
     CliLuaEventSubscription* subscription;
     char* token;
     gboolean consumed;
+} LuaCliMenuContext;
+
+#define LUA_CLI_MENU_CONTEXT_MAGIC G_GUINT64_CONSTANT(0x474e4f424d454e55)
+
+typedef struct {
+    guint64 magic;
+    CliLuaEventSubscription* subscription;
+    char* token;
+    gboolean consumed;
 } LuaCliSnapContext;
 
 #define LUA_CLI_SNAP_CONTEXT_MAGIC G_GUINT64_CONSTANT(0x474e4f42534e4150)
@@ -673,11 +682,12 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
     return NULL;
 }
 
-static JsonNode* cli_lua_call_compositor_on_subscription(CliLuaEventSubscription* subscription,
-                                                         const char* method, JsonObject* arguments,
-                                                         GError** error) {
-    if (!subscription || !subscription->active || !subscription->connection || !method ||
-        !arguments) {
+static JsonNode*
+cli_lua_call_compositor_on_subscription_internal(CliLuaEventSubscription* subscription,
+                                                 const char* method, JsonObject* arguments,
+                                                 gboolean use_shortcut_owner, GError** error) {
+    if (!subscription || !subscription->active || !subscription->connection || !subscription->cli ||
+        !method || !arguments) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CLOSED,
                             "Lua event subscription is no longer active");
         return NULL;
@@ -685,7 +695,7 @@ static JsonNode* cli_lua_call_compositor_on_subscription(CliLuaEventSubscription
 
     Cli* cli = subscription->cli;
     CliLuaEventSubscription* transport =
-        subscription->shortcut_owner ? cli->lua_shortcut_owner : subscription;
+        use_shortcut_owner && subscription->shortcut_owner ? cli->lua_shortcut_owner : subscription;
     if (!transport || !transport->active || !transport->connection) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CLOSED,
                             "shortcut owner connection is no longer active");
@@ -794,6 +804,21 @@ out:
     g_socket_set_timeout(socket, 0);
     g_socket_set_blocking(socket, FALSE);
     return result;
+}
+
+static JsonNode* cli_lua_call_compositor_on_subscription(CliLuaEventSubscription* subscription,
+                                                         const char* method, JsonObject* arguments,
+                                                         GError** error) {
+    return cli_lua_call_compositor_on_subscription_internal(subscription, method, arguments, TRUE,
+                                                            error);
+}
+
+static JsonNode*
+cli_lua_call_compositor_direct_on_subscription(CliLuaEventSubscription* subscription,
+                                               const char* method, JsonObject* arguments,
+                                               GError** error) {
+    return cli_lua_call_compositor_on_subscription_internal(subscription, method, arguments, FALSE,
+                                                            error);
 }
 
 static char* focused_window_id(Cli* cli, GError** error) {
@@ -1838,6 +1863,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_PERMISSION_DECISION_RECORD_METATABLE "gnoblinctl.PermissionDecision"
 #define GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE "gnoblinctl.EventSubscription"
 #define GNOBLINCTL_FOCUS_CONTEXT_METATABLE "gnoblinctl.FocusContext"
+#define GNOBLINCTL_MENU_CONTEXT_METATABLE "gnoblinctl.MenuContext"
 #define GNOBLINCTL_SNAP_CONTEXT_METATABLE "gnoblinctl.SnapContext"
 #define GNOBLINCTL_TEXT_TARGET_METATABLE "gnoblinctl.TextTarget"
 
@@ -1885,6 +1911,8 @@ static int lua_cli_events_subscribe(lua_State* state);
 static int lua_cli_event_subscription_unsubscribe(lua_State* state);
 static void lua_cli_push_focus_context(lua_State* state, CliLuaEventSubscription* subscription,
                                        const char* token);
+static void lua_cli_push_menu_context(lua_State* state, CliLuaEventSubscription* subscription,
+                                      const char* token);
 static int lua_cli_version(lua_State* state);
 
 /* Nested JSON values are userdata-backed proxies instead of ordinary Lua
@@ -2586,6 +2614,75 @@ static LuaCliFocusContext* lua_cli_test_focus_context(lua_State* state, int inde
     return context->magic == LUA_CLI_FOCUS_CONTEXT_MAGIC ? context : NULL;
 }
 
+static LuaCliMenuContext* lua_cli_test_menu_context(lua_State* state, int index) {
+    if (!luaL_testudata(state, index, GNOBLINCTL_MENU_CONTEXT_METATABLE) ||
+        lua_rawlen(state, index) != sizeof(LuaCliMenuContext))
+        return NULL;
+    LuaCliMenuContext* context = lua_touserdata(state, index);
+    return context->magic == LUA_CLI_MENU_CONTEXT_MAGIC && context->subscription && context->token
+               ? context
+               : NULL;
+}
+
+static gboolean lua_cli_resize_edge_valid(const char* edge) {
+    return edge && (g_str_equal(edge, "north") || g_str_equal(edge, "south") ||
+                    g_str_equal(edge, "east") || g_str_equal(edge, "west") ||
+                    g_str_equal(edge, "north_east") || g_str_equal(edge, "north_west") ||
+                    g_str_equal(edge, "south_east") || g_str_equal(edge, "south_west"));
+}
+
+static int lua_cli_menu_context_begin(lua_State* state, gboolean resize) {
+    LuaCliMenuContext* context = lua_cli_test_menu_context(state, 1);
+    if (!context)
+        return luaL_error(state, "MenuContext method called on a forged or invalid value");
+    if (lua_gettop(state) != (resize ? 2 : 1))
+        return luaL_error(state, "MenuContext:%s takes %s", resize ? "begin_resize" : "begin_move",
+                          resize ? "one ResizeEdge" : "no arguments");
+    if (context->consumed)
+        return luaL_error(state, "MenuContext has already been consumed");
+    CliLuaEventSubscription* subscription = context->subscription;
+    if (!subscription || !subscription->active || !subscription->connection || !subscription->cli)
+        return luaL_error(state, "MenuContext requires its active event subscription");
+
+    const char* edge = NULL;
+    if (resize) {
+        size_t edge_length = 0;
+        edge = lua_type(state, 2) == LUA_TSTRING ? lua_tolstring(state, 2, &edge_length) : NULL;
+        if (!lua_cli_resize_edge_valid(edge) || edge_length != strlen(edge))
+            return luaL_error(state, "MenuContext:begin_resize requires a valid ResizeEdge");
+    }
+
+    JsonObject* arguments = json_object_new();
+    json_object_set_string_member(arguments, "menu_context", context->token);
+    if (resize)
+        json_object_set_string_member(arguments, "edge", edge);
+    context->consumed = TRUE;
+
+    GError* error = NULL;
+    JsonNode* result = cli_lua_call_compositor_direct_on_subscription(
+        subscription, resize ? "window.begin_resize" : "window.begin_move", arguments, &error);
+    json_object_unref(arguments);
+    if (!result) {
+        char message[512];
+        g_snprintf(message, sizeof message, "%s",
+                   error ? error->message : "unknown compositor error");
+        g_clear_error(&error);
+        return luaL_error(state, "MenuContext operation failed: %s", message);
+    }
+
+    json_to_lua(state, result);
+    json_node_unref(result);
+    return 1;
+}
+
+static int lua_cli_menu_context_begin_move(lua_State* state) {
+    return lua_cli_menu_context_begin(state, FALSE);
+}
+
+static int lua_cli_menu_context_begin_resize(lua_State* state) {
+    return lua_cli_menu_context_begin(state, TRUE);
+}
+
 static int lua_cli_window_method(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
@@ -2622,12 +2719,7 @@ static int lua_cli_window_method(lua_State* state) {
         json_object_set_string_member(arguments, "focus_context", focus_context->token);
         if (g_str_equal(method, "window.begin_resize")) {
             const char* edge = lua_type(state, 2) == LUA_TSTRING ? lua_tostring(state, 2) : NULL;
-            gboolean valid_edge =
-                edge && (g_str_equal(edge, "north") || g_str_equal(edge, "south") ||
-                         g_str_equal(edge, "east") || g_str_equal(edge, "west") ||
-                         g_str_equal(edge, "north_east") || g_str_equal(edge, "north_west") ||
-                         g_str_equal(edge, "south_east") || g_str_equal(edge, "south_west"));
-            if (!valid_edge) {
+            if (!lua_cli_resize_edge_valid(edge)) {
                 json_object_unref(arguments);
                 return luaL_error(state, "window.begin_resize requires a valid ResizeEdge");
             }
@@ -5713,6 +5805,17 @@ static void lua_cli_push_focus_context(lua_State* state, CliLuaEventSubscription
     lua_setmetatable(state, -2);
 }
 
+static void lua_cli_push_menu_context(lua_State* state, CliLuaEventSubscription* subscription,
+                                      const char* token) {
+    LuaCliMenuContext* context = lua_newuserdatauv(state, sizeof *context, 0);
+    context->magic = LUA_CLI_MENU_CONTEXT_MAGIC;
+    context->subscription = subscription;
+    context->token = g_strdup(token);
+    context->consumed = FALSE;
+    luaL_getmetatable(state, GNOBLINCTL_MENU_CONTEXT_METATABLE);
+    lua_setmetatable(state, -2);
+}
+
 static gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, JsonNode* event) {
     if (!subscription || !subscription->cli || !subscription->cli->lua_state || !event)
         return FALSE;
@@ -5727,10 +5830,25 @@ static gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, Js
     lua_rawgeti(state, LUA_REGISTRYINDEX, subscription->callback_ref);
     json_to_lua(state, event);
     if (JSON_NODE_HOLDS_OBJECT(event)) {
-        const char* token = member_string(json_node_get_object(event), "focus_context", NULL);
+        JsonObject* object = json_node_get_object(event);
+        const char* token = member_string(object, "focus_context", NULL);
         if (token && *token) {
             lua_cli_push_focus_context(state, subscription, token);
             lua_setfield(state, -2, "focus_context");
+        }
+
+        const char* menu_token = member_string(object, "menu_context", NULL);
+        if (menu_token) {
+            const char* event_name = member_string(object, "event", NULL);
+            const char* menu_type = member_string(object, "menu_type", NULL);
+            lua_pushnil(state);
+            lua_setfield(state, -2, "menu_context");
+            if (*menu_token && event_name && menu_type &&
+                g_str_equal(event_name, "gnoblin.window.menu-requested") &&
+                g_str_equal(menu_type, "wm")) {
+                lua_cli_push_menu_context(state, subscription, menu_token);
+                lua_setfield(state, -2, "menu_context");
+            }
         }
     }
     gboolean succeeded = lua_pcall(state, 1, 0, 0) == LUA_OK;
@@ -6142,6 +6260,64 @@ static void register_lua_cli_focus_context(lua_State* state) {
     lua_pushcfunction(state, lua_cli_focus_context_newindex);
     lua_setfield(state, -2, "__newindex");
     lua_pushcfunction(state, lua_cli_focus_context_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pop(state, 1);
+}
+
+static int lua_cli_menu_context_index(lua_State* state) {
+    LuaCliMenuContext* context = lua_cli_test_menu_context(state, 1);
+    if (!context)
+        return 0;
+    const char* field = luaL_checkstring(state, 2);
+    if (g_str_equal(field, "begin_move")) {
+        lua_pushcfunction(state, lua_cli_menu_context_begin_move);
+        return 1;
+    }
+    if (g_str_equal(field, "begin_resize")) {
+        lua_pushcfunction(state, lua_cli_menu_context_begin_resize);
+        return 1;
+    }
+    return 0;
+}
+
+static int lua_cli_menu_context_gc(lua_State* state) {
+    LuaCliMenuContext* context = luaL_testudata(state, 1, GNOBLINCTL_MENU_CONTEXT_METATABLE);
+    if (!context || lua_rawlen(state, 1) != sizeof(LuaCliMenuContext) ||
+        context->magic != LUA_CLI_MENU_CONTEXT_MAGIC)
+        return 0;
+    g_clear_pointer(&context->token, g_free);
+    context->subscription = NULL;
+    context->magic = 0;
+    return 0;
+}
+
+static int lua_cli_menu_context_newindex(lua_State* state) {
+    return luaL_error(state, "MenuContext values are opaque and read-only");
+}
+
+static int lua_cli_menu_context_tostring(lua_State* state) {
+    LuaCliMenuContext* context = luaL_testudata(state, 1, GNOBLINCTL_MENU_CONTEXT_METATABLE);
+    if (!context || lua_rawlen(state, 1) != sizeof(LuaCliMenuContext) ||
+        context->magic != LUA_CLI_MENU_CONTEXT_MAGIC) {
+        lua_pushliteral(state, "MenuContext<invalid>");
+        return 1;
+    }
+    lua_pushfstring(state, "MenuContext<%s>", context->consumed ? "consumed" : "available");
+    return 1;
+}
+
+static void register_lua_cli_menu_context(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_MENU_CONTEXT_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_menu_context_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_menu_context_gc);
+    lua_setfield(state, -2, "__gc");
+    lua_pushcfunction(state, lua_cli_menu_context_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_menu_context_tostring);
     lua_setfield(state, -2, "__tostring");
     lua_pop(state, 1);
 }
@@ -6732,6 +6908,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_readonly_table(state);
     register_lua_cli_event_subscription(state);
     register_lua_cli_focus_context(state);
+    register_lua_cli_menu_context(state);
     register_lua_cli_snap_context(state);
     register_lua_cli_text_target(state);
     register_lua_cli_window_record(state);
