@@ -463,6 +463,13 @@ its native privacy snapshot currently reports camera activity as unavailable.
    retaining Mutter and running login autostart once. This verifies the fresh
    nested session, not a real-seat login or physical input. The standalone
    login lifecycle and remaining API parity work are still open.
+   Later on October 3, commit `6eba868d` built the full session on Fedora 43
+   with `./build.sh --jobs 4` (log:
+   `build/logs/build-20261003-005839-485272.log`). The 51-case
+   `tests/native-socket-text-snap-api.test.py` contract suite passed, and a
+   fresh `tests/test-gnoblin-devkit.sh` run passed Lua/native API and worker
+   recovery checks. This verifies compilation and the nested session path; it
+   does not verify focus-context delivery from real key input.
 5. **Narrow the remaining forks.** Keep the portal frontend protocol and
    backend selection standard. Move Gnoblin's portal implementation out of the
    GNOME backend fork only after its dialogs, capture, permissions, and GNOME
