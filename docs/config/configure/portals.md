@@ -66,11 +66,11 @@ Gnoblin settings. See the [XDG portal configuration
 reference](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html)
 for the portal service's configuration interface.
 
-Gnoblin writes portal preferences before starting session services. A
-configuration reload updates the generated preference, but an already running
-portal service keeps its current routing until it starts again. Gnoblin does
-not restart it automatically because that can interrupt active portal
-requests, including screen sharing.
+When `portals` is set, Gnoblin writes the generated override before starting
+session services. A configuration reload updates the override, but an already
+running portal service keeps its current routing until it starts again.
+Gnoblin does not restart it automatically because that can interrupt active
+portal requests, including screen sharing.
 
 To apply a reload immediately, restart the portal service when no portal
 request is active:
