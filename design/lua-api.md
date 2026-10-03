@@ -1341,6 +1341,23 @@ to the current stable connector ID. API 1.60 through 1.63 resolve the legacy
 clients retain the native compatibility path for basic actions and do not
 support the newer resize, move, workspace, or monitor actions.
 
+API 1.64 adds `shortcut.session.end`, exposed in Lua as
+`gnoblin.shortcuts.end_session(args)`. API 1.65 adds
+`location.authorize_app`, exposed as `gnoblin.location.authorize_app(options)`
+and accepted only on the event subscription that received the pending request.
+API 1.66 adds `input.orientation_lock` and
+`input.set_orientation_lock(value)`, exposed as
+`gnoblin.input.orientation_lock()` and
+`gnoblin.input.set_orientation_lock(value)`. API 1.67 adds
+`runtime.status()`, exposed as `gnoblin.runtime.status()`; the compositor
+answers this read directly so socket clients can check worker recovery. API
+1.68 adds a connection-bound, one-use `focus_context` to eligible modal key
+events for socket clients; Lua handlers receive the corresponding opaque
+`FocusContext`. API 1.69 adds the socket event
+`gnoblin.window.activation-denied`, matching the native Lua event of the same
+name. These additions extend the shared API and do not restore the removed
+generic `window.action` Lua dispatcher.
+
 | Compositor operation                                                   | Lua API method or decision                                                                                                                                                                |
 | ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `workspace.create`                                                     | `gnoblin.workspaces.create(options)`                                                                                                                                                      |
@@ -1390,9 +1407,12 @@ support the newer resize, move, workspace, or monitor actions.
 | `shell.reload`                                                         | Removed from the core API; reload the Lua runtime or restart a selected shell client through its own lifecycle.                                                                           |
 | `session.lock`                                                         | `gnoblin.session.lock()`; a native request to a subscribed shell client. Completion means delivery, not lock confirmation.                                                                |
 | `runtime.reload_config`                                                | `gnoblin.runtime.reload_config()`                                                                                                                                                         |
+| `runtime.status`                                                       | `gnoblin.runtime.status()`; native-control API 1.67, answered directly by the compositor during worker recovery.                                                                          |
 | `shortcut.list`                                                        | `gnoblin.shortcuts.list()`                                                                                                                                                                |
 | `shortcut.actions`                                                     | CLI and every supported socket-client version use the shared Lua-backed `shortcuts.actions` read.                                                                                         |
 | `shortcut.capture`                                                     | `gnoblin.shortcuts.capture(options)`                                                                                                                                                      |
+| `shortcut.session.end`                                                 | `gnoblin.shortcuts.end_session({id, session_id})`; native-control API 1.64.                                                                                                               |
+| `location.authorize_app`                                               | `gnoblin.location.authorize_app({request_id, allow, accuracy})`; native-control API 1.65 and only on the connection that received the request.                                            |
 
 ## Event catalog
 
