@@ -16,18 +16,20 @@ workspace state, dynamic shortcuts, focus, previews, snapping, privacy state,
 and emoji insertion. Capture and recording use the ScreenCast portal. Launch
 feedback uses Gnoblin's D-Bus service. Keep these responsibilities in place:
 
-| Bingux behavior                 | Standalone interface                                                      | Limits                                                                                                          |
-| ------------------------------- | ------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Window and workspace state      | Compositor socket snapshots and events                                    | Use stable Gnoblin IDs and refresh after reconnecting.                                                          |
-| Global shortcuts                | Connection-owned shortcut bindings and events                             | Held shortcuts need the advertised API methods. End a held session without dropping the binding when supported. |
-| Focus transfer                  | `window.focus` with a recent activation context, or normal XDG Activation | A window ID by itself does not authorize focus.                                                                 |
-| Lua runtime health              | `runtime.status` from native-control API 1.67+                            | Poll `state` during worker recovery; `generation` changes when Mutter accepts a new config.                     |
-| Window previews                 | Asynchronous window thumbnails                                            | Requests can fail while the session is locked or the window is gone.                                            |
-| Pointer and keyboard snapping   | Gnoblin snap operations                                                   | Requests need a valid shortcut context; keyboard snapping also needs its API method.                            |
-| Privacy indicators and controls | Privacy snapshot and stop operations                                      | Show only the activity sources returned by the compositor.                                                      |
-| Emoji insertion                 | Text-target and text-insertion operations                                 | Requires a fresh user action and an active Wayland text-input-v3 session. X11 clients are unsupported.          |
-| Screen capture and recording    | XDG ScreenCast portal                                                     | Keep selection and recording UI in Bingux; the portal handles the session.                                      |
-| App launch feedback             | `org.gnoblin.LaunchFeedback`                                              | This reports launch activity; Bingux draws the indicator.                                                       |
+| Bingux behavior                 | Standalone interface                                                       | Limits                                                                                                                                                    |
+| ------------------------------- | -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Window and workspace state      | Compositor socket snapshots and events                                     | Use stable Gnoblin IDs and refresh after reconnecting.                                                                                                    |
+| Global shortcuts                | Connection-owned shortcut bindings and events                              | Held shortcuts need the advertised API methods. End a held session without dropping the binding when supported.                                           |
+| Focus transfer                  | `window.focus` with a recent activation context, or normal XDG Activation  | A window ID by itself does not authorize focus.                                                                                                           |
+| Native window-menu move/resize  | `menu_context` from a WM `gnoblin.window.menu-requested` event (API 1.30+) | App-menu events have no authority. The token is one-use, expires after five seconds, and targets only the requesting window.                              |
+| Modal shortcut actions          | Per-key `focus_context` on `gnoblin.shortcut.session.key` (API 1.68+)      | Only real, non-repeated key presses and releases qualify; synthetic and input-method events do not. Each token is one-use and expires after five seconds. |
+| Lua runtime health              | `runtime.status` from native-control API 1.67+                             | Poll `state` during worker recovery; `generation` changes when Mutter accepts a new config.                                                               |
+| Window previews                 | Asynchronous window thumbnails                                             | Requests can fail while the session is locked or the window is gone.                                                                                      |
+| Pointer and keyboard snapping   | Gnoblin snap operations                                                    | Requests need a valid shortcut context; keyboard snapping also needs its API method.                                                                      |
+| Privacy indicators and controls | Privacy snapshot and stop operations                                       | Show only the activity sources returned by the compositor.                                                                                                |
+| Emoji insertion                 | Text-target and text-insertion operations                                  | Requires a fresh user action and an active Wayland text-input-v3 session. X11 clients are unsupported.                                                    |
+| Screen capture and recording    | XDG ScreenCast portal                                                      | Keep selection and recording UI in Bingux; the portal handles the session.                                                                                |
+| App launch feedback             | `org.gnoblin.LaunchFeedback`                                               | This reports launch activity; Bingux draws the indicator.                                                                                                 |
 
 Do not infer support from a version number alone. Read the socket's initial
 `hello` record and check its advertised API methods, events, and capabilities.
@@ -107,6 +109,23 @@ instructions, not as compositor socket features.
 6. Treat desktop applications, PipeWire, WirePlumber, and portal backends as
    optional runtime dependencies. Handle missing services without crashing or
    blocking the shell.
+7. Add move and resize actions to a native window-manager menu only when the
+   event is for a WM menu and carries `menu_context`. Send the token to
+   `window.begin_move` or `window.begin_resize` without a window ID.
+
+    The token authorizes one attempt, including one rejected for invalid
+    arguments or an unsupported API version. It expires after five seconds and
+    is revoked on disconnect, subscription replacement, session lock, or
+    runtime/config teardown. Request a new WM menu event before retrying.
+    Resize accepts these edge values: `north, south, east, west, north_east,
+north_west, south_east, south_west`.
+
+8. For modal shortcuts, use the `focus_context` attached to each qualifying
+   `gnoblin.shortcut.session.key` event for a focus-sensitive operation. Do
+   not reuse the session activation context or an earlier key's token. A token
+   is bound to the receiving connection, authorizes one operation, and expires
+   after five seconds. Gnoblin still delivers a key event when no context is
+   available; handle that event without attempting a privileged action.
 
 ## Verify the standalone path
 
