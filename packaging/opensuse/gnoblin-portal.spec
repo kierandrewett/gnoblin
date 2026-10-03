@@ -36,15 +36,20 @@ portal service remains available for GNOME logins.
 %autosetup -n xdg-desktop-portal-gnome-%{tarball_version}
 
 %build
-%meson --prefix=%{_prefix} --libdir=%{_libdir} \
-  --libexecdir=%{_libexecdir} --datadir=%{_datadir} \
+/usr/bin/meson setup build . --buildtype=plain \
+  --prefix=%{_prefix} --libdir=%{_libdir} \
+  --libexecdir=%{_libexecdir} --bindir=%{_bindir} \
+  --sbindir=%{_sbindir} --includedir=%{_includedir} \
+  --datadir=%{_datadir} --mandir=%{_mandir} --infodir=%{_infodir} \
+  --localedir=%{_datadir}/locale --sysconfdir=%{_sysconfdir} \
+  --localstatedir=%{_localstatedir} --sharedstatedir=%{_sharedstatedir} \
+  --wrap-mode=nodownload --auto-features=enabled \
   -Ddbus_service_dir=%{_datadir}/dbus-1/services \
-  -Dsystemduserunitdir=%{_prefix}/lib/systemd/user \
-  --wrap-mode=nodownload
-%meson_build
+  -Dsystemduserunitdir=%{_prefix}/lib/systemd/user
+/usr/bin/meson compile -C build %{?_smp_mflags}
 
 %install
-%meson_install
+DESTDIR=%{buildroot} /usr/bin/meson install -C build --no-rebuild
 install -Dm644 %{buildroot}%{_datadir}/xdg-desktop-portal/portals/gnoblin.portal \
   %{buildroot}/usr/share/xdg-desktop-portal/portals/gnoblin.portal
 install -Dm644 %{buildroot}%{_datadir}/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service \

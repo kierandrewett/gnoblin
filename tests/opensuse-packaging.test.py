@@ -31,11 +31,13 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         )
 
     def test_no_private_prefix_is_used_for_the_meson_build_tool(self):
-        mutter = (SPECS / "mutter.spec").read_text()
-        self.assertNotIn("%{_bindir}/meson", mutter)
-        self.assertIn("/usr/bin/meson setup build .", mutter)
-        self.assertIn("/usr/bin/meson compile -C build", mutter)
-        self.assertIn("/usr/bin/meson install -C build", mutter)
+        for spec_name in ("mutter.spec", "gnoblin-portal.spec"):
+            with self.subTest(spec=spec_name):
+                content = (SPECS / spec_name).read_text()
+                self.assertNotIn("%{_bindir}/meson", content)
+                self.assertIn("/usr/bin/meson setup build .", content)
+                self.assertIn("/usr/bin/meson compile -C build", content)
+                self.assertIn("/usr/bin/meson install -C build", content)
 
     def test_session_is_standalone_and_uses_gnoblin_names(self):
         content = (SPECS / "gnoblin.spec").read_text()
