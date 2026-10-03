@@ -49,8 +49,7 @@ lifecycle messages. `hello.events` lists available messages, and
 
 API 1.2 adds `layer.list` and the `layer-list` capability. The method accepts
 exact-string filters for `monitor_id`, `namespace`, and `layer`. Its snapshots
-share the state revision used by windows, workspaces, and monitors. The bridge
-does not send layer lifecycle events.
+share the state revision used by windows, workspaces, and monitors.
 
 Every supported client version serves `layer.list` from the shared Lua layer
 snapshot while preserving the `{surfaces: [...]}` response.
@@ -377,6 +376,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.68            | `gnoblin.shortcut.session.key` may carry one-use focus authority                                 |
 | 1.69            | Adds `gnoblin.window.activation-denied` for strict focus-policy denials                          |
 | 1.70            | Adds the shared `appearance.color_scheme` read                                                   |
+| 1.71            | Layer lifecycle events                                                                           |
 
 ### API 1.27: shell presentation requests
 
@@ -1551,6 +1551,30 @@ The current value follows `org.gnome.desktop.interface/color-scheme`.
     "arguments": {}
 }
 ```
+
+### API version 1.71: layer lifecycle events
+
+Request API 1.71 or newer to subscribe. The `hello` message advertises the
+event names and the `layer-lifecycle-events` capability.
+
+```json
+{
+    "op": "events",
+    "api_version": { "major": 1, "minor": 71 },
+    "events": ["gnoblin.layer.created", "gnoblin.layer.changed", "gnoblin.layer.removed"]
+}
+```
+
+Every event includes state `revision`, `sequence`, and monotonic `time`. Layer
+records use the fields from [`layer.list`](#api-version-12-layer-surfaces).
+
+- `created` includes `layer`. Its stable ID is `layer.id`; it may be unmapped.
+- `changed` includes `layer_id`, the updated `layer`, and a `changed` array of
+  fields. Mapping and unmapping are changes; per-record `revision` is excluded.
+- `removed` includes `layer_id` and the final record as `last`.
+
+Lua receives the same events, with its layer snapshot refreshed before each
+callback.
 
 ## Limits and disconnects
 

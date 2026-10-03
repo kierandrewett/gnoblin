@@ -156,6 +156,9 @@ event revision.
 | `gnoblin.monitor.added`                    | `monitor`                                                                          | An active logical monitor appears in the native runtime.                                            |
 | `gnoblin.monitor.changed`                  | `monitor`, `changed`                                                               | A listed monitor property changes; `changed` names the changed properties.                          |
 | `gnoblin.monitor.removed`                  | `monitor_id`, `last`                                                               | An active logical monitor is removed.                                                               |
+| `gnoblin.layer.created`                    | `layer`                                                                            | A layer-shell surface appears in the published snapshot.                                            |
+| `gnoblin.layer.changed`                    | `layer_id`, `layer`, `changed`                                                     | A published layer record changes, including mapped or unmapped transitions.                         |
+| `gnoblin.layer.removed`                    | `layer_id`, `last`                                                                 | A layer-shell surface disappears from the published snapshot.                                       |
 | `gnoblin.input.device-added`               | `device`                                                                           | An input device appears in the native runtime.                                                      |
 | `gnoblin.input.device-removed`             | `device_id`, `last`                                                                | An input device is removed from the native runtime.                                                 |
 | `gnoblin.input.sources-changed`            | `sources`                                                                          | The configured, available XKB source list changes.                                                  |
@@ -416,6 +419,18 @@ When focus moves between windows that remain managed, the native runtime
 dispatches `unfocused` before `focused` within that state revision.
 
 A closed event's `last` field contains the final available window record.
+
+Layer lifecycle events follow the latest native layer snapshot. Each carries
+the shared state `revision`, `sequence`, and monotonic `time`. The stable ID is
+in `layer.id` on `created`; `changed` and `removed` also carry `layer_id`.
+
+- `created` includes the record when its layer role first appears in the
+  snapshot. It can initially be unmapped.
+- `changed` includes the updated `layer` and a `changed` array. The array names
+  fields that changed, except for per-record `revision`. Mapped transitions are
+  changes.
+- `removed` includes the final record as `last` and is sent when the layer
+  disappears from the snapshot.
 
 `removed` reports the workspace's last record before removal. Its `number` is
 the position immediately before removal.

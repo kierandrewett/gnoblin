@@ -201,7 +201,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static GVariant* privacy_snapshot_new(",
         )
 
-        self.assertEqual(api_minor(header), 70)
+        self.assertGreaterEqual(api_minor(header), 70)
         self.assertIn('"appearance.color_scheme"', connected)
         self.assertIn('native_publish_runtime_snapshot(control, "appearance"', startup)
         self.assertLess(
@@ -221,6 +221,56 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('{"appearance.color_scheme", 70}', cli)
         self.assertIn('g_str_equal(prefix, "appearance")', cli)
         self.assertIn('g_str_equal(method_name, "appearance.color_scheme")', cli)
+
+    def test_layer_lifecycle_events_are_advertised_and_require_api_171(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        events = function_body(
+            source,
+            "static const char* native_socket_events[] = {",
+            "static const char native_policy_introspection[]",
+        )
+        subscription = function_body(
+            source,
+            'if (g_str_equal(op, "events"))',
+            'if (g_str_equal(op, "windows"))',
+        )
+
+        self.assertEqual(api_minor(header), 71)
+        for event in (
+            "gnoblin.layer.created",
+            "gnoblin.layer.changed",
+            "gnoblin.layer.removed",
+        ):
+            with self.subTest(event=event):
+                self.assertIn(f'"{event}"', events)
+                self.assertIn(event, (ROOT / "docs/config/lua-events.md").read_text())
+                self.assertIn(event, (ROOT / "docs/compositor-bridge.md").read_text())
+        self.assertIn('"layer-lifecycle-events"', source)
+        self.assertIn('g_str_has_prefix(name, "gnoblin.layer.") && client->api_minor < 71', subscription)
+        self.assertIn("layer lifecycle events require API version 1.71", subscription)
+
+    def test_layer_event_baseline_is_seeded_before_startup_returns(self):
+        source = CONTROL.read_text()
+        startup = function_body(
+            source,
+            "GnoblinNativeControl* gnoblin_native_control_start(",
+            "void gnoblin_native_control_stop(",
+        )
+        publisher = function_body(
+            source,
+            "static void publish_layer_changes(",
+            "static void publish_window_changes(",
+        )
+
+        snapshot = startup.index("layer_snapshot_json(control, TRUE, &layer_error)")
+        layer_state = startup.index("layer_state_from_snapshot(initial_layer_snapshot)")
+        initialized = startup.index("control->layer_state_initialized = TRUE")
+        returned = startup.index("return control;")
+        self.assertLess(snapshot, layer_state)
+        self.assertLess(layer_state, initialized)
+        self.assertLess(initialized, returned)
+        self.assertIn("if (control->layer_state_initialized)", publisher)
 
     def test_capture_capabilities_and_camera_privacy_reach_lua(self):
         source = CONTROL.read_text()
