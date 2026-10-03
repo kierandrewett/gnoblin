@@ -732,6 +732,34 @@ The compositor checks the actual release pointer, modifiers, monitor, and work
 area before applying a match. It never waits for the shell or Lua runtime on
 release.
 
+#### Keyboard snapping
+
+For keyboard-selected layouts, call `gnoblin.windows.snap_context(context)` in
+a trusted shortcut callback. It consumes the one-use focus context and returns
+an `Operation<SnapContext>` for the focused window; callers cannot provide a
+window ID.
+
+Commit once with a monitor ID and frame rectangle. Gnoblin checks the window,
+monitor, lock state, runtime generation, and work-area bounds again. The
+operation resolves to `{window_id, monitor_id, committed = true}`. The context
+expires with its source focus context and is revoked by lock or config reload.
+
+Keyboard `SnapContext` is available to the supervised Lua runtime and native-
+control API 1.28 clients. In `gnoblinctl lua`, event callbacks can create and
+commit a context on the connection that delivered the event.
+
+Native-control clients call `window.snap_context` and `window.snap` with the
+focus token from a shortcut event. They cannot choose the target window.
+
+Socket focus tokens expire after five seconds and work only on the connection
+that received them. Disconnect, event-filter replacement, config reload, or
+session lock revokes them. A failed focus request consumes its context.
+Gnoblin keeps at most 128 active snap contexts per compositor. If the limit is
+full, context creation fails until an existing context expires or is revoked.
+
+Any same-user process can connect to the mode-0600 socket, so same-user clients
+are inside the trust boundary.
+
 ### Compositor requests
 
 Subscribe to `gnoblin.window.menu-requested` to show a shell-owned window menu,
@@ -772,29 +800,6 @@ using a fresh Mutter timestamp.
 
 Mutter provides no OSD level or maximum. Gnoblin does not create the OSD; the
 subscribed shell decides how to present the request.
-
-For keyboard-selected layouts, call `gnoblin.windows.snap_context(context)` in
-a trusted shortcut callback. It consumes the one-use focus context and returns
-an `Operation<SnapContext>` for the focused window; callers cannot provide a
-window ID.
-
-Commit once with a monitor ID and frame rectangle. Gnoblin checks the window,
-monitor, lock state, runtime generation, and work-area bounds again. The
-operation resolves to `{window_id, monitor_id, committed = true}`. The context
-expires with its source focus context and is revoked by lock or config reload.
-
-Keyboard `SnapContext` is available to Lua and native-control API 1.28 clients.
-Socket clients use `window.snap_context` and `window.snap`; they pass the focus
-token from a shortcut event and cannot choose the target window.
-
-Socket focus tokens expire after five seconds and work only on the connection
-that received them. Disconnect, event-filter replacement, config reload, or
-session lock revokes them. A failed focus request consumes its context.
-Gnoblin keeps at most 128 active snap contexts per compositor. If the limit is
-full, context creation fails until an existing context expires or is revoked.
-
-Any same-user process can connect to the mode-0600 socket, so same-user clients
-are inside the trust boundary.
 
 Lua configuration reads windows and workspaces through the immediate,
 immutable `gnoblin.windows.list()` and `gnoblin.workspaces.list()` snapshots.

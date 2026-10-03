@@ -89,9 +89,16 @@ end
 ```
 
 Window actions wait for compositor completion and return the completed value.
-They do not return an asynchronous `Operation` handle. `focus`, `begin_move`,
-and `begin_resize` require a trusted `FocusContext` from a runtime callback, so
-the terminal console rejects those calls.
+They do not return an asynchronous `Operation` handle.
+
+`focus`, `begin_move`, and `begin_resize` require a trusted `FocusContext` from
+an event callback. The ordinary REPL cannot create one or call these methods.
+
+The same context authorizes keyboard snapping. Inside the event callback, call
+`gnoblin.windows.snap_context(event.focus_context)`, then
+`context:commit({monitor_id, frame})` to apply its frame.
+
+In `gnoblinctl lua`, both calls wait for their results on the event connection.
 
 `gnoblin.focus.history(filter?)` returns the same read-only `Window` records in
 most-recently-focused order. Its optional filter accepts `workspace_id`,
