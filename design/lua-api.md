@@ -1571,12 +1571,12 @@ compositor socket retains its legacy operation event for external clients; Lua
 config listeners use `gnoblin.operation.completed`.
 
 General session lifecycle events, including `gnoblin.session.state-changed`,
-remain proposed. `gnoblin.runtime.status-changed` reports only Mutter's view of
-the Lua worker; it does not report supervisor retry exhaustion or guarantee a
-final `unavailable` event. The compositor socket closes when Mutter stops, so
-clients must query status again after reconnecting. Use
-`gnoblin.session.status()` while connected and the dedicated lock-state event
-for lock transitions.
+remain proposed. `gnoblin.runtime.status-changed` reports Mutter's view of the
+Lua worker. The session supervisor now reports when it will not restart the
+worker, so the status changes to `unavailable` even while Mutter remains alive.
+If Mutter exits before sending that terminal update, clients must query status
+again after reconnecting. Use `gnoblin.session.status()` while connected and
+the dedicated lock-state event for lock transitions.
 
 ## Wire contract and versioning
 
