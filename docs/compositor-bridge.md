@@ -186,10 +186,13 @@ layouts into one keymap. Gnoblin changes the active group when you select a
 source outside it. The greeting advertises the input-source capabilities and
 event names.
 
-Source events include `revision`, `sequence`, and monotonic `time`.
-`gnoblin.input.sources-changed` contains the updated `sources` array.
-`gnoblin.input.source-changed` contains `available` and, when available, the
-confirmed `source` record. Request API version 1.6:
+Both source events include `revision`, `sequence`, and monotonic-clock `time`.
+
+- `gnoblin.input.sources-changed` contains the updated `sources` array.
+- `gnoblin.input.source-changed` contains `available` and, when known, the
+  confirmed `source` record.
+
+Request API version 1.6:
 
 ```json
 {
@@ -205,10 +208,11 @@ Send `{"op":"windows","api_version":{"major":1,"minor":1}}` to subscribe.
 Use `{"op":"monitors","api_version":{"major":1,"minor":1}}` for an
 initial monitor snapshot and lifecycle events.
 
-Monitor events carry `event`,
-`revision`, `sequence`, and monotonic `time` fields. Added and changed messages
-include a `monitor` record; changed messages also include `changed`. Removed
-messages include `monitor_id` and the final `last` record.
+Monitor events include `revision`, `sequence`, and monotonic-clock `time`.
+
+- Added and changed events include a `monitor` record.
+- Changed events also list the fields that changed.
+- Removed events include `monitor_id` and the final `last` record.
 
 The monitor `changed` array can contain `id`, `index`, `x`, `y`, `width`,
 `height`, `primary`, `scale`, `enabled`, `name`, `make`, `model`, `serial`,
@@ -396,11 +400,13 @@ Mutter supplies no OSD level or maximum.
 
 ### API 1.30: WM menu actions
 
-API 1.30 adds a `menu_context` capability to `gnoblin.window.menu-requested`
-only when `menu_type` is `wm`. `app` menu requests remain informational and
-carry no authority. The opaque token is unique to the receiving connection,
-expires after five seconds, and is bound to the exact live window that raised
-the WM menu. It is not an expiry timestamp or a reusable window ID.
+API 1.30 adds `menu_context` to WM requests from
+`gnoblin.window.menu-requested`. App menu requests remain informational and
+carry no authority.
+
+The token belongs to the receiving connection. It expires after five seconds
+and is bound to the live window that raised the menu. It cannot be reused as an
+expiry timestamp or a window ID.
 
 Use the token with the existing interactive-grab methods without supplying a
 window ID:
@@ -618,8 +624,10 @@ that disconnect as a failed request.
 
 API 1.20 clients can subscribe to config reload events:
 
-- `gnoblin.config.reloaded` includes `path` and `revision`.
-- `gnoblin.config.reload-failed` includes `path` and an error string.
+- `gnoblin.config.reloaded` includes `path`, `revision`, `sequence`, and
+  monotonic-clock `time`.
+- `gnoblin.config.reload-failed` includes `path`, an error string, `sequence`,
+  and monotonic-clock `time`.
 
 Lua listeners receive the same event fields.
 If a reload is already in progress, a second request returns an error. It does
@@ -648,8 +656,8 @@ acknowledgement or evidence that the session is locked.
 #### Track lock state
 
 Subscribe to `gnoblin.session.lock-state-changed` for Mutter's lock state. Each
-event includes `state`, `sequence`, and monotonic-clock `time`. The possible
-states are:
+event includes `state`, `revision`, `sequence`, and monotonic-clock `time`.
+`revision` matches the lock-state snapshot revision. The possible states are:
 
 - `unlocked`: no active session lock.
 - `covering`: the compositor has started the lock transition.
@@ -695,11 +703,18 @@ The server replies with a request ID and operation ID. Subscribe to
 API 1.24 adds the `session-activity` capability, the `session.activity` read,
 and `gnoblin.session.activity-changed`.
 
-The read returns `available`, `idle`, `threshold_ms`, `idle_for_ms`, and
-`revision`. Gnoblin uses a fixed threshold of 120 seconds. Idle inhibitors and
-desktop idle-timeout preferences do not change it. When monitoring is unavailable,
-`idle` is false and `idle_for_ms` is zero. While idle, reads advance the
-duration from the last native sample using monotonic time.
+The read returns a snapshot with these fields:
+
+- `available`: whether idle monitoring works in this session.
+- `idle`: whether the fixed idle threshold has elapsed.
+- `threshold_ms`: the fixed threshold, 120,000 milliseconds.
+- `idle_for_ms`: elapsed idle time, or zero when not idle.
+- `revision`: the snapshot revision.
+
+Idle inhibitors and desktop timeout preferences do not change the threshold.
+When monitoring is unavailable, `idle` is false and `idle_for_ms` is zero.
+During idle, reads advance the duration from the last native sample using
+monotonic time.
 
 Subscribe to the event for state transitions. Its `idle_for_ms` is sampled
 when availability or idle state changes and does not update continuously. The
@@ -963,10 +978,12 @@ API 1.22 extends `shortcut.bind` with four optional fields:
   for an explicit `accelerator: "Super"` binding. Bare Super must use
   `trigger: "release"` and `hold: "none"`.
 
-Subscribe to `gnoblin.shortcut.session.activated`,
-`gnoblin.shortcut.session.key`, and `gnoblin.shortcut.session.ended` to receive
-session events. `session.key` carries `keyval`, `keycode`, `modifiers`, `phase`,
-and `time`. The phase is `press` or `release`.
+Subscribe to these API 1.22 events to track a held binding:
+
+- `gnoblin.shortcut.session.activated` starts or repeats the session.
+- `gnoblin.shortcut.session.key` carries `keyval`, `keycode`, `modifiers`,
+  `phase`, and `time`. The phase is `press` or `release`.
+- `gnoblin.shortcut.session.ended` reports why the session stopped.
 
 #### API 1.68: modal key focus contexts
 
@@ -1292,11 +1309,12 @@ takes no arguments and calls `stop()` on matching tracked Mutter handles. The
 methods match handles by their `is-recording` property.
 
 The socket returns an operation descriptor. Wait for its matching
-`gnoblin.operation.completed` event. The result has an integer `requested`
-field: the number of handles passed to `meta_remote_access_handle_stop()`.
-Calls are issued synchronously, but the count does not confirm session closure.
-The privacy snapshot and `gnoblin.privacy.changed` event update after Mutter
-signals that a handle has stopped. Stop methods do not revoke persistent grants.
+`gnoblin.operation.completed` event. The result's integer `requested` field
+counts handles passed to `meta_remote_access_handle_stop()`. The request is
+synchronous, but the count does not confirm session closure.
+
+Mutter updates the privacy snapshot and `gnoblin.privacy.changed` after a
+handle stops. These methods do not revoke persistent grants.
 
 ```json
 {
