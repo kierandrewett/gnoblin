@@ -1017,7 +1017,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             'if (g_str_equal(op, "events"))',
             'if (g_str_equal(op, "windows"))',
         )
-        patch = (ROOT / "patches/mutter/52-focus-transfer/0002-report-xdg-activation-denied.patch").read_text()
+        patch = (ROOT / "patches/mutter/99-typed-window-api" / "0076-report-xdg-activation-denied.patch").read_text()
         docs = (ROOT / "docs/config/lua-events.md").read_text()
 
         self.assertGreaterEqual(api_minor(header), 69)
