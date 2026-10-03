@@ -157,6 +157,7 @@ jobs:
           test -n "$portal_rpm"
           zypper --non-interactive install --no-recommends --allow-unsigned-rpm "$portal_rpm"
           rpm -q gnoblin-portal
+          set -x
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
