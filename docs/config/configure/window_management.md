@@ -24,7 +24,11 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | `edge_tiling`                  | Boolean                          | `false`             | Enable Mutter's edge tiling.                                            |
 | `center_new_windows`           | Boolean                          | `false`             | Center newly created windows.                                           |
 | `attach_modal_dialogs`         | Boolean                          | `false`             | Place modal dialogs with their parent window.                           |
+| `disable_workarounds`          | Boolean                          | `false`             | Disable Mutter's compatibility workarounds for broken X11 applications. |
 | `constrain_drag_to_work_area`  | Boolean                          | `true`              | Keep interactive window moves inside the work area.                     |
+
+Leave `disable_workarounds` set to `false` unless you are debugging an X11
+application. Enabling it can make some applications behave incorrectly.
 
 ## Focus behavior
 
@@ -164,6 +168,7 @@ gnoblin.configure {
         edge_tiling = boolean?,
         center_new_windows = boolean?,
         attach_modal_dialogs = boolean?,
+        disable_workarounds = boolean?,
         constrain_drag_to_work_area = boolean?,
     },
     workspaces = {

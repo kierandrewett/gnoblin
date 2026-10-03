@@ -1,0 +1,46 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] mutter: map disable workarounds to Gnoblin config
+
+---
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index 39e514f83..40408d0c4 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -552,8 +552,6 @@ handle_preference_init_bool (void)
+ 
+       ++cursor;
+     }
+-
+-  maybe_give_disable_workarounds_warning ();
+ }
+ 
+ static void
+@@ -1173,6 +1171,8 @@ meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
+   APPLY_BOOL ("edge-tiling", edge_tiling, FALSE, META_PREF_EDGE_TILING);
+   APPLY_BOOL ("center-new-windows", center_new_windows, FALSE, META_PREF_CENTER_NEW_WINDOWS);
+   APPLY_BOOL ("attach-modal-dialogs", attach_modal_dialogs, FALSE, META_PREF_ATTACH_MODAL_DIALOGS);
++  APPLY_BOOL ("disable-workarounds", disable_workarounds, FALSE, META_PREF_DISABLE_WORKAROUNDS);
++  maybe_give_disable_workarounds_warning ();
+   {
+     g_autoptr (GVariant) names = preferences
+       ? g_variant_lookup_value (preferences, "workspace-names", NULL)
+@@ -1257,7 +1257,7 @@ gnoblin_owns_window_preference (const char *key)
+     "focus-change-on-pointer-rest", "dynamic-workspaces", "num-workspaces",
+     "workspaces-only-on-primary", "edge-tiling", "center-new-windows",
+     "attach-modal-dialogs", "workspace-names", "mouse-button-modifier",
+-    "resize-with-right-button", NULL
++    "resize-with-right-button", "disable-workarounds", NULL
+   };
+   for (int i = 0; keys[i]; i++)
+     if (g_str_equal (key, keys[i]))
+@@ -1448,6 +1448,8 @@ meta_prefs_init (void)
+       meta_prefs_apply_gnoblin_keyboard_preferences (NULL);
+ #endif
+     }
++
++  maybe_give_disable_workarounds_warning ();
+ }
+ 
+ static gboolean
