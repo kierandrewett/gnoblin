@@ -415,8 +415,40 @@ any subscription is active. A `once` subscription ends after its event; call
 `subscription:unsubscribe()` to stop a repeating listener. Press Ctrl+C to
 stop a script that continues listening.
 
-Shortcut registrations and shortcut sessions belong to the supervised runtime.
-The console cannot bind or remove shortcuts or end a shortcut session.
+`gnoblinctl lua` can register, remove, and manage shortcut sessions. Bindings
+created by the console belong to its compositor connection, so the process
+stays open while one of its bindings remains registered. Unbind the shortcut or
+exit the process to release it. See the [shortcut API reference](./config/runtime-api.md#shortcut-state-and-capture)
+for the accepted binding options.
+
+For example, save this as `shortcut.lua` and run `gnoblinctl lua ./shortcut.lua`:
+
+```lua
+local binding = gnoblin.shortcuts.bind {
+    id = "temporary-cli-shortcut",
+    accelerator = "<Alt>F12",
+    hold = "alt",
+    mode = "modal",
+}
+
+local subscription
+subscription = gnoblin.events.on("gnoblin.shortcut.session.activated", function(event)
+    if event.id ~= binding.id then
+        return
+    end
+
+    gnoblin.shortcuts.end_session {
+        id = event.id,
+        session_id = event.session_id,
+    }
+    gnoblin.shortcuts.unbind { id = binding.id }
+    subscription:unsubscribe()
+end)
+```
+
+The example ends the active modal session, removes its temporary binding, and
+lets the CLI exit. If you stop the process first, its connection closes and
+Gnoblin removes the binding.
 
 A Lua event listener can use a `FocusContext` delivered with a trusted event to
 focus a window or start an interactive move or resize. The context is an opaque,
