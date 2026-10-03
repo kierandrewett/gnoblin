@@ -341,6 +341,31 @@ int main(void) {
     g_assert_false(auto_maximize);
 
     g_assert_true(g_file_set_contents(
+        explicit_root, "gnoblin.configure {window_management = {disable_workarounds = true}}\n", -1,
+        &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_clear_pointer(&window_management, g_variant_unref);
+    window_management =
+        g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(window_management);
+    gboolean disable_workarounds = FALSE;
+    g_assert_true(
+        g_variant_lookup(window_management, "disable-workarounds", "b", &disable_workarounds));
+    g_assert_true(disable_workarounds);
+
+    g_assert_true(g_file_set_contents(
+        explicit_root, "gnoblin.configure {window_management = {disable_workarounds = 'yes'}}\n",
+        -1, &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_null(document);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_clear_error(&error);
+
+    g_assert_true(g_file_set_contents(
         explicit_root, "gnoblin.configure {window_management = {check_alive_timeout = 0}}\n", -1,
         &error));
     g_clear_pointer(&document, g_variant_unref);

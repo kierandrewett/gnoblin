@@ -1097,6 +1097,7 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
             "edge-tiling",
             "center-new-windows",
             "attach-modal-dialogs",
+            "disable-workarounds",
             NULL,
         };
         static const char* titlebar[] = {
