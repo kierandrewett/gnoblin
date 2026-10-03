@@ -1164,10 +1164,23 @@ flickering. Location availability and activity come from Gnoblin's GeoClue
 agent. A source is unavailable when its service or monitor cannot be reached;
 unavailable does not mean inactive.
 
-GeoClue must allow the `gnoblin` agent ID in its agent whitelist. Append
-`gnoblin` to the existing `[agent]` `whitelist` in the system's GeoClue
-configuration, preserving the other IDs. If the service rejects Gnoblin as an
-agent, location is reported as unavailable and requests are not delivered.
+GeoClue must allow the `gnoblin` agent ID in its agent whitelist. On Fedora,
+install the optional `gnoblin-geoclue-integration` package to add Gnoblin to
+GeoClue's standard agent list:
+
+```sh
+sudo dnf install gnoblin-geoclue-integration
+sudo systemctl restart geoclue.service
+```
+
+On other distributions and for source builds, append `;gnoblin` to GeoClue's
+`[agent]` `whitelist`, preserving every existing ID. A file in `conf.d`
+replaces that value. Include all IDs you want to retain in the drop-in.
+
+Restart GeoClue with your distribution's service manager, then run
+`gnoblinctl privacy`. The location source should report `inactive` when unused.
+The `unavailable` status means GeoClue is unreachable or rejected Gnoblin's
+registration.
 
 Gnoblin publishes `gnoblin.location.authorization-requested` when GeoClue asks
 whether an application may use location. A shell or Lua handler can answer

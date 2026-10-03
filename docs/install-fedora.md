@@ -35,6 +35,19 @@ If your Thunderbolt devices need authorization, install `bolt` separately with
 For a shell that needs UPower battery data, install it with
 `sudo dnf install upower`. Gnoblin's lean login does not use GNOME's power menu.
 
+To let Gnoblin handle GeoClue location authorization, install the optional
+`gnoblin-geoclue-integration` package and restart GeoClue:
+
+```sh
+sudo dnf install gnoblin-geoclue-integration
+sudo systemctl restart geoclue.service
+```
+
+The package keeps GeoClue's standard agent IDs and adds Gnoblin. If you have
+custom GeoClue agent IDs, include them in the effective whitelist too.
+Run `gnoblinctl privacy` after restarting GeoClue. The location source should
+report `inactive` when no application is using it.
+
 For IBus input methods, install `ibus` separately with `sudo dnf install ibus`.
 The basic session needs only `ibus-libs` and does not start the daemon until
 an IBus input source is configured.
