@@ -96,6 +96,8 @@ typedef struct {
     guint64 input_source_revision;
     GVariant* orientation_lock_snapshot;
     guint64 orientation_lock_revision;
+    GVariant* appearance_snapshot;
+    gboolean appearance_snapshot_received;
     GVariant* shortcut_snapshot;
     guint64 shortcut_revision;
     GVariant* launch_snapshot;
@@ -168,6 +170,7 @@ static int lua_session_activity(lua_State* state);
 static int lua_session_status(lua_State* state);
 static int lua_runtime_status(lua_State* state);
 static int lua_input_text_target(lua_State* state);
+static int lua_appearance_color_scheme(lua_State* state);
 static int lua_text_target_insert_text(lua_State* state);
 static int lua_text_target_index(lua_State* state);
 static void push_window_drag(lua_State* state, GVariant* value);
@@ -4374,6 +4377,25 @@ static int lua_input_current_source(lua_State* state) {
     return 1;
 }
 
+static int lua_appearance_color_scheme(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.appearance.color_scheme takes no arguments");
+    if (!config || !config->appearance_snapshot_received)
+        return luaL_error(state, "native appearance snapshot is not ready");
+    if (!config->appearance_snapshot) {
+        lua_pushnil(state);
+        return 1;
+    }
+    const char* color_scheme = NULL;
+    if (!g_variant_lookup(config->appearance_snapshot, "color_scheme", "&s", &color_scheme) ||
+        (!g_str_equal(color_scheme, "default") && !g_str_equal(color_scheme, "prefer-dark") &&
+         !g_str_equal(color_scheme, "prefer-light")))
+        return luaL_error(state, "native appearance snapshot has an invalid color scheme");
+    lua_pushstring(state, color_scheme);
+    return 1;
+}
+
 static int lua_input_orientation_lock(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
@@ -4958,6 +4980,11 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_setfield(state, -2, "current");
     lua_pop(state, 1);
     lua_newtable(state);
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_appearance_color_scheme, 1);
+    lua_setfield(state, -2, "color_scheme");
+    lua_setfield(state, -2, "appearance");
+    lua_newtable(state);
     lua_pushcfunction(state, lua_shortcut_actions);
     lua_setfield(state, -2, "actions");
     lua_pushlightuserdata(state, config);
@@ -5220,6 +5247,7 @@ static void lua_runtime_free(LuaRuntime* runtime) {
     g_clear_pointer(&runtime->config.input_device_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.input_source_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.orientation_lock_snapshot, g_variant_unref);
+    g_clear_pointer(&runtime->config.appearance_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.shortcut_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.launch_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.portal_grant_snapshot, g_variant_unref);
@@ -5356,6 +5384,29 @@ void gnoblin_config_update_orientation_lock_snapshot(GVariant* snapshot, guint64
         runtime->config.orientation_lock_revision = snapshot ? revision : 0;
         if (snapshot)
             runtime->config.orientation_lock_snapshot = g_variant_ref(snapshot);
+    }
+}
+
+void gnoblin_config_update_appearance_snapshot(GVariant* snapshot, guint64 revision) {
+    (void)revision;
+    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
+        return;
+    if (snapshot) {
+        const char* color_scheme = NULL;
+        if (!g_variant_lookup(snapshot, "color_scheme", "&s", &color_scheme) ||
+            (!g_str_equal(color_scheme, "default") && !g_str_equal(color_scheme, "prefer-dark") &&
+             !g_str_equal(color_scheme, "prefer-light")))
+            return;
+    }
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
+    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
+        LuaRuntime* runtime = runtimes[i];
+        if (!runtime || (i == 1 && runtime == runtimes[0]))
+            continue;
+        g_clear_pointer(&runtime->config.appearance_snapshot, g_variant_unref);
+        runtime->config.appearance_snapshot_received = TRUE;
+        if (snapshot)
+            runtime->config.appearance_snapshot = g_variant_ref(snapshot);
     }
 }
 
@@ -5607,6 +5658,12 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
             g_variant_ref(snapshot_source->config.orientation_lock_snapshot);
         runtime->config.orientation_lock_revision =
             snapshot_source->config.orientation_lock_revision;
+    }
+    if (snapshot_source && snapshot_source->config.appearance_snapshot_received) {
+        if (snapshot_source->config.appearance_snapshot)
+            runtime->config.appearance_snapshot =
+                g_variant_ref(snapshot_source->config.appearance_snapshot);
+        runtime->config.appearance_snapshot_received = TRUE;
     }
     if (snapshot_source && snapshot_source->config.shortcut_snapshot) {
         runtime->config.shortcut_snapshot =
@@ -6769,6 +6826,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "input.sources",
         "input.current_source",
         "input.orientation_lock",
+        "appearance.color_scheme",
         NULL,
     };
     gboolean known = FALSE;
@@ -6959,6 +7017,11 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_getfield(state, -1, "state");
         lua_remove(state, -2);
         lua_remove(state, -2);
+    } else if (g_str_equal(method, "appearance.color_scheme")) {
+        lua_getfield(state, -1, "appearance");
+        lua_getfield(state, -1, "color_scheme");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
     } else if (g_str_equal(method, "input.devices") || g_str_equal(method, "input.sources") ||
                g_str_equal(method, "input.current_source") ||
                g_str_equal(method, "input.orientation_lock")) {
@@ -7013,7 +7076,32 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     }
 
     GVariant* result = NULL;
-    if (g_str_equal(method, "input.current_source") && lua_isnil(state, -1)) {
+    if (g_str_equal(method, "appearance.color_scheme")) {
+        GVariantBuilder response;
+        g_variant_builder_init(&response, G_VARIANT_TYPE_VARDICT);
+        if (lua_isnil(state, -1)) {
+            g_variant_builder_add(&response, "{sv}", "available", g_variant_new_boolean(FALSE));
+            result = g_variant_ref_sink(g_variant_builder_end(&response));
+        } else if (lua_type(state, -1) != LUA_TSTRING) {
+            g_variant_builder_clear(&response);
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "Lua appearance color scheme must be a string or nil");
+        } else {
+            const char* color_scheme = lua_tostring(state, -1);
+            if (!g_str_equal(color_scheme, "default") &&
+                !g_str_equal(color_scheme, "prefer-dark") &&
+                !g_str_equal(color_scheme, "prefer-light")) {
+                g_variant_builder_clear(&response);
+                g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                    "Lua appearance color scheme is unsupported");
+            } else {
+                g_variant_builder_add(&response, "{sv}", "available", g_variant_new_boolean(TRUE));
+                g_variant_builder_add(&response, "{sv}", "color_scheme",
+                                      g_variant_new_string(color_scheme));
+                result = g_variant_ref_sink(g_variant_builder_end(&response));
+            }
+        }
+    } else if (g_str_equal(method, "input.current_source") && lua_isnil(state, -1)) {
         GVariantBuilder response;
         g_variant_builder_init(&response, G_VARIANT_TYPE_VARDICT);
         g_variant_builder_add(&response, "{sv}", "available", g_variant_new_boolean(FALSE));

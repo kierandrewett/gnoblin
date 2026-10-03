@@ -11,6 +11,7 @@ CONTROL = ROOT / "src/native-control/gnoblin-native-control.c"
 HEADER = ROOT / "src/native-control/gnoblin-native-control.h"
 LUA = ROOT / "src/config/gnoblin-lua.c"
 SESSION = ROOT / "src/session/gnoblin-runtime.c"
+CLI = ROOT / "src/tools/gnoblinctl.c"
 
 
 def function_body(source: str, signature: str, end_marker: str) -> str:
@@ -139,6 +140,11 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static void appearance_color_scheme_changed(",
             "static GVariant* privacy_snapshot_new(",
         )
+        snapshot = function_body(
+            source,
+            "static GVariant* appearance_snapshot_new(",
+            "static void appearance_color_scheme_changed(",
+        )
         subscription = function_body(
             source,
             'if (g_str_equal(op, "events"))',
@@ -156,9 +162,9 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("client->api_minor < 34", subscription)
         self.assertIn('"org.gnome.desktop.interface"', startup)
         self.assertIn('"changed::color-scheme"', startup)
-        self.assertIn('g_settings_get_string(settings, "color-scheme")', callback)
-        self.assertIn('"prefer-dark"', callback)
-        self.assertIn('"prefer-light"', callback)
+        self.assertIn('g_settings_get_string(control->appearance_settings, "color-scheme")', snapshot)
+        self.assertIn('"prefer-dark"', snapshot)
+        self.assertIn('"prefer-light"', snapshot)
         self.assertIn(
             'native_publish_request_event(control, "gnoblin.appearance.color-scheme-changed"',
             callback,
@@ -167,6 +173,54 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "gnoblin.appearance.color-scheme-changed",
             (ROOT / "docs/config/lua-events.md").read_text(),
         )
+
+    def test_appearance_color_scheme_read_uses_shared_lua_snapshot_at_api_170(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        lua_source = LUA.read_text()
+        session = SESSION.read_text()
+        cli = CLI.read_text()
+        connected = function_body(
+            source,
+            "static gboolean client_connected(",
+            "GVariant* gnoblin_native_control_receive_runtime_config(",
+        )
+        startup = function_body(
+            source,
+            "GnoblinNativeControl* gnoblin_native_control_start(",
+            "void gnoblin_native_control_stop(",
+        )
+        read_methods = function_body(
+            source,
+            "static gboolean native_api_read_method(",
+            "static gboolean runtime_config_values_equal(",
+        )
+        appearance_event = function_body(
+            source,
+            "static void appearance_color_scheme_changed(",
+            "static GVariant* privacy_snapshot_new(",
+        )
+
+        self.assertEqual(api_minor(header), 70)
+        self.assertIn('"appearance.color_scheme"', connected)
+        self.assertIn('native_publish_runtime_snapshot(control, "appearance"', startup)
+        self.assertLess(
+            startup.index("native_runtime_flush_state_snapshots(control, error)"),
+            startup.index("native_runtime_flush_pending_events(control, error)"),
+        )
+        self.assertIn('g_str_equal(method, "appearance.color_scheme")', read_methods)
+        self.assertIn('g_str_equal(method, "appearance.color_scheme") && client->api_minor < 70', source)
+        self.assertIn('g_str_equal(method, "appearance.color_scheme")', lua_source)
+        self.assertIn('g_str_equal(name, "appearance")', session)
+        self.assertIn("gnoblin_config_update_appearance_snapshot", session)
+        self.assertIn('native_publish_runtime_snapshot(control, "appearance"', appearance_event)
+        self.assertLess(
+            appearance_event.index('native_publish_runtime_snapshot(control, "appearance"'),
+            appearance_event.index('native_publish_request_event(control, "gnoblin.appearance.color-scheme-changed"'),
+        )
+        self.assertIn('{"appearance.color_scheme", 70}', cli)
+        self.assertIn('g_str_equal(prefix, "appearance")', cli)
+        self.assertIn('g_str_equal(method_name, "appearance.color_scheme")', cli)
 
     def test_capture_capabilities_and_camera_privacy_reach_lua(self):
         source = CONTROL.read_text()
@@ -476,7 +530,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("native_menu_context_revoke_client(control, client->client_id)", socket_revoke)
         self.assertIn("revoke_menu_contexts(control)", source)
 
-    def test_status_socket_read_always_uses_lua(self):
+    def test_status_socket_read_stays_available_during_supervisor_recovery(self):
         source = CONTROL.read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         status = function_body(
@@ -490,9 +544,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean runtime_reload_document_supported(",
         )
 
-        self.assertNotIn("client->api_minor >= 51", status)
-        self.assertIn("supervised_runtime", status)
-        self.assertIn('queue_runtime_api_request(client, id, method, arguments, "read")', status)
+        self.assertIn("native_session_lock_snapshot(", status)
+        self.assertNotIn("queue_runtime_api_request", status)
         self.assertNotIn("native_session_status_json", status)
         self.assertIn('"session.status"', status)
         self.assertIn('g_str_equal(method, "session.status")', reads)

@@ -215,6 +215,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.monitors` | `list()`, `primary()` | **Current.** Both the supervised runtime and `gnoblinctl lua` expose read-only revisioned monitor snapshots. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
 | `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `orientation_lock()`, `set_orientation_lock(value)`, `text_target(context)` | **Current.** The native runtime and `gnoblinctl lua` expose all methods. The console creates and consumes trusted text targets only from a live event `FocusContext`, over the connection that delivered it. |
+| `gnoblin.appearance` | `color_scheme()` | **Current; native-control API 1.70.** Read the current desktop color scheme as a string or `nil` when the setting is unavailable; `gnoblinctl lua` exposes the same result. |
 | `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` supports read-only `list()`, `get(name)`, `inspect(args)`, and the deeply read-only `{surfaces = Surface[]}` snapshot, plus `preview(spec)` and typed preview controls. |
 | `gnoblin.launches` | `list()`, `snapshot()`, `begin(args)`, `finish(token)` | **Current.** The supervised runtime and `gnoblinctl lua` support all methods. The bracket form `gnoblin.launches["end"](token)` remains as a compatibility alias because `end` is a Lua keyword. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records with stale-safe revoke methods. |
@@ -1416,6 +1417,7 @@ generic `window.action` Lua dispatcher.
 | `session.lock`                                                         | `gnoblin.session.lock()`; a native request to a subscribed shell client. Completion means delivery, not lock confirmation.                                                                |
 | `runtime.reload_config`                                                | `gnoblin.runtime.reload_config()`                                                                                                                                                         |
 | `runtime.status`                                                       | `gnoblin.runtime.status()`; native-control API 1.67, answered directly by the compositor during worker recovery.                                                                          |
+| `appearance.color_scheme`                                              | `gnoblin.appearance.color_scheme()`; native-control API 1.70 reads the current value through the shared Lua runtime.                                                                      |
 | `shortcut.list`                                                        | `gnoblin.shortcuts.list()`                                                                                                                                                                |
 | `shortcut.actions`                                                     | CLI and every supported socket-client version use the shared Lua-backed `shortcuts.actions` read.                                                                                         |
 | `shortcut.capture`                                                     | `gnoblin.shortcuts.capture(options)`                                                                                                                                                      |
@@ -1466,7 +1468,9 @@ session has no Shell event source, feature registry, or GJS script manager.
 The standalone runtime maps changes to
 `org.gnome.desktop.interface/color-scheme` to
 `gnoblin.appearance.color-scheme-changed`; it does not emit an initial value.
-Use the desktop settings service to read the preference when a shell starts.
+Use `gnoblin.appearance.color_scheme()` to read the current value. It returns
+`default`, `prefer-dark`, `prefer-light`, or `nil` when the schema or key is
+unavailable.
 
 The `Native` event rows are implemented only by the native Mutter runtime.
 Their window tables contain the fields supplied by the native event. Structured

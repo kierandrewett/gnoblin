@@ -376,6 +376,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.67            | Native status reads remain available while a Lua worker restarts                                 |
 | 1.68            | `gnoblin.shortcut.session.key` may carry one-use focus authority                                 |
 | 1.69            | Adds `gnoblin.window.activation-denied` for strict focus-policy denials                          |
+| 1.70            | Adds the shared `appearance.color_scheme` read                                                   |
 
 ### API 1.27: shell presentation requests
 
@@ -562,27 +563,28 @@ applying a match. Trusted keyboard `SnapContext` is available to Lua only.
 
 The socket exposes these reads at the listed API versions:
 
-| API version | Socket method        | Lua read                            | Arguments                                                  |
-| ----------- | -------------------- | ----------------------------------- | ---------------------------------------------------------- |
-| 1.19        | `version`            | `gnoblin.version()`                 | None                                                       |
-| 1.19        | `capabilities.list`  | `gnoblin.capabilities.list()`       | None                                                       |
-| 1.19        | `focus.history`      | `gnoblin.focus.history(filter)`     | `workspace_id`, `monitor_id`, `limit`                      |
-| 1.19        | `settings`           | `gnoblin.settings`                  | None                                                       |
-| 1.19        | `focus.policy`       | `gnoblin.focus.policy`              | None                                                       |
-| 1.37        | `windows.list`       | `gnoblin.windows.list(filter)`      | `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` |
-| 1.37        | `workspaces.list`    | `gnoblin.workspaces.list()`         | None                                                       |
-| 1.37        | `monitors.list`      | `gnoblin.monitors.list()`           | None                                                       |
-| 1.37        | `layers.list`        | `gnoblin.layers.list(filter)`       | `monitor_id`, `namespace`, `layer`                         |
-| 1.37        | `launches.list`      | `gnoblin.launches.list()`           | None                                                       |
-| 1.39        | `launches.snapshot`  | `gnoblin.launches.snapshot()`       | None                                                       |
-| 1.40        | `shortcuts.list`     | `gnoblin.shortcuts.list()`          | None                                                       |
-| 1.41        | `shortcuts.actions`  | `gnoblin.shortcuts.actions(group?)` | Optional `group`: `wm`, `mutter`, or `wayland`             |
-| 1.42        | `permissions.list`   | `gnoblin.permissions.list()`        | None                                                       |
-| 1.43        | `permissions.check`  | `gnoblin.permissions.check(args)`   | `capability`, `identity`                                   |
-| 1.44        | `permissions.policy` | `gnoblin.permissions.policy()`      | None                                                       |
-| 1.45        | `portals.grants`     | `gnoblin.portals.grants(filter?)`   | Optional `kind`: `screen-cast` or `remote-desktop`         |
-| 1.24        | `session.activity`   | `gnoblin.session.activity()`        | None                                                       |
-| 1.29        | `session.status`     | `gnoblin.session.status()`          | None                                                       |
+| API version | Socket method             | Lua read                            | Arguments                                                  |
+| ----------- | ------------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| 1.19        | `version`                 | `gnoblin.version()`                 | None                                                       |
+| 1.19        | `capabilities.list`       | `gnoblin.capabilities.list()`       | None                                                       |
+| 1.19        | `focus.history`           | `gnoblin.focus.history(filter)`     | `workspace_id`, `monitor_id`, `limit`                      |
+| 1.19        | `settings`                | `gnoblin.settings`                  | None                                                       |
+| 1.19        | `focus.policy`            | `gnoblin.focus.policy`              | None                                                       |
+| 1.37        | `windows.list`            | `gnoblin.windows.list(filter)`      | `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` |
+| 1.37        | `workspaces.list`         | `gnoblin.workspaces.list()`         | None                                                       |
+| 1.37        | `monitors.list`           | `gnoblin.monitors.list()`           | None                                                       |
+| 1.37        | `layers.list`             | `gnoblin.layers.list(filter)`       | `monitor_id`, `namespace`, `layer`                         |
+| 1.37        | `launches.list`           | `gnoblin.launches.list()`           | None                                                       |
+| 1.39        | `launches.snapshot`       | `gnoblin.launches.snapshot()`       | None                                                       |
+| 1.40        | `shortcuts.list`          | `gnoblin.shortcuts.list()`          | None                                                       |
+| 1.41        | `shortcuts.actions`       | `gnoblin.shortcuts.actions(group?)` | Optional `group`: `wm`, `mutter`, or `wayland`             |
+| 1.42        | `permissions.list`        | `gnoblin.permissions.list()`        | None                                                       |
+| 1.43        | `permissions.check`       | `gnoblin.permissions.check(args)`   | `capability`, `identity`                                   |
+| 1.44        | `permissions.policy`      | `gnoblin.permissions.policy()`      | None                                                       |
+| 1.45        | `portals.grants`          | `gnoblin.portals.grants(filter?)`   | Optional `kind`: `screen-cast` or `remote-desktop`         |
+| 1.24        | `session.activity`        | `gnoblin.session.activity()`        | None                                                       |
+| 1.29        | `session.status`          | `gnoblin.session.status()`          | None                                                       |
+| 1.70        | `appearance.color_scheme` | `gnoblin.appearance.color_scheme()` | None                                                       |
 
 `session.status` returns:
 
@@ -1409,9 +1411,8 @@ Microphone activity changes remain part of `gnoblin.privacy.changed`.
 
 ### API version 1.34: desktop appearance changes
 
-Subscribe to `gnoblin.appearance.color-scheme-changed` for desktop preference
-changes. The event follows `org.gnome.desktop.interface/color-scheme` and is
-emitted only after a change; subscribing does not return the current value.
+Subscribe to `gnoblin.appearance.color-scheme-changed` to receive desktop
+appearance changes. It follows `org.gnome.desktop.interface/color-scheme`.
 
 Each event contains:
 
@@ -1529,6 +1530,27 @@ stable `window_id` and a `reason`:
 - `stale_context`: its startup context is too old.
 
 It does not include activation tokens or input serials.
+
+### API version 1.70: current appearance preference
+
+Call `appearance.color_scheme` with no arguments. Its reply contains:
+
+- `available: true` and `color_scheme` set to `default`, `prefer-dark`, or
+  `prefer-light` when the setting is available.
+- `available: false` with no `color_scheme` field when the schema or key is
+  unavailable.
+
+The current value follows `org.gnome.desktop.interface/color-scheme`.
+
+```json
+{
+    "op": "api",
+    "id": "appearance",
+    "api_version": { "major": 1, "minor": 70 },
+    "method": "appearance.color_scheme",
+    "arguments": {}
+}
+```
 
 ## Limits and disconnects
 

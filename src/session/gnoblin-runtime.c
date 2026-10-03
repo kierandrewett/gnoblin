@@ -1089,6 +1089,8 @@ static gboolean handle_state(Runtime* runtime, GVariant* payload, GError** error
         update = gnoblin_config_update_input_source_snapshot;
     else if (g_str_equal(name, "input-orientation-lock"))
         update = gnoblin_config_update_orientation_lock_snapshot;
+    else if (g_str_equal(name, "appearance"))
+        update = gnoblin_config_update_appearance_snapshot;
     else if (g_str_equal(name, "shortcuts"))
         update = gnoblin_config_update_shortcut_snapshot;
     else if (g_str_equal(name, "launches"))
