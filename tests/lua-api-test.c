@@ -224,6 +224,39 @@ int main(void) {
     g_variant_builder_init(&api_arguments_builder, G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) api_arguments =
         g_variant_ref_sink(g_variant_builder_end(&api_arguments_builder));
+
+    GVariantBuilder activity_snapshot_builder;
+    g_variant_builder_init(&activity_snapshot_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "available",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "idle", g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "threshold_ms",
+                          g_variant_new_uint64(120000));
+    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "idle_for_ms",
+                          g_variant_new_uint64(5000));
+    g_autoptr(GVariant) activity_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&activity_snapshot_builder));
+    gnoblin_config_update_session_activity_snapshot(activity_snapshot, 12);
+    g_autoptr(GVariant) session_activity =
+        gnoblin_config_read_api("session.activity", api_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(session_activity);
+    gboolean activity_available = FALSE;
+    gboolean activity_idle = FALSE;
+    gint64 activity_threshold_ms = 0;
+    gint64 activity_idle_for_ms = 0;
+    gint64 activity_revision = 0;
+    g_assert_true(g_variant_lookup(session_activity, "available", "b", &activity_available));
+    g_assert_true(g_variant_lookup(session_activity, "idle", "b", &activity_idle));
+    g_assert_true(g_variant_lookup(session_activity, "threshold_ms", "x", &activity_threshold_ms));
+    g_assert_true(g_variant_lookup(session_activity, "idle_for_ms", "x", &activity_idle_for_ms));
+    g_assert_true(g_variant_lookup(session_activity, "revision", "x", &activity_revision));
+    g_assert_true(activity_available);
+    g_assert_true(activity_idle);
+    g_assert_cmpint(activity_threshold_ms, ==, 120000);
+    g_assert_cmpint(activity_idle_for_ms, >=, 5000);
+    g_assert_cmpint(activity_revision, ==, 12);
+
     g_autoptr(GVariant) api_operation =
         gnoblin_config_call_api("workspace.list", api_arguments, &error);
     g_assert_null(api_operation);
