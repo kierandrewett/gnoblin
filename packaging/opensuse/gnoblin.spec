@@ -5,7 +5,7 @@
 %global debug_package %{nil}
 
 Name:           gnoblin
-Version:        0.1.7
+Version:        %{gnoblin_version}
 Epoch:          1
 Release:        21%{?dist}
 Summary:        Standalone Gnoblin desktop session

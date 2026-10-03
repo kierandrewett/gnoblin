@@ -58,10 +58,14 @@ class OpenSUSEPackagingTests(unittest.TestCase):
     def test_check_script_keeps_the_probe_non_installing(self):
         check = (SPECS / "check-buildrequires.sh").read_text()
         self.assertIn("mutter|gnoblin-portal|gnoblin", check)
-        self.assertIn('rpmspec -q --buildrequires "$spec"', check)
+        self.assertIn(
+            'rpmspec -q --buildrequires --define "gnoblin_version $gnoblin_version" "$spec"',
+            check,
+        )
         self.assertIn("install --dry-run --no-recommends", check)
         self.assertNotIn("--compat-runtime", check)
         self.assertIn("for attempt in 1 2 3", check)
+        self.assertIn('--define "gnoblin_version $gnoblin_version"', check)
 
     def test_build_chain_respects_internal_dependency_order(self):
         chain = (SPECS / "build-chain.sh").read_text()
@@ -86,6 +90,12 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             chain.index("build gnoblin.spec"),
         )
         self.assertIn("--allow-unsigned-rpm", chain)
+
+    def test_openSUSE_session_spec_uses_repository_version(self):
+        spec = (SPECS / "gnoblin.spec").read_text()
+        chain = (SPECS / "build-chain.sh").read_text()
+        self.assertIn("Version:        %{gnoblin_version}", spec)
+        self.assertIn('build gnoblin.spec --define "gnoblin_version $gnoblin_version"', chain)
 
 
 if __name__ == "__main__":

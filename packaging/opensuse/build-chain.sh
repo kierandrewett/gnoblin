@@ -11,12 +11,12 @@ BUILDROOT="$TOPDIR/BUILDROOT"
 PREPARED_SOURCES="${2:-}"
 
 mkdir -p "$SOURCES" "$BUILDROOT"
+gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
 
 # The source archiver needs the host tools from the first build stage too.
 "$ROOT/packaging/opensuse/check-buildrequires.sh" mutter --install
 
 if [[ -n "$PREPARED_SOURCES" ]]; then
-    gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
     gnoblin_source="$PREPARED_SOURCES/gnoblin-$gnoblin_version-source.tar.xz"
     [[ -f "$gnoblin_source" ]] || {
         echo "Missing complete Gnoblin source bundle: $gnoblin_source" >&2
@@ -37,7 +37,6 @@ else
     for project in mutter xdg-desktop-portal-gnome; do
         "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
     done
-    gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
     mutter_version="$("$ROOT/scripts/gnome-versions.py" get mutter version)"
     portal_version="$("$ROOT/scripts/gnome-versions.py" get xdg-desktop-portal-gnome version)"
     "$ROOT/scripts/build-source-bundle.sh" \
@@ -73,6 +72,6 @@ install_output "${mutter_rpms[@]}"
 "$ROOT/packaging/opensuse/check-buildrequires.sh" gnoblin-portal --install
 build gnoblin-portal.spec
 "$ROOT/packaging/opensuse/check-buildrequires.sh" gnoblin --install
-build gnoblin.spec
+build gnoblin.spec --define "gnoblin_version $gnoblin_version"
 
 find "$TOPDIR/RPMS" -type f -name '*.rpm' -print | LC_ALL=C sort

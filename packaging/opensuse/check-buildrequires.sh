@@ -29,6 +29,7 @@ if [[ -z "$package" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
 case "$package" in
     mutter) spec="$ROOT/packaging/opensuse/mutter.spec" ;;
     gnoblin-portal) spec="$ROOT/packaging/opensuse/gnoblin-portal.spec" ;;
@@ -44,8 +45,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
-rpmspec -P "$spec" >/dev/null
-rpmspec -q --buildrequires "$spec" | LC_ALL=C sort -u >"$requirements"
+rpmspec -P --define "gnoblin_version $gnoblin_version" "$spec" >/dev/null
+rpmspec -q --buildrequires --define "gnoblin_version $gnoblin_version" "$spec" |
+    LC_ALL=C sort -u >"$requirements"
 
 if [[ -s "$requirements" ]]; then
     # zypper understands RPM capabilities such as pkgconfig(gtk4), including
