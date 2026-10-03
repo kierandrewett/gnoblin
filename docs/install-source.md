@@ -108,8 +108,10 @@ From an existing Wayland desktop:
 ```
 
 The first preview builds Mutter's optional development viewer, then opens a
-nested desktop and terminal. Launch your layer-shell client from that terminal.
-Close the terminal to end the preview. See [Devkit](devkit.md) for help.
+nested compositor view and a terminal on your host desktop. The view starts
+empty until you launch a shell or layer-shell client from the terminal; Gnoblin
+does not start a built-in panel or launcher. Close the terminal to end the
+preview. See [Devkit](devkit.md) for help.
 
 ## 3. Add a login session {#login-session}
 
