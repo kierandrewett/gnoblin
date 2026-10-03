@@ -3285,6 +3285,7 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
 typedef enum {
     INPUT_BOOLEAN,
     INPUT_DOUBLE,
+    INPUT_INTEGER,
     INPUT_MILLISECONDS,
     INPUT_STRING,
     INPUT_STRINGS,
@@ -3303,6 +3304,7 @@ typedef struct {
 
 static const InputField input_fields[] = {
     {"mouse", "speed", INPUT_DOUBLE, NULL, -1, 1},
+    {"mouse", "drag-threshold", INPUT_INTEGER, NULL, 1, G_MAXINT},
     {"mouse", "left-handed", INPUT_BOOLEAN},
     {"mouse", "natural-scroll", INPUT_BOOLEAN},
     {"mouse", "accel-profile", INPUT_CHOICE, "default flat adaptive custom"},
@@ -3455,6 +3457,19 @@ static GVariant* normalize_input_value(const InputField* field, GVariant* value)
             return NULL;
         if (isfinite(number) && number >= field->minimum && number <= field->maximum)
             return g_variant_ref_sink(g_variant_new_double(number));
+    }
+    if (field->kind == INPUT_INTEGER) {
+        gint64 number;
+        if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
+            number = g_variant_get_int64(value);
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32))
+            number = g_variant_get_int32(value);
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32))
+            number = g_variant_get_uint32(value);
+        else
+            return NULL;
+        if (number >= field->minimum && number <= field->maximum)
+            return g_variant_ref_sink(g_variant_new_int32((gint32)number));
     }
     if (field->kind == INPUT_MILLISECONDS) {
         gint64 milliseconds;
