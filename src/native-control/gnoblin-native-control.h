@@ -11,7 +11,7 @@
 #include "core/gnoblin-runtime-cache.h"
 
 #define GNOBLIN_NATIVE_CONTROL_API_MAJOR 1
-#define GNOBLIN_NATIVE_CONTROL_API_MINOR 70
+#define GNOBLIN_NATIVE_CONTROL_API_MINOR 71
 
 typedef struct _GnoblinNativeControl GnoblinNativeControl;
 
@@ -20,6 +20,8 @@ void gnoblin_native_control_window_menu_requested(MetaDisplay* display, MetaWind
                                                   MetaWindowMenuType menu, int x, int y);
 META_EXPORT
 void gnoblin_native_control_track_layer_window(MetaDisplay* display, MetaWindow* window);
+META_EXPORT
+void gnoblin_native_control_layer_changed(MetaDisplay* display);
 
 META_EXPORT
 GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVariant* document,

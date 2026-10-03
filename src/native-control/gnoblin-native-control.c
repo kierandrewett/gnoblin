@@ -138,6 +138,7 @@ struct _GnoblinNativeControl {
     GHashTable* clients;
     GHashTable* windows;
     GHashTable* window_state;
+    GHashTable* layer_state;
     GHashTable* workspace_state;
     GHashTable* workspace_signal_handler_ids;
     GHashTable* monitor_state;
@@ -241,6 +242,7 @@ struct _GnoblinNativeControl {
     guint64 next_client_id;
     guint64 next_location_request_id;
     gboolean window_state_initialized;
+    gboolean layer_state_initialized;
     gboolean workspace_state_initialized;
     gboolean monitor_state_initialized;
     gboolean input_device_state_initialized;
@@ -839,6 +841,7 @@ static gboolean native_runtime_begin_thumbnail(GnoblinNativeControl* control, gi
 
 static const NativeCapability native_capabilities[] = {
     {"layer-list", "List layer-shell surfaces and their placement."},
+    {"layer-lifecycle-events", "Receive layer-surface creation, state-change, and removal events."},
     {"monitor-list", "List active logical monitors and their geometry."},
     {"window-list", "Read managed windows and their compositor state."},
     {"window-actions", "Request supported window actions."},
@@ -877,6 +880,9 @@ static const NativeCapability native_capabilities[] = {
 
 static const char* native_socket_events[] = {
     "windows",
+    "gnoblin.layer.created",
+    "gnoblin.layer.changed",
+    "gnoblin.layer.removed",
     "gnoblin.window.created",
     "gnoblin.window.changed",
     "gnoblin.window.focused",
@@ -1616,6 +1622,11 @@ typedef struct {
 } NativeWindowState;
 
 typedef struct {
+    char* json;
+    char* comparable_json;
+} NativeLayerState;
+
+typedef struct {
     guint64 generation;
     gint64 expires_at_us;
     guint32 timestamp;
@@ -1763,6 +1774,13 @@ static GVariant* native_shortcut_snapshot(GnoblinNativeControl* control) {
 
 static void native_window_state_free(gpointer data) {
     NativeWindowState* state = data;
+    g_free(state->json);
+    g_free(state->comparable_json);
+    g_free(state);
+}
+
+static void native_layer_state_free(gpointer data) {
+    NativeLayerState* state = data;
     g_free(state->json);
     g_free(state->comparable_json);
     g_free(state);
@@ -3951,6 +3969,7 @@ static void cache_lua_window_snapshot(GnoblinNativeControl* control, GVariant* n
                                       guint64 revision);
 static void cache_lua_workspace_snapshot(GnoblinNativeControl* control, GVariant* native_snapshot,
                                          guint64 revision);
+static GHashTable* layer_state_from_snapshot(JsonNode* snapshot);
 
 static JsonNode* layer_snapshot_json(GnoblinNativeControl* control, gboolean update_lua_snapshot,
                                      GError** error) {
@@ -6174,10 +6193,38 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
             subscribed = FALSE;
         if (g_str_equal(name, "gnoblin.window.activation-denied") && client->event_api_minor < 69)
             subscribed = FALSE;
+        if (g_str_has_prefix(name, "gnoblin.layer.") && client->event_api_minor < 71)
+            subscribed = FALSE;
         if (subscribed)
             send_response(client, g_strdup(line));
     }
     g_list_free(clients);
+}
+
+static void dispatch_lua_layer_event(GnoblinNativeControl* control, guint64 revision,
+                                     const char* event, const char* id, JsonNode* layer,
+                                     JsonNode* last, JsonArray* changed) {
+    g_autoptr(JsonNode) root = json_node_new(JSON_NODE_OBJECT);
+    JsonObject* object = json_object_new();
+    json_node_take_object(root, object);
+    json_object_set_string_member(object, "name", event);
+    json_object_set_int_member(object, "revision", revision);
+    json_object_set_int_member(object, "sequence", ++control->event_sequence);
+    json_object_set_int_member(object, "time", g_get_monotonic_time());
+    if (g_str_equal(event, "gnoblin.layer.created")) {
+        json_object_set_member(object, "layer", json_node_copy(layer));
+    } else if (g_str_equal(event, "gnoblin.layer.removed")) {
+        json_object_set_string_member(object, "layer_id", id);
+        json_object_set_member(object, "last", json_node_copy(last));
+    } else {
+        json_object_set_string_member(object, "layer_id", id);
+        json_object_set_member(object, "layer", json_node_copy(layer));
+        json_object_set_array_member(object, "changed", json_array_ref(changed));
+    }
+    publish_native_socket_event(control, root);
+    g_autoptr(GVariant) payload = variant_from_json(root);
+    if (payload)
+        native_runtime_dispatch_event(control, event, payload);
 }
 
 static void native_publish_request_event(GnoblinNativeControl* control, const char* name,
@@ -10702,6 +10749,117 @@ static void dispatch_lua_window_event(GnoblinNativeControl* control, guint64 rev
         native_runtime_dispatch_event(control, event, payload);
 }
 
+static GHashTable* layer_state_from_snapshot(JsonNode* snapshot) {
+    GHashTable* state =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_layer_state_free);
+    if (!snapshot || !JSON_NODE_HOLDS_OBJECT(snapshot))
+        return state;
+
+    JsonArray* layers = json_object_get_array_member(json_node_get_object(snapshot), "layers");
+    for (guint i = 0; layers && i < json_array_get_length(layers); i++) {
+        JsonNode* record = json_array_get_element(layers, i);
+        if (!JSON_NODE_HOLDS_OBJECT(record))
+            continue;
+        JsonObject* object = json_node_get_object(record);
+        const char* id = json_object_get_string_member_with_default(object, "id", NULL);
+        if (!id || !*id)
+            continue;
+
+        NativeLayerState* value = g_new0(NativeLayerState, 1);
+        value->json = json_to_string(record, FALSE);
+        g_autoptr(JsonNode) comparable = json_node_copy(record);
+        json_object_remove_member(json_node_get_object(comparable), "revision");
+        value->comparable_json = json_to_string(comparable, FALSE);
+        g_hash_table_insert(state, g_strdup(id), value);
+    }
+    return state;
+}
+
+static gboolean layer_property_equal(JsonNode* previous, JsonNode* current) {
+    if (!previous || !current)
+        return previous == current;
+    g_autofree char* previous_json = json_to_string(previous, FALSE);
+    g_autofree char* current_json = json_to_string(current, FALSE);
+    return g_strcmp0(previous_json, current_json) == 0;
+}
+
+static JsonArray* changed_layer_properties(JsonNode* previous, JsonNode* current) {
+    JsonObject* previous_object = json_node_get_object(previous);
+    JsonObject* current_object = json_node_get_object(current);
+    JsonArray* changed = json_array_new();
+    GList* members = json_object_get_members(current_object);
+    for (GList* item = members; item; item = item->next) {
+        const char* name = item->data;
+        if (g_str_equal(name, "revision"))
+            continue;
+        if (!layer_property_equal(json_object_get_member(previous_object, name),
+                                  json_object_get_member(current_object, name)))
+            json_array_add_string_element(changed, name);
+    }
+    g_list_free(members);
+
+    members = json_object_get_members(previous_object);
+    for (GList* item = members; item; item = item->next) {
+        const char* name = item->data;
+        if (!g_str_equal(name, "revision") && !json_object_has_member(current_object, name))
+            json_array_add_string_element(changed, name);
+    }
+    g_list_free(members);
+    return changed;
+}
+
+static void publish_layer_changes(GnoblinNativeControl* control, JsonNode* snapshot,
+                                  guint64 revision) {
+    GHashTable* current = layer_state_from_snapshot(snapshot);
+    if (control->layer_state_initialized) {
+        GHashTableIter iter;
+        gpointer key;
+        gpointer value;
+        g_hash_table_iter_init(&iter, current);
+        while (g_hash_table_iter_next(&iter, &key, &value)) {
+            NativeLayerState* state = value;
+            NativeLayerState* previous = g_hash_table_lookup(control->layer_state, key);
+            g_autoptr(JsonParser) parser = json_parser_new();
+            if (!json_parser_load_from_data(parser, state->json, -1, NULL))
+                continue;
+            JsonNode* layer = json_parser_get_root(parser);
+            if (!previous) {
+                dispatch_lua_layer_event(control, revision, "gnoblin.layer.created", key, layer,
+                                         NULL, NULL);
+                continue;
+            }
+            if (g_strcmp0(previous->comparable_json, state->comparable_json) == 0)
+                continue;
+
+            g_autoptr(JsonParser) previous_parser = json_parser_new();
+            if (!json_parser_load_from_data(previous_parser, previous->json, -1, NULL))
+                continue;
+            JsonArray* changed =
+                changed_layer_properties(json_parser_get_root(previous_parser), layer);
+            if (json_array_get_length(changed) > 0)
+                dispatch_lua_layer_event(control, revision, "gnoblin.layer.changed", key, layer,
+                                         NULL, changed);
+            json_array_unref(changed);
+        }
+
+        g_hash_table_iter_init(&iter, control->layer_state);
+        while (g_hash_table_iter_next(&iter, &key, &value)) {
+            if (g_hash_table_contains(current, key))
+                continue;
+            NativeLayerState* previous = value;
+            g_autoptr(JsonParser) parser = json_parser_new();
+            if (json_parser_load_from_data(parser, previous->json, -1, NULL))
+                dispatch_lua_layer_event(control, revision, "gnoblin.layer.removed", key, NULL,
+                                         json_parser_get_root(parser), NULL);
+        }
+    }
+
+    if (control->layer_state)
+        g_hash_table_unref(control->layer_state);
+    control->layer_state = current;
+    control->layer_state_initialized = TRUE;
+}
+
 static void publish_window_changes(GnoblinNativeControl* control, JsonNode* snapshot,
                                    guint64 revision) {
     JsonArray* windows = json_object_get_array_member(json_node_get_object(snapshot), "windows");
@@ -11603,6 +11761,10 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 return encode_response("", NULL,
                                        "activation denial events require API version 1.69");
             }
+            if (g_str_has_prefix(name, "gnoblin.layer.") && client->api_minor < 71) {
+                g_hash_table_unref(subscriptions);
+                return encode_response("", NULL, "layer lifecycle events require API version 1.71");
+            }
             if (g_str_equal(name, "gnoblin.session.activity-changed") && client->api_minor < 24) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL,
@@ -12456,7 +12618,9 @@ static gboolean publish_windows(gpointer user_data) {
     else
         g_warning("gnoblin-native-control: cannot publish monitors: %s",
                   monitor_error ? monitor_error->message : "monitor listing unavailable");
-    if (!layer_json)
+    if (layer_json)
+        publish_layer_changes(control, layer_json, revision);
+    else
         g_warning("gnoblin-native-control: cannot publish layers: %s",
                   layer_error ? layer_error->message : "layer listing unavailable");
     g_autofree char* snapshot = NULL;
@@ -12876,6 +13040,14 @@ void gnoblin_native_control_track_layer_window(MetaDisplay* display, MetaWindow*
     if (!control || control->stopping || !window)
         return;
     track_window(control, window);
+}
+
+void gnoblin_native_control_layer_changed(MetaDisplay* display) {
+    GnoblinNativeControl* control =
+        display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
+    if (!control || control->stopping)
+        return;
+    schedule_windows(control);
 }
 
 static void window_created(MetaDisplay* display, MetaWindow* window, gpointer user_data) {
@@ -14529,6 +14701,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     control->windows = g_hash_table_new_full(g_direct_hash, g_direct_equal, g_object_unref, NULL);
     control->window_state =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_window_state_free);
+    control->layer_state =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_layer_state_free);
     control->input_device_ids = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
     control->display = meta_context_get_display(context);
     g_object_set_data(G_OBJECT(control->display), NATIVE_CONTROL_OBJECT_DATA_KEY, control);
@@ -14686,9 +14860,15 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         control->monitor_state_initialized = TRUE;
     }
     g_signal_connect(control->display, "show-osd", G_CALLBACK(native_show_osd_requested), control);
-    if (!layer_snapshot_json(control, TRUE, &layer_error))
+    g_autoptr(JsonNode) initial_layer_snapshot = layer_snapshot_json(control, TRUE, &layer_error);
+    if (!initial_layer_snapshot)
         g_warning("gnoblin-native-control: cannot seed Lua layer snapshot: %s",
                   layer_error ? layer_error->message : "layer listing unavailable");
+    else {
+        g_hash_table_unref(control->layer_state);
+        control->layer_state = layer_state_from_snapshot(initial_layer_snapshot);
+        control->layer_state_initialized = TRUE;
+    }
     capabilities = capability_snapshot(control);
     native_publish_runtime_snapshot(control, "capabilities", capabilities, control->state_revision);
     input_devices = input_device_snapshot(control);
@@ -14900,6 +15080,8 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_object(&control->remote_access_controller);
     if (control->window_state)
         g_hash_table_unref(control->window_state);
+    if (control->layer_state)
+        g_hash_table_unref(control->layer_state);
     if (control->workspace_state)
         g_hash_table_unref(control->workspace_state);
     if (control->monitor_state)
