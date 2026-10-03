@@ -45,6 +45,10 @@ BuildRequires:  pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_
 BuildRequires:  pkgconfig(graphene-gobject-1.0)
 BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
 BuildRequires:  pkgconfig(gudev-1.0)
+BuildRequires:  pkgconfig(egl)
+BuildRequires:  pkgconfig(fribidi)
+BuildRequires:  pkgconfig(gl)
+BuildRequires:  pkgconfig(harfbuzz) >= 2.6
 BuildRequires:  pkgconfig(lcms2)
 BuildRequires:  pkgconfig(libcanberra)
 BuildRequires:  pkgconfig(json-glib-1.0)
@@ -57,9 +61,27 @@ BuildRequires:  pkgconfig(libinput) >= %{libinput_version}
 BuildRequires:  pkgconfig(libpipewire-0.3) >= %{pipewire_version}
 BuildRequires:  pkgconfig(libstartup-notification-1.0)
 BuildRequires:  pkgconfig(libsystemd)
+BuildRequires:  pkgconfig(libudev) >= 228
 BuildRequires:  pkgconfig(libwacom)
+BuildRequires:  pkgconfig(pango) >= 1.46.0
+BuildRequires:  pkgconfig(pangocairo) >= 1.20
 BuildRequires:  pkgconfig(pixman-1)
 BuildRequires:  pkgconfig(sm)
+BuildRequires:  pkgconfig(wayland-client) >= %{wayland_server_version}
+BuildRequires:  pkgconfig(wayland-cursor)
+BuildRequires:  pkgconfig(wayland-egl)
+BuildRequires:  pkgconfig(x11) >= 1.7.0
+BuildRequires:  pkgconfig(x11-xcb)
+BuildRequires:  pkgconfig(xau)
+BuildRequires:  pkgconfig(xcb-res)
+BuildRequires:  pkgconfig(xcomposite) >= 0.4
+BuildRequires:  pkgconfig(xcursor)
+BuildRequires:  pkgconfig(xdamage)
+BuildRequires:  pkgconfig(xext)
+BuildRequires:  pkgconfig(xfixes) >= 6
+BuildRequires:  pkgconfig(xinerama)
+BuildRequires:  pkgconfig(xi) >= 1.7.4
+BuildRequires:  pkgconfig(xrandr) >= 1.5.0
 BuildRequires:  pkgconfig(xkbregistry)
 BuildRequires:  pkgconfig(xkeyboard-config)
 BuildRequires:  pkgconfig(udev)
