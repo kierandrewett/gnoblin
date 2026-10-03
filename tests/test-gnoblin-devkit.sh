@@ -285,6 +285,7 @@ gnoblin.configure {
         sources = {
             {type = "xkb", id = "us"},
             {type = "xkb", id = "gb"},
+            {type = "ibus", id = "xkb:us::eng"},
         },
         per_window = true,
     },
@@ -367,10 +368,11 @@ PY
         return 1
     }
     wait_for_source() {
-        local source_id="$1"
+        local source_type="$1"
+        local source_id="$2"
         for _ in {1..100}; do
             gnoblinctl --json input current > "$input_json" 2>/dev/null || true
-            if python3 - "$input_json" "$source_id" <<'PY'
+            if python3 - "$input_json" "$source_type" "$source_id" <<'PY'
 import json
 import sys
 
@@ -380,8 +382,8 @@ try:
 except (OSError, json.JSONDecodeError):
     sys.exit(1)
 source = current.get("source")
-if current.get("available") and source and source.get("type") == "xkb" \
-        and source.get("id") == sys.argv[2]:
+if current.get("available") and source and source.get("type") == sys.argv[2] \
+        and source.get("id") == sys.argv[3]:
     sys.exit(0)
 sys.exit(1)
 PY
@@ -417,18 +419,26 @@ PY
     wait_for_window "$title_b"
     activate_window "$title_a"
     select_source us
-    wait_for_source us
+    wait_for_source xkb us
     activate_window "$title_b"
-    wait_for_source us
+    wait_for_source xkb us
     printf 'INPUT_SOURCE:per-window-first-focus-inherits\n'
     select_source gb
-    wait_for_source gb
+    wait_for_source xkb gb
     activate_window "$title_a"
-    wait_for_source us
+    wait_for_source xkb us
     printf 'INPUT_SOURCE:per-window-restores-A\n'
     activate_window "$title_b"
-    wait_for_source gb
+    wait_for_source xkb gb
     printf 'INPUT_SOURCE:per-window-restores-B\n'
+    select_ibus_source "$XDG_RUNTIME_DIR/per-window-ibus-select.txt"
+    wait_for_source ibus xkb:us::eng
+    activate_window "$title_a"
+    wait_for_source xkb us
+    printf 'INPUT_SOURCE:per-window-restores-XKB-from-IBus\n'
+    activate_window "$title_b"
+    wait_for_source ibus xkb:us::eng
+    printf 'INPUT_SOURCE:per-window-restores-IBus\n'
 )
 for reload_attempt in {1..8}; do
     gnoblinctl config reload > "$XDG_RUNTIME_DIR/reload-$reload_attempt.txt"
@@ -862,6 +872,8 @@ require_output 'INPUT_SOURCE:per-window-config-enabled'
 require_output 'INPUT_SOURCE:per-window-first-focus-inherits'
 require_output 'INPUT_SOURCE:per-window-restores-A'
 require_output 'INPUT_SOURCE:per-window-restores-B'
+require_output 'INPUT_SOURCE:per-window-restores-XKB-from-IBus'
+require_output 'INPUT_SOURCE:per-window-restores-IBus'
 require_output 'IBUS:owner-lost'
 require_output 'IBUS:reconnected-after-owner-restart'
 require_output 'INPUT_SOURCE:cleared-with-lua-config'
