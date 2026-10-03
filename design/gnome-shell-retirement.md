@@ -84,8 +84,12 @@ The `99zzzzzzzz-no-session-dialog` patch was removed on 2026-10-03. It only
 suppressed GNOME Shell's end-session dialog object; the standalone session has
 no Shell UI, and external shell clients own logout confirmation.
 
-The patch directories `99zzzzzzzzzz-standalone-idle`,
-`99zzzzzzzzzzz-native-scope`,
+The `99zzzzzzzzzz-standalone-idle` patch was removed on 2026-10-03. It only
+disabled GNOME Session presence tracking in GNOME Shell's ScreenShield for the
+old standalone mode. Gnoblin exposes idle state through its own service; shell
+clients choose if and when to request a lock.
+
+The patch directories `99zzzzzzzzzzz-native-scope`,
 `99zzzzzzzzzzzz-native-xkb`, `99zzzzzzzzzzzzz-timezone`,
 `99zzzzzzzzzzzzzz-native-slideshow`, and
 `99zzzzzzzzzzzzzzzz-wallpaper-host-defaults` still need individual review.
