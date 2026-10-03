@@ -70,7 +70,7 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 | Session    | `gnoblin`, logind, systemd user targets     | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open. |
 | Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                                             |
 | Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                       |
-| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua owns migrated window policy; other settings still use GSettings.                                                              |
+| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua owns migrated window and keyboard-accessibility input preferences; unmigrated settings still use GSettings.                   |
 
 For each Gnoblin-owned Mutter preference, expose a domain-specific Lua setting
 and validate its type and accepted values in Gnoblin. At startup and reload,

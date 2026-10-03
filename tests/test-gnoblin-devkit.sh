@@ -90,6 +90,12 @@ gnoblin.configure {
     },
     input = {
         mouse = {drag_threshold = 24},
+        keyboard = {
+            accessibility = {
+                shortcuts_enabled = false,
+                slow_keys = {enabled = false, delay_ms = 400},
+            },
+        },
     },
     workspaces = {
         {id = "main", name = "Main"},
@@ -102,6 +108,11 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     assert(type(gnoblin.settings) == "userdata")
     assert(gnoblin.settings.window_management.focus_mode == "click")
     assert(gnoblin.settings.input.mouse.drag_threshold == 24)
+    local accessibility = gnoblin.settings.input.keyboard.accessibility
+    assert(accessibility.shortcuts_enabled == false)
+    assert(accessibility.slow_keys.enabled == false)
+    assert(accessibility.slow_keys.delay_ms == 400)
+    print("LUA_API:input-accessibility-config")
     assert(not pcall(function()
         gnoblin.settings.window_management.focus_mode = "sloppy"
     end))
@@ -855,6 +866,7 @@ require_output 'Gnoblin is ready on nested Wayland display'
 require_output 'PING:pong'
 require_output 'GSETTINGS:workspace-names-untouched'
 require_output 'LUA_API:workspace-config'
+require_output 'LUA_API:input-accessibility-config'
 require_output 'CONFIG:click'
 require_output 'WINDOWS:json'
 require_output 'WORKSPACE:next'
