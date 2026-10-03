@@ -35,6 +35,7 @@ BuildRequires:  gettext-tools
 BuildRequires:  git
 BuildRequires:  meson
 BuildRequires:  pam-devel
+BuildRequires:  pkgconfig(atk)
 BuildRequires:  pkgconfig(colord)
 BuildRequires:  pkgconfig(gbm)
 BuildRequires:  pkgconfig(glesv2)
