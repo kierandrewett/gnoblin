@@ -319,6 +319,96 @@ class IsolationTests(unittest.TestCase):
         self.assertIn('rm -- "$LEGACY_GNOME_SESSION_DROPIN_PATH"', installer)
         self.assertNotIn("gnome-session@gnoblin.target.d.conf", session_installer)
 
+    def test_system_installer_removes_exact_legacy_dropin_after_dnf_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            dnf_log = base / "dnf.log"
+            (fake_bin / "dnf").write_text(
+                "#!/bin/sh\n"
+                'printf "%s\\n" "$*" >> "$GNOBLIN_FAKE_DNF_LOG"\n'
+                'if [ "$1" = repoquery ]; then printf "gnoblin-45-1.noarch\\n"; fi\n'
+                "exit 0\n"
+            )
+            (fake_bin / "rpm").write_text(
+                "#!/bin/sh\n"
+                'if [ "$1" = -E ]; then\n'
+                '  case "$2" in\n'
+                '    %fedora) printf "45\\n" ;;\n'
+                '    %_arch) printf "x86_64\\n" ;;\n'
+                "  esac\n"
+                "fi\n"
+                "exit 0\n"
+            )
+            (fake_bin / "sudo").write_text('#!/bin/sh\nexec "$@"\n')
+            (fake_bin / "systemctl").write_text("#!/bin/sh\nexit 0\n")
+            for command in fake_bin.iterdir():
+                command.chmod(0o755)
+
+            legacy = ROOT / "scripts/legacy/gnome-session@gnoblin.target.d.conf"
+            config_home = base / "config"
+            dropin = config_home / "systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
+            dropin.parent.mkdir(parents=True)
+            dropin.write_bytes(legacy.read_bytes())
+            environment = os.environ | {
+                "HOME": str(base / "home"),
+                "XDG_CONFIG_HOME": str(config_home),
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "GNOBLIN_FAKE_DNF_LOG": str(dnf_log),
+            }
+            (base / "home").mkdir()
+
+            result = subprocess.run(
+                ["bash", str(ROOT / "scripts/install-system.sh")],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(dropin.exists())
+            self.assertIn("Removed the obsolete managed GNOME session drop-in.", result.stdout)
+            self.assertIn("install --refresh", dnf_log.read_text())
+
+    def test_system_installer_preserves_custom_legacy_dropin_and_aborts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            dnf_log = base / "dnf.log"
+            (fake_bin / "dnf").write_text('#!/bin/sh\necho called >> "$GNOBLIN_FAKE_DNF_LOG"\n')
+            for command in fake_bin.iterdir():
+                command.chmod(0o755)
+            config_home = base / "config"
+            dropin = config_home / "systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
+            dropin.parent.mkdir(parents=True)
+            dropin.write_text("[Unit]\nWants=custom.service\n")
+            home = base / "home"
+            home.mkdir()
+            environment = os.environ | {
+                "HOME": str(home),
+                "XDG_CONFIG_HOME": str(config_home),
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "GNOBLIN_FAKE_DNF_LOG": str(dnf_log),
+            }
+
+            result = subprocess.run(
+                ["bash", str(ROOT / "scripts/install-system.sh")],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Move the custom Gnoblin override aside first:", result.stderr)
+            self.assertEqual(dropin.read_text(), "[Unit]\nWants=custom.service\n")
+            self.assertFalse(dnf_log.exists())
+
 
 if __name__ == "__main__":
     unittest.main()
