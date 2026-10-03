@@ -27,8 +27,9 @@ testing this package path.
 
 The core package does not include a portal backend. The release also provides
 an optional `gnoblin-portal` PKGBUILD and matching portal source archive. Build
-them with `makepkg -si` if you want Gnoblin's GTK backend; otherwise install
-and select another portal backend.
+them with `makepkg -si` if you want Gnoblin's GTK backend. The package also
+installs the default route for Gnoblin sessions, with an installed-backend
+fallback. You can route interfaces to another backend in the Lua config.
 
 For GNOME applications on a minimal Arch system, install the separate
 [`gnoblin-gnome-integration` package](gnome-apps.md). Install the applications
