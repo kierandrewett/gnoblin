@@ -60,8 +60,8 @@ static gboolean input_field_known(const char* group, const char* key) {
         NULL,
     };
     static const char* const keyboard_fields[] = {
-        "repeat",      "delay", "repeat-interval", "remember-numlock-state", "numlock-state",
-        "xkb-options", NULL,
+        "repeat",        "delay",       "repeat-interval", "remember-numlock-state",
+        "numlock-state", "xkb-options", "accessibility",   NULL,
     };
     static const char* const tablet_fields[] = {"mapping", "left-handed", "keep-aspect", NULL};
     static const char* const stylus_fields[] = {
@@ -204,6 +204,130 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
     return FALSE;
 }
 
+typedef enum {
+    KEYBOARD_ACCESSIBILITY_BOOLEAN,
+    KEYBOARD_ACCESSIBILITY_INTEGER,
+} KeyboardAccessibilityValueType;
+
+typedef struct {
+    const char* section;
+    const char* name;
+    KeyboardAccessibilityValueType type;
+    gint64 minimum;
+    gint64 maximum;
+} KeyboardAccessibilityField;
+
+static const KeyboardAccessibilityField keyboard_accessibility_fields[] = {
+    {"", "shortcuts-enabled", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"", "beep-on-feature-state-change", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"bounce-keys", "enabled", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"bounce-keys", "delay-ms", KEYBOARD_ACCESSIBILITY_INTEGER, 0, 10000},
+    {"bounce-keys", "beep-on-reject", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"mouse-keys", "enabled", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"mouse-keys", "max-speed", KEYBOARD_ACCESSIBILITY_INTEGER, 1, 10000},
+    {"mouse-keys", "acceleration-time-ms", KEYBOARD_ACCESSIBILITY_INTEGER, 1, 10000},
+    {"mouse-keys", "initial-delay-ms", KEYBOARD_ACCESSIBILITY_INTEGER, 0, 10000},
+    {"slow-keys", "enabled", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"slow-keys", "delay-ms", KEYBOARD_ACCESSIBILITY_INTEGER, 0, 10000},
+    {"slow-keys", "beep-on-press", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"slow-keys", "beep-on-accept", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"slow-keys", "beep-on-reject", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"sticky-keys", "enabled", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"sticky-keys", "two-key-off", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"sticky-keys", "beep-on-modifier", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+    {"toggle-keys", "enabled", KEYBOARD_ACCESSIBILITY_BOOLEAN, 0, 0},
+};
+
+static const KeyboardAccessibilityField* keyboard_accessibility_field(const char* section,
+                                                                      const char* name) {
+    for (guint i = 0; i < G_N_ELEMENTS(keyboard_accessibility_fields); i++) {
+        const KeyboardAccessibilityField* field = &keyboard_accessibility_fields[i];
+        if (g_str_equal(field->section, section) && g_str_equal(field->name, name))
+            return field;
+    }
+    return NULL;
+}
+
+static gboolean keyboard_accessibility_section_known(const char* section) {
+    for (guint i = 0; i < G_N_ELEMENTS(keyboard_accessibility_fields); i++) {
+        if (keyboard_accessibility_fields[i].section[0] &&
+            g_str_equal(keyboard_accessibility_fields[i].section, section))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static gboolean keyboard_accessibility_value_valid(const KeyboardAccessibilityField* field,
+                                                   GVariant* value) {
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+        g_str_equal(g_variant_get_string(value, NULL), "inherit"))
+        return TRUE;
+    if (field->type == KEYBOARD_ACCESSIBILITY_BOOLEAN)
+        return g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
+
+    double number;
+    return input_number(value, &number) && number >= field->minimum && number <= field->maximum &&
+           number == floor(number);
+}
+
+static gboolean keyboard_accessibility_valid(GVariant* accessibility, GError** error) {
+    if (g_variant_is_of_type(accessibility, G_VARIANT_TYPE_STRING) &&
+        g_str_equal(g_variant_get_string(accessibility, NULL), "inherit"))
+        return TRUE;
+    if (!g_variant_is_of_type(accessibility, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "input.keyboard.accessibility must be a table");
+        return FALSE;
+    }
+
+    GVariantIter iter;
+    const char* name;
+    GVariant* value;
+    g_variant_iter_init(&iter, accessibility);
+    while (g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+        g_autoptr(GVariant) member = value;
+        const KeyboardAccessibilityField* field = keyboard_accessibility_field("", name);
+        if (field) {
+            if (!keyboard_accessibility_value_valid(field, member)) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "input.keyboard.accessibility.%s must be a boolean or inherit", name);
+                return FALSE;
+            }
+            continue;
+        }
+
+        if (!keyboard_accessibility_section_known(name)) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "input.keyboard.accessibility.%s is unsupported", name);
+            return FALSE;
+        }
+        if (g_variant_is_of_type(member, G_VARIANT_TYPE_STRING) &&
+            g_str_equal(g_variant_get_string(member, NULL), "inherit"))
+            continue;
+        if (!g_variant_is_of_type(member, G_VARIANT_TYPE_VARDICT)) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "input.keyboard.accessibility.%s must be a table or inherit", name);
+            return FALSE;
+        }
+
+        GVariantIter section_iter;
+        const char* field_name;
+        GVariant* field_value;
+        g_variant_iter_init(&section_iter, member);
+        while (g_variant_iter_next(&section_iter, "{&sv}", &field_name, &field_value)) {
+            g_autoptr(GVariant) setting = field_value;
+            field = keyboard_accessibility_field(name, field_name);
+            if (!field || !keyboard_accessibility_value_valid(field, setting)) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "input.keyboard.accessibility.%s.%s is unsupported or invalid", name,
+                            field_name);
+                return FALSE;
+            }
+        }
+    }
+    return TRUE;
+}
+
 static gboolean input_fields_valid(const char* group, GVariant* values, GError** error) {
     if (!g_variant_is_of_type(values, G_VARIANT_TYPE_VARDICT)) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "input.%s must be a table", group);
@@ -214,6 +338,13 @@ static gboolean input_fields_valid(const char* group, GVariant* values, GError**
     GVariant* value;
     g_variant_iter_init(&iter, values);
     while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+        if (g_str_equal(group, "keyboard") && g_str_equal(key, "accessibility")) {
+            gboolean valid = keyboard_accessibility_valid(value, error);
+            g_variant_unref(value);
+            if (!valid)
+                return FALSE;
+            continue;
+        }
         gboolean valid = input_value_valid(group, key, value);
         g_variant_unref(value);
         if (!valid) {

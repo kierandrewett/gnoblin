@@ -523,7 +523,15 @@ int main(void) {
         "  touchpad = { scroll_speed = 2, left_handed = 'mouse', click_method = 'fingers' },"
         "  keyboard = { delay = 10000, repeat_interval = 30, ['repeat'] = true,"
         "    xkb_options = {'caps:escape'},"
-        "    numlock_state = 'inherit' },"
+        "    numlock_state = 'inherit', accessibility = {"
+        "      shortcuts_enabled = true, beep_on_feature_state_change = true,"
+        "      bounce_keys = {enabled = true, delay_ms = 0, beep_on_reject = true},"
+        "      mouse_keys = {enabled = true, max_speed = 50,"
+        "        acceleration_time_ms = 200, initial_delay_ms = 100},"
+        "      slow_keys = {enabled = 'inherit', delay_ms = 400,"
+        "        beep_on_press = true, beep_on_accept = false, beep_on_reject = true},"
+        "      sticky_keys = {enabled = true, two_key_off = true, beep_on_modifier = true},"
+        "      toggle_keys = {enabled = true} } },"
         "  tablets = { ['056a:00b9'] = { mapping = 'relative', keep_aspect = true },"
         "    ['1234:abcd'] = { mapping = 'inherit' } },"
         "  styluses = { ['123'] = { eraser_button_mode = 'button',"
@@ -578,6 +586,45 @@ int main(void) {
     g_assert_cmpuint(g_variant_n_children(xkb_options), ==, 1);
     g_autoptr(GVariant) xkb_option = g_variant_get_child_value(xkb_options, 0);
     g_assert_cmpstr(g_variant_get_string(xkb_option, NULL), ==, "caps:escape");
+    g_autoptr(GVariant) accessibility =
+        g_variant_lookup_value(keyboard, "accessibility", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(accessibility);
+    g_autoptr(GVariant) accessibility_shortcuts_enabled =
+        g_variant_lookup_value(accessibility, "shortcuts-enabled", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_true(g_variant_get_boolean(accessibility_shortcuts_enabled));
+    g_autoptr(GVariant) feature_state_change_beep = g_variant_lookup_value(
+        accessibility, "beep-on-feature-state-change", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_true(g_variant_get_boolean(feature_state_change_beep));
+    g_autoptr(GVariant) bounce_keys =
+        g_variant_lookup_value(accessibility, "bounce-keys", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) bounce_enabled =
+        g_variant_lookup_value(bounce_keys, "enabled", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_true(g_variant_get_boolean(bounce_enabled));
+    g_autoptr(GVariant) bounce_delay =
+        g_variant_lookup_value(bounce_keys, "delay-ms", G_VARIANT_TYPE_INT64);
+    g_assert_cmpint(g_variant_get_int64(bounce_delay), ==, 0);
+    g_autoptr(GVariant) mouse_keys =
+        g_variant_lookup_value(accessibility, "mouse-keys", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) mouse_speed =
+        g_variant_lookup_value(mouse_keys, "max-speed", G_VARIANT_TYPE_INT64);
+    g_assert_cmpint(g_variant_get_int64(mouse_speed), ==, 50);
+    g_autoptr(GVariant) slow_keys =
+        g_variant_lookup_value(accessibility, "slow-keys", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) slow_enabled = g_variant_lookup_value(slow_keys, "enabled", NULL);
+    g_assert_cmpstr(g_variant_get_string(slow_enabled, NULL), ==, "inherit");
+    g_autoptr(GVariant) slow_delay =
+        g_variant_lookup_value(slow_keys, "delay-ms", G_VARIANT_TYPE_INT64);
+    g_assert_cmpint(g_variant_get_int64(slow_delay), ==, 400);
+    g_autoptr(GVariant) sticky_keys =
+        g_variant_lookup_value(accessibility, "sticky-keys", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) sticky_two_key_off =
+        g_variant_lookup_value(sticky_keys, "two-key-off", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_true(g_variant_get_boolean(sticky_two_key_off));
+    g_autoptr(GVariant) toggle_keys =
+        g_variant_lookup_value(accessibility, "toggle-keys", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) toggle_enabled =
+        g_variant_lookup_value(toggle_keys, "enabled", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_true(g_variant_get_boolean(toggle_enabled));
     g_autoptr(GVariant) orientation_lock =
         g_variant_lookup_value(input_overlay, "orientation-lock", G_VARIANT_TYPE_BOOLEAN);
     g_assert_false(g_variant_get_boolean(orientation_lock));
@@ -600,6 +647,7 @@ int main(void) {
     g_assert_true(g_file_set_contents(explicit_root,
                                       "gnoblin.configure {input = {mouse = {speed = 'inherit'},"
                                       " tablets = {['1234:abcd'] = {mapping = 'inherit'}},"
+                                      " keyboard = {accessibility = 'inherit'},"
                                       " orientation_lock = 'inherit'}}\n",
                                       -1, &error));
     g_clear_pointer(&document, g_variant_unref);
@@ -623,6 +671,19 @@ int main(void) {
         "gnoblin.configure {input = {mouse = {accel_curve = {step = 0, points = {0, 1}}}}}\n",
         "gnoblin.configure {input = {mouse = {accel_curve = {step = 1, points = {0}}}}}\n",
         "gnoblin.configure {input = {tablets = {['not-a-device'] = {mapping = 'absolute'}}}}\n",
+        "gnoblin.configure {input = {keyboard = {accessibility = {unknown = true}}}}\n",
+        "gnoblin.configure {input = {keyboard = {accessibility = {shortcuts_enabled = 1}}}}\n",
+        "gnoblin.configure {input = {keyboard = {accessibility = {bounce_keys = {delay_ms = "
+        "-1}}}}}\n",
+        "gnoblin.configure {input = {keyboard = {accessibility = {mouse_keys = {max_speed = "
+        "0}}}}}\n",
+        "gnoblin.configure {input = {keyboard = {accessibility = {slow_keys = {delay_ms = "
+        "10001}}}}}\n",
+        "gnoblin.configure {input = {keyboard = {accessibility = {slow_keys = {delay_ms = "
+        "1.5}}}}}\n",
+        "gnoblin.configure {input = {keyboard = {accessibility = {sticky_keys = true}}}}\n",
+        "gnoblin.configure {input = {keyboard = {accessibility = {toggle_keys = {enabled = "
+        "'yes'}}}}}\n",
         "gnoblin.configure {input = {orientation_lock = 1}}\n",
         NULL,
     };
