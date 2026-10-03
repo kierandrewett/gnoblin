@@ -58,13 +58,6 @@ gnoblin.configure {
         visual_bell_type = "fullscreen-flash", -- or "frame-flash"
     },
 
-    -- Prefer Gnoblin's portal backend when it is installed. The wildcard
-    -- falls back to any installed backend for interfaces Gnoblin does not
-    -- provide, or when the optional Gnoblin backend is not installed.
-    portals = {
-        default = {"gnoblin", "*"},
-    },
-
     -- Input works automatically with your device/system settings. Only add
     -- fields below when you want to change their behavior. Tablets and pens
     -- need no device IDs, and screen rotation follows the system setting.

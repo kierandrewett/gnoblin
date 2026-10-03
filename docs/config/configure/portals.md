@@ -34,18 +34,31 @@ The special backend value `"*"` selects the first installed implementation in
 name order. It can appear in a list with named backends. The value `"none"`
 disables that portal interface and must be used by itself.
 
-Gnoblin's seeded Lua config prefers the optional `gnoblin` backend, then uses
-`"*"` as a fallback. To prefer another portal for one interface, list that
-backend first under `interfaces`, as in the ScreenCast example. To change the
-preference for every interface, move its backend ID before `"gnoblin"` in
-`default`.
+The optional `gnoblin-portal` package installs a desktop-specific default that
+prefers `gnoblin`, then tries any installed backend. The portal service selects
+this file only in a Gnoblin session. Other desktop sessions keep their own
+portal configuration.
+
+Set `portals` when you want a per-user route. For example, prefer GTK for every
+interface and keep Gnoblin first for ScreenCast:
+
+```lua
+gnoblin.configure {
+    portals = {
+        default = {"gtk", "gnoblin", "*"},
+        interfaces = {
+            ["org.freedesktop.impl.portal.ScreenCast"] = {"gnoblin", "gtk", "*"},
+        },
+    },
+}
+```
 
 Set portal routes in your Gnoblin Lua config,
 `~/.config/gnoblin/init.lua`. This is the only file you edit for Gnoblin
 settings.
 
-The portal service does not read Gnoblin Lua. It accepts backend routes through
-its standard `portals.conf` format, so Gnoblin generates
+The portal service reads its standard `portals.conf` format, so Gnoblin
+generates
 `$XDG_CONFIG_HOME/xdg-desktop-portal/gnoblin-portals.conf` from this setting
 (normally `~/.config/xdg-desktop-portal/gnoblin-portals.conf`). Do not edit
 that generated file. Your Lua config remains the only file you maintain for
@@ -66,9 +79,9 @@ request is active:
 systemctl --user restart xdg-desktop-portal.service
 ```
 
-The `gnoblin-portal` package installs only the backend implementation. Your
-Lua setting chooses it when wanted; if you omit `portals`, xdg-desktop-portal
-uses the system's desktop-specific default.
+If you omit `portals`, the packaged desktop-specific default applies when the
+`gnoblin-portal` package is installed. Without that package, the system's
+desktop-specific default applies.
 
 An existing user portal preference takes precedence. Gnoblin leaves it alone
 and reports a conflict rather than overwriting it.
