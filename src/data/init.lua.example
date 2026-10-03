@@ -101,9 +101,9 @@ gnoblin.configure {
         -- Advanced tablet, pen, and rotation overrides are shown below.
     },
 
-    -- Keep the GNOME session's configured sources unless you intentionally
-    -- replace them. IDs come from the input-source catalogue on your system.
-    -- This table replaces the active source list in memory on reload.
+    -- Without this table, Gnoblin exposes no switchable sources and keeps
+    -- Mutter's current keymap. IDs depend on the layouts and engines installed.
+    -- Reloading this table replaces the active source list in memory.
     -- input_sources = {
     --     sources = {
     --         {type = "xkb", id = "us"},
