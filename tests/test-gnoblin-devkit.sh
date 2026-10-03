@@ -280,6 +280,7 @@ import json
 import os
 from pathlib import Path
 import signal
+import socket
 import subprocess
 import time
 
@@ -344,6 +345,31 @@ def runtime_status():
         None,
     )
 
+event_name = "gnoblin.runtime.status-changed"
+event_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+event_socket.settimeout(20)
+event_socket.connect(os.environ["GNOBLIN_COMPOSITOR_SOCKET"])
+event_stream = event_socket.makefile("r", encoding="utf-8")
+hello = json.loads(event_stream.readline())
+assert hello.get("event") == "hello" and hello.get("api_minor", -1) >= 72, hello
+assert event_name in hello.get("events", []), hello
+event_socket.sendall((json.dumps({
+    "op": "events",
+    "api_version": {"major": 1, "minor": 72},
+    "events": [event_name],
+}) + "\n").encode())
+subscription = json.loads(event_stream.readline())
+assert subscription.get("event") == "subscribed", subscription
+assert event_name in subscription.get("events", []), subscription
+
+def expect_status_event(state, generation):
+    event = json.loads(event_stream.readline())
+    assert event.get("event") == event_name, event
+    assert event.get("state") == state, event
+    assert event.get("generation") == generation, event
+    assert event.get("sequence", 0) > 0 and event.get("time", 0) > 0, event
+    return event
+
 worker_before, compositor_before = worker_and_compositor()
 assert worker_before and compositor_before, (worker_before, compositor_before)
 assert config_snapshot() is not None, "runtime config was unavailable before recovery"
@@ -363,6 +389,7 @@ while time.monotonic() < deadline:
     time.sleep(0.01)
 if not restart_observed:
     raise AssertionError("runtime.status() did not report worker recovery")
+expect_status_event("restarting", generation_before)
 
 deadline = time.monotonic() + 20
 while time.monotonic() < deadline:
@@ -375,11 +402,36 @@ while time.monotonic() < deadline:
         and status == f"running:{generation_before}"
     ):
         os.kill(compositor_before, 0)
+        expect_status_event("running", generation_before)
         print("WORKER:recovered-with-compositor-alive")
         break
     time.sleep(0.1)
 else:
     raise AssertionError("Lua worker did not recover with the compositor alive")
+
+config_path = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin" / "init.lua"
+config_path.write_text(
+    "gnoblin.configure { window_management = { focus_mode = 'click', "
+    "focus_new_windows = 'strict' }, input = { mouse = { drag_threshold = 37 } } }\n",
+    encoding="utf-8",
+)
+subprocess.run([gnoblinctl, "config", "reload"], check=True, timeout=10)
+deadline = time.monotonic() + 20
+generation_after_reload = None
+while time.monotonic() < deadline:
+    status = runtime_status()
+    if status and status.startswith("running:"):
+        generation = int(status.split(":", 1)[1])
+        if generation > generation_before:
+            generation_after_reload = generation
+            break
+    time.sleep(0.05)
+assert generation_after_reload is not None, "accepted config did not advance runtime generation"
+expect_status_event("running", generation_after_reload)
+event_socket.shutdown(socket.SHUT_RDWR)
+event_stream.close()
+event_socket.close()
+print("RUNTIME_STATUS_EVENT:recovery-and-config-reload")
 PY
 SCRIPT
 )
@@ -416,6 +468,7 @@ require_output 'CONFIG:click'
 require_output 'WINDOWS:json'
 require_output 'WORKSPACE:next'
 require_output 'WORKER:recovered-with-compositor-alive'
+require_output 'RUNTIME_STATUS_EVENT:recovery-and-config-reload'
 require_output 'INPUT_SOURCE:empty-without-lua-setting'
 require_output 'INPUT_SOURCE:configured-from-lua'
 require_output 'INPUT_SOURCE:selected-through-cli'

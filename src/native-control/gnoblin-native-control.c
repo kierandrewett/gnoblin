@@ -3885,6 +3885,14 @@ static JsonNode* json_from_variant(GVariant* value) {
     case G_VARIANT_CLASS_UINT32:
         json_node_set_int(node, g_variant_get_uint32(value));
         break;
+    case G_VARIANT_CLASS_UINT64: {
+        guint64 number = g_variant_get_uint64(value);
+        if (number <= G_MAXINT64)
+            json_node_set_int(node, (gint64)number);
+        else
+            json_node_set_double(node, (double)number);
+        break;
+    }
     case G_VARIANT_CLASS_STRING:
         json_node_set_string(node, g_variant_get_string(value, NULL));
         break;
