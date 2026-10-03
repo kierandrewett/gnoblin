@@ -6,8 +6,8 @@ history or the relevant guide.
 
 ## Release checks
 
-- [ ] Verify the repaired Fedora runtime and desktop recovery panel through a
-      real GDM login. Private-session terminal, layer-client and lock tests pass.
+- [ ] Verify Lua worker recovery and the Fedora runtime through a real GDM
+      login. Private-session terminal, layer-client and lock checks pass.
 
 - [ ] Log in through GDM with a real layer-shell client, then complete logout,
       lock and unlock.
