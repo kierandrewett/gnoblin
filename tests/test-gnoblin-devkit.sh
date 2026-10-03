@@ -255,7 +255,7 @@ SCRIPT
 # so this test isolates session-supervisor recovery.
 output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     GNOBLIN_STATE_DIR="$fixture_root/state" \
-    XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}" \
+    XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
     GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$fixture_root" \
     GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
