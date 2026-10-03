@@ -254,8 +254,15 @@ gnoblin.configure {
 -- Advanced input overrides. Most people should leave these commented out:
 -- Gnoblin then follows each tablet/pen's existing settings and the system's
 -- rotation setting. IDs only identify a device you want to change.
+-- Keyboard accessibility overrides use the system setting for omitted fields.
 -- gnoblin.configure {
 --     input = {
+--         keyboard = {
+--             accessibility = {
+--                 shortcuts_enabled = true,
+--                 slow_keys = {enabled = true, delay_ms = 400},
+--             },
+--         },
 --         tablets = {
 --             ["1234:5678"] = {
 --                 mapping = "absolute", -- or "relative"
