@@ -58,7 +58,7 @@ static void write_u64(guint8* d, guint64 v) {
     write_u32(d + 4, v);
 }
 static gboolean packet_type_valid(guint16 type) {
-    return type >= GNOBLIN_RUNTIME_PACKET_HELLO && type <= GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART;
+    return type >= GNOBLIN_RUNTIME_PACKET_HELLO && type <= GNOBLIN_RUNTIME_PACKET_RECOVERY_FAILED;
 }
 static void out_message_free(OutMessage* message) {
     if (!message)
@@ -264,7 +264,8 @@ gboolean gnoblin_runtime_reader_receive(GnoblinRuntimeReader* reader, int fd,
              * boundary; ordinary packets remain strict. */
             if (type == GNOBLIN_RUNTIME_PACKET_WORKER_DISCONNECTED ||
                 type == GNOBLIN_RUNTIME_PACKET_WORKER_SUSPENDED ||
-                type == GNOBLIN_RUNTIME_PACKET_WORKER_RESUME)
+                type == GNOBLIN_RUNTIME_PACKET_WORKER_RESUME ||
+                type == GNOBLIN_RUNTIME_PACKET_RECOVERY_FAILED)
                 gnoblin_runtime_reader_reset(reader);
             else {
                 g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
