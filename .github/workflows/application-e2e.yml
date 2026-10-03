@@ -57,7 +57,8 @@ jobs:
       - name: Prepare the Fedora build environment
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
-            json-glib-devel desktop-file-utils python3 weston dbus-daemon dbus-tools util-linux-user
+            json-glib-devel desktop-file-utils gsettings-desktop-schemas \
+            python3 weston dbus-daemon dbus-tools util-linux-user
           dnf -y builddep --allowerasing packaging/rpm/mutter.spec packaging/rpm/gnoblin-portal.spec
           useradd --create-home builder
           builder_uid="$(id -u builder)"
