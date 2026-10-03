@@ -6,10 +6,10 @@ Subject: [PATCH] tests: verify Gnoblin keyboard accessibility overrides
 ---
 diff --git a/src/tests/a11y-gnoblin-settings-test.c b/src/tests/a11y-gnoblin-settings-test.c
 new file mode 100644
-index 000000000..8fc31d835
+index 000000000..a3b2d5224
 --- /dev/null
 +++ b/src/tests/a11y-gnoblin-settings-test.c
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,144 @@
 +/*
 + * Copyright (C) 2026 Gnoblin contributors
 + *
@@ -34,7 +34,8 @@ index 000000000..8fc31d835
 +static MetaContext *test_context;
 +
 +static GVariant *
-+create_input_config (gboolean enabled)
++create_input_config (gboolean enabled,
++                     gboolean inherit)
 +{
 +  GVariantBuilder input;
 +  GVariantBuilder keyboard;
@@ -47,7 +48,8 @@ index 000000000..8fc31d835
 +  g_variant_builder_init (&mouse_keys, G_VARIANT_TYPE_VARDICT);
 +
 +  g_variant_builder_add (&mouse_keys, "{sv}", "enabled",
-+                         g_variant_new_boolean (enabled));
++                         inherit ? g_variant_new_string ("inherit")
++                                 : g_variant_new_boolean (enabled));
 +  g_variant_builder_add (&accessibility, "{sv}", "mouse-keys",
 +                         g_variant_builder_end (&mouse_keys));
 +  g_variant_builder_add (&keyboard, "{sv}", "accessibility",
@@ -84,14 +86,29 @@ index 000000000..8fc31d835
 +  g_autoptr (ClutterVirtualInputDevice) virtual_keyboard = NULL;
 +  graphene_point_t before;
 +  graphene_point_t after;
-+  g_autoptr (GVariant) enabled_config = create_input_config (TRUE);
-+  g_autoptr (GVariant) disabled_config = create_input_config (FALSE);
++  g_autoptr (GVariant) enabled_config = create_input_config (TRUE, FALSE);
++  g_autoptr (GVariant) disabled_config = create_input_config (FALSE, FALSE);
++  g_autoptr (GVariant) inherit_config = create_input_config (FALSE, TRUE);
 +
 +  virtual_keyboard = clutter_seat_create_virtual_device (seat,
 +                                                         CLUTTER_KEYBOARD_DEVICE);
 +
 +  g_settings_set_boolean (settings, "mousekeys-enable", FALSE);
 +  meta_display_apply_gnoblin_input_config (display, enabled_config);
++  g_assert_true (clutter_seat_query_state (seat, NULL, &before, NULL));
++  send_mouse_key (virtual_keyboard);
++  g_assert_true (clutter_seat_query_state (seat, NULL, &after, NULL));
++  g_assert_cmpfloat (before.x, !=, after.x);
++
++  g_settings_set_boolean (settings, "mousekeys-enable", FALSE);
++  meta_display_apply_gnoblin_input_config (display, inherit_config);
++  g_assert_true (clutter_seat_query_state (seat, NULL, &before, NULL));
++  send_mouse_key (virtual_keyboard);
++  g_assert_true (clutter_seat_query_state (seat, NULL, &after, NULL));
++  g_assert_cmpfloat (before.x, ==, after.x);
++
++  g_settings_set_boolean (settings, "mousekeys-enable", TRUE);
++  meta_display_apply_gnoblin_input_config (display, inherit_config);
 +  g_assert_true (clutter_seat_query_state (seat, NULL, &before, NULL));
 +  send_mouse_key (virtual_keyboard);
 +  g_assert_true (clutter_seat_query_state (seat, NULL, &after, NULL));
