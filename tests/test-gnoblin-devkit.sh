@@ -48,6 +48,11 @@ wayland-scanner client-header "$xdg_shell_protocol" \
     "$fixture_root/xdg-shell-client-protocol.h"
 wayland-scanner private-code "$xdg_shell_protocol" \
     "$fixture_root/xdg-shell-client-protocol.c"
+foreign_toplevel_protocol="$ROOT/src/protocols/foreign-toplevel-management/wlr-foreign-toplevel-management-unstable-v1.xml"
+wayland-scanner client-header "$foreign_toplevel_protocol" \
+    "$fixture_root/wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
+wayland-scanner private-code "$foreign_toplevel_protocol" \
+    "$fixture_root/wlr-foreign-toplevel-management-unstable-v1-protocol.c"
 read -r -a activation_cflags <<<"$(pkg-config --cflags wayland-client)"
 read -r -a activation_libs <<<"$(pkg-config --libs wayland-client)"
 cc "${activation_cflags[@]}" -I"$fixture_root" \
@@ -55,6 +60,11 @@ cc "${activation_cflags[@]}" -I"$fixture_root" \
     "$fixture_root/xdg-activation-v1-client-protocol.c" \
     "$fixture_root/xdg-shell-client-protocol.c" \
     "${activation_libs[@]}" -o "$fixture_root/focus-transfer-client"
+cc "${activation_cflags[@]}" -I"$fixture_root" \
+    "$ROOT/tests/input-source-focus-client.c" \
+    "$fixture_root/xdg-shell-client-protocol.c" \
+    "$fixture_root/wlr-foreign-toplevel-management-unstable-v1-protocol.c" \
+    "${activation_libs[@]}" -o "$fixture_root/input-source-focus-client"
 
 layer_shell_protocol="$ROOT/src/protocols/layer-shell/wlr-layer-shell-unstable-v1.xml"
 test -f "$layer_shell_protocol"
@@ -265,6 +275,161 @@ DISPLAY='' WAYLAND_DISPLAY="$GNOBLIN_TEST_IBUS_WAYLAND_DISPLAY" \
 select_ibus_source "$XDG_RUNTIME_DIR/ibus-source-reselect.txt"
 gnoblinctl lua "$XDG_RUNTIME_DIR/ibus-current.lua"
 printf 'IBUS:reconnected-after-owner-restart\n'
+cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    window_management = {
+        focus_mode = "click",
+        focus_new_windows = "strict",
+    },
+    input_sources = {
+        sources = {
+            {type = "xkb", id = "us"},
+            {type = "xkb", id = "gb"},
+        },
+        per_window = true,
+    },
+}
+LUA
+gnoblinctl config reload > "$XDG_RUNTIME_DIR/per-window-input-config.txt"
+cat > "$XDG_RUNTIME_DIR/per-window-enabled.lua" <<'LUA'
+assert(gnoblin.settings.input_sources.per_window == true)
+print("INPUT_SOURCE:per-window-config-enabled")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/per-window-enabled.lua"
+(
+    title_a='Gnoblin per-window input A'
+    title_b='Gnoblin per-window input B'
+    window_log_a="$XDG_RUNTIME_DIR/per-window-window-a.log"
+    window_log_b="$XDG_RUNTIME_DIR/per-window-window-b.log"
+    windows_json="$XDG_RUNTIME_DIR/per-window-windows.json"
+    input_json="$XDG_RUNTIME_DIR/per-window-input.json"
+    focus_client="$GNOBLIN_INPUT_SOURCE_FOCUS_CLIENT"
+    "$focus_client" window "$title_a" > "$window_log_a" 2>&1 &
+    window_a_pid=$!
+    "$focus_client" window "$title_b" > "$window_log_b" 2>&1 &
+    window_b_pid=$!
+    cleanup_windows() {
+        local result=$?
+        kill -TERM "$window_a_pid" "$window_b_pid" 2>/dev/null || true
+        wait "$window_a_pid" 2>/dev/null || true
+        wait "$window_b_pid" 2>/dev/null || true
+        if ((result != 0)); then
+            printf '%s\n' 'Input-source fixture A log:' >&2
+            cat "$window_log_a" >&2
+            printf '%s\n' 'Input-source fixture B log:' >&2
+            cat "$window_log_b" >&2
+        fi
+        return "$result"
+    }
+    trap cleanup_windows EXIT
+    window_matches() {
+        local title="$1"
+        local focused="$2"
+        gnoblinctl --json window list > "$windows_json" || return 1
+        python3 - "$windows_json" "$title" "$focused" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as stream:
+    value = json.load(stream)
+windows = value if isinstance(value, list) else value.get("windows", [])
+expected_focus = None if sys.argv[3] == "any" else sys.argv[3] == "true"
+for window in windows:
+    if window.get("title") == sys.argv[2] and (
+        expected_focus is None or bool(window.get("focused")) == expected_focus
+    ):
+        sys.exit(0)
+sys.exit(1)
+PY
+    }
+    wait_for_window() {
+        local title="$1"
+        for _ in {1..100}; do
+            if window_matches "$title" any; then
+                return 0
+            fi
+            sleep 0.05
+        done
+        cat "$windows_json" >&2
+        echo "test window did not appear: $title" >&2
+        return 1
+    }
+    wait_for_focus() {
+        local title="$1"
+        for _ in {1..100}; do
+            if window_matches "$title" true; then
+                return 0
+            fi
+            sleep 0.05
+        done
+        cat "$windows_json" >&2
+        echo "test window did not receive focus: $title" >&2
+        return 1
+    }
+    wait_for_source() {
+        local source_id="$1"
+        for _ in {1..100}; do
+            gnoblinctl --json input current > "$input_json" 2>/dev/null || true
+            if python3 - "$input_json" "$source_id" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as stream:
+        current = json.load(stream)
+except (OSError, json.JSONDecodeError):
+    sys.exit(1)
+source = current.get("source")
+if current.get("available") and source and source.get("type") == "xkb" \
+        and source.get("id") == sys.argv[2]:
+    sys.exit(0)
+sys.exit(1)
+PY
+            then
+                return 0
+            fi
+            sleep 0.05
+        done
+        cat "$input_json" >&2
+        echo "input source did not become active: $source_id" >&2
+        return 1
+    }
+    select_source() {
+        local source_id="$1"
+        local result_file="$XDG_RUNTIME_DIR/select-$source_id.txt"
+        for _ in {1..100}; do
+            if gnoblinctl --timeout 2 input select xkb "$source_id" > "$result_file" 2>&1; then
+                return 0
+            fi
+            sleep 0.05
+        done
+        cat "$result_file" >&2
+        echo "could not select XKB source: $source_id" >&2
+        return 1
+    }
+    activate_window() {
+        local title="$1"
+        timeout 7 "$focus_client" activate "$title"
+        wait_for_focus "$title"
+    }
+
+    wait_for_window "$title_a"
+    wait_for_window "$title_b"
+    activate_window "$title_a"
+    select_source us
+    wait_for_source us
+    activate_window "$title_b"
+    wait_for_source us
+    printf 'INPUT_SOURCE:per-window-first-focus-inherits\n'
+    select_source gb
+    wait_for_source gb
+    activate_window "$title_a"
+    wait_for_source us
+    printf 'INPUT_SOURCE:per-window-restores-A\n'
+    activate_window "$title_b"
+    wait_for_source gb
+    printf 'INPUT_SOURCE:per-window-restores-B\n'
+)
 for reload_attempt in {1..8}; do
     gnoblinctl config reload > "$XDG_RUNTIME_DIR/reload-$reload_attempt.txt"
 done
@@ -661,6 +826,7 @@ output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
     GNOBLIN_FOCUS_TEST_CLIENT="$fixture_root/focus-transfer-client" \
     GNOBLIN_FOCUS_TEST_SCRIPT="$ROOT/tests/test-focus-transfer.py" \
+    GNOBLIN_INPUT_SOURCE_FOCUS_CLIENT="$fixture_root/input-source-focus-client" \
     GNOBLIN_LAYER_LIFECYCLE_CLIENT="$fixture_root/layer-lifecycle-lua-client" \
     GNOBLIN_DEVKIT_EXEC="$devkit_exec" \
     timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1)" || {
@@ -692,6 +858,10 @@ require_output 'INPUT:mouse-drag-threshold-inherited'
 require_output 'IBUS:selected-through-cli'
 require_output 'INPUT_SOURCE:ibus-to-xkb'
 require_output 'INPUT_SOURCE:xkb-to-ibus'
+require_output 'INPUT_SOURCE:per-window-config-enabled'
+require_output 'INPUT_SOURCE:per-window-first-focus-inherits'
+require_output 'INPUT_SOURCE:per-window-restores-A'
+require_output 'INPUT_SOURCE:per-window-restores-B'
 require_output 'IBUS:owner-lost'
 require_output 'IBUS:reconnected-after-owner-restart'
 require_output 'INPUT_SOURCE:cleared-with-lua-config'
