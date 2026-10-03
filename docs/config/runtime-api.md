@@ -583,7 +583,13 @@ confirms the keymap change. Use `{type = "ibus", id = "engine-id"}` to select a
 listed IBus source. Gnoblin calls `org.freedesktop.IBus.SetGlobalEngine` over
 the session bus and completes when IBus accepts the request. XKB selection
 changes the seat's keyboard layout; IBus selection changes the session's
-global input method. Per-window source restoration is not provided.
+global input method.
+
+Set `input_sources.per_window` to:
+
+- `true` to remember and restore the last selected source for each focused window. A
+  window without a saved source inherits the source active at its first focus.
+- `false` or omit it (the default) to share the selected source across windows.
 
 Subscribe to `gnoblin.input.source-changed` for confirmed current-source
 changes and `gnoblin.input.sources-changed` when the configured source list
