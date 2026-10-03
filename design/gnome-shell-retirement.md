@@ -16,6 +16,16 @@ that installing Gnoblin does not replace a user's GNOME packages. The old
 Shell files removed by `scripts/install-session.sh` are upgrade cleanup for a
 private prefix and should remain until that cleanup is no longer needed.
 
+The old app-shard harness in `tests/e2e/run-app-shard-container.sh` and
+`tests/e2e/run-app-shard-in-fedora.sh` is not used by the current workflow or
+CMake tests. Its Fedora runner installs GNOME Shell and requires the old
+`install/bin/gnome-shell` binary and Shell D-Bus resources, so it cannot run
+against the supported standalone build. The app driver also uses Shell Eval
+and Shell Screenshot methods. It includes Flatpak launch, application-window,
+and IBus probes that the native-session workflow does not fully cover. Keep
+the useful app checks only after porting them to the standalone devkit; retire
+the remaining Shell-specific probes with an explicit coverage decision.
+
 The unbuilt `src/gnome-shell-overlay/shell-gnoblin-shader.{c,h}` helper has
 been removed. It was only included by retired Shell shader patches. Shader
 file watching now belongs to Gnoblin's native control service, and Mutter
