@@ -56,6 +56,22 @@ cc "${activation_cflags[@]}" -I"$fixture_root" \
     "$fixture_root/xdg-shell-client-protocol.c" \
     "${activation_libs[@]}" -o "$fixture_root/focus-transfer-client"
 
+layer_shell_protocol="$ROOT/src/protocols/layer-shell/wlr-layer-shell-unstable-v1.xml"
+test -f "$layer_shell_protocol"
+wayland-scanner client-header "$layer_shell_protocol" \
+    "$fixture_root/wlr-layer-shell-unstable-v1-client-protocol.h"
+wayland-scanner private-code "$layer_shell_protocol" \
+    "$fixture_root/wlr-layer-shell-unstable-v1-protocol.c"
+xdg_shell_protocol="$activation_protocol_dir/stable/xdg-shell/xdg-shell.xml"
+wayland-scanner private-code "$xdg_shell_protocol" "$fixture_root/xdg-shell-protocol.c"
+read -r -a layer_cflags <<<"$(pkg-config --cflags wayland-client)"
+read -r -a layer_libs <<<"$(pkg-config --libs wayland-client)"
+cc "${layer_cflags[@]}" -I"$fixture_root" \
+    "$ROOT/tests/layer-lifecycle-lua-client.c" \
+    "$fixture_root/wlr-layer-shell-unstable-v1-protocol.c" \
+    "$fixture_root/xdg-shell-protocol.c" \
+    "${layer_libs[@]}" -o "$fixture_root/layer-lifecycle-lua-client"
+
 cat >"$fixture_root/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
     window_management = {
@@ -295,6 +311,86 @@ gnoblin.events.on("gnoblin.animation.finished", report_workspace_animation)
 LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/config-reload.txt"
 python3 "$GNOBLIN_TEST_ROOT/tests/test-workspace-animation-events.py"
+cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    window_management = {
+        focus_mode = "click",
+        focus_new_windows = "strict",
+    },
+}
+local namespace = "gnoblin-lua-layer-lifecycle-e2e"
+local function layer_from_snapshot(id)
+    for _, layer in ipairs(gnoblin.layers.list()) do
+        if layer.id == id then return layer end
+    end
+end
+gnoblin.events.on("gnoblin.layer.created", function(event)
+    if event.layer.namespace ~= namespace then return end
+    local current = layer_from_snapshot(event.layer.id)
+    assert(current and current.namespace == namespace,
+        "created callback must see its layer in gnoblin.layers.list()")
+    assert(current.mapped == false, "new layer role should first appear unmapped")
+    print("LUA_LAYER:created-snapshot")
+end)
+gnoblin.events.on("gnoblin.layer.changed", function(event)
+    if event.layer.namespace ~= namespace then return end
+    local saw_mapped = false
+    for _, field in ipairs(event.changed) do
+        if field == "mapped" then saw_mapped = true end
+    end
+    if not saw_mapped then return end
+    local current = layer_from_snapshot(event.layer_id)
+    assert(current and current.mapped == event.layer.mapped,
+        "mapped callback must see the updated state in gnoblin.layers.list()")
+    print(current.mapped and "LUA_LAYER:mapped-snapshot" or "LUA_LAYER:unmapped-snapshot")
+end)
+gnoblin.events.on("gnoblin.layer.removed", function(event)
+    if event.last.namespace ~= namespace then return end
+    assert(layer_from_snapshot(event.layer_id) == nil,
+        "removed callback must see the layer absent from gnoblin.layers.list()")
+    print("LUA_LAYER:removed-snapshot")
+end)
+LUA
+gnoblinctl config reload > "$XDG_RUNTIME_DIR/layer-lifecycle-config-reload.txt"
+timeout 15 "$GNOBLIN_LAYER_LIFECYCLE_CLIENT" \
+    > "$XDG_RUNTIME_DIR/layer-lifecycle-client.txt" 2>&1 &
+layer_client_pid=$!
+unmapped_seen=false
+for _ in {1..100}; do
+    if grep -Fxq 'CLIENT:unmapped' "$XDG_RUNTIME_DIR/layer-lifecycle-client.txt"; then
+        unmapped_seen=true
+        break
+    fi
+    if ! kill -0 "$layer_client_pid" 2>/dev/null; then break; fi
+    sleep 0.1
+done
+if [[ "$unmapped_seen" != true ]]; then
+    cat "$XDG_RUNTIME_DIR/layer-lifecycle-client.txt" >&2
+    echo 'Timed out waiting for the layer client to reach its unmap commit' >&2
+    wait "$layer_client_pid" || true
+    exit 1
+fi
+cat > "$XDG_RUNTIME_DIR/layer-live-snapshot.lua" <<'LUA'
+local found = false
+for _, layer in ipairs(gnoblin.layers.list()) do
+    if layer.namespace == "gnoblin-lua-layer-lifecycle-e2e" then
+        found = true
+        print("LUA_LAYER:live-unmap:" .. tostring(layer.mapped))
+    end
+end
+assert(found, "unmapped layer role must remain in the live snapshot until removal")
+LUA
+timeout 5 gnoblinctl lua "$XDG_RUNTIME_DIR/layer-live-snapshot.lua"
+if ! wait "$layer_client_pid"; then
+    cat "$XDG_RUNTIME_DIR/layer-lifecycle-client.txt" >&2
+    echo 'Layer lifecycle client failed or exceeded its 15 second timeout' >&2
+    exit 1
+fi
+cat "$XDG_RUNTIME_DIR/layer-lifecycle-client.txt"
+grep -Fxq 'CLIENT:role-created-unmapped' "$XDG_RUNTIME_DIR/layer-lifecycle-client.txt"
+grep -Fxq 'CLIENT:mapped' "$XDG_RUNTIME_DIR/layer-lifecycle-client.txt"
+grep -Fxq 'CLIENT:unmapped' "$XDG_RUNTIME_DIR/layer-lifecycle-client.txt"
+grep -Fxq 'CLIENT:removed' "$XDG_RUNTIME_DIR/layer-lifecycle-client.txt"
 gnoblinctl --json window list > "$XDG_RUNTIME_DIR/windows.json"
 python3 - "$XDG_RUNTIME_DIR/windows.json" <<'PY'
 import json
@@ -555,6 +651,7 @@ output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
     GNOBLIN_FOCUS_TEST_CLIENT="$fixture_root/focus-transfer-client" \
     GNOBLIN_FOCUS_TEST_SCRIPT="$ROOT/tests/test-focus-transfer.py" \
+    GNOBLIN_LAYER_LIFECYCLE_CLIENT="$fixture_root/layer-lifecycle-lua-client" \
     GNOBLIN_DEVKIT_EXEC="$devkit_exec" \
     timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1)" || {
     printf '%s\n' "$output" >&2
@@ -591,6 +688,15 @@ require_output 'LUA_API:runtime-status'
 require_output 'LUA_API:snapshots'
 require_output 'PASS: Gnoblin denied activation without user context and emitted the denial event'
 require_output 'PASS: workspace animation lifecycle events reach socket clients'
+require_output 'LUA_LAYER:live-unmap:false'
+for layer_event in created-snapshot mapped-snapshot unmapped-snapshot removed-snapshot; do
+    if ! grep -Fq "LUA_LAYER:$layer_event" "$fixture_root/state/devkit-last.log"; then
+        echo "Missing Lua layer lifecycle snapshot proof: $layer_event" >&2
+        tail -n 80 "$fixture_root/state/devkit-last.log" >&2
+        exit 1
+    fi
+done
+printf '%s\n' 'PASS: Lua layer lifecycle callbacks see current layer snapshots'
 if ! grep -Fq 'LUA_API:activity-event-snapshot' "$fixture_root/state/devkit-last.log"; then
     echo 'Missing Lua session activity event proof in the devkit runtime log' >&2
     tail -n 80 "$fixture_root/state/devkit-last.log" >&2
