@@ -1,11 +1,11 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 2 Oct 2026 04:59:28 +0100
-Subject: [PATCH] focus: report strict XDG activation denials
+Subject: [PATCH] mutter: report strict XDG activation denials
 
 ---
 diff --git a/src/wayland/meta-wayland-activation.c b/src/wayland/meta-wayland-activation.c
-index 91d715f26..454b3820c 100644
+index 91d715f2..454b3820 100644
 --- a/src/wayland/meta-wayland-activation.c
 +++ b/src/wayland/meta-wayland-activation.c
 @@ -22,6 +22,7 @@
