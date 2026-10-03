@@ -175,6 +175,24 @@ runtime reports `running` and that worker's active generation.
 stays unchanged across worker recovery and changes when a different
 configuration is accepted.
 
+Subscribe to `gnoblin.runtime.status-changed` to watch those values. The event
+also includes `sequence` and monotonic `time`. It is emitted when the worker
+starts serving, Mutter suspends it for replacement, the replacement finishes
+republishing state, or a new configuration generation is accepted. Failed or
+rolled-back reloads do not change the reported generation.
+
+```lua
+gnoblin.events.on("gnoblin.runtime.status-changed", function(event)
+    print(event.state, event.generation)
+end)
+```
+
+Events are not replayed, so subscribe before reading `runtime.status()` and
+read it again after reconnecting. A Lua worker cannot run a callback while it
+is suspended; external socket clients such as `gnoblinctl lua` can observe
+`restarting`, and the replacement worker receives `running` after it restores
+state. Mutter may close its socket without sending a final `unavailable` event.
+
 The native open-animation matcher uses updated rules for windows mapped after
 reload. Reload does not replay open animations for windows already mapped.
 

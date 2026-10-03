@@ -224,7 +224,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime and `gnoblinctl lua` expose these reads and grant revocation; console results are deeply read-only. |
 | `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current.** The runtime and `gnoblinctl lua` expose all methods; the console waits for lock/logout operations and returns deeply read-only results. |
 | `gnoblin.runtime.reload_config()` | `() -> Operation<Result>` | **Current.** Reload the active configuration in the supervised runtime or `gnoblinctl lua`; the console waits and returns an immutable result. |
-| `gnoblin.runtime.status()` | `() -> RuntimeStatus` | **Current; native-control API 1.67.** Read Lua worker health and the accepted runtime generation. The compositor answers directly during worker recovery; the live runtime and `gnoblinctl lua` expose the same record shape. |
+| `gnoblin.runtime.status()` | `() -> RuntimeStatus` | **Current; native-control API 1.67.** Read Lua worker health and the accepted runtime generation. The compositor answers directly during worker recovery; the live runtime and `gnoblinctl lua` expose the same record shape. API 1.72 adds `gnoblin.runtime.status-changed`. |
 | `gnoblin.listeners` | map of event names to callback arrays | **Current; inspect only.** Do not edit this table directly. |
 | `gnoblin.window_rule(rule)` | `(WindowRule) -> nil` | **Current and retained.** Append a window or layer matching rule. |
 | `gnoblin.permission_rule(rule)` | `(PermissionRule) -> nil` | **Current and retained.** Append a portal permission rule. |
@@ -1556,6 +1556,7 @@ Raw `mutter.*` and `gnome.*` events are not included in this stable catalog.
 | `gnoblin.operation.completed`              | `operation_id`, `method`, `ok`, `value?`, `error?`                                 | A mutating call finishes.                                                                                                                                                       |
 | `gnoblin.session.lock-state-changed`       | `state: SessionLockState`, `revision`, `sequence`, `time`                          | Mutter reports a session-lock state transition; `revision` matches its state snapshot and request delivery is not lock confirmation.                                            |
 | `gnoblin.session.activity-changed`         | `available`, `idle`, `threshold_ms`, `idle_for_ms`, `revision`, `sequence`, `time` | Native idle-monitor state changes; `idle_for_ms` is sampled at the transition.                                                                                                  |
+| `gnoblin.runtime.status-changed`           | `state`, `generation`, `sequence`, `time`                                          | Worker state or accepted config generation changes; native-control API 1.72.                                                                                                    |
 | `gnoblin.appearance.color-scheme-changed`  | `color_scheme`: `default`, `prefer-dark`, or `prefer-light`                        | Native API 1.34; emitted when the desktop appearance preference changes.                                                                                                        |
 
 `gnoblin.session.lock-requested` is a socket-only event sent to subscribed
@@ -1570,9 +1571,12 @@ compositor socket retains its legacy operation event for external clients; Lua
 config listeners use `gnoblin.operation.completed`.
 
 General session lifecycle events, including `gnoblin.session.state-changed`,
-remain proposed. The compositor socket closes when the compositor stops, so a
-terminal lifecycle event cannot be guaranteed. Use `gnoblin.session.status()`
-while connected and the dedicated lock-state event for lock transitions.
+remain proposed. `gnoblin.runtime.status-changed` reports only Mutter's view of
+the Lua worker; it does not report supervisor retry exhaustion or guarantee a
+final `unavailable` event. The compositor socket closes when Mutter stops, so
+clients must query status again after reconnecting. Use
+`gnoblin.session.status()` while connected and the dedicated lock-state event
+for lock transitions.
 
 ## Wire contract and versioning
 
@@ -1925,6 +1929,10 @@ accepted; it is not a restart counter. It stays fixed across worker recovery
 and changes when Mutter accepts a different runtime configuration. The socket answers this
 read without dispatching to Lua, so shells can poll during worker recovery. A
 live Lua worker reports `running` and its active configuration generation.
+Native-control API 1.72 adds `gnoblin.runtime.status-changed` with the same
+state and generation, plus event sequence and monotonic time. It is emitted
+when that tuple changes after worker startup, recovery, or an accepted config
+commit; failed and rolled-back candidates do not change it.
 Native-control API 1.21
 implements `gnoblin.session.lock()` as a request to subscribed external shell
 clients and reports Mutter lock-state transitions through
