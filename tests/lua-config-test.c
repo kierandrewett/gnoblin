@@ -402,7 +402,7 @@ int main(void) {
 
     const char* input_source =
         "gnoblin.configure { input = {"
-        "  mouse = { speed = 0.25, accel_profile = 'custom',"
+        "  mouse = { speed = 0.25, drag_threshold = 12, accel_profile = 'custom',"
         "    accel_curve = { step = 1, points = {0, 0.5, 1} },"
         "    left_handed = 'inherit' },"
         "  touchpad = { scroll_speed = 2, left_handed = 'mouse', click_method = 'fingers' },"
@@ -432,6 +432,10 @@ int main(void) {
     g_autoptr(GVariant) speed = g_variant_lookup_value(mouse, "speed", NULL);
     g_assert_true(g_variant_is_of_type(speed, G_VARIANT_TYPE_DOUBLE));
     g_assert_cmpfloat(g_variant_get_double(speed), ==, 0.25);
+    g_autoptr(GVariant) drag_threshold =
+        g_variant_lookup_value(mouse, "drag-threshold", G_VARIANT_TYPE_INT64);
+    g_assert_nonnull(drag_threshold);
+    g_assert_cmpint(g_variant_get_int64(drag_threshold), ==, 12);
     g_autoptr(GVariant) curve = g_variant_lookup_value(mouse, "accel-curve", NULL);
     g_autoptr(GVariant) step = g_variant_lookup_value(curve, "step", NULL);
     g_autoptr(GVariant) points = g_variant_lookup_value(curve, "points", NULL);
@@ -494,6 +498,9 @@ int main(void) {
     const char* invalid_input_sources[] = {
         "gnoblin.configure {input = {mouse = {unknown = true}}}\n",
         "gnoblin.configure {input = {mouse = {speed = '0.5'}}}\n",
+        "gnoblin.configure {input = {mouse = {drag_threshold = 0}}}\n",
+        "gnoblin.configure {input = {mouse = {drag_threshold = 1.5}}}\n",
+        "gnoblin.configure {input = {mouse = {drag_threshold = 2147483648}}}\n",
         "gnoblin.configure {input = {mouse = {unknown = 'inherit'}}}\n",
         "gnoblin.configure {input = {touchpad = {scroll_speed = 2.1}}}\n",
         "gnoblin.configure {input = {tablets = {['1234:abcd'] = {speed = 'inherit'}}}}\n",

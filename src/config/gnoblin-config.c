@@ -38,7 +38,8 @@ static gboolean input_string_is(GVariant* value, const char* const* choices) {
 
 static gboolean input_field_known(const char* group, const char* key) {
     static const char* const mouse_fields[] = {
-        "speed", "left-handed", "natural-scroll", "accel-profile", "accel-curve", NULL,
+        "speed",         "drag-threshold", "left-handed", "natural-scroll",
+        "accel-profile", "accel-curve",    NULL,
     };
     static const char* const touchpad_fields[] = {
         "speed",
@@ -141,6 +142,11 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
         double number;
         return input_number(value, &number) && number >= 1 && number <= 10000 &&
                number == (gint64)number;
+    }
+    if (g_str_equal(key, "drag-threshold")) {
+        double number;
+        return input_number(value, &number) && number >= 1 && number <= G_MAXINT &&
+               number == floor(number);
     }
     if (g_str_equal(key, "xkb-options")) {
         if (!g_variant_is_of_type(value, G_VARIANT_TYPE("av")))
