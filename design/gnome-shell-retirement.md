@@ -67,8 +67,12 @@ The `99zzzz-session-mode-startup` patch was removed on 2026-10-03. It only
 delayed GNOME Shell's `SessionMode` import until Shell initialization; the
 standalone session starts no Shell process or session mode.
 
-The patch directories `99zzzzz-no-session-presence`, `99zzzzzz-logind-actions`,
-`99zzzzzzz-session-ready`, `99zzzzzzzz-no-session-dialog`,
+The `99zzzzz-no-session-presence` patch was removed on 2026-10-03. It only
+skipped GNOME Session presence tracking for GNOME Shell notification banners;
+Gnoblin has no MessageTray or notification-busy state.
+
+The patch directories `99zzzzzz-logind-actions`, `99zzzzzzz-session-ready`,
+`99zzzzzzzz-no-session-dialog`,
 `99zzzzzzzzzz-standalone-idle`, `99zzzzzzzzzzz-native-scope`,
 `99zzzzzzzzzzzz-native-xkb`, `99zzzzzzzzzzzzz-timezone`,
 `99zzzzzzzzzzzzzz-native-slideshow`, and
