@@ -431,6 +431,13 @@ status_script.write_text(
     'local s=gnoblin.runtime.status(); print("RUNTIME_STATUS:"..s.state..":"..s.generation)\n',
     encoding="utf-8",
 )
+session_status_script = Path(os.environ["XDG_RUNTIME_DIR"]) / "session-status.lua"
+session_status_script.write_text(
+    'local s=gnoblin.session.status(); '
+    'assert(s.state == "running" and type(s.revision) == "number" and s.revision >= 0); '
+    'print("SESSION_STATUS:"..s.state..":"..s.revision)\n',
+    encoding="utf-8",
+)
 
 def display_processes():
     for process in Path("/proc").iterdir():
@@ -485,6 +492,22 @@ def runtime_status():
         None,
     )
 
+def session_status():
+    result = subprocess.run(
+        [gnoblinctl, "--timeout", "1", "lua", str(session_status_script)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=3,
+    )
+    if result.returncode:
+        return None
+    return next(
+        (line.removeprefix("SESSION_STATUS:") for line in result.stdout.splitlines()
+         if line.startswith("SESSION_STATUS:")),
+        None,
+    )
+
 deadline = time.monotonic() + 15
 while time.monotonic() < deadline and (not marker.exists() or config_snapshot() is None):
     time.sleep(0.05)
@@ -497,6 +520,21 @@ assert compositor_before and supervisor_before and config_before is not None, (
 status_before = runtime_status()
 assert status_before and status_before.startswith("running:"), status_before
 generation_before = int(status_before.split(":", 1)[1])
+os.kill(supervisor_before, signal.SIGSTOP)
+try:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        status = Path(f"/proc/{supervisor_before}/status").read_text(encoding="utf-8")
+        if next(line for line in status.splitlines() if line.startswith("State:"))[7] in "Tt":
+            break
+        time.sleep(0.01)
+    else:
+        raise AssertionError("session supervisor did not stop for the status read")
+    status = session_status()
+    assert status and status.startswith("running:"), status
+    print("SESSION_STATUS:available-with-supervisor-stopped")
+finally:
+    os.kill(supervisor_before, signal.SIGCONT)
 os.kill(supervisor_before, signal.SIGKILL)
 
 deadline = time.monotonic() + 30
@@ -537,4 +575,5 @@ guardian_output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
 }
 grep -q 'SUPERVISOR:recovered-with-compositor-alive' <<<"$guardian_output"
 grep -q 'AUTOSTART:ran-once-across-supervisor-recovery' <<<"$guardian_output"
+grep -q 'SESSION_STATUS:available-with-supervisor-stopped' <<<"$guardian_output"
 printf '%s\n' 'PASS: session supervisor recovers without restarting Mutter or login autostart'

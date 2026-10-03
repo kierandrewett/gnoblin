@@ -229,6 +229,7 @@ struct _GnoblinNativeControl {
     guint64 portal_grant_revision;
     guint64 privacy_revision;
     guint portal_grant_retry_count;
+    guint64 session_lock_revision;
     guint64 event_sequence;
     guint64 next_focus_context_handle;
     guint64 next_menu_context_handle;
@@ -5450,11 +5451,12 @@ static const char* native_session_lock_state_name(MetaWaylandSessionLockState st
     }
 }
 
-static GVariant* native_session_lock_snapshot(MetaWaylandCompositor* compositor) {
+static GVariant* native_session_lock_snapshot(MetaWaylandCompositor* compositor, guint64 revision) {
     gboolean available = compositor && meta_wayland_session_lock_get_capability(compositor) != 0;
     GVariantBuilder builder;
     g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&builder, "{sv}", "lock_available", g_variant_new_boolean(available));
+    g_variant_builder_add(&builder, "{sv}", "revision", g_variant_new_uint64(revision));
     if (available)
         g_variant_builder_add(&builder, "{sv}", "lock_state",
                               g_variant_new_string(native_session_lock_state_name(
@@ -5479,6 +5481,7 @@ static void native_session_lock_changed(MetaWaylandCompositor* compositor,
     const char* state_name = native_session_lock_state_name(state);
 
     guint64 sequence = ++control->event_sequence;
+    control->session_lock_revision = sequence;
     gint64 time = g_get_monotonic_time();
     GVariantBuilder payload_builder;
     g_variant_builder_init(&payload_builder, G_VARIANT_TYPE_VARDICT);
@@ -5487,7 +5490,8 @@ static void native_session_lock_changed(MetaWaylandCompositor* compositor,
     g_variant_builder_add(&payload_builder, "{sv}", "sequence", g_variant_new_int64(sequence));
     g_variant_builder_add(&payload_builder, "{sv}", "time", g_variant_new_int64(time));
     g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&payload_builder));
-    g_autoptr(GVariant) status_snapshot = native_session_lock_snapshot(compositor);
+    g_autoptr(GVariant) status_snapshot =
+        native_session_lock_snapshot(compositor, control->session_lock_revision);
     native_publish_runtime_snapshot(control, "session-lock", status_snapshot, sequence);
     g_autoptr(JsonNode) root = json_node_new(JSON_NODE_OBJECT);
     JsonObject* object = json_object_new();
@@ -11712,12 +11716,23 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "session.status")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "session.status does not accept arguments");
-        if (!client->control->supervised_runtime)
-            return encode_response(id, NULL, "Lua supervisor is not connected");
-        GVariantBuilder empty;
-        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-        g_autoptr(GVariant) arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
-        return queue_runtime_api_request(client, id, method, arguments, "read");
+        g_autoptr(GVariant) lock_snapshot = native_session_lock_snapshot(
+            client->control->wayland_compositor, client->control->session_lock_revision);
+        gboolean lock_available = FALSE;
+        const char* lock_state = NULL;
+        guint64 revision = 0;
+        g_variant_lookup(lock_snapshot, "lock_available", "b", &lock_available);
+        g_variant_lookup(lock_snapshot, "lock_state", "&s", &lock_state);
+        g_variant_lookup(lock_snapshot, "revision", "t", &revision);
+        JsonObject* result_object = json_object_new();
+        json_object_set_string_member(result_object, "state", "running");
+        json_object_set_boolean_member(result_object, "lock_available", lock_available);
+        json_object_set_int_member(result_object, "revision", (gint64)MIN(revision, G_MAXINT64));
+        if (lock_available && lock_state)
+            json_object_set_string_member(result_object, "lock_state", lock_state);
+        g_autoptr(JsonNode) result = json_node_new(JSON_NODE_OBJECT);
+        json_node_take_object(result, result_object);
+        return encode_response(id, result, NULL);
     }
     if (g_str_equal(method, "window.restore_or_minimize")) {
         JsonObject* json_arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
@@ -13660,9 +13675,10 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
         native_publish_runtime_snapshot(control, "session-activity",
                                         control->session_activity_snapshot,
                                         control->session_activity_revision);
-    g_autoptr(GVariant) lock_snapshot = native_session_lock_snapshot(control->wayland_compositor);
+    g_autoptr(GVariant) lock_snapshot =
+        native_session_lock_snapshot(control->wayland_compositor, control->session_lock_revision);
     native_publish_runtime_snapshot(control, "session-lock", lock_snapshot,
-                                    control->state_revision);
+                                    control->session_lock_revision);
     update_launch_snapshot(control);
     return native_runtime_flush_state_snapshots(control, error);
 }
@@ -14457,9 +14473,10 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     if (control->wayland_compositor)
         control->session_lock_callback_id = meta_wayland_session_lock_add_state_changed_callback(
             control->wayland_compositor, native_session_lock_changed, control, NULL);
-    initial_session_lock = native_session_lock_snapshot(control->wayland_compositor);
+    initial_session_lock =
+        native_session_lock_snapshot(control->wayland_compositor, control->session_lock_revision);
     native_publish_runtime_snapshot(control, "session-lock", initial_session_lock,
-                                    control->state_revision);
+                                    control->session_lock_revision);
     control->windows = g_hash_table_new_full(g_direct_hash, g_direct_equal, g_object_unref, NULL);
     control->window_state =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_window_state_free);
