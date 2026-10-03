@@ -513,10 +513,12 @@ Gnoblin does not need an IBus library to list or select them. The IBus service
 must be running for selection; otherwise the operation fails with
 `unavailable`.
 
-The list comes from `input-sources.sources` when configured. Otherwise it uses
-the desktop input-source setting. Mutter loads at most four layouts into one
-keymap at a time. Gnoblin switches the active group of four when you select a
-listed source outside that group.
+The list comes only from `input_sources.sources` in Gnoblin's Lua config. If
+that setting is absent, the list is empty and Gnoblin leaves Mutter's current
+keymap in place. Gnoblin does not read the saved GNOME input-source list.
+
+Mutter loads at most four layouts into one keymap at a time. Gnoblin switches
+the active group of four when you select a listed source outside that group.
 
 `gnoblin.input.current_source()` returns the current configured XKB source or
 the current configured IBus engine, or nil when the active source is unknown

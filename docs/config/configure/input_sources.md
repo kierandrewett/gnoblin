@@ -1,8 +1,9 @@
 # gnoblin.configure.input_sources
 
 Set the active input sources with `gnoblin.configure {input_sources = {...}}`.
-On reload, this replaces the active source list in memory. Remove the table to
-restore GNOME's session sources.
+On reload, this replaces the active source list in memory. Without this table,
+Gnoblin exposes no switchable input sources and leaves Mutter's current keymap
+in place. It does not load the saved GNOME input-source list.
 
 - `sources` is required. It is an array of records with a `type` and a
   nonempty `id`.
