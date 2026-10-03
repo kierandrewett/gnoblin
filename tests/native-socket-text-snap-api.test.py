@@ -711,6 +711,39 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', generic_read)
         self.assertIn("Lua supervisor is not connected", generic_read)
 
+    def test_animation_queries_dispatch_as_native_reads(self):
+        source = CONTROL.read_text()
+        connected = function_body(
+            source,
+            "static gboolean client_connected(",
+            "GVariant* gnoblin_native_control_receive_runtime_config(",
+        )
+        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        animation_reads = function_body(
+            dispatcher,
+            "if (native_api_animation_read_method(method)) {",
+            'if (g_str_equal(method, "window.list") || g_str_equal(method, "workspace.list")) {',
+        )
+        helper = function_body(
+            source,
+            "static gboolean native_api_animation_read_method(",
+            "static gboolean native_api_read_method(",
+        )
+
+        for method in (
+            "animation.list",
+            "animation.get",
+            "animation.surfaces",
+            "animation.inspect",
+        ):
+            with self.subTest(method=method):
+                self.assertIn(f'"{method}"', connected)
+                self.assertIn(f'g_str_equal(method, "{method}")', helper)
+
+        self.assertIn("meta_gnoblin_dispatch_native_api(", animation_reads)
+        self.assertIn("client->control->display, method, arguments", animation_reads)
+        self.assertNotIn("queue_runtime_api_request", animation_reads)
+
     def test_aborted_runtime_waits_for_native_teardown_before_free(self):
         source = CONTROL.read_text()
         maybe_free = function_body(
