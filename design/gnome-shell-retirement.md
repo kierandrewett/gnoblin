@@ -75,8 +75,12 @@ The `99zzzzzz-logind-actions` patch was removed on 2026-10-03. It only routed
 GNOME Shell's power actions through a Shell-side GJS session-manager adapter.
 The standalone runtime owns `session.logout`; shell clients own power-action UI.
 
-The patch directories `99zzzzzzz-session-ready`,
-`99zzzzzzzz-no-session-dialog`,
+The `99zzzzzzz-session-ready` patch was removed on 2026-10-03. Its Shell
+callback started session services after GNOME Shell became ready; the Gnoblin
+guardian starts `graphical-session.target` and initial autostart after Mutter
+readiness.
+
+The patch directories `99zzzzzzzz-no-session-dialog`,
 `99zzzzzzzzzz-standalone-idle`, `99zzzzzzzzzzz-native-scope`,
 `99zzzzzzzzzzzz-native-xkb`, `99zzzzzzzzzzzzz-timezone`,
 `99zzzzzzzzzzzzzz-native-slideshow`, and
