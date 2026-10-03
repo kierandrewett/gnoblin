@@ -216,11 +216,12 @@ print(decision.level, decision.rule, decision.revision)
 
 `gnoblin.session.status()` returns a read-only `SessionStatus`. When lock state
 is unavailable, `lock_state` is omitted; that does not mean the session is
-unlocked:
+unlocked. `revision` identifies the current lock-state snapshot and matches
+the revision on its corresponding lock-state event:
 
 ```lua
 local status = gnoblin.session.status()
-print(status.state)
+print(status.state, status.revision)
 if status.lock_available then
     print(status.lock_state)
 end
