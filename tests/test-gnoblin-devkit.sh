@@ -65,6 +65,10 @@ gnoblin.configure {
     input = {
         mouse = {drag_threshold = 24},
     },
+    workspaces = {
+        {id = "main", name = "Main"},
+        {id = "chat", name = "Chat"},
+    },
 }
 gnoblin.events.once("gnoblin.config.reloaded", function(event)
     assert(type(event.sequence) == "number" and event.sequence > 0)
@@ -76,7 +80,6 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
         gnoblin.settings.window_management.focus_mode = "sloppy"
     end))
     assert(type(gnoblin.windows.list()) == "table")
-    assert(type(gnoblin.workspaces.list()) == "table")
     assert(type(gnoblin.monitors.list()) == "table")
     assert(type(gnoblin.focus.history()) == "table")
     local session_status = gnoblin.session.status()
@@ -101,6 +104,20 @@ LUA
 devkit_exec=$(
     cat <<'SCRIPT'
 set -euo pipefail
+workspace_names="$(gsettings get org.gnome.desktop.wm.preferences workspace-names)"
+if [[ ! "$workspace_names" =~ ^(@as )?\[\]$ ]]; then
+    printf 'Lua workspace config changed GNOME GSettings: %s\n' "$workspace_names" >&2
+    exit 1
+fi
+printf 'GSETTINGS:workspace-names-untouched\n'
+cat > "$XDG_RUNTIME_DIR/workspaces.lua" <<'LUA'
+local workspaces = gnoblin.workspaces.list()
+assert(#workspaces == 2)
+assert(workspaces[1].id == "main" and workspaces[1].name == "Main")
+assert(workspaces[2].id == "chat" and workspaces[2].name == "Chat")
+print("LUA_API:workspace-config")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/workspaces.lua"
 printf 'PING:%s\n' "$(gnoblinctl ping)"
 gnoblinctl --json config show > "$XDG_RUNTIME_DIR/config.json"
 python3 - "$XDG_RUNTIME_DIR/config.json" <<'PY'
@@ -553,6 +570,8 @@ require_output() {
 }
 require_output 'Gnoblin is ready on nested Wayland display'
 require_output 'PING:pong'
+require_output 'GSETTINGS:workspace-names-untouched'
+require_output 'LUA_API:workspace-config'
 require_output 'CONFIG:click'
 require_output 'WINDOWS:json'
 require_output 'WORKSPACE:next'

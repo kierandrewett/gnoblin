@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] keep Lua workspace names out of GSettings
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 97a0f08b8..6176aeb1a 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -1137,5 +1137,5 @@ meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
+           if (g_strcmp0 (id, declaration->id) == 0)
+             {
+-              int workspace_index_in_manager = meta_workspace_index (workspace);
++              /* Lua config owns these names; do not persist them in Mutter settings. */
+               g_object_set_data (G_OBJECT (workspace),
+                                  GNOBLIN_WORKSPACE_PERSISTENT,
+@@ -1144,6 +1144,4 @@ meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
+                                       GNOBLIN_WORKSPACE_NAME,
+                                       g_strdup (declaration->name), g_free);
+-              meta_prefs_change_workspace_name (workspace_index_in_manager,
+-                                                declaration->name);
+               break;
+             }
