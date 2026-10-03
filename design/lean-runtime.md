@@ -70,15 +70,15 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 | Session    | `gnoblin`, logind, systemd user targets     | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open. |
 | Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                                             |
 | Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                       |
-| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide types and defaults. Lua owns `window_management.auto_maximize`; other consumers still use GSettings.                                                         |
+| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua owns migrated window policy; other settings still use GSettings.                                                              |
 
-Migrate Mutter preferences behind one typed compatibility adapter keyed by the
-existing GSettings schema ID and key. Gnoblin validates each Lua value, maps it
-to the legacy key's type, and sends the effective settings through the existing
-configuration path. Mutter consumers keep their current behavior while the
-adapter reads an explicit Gnoblin value first and uses the desktop value for
-inherited or unmigrated fields. Move consumers onto the adapter one at a time;
-do not give each consumer its own key-to-Lua mapping.
+For each Gnoblin-owned Mutter preference, expose a domain-specific Lua setting
+and validate its type and accepted values in Gnoblin. At startup and reload,
+Mutter's central preference adapter maps the Lua snapshot into its existing
+in-memory preference slots and queues their normal change notifications. In a
+Gnoblin session, Mutter ignores the matching GSettings change so the desktop
+value cannot override Lua policy. Keep these mappings in the central adapter;
+do not add separate config lookups to consumers.
 
 Keep the legacy schema and key as the compatibility boundary, but keep
 user-facing configuration in Gnoblin's domain-specific snake_case paths. Add
@@ -91,20 +91,23 @@ the user's Lua files or silently redirecting writes to GSettings.
 Prefer this Mutter-owned adapter over replacing the process-wide default
 GSettings backend: a backend swap would also affect unrelated GSettings users
 inside Mutter, while the backend extension API has weaker stability guarantees
-than public GIO APIs. Keep the existing GSettings fallback during migration so
-omitted fields retain their current behavior. This adapter does not remove the
-schema package by itself: GSettings still needs key types, enum definitions,
-and defaults, and other Mutter or portal consumers may continue reading
-schemas. The configured input-source list is an exception: it comes only from
-Gnoblin's `input_sources.sources`; omitting it leaves Mutter's current keymap
-in place and does not import GNOME's saved source list. Revisit the schema
-package and its version requirement only after other consumers and build-time
-schema checks have been accounted for.
+than public GIO APIs. Non-Gnoblin sessions continue to use GSettings. For
+settings already moved into Lua, omitted fields use their documented Gnoblin
+defaults; unmigrated preferences continue to use their existing schema values.
+This adapter does not remove the schema package by itself: GSettings still
+needs key types, enum definitions, and defaults, and other Mutter or portal
+consumers may continue reading schemas. The configured input-source list is an
+exception: it comes only from Gnoblin's `input_sources.sources`; omitting it
+leaves Mutter's current keymap in place and does not import GNOME's saved
+source list. Revisit the schema package and its version requirement only after
+other consumers and build-time schema checks have been accounted for.
 
-Window placement policy such as `window_management.auto_maximize` belongs in
-Lua configuration. Mutter reads its value through the existing preference
-adapter, which also prevents the corresponding GSettings key from overriding
-the configured Gnoblin default.
+Window interaction policy such as `window_management.auto_maximize`,
+`window_management.mouse_button_modifier`, and
+`window_management.resize_with_right_button` belongs in Lua. Mutter applies
+these values through its preference adapter and ignores the matching desktop
+settings while Gnoblin is running. The drag modifier defaults to `<Super>`;
+the resize-button swap defaults to `false`.
 
 The session package does not require `gnoblin-portal`; users can install and
 select another XDG portal backend. The GTK-based Gnoblin backend is a separate
