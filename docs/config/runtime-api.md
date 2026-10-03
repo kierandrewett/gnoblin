@@ -812,6 +812,12 @@ menu events. Pass it to `window.begin_move` or `window.begin_resize` without an
 `id`; Gnoblin binds it to the client and original window. Application-menu
 events remain informational.
 
+`gnoblinctl lua` wraps this token as opaque `event.menu_context` userdata.
+Call `event.menu_context:begin_move()` or
+`event.menu_context:begin_resize(edge)` from the event callback. The console
+hides the token and sends the operation over the event's connection. App-menu
+events do not receive a `MenuContext`.
+
 The token expires after five seconds and is consumed on every matching attempt,
 including malformed arguments. Disconnect and event-subscription replacement
 revoke it. Both Lua and socket paths recheck the window and lock state before

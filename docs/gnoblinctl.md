@@ -494,6 +494,12 @@ end)
 Run it with `gnoblinctl lua ./focus.lua` while a configured shortcut emits
 `gnoblin.shortcut.activated`. Press Ctrl+C to stop the listener.
 
+WM window-menu requests carry an opaque `MenuContext` in
+`event.menu_context`. Call `:begin_move()` or `:begin_resize(edge)` on that
+value to use the one-time authority for the window that raised the menu. The
+console keeps its token private and sends the operation over the event's
+connection. Application-menu requests have no `MenuContext`.
+
 ## Windows
 
 ```sh
