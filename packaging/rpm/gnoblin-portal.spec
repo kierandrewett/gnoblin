@@ -47,6 +47,8 @@ portal service remains available for GNOME logins.
 %meson_install
 install -Dm644 %{buildroot}%{_datadir}/xdg-desktop-portal/portals/gnoblin.portal \
   %{buildroot}/usr/share/xdg-desktop-portal/portals/gnoblin.portal
+install -Dm644 %{buildroot}%{_datadir}/xdg-desktop-portal/gnoblin-portals.conf \
+  %{buildroot}/usr/share/xdg-desktop-portal/gnoblin-portals.conf
 install -Dm644 %{buildroot}%{_datadir}/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service \
   %{buildroot}/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
 install -Dm644 %{buildroot}%{_prefix}/lib/systemd/user/xdg-desktop-portal-gnoblin.service \
@@ -56,5 +58,6 @@ install -Dm644 %{buildroot}%{_prefix}/lib/systemd/user/xdg-desktop-portal-gnobli
 %license COPYING
 %{_prefix}/
 /usr/share/xdg-desktop-portal/portals/gnoblin.portal
+/usr/share/xdg-desktop-portal/gnoblin-portals.conf
 /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
 /usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service
