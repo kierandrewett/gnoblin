@@ -71,7 +71,11 @@ The `99zzzzz-no-session-presence` patch was removed on 2026-10-03. It only
 skipped GNOME Session presence tracking for GNOME Shell notification banners;
 Gnoblin has no MessageTray or notification-busy state.
 
-The patch directories `99zzzzzz-logind-actions`, `99zzzzzzz-session-ready`,
+The `99zzzzzz-logind-actions` patch was removed on 2026-10-03. It only routed
+GNOME Shell's power actions through a Shell-side GJS session-manager adapter.
+The standalone runtime owns `session.logout`; shell clients own power-action UI.
+
+The patch directories `99zzzzzzz-session-ready`,
 `99zzzzzzzz-no-session-dialog`,
 `99zzzzzzzzzz-standalone-idle`, `99zzzzzzzzzzz-native-scope`,
 `99zzzzzzzzzzzz-native-xkb`, `99zzzzzzzzzzzzz-timezone`,
