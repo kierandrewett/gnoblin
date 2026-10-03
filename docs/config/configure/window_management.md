@@ -9,6 +9,8 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | ------------------------------ | -------------------------------- | ------------------- | ------------------------------------------------------------- |
 | `focus_mode`                   | `"click"`, `"sloppy"`, `"mouse"` | `"click"`           | Selects when pointer or click input changes focus. See below. |
 | `focus_new_windows`            | `"smart"`, `"strict"`            | `"strict"`          | Selects Mutter's new-window focus policy. See below.          |
+| `mouse_button_modifier`        | Mutter modifier expression       | `"<Super>"`         | Modifier for moving or resizing windows and opening menus.    |
+| `resize_with_right_button`     | Boolean                          | `false`             | Use modified right click to resize instead of opening a menu. |
 | `auto_maximize`                | Boolean                          | `true`              | Maximize new windows that nearly fill the monitor.            |
 | `raise_on_click`               | Boolean                          | `true`              | Raise a window when clicked.                                  |
 | `auto_raise`                   | Boolean                          | `false`             | Raise the focused window automatically.                       |
@@ -36,6 +38,25 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 
 Set `focus_change_on_pointer_rest = true` to change focus only after the
 pointer rests briefly.
+
+## Modified window clicks
+
+Hold `mouse_button_modifier` while clicking a window to move it with the left
+button, resize it with the middle button, or open its menu with the right
+button. Set `resize_with_right_button = true` to swap the middle and right
+button actions.
+
+The modifier uses Mutter's accelerator modifier syntax. Combine tokens without
+spaces, such as `"<Super><Shift>"`. Tokens are case-insensitive. Mutter accepts
+`<Alt>`, `<Super>`, `<Meta>`, `<Hyper>`, `<Mod1>` through `<Mod5>`, and these
+Control and Shift aliases:
+
+- Control: `<Control>`, `<Ctrl>`, `<Ctl>`, or `<Primary>`.
+- Shift: `<Shift>` or `<Shft>`.
+
+Set the modifier to `"disabled"` or `""` to disable modified window clicks.
+These settings apply to the Gnoblin session; other desktop sessions keep their
+own settings.
 
 `focus_new_windows` controls when app activation requests can focus a window.
 Mutter's standard policy has two choices. The [GNOME Shell team's
@@ -127,6 +148,8 @@ gnoblin.configure {
     window_management = {
         focus_mode = "click" | "sloppy" | "mouse"?,
         focus_new_windows = "smart" | "strict"?,
+        mouse_button_modifier = string?, -- Mutter modifier expression, "disabled", or ""
+        resize_with_right_button = boolean?,
         auto_maximize = boolean?,
         raise_on_click = boolean?,
         auto_raise = boolean?,

@@ -19,6 +19,8 @@ gnoblin.configure {
     window_management = {
         focus_mode = "click", -- "click", "sloppy", "mouse"
         focus_new_windows = "strict", -- "smart" allows activation without recent context.
+        mouse_button_modifier = "<Super>", -- or "<Alt>"; "disabled" turns off modified clicks.
+        resize_with_right_button = false, -- swap resize and menu to right click when true.
         raise_on_click = true,
         auto_raise = false,
         auto_raise_delay = 500, -- milliseconds, 0..10000
