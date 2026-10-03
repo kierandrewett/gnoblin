@@ -104,7 +104,16 @@ export XDG_CURRENT_DESKTOP=Gnoblin XDG_SESSION_DESKTOP=gnoblin
 
 # Use a private bus so activation variables and session services from the host
 # GNOME session cannot leak into the nested compositor.
-DBUS_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
+dbus_options=()
+case "${GNOBLIN_TEST_FLATPAK_PORTAL:-0}" in
+    0) ;;
+    1) dbus_options+=(--flatpak-portal) ;;
+    *)
+        echo 'GNOBLIN_TEST_FLATPAK_PORTAL must be 0 or 1.' >&2
+        exit 2
+        ;;
+esac
+DBUS_CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT" "${dbus_options[@]}")" || exit 1
 DBUS_PID_FILE="$DK/dbus.pid"
 DBUS_SESSION_BUS_ADDRESS="$(dbus-daemon --config-file="$DBUS_CONF" --print-address --fork --print-pid=3 3>"$DBUS_PID_FILE")" || exit 1
 export DBUS_SESSION_BUS_ADDRESS
