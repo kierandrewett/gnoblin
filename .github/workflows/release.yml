@@ -274,6 +274,7 @@ jobs:
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
           test -f /usr/lib/systemd/user/gnoblin-session.target
+          test -f /usr/lib/systemd/user/gnoblin-idle.service
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           test ! -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
@@ -298,6 +299,8 @@ jobs:
           pacman -R --noconfirm gnoblin-gnome-integration
           pacman -R --noconfirm gnoblin-portal gnoblin
           ! pacman -Q gnoblin
+          ! test -e /usr/lib/systemd/user/gnoblin-session.target
+          ! test -e /usr/lib/systemd/user/gnoblin-idle.service
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
