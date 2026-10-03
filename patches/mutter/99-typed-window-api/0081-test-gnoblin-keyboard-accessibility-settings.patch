@@ -1,0 +1,157 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] tests: verify Gnoblin keyboard accessibility overrides
+
+---
+diff --git a/src/tests/a11y-gnoblin-settings-test.c b/src/tests/a11y-gnoblin-settings-test.c
+new file mode 100644
+index 000000000..8fc31d835
+--- /dev/null
++++ b/src/tests/a11y-gnoblin-settings-test.c
+@@ -0,0 +1,127 @@
++/*
++ * Copyright (C) 2026 Gnoblin contributors
++ *
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ */
++
++#include "config.h"
++
++#include <gio/gio.h>
++#include <linux/input-event-codes.h>
++
++#include "backends/meta-backend-private.h"
++#include "clutter/clutter.h"
++#include "meta/display.h"
++#include "meta/meta-context.h"
++#include "meta-test/meta-context-test.h"
++#include "tests/meta-test-utils.h"
++
++static MetaContext *test_context;
++
++static GVariant *
++create_input_config (gboolean enabled)
++{
++  GVariantBuilder input;
++  GVariantBuilder keyboard;
++  GVariantBuilder accessibility;
++  GVariantBuilder mouse_keys;
++
++  g_variant_builder_init (&input, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_init (&keyboard, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_init (&accessibility, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_init (&mouse_keys, G_VARIANT_TYPE_VARDICT);
++
++  g_variant_builder_add (&mouse_keys, "{sv}", "enabled",
++                         g_variant_new_boolean (enabled));
++  g_variant_builder_add (&accessibility, "{sv}", "mouse-keys",
++                         g_variant_builder_end (&mouse_keys));
++  g_variant_builder_add (&keyboard, "{sv}", "accessibility",
++                         g_variant_builder_end (&accessibility));
++  g_variant_builder_add (&input, "{sv}", "keyboard",
++                         g_variant_builder_end (&keyboard));
++
++  return g_variant_ref_sink (g_variant_builder_end (&input));
++}
++
++static void
++send_mouse_key (ClutterVirtualInputDevice *virtual_keyboard)
++{
++  clutter_virtual_input_device_notify_key (virtual_keyboard,
++                                           g_get_monotonic_time (),
++                                           KEY_KP6,
++                                           CLUTTER_KEY_STATE_PRESSED);
++  clutter_virtual_input_device_notify_key (virtual_keyboard,
++                                           g_get_monotonic_time (),
++                                           KEY_KP6,
++                                           CLUTTER_KEY_STATE_RELEASED);
++  meta_flush_input (test_context);
++  meta_wait_for_update (test_context);
++}
++
++static void
++meta_test_gnoblin_mouse_keys_settings (void)
++{
++  MetaBackend *backend = meta_context_get_backend (test_context);
++  ClutterSeat *seat = meta_backend_get_default_seat (backend);
++  MetaDisplay *display = meta_context_get_display (test_context);
++  g_autoptr (GSettings) settings =
++    g_settings_new ("org.gnome.desktop.a11y.keyboard");
++  g_autoptr (ClutterVirtualInputDevice) virtual_keyboard = NULL;
++  graphene_point_t before;
++  graphene_point_t after;
++  g_autoptr (GVariant) enabled_config = create_input_config (TRUE);
++  g_autoptr (GVariant) disabled_config = create_input_config (FALSE);
++
++  virtual_keyboard = clutter_seat_create_virtual_device (seat,
++                                                         CLUTTER_KEYBOARD_DEVICE);
++
++  g_settings_set_boolean (settings, "mousekeys-enable", FALSE);
++  meta_display_apply_gnoblin_input_config (display, enabled_config);
++  g_assert_true (clutter_seat_query_state (seat, NULL, &before, NULL));
++  send_mouse_key (virtual_keyboard);
++  g_assert_true (clutter_seat_query_state (seat, NULL, &after, NULL));
++  g_assert_cmpfloat (before.x, !=, after.x);
++
++  g_settings_set_boolean (settings, "mousekeys-enable", TRUE);
++  meta_display_apply_gnoblin_input_config (display, disabled_config);
++  g_assert_true (clutter_seat_query_state (seat, NULL, &before, NULL));
++  send_mouse_key (virtual_keyboard);
++  g_assert_true (clutter_seat_query_state (seat, NULL, &after, NULL));
++  g_assert_cmpfloat (before.x, ==, after.x);
++
++  meta_display_apply_gnoblin_input_config (display, NULL);
++  g_assert_true (clutter_seat_query_state (seat, NULL, &before, NULL));
++  send_mouse_key (virtual_keyboard);
++  g_assert_true (clutter_seat_query_state (seat, NULL, &after, NULL));
++  g_assert_cmpfloat (before.x, !=, after.x);
++}
++
++int
++main (int    argc,
++      char **argv)
++{
++  g_autoptr (MetaContext) context = NULL;
++  g_autoptr (GError) error = NULL;
++  g_autoptr (GSettings) settings = NULL;
++  int ret;
++
++  g_setenv ("GSETTINGS_BACKEND", "memory", TRUE);
++  settings = g_settings_new ("org.gnome.desktop.a11y.keyboard");
++  g_settings_set_boolean (settings, "mousekeys-enable", TRUE);
++
++  context = meta_create_test_context (META_CONTEXT_TEST_TYPE_TEST,
++                                      META_CONTEXT_TEST_FLAG_NO_X11);
++  g_assert_true (meta_context_configure (context, &argc, &argv, &error));
++
++  test_context = context;
++  g_test_add_func ("/a11y/gnoblin-keyboard-accessibility",
++                   meta_test_gnoblin_mouse_keys_settings);
++
++  ret = meta_context_test_run_tests (META_CONTEXT_TEST (context),
++                                     META_TEST_RUN_FLAG_CAN_SKIP);
++
++  return ret;
++}
+diff --git a/src/tests/meson.build b/src/tests/meson.build
+index a58ddacf5..48cf77fd2 100644
+--- a/src/tests/meson.build
++++ b/src/tests/meson.build
+@@ -1277,6 +1277,13 @@ endif
+ 
+ # Miscellaneous tests
+ test_cases += [
++  {
++    'name': 'a11y-gnoblin-settings',
++    'suite': 'a11y',
++    'sources': [
++      'a11y-gnoblin-settings-test.c',
++    ],
++  },
+   {
+     'name': 'service-channel',
+     'suite': 'wayland',
