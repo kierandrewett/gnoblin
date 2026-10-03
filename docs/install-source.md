@@ -258,7 +258,9 @@ Log out and back in to use the new compositor.
 
 Log into another session. Remove only the files created by local registration.
 The `org.gnoblin.Shell*` and `gnome-session@gnoblin` paths below are included to
-clean up registrations created by older Gnoblin builds.
+clean up registrations created by older Gnoblin builds. When you use
+`scripts/install-system.sh`, it removes the exact managed GNOME session drop-in
+after a successful DNF transaction. It stops if that file was edited.
 
 ```sh
 rm -f ~/.config/systemd/user/gnoblin-session.target

@@ -309,7 +309,15 @@ class IsolationTests(unittest.TestCase):
         self.assertIn("install-fedora:", justfile)
         self.assertIn("./scripts/install-system.sh", justfile)
         self.assertNotIn('"--local-rpms"', justfile)
-        self.assertIn("gnome-session@gnoblin.target.d/gnoblin.conf", installer)
+        self.assertIn("scripts/legacy/gnome-session@gnoblin.target.d.conf", installer)
+
+    def test_system_installer_removes_only_the_exact_legacy_gnome_dropin(self):
+        installer = (ROOT / "scripts/install-system.sh").read_text()
+        session_installer = (ROOT / "scripts/install-session.sh").read_text()
+
+        self.assertIn('cmp -s "$LEGACY_GNOME_SESSION_DROPIN"', installer)
+        self.assertIn('rm -- "$LEGACY_GNOME_SESSION_DROPIN_PATH"', installer)
+        self.assertNotIn("gnome-session@gnoblin.target.d.conf", session_installer)
 
 
 if __name__ == "__main__":
