@@ -183,6 +183,9 @@ def run_parent(args: argparse.Namespace) -> int:
             "GNOBLIN_LIFECYCLE_FUZZ_EVENTS": str(artifact_dir / "events.jsonl"),
             "GNOBLIN_LIFECYCLE_FUZZ_ARTIFACTS": str(artifact_dir),
             "GNOBLIN_DEVKIT_EXEC": f"python3 {shlex.quote(str(SCRIPT))} --inner",
+            # Headless hosts may lack PipeWire, which makes Mutter's optional
+            # viewer exit. Keep the compositor alive for the fuzzer's run.
+            "GNOBLIN_DEVKIT_KEEP_SESSION": "1",
             "MONITOR": monitor,
             "PYTHONUNBUFFERED": "1",
         }
