@@ -925,6 +925,7 @@ static const char* native_socket_events[] = {
     "gnoblin.session.lock-requested",
     "gnoblin.session.lock-state-changed",
     "gnoblin.session.activity-changed",
+    "gnoblin.runtime.status-changed",
     "gnoblin.shortcut.activated",
     "gnoblin.shortcut.binding-activated",
     "gnoblin.shortcut.binding-deactivated",
@@ -6195,6 +6196,8 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
             subscribed = FALSE;
         if (g_str_has_prefix(name, "gnoblin.layer.") && client->event_api_minor < 71)
             subscribed = FALSE;
+        if (g_str_equal(name, "gnoblin.runtime.status-changed") && client->event_api_minor < 72)
+            subscribed = FALSE;
         if (subscribed)
             send_response(client, g_strdup(line));
     }
@@ -6251,6 +6254,29 @@ static void native_publish_request_event(GnoblinNativeControl* control, const ch
     if (json)
         publish_native_socket_event(control, json);
     native_runtime_dispatch_event(control, name, payload);
+}
+
+static const char* native_runtime_status_state(GnoblinNativeControl* control) {
+    if (!control || !control->supervised_runtime || control->stopping)
+        return "unavailable";
+    if (control->runtime_worker_suspended)
+        return "restarting";
+    if (control->runtime_hello_sent)
+        return "running";
+    return "starting";
+}
+
+static void native_runtime_publish_status(GnoblinNativeControl* control) {
+    if (!control || control->stopping)
+        return;
+    GVariantBuilder fields;
+    g_variant_builder_init(&fields, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&fields, "{sv}", "state",
+                          g_variant_new_string(native_runtime_status_state(control)));
+    g_variant_builder_add(&fields, "{sv}", "generation",
+                          g_variant_new_uint64(control->runtime_generation));
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&fields));
+    native_publish_request_event(control, "gnoblin.runtime.status-changed", payload);
 }
 
 static GVariant* appearance_snapshot_new(GnoblinNativeControl* control) {
@@ -11765,6 +11791,10 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "layer lifecycle events require API version 1.71");
             }
+            if (g_str_equal(name, "gnoblin.runtime.status-changed") && client->api_minor < 72) {
+                g_hash_table_unref(subscriptions);
+                return encode_response("", NULL, "runtime status events require API version 1.72");
+            }
             if (g_str_equal(name, "gnoblin.session.activity-changed") && client->api_minor < 24) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL,
@@ -11997,16 +12027,10 @@ static char* handle_request(Client* client, const char* data, gsize length) {
     if (g_str_equal(method, "runtime.status")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
             return encode_response(id, NULL, "runtime.status does not accept arguments");
-        const char* state = "starting";
-        if (!client->control->supervised_runtime || client->control->stopping)
-            state = "unavailable";
-        else if (client->control->runtime_worker_suspended)
-            state = "restarting";
-        else if (client->control->runtime_hello_sent)
-            state = "running";
         GVariantBuilder status;
         g_variant_builder_init(&status, G_VARIANT_TYPE_VARDICT);
-        g_variant_builder_add(&status, "{sv}", "state", g_variant_new_string(state));
+        g_variant_builder_add(&status, "{sv}", "state",
+                              g_variant_new_string(native_runtime_status_state(client->control)));
         g_variant_builder_add(&status, "{sv}", "generation",
                               g_variant_new_int64((gint64)client->control->runtime_generation));
         g_autoptr(GVariant) result = g_variant_ref_sink(g_variant_builder_end(&status));
@@ -13752,7 +13776,8 @@ static void native_runtime_suspend_worker(GnoblinNativeControl* control) {
         g_warning("gnoblin-native-control: could not acknowledge Lua worker suspension: %s",
                   error ? error->message : "unknown error");
         native_runtime_abort(control);
-    }
+    } else
+        native_runtime_publish_status(control);
 }
 
 static GHashTable* native_runtime_event_subscriptions_from_payload(GVariant* payload,
@@ -14305,6 +14330,8 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                 if (handled) {
                     control->runtime_hello_sent = TRUE;
                     handled = native_runtime_republish_full_state(control, &error);
+                    if (handled)
+                        native_runtime_publish_status(control);
                 }
             }
         } else if (packet.type == GNOBLIN_RUNTIME_PACKET_OPERATION) {
@@ -14368,6 +14395,7 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
             guint64 previous_revision =
                 gnoblin_runtime_cache_get_settings_revision(control->runtime_cache);
             guint64 previous_runtime_generation = control->runtime_generation;
+            gboolean runtime_generation_changed = FALSE;
             g_autoptr(GVariant) previous_document =
                 gnoblin_runtime_cache_get_document(control->runtime_cache);
             g_autoptr(GVariant) previous_bootstrap_document =
@@ -14489,8 +14517,10 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                     if (input_sources_changed)
                         schedule_windows(control);
                 }
-                if (handled)
+                if (handled) {
                     control->runtime_generation = runtime_generation;
+                    runtime_generation_changed = runtime_generation > previous_runtime_generation;
+                }
             } else if (fields_valid) {
                 g_set_error_literal(&config_error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                                     "configuration revision or runtime generation is stale");
@@ -14525,6 +14555,8 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
             } else if (config_error) {
                 g_propagate_error(&error, g_steal_pointer(&config_error));
             }
+            if (handled && !error && runtime_generation_changed)
+                native_runtime_publish_status(control);
             if (rollback_failed && !error)
                 g_set_error_literal(
                     &error, G_IO_ERROR, G_IO_ERROR_FAILED,
@@ -14938,6 +14970,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         if (!native_runtime_flush_state_snapshots(control, error) ||
             !native_runtime_flush_pending_events(control, error))
             goto fail;
+        native_runtime_publish_status(control);
     }
     return control;
 
