@@ -182,7 +182,6 @@ struct _GnoblinNativeControl {
     int runtime_fd;
     GVariant* native_touchpad_gestures;
     MetaKeymapDescription* input_keymap_description;
-    GSettings* input_source_settings;
     GSettings* appearance_settings;
     GDBusConnection* ibus_bus;
     char* last_published_input_source;
@@ -4302,8 +4301,7 @@ static void add_configured_input_source_id(GPtrArray* ids, const char* id) {
     g_ptr_array_add(ids, g_strdup(id));
 }
 
-static GPtrArray* read_configured_input_source_ids(GnoblinNativeControl* control,
-                                                   GVariant* document, const char* source_type) {
+static GPtrArray* read_configured_input_source_ids(GVariant* document, const char* source_type) {
     GPtrArray* ids = g_ptr_array_new_with_free_func(g_free);
     g_autoptr(GVariant) config =
         document ? g_variant_lookup_value(document, "input-sources", G_VARIANT_TYPE_VARDICT) : NULL;
@@ -4324,20 +4322,6 @@ static GPtrArray* read_configured_input_source_ids(GnoblinNativeControl* control
         }
         return ids;
     }
-
-    if (control->input_source_settings) {
-        g_autoptr(GVariant) defaults =
-            g_settings_get_value(control->input_source_settings, "sources");
-        GVariantIter iter;
-        const char* type;
-        const char* id;
-        g_variant_iter_init(&iter, defaults);
-        while (g_variant_iter_next(&iter, "(&s&s)", &type, &id)) {
-            if (!g_str_equal(type, source_type))
-                continue;
-            add_configured_input_source_id(ids, id);
-        }
-    }
     return ids;
 }
 
@@ -4357,8 +4341,8 @@ static gboolean refresh_input_sources(GnoblinNativeControl* control, GVariant* d
         current_document = native_config_document(control);
         document = current_document;
     }
-    GPtrArray* xkb_ids = read_configured_input_source_ids(control, document, "xkb");
-    GPtrArray* ibus_ids = read_configured_input_source_ids(control, document, "ibus");
+    GPtrArray* xkb_ids = read_configured_input_source_ids(document, "xkb");
+    GPtrArray* ibus_ids = read_configured_input_source_ids(document, "ibus");
     gboolean changed =
         !input_source_id_lists_equal(control->configured_input_source_ids, xkb_ids) ||
         !input_source_id_lists_equal(control->configured_ibus_source_ids, ibus_ids);
@@ -4411,7 +4395,6 @@ static void release_input_source_state(GnoblinNativeControl* control) {
     g_clear_pointer(&control->configured_ibus_source_ids, g_ptr_array_unref);
     g_clear_pointer(&control->active_input_source_ids, g_ptr_array_unref);
     g_clear_pointer(&control->input_keymap_description, meta_keymap_description_unref);
-    g_clear_object(&control->input_source_settings);
     g_clear_object(&control->appearance_settings);
     g_clear_pointer(&control->last_published_input_source, g_free);
     g_clear_pointer(&control->current_ibus_source_id, g_free);
@@ -11030,8 +11013,8 @@ static gboolean native_api_read_method(const char* method) {
 
 static gboolean runtime_reload_document_supported(GVariant* current, GVariant* candidate) {
     static const char* const reloadable_settings[] = {
-        "animations",   "input",      "permissions", "touchpad-gestures",
-        "window-rules", "workspaces", NULL};
+        "animations",        "input",        "input-sources", "permissions",
+        "touchpad-gestures", "window-rules", "workspaces",    NULL};
     GVariantIter iter;
     const char* key;
     GVariant* value;
@@ -12782,13 +12765,6 @@ static void backend_keymap_layout_group_changed(MetaBackend* backend, guint grou
     schedule_windows(user_data);
 }
 
-static void input_source_settings_changed(GSettings* settings, const char* key,
-                                          gpointer user_data) {
-    (void)settings;
-    (void)key;
-    schedule_windows(user_data);
-}
-
 static void input_device_added(ClutterSeat* seat, ClutterInputDevice* device, gpointer user_data) {
     (void)seat;
     (void)device;
@@ -14104,6 +14080,16 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                 gboolean workspaces_changed = (!old_workspaces != !new_workspaces) ||
                                               (old_workspaces && new_workspaces &&
                                                !g_variant_equal(old_workspaces, new_workspaces));
+                g_autoptr(GVariant) old_input_sources =
+                    previous_document
+                        ? g_variant_lookup_value(previous_document, "input-sources", NULL)
+                        : NULL;
+                g_autoptr(GVariant) new_input_sources =
+                    g_variant_lookup_value(document, "input-sources", NULL);
+                gboolean input_sources_changed =
+                    (!old_input_sources != !new_input_sources) ||
+                    (old_input_sources && new_input_sources &&
+                     !g_variant_equal(old_input_sources, new_input_sources));
                 if (revision == previous_revision && previous_document &&
                     !g_variant_equal(previous_document, document)) {
                     g_set_error_literal(
@@ -14173,8 +14159,11 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                     native_cancel_window_drags(control, "config_reloaded");
                     revoke_focus_contexts(control);
                 }
-                if (handled && revision > previous_revision)
+                if (handled && revision > previous_revision) {
                     native_settings_changed(revision, control);
+                    if (input_sources_changed)
+                        schedule_windows(control);
+                }
                 if (handled)
                     control->runtime_generation = runtime_generation;
             } else if (fields_valid) {
@@ -14497,16 +14486,6 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
                          control);
     }
     GSettingsSchemaSource* schema_source = g_settings_schema_source_get_default();
-    GSettingsSchema* input_schema =
-        schema_source ? g_settings_schema_source_lookup(schema_source,
-                                                        "org.gnome.desktop.input-sources", TRUE)
-                      : NULL;
-    if (input_schema) {
-        control->input_source_settings = g_settings_new_full(input_schema, NULL, NULL);
-        g_settings_schema_unref(input_schema);
-        g_signal_connect(control->input_source_settings, "changed::sources",
-                         G_CALLBACK(input_source_settings_changed), control);
-    }
     GSettingsSchema* appearance_schema =
         schema_source
             ? g_settings_schema_source_lookup(schema_source, "org.gnome.desktop.interface", TRUE)
@@ -14741,8 +14720,6 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         g_signal_handlers_disconnect_by_data(control->backend, control);
     if (control->remote_access_controller)
         g_signal_handlers_disconnect_by_data(control->remote_access_controller, control);
-    if (control->input_source_settings)
-        g_signal_handlers_disconnect_by_data(control->input_source_settings, control);
     if (control->orientation_manager)
         g_signal_handlers_disconnect_by_data(control->orientation_manager, control);
     if (control->appearance_settings)

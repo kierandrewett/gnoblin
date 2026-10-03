@@ -7,6 +7,21 @@ mkdir -p "$ROOT/build/tmp"
 fixture_root="$(mktemp -d "$ROOT/build/tmp/devkit-e2e-config.XXXXXX")"
 mkdir -p "$fixture_root/gnoblin"
 trap 'rm -rf -- "$fixture_root"' EXIT
+schema_dir="$fixture_root/data/glib-2.0/schemas"
+mkdir -p "$schema_dir"
+cat >"$schema_dir/org.gnome.desktop.input-sources.gschema.xml" <<'XML'
+<schemalist>
+  <schema id="org.gnome.desktop.input-sources" path="/org/gnome/desktop/input-sources/">
+    <key name="sources" type="a(ss)">
+      <default>[('xkb', 'us')]</default>
+    </key>
+    <key name="xkb-options" type="as">
+      <default>[]</default>
+    </key>
+  </schema>
+</schemalist>
+XML
+glib-compile-schemas "$schema_dir"
 cat >"$fixture_root/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {window_management = {focus_mode = "click"}}
 gnoblin.events.once("gnoblin.config.reloaded", function()
@@ -49,6 +64,45 @@ def contains_click(value):
 assert contains_click(config), config
 print("CONFIG:click")
 PY
+cat > "$XDG_RUNTIME_DIR/input-sources.lua" <<'LUA'
+assert(#gnoblin.input.sources() == 0,
+    "unconfigured input sources must not inherit GNOME GSettings")
+print("INPUT_SOURCE:empty-without-lua-setting")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/input-sources.lua"
+cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    window_management = {focus_mode = "click"},
+    input_sources = {sources = {{type = "xkb", id = "us"}}},
+}
+LUA
+gnoblinctl config reload > "$XDG_RUNTIME_DIR/input-sources-set.txt"
+cat > "$XDG_RUNTIME_DIR/input-sources.lua" <<'LUA'
+local sources = gnoblin.input.sources()
+assert(#sources == 1 and sources[1].id == "us")
+print("INPUT_SOURCE:configured-from-lua")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/input-sources.lua"
+cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {window_management = {focus_mode = "click"}}
+LUA
+gnoblinctl config reload > "$XDG_RUNTIME_DIR/input-sources-cleared.txt"
+cat > "$XDG_RUNTIME_DIR/input-sources.lua" <<'LUA'
+assert(#gnoblin.input.sources() == 0)
+print("INPUT_SOURCE:cleared-with-lua-config")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/input-sources.lua"
+cat > "$XDG_RUNTIME_DIR/lua-api.lua" <<'LUA'
+assert(type(gnoblin.windows.list()) == "table")
+assert(type(gnoblin.workspaces.list()) == "table")
+assert(type(gnoblin.monitors.list()) == "table")
+assert(type(gnoblin.focus.history()) == "table")
+local status = gnoblin.runtime.status()
+assert(status.state == "running" and status.generation > 0)
+print("LUA_API:runtime-status")
+print("LUA_API:snapshots")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/lua-api.lua"
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/config-reload.txt"
 gnoblinctl --json window list > "$XDG_RUNTIME_DIR/windows.json"
 python3 - "$XDG_RUNTIME_DIR/windows.json" <<'PY'
@@ -186,6 +240,7 @@ SCRIPT
 # so this test isolates session-supervisor recovery.
 output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     GNOBLIN_STATE_DIR="$fixture_root/state" \
+    XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}" \
     GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$fixture_root" \
     GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
@@ -201,11 +256,12 @@ grep -q 'CONFIG:click' <<<"$output"
 grep -q 'WINDOWS:json' <<<"$output"
 grep -q 'WORKSPACE:next' <<<"$output"
 grep -q 'WORKER:recovered-with-compositor-alive' <<<"$output"
+grep -q 'INPUT_SOURCE:empty-without-lua-setting' <<<"$output"
+grep -q 'INPUT_SOURCE:configured-from-lua' <<<"$output"
+grep -q 'INPUT_SOURCE:cleared-with-lua-config' <<<"$output"
+grep -q 'LUA_API:runtime-status' <<<"$output"
+grep -q 'LUA_API:snapshots' <<<"$output"
 grep -q 'restarting Lua runtime worker' "$fixture_root/state/devkit-last.log"
-if ! grep -q 'LUA_API:snapshots' "$fixture_root/state/devkit-last.log"; then
-    tail -n 60 "$fixture_root/state/devkit-last.log" >&2
-    exit 1
-fi
 printf '%s\n' 'PASS: Lua config and native control API work in the supervised nested runtime'
 
 guardian_fixture="$fixture_root/supervisor-config"
