@@ -2,12 +2,8 @@
 
 Input settings go in `gnoblin.configure {input = {...}}` and apply on config
 reload. Groups and fields are optional. Gnoblin leaves anything you omit at its
-current GNOME/Mutter setting, so start with a small override and add only what
-you need.
-
-In the standalone native compositor preview, these settings apply at startup.
-Restart that compositor after changing the file. The full Shell session applies
-valid changes on config reload.
+current system setting, so start with a small override and add only what you
+need.
 
 `"inherit"` has the same effect for an individual field. Use it to clear a
 value supplied by an earlier loaded config file. For example, this keeps the
