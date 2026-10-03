@@ -123,8 +123,11 @@ The remaining input-specific patches are listed below.
 - `73-location-indicator`: the native GeoClue agent exposes availability,
   in-use state, and authorization requests to Lua and shell clients. The
   compositor provides data and policy; location-indicator UI belongs to shell
-  clients. GeoClue must allow the `gnoblin` agent ID. Packaging that allowlist
-  without replacing distro defaults is tracked in `gnoblin-mc6`.
+  clients. The RPM build now has an optional `gnoblin-geoclue-integration`
+  package with Fedora's standard GeoClue agent IDs plus `gnoblin`. Fedora 43's
+  GeoClue 2.8.2 accepted `AddAgent("gnoblin")` in an isolated private-bus run
+  using the packaged drop-in; verify RPM installation before closing
+  `gnoblin-mc6`.
 - `77-keymap-initialization`, `78-ibus-disconnect-guard`,
   `zzzzzzz-on-demand-ibus`, and shutdown-order patches: a nested-session E2E
   with a synthetic GNOME source schema confirms Lua-only input-source listing,

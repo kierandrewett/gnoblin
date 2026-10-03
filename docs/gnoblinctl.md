@@ -898,8 +898,10 @@ inactive or unavailable. Unavailable sources have no activity value. Camera
 activity follows running PipeWire nodes marked with the `Camera` media role.
 
 Location activity follows GeoClue's service state and `InUse` property. If it
-is unavailable, check that GeoClue allows the `gnoblin` agent ID in its
-`[agent]` whitelist; preserve the other IDs when editing the list.
+is unavailable, check GeoClue's `[agent]` whitelist.
+
+On Fedora, install `gnoblin-geoclue-integration`. For source builds and other
+distributions, add Gnoblin to the existing whitelist and keep its other IDs.
 Add `--json` to print the `PrivacyState` record. It contains a revision, an
 availability flag for each source, and an activity value only when that source
 is available.
