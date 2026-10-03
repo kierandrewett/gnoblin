@@ -1228,14 +1228,17 @@ and the compositor retained its fail-safe state. Treat all states except
 compositor-secured session.
 
 `SessionStatus` is available as a live API read from API 1.29. It contains
-`state = "running"` and `lock_available`. When lock state is available, it
-also contains `lock_state`, a `SessionLockState`. If it is unavailable,
-`lock_state` is omitted; unavailable does not mean unlocked. The compositor
-socket answers this read directly from Mutter and therefore remains available
-if the Lua supervisor is disconnected while the compositor remains alive. It
-reports compositor availability, not supervisor health. The socket cannot
-report a final state after the compositor stops, so connection failure is the
-only status available then.
+`state = "running"`, `lock_available`, and `revision`. `revision` identifies
+the lock-state snapshot; it starts at zero and matches the revision on the
+corresponding `gnoblin.session.lock-state-changed` event. When lock state is
+available, the record also contains `lock_state`, a `SessionLockState`. If it
+is unavailable, `lock_state` is omitted; unavailable does not mean unlocked.
+The compositor socket answers this read directly from Mutter and therefore
+remains available if the Lua supervisor is disconnected while the compositor
+remains alive. The supervised Lua API returns the latest lock-state snapshot
+Mutter delivered to its runtime. Both forms report compositor availability,
+not supervisor health. The socket cannot report a final state after the
+compositor stops, so connection failure is the only status available then.
 
 The supervisor can restart the Lua worker while keeping Mutter and its Wayland
 clients alive. Worker recovery restores the accepted configuration and fresh
@@ -1298,8 +1301,10 @@ API 1.50 routes socket `launch.begin` and `launch.end` calls through Lua while
 preserving connection-owned launch event tracking. Earlier clients keep the
 synchronous route. `launch.status` continues to enable connection-owned launch
 event tracking.
-API 1.51 routes `session.status` through the shared Lua read method. Every
-supported client version now uses this Lua read.
+API 1.51 introduced a Lua-backed socket adapter for `session.status`. Current
+builds answer socket reads directly from Mutter so the status remains available
+during supervisor recovery. The supervised Lua method reads its latest lock
+snapshot.
 API 1.52 routes the socket-only `workspace.list` alias through
 `gnoblin.workspaces.list()` while preserving its legacy object wrapper and
 `windows` count field. Every negotiated client version now uses this Lua-backed
@@ -1400,7 +1405,7 @@ generic `window.action` Lua dispatcher.
 | `launch.status`                                                        | CLI uses `gnoblin.launches.snapshot()` to preserve the collection revision; retain the raw socket method for compatibility.                                                               |
 | `launch.begin`                                                         | `gnoblin.launches.begin(options)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                                                   |
 | `launch.end`                                                           | `gnoblin.launches.finish(token)` in Lua; socket API 1.50 routes through an asynchronous Lua operation.                                                                                    |
-| `session.status`                                                       | `gnoblin.session.status()` in Lua; socket API 1.51 routes through the shared Lua runtime.                                                                                                 |
+| `session.status`                                                       | `gnoblin.session.status()` reads the runtime snapshot; socket clients read directly from Mutter, including during supervisor recovery.                                                    |
 | `shell.ping`                                                           | Removed; use the unversioned socket transport operation `op = "ping"`.                                                                                                                    |
 | `shell.version`                                                        | `gnoblin.version()`                                                                                                                                                                       |
 | `shell.status`                                                         | `gnoblin.session.status()`                                                                                                                                                                |
