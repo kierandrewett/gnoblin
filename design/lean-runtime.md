@@ -111,6 +111,10 @@ settings while Gnoblin is running. The drag modifier defaults to `<Super>`;
 the resize-button swap defaults to `false`; the client liveness timeout defaults
 to 5000 ms and accepts `0` to disable the check.
 
+`compositor.locate_pointer_key` configures the key that triggers
+`compositor.locate_pointer`. Mutter owns the key event and visual effect; Lua
+owns the configured key name and whether the effect is enabled.
+
 The session package does not require `gnoblin-portal`; users can install and
 select another XDG portal backend. The GTK-based Gnoblin backend is a separate
 optional package and requires the generic portal frontend. GNOME's backend can
