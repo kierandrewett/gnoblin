@@ -63,8 +63,11 @@ The `79z-background-manager-shutdown` patch was removed on 2026-10-03. It
 ordered destruction of GNOME Shell background actors and popup menus during
 Shell shutdown; the standalone session has no Shell background managers.
 
-The patch directories `99zzzz-session-mode-startup`,
-`99zzzzz-no-session-presence`, `99zzzzzz-logind-actions`,
+The `99zzzz-session-mode-startup` patch was removed on 2026-10-03. It only
+delayed GNOME Shell's `SessionMode` import until Shell initialization; the
+standalone session starts no Shell process or session mode.
+
+The patch directories `99zzzzz-no-session-presence`, `99zzzzzz-logind-actions`,
 `99zzzzzzz-session-ready`, `99zzzzzzzz-no-session-dialog`,
 `99zzzzzzzzzz-standalone-idle`, `99zzzzzzzzzzz-native-scope`,
 `99zzzzzzzzzzzz-native-xkb`, `99zzzzzzzzzzzzz-timezone`,
