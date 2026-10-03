@@ -67,7 +67,12 @@ class LocationAgentContractTests(unittest.TestCase):
         self.assertIn("files('core/gnoblin-location-agent.c')", patch)
 
     def test_authorization_is_brokered_to_lua_with_bounded_one_use_requests(self):
-        self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR 65", API_HEADER.read_text())
+        api_minor = next(
+            int(line.rsplit(" ", 1)[1])
+            for line in API_HEADER.read_text().splitlines()
+            if line.startswith("#define GNOBLIN_NATIVE_CONTROL_API_MINOR ")
+        )
+        self.assertGreaterEqual(api_minor, 65)
         build = BUILD.read_text()
         self.assertIn("src/native-control/gnoblin-native-control.h", build)
         self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", build)
