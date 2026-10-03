@@ -5,13 +5,14 @@ Configure this part of `gnoblin.configure` with the `compositor` key.
 Put these fields inside `gnoblin.configure {compositor = {...}}`. Changes apply
 on configuration reload. Omitted values keep the defaults shown below.
 
-| Key                 | Values                                  | Default              | Effect                                                   |
-| ------------------- | --------------------------------------- | -------------------- | -------------------------------------------------------- |
-| `enable_animations` | Boolean                                 | `true`               | Enables compositor animations.                           |
-| `locate_pointer`    | Boolean                                 | `false`              | Enables the pointer-location effect.                     |
-| `visual_bell`       | Boolean                                 | `false`              | Flashes the screen when an app requests the visual bell. |
-| `audible_bell`      | Boolean                                 | `true`               | Plays a sound when an app requests the audible bell.     |
-| `visual_bell_type`  | `"fullscreen-flash"` or `"frame-flash"` | `"fullscreen-flash"` | Flash the full screen or the focused window.             |
+| Key                  | Values                                  | Default              | Effect                                                   |
+| -------------------- | --------------------------------------- | -------------------- | -------------------------------------------------------- |
+| `enable_animations`  | Boolean                                 | `true`               | Enables compositor animations.                           |
+| `locate_pointer`     | Boolean                                 | `false`              | Enables the pointer-location effect.                     |
+| `locate_pointer_key` | Mutter key name, `"disabled"`, or `""`  | `"Control_L"`        | Key that triggers the pointer locator.                   |
+| `visual_bell`        | Boolean                                 | `false`              | Flashes the screen when an app requests the visual bell. |
+| `audible_bell`       | Boolean                                 | `true`               | Plays a sound when an app requests the audible bell.     |
+| `visual_bell_type`   | `"fullscreen-flash"` or `"frame-flash"` | `"fullscreen-flash"` | Flash the full screen or the focused window.             |
 
 For example, enable the pointer locator and use a focused-window flash:
 
@@ -19,11 +20,19 @@ For example, enable the pointer locator and use a focused-window flash:
 gnoblin.configure {
     compositor = {
         locate_pointer = true,
+        locate_pointer_key = "F12",
         visual_bell = true,
         visual_bell_type = "frame-flash",
     },
 }
 ```
+
+`locate_pointer_key` accepts one XKB keysym name that Mutter recognizes.
+Examples are `"Control_L"`, `"Super_R"`, and `"F12"`. A modifier name without a
+side, such as `"Control"`, matches both left and right keys.
+
+Use `"disabled"` or an empty string to remove the trigger. The key only has an
+effect while `locate_pointer = true`.
 
 Guide: [session settings](/guides/session_settings).
 
@@ -37,6 +46,7 @@ gnoblin.configure {
     compositor = {
         enable_animations = boolean?,
         locate_pointer = boolean?,
+        locate_pointer_key = string?, -- XKB keysym name, "disabled", or ""
         visual_bell = boolean?,
         audible_bell = boolean?,
         visual_bell_type = "fullscreen-flash" | "frame-flash"?,
