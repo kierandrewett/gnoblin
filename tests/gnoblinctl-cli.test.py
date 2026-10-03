@@ -371,6 +371,65 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
         return result
 
 
+def run_appearance_color_scheme_cli_test(binary: str, build_directory: str) -> None:
+    cases = (
+        (
+            {"available": True, "color_scheme": "prefer-dark"},
+            'assert(gnoblin.appearance.color_scheme() == "prefer-dark")\n',
+        ),
+        (
+            {"available": False},
+            "assert(gnoblin.appearance.color_scheme() == nil)\n",
+        ),
+    )
+    for response_value, script in cases:
+        with tempfile.TemporaryDirectory(prefix="appearance-", dir=build_directory) as temporary:
+            root = Path(temporary)
+            socket_path = str(root / "s")
+            script_path = root / "appearance.lua"
+            script_path.write_text(script, encoding="utf-8")
+            ready = threading.Event()
+            errors: list[BaseException] = []
+
+            def serve() -> None:
+                try:
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                        server.bind(socket_path)
+                        server.listen(1)
+                        server.settimeout(5)
+                        ready.set()
+                        connection, _ = server.accept()
+                        connection.settimeout(3)
+                        with connection:
+                            stream = connection.makefile("rb")
+                            subscription = json.loads(stream.readline())
+                            assert subscription["op"] == "events", subscription
+                            subscribed = {
+                                "event": "reply",
+                                "id": subscription["id"],
+                                "result": {"subscribed": True},
+                            }
+                            connection.sendall((json.dumps(subscribed) + "\n").encode())
+                            request = json.loads(stream.readline())
+                            assert request["op"] == "api", request
+                            assert request["method"] == "appearance.color_scheme", request
+                            assert request["api_version"] == {"major": 1, "minor": 70}, request
+                            assert request["arguments"] == {}, request
+                            reply = {"event": "reply", "id": request["id"], "result": response_value}
+                            connection.sendall((json.dumps(reply) + "\n").encode())
+                except BaseException as error:
+                    errors.append(error)
+
+            thread = threading.Thread(target=serve, daemon=True)
+            thread.start()
+            assert ready.wait(5), f"appearance fixture did not start: {errors}"
+            result = run(binary, "--socket", socket_path, "lua", str(script_path))
+            thread.join(6)
+            assert not thread.is_alive(), "appearance fixture did not finish"
+            assert not errors, errors
+            assert result.returncode == 0, result.stderr
+
+
 def run_menu_context_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
     with tempfile.TemporaryDirectory(prefix="menu-context-", dir=build_directory) as temporary:
         root = Path(temporary)
@@ -927,6 +986,8 @@ def main() -> int:
 
     focus_context_result = run_focus_context_cli_test(binary, build_directory)
     assert focus_context_result.returncode == 0, focus_context_result.stderr
+
+    run_appearance_color_scheme_cli_test(binary, build_directory)
 
     menu_context_result = run_menu_context_cli_test(binary, build_directory)
     assert menu_context_result.returncode == 0, menu_context_result.stderr
