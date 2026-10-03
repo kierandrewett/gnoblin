@@ -342,8 +342,9 @@ int main(void) {
 
     g_assert_true(g_file_set_contents(
         explicit_root,
-        "gnoblin.configure {window_management = {mouse_button_modifier = '<Super><Shift>'}}\n", -1,
-        &error));
+        "gnoblin.configure {window_management = {mouse_button_modifier = '<Super><Shift>', "
+        "resize_with_right_button = true}}\n",
+        -1, &error));
     g_clear_pointer(&document, g_variant_unref);
     document = load(explicit_root, NULL, &error);
     g_assert_no_error(error);
@@ -356,6 +357,10 @@ int main(void) {
     g_assert_true(
         g_variant_lookup(window_management, "mouse-button-modifier", "&s", &mouse_button_modifier));
     g_assert_cmpstr(mouse_button_modifier, ==, "<Super><Shift>");
+    gboolean resize_with_right_button = FALSE;
+    g_assert_true(g_variant_lookup(window_management, "resize-with-right-button", "b",
+                                   &resize_with_right_button));
+    g_assert_true(resize_with_right_button);
 
     g_assert_true(g_file_set_contents(
         explicit_root,

@@ -1061,6 +1061,7 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
         static const char* booleans[] = {
             "constrain-drag-to-work-area",
             "auto-maximize",
+            "resize-with-right-button",
             "raise-on-click",
             "auto-raise",
             "focus-change-on-pointer-rest",
