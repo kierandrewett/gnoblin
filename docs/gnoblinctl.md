@@ -415,6 +415,29 @@ any subscription is active. A `once` subscription ends after its event; call
 `subscription:unsubscribe()` to stop a repeating listener. Press Ctrl+C to
 stop a script that continues listening.
 
+To handle a location request, subscribe to
+`gnoblin.location.authorization-requested`. The CLI can answer only a request
+received by an active subscription, and sends the reply over that same event
+connection. Requests expire after 25 seconds. This example denies the request;
+replace the decision with a consent prompt before approving access:
+
+```lua
+local subscription
+subscription = gnoblin.events.on("gnoblin.location.authorization-requested", function(event)
+    local result = gnoblin.location.authorize_app {
+        request_id = event.request_id,
+        allow = false,
+        accuracy = 0,
+    }
+    print(result.submitted)
+    subscription:unsubscribe()
+end)
+```
+
+Approval must choose an accuracy level no greater than the one requested by the
+app. The call returns a read-only result; `submitted` confirms Gnoblin accepted
+and queued the answer. System settings can still limit approved accuracy.
+
 `gnoblinctl lua` can register, remove, and manage shortcut sessions. Bindings
 created by the console belong to its compositor connection, so the process
 stays open while one of its bindings remains registered. Unbind the shortcut or

@@ -1109,16 +1109,17 @@ canonical method names directly.
 
 ## Privacy and permissions
 
-| Method                             | Arguments                | Successful result                                        |
-| ---------------------------------- | ------------------------ | -------------------------------------------------------- |
-| `gnoblin.privacy.state()`          | None                     | Read-only `PrivacyState` snapshot                        |
-| `gnoblin.privacy.stop_sharing()`   | None                     | `Operation<{requested: integer}>`                        |
-| `gnoblin.privacy.stop_recording()` | None                     | `Operation<{requested: integer}>`                        |
-| `permissions.list()`               | None                     | Read-only policy, capabilities, levels, and config path  |
-| `permissions.policy()`             | None                     | Immutable policy with `default`, `rules`, and `revision` |
-| `permissions.check(args)`          | `capability`, `identity` | Permission decision with scope details                   |
-| `grant.list()`                     | None                     | `{grants = {Grant, ...}}`                                |
-| `grant.revoke(args)`               | `kind`, `id`             | `{ok, id}`                                               |
+| Method                                    | Arguments                                              | Successful result                                                |
+| ----------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------- |
+| `gnoblin.privacy.state()`                 | None                                                   | Read-only `PrivacyState` snapshot                                |
+| `gnoblin.privacy.stop_sharing()`          | None                                                   | `Operation<{requested: integer}>`                                |
+| `gnoblin.privacy.stop_recording()`        | None                                                   | `Operation<{requested: integer}>`                                |
+| `gnoblin.location.authorize_app(options)` | `request_id`, `allow`, `accuracy` from a pending event | Runtime: `Operation<Result>`; `gnoblinctl lua`: read-only result |
+| `permissions.list()`                      | None                                                   | Read-only policy, capabilities, levels, and config path          |
+| `permissions.policy()`                    | None                                                   | Immutable policy with `default`, `rules`, and `revision`         |
+| `permissions.check(args)`                 | `capability`, `identity`                               | Permission decision with scope details                           |
+| `grant.list()`                            | None                                                   | `{grants = {Grant, ...}}`                                        |
+| `grant.revoke(args)`                      | `kind`, `id`                                           | `{ok, id}`                                                       |
 
 Permission capabilities, identities, grant kinds, and scope fields use the
 same values as [session permissions](/config/configure/permissions).
@@ -1207,7 +1208,8 @@ The event fields are `request_id`, `app_id`, `requested_accuracy`, and
 
 Requests expire after 25 seconds. Gnoblin denies unanswered requests and
 requests still pending when the runtime stops or the GeoClue agent becomes
-unavailable. A socket client can answer only if it received the request event.
+unavailable. A socket client must answer on the same connection that received
+the request event.
 The answer is a one-use operation.
 
 `gnoblin.privacy.stop_sharing()` requests closure of tracked non-recording

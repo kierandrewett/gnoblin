@@ -218,6 +218,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.animations` | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)` | **Current.** Native runtime exposes all methods; `gnoblinctl lua` supports read-only `list()`, `get(name)`, `inspect(args)`, and the deeply read-only `{surfaces = Surface[]}` snapshot, plus `preview(spec)` and typed preview controls. |
 | `gnoblin.launches` | `list()`, `snapshot()`, `begin(args)`, `finish(token)` | **Current.** The supervised runtime and `gnoblinctl lua` support all methods. The bracket form `gnoblin.launches["end"](token)` remains as a compatibility alias because `end` is a Lua keyword. |
 | `gnoblin.portals.grants(filter?)` | `(filter?: {kind?: string}) -> PortalGrant[]` | **Current.** Read active portal grants, optionally by kind; `gnoblinctl lua` returns read-only records with stale-safe revoke methods. |
+| `gnoblin.location.authorize_app(options)` | `({request_id, allow, accuracy}) -> runtime: Operation<Result>; CLI: Result` | **Current; supervised runtime and `gnoblinctl lua`.** Answer a pending GeoClue request. The CLI requires an active subscription that received the request, sends the answer on that event connection, and returns a read-only result. |
 | `gnoblin.privacy` | `state()`, `stop_sharing()`, `stop_recording()` | **Current.** The runtime and `gnoblinctl lua` expose the immutable activity snapshot and stop operations; the console waits for completion and returns read-only results. |
 | `gnoblin.permissions` / `gnoblin.grant` | `permissions.list()`, `policy()`, `check(args)`, `grant.list()`, `revoke(args)` | **Current.** The native runtime and `gnoblinctl lua` expose these reads and grant revocation; console results are deeply read-only. |
 | `gnoblin.session` | `lock()`, `activity()`, `status()`, `logout()` | **Current.** The runtime and `gnoblinctl lua` expose all methods; the console waits for lock/logout operations and returns deeply read-only results. |
@@ -1080,16 +1081,16 @@ layer-surface identity.
 
 ### Permissions, privacy, and portals
 
-| Lua call                                          | Arguments                         | Result                                                 | Canonical operation      |
-| ------------------------------------------------- | --------------------------------- | ------------------------------------------------------ | ------------------------ |
-| `gnoblin.privacy.state()`                         | none                              | `PrivacyState`                                         | state read               |
-| `gnoblin.privacy.stop_sharing()`                  | none                              | `Operation<{requested: integer}>`                      | `privacy.stop_sharing`   |
-| `gnoblin.privacy.stop_recording()`                | none                              | `Operation<{requested: integer}>`                      | `privacy.stop_recording` |
-| `gnoblin.location.authorize_app(options)`         | `request_id`, `allow`, `accuracy` | `Operation<{request_id: integer, submitted: boolean}>` | `location.authorize_app` |
-| `gnoblin.permissions.policy()`                    | none                              | `PermissionPolicy`                                     | state read               |
-| `gnoblin.permissions.check(capability, identity)` | capability and identity strings   | `PermissionDecision`                                   | state read               |
-| `gnoblin.portals.grants()`                        | optional `kind`                   | `PortalGrant[]`                                        | state read               |
-| `grant:revoke()`                                  | none                              | `Operation<nil>`                                       | `grant.revoke`           |
+| Lua call                                          | Arguments                         | Result                                                                                 | Canonical operation      |
+| ------------------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------- | ------------------------ |
+| `gnoblin.privacy.state()`                         | none                              | `PrivacyState`                                                                         | state read               |
+| `gnoblin.privacy.stop_sharing()`                  | none                              | `Operation<{requested: integer}>`                                                      | `privacy.stop_sharing`   |
+| `gnoblin.privacy.stop_recording()`                | none                              | `Operation<{requested: integer}>`                                                      | `privacy.stop_recording` |
+| `gnoblin.location.authorize_app(options)`         | `request_id`, `allow`, `accuracy` | `runtime: Operation<{request_id: integer, submitted: boolean}>; CLI: read-only Result` | `location.authorize_app` |
+| `gnoblin.permissions.policy()`                    | none                              | `PermissionPolicy`                                                                     | state read               |
+| `gnoblin.permissions.check(capability, identity)` | capability and identity strings   | `PermissionDecision`                                                                   | state read               |
+| `gnoblin.portals.grants()`                        | optional `kind`                   | `PortalGrant[]`                                                                        | state read               |
+| `grant:revoke()`                                  | none                              | `Operation<nil>`                                                                       | `grant.revoke`           |
 
 `PrivacyState` contains an `available` record with boolean fields
 `screen_sharing`, `recording`, `microphone_in_use`, `camera_in_use`, and
@@ -1563,6 +1564,7 @@ namespaces.
 | `animations`             | `list()`, `get(name)`, `surfaces()`, `inspect(args)`, `preview(args)`, `seek(args)`, `step(args)`, `play(args)`, `pause(args)`, `stop(args)`. Configuration declarations use `gnoblin.animation(entry)`.                                                      |
 | `input`                  | `list()`, `current()`, `sources()`, `current_source()`, `text_target(context)`, `devices()`, `select_source(selector)`. `text_target()` returns a trusted target with `insert_text(text)`.                                                                    |
 | `privacy`                | `stop_sharing()`, `stop_recording()`; read-only `state()` snapshot.                                                                                                                                                                                           |
+| `location`               | `authorize_app({request_id, allow, accuracy})`; answer only a live request delivered to the active subscription.                                                                                                                                              |
 | `permissions` / `grant`  | `permissions.list()`, `permissions.policy()`, `permissions.check(args)`, `grant.list()`, `grant.revoke(args)`, and read-only `portals.grants()`.                                                                                                              |
 | `launch` / `launches`    | `launch.status()`, `launch.begin(args)`, `launch.end(args)`; `launches.list()`, `launches.snapshot()`, `launches.begin(args)`, and `launches.finish(token)`. `launches["end"](token)` is a compatibility alias.                                               |
 | `session`                | `lock()`, `activity()`, `status()`, `logout()`.                                                                                                                                                                                                               |
