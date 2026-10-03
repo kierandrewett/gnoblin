@@ -115,6 +115,14 @@ jobs:
             XDG_RUNTIME_DIR="$runtime_dir" \
             WAYLAND_DISPLAY="$socket_name" \
             GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            GNOBLINCTL="$GITHUB_WORKSPACE/install/bin/gnoblinctl" \
+            python3 tests/window-lifecycle-fuzz.py \
+              --seed 314159265 --steps 250 --max-windows 6 --timeout 600 \
+              --artifact-dir "$GITHUB_WORKSPACE/build/logs/lifecycle-fuzz-seed-314159265"
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY="$socket_name" \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
             GNOBLIN_RUNTIME_BIN="$GITHUB_WORKSPACE/build/ninja/gnoblin" \
             bash tests/test-layer-latency.sh
 
