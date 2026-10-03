@@ -110,6 +110,7 @@ typedef struct {
     guint64 session_activity_revision;
     gint64 session_activity_sampled_at_us;
     GVariant* session_lock_snapshot;
+    guint64 session_lock_revision;
     guint64 input_gesture_sequence;
     guint64 dispatch_focus_handle;
     guint64 dispatch_focus_generation;
@@ -4202,6 +4203,8 @@ static int lua_session_status(lua_State* state) {
     g_variant_builder_add(&builder, "{sv}", "state", g_variant_new_string("running"));
     g_variant_builder_add(&builder, "{sv}", "lock_available",
                           g_variant_new_boolean(lock_available));
+    g_variant_builder_add(&builder, "{sv}", "revision",
+                          g_variant_new_uint64(config ? config->session_lock_revision : 0));
     if (lock_available && lock_state)
         g_variant_builder_add(&builder, "{sv}", "lock_state", g_variant_new_string(lock_state));
     g_autoptr(GVariant) status = g_variant_ref_sink(g_variant_builder_end(&builder));
@@ -5433,7 +5436,6 @@ void gnoblin_config_update_session_activity_snapshot(GVariant* snapshot, guint64
 }
 
 void gnoblin_config_update_session_lock_snapshot(GVariant* snapshot, guint64 revision) {
-    (void)revision;
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
     gboolean available = FALSE;
@@ -5452,6 +5454,7 @@ void gnoblin_config_update_session_lock_snapshot(GVariant* snapshot, guint64 rev
         if (!runtime || (i == 1 && runtime == runtimes[0]))
             continue;
         g_clear_pointer(&runtime->config.session_lock_snapshot, g_variant_unref);
+        runtime->config.session_lock_revision = snapshot ? revision : 0;
         if (snapshot)
             runtime->config.session_lock_snapshot = g_variant_ref(snapshot);
     }
@@ -5636,9 +5639,11 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
         runtime->config.session_activity_sampled_at_us =
             snapshot_source->config.session_activity_sampled_at_us;
     }
-    if (snapshot_source && snapshot_source->config.session_lock_snapshot)
+    if (snapshot_source && snapshot_source->config.session_lock_snapshot) {
         runtime->config.session_lock_snapshot =
             g_variant_ref(snapshot_source->config.session_lock_snapshot);
+        runtime->config.session_lock_revision = snapshot_source->config.session_lock_revision;
+    }
     if (snapshot_source && snapshot_source->config.settings_document) {
         runtime->config.settings_document =
             g_variant_ref(snapshot_source->config.settings_document);
