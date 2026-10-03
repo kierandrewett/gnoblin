@@ -31,11 +31,20 @@ if [[ -n "$PREPARED_SOURCES" ]]; then
         }
         install -m 0644 -- "$source" "$SOURCES/"
     done
+    install -m 0644 -- "$gnoblin_source" "$SOURCES/"
 else
     git -C "$ROOT" submodule foreach --recursive 'git fetch --force --tags origin'
     for project in mutter xdg-desktop-portal-gnome; do
         "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
     done
+    gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
+    mutter_version="$("$ROOT/scripts/gnome-versions.py" get mutter version)"
+    portal_version="$("$ROOT/scripts/gnome-versions.py" get xdg-desktop-portal-gnome version)"
+    "$ROOT/scripts/build-source-bundle.sh" \
+        "$SOURCES/gnoblin-$gnoblin_version-source.tar.xz" \
+        "$gnoblin_version" \
+        "$SOURCES/mutter-$mutter_version.tar.xz" \
+        "$SOURCES/xdg-desktop-portal-gnome-$portal_version.tar.xz"
 fi
 "$ROOT/scripts/stage-rpm-sources.sh" mutter "$SOURCES"
 

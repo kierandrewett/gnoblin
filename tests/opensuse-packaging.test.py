@@ -65,6 +65,8 @@ class OpenSUSEPackagingTests(unittest.TestCase):
 
     def test_build_chain_respects_internal_dependency_order(self):
         chain = (SPECS / "build-chain.sh").read_text()
+        self.assertIn('install -m 0644 -- "$gnoblin_source" "$SOURCES/"', chain)
+        self.assertIn('"$ROOT/scripts/build-source-bundle.sh"', chain)
         self.assertLess(
             chain.index("git fetch --force --tags origin"),
             chain.index('"$ROOT/scripts/make-tarball.sh"'),
