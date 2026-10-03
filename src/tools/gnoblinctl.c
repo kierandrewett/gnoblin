@@ -67,6 +67,15 @@ typedef struct {
 
 #define LUA_CLI_SNAP_CONTEXT_MAGIC G_GUINT64_CONSTANT(0x474e4f42534e4150)
 
+typedef struct {
+    guint64 magic;
+    CliLuaEventSubscription* subscription;
+    char* token;
+    gboolean consumed;
+} LuaCliTextTarget;
+
+#define LUA_CLI_TEXT_TARGET_MAGIC G_GUINT64_CONSTANT(0x474e4f4254455854)
+
 static gboolean is_flag(const char* name) {
     return g_str_equal(name, "focused") || g_str_equal(name, "activate") ||
            g_str_equal(name, "follow") || g_str_equal(name, "autoplay") ||
@@ -396,6 +405,8 @@ static guint api_minor_for_method(const char* method) {
         {"input.orientation_lock", 66},
         {"input.set_orientation_lock", 66},
         {"input.select", 6},
+        {"input.text_target", 28},
+        {"input.insert_text", 28},
         {"launch.status", 8},
     };
 
@@ -1805,6 +1816,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE "gnoblinctl.EventSubscription"
 #define GNOBLINCTL_FOCUS_CONTEXT_METATABLE "gnoblinctl.FocusContext"
 #define GNOBLINCTL_SNAP_CONTEXT_METATABLE "gnoblinctl.SnapContext"
+#define GNOBLINCTL_TEXT_TARGET_METATABLE "gnoblinctl.TextTarget"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_animations_list(lua_State* state);
@@ -1821,6 +1833,7 @@ static int lua_cli_grant_revoke(lua_State* state);
 static int lua_cli_input_snapshot(lua_State* state);
 static int lua_cli_input_select_source(lua_State* state);
 static int lua_cli_input_set_orientation_lock(lua_State* state);
+static int lua_cli_input_text_target(lua_State* state);
 static int lua_cli_shortcuts_list(lua_State* state);
 static int lua_cli_shortcuts_actions(lua_State* state);
 static int lua_cli_shortcuts_capture(lua_State* state);
@@ -2854,6 +2867,15 @@ static gboolean lua_cli_snap_rect_valid(JsonObject* rectangle) {
     return TRUE;
 }
 
+static gboolean lua_cli_token_valid(const char* token) {
+    if (!token || strlen(token) != 64)
+        return FALSE;
+    for (guint i = 0; i < 64; i++)
+        if (!g_ascii_isxdigit(token[i]))
+            return FALSE;
+    return TRUE;
+}
+
 static void lua_cli_push_snap_context(lua_State* state, CliLuaEventSubscription* subscription,
                                       JsonObject* response) {
     if (!member_string(response, "window_id", NULL) ||
@@ -2864,15 +2886,10 @@ static void lua_cli_push_snap_context(lua_State* state, CliLuaEventSubscription*
         return;
     }
     const char* token = member_string(response, "context", NULL);
-    if (!token || strlen(token) != 64) {
+    if (!lua_cli_token_valid(token)) {
         luaL_error(state, "window.snap_context returned an invalid context token");
         return;
     }
-    for (guint i = 0; i < 64; i++)
-        if (!g_ascii_isxdigit(token[i])) {
-            luaL_error(state, "window.snap_context returned an invalid context token");
-            return;
-        }
 
     JsonObject* public_fields = json_object_new();
     GList* members = json_object_get_members(response);
@@ -2902,6 +2919,188 @@ static void lua_cli_push_snap_context(lua_State* state, CliLuaEventSubscription*
     luaL_getmetatable(state, GNOBLINCTL_SNAP_CONTEXT_METATABLE);
     lua_setmetatable(state, -2);
     lua_remove(state, backing);
+}
+
+static LuaCliTextTarget* lua_cli_test_text_target(lua_State* state, int index) {
+    if (!luaL_testudata(state, index, GNOBLINCTL_TEXT_TARGET_METATABLE) ||
+        lua_rawlen(state, index) != sizeof(LuaCliTextTarget))
+        return NULL;
+    LuaCliTextTarget* target = lua_touserdata(state, index);
+    return target->magic == LUA_CLI_TEXT_TARGET_MAGIC ? target : NULL;
+}
+
+static int lua_cli_text_target_insert_text(lua_State* state) {
+    LuaCliTextTarget* target = lua_cli_test_text_target(state, 1);
+    if (!target)
+        return luaL_error(state, "TextTarget:insert_text requires a Gnoblin TextTarget");
+    if (lua_gettop(state) != 2 || lua_type(state, 2) != LUA_TSTRING)
+        return luaL_error(state, "TextTarget:insert_text takes exactly one string");
+    if (target->consumed)
+        return luaL_error(state, "TextTarget is consumed");
+    if (!target->subscription || !target->subscription->active ||
+        !target->subscription->connection) {
+        target->consumed = TRUE;
+        return luaL_error(state, "TextTarget:insert_text requires its active event connection");
+    }
+
+    size_t length = 0;
+    const char* text = lua_tolstring(state, 2, &length);
+    gboolean valid = text && length > 0 && length <= 256 && !memchr(text, '\0', length) &&
+                     g_utf8_validate(text, length, NULL);
+    if (valid) {
+        const char* cursor = text;
+        const char* end = text + length;
+        while (cursor < end) {
+            if (g_unichar_iscntrl(g_utf8_get_char(cursor))) {
+                valid = FALSE;
+                break;
+            }
+            cursor = g_utf8_next_char(cursor);
+        }
+    }
+    target->consumed = TRUE;
+    if (!valid)
+        return luaL_error(state,
+                          "inserted text must be 1-256 bytes of UTF-8 without control characters");
+
+    JsonObject* arguments = json_object_new();
+    json_object_set_string_member(arguments, "target", target->token);
+    json_object_set_string_member(arguments, "text", text);
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = cli_lua_call_compositor_on_subscription(
+        target->subscription, "input.insert_text", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "input.insert_text failed: %s",
+                          call_error ? call_error->message : "compositor request failed");
+    JsonObject* response = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    JsonNode* inserted = response ? json_object_get_member(response, "inserted") : NULL;
+    if (!inserted || !JSON_NODE_HOLDS_VALUE(inserted) ||
+        json_node_get_value_type(inserted) != G_TYPE_BOOLEAN || !json_node_get_boolean(inserted))
+        return luaL_error(state, "input.insert_text returned an invalid result");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static int lua_cli_text_target_gc(lua_State* state) {
+    LuaCliTextTarget* target = lua_cli_test_text_target(state, 1);
+    if (!target)
+        return 0;
+    g_clear_pointer(&target->token, g_free);
+    target->subscription = NULL;
+    target->magic = 0;
+    return 0;
+}
+
+static int lua_cli_text_target_newindex(lua_State* state) {
+    return luaL_error(state, "TextTarget values are read-only");
+}
+
+static int lua_cli_text_target_tostring(lua_State* state) {
+    if (!lua_cli_test_text_target(state, 1)) {
+        lua_pushliteral(state, "TextTarget<invalid>");
+        return 1;
+    }
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "window_id");
+    const char* id = lua_tostring(state, -1);
+    lua_pushfstring(state, "TextTarget<%s>", id ? id : "unknown");
+    return 1;
+}
+
+static gboolean lua_cli_text_caret_valid(JsonObject* caret) {
+    static const char* const fields[] = {"x", "y", "width", "height", NULL};
+    if (!caret || json_object_get_size(caret) != 4 ||
+        !lua_cli_workspace_object_has_only_keys(caret, fields))
+        return FALSE;
+    const char* keys[] = {"x", "y", "width", "height"};
+    for (guint i = 0; i < G_N_ELEMENTS(keys); i++) {
+        JsonNode* value = json_object_get_member(caret, keys[i]);
+        if (!value || !JSON_NODE_HOLDS_VALUE(value))
+            return FALSE;
+        GType type = json_node_get_value_type(value);
+        if (type != G_TYPE_INT && type != G_TYPE_INT64 && type != G_TYPE_DOUBLE)
+            return FALSE;
+        double number = json_node_get_double(value);
+        if (!isfinite(number) || (i >= 2 && number < 0))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static void lua_cli_push_text_target(lua_State* state, CliLuaEventSubscription* subscription,
+                                     JsonObject* response) {
+    static const char* const response_fields[] = {"target", "window_id", "caret", NULL};
+    const char* token = member_string(response, "target", NULL);
+    const char* window_id = member_string(response, "window_id", NULL);
+    JsonNode* window_id_node = json_object_get_member(response, "window_id");
+    JsonNode* caret_node = json_object_get_member(response, "caret");
+    JsonObject* caret = member_object(response, "caret");
+    if (!lua_cli_workspace_object_has_only_keys(response, response_fields) ||
+        !lua_cli_token_valid(token) ||
+        (window_id_node &&
+         (!JSON_NODE_HOLDS_VALUE(window_id_node) ||
+          json_node_get_value_type(window_id_node) != G_TYPE_STRING || !window_id || !*window_id ||
+          strlen(window_id) >= 128 || !g_utf8_validate(window_id, -1, NULL))) ||
+        (caret_node && (!JSON_NODE_HOLDS_OBJECT(caret_node) || !lua_cli_text_caret_valid(caret)))) {
+        luaL_error(state, "input.text_target returned an invalid TextTarget");
+        return;
+    }
+
+    JsonObject* public_fields = json_object_new();
+    if (window_id)
+        json_object_set_string_member(public_fields, "window_id", window_id);
+    if (caret_node)
+        json_object_set_member(public_fields, "caret", json_node_copy(caret_node));
+    g_autoptr(JsonNode) public_node = json_node_new(JSON_NODE_OBJECT);
+    json_node_take_object(public_node, public_fields);
+    json_to_lua(state, public_node);
+    int backing = lua_absindex(state, -1);
+
+    LuaCliTextTarget* target = lua_newuserdatauv(state, sizeof *target, 2);
+    target->magic = LUA_CLI_TEXT_TARGET_MAGIC;
+    target->subscription = subscription;
+    target->token = g_strdup(token);
+    target->consumed = FALSE;
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, -2, 1);
+    lua_newtable(state);
+    lua_pushcfunction(state, lua_cli_text_target_insert_text);
+    lua_setfield(state, -2, "insert_text");
+    lua_setiuservalue(state, -2, 2);
+    luaL_getmetatable(state, GNOBLINCTL_TEXT_TARGET_METATABLE);
+    lua_setmetatable(state, -2);
+    lua_remove(state, backing);
+}
+
+static int lua_cli_input_text_target(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    LuaCliFocusContext* context = lua_cli_test_focus_context(state, 1);
+    if (lua_gettop(state) != 1 || !context)
+        return luaL_error(state,
+                          "gnoblin.input.text_target requires a FocusContext from a Gnoblin event");
+    if (context->consumed)
+        return luaL_error(state, "gnoblin.input.text_target cannot reuse a consumed FocusContext");
+    if (!context->subscription || !context->subscription->active ||
+        !context->subscription->connection || context->subscription->cli != cli)
+        return luaL_error(state, "gnoblin.input.text_target requires its active event connection");
+
+    JsonObject* arguments = json_object_new();
+    json_object_set_string_member(arguments, "focus_context", context->token);
+    context->consumed = TRUE;
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = cli_lua_call_compositor_on_subscription(
+        context->subscription, "input.text_target", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "input.text_target failed: %s",
+                          call_error ? call_error->message : "compositor request failed");
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "input.text_target returned an invalid result");
+    lua_cli_push_text_target(state, context->subscription, json_node_get_object(result));
+    return 1;
 }
 
 static int lua_cli_workspace_tostring(lua_State* state) {
@@ -5551,6 +5750,28 @@ static void register_lua_cli_snap_context(lua_State* state) {
     lua_pop(state, 1);
 }
 
+static void register_lua_cli_text_target(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_TEXT_TARGET_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_window_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_text_target_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_text_target_gc);
+    lua_setfield(state, -2, "__gc");
+    lua_pushcfunction(state, lua_cli_text_target_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pushliteral(state, "TextTarget");
+    lua_setfield(state, -2, "__metatable");
+    lua_pop(state, 1);
+}
+
 static void register_lua_cli_event_subscription(lua_State* state) {
     if (!luaL_newmetatable(state, GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE)) {
         lua_pop(state, 1);
@@ -5859,6 +6080,11 @@ static int lua_api_index(lua_State* state) {
         return 1;
     }
     if (g_str_equal(prefix, "input")) {
+        if (g_str_equal(name, "text_target")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state, lua_cli_input_text_target, 1);
+            return 1;
+        }
         if (g_str_equal(name, "devices") || g_str_equal(name, "sources") ||
             g_str_equal(name, "current_source") || g_str_equal(name, "orientation_lock") ||
             g_str_equal(name, "list") || g_str_equal(name, "current")) {
@@ -6076,6 +6302,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_event_subscription(state);
     register_lua_cli_focus_context(state);
     register_lua_cli_snap_context(state);
+    register_lua_cli_text_target(state);
     register_lua_cli_window_record(state);
     register_lua_cli_workspace_record(state);
     register_lua_cli_monitor_record(state);

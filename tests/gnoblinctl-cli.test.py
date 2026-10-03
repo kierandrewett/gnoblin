@@ -127,9 +127,36 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
             "    assert(result.committed and result.window_id == window.id)\n"
             "    assert(not pcall(function() snap:commit(target) end))\n"
             '    print("FOCUS_CONTEXT_SNAP_OK")\n'
+            '  elseif event.action == "text" then\n'
+            "    local original_metatable = debug.getmetatable(event.focus_context)\n"
+            "    debug.setmetatable(event.focus_context, debug.getmetatable(subscription))\n"
+            "    assert(not pcall(function() gnoblin.input.text_target(event.focus_context) end))\n"
+            "    debug.setmetatable(event.focus_context, original_metatable)\n"
+            "    local target = gnoblin.input.text_target(event.focus_context)\n"
+            '    assert(type(target) == "userdata" and target.window_id == window.id)\n'
+            "    assert(target.caret.x == 4.5 and target.caret.height == 18)\n"
+            "    assert(target.target == nil and target.token == nil)\n"
+            '    assert(tostring(target) == "TextTarget<window-1>")\n'
+            '    assert(not pcall(function() target.window_id = "forged" end))\n'
+            "    assert(not pcall(function() target.caret.x = 0 end))\n"
+            '    local inserted = target:insert_text("hello 😀")\n'
+            "    assert(inserted.inserted)\n"
+            "    assert(not pcall(function() inserted.inserted = false end))\n"
+            '    assert(not pcall(function() target:insert_text("again") end))\n'
+            '    assert(tostring(event.focus_context) == "FocusContext<consumed>")\n'
+            '    print("FOCUS_CONTEXT_TEXT_OK")\n'
+            '  elseif event.action == "text-invalid" then\n'
+            "    local target = gnoblin.input.text_target(event.focus_context)\n"
+            '    assert(tostring(target) == "TextTarget<unknown>")\n'
+            "    assert(target.window_id == nil)\n"
+            "    assert(target.caret == nil)\n"
+            "    local ok, err = pcall(function() target:insert_text('bad\\ntext') end)\n"
+            '    assert(not ok and err:match("without control characters"))\n'
+            '    assert(not pcall(function() target:insert_text("again") end))\n'
+            '    print("FOCUS_CONTEXT_TEXT_INVALID_OK")\n'
             '  else error("unexpected action: " .. tostring(event.action)) end\n'
             "  count = count + 1\n"
-            "  if count == 3 then subscription:unsubscribe() end\n"
+            "  if count == 5 then subscription:unsubscribe() end\n"
             "end)\n",
             encoding="utf-8",
         )
@@ -243,6 +270,16 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
                                     "action": "snap",
                                     "focus_context": "snap-token",
                                 },
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "text",
+                                    "focus_context": "text-token",
+                                },
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "text-invalid",
+                                    "focus_context": "invalid-text-token",
+                                },
                             )
                         )
                     )
@@ -282,10 +319,33 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
                             },
                             {"window_id": "window-1", "monitor_id": "HDMI-1", "committed": True},
                         ),
+                        (
+                            "input.text_target",
+                            {"focus_context": "text-token"},
+                            {
+                                "target": "b" * 64,
+                                "window_id": "window-1",
+                                "caret": {"x": 4.5, "y": 2.0, "width": 0.0, "height": 18.0},
+                            },
+                        ),
+                        (
+                            "input.insert_text",
+                            {"target": "b" * 64, "text": "hello 😀"},
+                            {"inserted": True},
+                        ),
+                        (
+                            "input.text_target",
+                            {"focus_context": "invalid-text-token"},
+                            {
+                                "target": "c" * 64,
+                            },
+                        ),
                     ):
                         request, on_buffer = read_bound_request(server, on_connection, on_buffer)
                         assert request["op"] == "api" and request["method"] == expected_method, request
                         assert request["arguments"] == expected_arguments, request
+                        if expected_method in {"input.text_target", "input.insert_text"}:
+                            assert request["api_version"] == {"major": 1, "minor": 28}, request
                         send(on_connection, {"event": "reply", "id": request["id"], "result": result})
 
                     on_connection.settimeout(3)
@@ -306,6 +366,8 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
         assert "FOCUS_CONTEXT_MOVE_OK" in result.stdout, result.stdout
         assert "FOCUS_CONTEXT_RESIZE_OK" in result.stdout, result.stdout
         assert "FOCUS_CONTEXT_SNAP_OK" in result.stdout, result.stdout
+        assert "FOCUS_CONTEXT_TEXT_OK" in result.stdout, result.stdout
+        assert "FOCUS_CONTEXT_TEXT_INVALID_OK" in result.stdout, result.stdout
         return result
 
 
