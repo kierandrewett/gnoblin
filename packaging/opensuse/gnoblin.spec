@@ -78,6 +78,10 @@ ln -s %{_prefix}/bin/gnoblin %{buildroot}/usr/bin/gnoblin
 ln -s %{_prefix}/bin/gnoblinctl %{buildroot}/usr/bin/gnoblinctl
 install -m 0644 %{buildroot}%{_datadir}/wayland-sessions/gnoblin.desktop \
   %{buildroot}/usr/share/wayland-sessions/gnoblin.desktop
+install -Dm644 %{buildroot}%{_prefix}/lib/systemd/user/gnoblin-session.target \
+  %{buildroot}/usr/lib/systemd/user/gnoblin-session.target
+install -Dm644 %{buildroot}%{_prefix}/lib/systemd/user/gnoblin-idle.service \
+  %{buildroot}/usr/lib/systemd/user/gnoblin-idle.service
 sed -i -e 's|^Exec=.*|Exec=%{_prefix}/bin/gnoblin|' \
   -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' \
   %{buildroot}/usr/share/wayland-sessions/gnoblin.desktop
@@ -101,6 +105,8 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/bin/gnoblin
 /usr/bin/gnoblinctl
 /usr/share/wayland-sessions/gnoblin.desktop
+/usr/lib/systemd/user/gnoblin-session.target
+/usr/lib/systemd/user/gnoblin-idle.service
 
 %package -n gnoblin-gnome-integration
 Summary:        Optional GNOME application services for Gnoblin

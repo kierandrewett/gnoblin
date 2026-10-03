@@ -43,6 +43,8 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         content = (SPECS / "gnoblin.spec").read_text()
         normalized_content = " ".join(content.split())
         self.assertIn("/usr/share/wayland-sessions/gnoblin.desktop", content)
+        self.assertIn("/usr/lib/systemd/user/gnoblin-session.target", content)
+        self.assertIn("/usr/lib/systemd/user/gnoblin-idle.service", content)
         self.assertIn("scripts/install-session.sh %{_prefix}", content)
         install = (ROOT / "scripts/install-session.sh").read_text()
         self.assertIn("systemd-user/gnoblin-session.target", install)
