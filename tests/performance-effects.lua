@@ -16,13 +16,11 @@ return {
         },
         {
             match = { type = "window" },
-            borders = {
-                ["inner-width"] = 1,
-                ["inner-color"] = "#505050bf",
-                ["outer-width"] = 1,
-                ["outer-color"] = "#00000080",
+            corners = {
                 radius = 14,
                 smoothing = 0.0,
+                border_width = 1,
+                border_color = "#505050bf",
             },
         },
         {
