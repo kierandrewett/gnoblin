@@ -50,7 +50,6 @@ Gnoblin leaves the window in place and logs a warning.
 | `opacity`             | Number 0–1; affects content and text                                       |
 | `blur_ignore_shadows` | Boolean; default `false`                                                   |
 | `corners`             | Corner fields below                                                        |
-| `borders`             | Border fields below                                                        |
 | `shader`              | GLSL file path; `""` clears it                                             |
 | `shader_uniforms`     | Up to 64 uniform names mapped to finite numeric values                     |
 | `animation`           | Built-in or registered animation name, or an event map                     |
@@ -85,27 +84,23 @@ with their parent. See the [workspaces section of the window rules guide](/guide
 | `shadow`                        | `false`          | `true` for the default shadow, one table, or a list of 1–4 layers         |
 | `keep_shadow`                   | `false`          | Keep replacement shadows in maximised/fullscreen/tiled states             |
 
-## Borders and shadows
+## Shadows
 
-The `borders` table is available in the optional GNOME Shell compatibility
-session. In the standalone session, use `corners.border_width` and
-`corners.border_color` for one outline. Positive widths draw inward; negative
-widths draw outward where the client's existing buffer has room.
+The single native outline is configured by `corners.border_width` and
+`corners.border_color` above. Positive widths draw inward; negative widths
+draw outward where the client's existing buffer has room. The `corners.shadow`
+field accepts `false`, `true` for the default, one table, or a list of 1–4
+shadow layers.
 
-| Field                                                                     | Values / default                                           |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `borders.inner_width`, `borders.outer_width`                              | 0–40 logical pixels; default 0                             |
-| `borders.inner_color`, `borders.outer_color`                              | `#RRGGBB` or `#RRGGBBAA`                                   |
-| `borders.radius`, `borders.smoothing`, `borders.padding`                  | Inherit corners; same ranges                               |
-| `borders.keep_maximized`, `borders.keep_fullscreen`, `borders.keep_tiled` | Boolean; `false` hides borders in that state               |
-| `corners.shadow`                                                          | `false`, `true`, one table, or a list of 1–4 layer tables  |
-| `corners.shadow.{x, y, spread}`                                           | Defaults `0`, `4`, `4`; −100–100                           |
-| `corners.shadow.blur`                                                     | Default `28`; 0–100                                        |
-| `corners.shadow.opacity`                                                  | Default `0.6`; 0–1                                         |
-| `corners.shadow.color`                                                    | Default `#000000ff`; `#RRGGBB` or `#RRGGBBAA`              |
-| `corners.shadow_animation.animation`                                      | Animation name that supports the `shadow-change` event     |
-| `corners.shadow_animation.duration`                                       | 0–2000 ms; default 0                                       |
-| `corners.shadow_animation.easing`                                         | Same easing values as `gnoblin.configure` shell animations |
+| Field                                | Values / default                                           |
+| ------------------------------------ | ---------------------------------------------------------- |
+| `corners.shadow.{x, y, spread}`      | Defaults `0`, `4`, `4`; −100–100                           |
+| `corners.shadow.blur`                | Default `28`; 0–100                                        |
+| `corners.shadow.opacity`             | Default `0.6`; 0–1                                         |
+| `corners.shadow.color`               | Default `#000000ff`; `#RRGGBB` or `#RRGGBBAA`              |
+| `corners.shadow_animation.animation` | Animation name that supports the `shadow-change` event     |
+| `corners.shadow_animation.duration`  | 0–2000 ms; default 0                                       |
+| `corners.shadow_animation.easing`    | Same easing values as `gnoblin.configure` shell animations |
 
 ## Animation fields
 
@@ -233,13 +228,6 @@ gnoblin.window_rule {
             duration = integer?, -- 0–2000 ms
             easing = "linear" | "ease-out-cubic" | "ease-out-quad" | "ease-in-out-cubic"?,
         }?,
-    }?,
-    borders = {
-        inner_width = number?, outer_width = number?,
-        inner_color = string?, outer_color = string?,
-        radius = number?, smoothing = number?,
-        padding = {number, number, number, number}?,
-        keep_maximized = boolean?, keep_fullscreen = boolean?, keep_tiled = boolean?,
     }?,
     frame = {
         mode = "off" | "auto" | "prefer-server" | "replace"?,

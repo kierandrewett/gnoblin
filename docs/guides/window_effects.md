@@ -82,11 +82,10 @@ If blur appears behind an app's shadow, `blur_ignore_shadows = true` excludes
 translucent black pixels. It also excludes translucent black backgrounds.
 Shell developers can avoid that guesswork by [specifying a blur region](/background-effects).
 
-## Inner and outer window borders
+## Window outlines
 
-The `borders` table below is available in the optional GNOME Shell
-compatibility session. For a standalone Gnoblin session, use the single
-outline fields in `corners` instead:
+Gnoblin draws one native outline around each window. Set its width and colour
+inside `corners`:
 
 ```lua
 gnoblin.window_rule {
@@ -100,30 +99,15 @@ gnoblin.window_rule {
 ```
 
 Positive widths draw inside the rounded edge. Negative widths draw outside
-where the client buffer has room. The outline follows the corner state policy
-and is disabled when `mode = "off"`.
-
-```lua
-gnoblin.window_rule {
-    match = {type = "window"},
-    borders = {
-        inner_width = 1,
-        inner_color = "#505050ff",
-        outer_width = 0,
-    },
-}
-```
-
-This draws a one-pixel border inside the window's edge. Both widths accept
-0–40 logical pixels and default to 0. An outer border draws beyond the edge;
-neither border changes the space available to the app.
+where the client buffer has room. Width accepts −40 to 40 logical pixels and
+defaults to 0.
 
 Colours use `#RRGGBB` or `#RRGGBBAA`. The last two digits control transparency:
 `ff` is opaque and `00` is transparent.
 
-Borders follow the corner radius, smoothing and padding unless you set those
-fields inside `borders`. Set `keep_maximized`, `keep_fullscreen` or `keep_tiled`
-to `false` there to hide the border in that state.
+The outline follows the `corners` state policy, including `keep_maximized`, and
+is disabled when `mode = "off"`. See the
+[corner reference](/config/window_rule#corners) for all options.
 
 ## Shadows
 
