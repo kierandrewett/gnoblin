@@ -45,10 +45,14 @@ Keep an existing GNOME or other session available while testing these package
 paths.
 
 Gnoblin uses the portal backend selected by its XDG portal configuration. The
-Gnoblin backend is optional, and users can select another installed backend.
-An existing GNOME session keeps its own portal selection. Distribution
-packages use the same lean session launcher as the source tarball; GNOME
-Session and Settings Daemon are not required for Gnoblin's login entry.
+optional `gnoblin-portal` package installs a desktop-specific default that
+prefers Gnoblin's backend, with an installed-backend fallback.
+
+You can route interfaces to another backend in the Lua config. The default
+applies only to a Gnoblin session, so an existing GNOME session keeps its own
+portal selection. Distribution packages use the same lean session launcher as
+the source tarball; GNOME Session and Settings Daemon are not required for
+Gnoblin's login entry.
 
 On a minimal install, add [GNOME application services](gnome-apps.md) only if
 you need them. GNOME apps install their own library dependencies; the optional

@@ -15,10 +15,13 @@ sudo dnf --setopt=install_weak_deps=False install --refresh gnoblin
 
 `gnoblin` installs the Lua-supervised session and its private Mutter runtime.
 It does not install GNOME Shell, GJS, or a portal backend. Install
-`gnoblin-portal` if you want Gnoblin's GTK-based backend; otherwise install and
-select any portal backend you prefer. To add Gnoblin's backend, run
-`sudo dnf install gnoblin-portal`. This command skips packages recommended by
-dependencies. Install any optional services you need using the commands below.
+`gnoblin-portal` to add Gnoblin's GTK-based backend and its Gnoblin-session
+default routing. The default prefers Gnoblin, then an installed backend.
+
+To route individual interfaces to other backends, use the Lua config. Install
+the backend with `sudo dnf install gnoblin-portal`; this command skips packages
+recommended by dependencies. Install optional services you need using the
+commands below.
 
 Gnoblin uses the portal backend selected for its session. If GNOME is also
 installed, that session keeps using its own portal configuration and backend.
