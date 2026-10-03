@@ -1,0 +1,193 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] input: read keyboard accessibility settings from Lua config
+
+---
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+index 213f18cdd..b38732852 100644
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -198,6 +198,46 @@ meta_input_settings_dispose (GObject *object)
+ 
+ /* Gnoblin input settings are an in-memory overlay. The desktop schemas remain
+  * the fallback for keys that Gnoblin does not specify. */
++typedef struct
++{
++  const char *key;
++  const char *group;
++  const char *name;
++} GnoblinKeyboardA11ySetting;
++
++static const GnoblinKeyboardA11ySetting keyboard_a11y_settings[] = {
++  { "enable",                    NULL,           "shortcuts-enabled" },
++  { "feature-state-change-beep", NULL,           "beep-on-feature-state-change" },
++  { "mousekeys-enable",          "mouse-keys",  "enabled" },
++  { "mousekeys-init-delay",      "mouse-keys",  "initial-delay-ms" },
++  { "mousekeys-max-speed",       "mouse-keys",  "max-speed" },
++  { "mousekeys-accel-time",      "mouse-keys",  "acceleration-time-ms" },
++  { "slowkeys-enable",           "slow-keys",   "enabled" },
++  { "slowkeys-delay",            "slow-keys",   "delay-ms" },
++  { "slowkeys-beep-press",       "slow-keys",   "beep-on-press" },
++  { "slowkeys-beep-accept",      "slow-keys",   "beep-on-accept" },
++  { "slowkeys-beep-reject",      "slow-keys",   "beep-on-reject" },
++  { "bouncekeys-enable",         "bounce-keys", "enabled" },
++  { "bouncekeys-delay",          "bounce-keys", "delay-ms" },
++  { "bouncekeys-beep-reject",    "bounce-keys", "beep-on-reject" },
++  { "togglekeys-enable",         "toggle-keys", "enabled" },
++  { "stickykeys-enable",         "sticky-keys", "enabled" },
++  { "stickykeys-modifier-beep",  "sticky-keys", "beep-on-modifier" },
++  { "stickykeys-two-key-off",    "sticky-keys", "two-key-off" },
++};
++
++static const GnoblinKeyboardA11ySetting *
++find_keyboard_a11y_setting (const char *key)
++{
++  guint i;
++
++  for (i = 0; i < G_N_ELEMENTS (keyboard_a11y_settings); i++)
++    if (g_str_equal (keyboard_a11y_settings[i].key, key))
++      return &keyboard_a11y_settings[i];
++
++  return NULL;
++}
++
+ static GVariant *
+ gnoblin_setting (MetaInputSettings *input_settings,
+                  GSettings         *settings,
+@@ -213,6 +253,46 @@ gnoblin_setting (MetaInputSettings *input_settings,
+   if (!priv->gnoblin_config)
+     return NULL;
+ 
++  if (settings == priv->keyboard_a11y_settings)
++    {
++      const GnoblinKeyboardA11ySetting *a11y_setting =
++        find_keyboard_a11y_setting (key);
++      g_autoptr (GVariant) keyboard = NULL;
++      g_autoptr (GVariant) accessibility = NULL;
++      g_autoptr (GVariant) a11y_group_dict = NULL;
++
++      if (!a11y_setting)
++        return NULL;
++
++      keyboard = g_variant_lookup_value (priv->gnoblin_config, "keyboard",
++                                         G_VARIANT_TYPE_VARDICT);
++      if (!keyboard)
++        return NULL;
++
++      accessibility = g_variant_lookup_value (keyboard, "accessibility",
++                                               G_VARIANT_TYPE_VARDICT);
++      if (!accessibility)
++        return NULL;
++
++      if (a11y_setting->group)
++        {
++          a11y_group_dict = g_variant_lookup_value (accessibility, a11y_setting->group,
++                                                    G_VARIANT_TYPE_VARDICT);
++          if (!a11y_group_dict)
++            return NULL;
++        }
++      else
++        a11y_group_dict = g_variant_ref (accessibility);
++
++      value = g_variant_lookup_value (a11y_group_dict, a11y_setting->name, NULL);
++      if (value &&
++          g_variant_is_of_type (value, G_VARIANT_TYPE_STRING) &&
++          g_str_equal (g_variant_get_string (value, NULL), "inherit"))
++        g_clear_pointer (&value, g_variant_unref);
++
++      return value;
++    }
++
+   if (settings == priv->mouse_settings)
+     group = "mouse";
+   else if (settings == priv->touchpad_settings)
+@@ -340,11 +420,22 @@ input_get_int (MetaInputSettings *input_settings,
+                const char        *key)
+ {
+   GVariant *value = gnoblin_setting (input_settings, settings, key);
+-  gint result = value && g_variant_is_of_type (value, G_VARIANT_TYPE_INT32)
+-                ? g_variant_get_int32 (value)
+-                : input_settings_has_key (input_settings, settings, key)
+-                  ? g_settings_get_int (settings, key)
+-                  : 0;
++  gint result = 0;
++
++  if (value && g_variant_is_of_type (value, G_VARIANT_TYPE_INT32))
++    result = g_variant_get_int32 (value);
++  else if (value && g_variant_is_of_type (value, G_VARIANT_TYPE_INT64))
++    {
++      gint64 wide_value = g_variant_get_int64 (value);
++
++      if (wide_value >= G_MININT && wide_value <= G_MAXINT)
++        result = (gint) wide_value;
++      else if (input_settings_has_key (input_settings, settings, key))
++        result = g_settings_get_int (settings, key);
++    }
++  else if (input_settings_has_key (input_settings, settings, key))
++    result = g_settings_get_int (settings, key);
++
+   g_clear_pointer (&value, g_variant_unref);
+   return result;
+ }
+@@ -1699,16 +1790,21 @@ load_keyboard_a11y_settings (MetaInputSettings *input_settings)
+ 
+   kbd_a11y_settings.timeout_delay = g_settings_get_int (priv->keyboard_a11y_settings,
+                                                         "disable-timeout");
+-  kbd_a11y_settings.slowkeys_delay = g_settings_get_int (priv->keyboard_a11y_settings,
+-                                                         "slowkeys-delay");
+-  kbd_a11y_settings.debounce_delay = g_settings_get_int (priv->keyboard_a11y_settings,
+-                                                         "bouncekeys-delay");
+-  kbd_a11y_settings.mousekeys_init_delay = g_settings_get_int (priv->keyboard_a11y_settings,
+-                                                               "mousekeys-init-delay");
+-  kbd_a11y_settings.mousekeys_max_speed = g_settings_get_int (priv->keyboard_a11y_settings,
+-                                                              "mousekeys-max-speed");
+-  kbd_a11y_settings.mousekeys_accel_time = g_settings_get_int (priv->keyboard_a11y_settings,
+-                                                               "mousekeys-accel-time");
++  kbd_a11y_settings.slowkeys_delay = input_get_int (input_settings,
++                                                    priv->keyboard_a11y_settings,
++                                                    "slowkeys-delay");
++  kbd_a11y_settings.debounce_delay = input_get_int (input_settings,
++                                                    priv->keyboard_a11y_settings,
++                                                    "bouncekeys-delay");
++  kbd_a11y_settings.mousekeys_init_delay = input_get_int (input_settings,
++                                                          priv->keyboard_a11y_settings,
++                                                          "mousekeys-init-delay");
++  kbd_a11y_settings.mousekeys_max_speed = input_get_int (input_settings,
++                                                         priv->keyboard_a11y_settings,
++                                                         "mousekeys-max-speed");
++  kbd_a11y_settings.mousekeys_accel_time = input_get_int (input_settings,
++                                                          priv->keyboard_a11y_settings,
++                                                          "mousekeys-accel-time");
+ 
+   priv->kbd_a11y_settings = kbd_a11y_settings;
+   g_signal_emit (input_settings, signals[KBD_A11Y_CHANGED], 0, &priv->kbd_a11y_settings);
+@@ -1725,9 +1821,17 @@ meta_input_settings_notify_kbd_a11y_change (MetaInputSettings     *input_setting
+   for (i = 0; i < G_N_ELEMENTS (keyboard_a11y_settings_flags_pair); i++)
+     {
+       if (keyboard_a11y_settings_flags_pair[i].flag & what_changed)
+-        g_settings_set_boolean (priv->keyboard_a11y_settings,
+-                                keyboard_a11y_settings_flags_pair[i].name,
+-                                (new_flags & keyboard_a11y_settings_flags_pair[i].flag) ? TRUE : FALSE);
++        {
++          g_autoptr (GVariant) override =
++            gnoblin_setting (input_settings, priv->keyboard_a11y_settings,
++                             keyboard_a11y_settings_flags_pair[i].name);
++
++          if (!override)
++            g_settings_set_boolean (priv->keyboard_a11y_settings,
++                                    keyboard_a11y_settings_flags_pair[i].name,
++                                    (new_flags & keyboard_a11y_settings_flags_pair[i].flag)
++                                    ? TRUE : FALSE);
++        }
+     }
+ }
+ 
+@@ -2475,6 +2579,7 @@ meta_display_apply_gnoblin_input_config (MetaDisplay *display,
+ 
+   apply_device_settings (input_settings, NULL);
+   update_keyboard_repeat (input_settings);
++  load_keyboard_a11y_settings (input_settings);
+ 
+   g_hash_table_iter_init (&iter, priv->mappable_devices);
+   while (g_hash_table_iter_next (&iter, NULL, &value))

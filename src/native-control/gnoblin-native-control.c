@@ -3328,6 +3328,7 @@ typedef enum {
     INPUT_STRINGS,
     INPUT_CHOICE,
     INPUT_ACCEL_CURVE,
+    INPUT_ACCESSIBILITY,
 } InputKind;
 
 typedef struct {
@@ -3366,6 +3367,25 @@ static const InputField input_fields[] = {
     {"keyboard", "remember-numlock-state", INPUT_BOOLEAN},
     {"keyboard", "numlock-state", INPUT_BOOLEAN},
     {"keyboard", "xkb-options", INPUT_STRINGS},
+    {"keyboard", "accessibility", INPUT_ACCESSIBILITY},
+    {"keyboard-accessibility", "shortcuts-enabled", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "beep-on-feature-state-change", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "bounce-keys.enabled", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "bounce-keys.delay-ms", INPUT_INTEGER, NULL, 0, 10000},
+    {"keyboard-accessibility", "bounce-keys.beep-on-reject", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "mouse-keys.enabled", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "mouse-keys.max-speed", INPUT_INTEGER, NULL, 1, 10000},
+    {"keyboard-accessibility", "mouse-keys.acceleration-time-ms", INPUT_INTEGER, NULL, 1, 10000},
+    {"keyboard-accessibility", "mouse-keys.initial-delay-ms", INPUT_INTEGER, NULL, 0, 10000},
+    {"keyboard-accessibility", "slow-keys.enabled", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "slow-keys.delay-ms", INPUT_INTEGER, NULL, 0, 10000},
+    {"keyboard-accessibility", "slow-keys.beep-on-press", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "slow-keys.beep-on-accept", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "slow-keys.beep-on-reject", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "sticky-keys.enabled", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "sticky-keys.two-key-off", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "sticky-keys.beep-on-modifier", INPUT_BOOLEAN},
+    {"keyboard-accessibility", "toggle-keys.enabled", INPUT_BOOLEAN},
     {"tablets", "mapping", INPUT_CHOICE, "absolute relative"},
     {"tablets", "left-handed", INPUT_BOOLEAN},
     {"tablets", "keep-aspect", INPUT_BOOLEAN},
@@ -3391,7 +3411,25 @@ static const InputField* find_input_field(const char* group, const char* name) {
     return NULL;
 }
 
-static GVariant* normalize_input_value(const InputField* field, GVariant* value) {
+static gboolean input_is_inherit(GVariant* value) {
+    return g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+           g_str_equal(g_variant_get_string(value, NULL), "inherit");
+}
+
+static gboolean input_accessibility_section_known(const char* section) {
+    g_autofree char* prefix = g_strdup_printf("%s.", section);
+    for (guint i = 0; i < G_N_ELEMENTS(input_fields); i++)
+        if (g_str_equal(input_fields[i].group, "keyboard-accessibility") &&
+            g_str_has_prefix(input_fields[i].name, prefix))
+            return TRUE;
+    return FALSE;
+}
+
+static GVariant* normalize_input_accessibility(GVariant* accessibility, GError** error);
+
+static GVariant* normalize_input_value(const InputField* field, GVariant* value, GError** error) {
+    if (field->kind == INPUT_ACCESSIBILITY)
+        return normalize_input_accessibility(value, error);
     if (field->kind == INPUT_ACCEL_CURVE && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
         GVariantBuilder curve;
         GVariantIter iter;
@@ -3496,16 +3534,19 @@ static GVariant* normalize_input_value(const InputField* field, GVariant* value)
             return g_variant_ref_sink(g_variant_new_double(number));
     }
     if (field->kind == INPUT_INTEGER) {
-        gint64 number;
+        double number;
         if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
-            number = g_variant_get_int64(value);
+            number = (double)g_variant_get_int64(value);
         else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32))
-            number = g_variant_get_int32(value);
+            number = (double)g_variant_get_int32(value);
         else if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32))
-            number = g_variant_get_uint32(value);
+            number = (double)g_variant_get_uint32(value);
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
+            number = g_variant_get_double(value);
         else
             return NULL;
-        if (number >= field->minimum && number <= field->maximum)
+        if (isfinite(number) && number >= field->minimum && number <= field->maximum &&
+            number == floor(number))
             return g_variant_ref_sink(g_variant_new_int32((gint32)number));
     }
     if (field->kind == INPUT_MILLISECONDS) {
@@ -3533,6 +3574,83 @@ static GVariant* normalize_input_value(const InputField* field, GVariant* value)
     return NULL;
 }
 
+static GVariant* normalize_input_accessibility(GVariant* accessibility, GError** error) {
+    if (!g_variant_is_of_type(accessibility, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "input.keyboard.accessibility must be a table");
+        return NULL;
+    }
+
+    GVariantBuilder normalized;
+    GVariantIter iter;
+    const char* name;
+    GVariant* value;
+    g_variant_builder_init(&normalized, G_VARIANT_TYPE_VARDICT);
+    g_variant_iter_init(&iter, accessibility);
+    while (g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+        g_autoptr(GVariant) member = value;
+        if (input_is_inherit(member))
+            continue;
+
+        const InputField* field = find_input_field("keyboard-accessibility", name);
+        if (field) {
+            g_autoptr(GVariant) converted = normalize_input_value(field, member, error);
+            if (!converted) {
+                if (!error || !*error)
+                    g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "input.keyboard.accessibility.%s: invalid value", name);
+                g_variant_builder_clear(&normalized);
+                return NULL;
+            }
+            g_variant_builder_add(&normalized, "{sv}", name, g_variant_ref(converted));
+            continue;
+        }
+
+        if (!input_accessibility_section_known(name)) {
+            g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                        "unknown input setting: input.keyboard.accessibility.%s", name);
+            g_variant_builder_clear(&normalized);
+            return NULL;
+        }
+        if (!g_variant_is_of_type(member, G_VARIANT_TYPE_VARDICT)) {
+            g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                        "input.keyboard.accessibility.%s must be a table or inherit", name);
+            g_variant_builder_clear(&normalized);
+            return NULL;
+        }
+
+        GVariantBuilder section;
+        GVariantIter section_iter;
+        const char* field_name;
+        GVariant* field_value;
+        g_variant_builder_init(&section, G_VARIANT_TYPE_VARDICT);
+        g_variant_iter_init(&section_iter, member);
+        while (g_variant_iter_next(&section_iter, "{&sv}", &field_name, &field_value)) {
+            g_autoptr(GVariant) setting = field_value;
+            if (input_is_inherit(setting))
+                continue;
+            g_autofree char* qualified_name = g_strdup_printf("%s.%s", name, field_name);
+            field = find_input_field("keyboard-accessibility", qualified_name);
+            g_autoptr(GVariant) converted =
+                field ? normalize_input_value(field, setting, error) : NULL;
+            if (!converted) {
+                if (!error || !*error)
+                    g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "input.keyboard.accessibility.%s.%s is unsupported or invalid",
+                                name, field_name);
+                g_variant_builder_clear(&section);
+                g_variant_builder_clear(&normalized);
+                return NULL;
+            }
+            g_variant_builder_add(&section, "{sv}", field_name, g_variant_ref(converted));
+        }
+        g_autoptr(GVariant) converted_section = g_variant_ref_sink(g_variant_builder_end(&section));
+        if (g_variant_n_children(converted_section) > 0)
+            g_variant_builder_add(&normalized, "{sv}", name, g_variant_ref(converted_section));
+    }
+    return g_variant_ref_sink(g_variant_builder_end(&normalized));
+}
+
 static GVariant* normalize_input_fields(const char* group, GVariant* fields, GError** error) {
     if (!g_variant_is_of_type(fields, G_VARIANT_TYPE_VARDICT))
         goto invalid_group;
@@ -3554,11 +3672,12 @@ static GVariant* normalize_input_fields(const char* group, GVariant* fields, GEr
         if (g_variant_is_of_type(current, G_VARIANT_TYPE_STRING) &&
             g_str_equal(g_variant_get_string(current, NULL), "inherit"))
             continue;
-        g_autoptr(GVariant) normalized = normalize_input_value(field, current);
+        g_autoptr(GVariant) normalized = normalize_input_value(field, current, error);
         if (!normalized) {
             g_variant_builder_clear(&converted);
-            g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                        "input.%s.%s: invalid value", group, name);
+            if (!error || !*error)
+                g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "input.%s.%s: invalid value", group, name);
             return NULL;
         }
         g_variant_builder_add(&converted, "{sv}", name, g_variant_ref(normalized));
