@@ -24,6 +24,7 @@ gnoblin.configure {
         raise_on_click = true,
         auto_raise = false,
         auto_raise_delay = 500, -- milliseconds, 0..10000
+        check_alive_timeout = 5000, -- client liveness ping timeout in milliseconds; 0 disables it
         focus_change_on_pointer_rest = false,
         workspaces_only_on_primary = false,
         edge_tiling = false,
