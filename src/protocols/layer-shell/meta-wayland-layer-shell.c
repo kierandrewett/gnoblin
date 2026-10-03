@@ -173,6 +173,8 @@ static const char* snapshot_keyboard_name(guint keyboard_interactivity) {
 }
 
 GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const char* monitor_id) {
+    MetaWaylandLayerSurface* layer_surface;
+    MetaWaylandSurface* surface;
     guint layer_value;
     guint keyboard_value;
     guint anchor_value;
@@ -197,6 +199,14 @@ GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const
     };
 
     if (!window || !g_object_get_data(G_OBJECT(window), META_WAYLAND_LAYER_SHELL_SNAPSHOT_KEY))
+        return NULL;
+
+    layer_surface = g_object_get_data(G_OBJECT(window), "gnoblin-layer-surface");
+    if (!layer_surface || !META_IS_WAYLAND_LAYER_SURFACE(layer_surface))
+        return NULL;
+
+    surface = meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(layer_surface));
+    if (!surface)
         return NULL;
 
     layer_value = GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(window),
@@ -247,7 +257,8 @@ GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const
     g_variant_builder_add(&geometry, "{sv}", "width", g_variant_new_int32(frame.width));
     g_variant_builder_add(&geometry, "{sv}", "height", g_variant_new_int32(frame.height));
     g_variant_builder_add(&record, "{sv}", "geometry", g_variant_builder_end(&geometry));
-    g_variant_builder_add(&record, "{sv}", "mapped", g_variant_new_boolean(window->mapped));
+    g_variant_builder_add(&record, "{sv}", "mapped",
+                          g_variant_new_boolean(meta_wayland_surface_get_buffer(surface) != NULL));
 
     return g_variant_ref_sink(g_variant_builder_end(&record));
 }
