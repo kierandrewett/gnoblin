@@ -4490,7 +4490,7 @@ static gboolean refresh_input_sources(GnoblinNativeControl* control, GVariant* d
         document ? g_variant_lookup_value(document, "input-sources", G_VARIANT_TYPE_VARDICT) : NULL;
     gboolean per_window = FALSE;
     if (config)
-        g_variant_lookup(config, "per_window", "b", &per_window);
+        g_variant_lookup(config, "per-window", "b", &per_window);
     gboolean changed =
         !input_source_id_lists_equal(control->configured_input_source_ids, xkb_ids) ||
         !input_source_id_lists_equal(control->configured_ibus_source_ids, ibus_ids) ||
