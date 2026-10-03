@@ -113,9 +113,23 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
             '    result = window:begin_resize("north_east", event.focus_context)\n'
             "    assert(result.started)\n"
             '    print("FOCUS_CONTEXT_RESIZE_OK")\n'
+            '  elseif event.action == "snap" then\n'
+            "    local snap = gnoblin.windows.snap_context(event.focus_context)\n"
+            '    assert(type(snap) == "userdata" and snap.window_id == window.id)\n'
+            '    assert(snap.monitor_id == "HDMI-1" and snap.monitor.width == 1920)\n'
+            "    assert(snap.work_area.height == 1040 and snap.context == nil)\n"
+            "    assert(snap.expires_at_us == nil)\n"
+            '    assert(tostring(snap) == "SnapContext<window-1>")\n'
+            '    assert(not pcall(function() snap.window_id = "forged" end))\n'
+            "    local target = {monitor_id = snap.monitor_id, frame = {x = 0, y = 0, width = 960, height = 1040}}\n"
+            "    assert(not pcall(function() snap:commit({monitor_id = snap.monitor_id}) end))\n"
+            "    result = snap:commit(target)\n"
+            "    assert(result.committed and result.window_id == window.id)\n"
+            "    assert(not pcall(function() snap:commit(target) end))\n"
+            '    print("FOCUS_CONTEXT_SNAP_OK")\n'
             '  else error("unexpected action: " .. tostring(event.action)) end\n'
             "  count = count + 1\n"
-            "  if count == 2 then subscription:unsubscribe() end\n"
+            "  if count == 3 then subscription:unsubscribe() end\n"
             "end)\n",
             encoding="utf-8",
         )
@@ -224,6 +238,11 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
                                     "action": "resize",
                                     "focus_context": "resize-token",
                                 },
+                                {
+                                    "event": "gnoblin.shortcut.activated",
+                                    "action": "snap",
+                                    "focus_context": "snap-token",
+                                },
                             )
                         )
                     )
@@ -241,6 +260,27 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
                                 "focus_context": "resize-token",
                             },
                             {"started": True},
+                        ),
+                        (
+                            "window.snap_context",
+                            {"focus_context": "snap-token"},
+                            {
+                                "context": "a" * 64,
+                                "window_id": "window-1",
+                                "monitor_id": "HDMI-1",
+                                "monitor": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+                                "work_area": {"x": 0, "y": 0, "width": 1920, "height": 1040},
+                                "expires_at_us": 123,
+                            },
+                        ),
+                        (
+                            "window.snap",
+                            {
+                                "context": "a" * 64,
+                                "monitor_id": "HDMI-1",
+                                "frame": {"x": 0, "y": 0, "width": 960, "height": 1040},
+                            },
+                            {"window_id": "window-1", "monitor_id": "HDMI-1", "committed": True},
                         ),
                     ):
                         request, on_buffer = read_bound_request(server, on_connection, on_buffer)
@@ -265,6 +305,7 @@ def run_focus_context_cli_test(binary: str, build_directory: str) -> subprocess.
         assert "FOCUS_CONTEXT_ONCE_OK" in result.stdout, result.stdout
         assert "FOCUS_CONTEXT_MOVE_OK" in result.stdout, result.stdout
         assert "FOCUS_CONTEXT_RESIZE_OK" in result.stdout, result.stdout
+        assert "FOCUS_CONTEXT_SNAP_OK" in result.stdout, result.stdout
         return result
 
 

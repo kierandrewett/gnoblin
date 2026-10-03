@@ -58,6 +58,15 @@ typedef struct {
 
 #define LUA_CLI_FOCUS_CONTEXT_MAGIC G_GUINT64_CONSTANT(0x474e4f424c494e46)
 
+typedef struct {
+    guint64 magic;
+    CliLuaEventSubscription* subscription;
+    char* token;
+    gboolean consumed;
+} LuaCliSnapContext;
+
+#define LUA_CLI_SNAP_CONTEXT_MAGIC G_GUINT64_CONSTANT(0x474e4f42534e4150)
+
 static gboolean is_flag(const char* name) {
     return g_str_equal(name, "focused") || g_str_equal(name, "activate") ||
            g_str_equal(name, "follow") || g_str_equal(name, "autoplay") ||
@@ -1795,6 +1804,7 @@ static void json_to_lua(lua_State* state, JsonNode* node) {
 #define GNOBLINCTL_PERMISSION_DECISION_RECORD_METATABLE "gnoblinctl.PermissionDecision"
 #define GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE "gnoblinctl.EventSubscription"
 #define GNOBLINCTL_FOCUS_CONTEXT_METATABLE "gnoblinctl.FocusContext"
+#define GNOBLINCTL_SNAP_CONTEXT_METATABLE "gnoblinctl.SnapContext"
 
 static int lua_cli_animation_preview_method(lua_State* state);
 static int lua_cli_animations_list(lua_State* state);
@@ -2526,6 +2536,14 @@ static void lua_cli_set_window_id(JsonObject* arguments, const char* id) {
     json_object_set_string_member(arguments, "id", id);
 }
 
+static LuaCliFocusContext* lua_cli_test_focus_context(lua_State* state, int index) {
+    if (!luaL_testudata(state, index, GNOBLINCTL_FOCUS_CONTEXT_METATABLE) ||
+        lua_rawlen(state, index) != sizeof(LuaCliFocusContext))
+        return NULL;
+    LuaCliFocusContext* context = lua_touserdata(state, index);
+    return context->magic == LUA_CLI_FOCUS_CONTEXT_MAGIC ? context : NULL;
+}
+
 static int lua_cli_window_method(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     const char* method = lua_tostring(state, lua_upvalueindex(2));
@@ -2544,12 +2562,8 @@ static int lua_cli_window_method(lua_State* state) {
             return luaL_error(state, "%s requires %sFocusContext as its final argument", method,
                               g_str_equal(method, "window.begin_resize") ? "an edge and a " : "a ");
         }
-        if (!luaL_testudata(state, context_index, GNOBLINCTL_FOCUS_CONTEXT_METATABLE) ||
-            lua_rawlen(state, context_index) != sizeof(LuaCliFocusContext))
-            return luaL_error(state, "%s requires a FocusContext received from a Gnoblin event",
-                              method);
-        focus_context = lua_touserdata(state, context_index);
-        if (focus_context->magic != LUA_CLI_FOCUS_CONTEXT_MAGIC)
+        focus_context = lua_cli_test_focus_context(state, context_index);
+        if (!focus_context)
             return luaL_error(state, "%s requires a FocusContext received from a Gnoblin event",
                               method);
         if (focus_context->consumed)
@@ -2723,6 +2737,170 @@ static void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* o
     lua_setiuservalue(state, record, 2);
     luaL_getmetatable(state, GNOBLINCTL_WINDOW_RECORD_METATABLE);
     lua_setmetatable(state, record);
+    lua_remove(state, backing);
+}
+
+static LuaCliSnapContext* lua_cli_test_snap_context(lua_State* state, int index) {
+    if (!luaL_testudata(state, index, GNOBLINCTL_SNAP_CONTEXT_METATABLE) ||
+        lua_rawlen(state, index) != sizeof(LuaCliSnapContext))
+        return NULL;
+    LuaCliSnapContext* context = lua_touserdata(state, index);
+    return context->magic == LUA_CLI_SNAP_CONTEXT_MAGIC ? context : NULL;
+}
+
+static int lua_cli_snap_context_commit(lua_State* state) {
+    LuaCliSnapContext* context = lua_cli_test_snap_context(state, 1);
+    if (!context)
+        return luaL_error(state, "SnapContext:commit requires a Gnoblin SnapContext");
+    if (lua_gettop(state) != 2 || !lua_istable(state, 2))
+        return luaL_error(state, "SnapContext:commit requires {monitor_id, frame}");
+    if (context->consumed)
+        return luaL_error(state, "SnapContext:commit cannot reuse a consumed context");
+    if (!context->subscription || !context->subscription->active ||
+        !context->subscription->connection)
+        return luaL_error(state, "SnapContext:commit requires its active event connection");
+
+    g_autoptr(JsonObject) target = lua_cli_table_object(state, 2, "SnapContext target");
+    static const char* const target_fields[] = {"monitor_id", "frame", NULL};
+    static const char* const frame_fields[] = {"x", "y", "width", "height", NULL};
+    if (!lua_cli_workspace_object_has_only_keys(target, target_fields))
+        return luaL_error(state, "SnapContext:commit accepts only monitor_id and frame");
+    const char* monitor_id = member_string(target, "monitor_id", NULL);
+    if (!monitor_id || !*monitor_id || strlen(monitor_id) > 128 ||
+        !g_utf8_validate(monitor_id, -1, NULL))
+        return luaL_error(state, "SnapContext:commit requires a valid monitor_id");
+    JsonObject* frame = member_object(target, "frame");
+    if (!frame || !lua_cli_workspace_object_has_only_keys(frame, frame_fields))
+        return luaL_error(state, "SnapContext:commit frame requires x, y, width and height");
+
+    const char* rect_keys[] = {"x", "y", "width", "height"};
+    const gint64 lows[] = {-100000, -100000, 1, 1};
+    const gint64 highs[] = {100000, 100000, 32768, 32768};
+    for (guint i = 0; i < G_N_ELEMENTS(rect_keys); i++) {
+        JsonNode* value = json_object_get_member(frame, rect_keys[i]);
+        if (!value || !JSON_NODE_HOLDS_VALUE(value) ||
+            (json_node_get_value_type(value) != G_TYPE_INT &&
+             json_node_get_value_type(value) != G_TYPE_INT64) ||
+            json_node_get_int(value) < lows[i] || json_node_get_int(value) > highs[i])
+            return luaL_error(state, "SnapContext:commit frame %s is out of range", rect_keys[i]);
+    }
+
+    JsonObject* arguments = json_object_new();
+    json_object_set_string_member(arguments, "context", context->token);
+    json_object_set_string_member(arguments, "monitor_id", monitor_id);
+    JsonNode* frame_node = json_node_new(JSON_NODE_OBJECT);
+    json_node_set_object(frame_node, frame);
+    json_object_set_member(arguments, "frame", frame_node);
+
+    context->consumed = TRUE;
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = cli_lua_call_compositor_on_subscription(
+        context->subscription, "window.snap", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "window.snap failed: %s",
+                          call_error ? call_error->message : "compositor request failed");
+    JsonObject* response = JSON_NODE_HOLDS_OBJECT(result) ? json_node_get_object(result) : NULL;
+    if (!response || !member_string(response, "window_id", NULL) ||
+        !member_string(response, "monitor_id", NULL) ||
+        !json_object_get_boolean_member_with_default(response, "committed", FALSE))
+        return luaL_error(state, "window.snap returned an invalid result");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static int lua_cli_snap_context_gc(lua_State* state) {
+    LuaCliSnapContext* context = lua_cli_test_snap_context(state, 1);
+    if (!context)
+        return 0;
+    g_clear_pointer(&context->token, g_free);
+    context->subscription = NULL;
+    context->magic = 0;
+    return 0;
+}
+
+static int lua_cli_snap_context_newindex(lua_State* state) {
+    return luaL_error(state, "SnapContext values are read-only");
+}
+
+static int lua_cli_snap_context_tostring(lua_State* state) {
+    if (!lua_cli_test_snap_context(state, 1)) {
+        lua_pushliteral(state, "SnapContext<invalid>");
+        return 1;
+    }
+    lua_getiuservalue(state, 1, 1);
+    lua_getfield(state, -1, "window_id");
+    const char* id = lua_tostring(state, -1);
+    lua_pushfstring(state, "SnapContext<%s>", id ? id : "unknown");
+    return 1;
+}
+
+static gboolean lua_cli_snap_rect_valid(JsonObject* rectangle) {
+    static const char* const fields[] = {"x", "y", "width", "height", NULL};
+    if (!rectangle || json_object_get_size(rectangle) != 4 ||
+        !lua_cli_workspace_object_has_only_keys(rectangle, fields))
+        return FALSE;
+    const char* keys[] = {"x", "y", "width", "height"};
+    for (guint i = 0; i < G_N_ELEMENTS(keys); i++) {
+        JsonNode* value = json_object_get_member(rectangle, keys[i]);
+        if (!value || !JSON_NODE_HOLDS_VALUE(value) ||
+            (json_node_get_value_type(value) != G_TYPE_INT &&
+             json_node_get_value_type(value) != G_TYPE_INT64) ||
+            (i >= 2 && json_node_get_int(value) <= 0))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static void lua_cli_push_snap_context(lua_State* state, CliLuaEventSubscription* subscription,
+                                      JsonObject* response) {
+    if (!member_string(response, "window_id", NULL) ||
+        !member_string(response, "monitor_id", NULL) ||
+        !lua_cli_snap_rect_valid(member_object(response, "monitor")) ||
+        !lua_cli_snap_rect_valid(member_object(response, "work_area"))) {
+        luaL_error(state, "window.snap_context returned an invalid result");
+        return;
+    }
+    const char* token = member_string(response, "context", NULL);
+    if (!token || strlen(token) != 64) {
+        luaL_error(state, "window.snap_context returned an invalid context token");
+        return;
+    }
+    for (guint i = 0; i < 64; i++)
+        if (!g_ascii_isxdigit(token[i])) {
+            luaL_error(state, "window.snap_context returned an invalid context token");
+            return;
+        }
+
+    JsonObject* public_fields = json_object_new();
+    GList* members = json_object_get_members(response);
+    for (GList* item = members; item; item = item->next) {
+        const char* key = item->data;
+        if (!g_str_equal(key, "context") && !g_str_equal(key, "expires_at_us"))
+            json_object_set_member(public_fields, key,
+                                   json_node_copy(json_object_get_member(response, key)));
+    }
+    g_list_free(members);
+    g_autoptr(JsonNode) public_node = json_node_new(JSON_NODE_OBJECT);
+    json_node_take_object(public_node, public_fields);
+    json_to_lua(state, public_node);
+    int backing = lua_absindex(state, -1);
+
+    LuaCliSnapContext* context = lua_newuserdatauv(state, sizeof *context, 2);
+    context->magic = LUA_CLI_SNAP_CONTEXT_MAGIC;
+    context->subscription = subscription;
+    context->token = g_strdup(token);
+    context->consumed = FALSE;
+    lua_pushvalue(state, backing);
+    lua_setiuservalue(state, -2, 1);
+    lua_newtable(state);
+    lua_pushcfunction(state, lua_cli_snap_context_commit);
+    lua_setfield(state, -2, "commit");
+    lua_setiuservalue(state, -2, 2);
+    luaL_getmetatable(state, GNOBLINCTL_SNAP_CONTEXT_METATABLE);
+    lua_setmetatable(state, -2);
     lua_remove(state, backing);
 }
 
@@ -4827,6 +5005,36 @@ static int lua_cli_windows_list(lua_State* state) {
     return 1;
 }
 
+static int lua_cli_windows_snap_context(lua_State* state) {
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 1)
+        return luaL_error(state, "gnoblin.windows.snap_context requires a FocusContext");
+    LuaCliFocusContext* context = lua_cli_test_focus_context(state, 1);
+    if (!context)
+        return luaL_error(state, "gnoblin.windows.snap_context requires a FocusContext");
+    if (context->consumed)
+        return luaL_error(state, "gnoblin.windows.snap_context cannot reuse a consumed context");
+    if (!context->subscription || !context->subscription->active ||
+        !context->subscription->connection || context->subscription->cli != cli)
+        return luaL_error(state,
+                          "gnoblin.windows.snap_context requires its active event connection");
+
+    JsonObject* arguments = json_object_new();
+    json_object_set_string_member(arguments, "focus_context", context->token);
+    context->consumed = TRUE;
+    g_autoptr(GError) call_error = NULL;
+    g_autoptr(JsonNode) result = cli_lua_call_compositor_on_subscription(
+        context->subscription, "window.snap_context", arguments, &call_error);
+    json_object_unref(arguments);
+    if (!result)
+        return luaL_error(state, "window.snap_context failed: %s",
+                          call_error ? call_error->message : "compositor request failed");
+    if (!JSON_NODE_HOLDS_OBJECT(result))
+        return luaL_error(state, "window.snap_context returned an invalid result");
+    lua_cli_push_snap_context(state, context->subscription, json_node_get_object(result));
+    return 1;
+}
+
 static int lua_cli_focus_history(lua_State* state) {
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
@@ -5321,6 +5529,28 @@ static void register_lua_cli_focus_context(lua_State* state) {
     lua_pop(state, 1);
 }
 
+static void register_lua_cli_snap_context(lua_State* state) {
+    if (!luaL_newmetatable(state, GNOBLINCTL_SNAP_CONTEXT_METATABLE)) {
+        lua_pop(state, 1);
+        return;
+    }
+    lua_pushcfunction(state, lua_cli_window_index);
+    lua_setfield(state, -2, "__index");
+    lua_pushcfunction(state, lua_cli_snap_context_newindex);
+    lua_setfield(state, -2, "__newindex");
+    lua_pushcfunction(state, lua_cli_window_len);
+    lua_setfield(state, -2, "__len");
+    lua_pushcfunction(state, lua_cli_window_pairs);
+    lua_setfield(state, -2, "__pairs");
+    lua_pushcfunction(state, lua_cli_snap_context_gc);
+    lua_setfield(state, -2, "__gc");
+    lua_pushcfunction(state, lua_cli_snap_context_tostring);
+    lua_setfield(state, -2, "__tostring");
+    lua_pushliteral(state, "SnapContext");
+    lua_setfield(state, -2, "__metatable");
+    lua_pop(state, 1);
+}
+
 static void register_lua_cli_event_subscription(lua_State* state) {
     if (!luaL_newmetatable(state, GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE)) {
         lua_pop(state, 1);
@@ -5456,9 +5686,12 @@ static int lua_api_index(lua_State* state) {
             lua_pushcclosure(state, lua_cli_windows_focused, 1);
         else if (g_str_equal(name, "by_id"))
             lua_pushcclosure(state, lua_cli_windows_by_id, 1);
+        else if (g_str_equal(name, "snap_context"))
+            lua_pushcclosure(state, lua_cli_windows_snap_context, 1);
         else
             lua_pop(state, 1);
-        if (g_str_equal(name, "list") || g_str_equal(name, "focused") || g_str_equal(name, "by_id"))
+        if (g_str_equal(name, "list") || g_str_equal(name, "focused") ||
+            g_str_equal(name, "by_id") || g_str_equal(name, "snap_context"))
             return 1;
     }
     if (g_str_equal(prefix, "workspaces")) {
@@ -5842,6 +6075,7 @@ static int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_readonly_table(state);
     register_lua_cli_event_subscription(state);
     register_lua_cli_focus_context(state);
+    register_lua_cli_snap_context(state);
     register_lua_cli_window_record(state);
     register_lua_cli_workspace_record(state);
     register_lua_cli_monitor_record(state);
