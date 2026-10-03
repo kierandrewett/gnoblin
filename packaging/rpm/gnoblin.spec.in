@@ -60,6 +60,8 @@ GNOBLIN_IDENTITY_FILE="$PWD/build/session/gnoblinctl-identity.json" \
 GNOBLIN_VERSION_METADATA_FILE="$PWD/build/session/gnoblin-version.ini" \
 GNOBLIN_BINARY="$PWD/build/session/gnoblin" \
   scripts/install-session.sh %{_prefix}
+install -Dm0644 packaging/geoclue/50-gnoblin.conf \
+  %{buildroot}/etc/geoclue/conf.d/50-gnoblin.conf
 # The Mutter schemas are available while the aggregate schema is compiled but
 # belong to gnoblin-mutter. Keep only the session-owned override in this RPM.
 find %{buildroot}%{_datadir}/glib-2.0/schemas -maxdepth 1 -type f -name '*.xml' \
@@ -108,3 +110,16 @@ Adds GNOME Keyring, GVfs, and standard user directories to a Gnoblin session.
 Applications are installed separately.
 
 %files -n gnoblin-gnome-integration
+
+%package -n gnoblin-geoclue-integration
+Summary:        Optional GeoClue agent authorization for Gnoblin
+Requires:       gnoblin = @EPOCH@:%{version}-%{release}
+Requires:       geoclue2 >= 2.7.2
+
+%description -n gnoblin-geoclue-integration
+Allows Gnoblin's optional location authorization agent to register with
+GeoClue. Install this package only when the session should use Gnoblin as its
+location agent.
+
+%files -n gnoblin-geoclue-integration
+%config(noreplace) /etc/geoclue/conf.d/50-gnoblin.conf
