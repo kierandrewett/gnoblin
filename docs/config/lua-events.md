@@ -173,6 +173,7 @@ event revision.
 | `gnoblin.window.focused`                   | `window_id`, `window`                                                              | A window gains keyboard focus in the native compositor runtime.                                     |
 | `gnoblin.window.unfocused`                 | `window_id`, `window`                                                              | A window loses keyboard focus in the native compositor runtime.                                     |
 | `gnoblin.window.attention-changed`         | `window_id`, `window`, `demands_attention`                                         | Mutter's attention state changes.                                                                   |
+| `gnoblin.window.activation-denied`         | `window_id`, `reason`                                                              | Strict focus policy denies an application's activation request; socket clients need API 1.69.       |
 | `gnoblin.window.closed`                    | `window_id`, `last`                                                                | The native compositor runtime removes a managed window.                                             |
 | `gnoblin.focus.policy-changed`             | `policy`, `revision`, `sequence`, `time`                                           | The effective focus policy changes after a successful config commit.                                |
 | `gnoblin.permission.changed`               | `policy`, `revision`, `sequence`, `time`                                           | The committed portal permission policy changes after a successful config commit.                    |
@@ -348,6 +349,16 @@ workspace IDs. It has no workspace record.
 The attention event also carries `demands_attention` at the top level. It can
 follow a focus request that policy did not activate; it reports Mutter's
 attention state and does not identify why the window requested attention.
+
+Strict focus policy also emits `gnoblin.window.activation-denied` when Mutter
+rejects an application's activation request. The event's `reason` is one of:
+
+- `missing_context`: the request has no activation context.
+- `invalid_context`: its token is not valid.
+- `stale_context`: its startup context is too old.
+
+Socket clients need native-control API 1.69 to subscribe to this event. It
+contains no activation token or input serial.
 
 ### Window records
 

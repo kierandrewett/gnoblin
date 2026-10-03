@@ -385,7 +385,8 @@ so handlers can read the new state.
 Subscribe to these window events to track changes:
 
 - `gnoblin.window.created` and `gnoblin.window.closed`
-- `gnoblin.window.changed` and `gnoblin.window.attention-changed`
+- `gnoblin.window.changed`, `gnoblin.window.attention-changed`, and
+  `gnoblin.window.activation-denied`
 - `gnoblin.window.focused` and `gnoblin.window.unfocused`
 
 These reads are available in Gnoblin's standalone Mutter runtime. They raise a
