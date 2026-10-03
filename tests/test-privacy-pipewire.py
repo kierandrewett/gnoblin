@@ -14,7 +14,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = Path(__file__).resolve()
 PREFIX = Path(os.environ.get("GNOBLIN_TEST_PREFIX", ROOT / "install"))
-GNOBLINCTL = Path(os.environ.get("GNOBLIN_TEST_CTL", PREFIX / "bin/gnoblinctl"))
+GNOBLINCTL = PREFIX / "bin/gnoblinctl"
 SINK_NAME = "gnoblin_privacy_test_sink"
 MIC_NAME = "gnoblin_privacy_test_mic"
 
@@ -363,7 +363,7 @@ def run_outer():
         logs = [log for _, log in services]
         env["WAYLAND_DISPLAY"] = wayland_socket
         env["GNOBLIN_PREFIX"] = str(PREFIX)
-        env["GNOBLIN_RUNTIME_BIN"] = os.environ.get("GNOBLIN_TEST_RUNTIME_BIN", str(PREFIX / "bin/gnoblin"))
+        env["GNOBLIN_RUNTIME_BIN"] = str(PREFIX / "bin/gnoblin")
         env["GNOBLINCTL"] = str(GNOBLINCTL)
         env["GNOBLIN_TEST_PIPEWIRE_SOCKET"] = str(runtime / "pipewire-0")
         env["GNOBLIN_DEVKIT_EXEC"] = shlex.join([sys.executable, str(SCRIPT), "--inside"])
