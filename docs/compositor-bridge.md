@@ -371,6 +371,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.66            | `input.orientation_lock` read and `input.set_orientation_lock` update                            |
 | 1.67            | Native status reads remain available while a Lua worker restarts                                 |
 | 1.68            | `gnoblin.shortcut.session.key` may carry one-use focus authority                                 |
+| 1.69            | Adds `gnoblin.window.activation-denied` for strict focus-policy denials                          |
 
 ### API 1.27: shell presentation requests
 
@@ -1495,6 +1496,18 @@ Read worker health directly from Mutter with `runtime.status`:
 `generation` identifies the runtime configuration accepted by Mutter. It
 stays the same across worker recovery and changes when Mutter accepts a new
 configuration.
+
+### API version 1.69: focus denial events
+
+Subscribe to `gnoblin.window.activation-denied` to learn when strict focus
+policy rejects an application's activation request. The event includes a
+stable `window_id` and a `reason`:
+
+- `missing_context`: the request has no activation context.
+- `invalid_context`: its token is not valid.
+- `stale_context`: its startup context is too old.
+
+It does not include activation tokens or input serials.
 
 ## Limits and disconnects
 

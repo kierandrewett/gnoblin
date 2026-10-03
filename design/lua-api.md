@@ -403,8 +403,9 @@ Application processes do not call this API to claim focus. Wayland
 applications request activation with XDG Activation tokens, and Mutter decides
 whether to honor each request. The protocol permits the compositor to ignore
 invalid or unwanted tokens. Mutter validates activation context before
-Gnoblin reports the resulting focus and attention state; raw activation tokens
-and raw input serials are not exposed to Lua. Lua callbacks do not
+Gnoblin reports focus and attention state. Under strict focus policy it also
+emits `gnoblin.window.activation-denied` with a bounded reason; raw activation
+tokens and input serials are not exposed to Lua. Lua callbacks do not
 synchronously approve or veto application requests. A shell client may call
 `window:focus(context)` in response to an explicit user selection; the request
 uses Mutter's normal activation path and cannot mint its own context.
@@ -1425,6 +1426,7 @@ legacy. Mutter signal coverage can change with the pinned upstream version.
 | Native `gnoblin.window.changed`               | `window_id`, `changed`, `window`, event metadata                                                       | A mapped window property changes, excluding attention state.                                             |
 | Native `gnoblin.window.focused` / `unfocused` | `window_id`, `window`, event metadata                                                                  | Keyboard focus enters or leaves a managed window.                                                        |
 | Native `gnoblin.window.attention-changed`     | `window_id`, `window`, `demands_attention`, event metadata                                             | Mutter's attention state changes.                                                                        |
+| Native `gnoblin.window.activation-denied`     | `window_id`, `reason`, event metadata                                                                  | Strict focus policy rejects an application activation request.                                           |
 | Native `gnoblin.window.closed`                | `window_id`, `last`, event metadata                                                                    | Native runtime removes a managed window.                                                                 |
 | `gnoblin.operation.completed`                 | `operation_id`, `method`, `ok`, then `value` or an `Error` record                                      | Native API 1.11 completion event.                                                                        |
 | `gnoblin.feature.changed`                     | `feature`, `enabled`                                                                                   | A feature changes after initial setup.                                                                   |
@@ -1474,6 +1476,7 @@ record also includes `name`, monotonic `sequence`, and monotonic-clock
 | `gnoblin.window.closed`                    | `window_id`, `last: Window`                                                        | A managed window is removed.                                                                                                                                                    |
 | `gnoblin.window.focused`                   | `window_id`, `window: Window`                                                      | Keyboard focus changes to a window.                                                                                                                                             |
 | `gnoblin.window.attention-changed`         | `window_id`, `window: Window`, `demands_attention`                                 | Mutter's attention state changes; this may follow a focus request that policy did not activate.                                                                                 |
+| `gnoblin.window.activation-denied`         | `window_id`, `reason`                                                              | Strict focus policy denies an application's activation request; socket clients need API 1.69.                                                                                   |
 | `gnoblin.focus.policy-changed`             | `policy: FocusPolicy`, `revision`, `sequence`, `time`                              | Effective focus policy changes after a successful config commit.                                                                                                                |
 | `gnoblin.window.unfocused`                 | `window_id`, `window: Window`                                                      | A window loses keyboard focus.                                                                                                                                                  |
 | `gnoblin.window.changed`                   | `window_id`, `changed: string[]`, `window: Window`                                 | One or more public properties change.                                                                                                                                           |
