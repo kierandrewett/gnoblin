@@ -61,6 +61,10 @@ static GVariant* normalize_input_fields(GVariant* fields) {
             double number = 0;
             input_number(value, &number);
             g_variant_builder_add(&normalized, "{sv}", key, g_variant_new_double(number));
+        } else if (g_str_equal(key, "drag-threshold")) {
+            double number = 0;
+            input_number(value, &number);
+            g_variant_builder_add(&normalized, "{sv}", key, g_variant_new_int32((gint32)number));
         } else if (g_str_equal(key, "delay") || g_str_equal(key, "repeat-interval")) {
             double number = 0;
             input_number(value, &number);

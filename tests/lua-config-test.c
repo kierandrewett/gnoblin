@@ -433,9 +433,9 @@ int main(void) {
     g_assert_true(g_variant_is_of_type(speed, G_VARIANT_TYPE_DOUBLE));
     g_assert_cmpfloat(g_variant_get_double(speed), ==, 0.25);
     g_autoptr(GVariant) drag_threshold =
-        g_variant_lookup_value(mouse, "drag-threshold", G_VARIANT_TYPE_INT64);
+        g_variant_lookup_value(mouse, "drag-threshold", G_VARIANT_TYPE_INT32);
     g_assert_nonnull(drag_threshold);
-    g_assert_cmpint(g_variant_get_int64(drag_threshold), ==, 12);
+    g_assert_cmpint(g_variant_get_int32(drag_threshold), ==, 12);
     g_autoptr(GVariant) curve = g_variant_lookup_value(mouse, "accel-curve", NULL);
     g_autoptr(GVariant) step = g_variant_lookup_value(curve, "step", NULL);
     g_autoptr(GVariant) points = g_variant_lookup_value(curve, "points", NULL);
