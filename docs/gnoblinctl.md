@@ -416,6 +416,12 @@ any subscription is active. A `once` subscription ends after its event; call
 `subscription:unsubscribe()` to stop a repeating listener. Press Ctrl+C to
 stop a script that continues listening.
 
+For worker health, read `gnoblin.runtime.status()` after subscribing to
+`gnoblin.runtime.status-changed`. The event reports recovery and accepted
+configuration-generation changes while the compositor socket is connected; see
+the [runtime API guide](/config/runtime-api) for its fields and reconnect
+behavior.
+
 To handle a location request, subscribe to
 `gnoblin.location.authorization-requested`. The CLI can answer only a request
 received by an active subscription, and sends the reply over that same event
