@@ -1,0 +1,205 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] mutter: emit workspace animation lifecycle events
+
+---
+diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
+index 3b60eb39c..7caaa2e1b 100644
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -83,6 +83,8 @@ typedef struct {
+   GPtrArray *actors;
+   AnimationSpec spec;
+   MetaMotionDirection direction;
++  char *from_workspace_id;
++  char *to_workspace_id;
+   double width, height;
+   gboolean finished;
+ } WorkspaceSwitch;
+@@ -138,7 +140,7 @@ static void stop_lock_watch(AnimationState *state);
+ static gboolean is_locked(MetaDisplay *display);
+ static GVariant *animation_spec_variant(AnimationSpec *spec);
+ static void workspace_switch_stop(WorkspaceSwitch *workspace_switch,
+-                                  gboolean complete);
++                                  gboolean complete, gboolean cancelled);
+ static void workspace_switch_stop_for_display(MetaDisplay *display,
+                                               gboolean complete);
+ static void workspace_switch_shutdown(MetaBackend *backend,
+@@ -175,7 +177,7 @@ static void animation_state_free(gpointer data) {
+   AnimationState *state = data;
+   stop_lock_watch(state);
+   if (state->workspace_switch)
+-    workspace_switch_stop(state->workspace_switch, TRUE);
++    workspace_switch_stop(state->workspace_switch, TRUE, TRUE);
+   if (state->backend && state->shutdown_handler_id)
+     g_signal_handler_disconnect(state->backend, state->shutdown_handler_id);
+   g_clear_object(&state->backend);
+@@ -1091,6 +1093,9 @@ typedef struct {
+   char *animation;
+   char *target;
+   char *event;
++  char *from_workspace;
++  char *to_workspace;
++  char *direction;
+   gboolean cancelled;
+   gboolean started;
+ } CompletionEvent;
+@@ -1107,6 +1112,14 @@ static gboolean publish_completion(gpointer user_data) {
+                         g_variant_new_string(completion->event));
+   g_variant_builder_add(&payload, "{sv}", "cancelled",
+                         g_variant_new_boolean(completion->cancelled));
++  if (completion->from_workspace) {
++    g_variant_builder_add(&payload, "{sv}", "from_workspace",
++                          g_variant_new_string(completion->from_workspace));
++    g_variant_builder_add(&payload, "{sv}", "to_workspace",
++                          g_variant_new_string(completion->to_workspace));
++    g_variant_builder_add(&payload, "{sv}", "direction",
++                          g_variant_new_string(completion->direction));
++  }
+   g_autoptr(GVariant) value =
+       g_variant_ref_sink(g_variant_builder_end(&payload));
+   const char *event_name = completion->started ? "gnoblin.animation.started"
+@@ -1123,6 +1136,9 @@ static void completion_event_free(gpointer user_data) {
+   g_free(completion->animation);
+   g_free(completion->target);
+   g_free(completion->event);
++  g_free(completion->from_workspace);
++  g_free(completion->to_workspace);
++  g_free(completion->direction);
+   g_free(completion);
+ }
+ 
+@@ -1140,6 +1156,46 @@ static void emit_animation_event(AnimationPreview *preview, gboolean started,
+                   completion_event_free);
+ }
+ 
++static const char *workspace_direction_name(MetaMotionDirection direction) {
++  switch (direction) {
++  case META_MOTION_LEFT:
++    return "left";
++  case META_MOTION_RIGHT:
++    return "right";
++  case META_MOTION_UP:
++    return "up";
++  case META_MOTION_DOWN:
++    return "down";
++  case META_MOTION_UP_LEFT:
++    return "up-left";
++  case META_MOTION_UP_RIGHT:
++    return "up-right";
++  case META_MOTION_DOWN_LEFT:
++    return "down-left";
++  case META_MOTION_DOWN_RIGHT:
++    return "down-right";
++  }
++
++  return "unknown";
++}
++
++static void emit_workspace_animation_event(WorkspaceSwitch *workspace_switch,
++                                           gboolean started,
++                                           gboolean cancelled) {
++  CompletionEvent *completion = g_new0(CompletionEvent, 1);
++  completion->display = g_object_ref(workspace_switch->display);
++  completion->animation = g_strdup(workspace_switch->spec.name);
++  completion->target = g_strdup(workspace_switch->to_workspace_id);
++  completion->event = g_strdup(workspace_switch->spec.event);
++  completion->from_workspace = g_strdup(workspace_switch->from_workspace_id);
++  completion->to_workspace = g_strdup(workspace_switch->to_workspace_id);
++  completion->direction = g_strdup(workspace_direction_name(workspace_switch->direction));
++  completion->cancelled = cancelled;
++  completion->started = started;
++  g_idle_add_full(G_PRIORITY_DEFAULT_IDLE, publish_completion, completion,
++                  completion_event_free);
++}
++
+ static void complete_lifecycle(MetaPlugin *plugin, MetaWindowActor *actor,
+                                AnimationCompletion completion) {
+   switch (completion) {
+@@ -2028,7 +2084,7 @@ static void workspace_switch_completed(ClutterTimeline *timeline,
+   WorkspaceSwitch *workspace_switch = user_data;
+   (void)timeline;
+   render_workspace_switch(workspace_switch, 1);
+-  workspace_switch_stop(workspace_switch, TRUE);
++  workspace_switch_stop(workspace_switch, TRUE, FALSE);
+ }
+ 
+ static void workspace_switch_restore_actors(WorkspaceSwitch *workspace_switch) {
+@@ -2073,10 +2129,11 @@ static void workspace_switch_restore_actors(WorkspaceSwitch *workspace_switch) {
+ }
+ 
+ static void workspace_switch_stop(WorkspaceSwitch *workspace_switch,
+-                                  gboolean complete) {
++                                  gboolean complete, gboolean cancelled) {
+   if (workspace_switch->finished)
+     return;
+   workspace_switch->finished = TRUE;
++  emit_workspace_animation_event(workspace_switch, FALSE, cancelled);
+   AnimationState *state =
+       g_object_get_data(G_OBJECT(workspace_switch->display), ANIMATION_ID_KEY);
+   if (workspace_switch->timeline) {
+@@ -2101,6 +2158,8 @@ static void workspace_switch_stop(WorkspaceSwitch *workspace_switch,
+   g_clear_object(&workspace_switch->stage);
+   g_clear_object(&workspace_switch->outgoing_group);
+   g_clear_object(&workspace_switch->incoming_group);
++  g_free(workspace_switch->from_workspace_id);
++  g_free(workspace_switch->to_workspace_id);
+   g_ptr_array_unref(workspace_switch->actors);
+   g_clear_object(&workspace_switch->plugin);
+   g_free(workspace_switch);
+@@ -2111,7 +2170,7 @@ static void workspace_switch_stop_for_display(MetaDisplay *display,
+   AnimationState *state =
+       g_object_get_data(G_OBJECT(display), ANIMATION_ID_KEY);
+   if (state && state->workspace_switch)
+-    workspace_switch_stop(state->workspace_switch, complete);
++    workspace_switch_stop(state->workspace_switch, complete, TRUE);
+ }
+ 
+ static void workspace_switch_shutdown(MetaBackend *backend,
+@@ -2128,7 +2187,7 @@ gboolean meta_gnoblin_animation_switch_workspace(MetaPlugin *plugin, gint from,
+   AnimationState *state =
+       g_object_get_data(G_OBJECT(display), ANIMATION_ID_KEY);
+   if (state && state->workspace_switch)
+-    workspace_switch_stop(state->workspace_switch, TRUE);
++    workspace_switch_stop(state->workspace_switch, TRUE, TRUE);
+   if (from < 0 || to < 0 || from == to)
+     return FALSE;
+ 
+@@ -2166,6 +2225,10 @@ gboolean meta_gnoblin_animation_switch_workspace(MetaPlugin *plugin, gint from,
+   workspace_switch->plugin = g_object_ref(plugin);
+   workspace_switch->stage = g_object_ref(meta_compositor_get_stage(compositor));
+   workspace_switch->direction = direction;
++  workspace_switch->from_workspace_id =
++      g_strdup(meta_gnoblin_workspace_id(from_workspace));
++  workspace_switch->to_workspace_id =
++      g_strdup(meta_gnoblin_workspace_id(to_workspace));
+   workspace_switch->spec = spec;
+   workspace_switch->actors =
+       g_ptr_array_new_with_free_func(workspace_actor_state_free);
+@@ -2243,6 +2306,7 @@ gboolean meta_gnoblin_animation_switch_workspace(MetaPlugin *plugin, gint from,
+   g_signal_connect(workspace_switch->timeline, "completed",
+                    G_CALLBACK(workspace_switch_completed), workspace_switch);
+   render_workspace_switch(workspace_switch, 0);
++  emit_workspace_animation_event(workspace_switch, TRUE, FALSE);
+   clutter_timeline_start(workspace_switch->timeline);
+   return TRUE;
+ 
+@@ -2257,6 +2321,8 @@ fail:
+   g_clear_object(&workspace_switch->stage);
+   g_clear_object(&workspace_switch->outgoing_group);
+   g_clear_object(&workspace_switch->incoming_group);
++  g_free(workspace_switch->from_workspace_id);
++  g_free(workspace_switch->to_workspace_id);
+   g_ptr_array_unref(workspace_switch->actors);
+   g_clear_object(&workspace_switch->plugin);
+   g_free(workspace_switch);
+@@ -2271,7 +2337,7 @@ void meta_gnoblin_animation_kill_switch_workspace(MetaPlugin *plugin) {
+       g_object_get_data(G_OBJECT(display), ANIMATION_ID_KEY);
+   if (state && state->workspace_switch &&
+       state->workspace_switch->plugin == plugin)
+-    workspace_switch_stop(state->workspace_switch, TRUE);
++    workspace_switch_stop(state->workspace_switch, TRUE, TRUE);
+ }
+ 
+ static GVariant *dict_with_progress_default(GVariant *source,
