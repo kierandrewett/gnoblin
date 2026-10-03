@@ -492,6 +492,131 @@ def run_shortcut_binding_cli_test(binary: str, build_directory: str) -> subproce
         return result
 
 
+def run_location_authorization_cli_test(binary: str, build_directory: str) -> subprocess.CompletedProcess[str]:
+    with tempfile.TemporaryDirectory(prefix="location-auth-", dir=build_directory) as temporary:
+        root = Path(temporary)
+        socket_path = str(root / "s")
+        script_path = root / "location.lua"
+        script_path.write_text(
+            "local subscription\n"
+            'subscription = gnoblin.events.on("gnoblin.location.authorization-requested", function(event)\n'
+            '  assert(event.app_id == "org.example.App" and event.requested_accuracy == 6)\n'
+            "  local ok, err = pcall(function()\n"
+            "    gnoblin.location.authorize_app({request_id = event.request_id + 1, allow = false, accuracy = 0})\n"
+            "  end)\n"
+            '  assert(not ok and err:match("not received"), tostring(err))\n'
+            "  ok, err = pcall(function()\n"
+            "    gnoblin.location.authorize_app({request_id = event.request_id, allow = true, accuracy = 8})\n"
+            "  end)\n"
+            '  assert(not ok and err:match("must not exceed"), tostring(err))\n'
+            "  local result = gnoblin.location.authorize_app({request_id = event.request_id, allow = true, accuracy = 5})\n"
+            "  assert(result.request_id == event.request_id and result.submitted)\n"
+            "  assert(not pcall(function() result.submitted = false end))\n"
+            "  ok, err = pcall(function()\n"
+            "    gnoblin.location.authorize_app({request_id = event.request_id, allow = false, accuracy = 0})\n"
+            "  end)\n"
+            '  assert(not ok and err:match("not received"), tostring(err))\n'
+            '  print("LOCATION_AUTHORIZATION_OK")\n'
+            "  subscription:unsubscribe()\n"
+            "end)\n",
+            encoding="utf-8",
+        )
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def read_line(connection: socket.socket, buffered: bytes = b"") -> tuple[dict[str, object], bytes]:
+            while b"\n" not in buffered:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    raise AssertionError("location authorization client disconnected before request")
+                buffered += chunk
+            line, _, remaining = buffered.partition(b"\n")
+            value = json.loads(line)
+            assert isinstance(value, dict), value
+            return value, remaining
+
+        def send(connection: socket.socket, value: dict[str, object]) -> None:
+            connection.sendall((json.dumps(value) + "\n").encode())
+
+        def read_bound_request(
+            server: socket.socket,
+            connection: socket.socket,
+            buffered: bytes,
+        ) -> tuple[dict[str, object], bytes]:
+            deadline = time.monotonic() + 4
+            while time.monotonic() < deadline:
+                if b"\n" in buffered:
+                    return read_line(connection, buffered)
+                readable, _, _ = select.select([server, connection], [], [], 0.1)
+                if server in readable:
+                    unexpected, _ = server.accept()
+                    unexpected.close()
+                    raise AssertionError("location authorization opened a different socket")
+                if connection in readable:
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        raise AssertionError("location event socket closed before API request")
+                    buffered += chunk
+            raise AssertionError("timed out waiting for location authorization API request")
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(2)
+                    ready.set()
+                    connection, _ = server.accept()
+                    with connection:
+                        buffered = b""
+                        request, buffered = read_line(connection, buffered)
+                        assert request["op"] == "events", request
+                        assert request["events"] == ["gnoblin.location.authorization-requested"], request
+                        assert request["api_version"]["major"] == 1, request
+                        assert request["api_version"]["minor"] >= 65, request
+                        send(connection, {"event": "subscribed", "events": request["events"]})
+                        send(
+                            connection,
+                            {
+                                "event": "gnoblin.location.authorization-requested",
+                                "request_id": 481516,
+                                "app_id": "org.example.App",
+                                "requested_accuracy": 6,
+                                "expires_at_us": time.monotonic_ns() // 1000 + 20_000_000,
+                            },
+                        )
+                        request, buffered = read_bound_request(server, connection, buffered)
+                        assert request["op"] == "api" and request["method"] == "location.authorize_app", request
+                        assert request["api_version"] == {"major": 1, "minor": 65}, request
+                        assert request["arguments"] == {
+                            "request_id": 481516,
+                            "allow": True,
+                            "accuracy": 5,
+                        }, request
+                        send(
+                            connection,
+                            {
+                                "event": "reply",
+                                "id": request["id"],
+                                "result": {"request_id": 481516, "submitted": True},
+                            },
+                        )
+                        connection.settimeout(3)
+                        assert connection.recv(1) == b"", "location event subscription stayed open after unsubscribe"
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), f"location authorization fixture did not start: {errors}"
+        result = run(binary, "--socket", socket_path, "lua", str(script_path))
+        thread.join(8)
+        assert not thread.is_alive(), "location authorization fixture did not finish"
+        assert not errors, errors
+        assert result.returncode == 0, result.stderr
+        assert "LOCATION_AUTHORIZATION_OK" in result.stdout, result.stdout
+        return result
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         raise SystemExit("usage: gnoblinctl-cli.test.py BINARY BUILD_DIRECTORY")
@@ -646,6 +771,9 @@ def main() -> int:
 
     focus_context_result = run_focus_context_cli_test(binary, build_directory)
     assert focus_context_result.returncode == 0, focus_context_result.stderr
+
+    location_authorization_result = run_location_authorization_cli_test(binary, build_directory)
+    assert location_authorization_result.returncode == 0, location_authorization_result.stderr
 
     shortcut_binding_result = run_shortcut_binding_cli_test(binary, build_directory)
     assert shortcut_binding_result.returncode == 0, shortcut_binding_result.stderr
