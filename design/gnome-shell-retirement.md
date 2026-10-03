@@ -59,8 +59,11 @@ GNOME Shell's GJS-wrapper cleanup before compositor teardown. The standalone
 guardian shuts down its Mutter process directly and has no GJS context to
 release.
 
-The patch directories `79z-background-manager-shutdown`,
-`99zzzz-session-mode-startup`,
+The `79z-background-manager-shutdown` patch was removed on 2026-10-03. It
+ordered destruction of GNOME Shell background actors and popup menus during
+Shell shutdown; the standalone session has no Shell background managers.
+
+The patch directories `99zzzz-session-mode-startup`,
 `99zzzzz-no-session-presence`, `99zzzzzz-logind-actions`,
 `99zzzzzzz-session-ready`, `99zzzzzzzz-no-session-dialog`,
 `99zzzzzzzzzz-standalone-idle`, `99zzzzzzzzzzz-native-scope`,
