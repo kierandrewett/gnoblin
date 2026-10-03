@@ -28,8 +28,6 @@ package() {
     DESTDIR="$pkgdir" meson install -C build --no-rebuild
     install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/portals/gnoblin.portal" \
         "$pkgdir/usr/share/xdg-desktop-portal/portals/gnoblin.portal"
-    install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/gnoblin-portals.conf" \
-        "$pkgdir/usr/share/xdg-desktop-portal/gnoblin-portals.conf"
     install -Dm644 "$pkgdir$_prefix/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service" \
         "$pkgdir/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service"
     install -Dm644 "$pkgdir$_prefix/lib/systemd/user/xdg-desktop-portal-gnoblin.service" \

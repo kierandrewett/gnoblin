@@ -73,6 +73,8 @@ GNOBLIN_IDENTITY_FILE="$PWD/build/session/gnoblinctl-identity.json" \
 GNOBLIN_VERSION_METADATA_FILE="$PWD/build/session/gnoblin-version.ini" \
 GNOBLIN_BINARY="$PWD/build/session/gnoblin" \
   scripts/install-session.sh %{_prefix}
+install -Dm0644 %{buildroot}%{_prefix}/share/xdg-desktop-portal/gnoblin-portals.conf \
+  %{buildroot}/usr/share/xdg-desktop-portal/gnoblin-portals.conf
 install -Dm0644 packaging/geoclue/50-gnoblin.conf \
   %{buildroot}/etc/geoclue/conf.d/50-gnoblin.conf
 # The Mutter schemas are available while the aggregate schema is compiled but
@@ -111,6 +113,7 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/bin/gnoblin
 /usr/bin/gnoblinctl
 /usr/share/wayland-sessions/gnoblin.desktop
+/usr/share/xdg-desktop-portal/gnoblin-portals.conf
 /usr/lib/systemd/user/gnoblin-session.target
 /usr/lib/systemd/user/gnoblin-idle.service
 

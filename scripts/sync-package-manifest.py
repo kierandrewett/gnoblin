@@ -184,6 +184,8 @@ package() {{
     install -d "$pkgdir/usr/bin"
     ln -s "$_prefix/bin/gnoblin" "$pkgdir/usr/bin/gnoblin"
     ln -s "$_prefix/bin/gnoblinctl" "$pkgdir/usr/bin/gnoblinctl"
+    install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/gnoblin-portals.conf" \\
+        "$pkgdir/usr/share/xdg-desktop-portal/gnoblin-portals.conf"
     install -Dm644 "$pkgdir$_prefix/lib/systemd/user/gnoblin-session.target" "$pkgdir/usr/lib/systemd/user/gnoblin-session.target"
     install -Dm644 "$pkgdir$_prefix/lib/systemd/user/gnoblin-idle.service" "$pkgdir/usr/lib/systemd/user/gnoblin-idle.service"
     install -Dm644 "$pkgdir$_prefix/share/wayland-sessions/gnoblin.desktop" "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
@@ -243,8 +245,6 @@ package() {{
     DESTDIR="$pkgdir" meson install -C build --no-rebuild
     install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/portals/gnoblin.portal" \\
         "$pkgdir/usr/share/xdg-desktop-portal/portals/gnoblin.portal"
-    install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/gnoblin-portals.conf" \\
-        "$pkgdir/usr/share/xdg-desktop-portal/gnoblin-portals.conf"
     install -Dm644 "$pkgdir$_prefix/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service" \\
         "$pkgdir/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service"
     install -Dm644 "$pkgdir$_prefix/lib/systemd/user/xdg-desktop-portal-gnoblin.service" \\

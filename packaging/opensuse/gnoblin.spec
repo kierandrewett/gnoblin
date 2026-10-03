@@ -69,6 +69,8 @@ GNOBLIN_IDENTITY_FILE="$PWD/build/session/gnoblinctl-identity.json" \
 GNOBLIN_VERSION_METADATA_FILE="$PWD/build/session/gnoblin-version.ini" \
 GNOBLIN_BINARY="$PWD/build/session/gnoblin" \
   scripts/install-session.sh %{_prefix}
+install -Dm0644 %{buildroot}%{_prefix}/share/xdg-desktop-portal/gnoblin-portals.conf \
+  %{buildroot}/usr/share/xdg-desktop-portal/gnoblin-portals.conf
 # The Mutter schemas are available while the aggregate schema is compiled but
 # belong to gnoblin-mutter. Keep only the session-owned override in this RPM.
 find %{buildroot}%{_datadir}/glib-2.0/schemas -maxdepth 1 -type f -name '*.xml' \
@@ -105,6 +107,7 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/bin/gnoblin
 /usr/bin/gnoblinctl
 /usr/share/wayland-sessions/gnoblin.desktop
+/usr/share/xdg-desktop-portal/gnoblin-portals.conf
 /usr/lib/systemd/user/gnoblin-session.target
 /usr/lib/systemd/user/gnoblin-idle.service
 
