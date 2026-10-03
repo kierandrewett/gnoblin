@@ -408,10 +408,29 @@ any subscription is active. A `once` subscription ends after its event; call
 `subscription:unsubscribe()` to stop a repeating listener. Press Ctrl+C to
 stop a script that continues listening.
 
-Shortcut registrations and trusted input contexts belong to the supervised
-runtime. The console cannot bind or remove shortcuts, end a shortcut session,
-or perform focus and interactive move or resize operations that need a live
-`FocusContext`.
+Shortcut registrations and shortcut sessions belong to the supervised runtime.
+The console cannot bind or remove shortcuts or end a shortcut session.
+
+A Lua event listener can use a `FocusContext` delivered with a trusted event to
+focus a window or start an interactive move or resize. The context is an opaque,
+one-use value and the console sends the request on the event's connection.
+
+For example, save this as `focus.lua`, replacing the ID with one from
+`gnoblinctl window list`:
+
+```lua
+local window = gnoblin.windows.by_id("replace-with-window-id")
+assert(window, "window no longer exists")
+
+gnoblin.events.on("gnoblin.shortcut.activated", function(event)
+    if event.focus_context then
+        window:focus(event.focus_context)
+    end
+end)
+```
+
+Run it with `gnoblinctl lua ./focus.lua` while a configured shortcut emits
+`gnoblin.shortcut.activated`. Press Ctrl+C to stop the listener.
 
 ## Windows
 
@@ -434,9 +453,10 @@ an explicit ID.
 returns the window to its normal size.
 
 `gnoblinctl window focus` is rejected because the command cannot create the
-one-use trusted context required to focus a window. An external shell client
-can focus a clicked window by subscribing to `gnoblin.shortcut.activated` and
-calling `window.focus` with its context. Interactive move or resize requires
+one-use trusted context required to focus a window. A Lua script can act on a
+trusted shortcut event by subscribing to `gnoblin.shortcut.activated` and
+passing `event.focus_context` to the typed `Window` methods. The compositor
+still validates and consumes the context. Interactive move or resize requires
 pointer interaction or a trusted shortcut context.
 
 To see the exact identity and title used by `gnoblin.window_rule`, run:

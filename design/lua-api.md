@@ -210,7 +210,7 @@ supervisor operations such as configuration reload.
 | `gnoblin.shortcuts.bind(args)` / `unbind(args)` | `(table) -> Operation<Result>`                              | **Current; supervised runtime.** Bind or remove a Gnoblin shortcut. `gnoblinctl lua` cannot own the persistent connection that keeps a binding registered.                                                                                                 |
 | `gnoblin.shortcuts.end_session(args)`           | `({id: string, session_id: integer}) -> Operation<Result>`  | **Current; supervised runtime.** End the matching active session while keeping its binding registered. `gnoblinctl lua` cannot own the connection that owns the session.                                                                                   |
 
-| `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current.** The native runtime exposes snapshots and trusted snapping; `gnoblinctl lua` exposes snapshots and typed window methods, while context-dependent focus and snapping remain callback-only. |
+| `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current.** The native runtime exposes snapshots and trusted snapping. `gnoblinctl lua` exposes snapshots and typed window methods; event callbacks can use trusted focus, move, and resize contexts, while snapping remains supervised-runtime-only. |
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current.** The native runtime exposes read-only revisioned snapshots and typed operations. `gnoblinctl lua` exposes the same reads and namespace mutations; operations wait for completion and return read-only records. |
 | `gnoblin.monitors` | `list()`, `primary()` | **Current.** Both the supervised runtime and `gnoblinctl lua` expose read-only revisioned monitor snapshots. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
@@ -1693,14 +1693,16 @@ rows elsewhere in this file describe migration input, not a supported runtime.
 
 `gnoblinctl lua` exposes `windows.list()`, `windows.focused()`, and
 `windows.by_id(id)` as read-only `Window` records with the runtime's typed
-colon methods. Window mutations wait for compositor completion and return the
-completed value instead of an `Operation` handle. The console rejects focus and
-interactive move or resize because it cannot obtain a live `FocusContext` from
-a runtime callback. It supports `events.on`, `events.once`, and the matching
-Mutter subscriptions, dispatches callbacks in the local CLI process, and stays
-open while subscriptions remain active. Shortcut ownership and trusted
-`FocusContext` operations remain exclusive to the supervised runtime; full CLI
-parity with the shared API is still incomplete.
+colon methods. Asynchronous window mutations wait for compositor completion and
+return the completed value instead of an `Operation` handle. Event callbacks
+receive an opaque `FocusContext` userdata when the subscribed event carries a
+trusted grant. `Window:focus`, `Window:begin_move`, and `Window:begin_resize`
+send that grant over its originating event connection; the CLI rejects
+strings, forged userdata, and reused contexts. The console supports `events.on`,
+`events.once`, and the matching Mutter subscriptions, dispatches callbacks in
+the local CLI process, and stays open while subscriptions remain active.
+Shortcut ownership and other supervised-runtime-only APIs remain exclusive to
+the runtime; full CLI parity with the shared API is still incomplete.
 
 `focus.history(filter?)` also returns those typed read-only window records in
 the console, preserving the shared API's MRU order and filters.
