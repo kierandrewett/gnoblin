@@ -22,7 +22,8 @@ event; keep a repeating subscription in a variable so the callback can call
 
 For desktop color-scheme change notifications, subscribe to
 `gnoblin.appearance.color-scheme-changed`. The [appearance guide](/guides/theming)
-explains how applications use the preference.
+explains how applications use the preference. Use
+`gnoblin.appearance.color_scheme()` to read the current value.
 
 ```lua
 gnoblin.on("mutter.wayland.pointer-window-changed", function(event)
@@ -206,7 +207,9 @@ no separate event.
 
 `gnoblin.appearance.color-scheme-changed` fires after the desktop color-scheme
 preference changes. It does not report the initial value. The preference is
-`color-scheme` in `org.gnome.desktop.interface`.
+`color-scheme` in `org.gnome.desktop.interface`. Read the current value with
+`gnoblin.appearance.color_scheme()`; it returns `nil` if the schema or key is
+unavailable.
 
 ```lua
 gnoblin.on("gnoblin.appearance.color-scheme-changed", function(event)
