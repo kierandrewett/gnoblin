@@ -3,6 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GNOBLIN_TEST_PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
+GNOBLIN_TEST_RUNTIME="${GNOBLIN_RUNTIME_BIN:-$ROOT/build/ninja/gnoblin}"
 mkdir -p "$ROOT/build/tmp"
 fixture_root="$(mktemp -d "$ROOT/build/tmp/devkit-e2e-config.XXXXXX")"
 mkdir -p "$fixture_root/gnoblin"
@@ -296,7 +297,7 @@ output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
     GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$fixture_root" \
-    GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
+    GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
     GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
     GNOBLIN_FOCUS_TEST_CLIENT="$fixture_root/focus-transfer-client" \
     GNOBLIN_FOCUS_TEST_SCRIPT="$ROOT/tests/test-focus-transfer.py" \
@@ -449,7 +450,7 @@ guardian_output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     GNOBLIN_STATE_DIR="$fixture_root/guardian-state" \
     GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$guardian_fixture" \
-    GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
+    GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
     GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
     GNOBLIN_AUTOSTART_MARKER="$guardian_marker" \
     GNOBLIN_DEVKIT_EXEC="$guardian_exec" \
