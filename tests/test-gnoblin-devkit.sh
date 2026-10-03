@@ -252,7 +252,32 @@ print("LUA_API:snapshots")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/lua-api.lua"
 python3 "$GNOBLIN_FOCUS_TEST_SCRIPT"
+cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    window_management = {
+        focus_mode = "click",
+        focus_new_windows = "strict",
+    },
+}
+local function report_workspace_animation(event)
+    if event.event == "workspace-switch" then
+        assert(event.name == "gnoblin.animation.started" or
+            event.name == "gnoblin.animation.finished")
+        assert(type(event.from_workspace) == "string" and event.from_workspace ~= "")
+        assert(type(event.to_workspace) == "string" and event.to_workspace ~= "")
+        assert(event.target == event.to_workspace)
+        assert(event.direction == "left" or event.direction == "right" or
+            event.direction == "up" or event.direction == "down" or
+            event.direction == "up-left" or event.direction == "up-right" or
+            event.direction == "down-left" or event.direction == "down-right")
+        print("LUA_WORKSPACE_ANIMATION:" .. event.name)
+    end
+end
+gnoblin.events.on("gnoblin.animation.started", report_workspace_animation)
+gnoblin.events.on("gnoblin.animation.finished", report_workspace_animation)
+LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/config-reload.txt"
+python3 "$GNOBLIN_TEST_ROOT/tests/test-workspace-animation-events.py"
 gnoblinctl --json window list > "$XDG_RUNTIME_DIR/windows.json"
 python3 - "$XDG_RUNTIME_DIR/windows.json" <<'PY'
 import json
@@ -546,11 +571,19 @@ require_output 'CONFIG_RELOAD:stable'
 require_output 'LUA_API:runtime-status'
 require_output 'LUA_API:snapshots'
 require_output 'PASS: Gnoblin denied activation without user context and emitted the denial event'
+require_output 'PASS: workspace animation lifecycle events reach socket clients'
 if ! grep -Fq 'LUA_API:activity-event-snapshot' "$fixture_root/state/devkit-last.log"; then
     echo 'Missing Lua session activity event proof in the devkit runtime log' >&2
     tail -n 80 "$fixture_root/state/devkit-last.log" >&2
     exit 1
 fi
+for animation_event in gnoblin.animation.started gnoblin.animation.finished; do
+    if ! grep -Fq "LUA_WORKSPACE_ANIMATION:$animation_event" "$fixture_root/state/devkit-last.log"; then
+        echo "Missing Lua workspace animation event: $animation_event" >&2
+        tail -n 80 "$fixture_root/state/devkit-last.log" >&2
+        exit 1
+    fi
+done
 grep -q 'restarting Lua runtime worker' "$fixture_root/state/devkit-last.log"
 printf '%s\n' 'PASS: Lua config and native control API work in the supervised nested runtime'
 
