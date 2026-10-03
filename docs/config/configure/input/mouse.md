@@ -20,13 +20,14 @@ gnoblin.configure {
 }
 ```
 
-| Field            | Accepted values                                    | Default when omitted      | What it changes                                                                        |
-| ---------------- | -------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------- |
-| `speed`          | Number from `-1` to `1`                            | Current device preference | `-1` is unaccelerated, `1` is fast, and `0` asks the system for its default speed.     |
-| `left_handed`    | Boolean                                            | Current device preference | Swaps the primary mouse buttons.                                                       |
-| `natural_scroll` | Boolean                                            | Current device preference | Reverses the scroll direction.                                                         |
-| `accel_profile`  | `"default"`, `"flat"`, `"adaptive"`, or `"custom"` | Current profile           | Selects the system curve or a custom profile.                                          |
-| `accel_curve`    | `{step = number, points = number[]}`               | Current system curve      | Sets pointer speed at evenly spaced input speeds. Requires `accel_profile = "custom"`. |
+| Field            | Accepted values                                    | Default when omitted                     | What it changes                                                                        |
+| ---------------- | -------------------------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------- |
+| `speed`          | Number from `-1` to `1`                            | Current device preference                | `-1` is unaccelerated, `1` is fast, and `0` asks the system for its default speed.     |
+| `drag_threshold` | Integer from `1` to `2147483647`                   | Current system preference (normally `8`) | Pointer distance in pixels before Mutter treats movement as a drag.                    |
+| `left_handed`    | Boolean                                            | Current device preference                | Swaps the primary mouse buttons.                                                       |
+| `natural_scroll` | Boolean                                            | Current device preference                | Reverses the scroll direction.                                                         |
+| `accel_profile`  | `"default"`, `"flat"`, `"adaptive"`, or `"custom"` | Current profile                          | Selects the system curve or a custom profile.                                          |
+| `accel_curve`    | `{step = number, points = number[]}`               | Current system curve                     | Sets pointer speed at evenly spaced input speeds. Requires `accel_profile = "custom"`. |
 
 If a device does not support the selected acceleration profile, it uses its
 default profile.
@@ -60,6 +61,7 @@ gnoblin.configure {
     input = {
         mouse = {
             speed = number?, -- -1 to 1
+            drag_threshold = integer?, -- 1 to 2147483647 pixels
             left_handed = boolean?,
             natural_scroll = boolean?,
             accel_profile = "default" | "flat" | "adaptive" | "custom"?,

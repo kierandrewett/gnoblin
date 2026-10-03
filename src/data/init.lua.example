@@ -66,6 +66,7 @@ gnoblin.configure {
     input = {
         mouse = {
             -- speed = 0.0, -- -1..1
+            -- drag_threshold = 8, -- pointer distance in pixels; omitted uses the system value
             -- left_handed = false,
             -- natural_scroll = false,
             -- accel_profile = "adaptive", -- "default", "flat", "adaptive"
