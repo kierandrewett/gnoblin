@@ -110,20 +110,20 @@ DBUS_SESSION_BUS_ADDRESS="$(dbus-daemon --config-file="$DBUS_CONF" --print-addre
 export DBUS_SESSION_BUS_ADDRESS
 DBUS_PID="$(cat "$DBUS_PID_FILE" 2>/dev/null || true)"
 
-# The native-session E2E can opt into a private IBus instance before Mutter
-# starts, so the compositor discovers its address from this devkit's XDG dirs.
+# The native-session E2E can opt into a private IBus instance. Use the nested
+# display name in its address file so the compositor can discover it.
 if [[ "${GNOBLIN_TEST_IBUS_DAEMON:-0}" == 1 ]]; then
     source "$ROOT/scripts/gnoblin-test-ibus.sh"
     TEST_IBUS_PID_FILE="$DK/ibus.pid"
     TEST_IBUS_LOG_FILE="$DK/ibus.log"
-    GNOBLIN_TEST_IBUS_HOST_WAYLAND="$HOST_WAYLAND"
-    export GNOBLIN_TEST_IBUS_HOST_WAYLAND
-    DISPLAY='' WAYLAND_DISPLAY="$HOST_WAYLAND" \
+    GNOBLIN_TEST_IBUS_WAYLAND_DISPLAY="$DISP"
+    export GNOBLIN_TEST_IBUS_WAYLAND_DISPLAY
+    DISPLAY='' WAYLAND_DISPLAY="$DISP" \
         gnoblin_test_ibus_start "$TEST_IBUS_PID_FILE" "$TEST_IBUS_LOG_FILE"
     export GNOBLIN_TEST_IBUS_PID_FILE="$TEST_IBUS_PID_FILE"
     export GNOBLIN_TEST_IBUS_LOG_FILE="$TEST_IBUS_LOG_FILE"
 else
-    unset GNOBLIN_TEST_IBUS_PID_FILE GNOBLIN_TEST_IBUS_LOG_FILE GNOBLIN_TEST_IBUS_HOST_WAYLAND
+    unset GNOBLIN_TEST_IBUS_PID_FILE GNOBLIN_TEST_IBUS_LOG_FILE GNOBLIN_TEST_IBUS_WAYLAND_DISPLAY
 fi
 
 # The host display stays visible to Mutter for its devkit window. Only commands
