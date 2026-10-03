@@ -315,6 +315,26 @@ session handler applies it. If the config produced during that event fails
 validation, Gnoblin rejects the event's queued operations and completes their
 handles with the validation error.
 
+## Appearance
+
+`gnoblin.appearance.color_scheme()` returns the current desktop color scheme:
+`default`, `prefer-dark`, or `prefer-light`. It returns `nil` when the
+`org.gnome.desktop.interface/color-scheme` schema or key is unavailable.
+
+Use it from `gnoblinctl lua` to read the current value:
+
+```lua
+local scheme = gnoblin.appearance.color_scheme()
+print(scheme or "unavailable")
+```
+
+The native runtime updates this read before delivering
+`gnoblin.appearance.color-scheme-changed`. Read it from a runtime callback after
+the initial compositor snapshot arrives. Calling it while the initial config
+is being evaluated raises an error because that snapshot has not arrived yet.
+
+Native-control API 1.70 adds the socket read `appearance.color_scheme`.
+
 ## Workspaces
 
 Use `{id = "code"}` to select a stable ID or `{number = 2}` to select the
