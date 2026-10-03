@@ -26,6 +26,12 @@ and IBus probes that the native-session workflow does not fully cover. Keep
 the useful app checks only after porting them to the standalone devkit; retire
 the remaining Shell-specific probes with an explicit coverage decision.
 
+The native-session workflow now installs GNOME Text Editor as a system Flatpak
+and runs it in the standalone devkit. The smoke observes the client through
+`gnoblinctl`, minimizes and restores its window, then closes it. This ports one
+Flatpak window-lifecycle path; it does not replace the old multi-app matrix or
+its remaining IBus and application-compatibility probes.
+
 The unbuilt `src/gnome-shell-overlay/shell-gnoblin-shader.{c,h}` helper has
 been removed. It was only included by retired Shell shader patches. Shader
 file watching now belongs to Gnoblin's native control service, and Mutter

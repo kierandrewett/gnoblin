@@ -58,12 +58,19 @@ jobs:
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
             json-glib-devel desktop-file-utils gsettings-desktop-schemas \
-            python3 weston dbus-daemon dbus-tools ibus util-linux-user
+            python3 weston dbus-daemon dbus-tools ibus flatpak util-linux-user
           dnf -y builddep --allowerasing packaging/rpm/mutter.spec packaging/rpm/gnoblin-portal.spec
           useradd --create-home builder
           builder_uid="$(id -u builder)"
           install -d -o builder -g builder -m 700 "/run/user/$builder_uid"
           chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Install Flatpak client fixture
+        run: |
+          flatpak remote-add --system --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --system --noninteractive --assumeyes \
+            flathub org.gnome.TextEditor
 
       - name: Build Gnoblin with the nested-session viewer
         run: |
@@ -111,6 +118,12 @@ jobs:
             WAYLAND_DISPLAY="$socket_name" \
             GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
             bash tests/test-gnoblin-devkit.sh
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY="$socket_name" \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            GNOBLIN_ARTIFACT_DIR="$GITHUB_WORKSPACE/build/logs/flatpak-client" \
+            python3 tests/test-flatpak-client-devkit.py
           runuser -u builder -- env \
             XDG_RUNTIME_DIR="$runtime_dir" \
             WAYLAND_DISPLAY="$socket_name" \
