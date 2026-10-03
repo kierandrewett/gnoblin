@@ -4,7 +4,17 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export GNOBLIN_TEST_ROOT="$ROOT"
 GNOBLIN_TEST_PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
-GNOBLIN_TEST_RUNTIME="${GNOBLIN_RUNTIME_BIN:-$ROOT/build/ninja/gnoblin}"
+if [[ -n ${GNOBLIN_RUNTIME_BIN:-} ]]; then
+    GNOBLIN_TEST_RUNTIME="$GNOBLIN_RUNTIME_BIN"
+elif [[ -n ${GNOBLIN_PREFIX:-} ]]; then
+    GNOBLIN_TEST_RUNTIME="$GNOBLIN_TEST_PREFIX/bin/gnoblin"
+else
+    GNOBLIN_TEST_RUNTIME="$ROOT/build/ninja/gnoblin"
+fi
+[[ -x "$GNOBLIN_TEST_RUNTIME" ]] || {
+    echo "No Gnoblin runtime executable found: $GNOBLIN_TEST_RUNTIME" >&2
+    exit 1
+}
 mkdir -p "$ROOT/build/tmp"
 fixture_root="$(mktemp -d "$ROOT/build/tmp/devkit-e2e-config.XXXXXX")"
 mkdir -p "$fixture_root/gnoblin"
@@ -78,6 +88,13 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     assert(not pcall(function() status.state = "restarting" end))
     print("LUA_API:runtime-status")
     print("LUA_API:snapshots")
+end)
+gnoblin.events.once("gnoblin.session.activity-changed", function(event)
+    local activity = gnoblin.session.activity()
+    assert(type(event.revision) == "number" and event.revision > 0)
+    assert(activity.revision >= event.revision,
+        "session activity snapshot must be current before its event is delivered")
+    print("LUA_API:activity-event-snapshot")
 end)
 LUA
 
@@ -411,6 +428,11 @@ require_output 'CONFIG_RELOAD:stable'
 require_output 'LUA_API:runtime-status'
 require_output 'LUA_API:snapshots'
 require_output 'PASS: Gnoblin denied activation without user context and emitted the denial event'
+if ! grep -Fq 'LUA_API:activity-event-snapshot' "$fixture_root/state/devkit-last.log"; then
+    echo 'Missing Lua session activity event proof in the devkit runtime log' >&2
+    tail -n 80 "$fixture_root/state/devkit-last.log" >&2
+    exit 1
+fi
 grep -q 'restarting Lua runtime worker' "$fixture_root/state/devkit-last.log"
 printf '%s\n' 'PASS: Lua config and native control API work in the supervised nested runtime'
 
