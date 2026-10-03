@@ -18,6 +18,7 @@ PUBLIC_FILES = {
     "/usr/bin/gnoblinctl",
     "/usr/share/wayland-sessions/gnoblin.desktop",
     "/usr/lib/systemd/user/gnoblin-session.target",
+    "/usr/lib/systemd/user/gnoblin-idle.service",
     "/usr/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy",
     "/usr/share/xdg-desktop-portal/portals/gnoblin.portal",
     "/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service",
