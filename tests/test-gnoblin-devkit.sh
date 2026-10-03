@@ -370,23 +370,31 @@ output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     printf '%s\n' "$output" >&2
     exit 1
 }
-grep -q 'Gnoblin is ready on nested Wayland display' <<<"$output"
-grep -q 'PING:pong' <<<"$output"
-grep -q 'CONFIG:click' <<<"$output"
-grep -q 'WINDOWS:json' <<<"$output"
-grep -q 'WORKSPACE:next' <<<"$output"
-grep -q 'WORKER:recovered-with-compositor-alive' <<<"$output"
-grep -q 'INPUT_SOURCE:empty-without-lua-setting' <<<"$output"
-grep -q 'INPUT_SOURCE:configured-from-lua' <<<"$output"
-grep -q 'INPUT_SOURCE:selected-through-cli' <<<"$output"
-grep -q 'IBUS:selected-through-cli' <<<"$output"
-grep -q 'IBUS:owner-lost' <<<"$output"
-grep -q 'IBUS:reconnected-after-owner-restart' <<<"$output"
-grep -q 'INPUT_SOURCE:cleared-with-lua-config' <<<"$output"
-grep -q 'CONFIG_RELOAD:stable' <<<"$output"
-grep -q 'LUA_API:runtime-status' <<<"$output"
-grep -q 'LUA_API:snapshots' <<<"$output"
-grep -q 'PASS: Gnoblin denied activation without user context and emitted the denial event' <<<"$output"
+require_output() {
+    local expected="$1"
+    if ! grep -Fq -- "$expected" <<<"$output"; then
+        printf 'Missing expected devkit output: %s\n' "$expected" >&2
+        printf '%s\n' 'Captured devkit output:' "$output" >&2
+        exit 1
+    fi
+}
+require_output 'Gnoblin is ready on nested Wayland display'
+require_output 'PING:pong'
+require_output 'CONFIG:click'
+require_output 'WINDOWS:json'
+require_output 'WORKSPACE:next'
+require_output 'WORKER:recovered-with-compositor-alive'
+require_output 'INPUT_SOURCE:empty-without-lua-setting'
+require_output 'INPUT_SOURCE:configured-from-lua'
+require_output 'INPUT_SOURCE:selected-through-cli'
+require_output 'IBUS:selected-through-cli'
+require_output 'IBUS:owner-lost'
+require_output 'IBUS:reconnected-after-owner-restart'
+require_output 'INPUT_SOURCE:cleared-with-lua-config'
+require_output 'CONFIG_RELOAD:stable'
+require_output 'LUA_API:runtime-status'
+require_output 'LUA_API:snapshots'
+require_output 'PASS: Gnoblin denied activation without user context and emitted the denial event'
 grep -q 'restarting Lua runtime worker' "$fixture_root/state/devkit-last.log"
 printf '%s\n' 'PASS: Lua config and native control API work in the supervised nested runtime'
 
