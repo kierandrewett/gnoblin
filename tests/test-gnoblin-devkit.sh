@@ -2,6 +2,7 @@
 # Verify that Lua settings and the native control API reach a fresh session.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export GNOBLIN_TEST_ROOT="$ROOT"
 GNOBLIN_TEST_PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 GNOBLIN_TEST_RUNTIME="${GNOBLIN_RUNTIME_BIN:-$ROOT/build/ninja/gnoblin}"
 mkdir -p "$ROOT/build/tmp"
@@ -100,19 +101,45 @@ assert(#gnoblin.input.sources() == 0,
 print("INPUT_SOURCE:empty-without-lua-setting")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/input-sources.lua"
+source "$GNOBLIN_TEST_ROOT/scripts/gnoblin-test-ibus.sh"
+ibus_pid_file="$GNOBLIN_TEST_IBUS_PID_FILE"
+ibus_log_file="$GNOBLIN_TEST_IBUS_LOG_FILE"
+trap 'gnoblin_test_ibus_stop "$ibus_pid_file"' EXIT
+select_ibus_source() {
+    local output_file="$1"
+    local selected=false
+    for _ in {1..100}; do
+        if gnoblinctl input select ibus xkb:us::eng >"$output_file" 2>&1; then
+            selected=true
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ "$selected" != true ]]; then
+        cat "$output_file" >&2
+        echo 'Gnoblin could not select the configured IBus engine' >&2
+        exit 1
+    fi
+}
 cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
     window_management = {
         focus_mode = "click",
         focus_new_windows = "strict",
     },
-    input_sources = {sources = {{type = "xkb", id = "us"}}},
+    input_sources = {
+        sources = {
+            {type = "xkb", id = "us"},
+            {type = "ibus", id = "xkb:us::eng"},
+        },
+    },
 }
 LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/input-sources-set.txt"
 cat > "$XDG_RUNTIME_DIR/input-sources.lua" <<'LUA'
 local sources = gnoblin.input.sources()
-assert(#sources == 1 and sources[1].id == "us")
+assert(#sources == 2 and sources[1].id == "us")
+assert(sources[2].type == "ibus" and sources[2].id == "xkb:us::eng")
 print("INPUT_SOURCE:configured-from-lua")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/input-sources.lua"
@@ -131,6 +158,38 @@ assert source and source.get("type") == "xkb" and source.get("id") == "us", curr
 assert source.get("current") is True, current
 print("INPUT_SOURCE:selected-through-cli")
 PY
+select_ibus_source "$XDG_RUNTIME_DIR/ibus-source-select.txt"
+cat > "$XDG_RUNTIME_DIR/ibus-current.lua" <<'LUA'
+local current = gnoblin.input.current_source()
+assert(current and current.type == "ibus" and current.id == "xkb:us::eng")
+print("IBUS:selected-through-cli")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/ibus-current.lua"
+gnoblin_test_ibus_stop "$ibus_pid_file"
+cat > "$XDG_RUNTIME_DIR/ibus-lost.lua" <<'LUA'
+local current = gnoblin.input.current_source()
+assert(not current or current.type ~= "ibus")
+print("IBUS:owner-lost")
+LUA
+ibus_lost=false
+for _ in {1..100}; do
+    if gnoblinctl lua "$XDG_RUNTIME_DIR/ibus-lost.lua" \
+        > "$XDG_RUNTIME_DIR/ibus-lost.txt" 2>&1; then
+        ibus_lost=true
+        break
+    fi
+    sleep 0.1
+done
+if [[ "$ibus_lost" != true ]]; then
+    cat "$XDG_RUNTIME_DIR/ibus-lost.txt" >&2
+    echo 'IBus source did not clear after its owner exited' >&2
+    exit 1
+fi
+DISPLAY= WAYLAND_DISPLAY="$GNOBLIN_TEST_IBUS_HOST_WAYLAND" \
+    gnoblin_test_ibus_start "$ibus_pid_file" "$ibus_log_file"
+select_ibus_source "$XDG_RUNTIME_DIR/ibus-source-reselect.txt"
+gnoblinctl lua "$XDG_RUNTIME_DIR/ibus-current.lua"
+printf 'IBUS:reconnected-after-owner-restart\n'
 for reload_attempt in {1..8}; do
     gnoblinctl config reload > "$XDG_RUNTIME_DIR/reload-$reload_attempt.txt"
 done
@@ -297,6 +356,7 @@ SCRIPT
 # optional devkit viewer. Keep the nested compositor alive if that viewer exits
 # so this test isolates session-supervisor recovery.
 output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
+    GNOBLIN_TEST_IBUS_DAEMON=1 \
     GNOBLIN_STATE_DIR="$fixture_root/state" \
     XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
     GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
@@ -319,6 +379,9 @@ grep -q 'WORKER:recovered-with-compositor-alive' <<<"$output"
 grep -q 'INPUT_SOURCE:empty-without-lua-setting' <<<"$output"
 grep -q 'INPUT_SOURCE:configured-from-lua' <<<"$output"
 grep -q 'INPUT_SOURCE:selected-through-cli' <<<"$output"
+grep -q 'IBUS:selected-through-cli' <<<"$output"
+grep -q 'IBUS:owner-lost' <<<"$output"
+grep -q 'IBUS:reconnected-after-owner-restart' <<<"$output"
 grep -q 'INPUT_SOURCE:cleared-with-lua-config' <<<"$output"
 grep -q 'CONFIG_RELOAD:stable' <<<"$output"
 grep -q 'LUA_API:runtime-status' <<<"$output"

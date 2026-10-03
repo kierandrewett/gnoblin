@@ -53,6 +53,7 @@ DK="$(mktemp -d "$DEVKIT_TMP_ROOT/gnoblin-devkit.XXXXXX")"
 mkdir -m 700 "$DK"/{runtime,home,config,data,cache,state}
 RUNTIME_PID=''
 DBUS_PID=''
+TEST_IBUS_PID_FILE=''
 cleaned=''
 cleanup() {
     if [[ -n $cleaned ]]; then
@@ -63,6 +64,9 @@ cleanup() {
         kill -- "-$RUNTIME_PID" 2>/dev/null || true
         kill "$RUNTIME_PID" 2>/dev/null || true
         wait "$RUNTIME_PID" 2>/dev/null || true
+    fi
+    if [[ -n $TEST_IBUS_PID_FILE ]]; then
+        gnoblin_test_ibus_stop "$TEST_IBUS_PID_FILE"
     fi
     [[ -z $DBUS_PID ]] || kill "$DBUS_PID" 2>/dev/null || true
     if [[ -f "$DK/runtime.log" ]]; then
@@ -85,7 +89,7 @@ export XDG_RUNTIME_DIR="$DK/runtime"
 export HOME="$DK/home" XDG_CONFIG_HOME="$DK/config" XDG_DATA_HOME="$DK/data"
 export XDG_CACHE_HOME="$DK/cache" XDG_STATE_HOME="$DK/state"
 export GNOBLIN_COMPOSITOR_SOCKET="$XDG_RUNTIME_DIR/compositor-v1.sock"
-unset GNOBLIN_CONFIG
+unset GNOBLIN_CONFIG IBUS_ADDRESS
 export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GTK_A11Y=none NO_AT_BRIDGE=1
 export GDK_BACKEND=wayland QT_QPA_PLATFORM=wayland CLUTTER_BACKEND=wayland
 export MOZ_ENABLE_WAYLAND=1
@@ -105,6 +109,22 @@ DBUS_PID_FILE="$DK/dbus.pid"
 DBUS_SESSION_BUS_ADDRESS="$(dbus-daemon --config-file="$DBUS_CONF" --print-address --fork --print-pid=3 3>"$DBUS_PID_FILE")" || exit 1
 export DBUS_SESSION_BUS_ADDRESS
 DBUS_PID="$(cat "$DBUS_PID_FILE" 2>/dev/null || true)"
+
+# The native-session E2E can opt into a private IBus instance before Mutter
+# starts, so the compositor discovers its address from this devkit's XDG dirs.
+if [[ "${GNOBLIN_TEST_IBUS_DAEMON:-0}" == 1 ]]; then
+    source "$ROOT/scripts/gnoblin-test-ibus.sh"
+    TEST_IBUS_PID_FILE="$DK/ibus.pid"
+    TEST_IBUS_LOG_FILE="$DK/ibus.log"
+    GNOBLIN_TEST_IBUS_HOST_WAYLAND="$HOST_WAYLAND"
+    export GNOBLIN_TEST_IBUS_HOST_WAYLAND
+    DISPLAY='' WAYLAND_DISPLAY="$HOST_WAYLAND" \
+        gnoblin_test_ibus_start "$TEST_IBUS_PID_FILE" "$TEST_IBUS_LOG_FILE"
+    export GNOBLIN_TEST_IBUS_PID_FILE="$TEST_IBUS_PID_FILE"
+    export GNOBLIN_TEST_IBUS_LOG_FILE="$TEST_IBUS_LOG_FILE"
+else
+    unset GNOBLIN_TEST_IBUS_PID_FILE GNOBLIN_TEST_IBUS_LOG_FILE GNOBLIN_TEST_IBUS_HOST_WAYLAND
+fi
 
 # The host display stays visible to Mutter for its devkit window. Only commands
 # launched from the nested terminal receive the private runtime directory and
