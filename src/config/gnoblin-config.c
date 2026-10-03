@@ -632,6 +632,15 @@ static gboolean validate_window_rule_patterns(GVariant* document, GError** error
         g_autoptr(GVariant) rule = g_variant_get_variant(boxed_rule);
         if (!g_variant_is_of_type(rule, G_VARIANT_TYPE_VARDICT))
             continue;
+        g_autoptr(GVariant) legacy_borders = g_variant_lookup_value(rule, "borders", NULL);
+        if (legacy_borders) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "window-rules[%zu].borders is not supported in standalone Gnoblin; "
+                        "use corners.border_width and corners.border_color for one native "
+                        "outline",
+                        i + 1);
+            return FALSE;
+        }
         g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
         if (!match || !g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT))
             continue;
@@ -658,7 +667,7 @@ static gboolean validate_window_rule_patterns(GVariant* document, GError** error
             }
         }
 
-        static const char* const effect_sections[] = {"corners", "borders", NULL};
+        static const char* const effect_sections[] = {"corners", NULL};
         for (guint section_index = 0; effect_sections[section_index]; section_index++) {
             g_autoptr(GVariant) section =
                 g_variant_lookup_value(rule, effect_sections[section_index], NULL);

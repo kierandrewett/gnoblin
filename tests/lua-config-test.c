@@ -269,8 +269,7 @@ int main(void) {
     g_assert_true(g_file_set_contents(
         padding_config,
         "local g=require('gnoblin')\n"
-        "g.window_rule {match={type='window'}, corners={padding={-128, 1.5, 0, 128}}}\n"
-        "g.window_rule {match={type='window'}, borders={padding={0, 0, 0, 0}}}\n",
+        "g.window_rule {match={type='window'}, corners={padding={-128, 1.5, 0, 128}}}\n",
         -1, &error));
     g_autoptr(GVariant) valid_padding = load(padding_config, NULL, &error);
     g_assert_no_error(error);
@@ -291,12 +290,13 @@ int main(void) {
     g_assert_true(g_file_set_contents(
         padding_config,
         "local g=require('gnoblin')\n"
-        "g.window_rule {match={type='window'}, borders={padding={0, 0, 0, 128.5}}}\n",
+        "g.window_rule {match={type='window'}, borders={inner_width=1, inner_color='#505050ff'}}\n",
         -1, &error));
-    g_autoptr(GVariant) out_of_range_padding = load(padding_config, NULL, &error);
-    g_assert_null(out_of_range_padding);
+    g_autoptr(GVariant) unsupported_borders = load(padding_config, NULL, &error);
+    g_assert_null(unsupported_borders);
     g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
-    g_assert_nonnull(strstr(error->message, "borders.padding[4]"));
+    g_assert_nonnull(strstr(error->message, "window-rules[1].borders"));
+    g_assert_nonnull(strstr(error->message, "corners.border_width"));
     g_clear_error(&error);
 
     const char* source_root = g_getenv("GNOBLIN_TEST_SOURCE_ROOT");
