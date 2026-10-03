@@ -95,8 +95,9 @@ against the pinned source requirements. It never calls your system package
 manager. Run it as your normal user.
 
 The default build includes the session and Mutter. Add `--with-portal` to build
-Gnoblin's optional backend before registering the session. Registration
-installs its portal metadata when the backend is present in the prefix.
+Gnoblin's optional backend. Session registration installs the portal route
+whether or not that backend is built; without it, the route selects another
+installed backend.
 
 ## 2. Try it in a window
 
@@ -177,9 +178,10 @@ separate GNOME login at the login screen when you need those services.
 The lean path needs a fresh Wayland login managed by logind. The login manager
 must set `XDG_SESSION_TYPE=wayland` when it starts Gnoblin.
 
-`./build.sh --register-session` asks for sudo to install the login entry and,
-when the prefix includes Gnoblin's portal backend, its backend descriptor and
-desktop-specific default route. It then links Gnoblin's user services.
+`./build.sh --register-session` asks for sudo to install the login entry and
+Gnoblin's desktop-specific portal route. When the prefix includes Gnoblin's
+optional backend, it also installs the backend descriptor and D-Bus service.
+It then links Gnoblin's user services.
 
 [Install a shell](bring-your-own-shell.md), log out, and select **Gnoblin**.
 This registration changes the Gnoblin login entry; it does not change a

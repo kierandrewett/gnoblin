@@ -13,8 +13,9 @@ Gnoblin installs as its own session and can coexist with GNOME.
 
 - RPM names: `gnoblin`, `gnoblin-mutter`, the optional `gnoblin-portal`, and the optional
   `gnoblin-gnome-integration` subpackage.
-- The `gnoblin` package owns the supervisor, login entry, Lua runtime, and
-  session services. It does not require a portal backend.
+- The RPM and Arch `gnoblin` packages own the supervisor, login entry, Lua
+  runtime, session services, and Gnoblin-specific portal route. They do not
+  require a portal backend.
 - Private runtime: `/usr/lib/gnoblin`.
 - Public files: login entry, control tool, service units and named policy files.
 - Private libraries must not satisfy stock GNOME dependencies.

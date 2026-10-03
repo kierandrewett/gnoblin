@@ -33,8 +33,9 @@ To use Gnoblin's GTK-based portal backend, install its RPM too:
 sudo zypper install --allow-unsigned-rpm ./gnoblin-rpms/opensuse-gnoblin-portal-[0-9]*.rpm
 ```
 
-The package installs the default route for Gnoblin sessions, preferring its
-backend and falling back to another installed backend. You can route
+The core `gnoblin` package installs the default route for Gnoblin sessions.
+It prefers Gnoblin's backend when installed and falls back to another installed
+backend. The optional package only adds the GTK backend. You can route
 interfaces to a different backend in the Lua config. GNOME keeps its own
 portal selection.
 

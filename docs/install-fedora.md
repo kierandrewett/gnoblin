@@ -13,10 +13,11 @@ sudo dnf copr enable kierandrewett/gnoblin
 sudo dnf --setopt=install_weak_deps=False install --refresh gnoblin
 ```
 
-`gnoblin` installs the Lua-supervised session and its private Mutter runtime.
-It does not install GNOME Shell, GJS, or a portal backend. Install
-`gnoblin-portal` to add Gnoblin's GTK-based backend and its Gnoblin-session
-default routing. The default prefers Gnoblin, then an installed backend.
+`gnoblin` installs the Lua-supervised session, its private Mutter runtime, and
+the portal route for Gnoblin sessions. It does not install GNOME Shell, GJS, or
+a portal backend. Install `gnoblin-portal` to add Gnoblin's GTK-based backend.
+The route uses it when installed and otherwise selects another installed
+backend.
 
 To route individual interfaces to other backends, use the Lua config. Install
 the backend with `sudo dnf install gnoblin-portal`; this command skips packages

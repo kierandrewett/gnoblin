@@ -7,8 +7,9 @@ desktop schemas come from Arch and must meet the pinned source's minimum.
 
 It never replaces, provides, or conflicts with Arch's `mutter` or
 `gnome-shell` packages. The files outside that prefix are Gnoblin's login
-entry, `gnoblinctl`, and session systemd user units. The optional portal
-package owns its own activation and configuration files.
+entry, `gnoblinctl`, session systemd user units, and the portal route for
+Gnoblin sessions. The optional portal package owns the backend's activation
+files.
 
 ## Release source and integrity
 
