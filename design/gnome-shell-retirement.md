@@ -21,16 +21,21 @@ The old app-shard harness in `tests/e2e/run-app-shard-container.sh` and
 CMake tests. Its Fedora runner installs GNOME Shell and requires the old
 `install/bin/gnome-shell` binary and Shell D-Bus resources, so it cannot run
 against the supported standalone build. The app driver also uses Shell Eval
-and Shell Screenshot methods. It includes Flatpak launch, application-window,
-and IBus probes that the native-session workflow does not fully cover. Keep
-the useful app checks only after porting them to the standalone devkit; retire
-the remaining Shell-specific probes with an explicit coverage decision.
+and Shell Screenshot methods. The standalone native-session workflow covers
+the public IBus source path in `tests/test-gnoblin-devkit.sh`: Lua config owns
+the source list, `gnoblinctl` selects XKB and IBus sources, the IBus source
+clears when its owner exits, selection works after the daemon returns, and
+config reload removes the source. This does not replace the old probe's
+inspection of GNOME Shell's private `InputSourceManager` during an in-flight
+activation; that Shell-only implementation is retired with the Shell runtime.
+Remaining application compatibility checks from the old multi-app matrix still
+need a coverage decision.
 
 The native-session workflow now installs GNOME Text Editor as a system Flatpak
 and runs it in the standalone devkit. The smoke observes the client through
 `gnoblinctl`, minimizes and restores its window, then closes it. This ports one
-Flatpak window-lifecycle path; it does not replace the old multi-app matrix or
-its remaining IBus and application-compatibility probes.
+Flatpak window-lifecycle path; it does not replace the old multi-app
+application-compatibility matrix.
 
 The unbuilt `src/gnome-shell-overlay/shell-gnoblin-shader.{c,h}` helper has
 been removed. It was only included by retired Shell shader patches. Shader
@@ -147,9 +152,11 @@ The remaining input-specific patches are listed below.
 - `77-keymap-initialization`, `78-ibus-disconnect-guard`,
   `zzzzzzz-on-demand-ibus`, and shutdown-order patches: a nested-session E2E
   with a synthetic GNOME source schema confirms Lua-only input-source listing,
-  configuration, XKB selection through `gnoblinctl`, current-source reporting,
-  and removal on reload. Verify startup keymap initialization, IBus recovery,
-  and teardown on a real seat before retiring these historical patches.
+  configuration, XKB and IBus selection through `gnoblinctl`, current-source
+  reporting, clearing on IBus owner loss, re-selection after the daemon
+  restarts, and removal on reload. Real-seat startup keymap initialization and
+  full input-service teardown remain unverified before retiring these
+  historical patches.
 - `96-touchpad-gestures`: removed on 2026-10-02. The patch only connected
   GNOME Shell swipe trackers for its Overview, app grid, emoji pager, and lock
   screen to the old GJS configuration bridge. The standalone runtime exposes
