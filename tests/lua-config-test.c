@@ -1468,10 +1468,13 @@ int main(void) {
     g_assert_no_error(error);
     const char* session_state = NULL;
     gboolean lock_available = TRUE;
+    gint64 session_status_revision = -1;
     g_assert_true(g_variant_lookup(session_status, "state", "&s", &session_state));
     g_assert_cmpstr(session_state, ==, "running");
     g_assert_true(g_variant_lookup(session_status, "lock_available", "b", &lock_available));
     g_assert_false(lock_available);
+    g_assert_true(g_variant_lookup(session_status, "revision", "x", &session_status_revision));
+    g_assert_cmpint(session_status_revision, ==, 0);
     g_assert_null(g_variant_lookup_value(session_status, "lock_state", NULL));
 
     GVariantBuilder session_lock_builder;
@@ -1490,6 +1493,8 @@ int main(void) {
     g_assert_true(lock_available);
     g_assert_true(g_variant_lookup(session_status, "lock_state", "&s", &session_state));
     g_assert_cmpstr(session_state, ==, "locked");
+    g_assert_true(g_variant_lookup(session_status, "revision", "x", &session_status_revision));
+    g_assert_cmpint(session_status_revision, ==, 43);
 
     g_autoptr(GVariant) capabilities =
         gnoblin_config_read_api("capabilities.list", empty_read_arguments, &error);
