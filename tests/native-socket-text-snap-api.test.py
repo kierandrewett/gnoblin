@@ -236,7 +236,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             'if (g_str_equal(op, "windows"))',
         )
 
-        self.assertEqual(api_minor(header), 71)
+        self.assertGreaterEqual(api_minor(header), 71)
         for event in (
             "gnoblin.layer.created",
             "gnoblin.layer.changed",
@@ -249,6 +249,53 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"layer-lifecycle-events"', source)
         self.assertIn('g_str_has_prefix(name, "gnoblin.layer.") && client->api_minor < 71', subscription)
         self.assertIn("layer lifecycle events require API version 1.71", subscription)
+
+    def test_runtime_status_events_follow_the_authoritative_status_tuple(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        events = function_body(
+            source,
+            "static const char* native_socket_events[] = {",
+            "static const char native_policy_introspection[]",
+        )
+        publish = function_body(
+            source,
+            "static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
+            "static void dispatch_lua_layer_event(",
+        )
+        status = function_body(
+            source,
+            "static void native_runtime_publish_status(",
+            "static GVariant* appearance_snapshot_new(",
+        )
+        subscription = function_body(
+            source,
+            'if (g_str_equal(op, "events"))',
+            'if (g_str_equal(op, "windows"))',
+        )
+        suspend = function_body(
+            source,
+            "static void native_runtime_suspend_worker(",
+            "static GHashTable* native_runtime_event_subscriptions_from_payload(",
+        )
+        runtime_handler = function_body(
+            source,
+            "static gboolean native_runtime_fd_ready(",
+            "gboolean gnoblin_native_control_dispatch_runtime_event(",
+        )
+
+        self.assertEqual(api_minor(header), 72)
+        self.assertIn('"gnoblin.runtime.status-changed"', events)
+        self.assertIn('"gnoblin.runtime.status-changed"', status)
+        self.assertIn("native_runtime_status_state(control)", status)
+        self.assertIn('"generation"', status)
+        self.assertIn("client->event_api_minor < 72", publish)
+        self.assertIn("client->api_minor < 72", subscription)
+        self.assertIn("runtime status events require API version 1.72", subscription)
+        self.assertIn("native_runtime_publish_status(control)", suspend)
+        self.assertIn("native_runtime_republish_full_state(control, &error)", runtime_handler)
+        self.assertIn("runtime_generation_changed", runtime_handler)
+        self.assertIn("native_runtime_publish_status(control)", runtime_handler)
 
     def test_layer_event_baseline_is_seeded_before_startup_returns(self):
         source = CONTROL.read_text()
