@@ -994,6 +994,44 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(event_names[event_index], "gnoblin.shortcut.session.key")', lua_dispatch)
         self.assertIn("focus_context_event && active_runtime->config.dispatch_focus_handle", lua_dispatch)
 
+    def test_strict_activation_denial_event_is_versioned_and_routed(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        events = function_body(
+            source,
+            "static const char* native_socket_events[] = {",
+            "static const char native_policy_introspection[]",
+        )
+        publish = function_body(
+            source,
+            "static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
+            "static void native_publish_request_event(",
+        )
+        native_event = function_body(
+            source,
+            "static void native_native_event(",
+            "static gboolean focus_token_has_valid_shape(",
+        )
+        subscription = function_body(
+            source,
+            'if (g_str_equal(op, "events"))',
+            'if (g_str_equal(op, "windows"))',
+        )
+        patch = (ROOT / "patches/mutter/52-focus-transfer/0002-report-xdg-activation-denied.patch").read_text()
+        docs = (ROOT / "docs/config/lua-events.md").read_text()
+
+        self.assertGreaterEqual(api_minor(header), 69)
+        self.assertIn('"gnoblin.window.activation-denied"', events)
+        self.assertIn("client->event_api_minor < 69", publish)
+        self.assertIn("client->api_minor < 69", subscription)
+        self.assertIn('"activation denial events require API version 1.69"', subscription)
+        self.assertIn('"gnoblin.window.activation-denied"', native_event)
+        self.assertIn("meta_display_dispatch_gnoblin_native_event", patch)
+        for reason in ("missing_context", "invalid_context", "stale_context"):
+            with self.subTest(reason=reason):
+                self.assertIn(reason, patch)
+                self.assertIn(reason, docs)
+
     def test_portal_grants_always_uses_lua(self):
         source = CONTROL.read_text()
         header = HEADER.read_text()
