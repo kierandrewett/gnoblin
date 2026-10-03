@@ -86,6 +86,13 @@ GNOME Shell's GJS-wrapper cleanup before compositor teardown. The standalone
 guardian shuts down its Mutter process directly and has no GJS context to
 release.
 
+The `79-session-lock-shutdown/0001-meta-context-prepare-compositor-shutdown`
+Mutter patch was removed on 2026-10-03. It added a public wrapper around the
+existing `prepare-compositor-shutdown` signal emission in `meta_context_dispose`,
+but no Gnoblin code called that wrapper. Mutter's existing dispose path already
+emits the signal, so the extra API was redundant. The adjacent null-safe signal
+disconnect patch remains active.
+
 The `79z-background-manager-shutdown` patch was removed on 2026-10-03. It
 ordered destruction of GNOME Shell background actors and popup menus during
 Shell shutdown; the standalone session has no Shell background managers.
