@@ -9,6 +9,7 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | ------------------------------ | -------------------------------- | ------------------- | ------------------------------------------------------------- |
 | `focus_mode`                   | `"click"`, `"sloppy"`, `"mouse"` | `"click"`           | Selects when pointer or click input changes focus. See below. |
 | `focus_new_windows`            | `"smart"`, `"strict"`            | `"strict"`          | Selects Mutter's new-window focus policy. See below.          |
+| `auto_maximize`                | Boolean                          | `true`              | Maximize new windows that nearly fill the monitor.            |
 | `raise_on_click`               | Boolean                          | `true`              | Raise a window when clicked.                                  |
 | `auto_raise`                   | Boolean                          | `false`             | Raise the focused window automatically.                       |
 | `focus_change_on_pointer_rest` | Boolean                          | `false`             | Change focus when the pointer stops over another window.      |
@@ -126,6 +127,7 @@ gnoblin.configure {
     window_management = {
         focus_mode = "click" | "sloppy" | "mouse"?,
         focus_new_windows = "smart" | "strict"?,
+        auto_maximize = boolean?,
         raise_on_click = boolean?,
         auto_raise = boolean?,
         focus_change_on_pointer_rest = boolean?,

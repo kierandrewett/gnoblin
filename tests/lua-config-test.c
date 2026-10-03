@@ -326,6 +326,20 @@ int main(void) {
         g_assert_cmpstr(g_variant_get_string(example_focus_new_windows, NULL), ==, "strict");
     }
 
+    g_assert_true(g_file_set_contents(
+        explicit_root, "gnoblin.configure {window_management = {auto_maximize = false}}\n", -1,
+        &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_autoptr(GVariant) window_management =
+        g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(window_management);
+    gboolean auto_maximize = TRUE;
+    g_assert_true(g_variant_lookup(window_management, "auto-maximize", "b", &auto_maximize));
+    g_assert_false(auto_maximize);
+
     g_assert_true(g_file_set_contents(explicit_root, "return {}\n", -1, &error));
     g_clear_pointer(&document, g_variant_unref);
     document = load(explicit_root, NULL, &error);
