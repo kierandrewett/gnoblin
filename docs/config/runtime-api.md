@@ -394,6 +394,11 @@ session-only ID. `activate` defaults to `false`. Rename also requires a
 nonempty name of up to 80 characters. `follow` defaults to `false`; when true,
 moving a window also switches to the destination workspace.
 
+A runtime rename changes the live workspace only. It does not edit your Lua
+configuration or change workspace names saved for GNOME. A config reload restores
+the declared name; update `gnoblin.configure {workspaces = {...}}` to keep a name
+across reloads and sessions.
+
 A `Workspace` record has `id`, `number`, `name`, `active`, `windows`, and
 `persistent` fields. Gnoblin does not remove a declared workspace, the active
 workspace, or a workspace that still contains windows.
