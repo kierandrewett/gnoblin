@@ -1709,8 +1709,10 @@ contexts. `TextTarget:insert_text` keeps its one-use token private and uses that
 same connection. The console supports `events.on`, `events.once`, and the
 matching Mutter subscriptions, dispatches callbacks in the local CLI process,
 and stays open while subscriptions remain active.
-Shortcut ownership and other supervised-runtime-only APIs remain exclusive to
-the runtime; full CLI parity with the shared API is still incomplete.
+`gnoblinctl lua` also supports shortcut bindings that it owns over a persistent
+compositor connection and event-bound operations sent through the connection
+that delivered their context. The CLI remains a separate Lua process; it does
+not replace the session's supervised Lua worker.
 
 `focus.history(filter?)` also returns those typed read-only window records in
 the console, preserving the shared API's MRU order and filters.
