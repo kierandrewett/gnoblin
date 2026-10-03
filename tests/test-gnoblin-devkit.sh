@@ -99,7 +99,10 @@ LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/input-sources.lua"
 cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
-    window_management = {focus_mode = "click"},
+    window_management = {
+        focus_mode = "click",
+        focus_new_windows = "strict",
+    },
     input_sources = {sources = {{type = "xkb", id = "us"}}},
 }
 LUA
@@ -126,7 +129,12 @@ assert source.get("current") is True, current
 print("INPUT_SOURCE:selected-through-cli")
 PY
 cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
-gnoblin.configure {window_management = {focus_mode = "click"}}
+gnoblin.configure {
+    window_management = {
+        focus_mode = "click",
+        focus_new_windows = "strict",
+    },
+}
 LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/input-sources-cleared.txt"
 cat > "$XDG_RUNTIME_DIR/input-sources.lua" <<'LUA'
