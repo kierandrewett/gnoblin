@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] mutter: cast native shortcut-capture stage
+
+---
+diff --git a/src/core/display.c b/src/core/display.c
+index 9374d12..b73b20e 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -645,7 +645,7 @@ meta_display_can_start_native_key_capture (MetaDisplay *display)
+ {
+   MetaDisplayPrivate *priv = meta_display_get_instance_private (display);
+   MetaBackend *backend = meta_context_get_backend (priv->context);
+-  ClutterStage *stage = meta_backend_get_stage (backend);
++  ClutterStage *stage = CLUTTER_STAGE (meta_backend_get_stage (backend));
+   gboolean stage_is_grabbed = TRUE;
+ 
+   if (stage)

@@ -1,5 +1,5 @@
 From 4cc2e46bd36987ccadabbd2698e53f7ac99850f5 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:54:12 +0100
 Subject: [PATCH] blur: compose buffer-synchronised item fades with material
  coverage

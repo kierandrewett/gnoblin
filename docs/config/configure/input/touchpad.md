@@ -47,12 +47,14 @@ gnoblin.configure {
 
 Each field defaults to the current device preference when omitted. The
 `"default"` enum value asks GNOME/libinput to choose the device behavior.
+Every field also accepts `"inherit"` to restore the GNOME/Mutter preference
+when an earlier config file supplied a value.
 
 Set the initial scroll speed from the window under the pointer when the config
 loads. Keyboard focus does not affect which window the event reports:
 
 ```lua
-gnoblin.on("pointer_window_changed", function(event)
+gnoblin.on("mutter.wayland.pointer-window-changed", function(event)
     local speed = event.app_id == "org.chromium.Chromium" and 0.3 or 1.0
     gnoblin.configure {input = {touchpad = {scroll_speed = speed}}}
 end)

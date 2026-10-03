@@ -1,8 +1,12 @@
 # gnoblin.configure.keybindings
 
-Use `keybindings` to override a GNOME action directly by its schema group and
+Use `keybindings` to override a Mutter action directly by its schema group and
 key. For named command shortcuts or named built-in actions, use
 [`gnoblin.configure.shortcuts`](/config/configure/shortcuts).
+
+The standalone session accepts only the `wm`, `mutter`, and `wayland` groups.
+Shell-owned actions are configured in the shell. Restart the compositor after
+changing these settings.
 
 Override a built-in action by group and action name. For example, bind the
 window-manager `close` action to Super+Q:
@@ -23,7 +27,6 @@ The group selects one of these schemas:
 
 | Group     | Schema                                 |
 | --------- | -------------------------------------- |
-| `shell`   | `org.gnome.shell.keybindings`          |
 | `wm`      | `org.gnome.desktop.wm.keybindings`     |
 | `mutter`  | `org.gnome.mutter.keybindings`         |
 | `wayland` | `org.gnome.mutter.wayland.keybindings` |
@@ -34,12 +37,11 @@ restores its default binding on reload.
 
 ### Find an action
 
-List the keys in the schema for the group you want. For example, these commands
-list window-manager and Shell actions:
+List the keys in the schema for the group you want. For example, this command
+lists window-manager actions:
 
 ```sh
 gsettings list-keys org.gnome.desktop.wm.keybindings
-gsettings list-keys org.gnome.shell.keybindings
 ```
 
 GSettings prints names with hyphens; use underscores in Lua. To read an
@@ -47,23 +49,10 @@ action's description, pass its schema and native key to `gsettings describe`:
 
 ```sh
 gsettings describe org.gnome.desktop.wm.keybindings close
-gsettings describe org.gnome.shell.keybindings show-screenshot-ui
 ```
 
-For example, `show-screenshot-ui` becomes `show_screenshot_ui` under the
-`shell` group. To bind it to Print:
+Examples from the supported groups:
 
-```lua
-gnoblin.configure {
-    keybindings = {
-        shell = {show_screenshot_ui = {"Print"}},
-    },
-}
-```
-
-Examples from the four groups:
-
-- `shell.show_screenshot_ui`
 - `wm.close`
 - `mutter.toggle_tiled_left`
 - `wayland.restore_shortcuts`
@@ -85,7 +74,6 @@ available groups depend on the installed GNOME version.
 ```lua
 gnoblin.configure {
     keybindings = {
-        shell = {["action_name"] = ({string, ...} | {})?},
         wm = {["action_name"] = ({string, ...} | {})?},
         mutter = {["action_name"] = ({string, ...} | {})?},
         wayland = {["action_name"] = ({string, ...} | {})?},

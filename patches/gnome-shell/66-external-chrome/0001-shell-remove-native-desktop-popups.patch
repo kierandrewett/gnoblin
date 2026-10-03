@@ -1,9 +1,9 @@
 From 8e9975d367d1f35a49d806cb7650ae169ade68fb Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:55:24 +0100
 Subject: [PATCH] shell: remove native desktop popups from Gnoblin
 
-Keep window, capture and desktop recovery services while external chrome owns desktop controls.
+Keep window and capture services while external chrome owns desktop controls.
 OSD requests use the existing transport without allocating native widgets.
 Stock GNOME retains its UI.
 ---
@@ -287,4 +287,3 @@ index 3c8eb9e..6296da4 100644
                  this._workspaceSwitcherPopup = new WorkspaceSwitcherPopup.WorkspaceSwitcherPopup();
 -- 
 2.55.0
-

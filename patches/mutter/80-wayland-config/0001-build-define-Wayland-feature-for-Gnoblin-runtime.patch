@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] build: define Wayland feature for Gnoblin runtime
+
+---
+diff --git a/config.h.meson b/config.h.meson
+index 420e749b18..777f80433f 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -41,6 +41,9 @@
+ /* Define if you want to enable XWayland support */
+ #mesondefine HAVE_XWAYLAND
+ 
++/* Building the Wayland compositor and its Gnoblin runtime API */
++#mesondefine HAVE_WAYLAND
++
+ /* Defined if screen cast and remote desktop support is enabled */
+ #mesondefine HAVE_REMOTE_DESKTOP
+ 

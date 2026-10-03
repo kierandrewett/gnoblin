@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] default new-window focus to strict
+
+---
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index 72852fece..55ac1ca20 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -87,7 +87,7 @@ static ClutterModifierType mouse_button_mods = CLUTTER_MOD1_MASK;
+ static MetaKeyCombo overlay_key_combos[2] = { 0 };
+ static MetaKeyCombo locate_pointer_key_combos[2] = { 0 };
+ static GDesktopFocusMode focus_mode = G_DESKTOP_FOCUS_MODE_CLICK;
+-static GDesktopFocusNewWindows focus_new_windows = G_DESKTOP_FOCUS_NEW_WINDOWS_SMART;
++static GDesktopFocusNewWindows focus_new_windows = G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT;
+ static gboolean raise_on_click = TRUE;
+ static gboolean center_new_windows = FALSE;
+ static gboolean attach_modal_dialogs = FALSE;

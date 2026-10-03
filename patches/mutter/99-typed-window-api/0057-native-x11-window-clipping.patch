@@ -1,0 +1,56 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] mutter: support native rounded clipping for X11 windows
+
+---
+diff --git a/src/compositor/meta-window-actor-x11.c b/src/compositor/meta-window-actor-x11.c
+index 54b03c0dc..b360959e3 100644
+--- a/src/compositor/meta-window-actor-x11.c
++++ b/src/compositor/meta-window-actor-x11.c
+@@ -26,6 +26,7 @@
+ #include "clutter/clutter-frame-clock.h"
+ #include "compositor/compositor-private.h"
+ #include "compositor/meta-cullable.h"
++#include "compositor/meta-gnoblin-window-effects.h"
+ #include "compositor/meta-shaped-texture-private.h"
+ #include "compositor/meta-surface-actor.h"
+ #include "core/window-private.h"
+@@ -1066,6 +1067,24 @@ meta_window_actor_x11_update_shape (MetaWindowActorX11 *actor_x11)
+   clutter_actor_queue_redraw (CLUTTER_ACTOR (surface));
+ }
+ 
++void
++meta_window_actor_x11_set_rounded_clip (MetaWindowActorX11 *actor_x11,
++                                        double              radius,
++                                        double              exponent,
++                                        gboolean            automatic)
++{
++  MetaSurfaceActor *surface;
++
++  g_return_if_fail (META_IS_WINDOW_ACTOR_X11 (actor_x11));
++
++  surface = meta_window_actor_get_surface (META_WINDOW_ACTOR (actor_x11));
++  if (!surface)
++    return;
++
++  meta_gnoblin_window_effects_set_rounded_clip (
++    CLUTTER_ACTOR (surface), radius, exponent, automatic);
++}
++
+ static void
+ handle_updates (MetaWindowActorX11 *actor_x11)
+ {
+diff --git a/src/compositor/meta-window-actor-x11.h b/src/compositor/meta-window-actor-x11.h
+index dfcd34287..5a58ec3a4 100644
+--- a/src/compositor/meta-window-actor-x11.h
++++ b/src/compositor/meta-window-actor-x11.h
+@@ -31,3 +31,8 @@ G_DECLARE_FINAL_TYPE (MetaWindowActorX11,
+                       MetaWindowActor)
+ 
+ void meta_window_actor_x11_update_shape (MetaWindowActorX11 *actor_x11);
++
++void meta_window_actor_x11_set_rounded_clip (MetaWindowActorX11 *actor_x11,
++                                             double              radius,
++                                             double              exponent,
++                                             gboolean            automatic);

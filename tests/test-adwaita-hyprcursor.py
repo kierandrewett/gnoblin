@@ -7,16 +7,13 @@ import json
 import math
 import os
 from pathlib import Path
-import subprocess
 import time
 import zipfile
 
 ROOT = Path(__file__).resolve().parent.parent
 THEME = "Adwaita-Hyprcursor"
 theme = Path(os.environ.get("ADWAITA_HYPRCURSOR_PATH", Path.home() / ".local/share/icons" / THEME))
-if not os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-") and not os.environ.get(
-    "ADWAITA_HYPRCURSOR_PATH"
-):
+if not os.environ.get("ADWAITA_HYPRCURSOR_PATH"):
     assert theme.resolve() == (Path.home() / ".local/share/icons" / THEME).resolve(), (
         "Install the theme before testing it"
     )
@@ -54,10 +51,6 @@ cairo.cairo_image_surface_get_data.argtypes = [C.c_void_p]
 cairo.cairo_image_surface_get_data.restype = C.c_void_p
 cairo.cairo_surface_flush.argtypes = [C.c_void_p]
 
-if os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-"):
-    icons = Path.home() / ".icons"
-    icons.mkdir(exist_ok=True)
-    (icons / THEME).symlink_to(theme.resolve())
 manager = hc.hyprcursor_manager_create(THEME.encode())
 assert manager and hc.hyprcursor_manager_valid(manager), "Theme did not load"
 try:
@@ -103,41 +96,3 @@ try:
         hc.hyprcursor_style_done(manager, style)
 finally:
     hc.hyprcursor_manager_free(manager)
-
-# The private compositor check selects the real theme without touching live settings.
-if os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-"):
-    scripts = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin/scripts"
-    scripts.mkdir(parents=True, exist_ok=True)
-    report = scripts.parent / "adwaita-cursor.json"
-    (scripts / "adwaita-cursor-probe.js").write_text(
-        """
-import Clutter from 'gi://Clutter';
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-export default function enable(api) {
-    const settings = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'});
-    settings.set_string('cursor-theme', THEME);
-    // 37 is absent from the bitmap theme, so a 37px texture proves SVG rendering.
-    settings.set_int('cursor-size', 37);
-    const tracker = global.backend.get_cursor_tracker();
-    const device = global.stage.context.get_backend().get_default_seat()
-        .create_virtual_device(Clutter.InputDeviceType.POINTER_DEVICE);
-    device.notify_absolute_motion(GLib.get_monotonic_time(), 200, 200);
-    tracker.set_gnoblin_launch_cursor(true);
-    GLib.timeout_add(GLib.PRIORITY_DEFAULT, 150, () => {
-        GLib.file_set_contents(REPORT, JSON.stringify({size: tracker.get_sprite().get_width(),
-            hotspot: tracker.get_hot(), busy: tracker.get_gnoblin_launch_cursor()}));
-        tracker.set_gnoblin_launch_cursor(false);
-        return GLib.SOURCE_REMOVE;
-    });
-    api.addCleanup(() => { tracker.set_gnoblin_launch_cursor(false); device.run_dispose(); });
-}
-""".replace("THEME", json.dumps(THEME)).replace("REPORT", json.dumps(str(report)))
-    )
-    subprocess.run([str(ROOT / "src/tools/gnoblinctl"), "reload"], check=True)
-    deadline = time.monotonic() + 4
-    while not report.exists() and time.monotonic() < deadline:
-        time.sleep(0.05)
-    actual = json.loads(report.read_text())
-    assert actual == {"size": 37, "hotspot": [17, 17], "busy": True}, actual
-    print("PASS: Adwaita vector wait cursor rendered by Mutter")

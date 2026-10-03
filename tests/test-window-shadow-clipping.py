@@ -1,31 +1,48 @@
 #!/usr/bin/env python3
-"""Verify forced corners remove client shadow pixels without a replacement shadow."""
+"""Verify a Lua corner rule clips client shadows in the running session."""
 
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import time
 from PIL import Image
 
-assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
+assert os.environ.get("GNOBLIN_COMPOSITOR_SOCKET"), "Run inside a supervised Gnoblin session"
 root = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin"
-(root / "scripts").mkdir(parents=True, exist_ok=True)
-config = root / "corner-test.json"
+root.mkdir(parents=True, exist_ok=True)
+config = root / "init.lua"
+gnoblinctl = os.environ.get("GNOBLINCTL") or shutil.which("gnoblinctl") or "gnoblinctl"
 
 
 def configure(mode):
     temporary = config.with_suffix(".tmp")
-    temporary.write_text(json.dumps({"radius": 14, "padding": [20, 20, 20, 20], "mode": mode, "shadow": False}))
+    temporary.write_text(
+        f"""gnoblin.window_rule {{
+    match = {{title = "^Corner fixture$"}},
+    corners = {{radius = 14, padding = {{20, 20, 20, 20}}, mode = {json.dumps(mode)}, shadow = false}},
+}}
+"""
+    )
     temporary.replace(config)
-    time.sleep(0.4)
+    subprocess.run([gnoblinctl, "config", "reload"], check=True)
+
+
+def frame():
+    result = subprocess.run(
+        [gnoblinctl, "--json", "window", "list", "--title", "Corner fixture"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    windows = json.loads(result.stdout)["windows"]
+    if windows:
+        return windows[0]["geometry"]
+    return None
 
 
 configure("auto")
-(root / "scripts/corner-test.js").write_text(
-    (Path(__file__).resolve().parents[1] / "tests/window-corners-native.js").read_text()
-)
-subprocess.run(["gnoblinctl", "reload"], check=True)
 qml = root / "shadow-client.qml"
 qml.write_text("""import QtQuick
 import Quickshell
@@ -50,12 +67,13 @@ with (root / "shadow-client.log").open("w") as log:
         ["qs", "-p", str(qml)], stdout=log, stderr=log, env={**os.environ, "QT_WAYLAND_DISABLE_WINDOWDECORATION": "1"}
     )
     try:
-        frames = root / "corner-frames.json"
+        f = None
         for _ in range(50):
-            if frames.exists() and json.loads(frames.read_text()):
+            f = frame()
+            if f:
                 break
             time.sleep(0.1)
-        f = json.loads(frames.read_text())[0]["frame"]
+        assert f, "Corner fixture did not appear in the native window snapshot"
 
         def pixels():
             image = root / "shadow-screen.png"

@@ -49,37 +49,34 @@ int main(void) {
         "return {shortcuts={{name='terminal',binding='<Super>Return',command={'old','arg'}},"
         "{name='keep',binding='<Super>k',command={'keep'}}},"
         "['window-rules']={{match={type='window'},opacity=1}}}\n");
-    const char* source =
-        "assert(require('gnoblin') == gnoblin)\n"
-        "gnoblin.load('component.lua')\n"
-        "gnoblin.configure {shell={minimize_duration=150},"
-        "layer_shell={preserve_active_window=true},"
-        "window_management={constrain_drag_to_work_area=true,workspace_names={'Main','Chat'}},"
-        "compositor={enable_animations=false,visual_bell=true},"
-        "input={orientation_lock=true,keyboard={xkb_options={'caps:escape'}}},"
-        "input_sources={sources={{type='xkb',id='us'}},per_window=false},"
-        "frame_renderers={my_frame={'my_renderer'}}}\n"
-        "gnoblin.shortcut {name='terminal',command={'new'}}\n"
-        "gnoblin.shortcut {name='temporary',command={'unused'}}\n"
-        "gnoblin.remove_shortcut('temporary')\n"
-        "gnoblin.remove_shortcut('missing')\n"
-        "gnoblin.autostart {name='bar',command={'old'}}\n"
-        "gnoblin.autostart {name='bar',command={'waybar'}}\n"
-        "gnoblin.autostart {name='remove',command={'unused'}}\n"
-        "gnoblin.remove_autostart('remove')\n"
-        "local rule={match={app_id='my_app',focused=false},opacity=0.95,"
-        "shader_uniforms={my_strength=0.5},corners={keep_maximized=true}}\n"
-        "gnoblin.window_rule(rule)\n"
-        "rule.opacity=0.1\n"
-        "assert(rule.match.app_id == 'my_app')\n"
-        "gnoblin.permission_rule {name='capture',match='^app-id:my_app$',"
-        "capabilities={'screen-cast'},level='ask'}\n";
+    const char* source = "assert(require('gnoblin') == gnoblin)\n"
+                         "gnoblin.load('component.lua')\n"
+                         "gnoblin.configure {layer_shell={preserve_active_window=true},"
+                         "window_management={constrain_drag_to_work_area=true},"
+                         "workspaces={{id='main',name='Main'},{id='chat',name='Chat'}},"
+                         "compositor={enable_animations=false,visual_bell=true},"
+                         "input={orientation_lock=true,keyboard={xkb_options={'caps:escape'}}},"
+                         "input_sources={sources={{type='xkb',id='us'}},per_window=false},"
+                         "frame_renderers={my_frame={'my_renderer'}}}\n"
+                         "gnoblin.configure {shortcuts={terminal={command={'new'}},"
+                         "temporary={command={'unused'}}}}\n"
+                         "gnoblin.configure.shortcuts.temporary.enable=false\n"
+                         "gnoblin.configure {autostart={bar={command={'old'}}}}\n"
+                         "gnoblin.configure {autostart={bar={command={'waybar'}},"
+                         "remove={command={'unused'}}}}\n"
+                         "gnoblin.configure.autostart.remove.enable=false\n"
+                         "local rule={match={app_id='my_app',focused=false},opacity=0.95,"
+                         "shader_uniforms={my_strength=0.5},corners={keep_maximized=true}}\n"
+                         "gnoblin.window_rule(rule)\n"
+                         "rule.opacity=0.1\n"
+                         "assert(rule.match.app_id == 'my_app')\n"
+                         "gnoblin.permission_rule {name='capture',match='^app%-id:my_app$',"
+                         "capabilities={'screen-cast'},level='ask'}\n";
     g_autoptr(GVariant) actual = evaluate(root, source);
     g_autoptr(GVariant) expected = evaluate(
-        root, "return {shell={['minimize-duration']=150},"
-              "['layer-shell']={['preserve-active-window']=true},"
-              "['window-management']={['constrain-drag-to-work-area']=true,"
-              "['workspace-names']={'Main','Chat'}},"
+        root, "return {['layer-shell']={['preserve-active-window']=true},"
+              "['window-management']={['constrain-drag-to-work-area']=true},"
+              "workspaces={{id='main',name='Main'},{id='chat',name='Chat'}},"
               "compositor={['enable-animations']=false,['visual-bell']=true},"
               "input={['orientation-lock']=true,keyboard={['xkb-options']={'caps:escape'}}},"
               "['input-sources']={sources={{type='xkb',id='us'}},['per-window']=false},"
@@ -90,23 +87,20 @@ int main(void) {
               "['window-rules']={{match={type='window'},opacity=1},"
               "{match={['app-id']='my_app',focused=false},opacity=0.95,"
               "['shader-uniforms']={my_strength=0.5},corners={['keep-maximized']=true}}},"
-              "permissions={rules={{name='capture',match='^app-id:my_app$',"
+              "permissions={rules={{name='capture',match='^app%-id:my_app$',"
               "capabilities={'screen-cast'},level='ask'}}}}\n");
     assert_equal(actual, expected);
     g_autoptr(GVariant) reloaded = evaluate(root, source);
     assert_equal(reloaded, expected);
     g_autoptr(GVariant) cleared = evaluate(
         root, "gnoblin.load('component.lua')\n"
-              "gnoblin.remove_shortcut('terminal')\n"
-              "assert(#gnoblin.config.shortcuts==1 and gnoblin.config.shortcuts[1].name=='keep')\n"
+              "gnoblin.configure.shortcuts.terminal.enable=false\n"
               "gnoblin.configure {shortcuts={},window_rules={}}\n"
               "assert(#gnoblin.config.shortcuts==0 and #gnoblin.config['window-rules']==0)\n"
-              "gnoblin.configure {keybindings={shell={show_screenshot_ui={}}}}\n"
-              "assert(#gnoblin.config.keybindings.shell.show_screenshot_ui==0)\n"
               "gnoblin.configure {shortcuts={screenshot={"
-              "action='gnome:shell.show_screenshot_ui',binding={'Print'}}}}\n"
+              "command={'grim'},binding={'Print'}}}}\n"
               "assert(#gnoblin.config.shortcuts==1 and "
-              "gnoblin.config.shortcuts[1].action=='gnome:shell.show_screenshot_ui')\n");
+              "gnoblin.config.shortcuts[1].command[1]=='grim')\n");
     g_autoptr(GVariant) named =
         evaluate(root, "gnoblin.load('component.lua')\n"
                        "local snapshot=gnoblin.snapshot()\n"
@@ -117,14 +111,14 @@ int main(void) {
                        "snapshot.shortcuts[1].binding='changed'\n"
                        "assert(gnoblin.config.shortcuts[1].binding=='<Super>Return')\n"
                        "gnoblin.configure.shortcuts.keep.enable=false\n"
-                       "gnoblin.autostart {name='waybar',command={'waybar'}}\n"
-                       "assert(gnoblin.configure.autostart.waybar.enable)\n"
+                       "gnoblin.configure.autostart.waybar={command={'waybar'}}\n"
+                       "assert(gnoblin.configure.autostart.waybar.command[1]=='waybar')\n"
                        "gnoblin.configure.autostart.waybar.enable=false\n"
                        "gnoblin.configure {shortcuts={terminal={command={'new'}}}}\n"
                        "gnoblin.configure.shortcuts.my_extra="
                        "{binding='<Super>e',command={'extra'}}\n"
                        "gnoblin.configure.shortcuts.my_extra.capture_input=true\n"
-                       "gnoblin.shortcut {name='my_extra',command={'updated'}}\n");
+                       "gnoblin.configure.shortcuts.my_extra.command={'updated'}\n");
     g_autoptr(GVariant) named_expected = evaluate(
         root, "return {shortcuts={{name='terminal',binding='<Super>Return',command={'new'}},"
               "{name='my_extra',binding='<Super>e',command={'updated'},"
@@ -133,11 +127,26 @@ int main(void) {
               "['window-rules']={{match={type='window'},opacity=1}}}\n");
     assert_equal(named, named_expected);
     const char* invalid[] = {
+        "gnoblin.feature.list()",
+        "gnoblin.feature.show {id='osd'}",
+        "gnoblin.feature.enable {id='osd'}",
+        "gnoblin.feature.disable {id='osd'}",
+        "gnoblin.script.list()",
+        "gnoblin.shell.ping()",
+        "gnoblin.shell.version()",
+        "gnoblin.shell.status()",
+        "gnoblin.shell.reload()",
+        "gnoblin.set {window_management={focus_mode='click'}}",
         "gnoblin.window_rule(false)",
-        "gnoblin.config=false; gnoblin.configure {shell={minimize_duration=150}}",
+        "gnoblin.configure {window_management={workspace_names={'x'}}}",
+        "gnoblin.configure {window_management={workspace_ids={'main'}}}",
+        "gnoblin.configure {window_management={num_workspaces=2}}",
+        "gnoblin.configure {window_management={dynamic_workspaces=true},"
+        "workspaces={{id='main',name='Main'}}}",
         "gnoblin.shortcut {command={'x'}}",
         "gnoblin.autostart {name=4}",
-        "gnoblin.configure {shell={minimize_duration=1,['minimize-duration']=2}}",
+        "gnoblin.configure {window_management={constrain_drag_to_work_area=true,"
+        "['constrain-drag-to-work-area']=false}}",
         "gnoblin.config.shortcuts=false; gnoblin.shortcut {name='x'}",
         "gnoblin.config.shortcuts={bad={}}; gnoblin.remove_shortcut('x')",
         "gnoblin.shortcut {name='x',binding='<Super>x',command={'x'}}; "
@@ -153,6 +162,315 @@ int main(void) {
         g_assert_nonnull(error);
         g_clear_error(&error);
     }
+    const char* removed_api_calls[] = {
+        "gnoblin.shortcut {name='terminal',command={'foot'}}",
+        "gnoblin.autostart {name='bar',command={'waybar'}}",
+        "gnoblin.remove_shortcut('terminal')",
+        "gnoblin.remove_autostart('bar')",
+        NULL,
+    };
+    const char* migration_hints[] = {
+        "gnoblin.configure.shortcuts.name",
+        "gnoblin.configure.autostart.name",
+        "gnoblin.configure.shortcuts.name.enable = false",
+        "gnoblin.configure.autostart.name.enable = false",
+    };
+    for (guint i = 0; removed_api_calls[i]; i++) {
+        g_assert_true(g_file_set_contents(root, removed_api_calls[i], -1, &error));
+        g_autoptr(GVariant) failed = gnoblin_config_load_document(root, NULL, NULL, &error);
+        g_assert_null(failed);
+        g_assert_nonnull(error);
+        g_assert_nonnull(strstr(error->message, migration_hints[i]));
+        g_clear_error(&error);
+    }
+
+    const char* menu_runtime_source =
+        "local g=require('gnoblin')\n"
+        "assert(g.input.select==nil and type(g.input.select_source)=='function')\n"
+        "local menu_calls=0\n"
+        "g.on('gnoblin.window.menu-requested', function(event)\n"
+        "  assert(event._menu_context_handle==nil and event._menu_context_expires_at_us==nil)\n"
+        "  if event.menu_type=='wm' then\n"
+        "    assert(type(event.menu_context)=='userdata')\n"
+        "    local context=event.menu_context\n"
+        "    menu_calls=menu_calls+1\n"
+        "    if menu_calls==1 then context:begin_resize('south_east')\n"
+        "    else context:begin_resize(42) end\n"
+        "    assert(not pcall(function() context:begin_move() end))\n"
+        "  else\n"
+        "    assert(event.menu_context==nil)\n"
+        "  end\n"
+        "end)\n"
+        "assert(g.window == nil)\n"
+        "local thumbnail_events=0\n"
+        "g.on('gnoblin.window.created', function(event)\n"
+        "  thumbnail_events=thumbnail_events+1\n"
+        "  if thumbnail_events==1 then\n"
+        "    local operation=event.window:thumbnail({width=320,height=200})\n"
+        "    assert(operation.method=='window.thumbnail' and operation.status=='pending')\n"
+        "  else\n"
+        "    assert(not pcall(function()\n"
+        "      event.window:thumbnail({width=481,height=200})\n"
+        "    end))\n"
+        "  end\n"
+        "end)\n";
+    g_assert_true(g_file_set_contents(root, menu_runtime_source, -1, &error));
+    g_autoptr(GVariant) menu_runtime = gnoblin_config_load_runtime(root, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(menu_runtime);
+    gnoblin_config_finish_load(TRUE);
+
+    GVariantBuilder api_arguments_builder;
+    g_variant_builder_init(&api_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) api_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&api_arguments_builder));
+
+    GVariantBuilder activity_snapshot_builder;
+    g_variant_builder_init(&activity_snapshot_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "available",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "idle", g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "threshold_ms",
+                          g_variant_new_uint64(120000));
+    g_variant_builder_add(&activity_snapshot_builder, "{sv}", "idle_for_ms",
+                          g_variant_new_uint64(5000));
+    g_autoptr(GVariant) activity_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&activity_snapshot_builder));
+    gnoblin_config_update_session_activity_snapshot(activity_snapshot, 12);
+    g_autoptr(GVariant) session_activity =
+        gnoblin_config_read_api("session.activity", api_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(session_activity);
+    gboolean activity_available = FALSE;
+    gboolean activity_idle = FALSE;
+    gint64 activity_threshold_ms = 0;
+    gint64 activity_idle_for_ms = 0;
+    gint64 activity_revision = 0;
+    g_assert_true(g_variant_lookup(session_activity, "available", "b", &activity_available));
+    g_assert_true(g_variant_lookup(session_activity, "idle", "b", &activity_idle));
+    g_assert_true(g_variant_lookup(session_activity, "threshold_ms", "x", &activity_threshold_ms));
+    g_assert_true(g_variant_lookup(session_activity, "idle_for_ms", "x", &activity_idle_for_ms));
+    g_assert_true(g_variant_lookup(session_activity, "revision", "x", &activity_revision));
+    g_assert_true(activity_available);
+    g_assert_true(activity_idle);
+    g_assert_cmpint(activity_threshold_ms, ==, 120000);
+    g_assert_cmpint(activity_idle_for_ms, >=, 5000);
+    g_assert_cmpint(activity_revision, ==, 12);
+
+    g_autoptr(GVariant) api_operation =
+        gnoblin_config_call_api("workspace.list", api_arguments, &error);
+    g_assert_null(api_operation);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_assert_cmpstr(error->message, ==, "unknown Gnoblin API method 'workspace.list'");
+    g_clear_error(&error);
+    g_autoptr(GVariant) legacy_window_list =
+        gnoblin_config_call_api("window.list", api_arguments, &error);
+    g_assert_null(legacy_window_list);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_assert_cmpstr(error->message, ==, "unknown Gnoblin API method 'window.list'");
+    g_clear_error(&error);
+    g_autoptr(GVariant) socket_workspace_operation =
+        gnoblin_config_call_api("workspace.next", api_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(socket_workspace_operation);
+    g_autoptr(GVariant) socket_workspace_method =
+        g_variant_lookup_value(socket_workspace_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_nonnull(socket_workspace_method);
+    g_assert_cmpstr(g_variant_get_string(socket_workspace_method, NULL), ==, "workspace.next");
+    GVariantBuilder socket_window_arguments_builder;
+    g_variant_builder_init(&socket_window_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&socket_window_arguments_builder, "{sv}", "id",
+                          g_variant_new_string("42"));
+    g_variant_builder_add(&socket_window_arguments_builder, "{sv}", "enabled",
+                          g_variant_new_boolean(TRUE));
+    g_autoptr(GVariant) socket_window_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&socket_window_arguments_builder));
+    g_autoptr(GVariant) socket_window_operation =
+        gnoblin_config_call_api("window.set_above", socket_window_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(socket_window_operation);
+    g_autoptr(GVariant) socket_window_method =
+        g_variant_lookup_value(socket_window_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_nonnull(socket_window_method);
+    g_assert_cmpstr(g_variant_get_string(socket_window_method, NULL), ==, "window.set_above");
+    GVariantBuilder socket_input_arguments_builder;
+    g_variant_builder_init(&socket_input_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&socket_input_arguments_builder, "{sv}", "type",
+                          g_variant_new_string("xkb"));
+    g_variant_builder_add(&socket_input_arguments_builder, "{sv}", "id",
+                          g_variant_new_string("us"));
+    g_autoptr(GVariant) socket_input_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&socket_input_arguments_builder));
+    g_autoptr(GVariant) socket_input_operation =
+        gnoblin_config_call_api("input.select", socket_input_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(socket_input_operation);
+    g_autoptr(GVariant) socket_input_method =
+        g_variant_lookup_value(socket_input_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_nonnull(socket_input_method);
+    g_assert_cmpstr(g_variant_get_string(socket_input_method, NULL), ==, "input.select");
+    GVariantBuilder invalid_location_arguments_builder;
+    g_variant_builder_init(&invalid_location_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&invalid_location_arguments_builder, "{sv}", "request_id",
+                          g_variant_new_int64(7));
+    g_variant_builder_add(&invalid_location_arguments_builder, "{sv}", "allow",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&invalid_location_arguments_builder, "{sv}", "accuracy",
+                          g_variant_new_int64(3));
+    g_autoptr(GVariant) invalid_location_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&invalid_location_arguments_builder));
+    g_autoptr(GVariant) invalid_location_operation =
+        gnoblin_config_call_api("location.authorize_app", invalid_location_arguments, &error);
+    g_assert_null(invalid_location_operation);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_clear_error(&error);
+    GVariantBuilder location_arguments_builder;
+    g_variant_builder_init(&location_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&location_arguments_builder, "{sv}", "request_id",
+                          g_variant_new_int64(7));
+    g_variant_builder_add(&location_arguments_builder, "{sv}", "allow",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&location_arguments_builder, "{sv}", "accuracy", g_variant_new_int64(5));
+    g_autoptr(GVariant) location_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&location_arguments_builder));
+    g_autoptr(GVariant) location_operation =
+        gnoblin_config_call_api("location.authorize_app", location_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(location_operation);
+    g_autoptr(GVariant) location_method =
+        g_variant_lookup_value(location_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_nonnull(location_method);
+    g_assert_cmpstr(g_variant_get_string(location_method, NULL), ==, "location.authorize_app");
+    g_autoptr(GVariant) queued_api_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(queued_api_operations), ==, 4);
+    g_autoptr(GVariant) queued_api_operation = g_variant_get_child_value(queued_api_operations, 0);
+    g_autoptr(GVariant) queued_window_operation =
+        g_variant_get_child_value(queued_api_operations, 1);
+    g_autoptr(GVariant) queued_input_operation =
+        g_variant_get_child_value(queued_api_operations, 2);
+    g_autoptr(GVariant) queued_location_operation =
+        g_variant_get_child_value(queued_api_operations, 3);
+    g_assert_true(g_variant_equal(socket_workspace_operation, queued_api_operation));
+    g_assert_true(g_variant_equal(socket_window_operation, queued_window_operation));
+    g_assert_true(g_variant_equal(socket_input_operation, queued_input_operation));
+    g_assert_true(g_variant_equal(location_operation, queued_location_operation));
+
+    GVariantBuilder thumbnail_event_builder;
+    g_variant_builder_init(&thumbnail_event_builder, G_VARIANT_TYPE_VARDICT);
+    GVariantBuilder thumbnail_window_builder;
+    g_variant_builder_init(&thumbnail_window_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&thumbnail_window_builder, "{sv}", "id", g_variant_new_string("42"));
+    GVariantBuilder thumbnail_frame_builder;
+    g_variant_builder_init(&thumbnail_frame_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&thumbnail_window_builder, "{sv}", "frame",
+                          g_variant_builder_end(&thumbnail_frame_builder));
+    g_variant_builder_add(&thumbnail_event_builder, "{sv}", "window",
+                          g_variant_builder_end(&thumbnail_window_builder));
+    g_autoptr(GVariant) thumbnail_event_payload =
+        g_variant_ref_sink(g_variant_builder_end(&thumbnail_event_builder));
+    g_autoptr(GVariant) thumbnail_event_result =
+        gnoblin_config_dispatch_event("gnoblin.window.created", thumbnail_event_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(thumbnail_event_result);
+    g_autoptr(GVariant) thumbnail_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(thumbnail_operations), ==, 1);
+    g_autoptr(GVariant) thumbnail_operation = g_variant_get_child_value(thumbnail_operations, 0);
+    g_autoptr(GVariant) thumbnail_method =
+        g_variant_lookup_value(thumbnail_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(thumbnail_method, NULL), ==, "window.thumbnail");
+    g_autoptr(GVariant) thumbnail_arguments =
+        g_variant_lookup_value(thumbnail_operation, "arguments", G_VARIANT_TYPE_VARDICT);
+    const char* thumbnail_id = NULL;
+    gint64 thumbnail_width = 0;
+    gint64 thumbnail_height = 0;
+    g_assert_true(g_variant_lookup(thumbnail_arguments, "id", "&s", &thumbnail_id));
+    g_assert_true(g_variant_lookup(thumbnail_arguments, "width", "x", &thumbnail_width));
+    g_assert_true(g_variant_lookup(thumbnail_arguments, "height", "x", &thumbnail_height));
+    g_assert_cmpstr(thumbnail_id, ==, "42");
+    g_assert_cmpint(thumbnail_width, ==, 320);
+    g_assert_cmpint(thumbnail_height, ==, 200);
+    gnoblin_config_finish_event(TRUE);
+
+    g_autoptr(GVariant) invalid_thumbnail_result =
+        gnoblin_config_dispatch_event("gnoblin.window.created", thumbnail_event_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(invalid_thumbnail_result);
+    g_autoptr(GVariant) invalid_thumbnail_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(invalid_thumbnail_operations), ==, 0);
+    gnoblin_config_finish_event(TRUE);
+
+    GVariantBuilder menu_event;
+    g_variant_builder_init(&menu_event, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&menu_event, "{sv}", "window_id", g_variant_new_string("42"));
+    g_variant_builder_add(&menu_event, "{sv}", "menu_type", g_variant_new_string("wm"));
+    g_variant_builder_add(&menu_event, "{sv}", "x", g_variant_new_int32(300));
+    g_variant_builder_add(&menu_event, "{sv}", "y", g_variant_new_int32(200));
+    g_variant_builder_add(&menu_event, "{sv}", "_menu_context_handle", g_variant_new_uint64(77));
+    g_variant_builder_add(&menu_event, "{sv}", "_menu_context_generation", g_variant_new_uint64(9));
+    g_variant_builder_add(&menu_event, "{sv}", "_menu_context_expires_at_us",
+                          g_variant_new_int64(g_get_monotonic_time() + G_USEC_PER_SEC));
+    g_autoptr(GVariant) menu_payload = g_variant_ref_sink(g_variant_builder_end(&menu_event));
+    g_autoptr(GVariant) menu_result =
+        gnoblin_config_dispatch_event("gnoblin.window.menu-requested", menu_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(menu_result);
+    g_autoptr(GVariant) menu_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(menu_operations), ==, 1);
+    g_autoptr(GVariant) menu_operation = g_variant_get_child_value(menu_operations, 0);
+    g_autoptr(GVariant) menu_method =
+        g_variant_lookup_value(menu_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(menu_method, NULL), ==, "window.begin_resize");
+    g_autoptr(GVariant) menu_arguments =
+        g_variant_lookup_value(menu_operation, "arguments", G_VARIANT_TYPE_VARDICT);
+    const char* menu_edge = NULL;
+    g_assert_true(g_variant_lookup(menu_arguments, "edge", "&s", &menu_edge));
+    g_assert_cmpstr(menu_edge, ==, "south_east");
+    g_autoptr(GVariant) menu_handle =
+        g_variant_lookup_value(menu_arguments, "_menu_context_handle", G_VARIANT_TYPE_UINT64);
+    g_assert_nonnull(menu_handle);
+    g_assert_null(g_variant_lookup_value(menu_arguments, "id", NULL));
+    gnoblin_config_finish_event(TRUE);
+
+    GVariantBuilder malformed_menu;
+    g_variant_builder_init(&malformed_menu, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&malformed_menu, "{sv}", "window_id", g_variant_new_string("42"));
+    g_variant_builder_add(&malformed_menu, "{sv}", "menu_type", g_variant_new_string("wm"));
+    g_variant_builder_add(&malformed_menu, "{sv}", "_menu_context_handle",
+                          g_variant_new_uint64(78));
+    g_variant_builder_add(&malformed_menu, "{sv}", "_menu_context_generation",
+                          g_variant_new_uint64(9));
+    g_variant_builder_add(&malformed_menu, "{sv}", "_menu_context_expires_at_us",
+                          g_variant_new_int64(g_get_monotonic_time() + G_USEC_PER_SEC));
+    g_autoptr(GVariant) malformed_menu_payload =
+        g_variant_ref_sink(g_variant_builder_end(&malformed_menu));
+    g_autoptr(GVariant) malformed_menu_result = gnoblin_config_dispatch_event(
+        "gnoblin.window.menu-requested", malformed_menu_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(malformed_menu_result);
+    g_autoptr(GVariant) malformed_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(malformed_operations), ==, 1);
+    g_autoptr(GVariant) malformed_operation = g_variant_get_child_value(malformed_operations, 0);
+    g_autoptr(GVariant) malformed_arguments =
+        g_variant_lookup_value(malformed_operation, "arguments", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) malformed_marker =
+        g_variant_lookup_value(malformed_arguments, "_malformed", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_nonnull(malformed_marker);
+    g_assert_true(g_variant_get_boolean(malformed_marker));
+    gnoblin_config_finish_event(TRUE);
+
+    GVariantBuilder app_menu;
+    g_variant_builder_init(&app_menu, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&app_menu, "{sv}", "window_id", g_variant_new_string("42"));
+    g_variant_builder_add(&app_menu, "{sv}", "menu_type", g_variant_new_string("app"));
+    g_autoptr(GVariant) app_menu_payload = g_variant_ref_sink(g_variant_builder_end(&app_menu));
+    g_autoptr(GVariant) app_menu_result =
+        gnoblin_config_dispatch_event("gnoblin.window.menu-requested", app_menu_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(app_menu_result);
+    g_autoptr(GVariant) app_menu_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(app_menu_operations), ==, 0);
+    gnoblin_config_finish_event(TRUE);
+
     g_unlink(root);
     g_unlink(component);
     g_rmdir(directory);

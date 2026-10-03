@@ -1,0 +1,1571 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 20:59:15 +0000
+Subject: [PATCH] route global shortcuts through Gnoblin
+
+---
+diff --git a/data/org.gnoblin.Shell.GlobalShortcutsProvider.xml b/data/org.gnoblin.Shell.GlobalShortcutsProvider.xml
+new file mode 100644
+index 0000000..9eba819
+--- /dev/null
++++ b/data/org.gnoblin.Shell.GlobalShortcutsProvider.xml
+@@ -0,0 +1,27 @@
++<!DOCTYPE node PUBLIC
++'-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'
++'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>
++<node>
++  <!-- UI provider contract between the Gnoblin portal and the active shell. -->
++  <interface name="org.gnoblin.Shell.GlobalShortcutsProvider">
++    <!--
++      BindShortcuts presents the shell's approval UI and returns only the
++      accelerators approved by the user. The shell may remember those choices.
++      Each shortcut entry is (id, {description?: s, preferred_trigger?: s});
++      each result is (id, {description?: s, shortcuts: as}).
++    -->
++    <method name="BindShortcuts">
++      <arg type="s" name="app_id" direction="in"/>
++      <arg type="s" name="parent_window" direction="in"/>
++      <arg type="a(sa{sv})" name="shortcuts" direction="in"/>
++      <arg type="a(sa{sv})" name="results" direction="out"/>
++    </method>
++
++    <!-- Present shortcut configuration and return the resulting selection. -->
++    <method name="ConfigureShortcuts">
++      <arg type="s" name="app_id" direction="in"/>
++      <arg type="s" name="parent_window" direction="in"/>
++      <arg type="a(sa{sv})" name="results" direction="out"/>
++    </method>
++  </interface>
++</node>
+diff --git a/data/org.gnoblin.Shell.GlobalShortcutsRebind.xml b/data/org.gnoblin.Shell.GlobalShortcutsRebind.xml
+new file mode 100644
+index 0000000..213ab4e
+--- /dev/null
++++ b/data/org.gnoblin.Shell.GlobalShortcutsRebind.xml
+@@ -0,0 +1,13 @@
++<!DOCTYPE node PUBLIC
++'-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'
++'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>
++<node>
++  <!-- Portal interface used by the shell to apply user-approved changes. -->
++  <interface name="org.gnoblin.Shell.GlobalShortcutsRebind">
++    <!-- Each entry is (id, {description?: s, shortcuts: as}). -->
++    <method name="RebindShortcuts">
++      <arg type="s" name="app_id" direction="in"/>
++      <arg type="a(sa{sv})" name="shortcuts" direction="in"/>
++    </method>
++  </interface>
++</node>
+diff --git a/src/globalshortcuts.c b/src/globalshortcuts.c
+index fae05fc..003e6e0 100644
+--- a/src/globalshortcuts.c
++++ b/src/globalshortcuts.c
+@@ -3,31 +3,69 @@
+ #include "config.h"
+ 
+ #include <gio/gio.h>
++#include <gio/gunixsocketaddress.h>
++#include <json-glib/json-glib.h>
++#include <string.h>
+ 
+ #include <glib/gi18n.h>
+ 
+-#include "shell-dbus.h"
+-
+ #include "globalshortcuts.h"
++#include "shell-dbus.h"
+ #include "request.h"
+ #include "utils.h"
+ #include "session.h"
+ 
+-#define SHELL_ACTION_MODE_NORMAL 1
+-
+-#define META_KEY_BINDING_TRIGGER_RELEASE (1 << 7)
+-
+-static OrgGnomeShell *shell;
+-static OrgGnomeSettingsGlobalShortcutsProvider *settings;
++static OrgGnoblinShellGlobalShortcutsProvider *settings;
+ static XdpImplGlobalShortcuts *global_shortcuts;
+-static OrgGnomeGlobalShortcutsRebind *global_shortcuts_rebind;
++static OrgGnoblinShellGlobalShortcutsRebind *global_shortcuts_rebind;
+ 
+ typedef struct _Accelerator
+ {
+   char *accelerator;
+-  guint accelerator_id; /* Shell identifier */
++  char *native_id;
++  gboolean bound;
+ } Accelerator;
+ 
++typedef struct _GlobalShortcutsSession GlobalShortcutsSession;
++static GlobalShortcutsSession *global_shortcuts_find_binding (const char *, const char **);
++
++typedef struct _NativeControlRequest NativeControlRequest;
++typedef void (*NativeControlCallback) (JsonObject *result,
++                                       const char *error,
++                                       gpointer    user_data);
++
++struct _NativeControlRequest
++{
++  char *id;
++  char *line;
++  NativeControlCallback callback;
++  gpointer user_data;
++};
++
++typedef struct _NativeControl
++{
++  GSocketClient *client;
++  GSocketConnection *connection;
++  GDataInputStream *input;
++  GOutputStream *output;
++  GQueue *queued;
++  GHashTable *pending;
++  guint64 next_id;
++  guint64 next_binding_id;
++  gboolean connecting;
++  gboolean reading;
++  gboolean writing;
++  gboolean awaiting_hello;
++  gboolean subscribing;
++  gboolean subscription_fallback;
++  gboolean ready;
++  gboolean failing;
++  guint retry_source;
++} NativeControl;
++
++static NativeControl native_control;
++static GHashTable *global_shortcuts_sessions;
++
+ typedef struct _Shortcut
+ {
+   gchar *shortcut_id; /* Client identifier */
+@@ -42,9 +80,12 @@ typedef struct {
+   GVariant *shortcuts;
+   GPtrArray *mapped_accelerators;
+   gboolean canceled;
++  gboolean rebind;
++  gboolean failed;
++  guint next_accelerator;
+ } BindShortcutsHandle;
+ 
+-typedef struct _GlobalShortcutsSession
++struct _GlobalShortcutsSession
+ {
+   Session parent;
+   char *app_id;
+@@ -52,7 +93,8 @@ typedef struct _GlobalShortcutsSession
+   GVariant *initial_shortcuts;
+ 
+   gboolean bound;
+-} GlobalShortcutsSession;
++  gboolean closing;
++};
+ 
+ typedef struct _GlobalShortcutsSessionClass
+ {
+@@ -80,6 +122,544 @@ static void
+ clear_accelerator (Accelerator *accel)
+ {
+   g_free (accel->accelerator);
++  g_free (accel->native_id);
++}
++
++static void native_control_connect (void);
++static void native_control_read_next (void);
++static void native_control_write_next (void);
++static void native_control_startup_write_done (GObject *, GAsyncResult *, gpointer);
++static void native_control_rebind_shortcuts (void);
++static gboolean native_control_retry (gpointer user_data);
++static void native_unbind_done (JsonObject *, const char *, gpointer);
++
++static void
++native_control_mark_shortcuts_unbound (void)
++{
++  GHashTableIter iter;
++  gpointer value;
++
++  if (!global_shortcuts_sessions)
++    return;
++
++  g_hash_table_iter_init (&iter, global_shortcuts_sessions);
++  while (g_hash_table_iter_next (&iter, NULL, &value))
++    {
++      GlobalShortcutsSession *session = value;
++
++      for (guint i = 0; i < session->shortcuts->len; i++)
++        {
++          Shortcut *shortcut = &g_array_index (session->shortcuts, Shortcut, i);
++
++          for (guint j = 0; j < shortcut->accelerators->len; j++)
++            {
++              Accelerator *accel = &g_array_index (shortcut->accelerators, Accelerator, j);
++              accel->bound = FALSE;
++            }
++        }
++    }
++}
++
++static void
++native_control_request_free (NativeControlRequest *request)
++{
++  g_free (request->id);
++  g_free (request->line);
++  g_free (request);
++}
++
++static void
++native_control_fail (const char *message)
++{
++  NativeControlRequest *request;
++
++  if (native_control.failing)
++    return;
++  native_control.failing = TRUE;
++  native_control_mark_shortcuts_unbound ();
++  native_control.ready = FALSE;
++  native_control.connecting = FALSE;
++  native_control.reading = FALSE;
++  native_control.writing = FALSE;
++  native_control.awaiting_hello = FALSE;
++  native_control.subscribing = FALSE;
++  g_clear_object (&native_control.input);
++  g_clear_object (&native_control.connection);
++  g_clear_object (&native_control.client);
++  native_control.output = NULL;
++
++  while ((request = g_queue_pop_head (native_control.queued)))
++    {
++      if (request->callback)
++        request->callback (NULL, message, request->user_data);
++      native_control_request_free (request);
++    }
++
++  if (native_control.pending)
++    {
++      GHashTableIter iter;
++      gpointer value;
++
++      g_hash_table_iter_init (&iter, native_control.pending);
++      while (g_hash_table_iter_next (&iter, NULL, &value))
++        {
++          request = value;
++          if (request->callback)
++            request->callback (NULL, message, request->user_data);
++          g_hash_table_iter_remove (&iter);
++          native_control_request_free (request);
++      }
++    }
++  if (!native_control.retry_source)
++    native_control.retry_source = g_timeout_add_seconds (2, native_control_retry, NULL);
++  native_control.failing = FALSE;
++}
++
++static char *
++native_control_socket_path (void)
++{
++  const char *path = g_getenv ("GNOBLIN_COMPOSITOR_SOCKET");
++  const char *runtime_dir;
++
++  if (path && *path)
++    return g_strdup (path);
++
++  runtime_dir = g_get_user_runtime_dir ();
++  if (!runtime_dir || !*runtime_dir)
++    return NULL;
++
++  return g_build_filename (runtime_dir, "gnoblin", "compositor-v1.sock", NULL);
++}
++
++static void
++native_control_send_line (const char *line)
++{
++  gsize length = strlen (line);
++
++  native_control.writing = TRUE;
++  g_output_stream_write_all_async (native_control.output, line, length,
++                                   G_PRIORITY_DEFAULT, NULL,
++                                   native_control_startup_write_done, NULL);
++}
++
++static void
++native_control_startup_write_done (GObject      *source,
++                                   GAsyncResult *result,
++                                   gpointer      user_data)
++{
++  g_autoptr(GError) error = NULL;
++  gsize written = 0;
++
++  if (G_OUTPUT_STREAM (source) != native_control.output)
++    return;
++
++  if (!g_output_stream_write_all_finish (G_OUTPUT_STREAM (source), result,
++                                         &written, &error))
++    {
++      native_control_fail (error->message);
++      return;
++    }
++
++  native_control.writing = FALSE;
++  native_control_write_next ();
++}
++
++static void
++native_control_write_done (GObject      *source,
++                           GAsyncResult *result,
++                           gpointer      user_data)
++{
++  g_autoptr(GError) error = NULL;
++  gsize written = 0;
++
++  if (G_OUTPUT_STREAM (source) != native_control.output)
++    return;
++
++  if (!g_output_stream_write_all_finish (G_OUTPUT_STREAM (source), result,
++                                         &written, &error))
++    {
++      native_control_fail (error->message);
++      return;
++    }
++
++  native_control.writing = FALSE;
++  native_control_write_next ();
++}
++
++static void
++native_control_write_next (void)
++{
++  NativeControlRequest *request;
++
++  if (!native_control.ready || native_control.writing ||
++      g_queue_is_empty (native_control.queued))
++    return;
++
++  request = g_queue_pop_head (native_control.queued);
++  g_hash_table_insert (native_control.pending, g_strdup (request->id), request);
++  native_control.writing = TRUE;
++  g_output_stream_write_all_async (native_control.output, request->line,
++                                   strlen (request->line), G_PRIORITY_DEFAULT,
++                                   NULL, native_control_write_done, NULL);
++}
++
++static void
++native_control_read_done (GObject      *source,
++                          GAsyncResult *result,
++                          gpointer      user_data)
++{
++  g_autoptr(GError) error = NULL;
++  g_autofree char *line = NULL;
++  gsize length = 0;
++  g_autoptr(JsonParser) parser = NULL;
++  JsonObject *object;
++  const char *event;
++
++  if (G_DATA_INPUT_STREAM (source) != native_control.input)
++    return;
++
++  line = g_data_input_stream_read_line_finish (G_DATA_INPUT_STREAM (source),
++                                                result, &length, &error);
++  native_control.reading = FALSE;
++  if (!line)
++    {
++      native_control_fail (error ? error->message : "compositor socket closed");
++      return;
++    }
++
++  parser = json_parser_new ();
++  if (!json_parser_load_from_data (parser, line, length, &error) ||
++      !JSON_NODE_HOLDS_OBJECT (json_parser_get_root (parser)))
++    {
++      native_control_fail (error ? error->message : "invalid compositor response");
++      return;
++    }
++
++  object = json_node_get_object (json_parser_get_root (parser));
++  event = json_object_get_string_member_with_default (object, "event", "");
++  if (native_control.awaiting_hello)
++    {
++      gboolean supports_deactivation = FALSE;
++      JsonArray *advertised_events = json_object_get_array_member (object, "events");
++
++      if (!g_str_equal (event, "hello") ||
++          json_object_get_int_member_with_default (object, "api_major", 0) != 1)
++        {
++          native_control_fail ("unexpected compositor socket greeting");
++          return;
++        }
++
++      for (guint i = 0; advertised_events && i < json_array_get_length (advertised_events); i++)
++        if (g_strcmp0 (json_array_get_string_element (advertised_events, i),
++                       "gnoblin.shortcut.binding-deactivated") == 0)
++          {
++            supports_deactivation = TRUE;
++            break;
++          }
++
++      native_control.awaiting_hello = FALSE;
++      native_control.subscribing = TRUE;
++      native_control.subscription_fallback = !supports_deactivation;
++      if (supports_deactivation)
++        native_control_send_line (
++          "{\"op\":\"events\",\"api_version\":{\"major\":1,\"minor\":36},"
++          "\"events\":[\"gnoblin.shortcut.binding-activated\","
++          "\"gnoblin.shortcut.binding-deactivated\"]}\n");
++      else
++        native_control_send_line (
++          "{\"op\":\"events\",\"api_version\":{\"major\":1,\"minor\":11},"
++          "\"events\":[\"gnoblin.shortcut.binding-activated\"]}\n");
++    }
++  else if (native_control.subscribing)
++    {
++      if (g_str_equal (event, "error"))
++        {
++          const char *message = json_object_get_string_member_with_default (
++            object, "message", "compositor event subscription failed");
++          if (!native_control.subscription_fallback &&
++              strstr (message, "deactivation events require API version 1.36"))
++            {
++              native_control.subscription_fallback = TRUE;
++              native_control_send_line (
++                "{\"op\":\"events\",\"api_version\":{\"major\":1,\"minor\":11},"
++                "\"events\":[\"gnoblin.shortcut.binding-activated\"]}\n");
++              native_control_read_next ();
++              return;
++            }
++          native_control_fail (message);
++          return;
++        }
++      if (!g_str_equal (event, "subscribed"))
++        {
++          native_control_fail ("unexpected compositor event subscription response");
++          return;
++        }
++
++      native_control.subscribing = FALSE;
++      native_control.ready = TRUE;
++      native_control_rebind_shortcuts ();
++      native_control_write_next ();
++    }
++  else if (g_str_equal (event, "gnoblin.shortcut.binding-activated"))
++    {
++      const char *id = json_object_get_string_member_with_default (object, "id", "");
++      uint32_t timestamp = (uint32_t) json_object_get_int_member_with_default (
++        object, "input_time", 0);
++      const char *shortcut_id = NULL;
++      GlobalShortcutsSession *session = global_shortcuts_find_binding (id, &shortcut_id);
++
++      if (session && shortcut_id)
++        xdp_impl_global_shortcuts_emit_activated (global_shortcuts,
++                                                  session_get_id ((Session *) session),
++                                                  shortcut_id, timestamp,
++                                                  g_variant_new_array (G_VARIANT_TYPE ("{sv}"),
++                                                                       NULL, 0));
++    }
++  else if (g_str_equal (event, "gnoblin.shortcut.binding-deactivated"))
++    {
++      const char *id = json_object_get_string_member_with_default (object, "id", "");
++      uint32_t timestamp = (uint32_t) json_object_get_int_member_with_default (
++        object, "input_time", 0);
++      const char *shortcut_id = NULL;
++      GlobalShortcutsSession *session = global_shortcuts_find_binding (id, &shortcut_id);
++
++      if (session && shortcut_id)
++        xdp_impl_global_shortcuts_emit_deactivated (
++          global_shortcuts, session_get_id ((Session *) session), shortcut_id,
++          timestamp, g_variant_new_array (G_VARIANT_TYPE ("{sv}"), NULL, 0));
++    }
++  else if (g_str_equal (event, "reply") || g_str_equal (event, "error"))
++    {
++      const char *id = json_object_get_string_member_with_default (object, "id", "");
++      NativeControlRequest *request = g_hash_table_lookup (native_control.pending, id);
++
++      if (request)
++        {
++          g_hash_table_remove (native_control.pending, id);
++          if (request->callback)
++            request->callback (object,
++                               g_str_equal (event, "error")
++                                 ? json_object_get_string_member_with_default (
++                                     object, "message", "compositor request failed")
++                                 : NULL,
++                               request->user_data);
++          native_control_request_free (request);
++        }
++    }
++
++  native_control_read_next ();
++}
++
++static void
++native_control_read_next (void)
++{
++  if (native_control.reading || !native_control.input)
++    return;
++
++  native_control.reading = TRUE;
++  g_data_input_stream_read_line_async (native_control.input, G_PRIORITY_DEFAULT,
++                                       NULL, native_control_read_done, NULL);
++}
++
++static void
++native_control_connected (GObject      *source,
++                          GAsyncResult *result,
++                          gpointer      user_data)
++{
++  g_autoptr(GError) error = NULL;
++  native_control.connection = g_socket_client_connect_finish (
++    G_SOCKET_CLIENT (source), result, &error);
++  native_control.connecting = FALSE;
++  g_clear_object (&native_control.client);
++  if (!native_control.connection)
++    {
++      native_control_fail (error->message);
++      return;
++    }
++  if (native_control.retry_source)
++    {
++      g_source_remove (native_control.retry_source);
++      native_control.retry_source = 0;
++    }
++
++  native_control.input = g_data_input_stream_new (
++    g_io_stream_get_input_stream (G_IO_STREAM (native_control.connection)));
++  native_control.output = g_io_stream_get_output_stream (
++    G_IO_STREAM (native_control.connection));
++  native_control.awaiting_hello = TRUE;
++  native_control_read_next ();
++}
++
++static void
++native_control_connect (void)
++{
++  g_autofree char *path = NULL;
++  g_autoptr(GSocketAddress) address = NULL;
++
++  if (native_control.connection || native_control.connecting)
++    return;
++
++  path = native_control_socket_path ();
++  if (!path)
++    {
++      native_control_fail ("XDG_RUNTIME_DIR is unavailable");
++      return;
++    }
++
++  native_control.client = g_socket_client_new ();
++  address = g_unix_socket_address_new (path);
++  native_control.connecting = TRUE;
++  g_socket_client_connect_async (native_control.client,
++                                 G_SOCKET_CONNECTABLE (address), NULL,
++                                 native_control_connected, NULL);
++}
++
++static gboolean
++native_control_retry (gpointer user_data)
++{
++  (void) user_data;
++  native_control.retry_source = 0;
++  native_control_connect ();
++  return G_SOURCE_REMOVE;
++}
++
++static void
++native_control_request (const char           *method,
++                        const char           *binding_id,
++                        const char           *accelerator,
++                        const char           *trigger,
++                        NativeControlCallback callback,
++                        gpointer              user_data)
++{
++  NativeControlRequest *request = g_new0 (NativeControlRequest, 1);
++  g_autoptr(JsonNode) root = json_node_new (JSON_NODE_OBJECT);
++  JsonObject *object = json_object_new ();
++  g_autofree char *encoded = NULL;
++  JsonObject *args = json_object_new ();
++
++  request->id = g_strdup_printf ("portal-%" G_GUINT64_FORMAT,
++                                 ++native_control.next_id);
++  request->callback = callback;
++  request->user_data = user_data;
++  json_object_set_string_member (object, "op", "api");
++  json_object_set_string_member (object, "id", request->id);
++  JsonObject *version = json_object_new ();
++  json_object_set_int_member (version, "major", 1);
++  json_object_set_int_member (version, "minor", 22);
++  json_object_set_object_member (object, "api_version", version);
++  json_object_set_string_member (object, "method", method);
++  json_object_set_string_member (args, "id", binding_id);
++  if (accelerator)
++    json_object_set_string_member (args, "accelerator", accelerator);
++  if (trigger)
++    json_object_set_string_member (args, "trigger", trigger);
++  json_object_set_object_member (object, "arguments", args);
++  json_node_take_object (root, object);
++  encoded = json_to_string (root, FALSE);
++  request->line = g_strconcat (encoded, "\n", NULL);
++  if (native_control.failing)
++    {
++      if (callback)
++        callback (NULL, "compositor socket is unavailable", user_data);
++      native_control_request_free (request);
++      return;
++    }
++  g_queue_push_tail (native_control.queued, request);
++  native_control_connect ();
++  native_control_write_next ();
++}
++
++typedef struct
++{
++  GlobalShortcutsSession *session;
++  char *native_id;
++} NativeRebindRequest;
++
++static void
++native_rebind_request_free (NativeRebindRequest *request)
++{
++  g_clear_object (&request->session);
++  g_free (request->native_id);
++  g_free (request);
++}
++
++static Accelerator *
++global_shortcuts_find_accelerator (GlobalShortcutsSession *session,
++                                   const char             *native_id)
++{
++  for (guint i = 0; i < session->shortcuts->len; i++)
++    {
++      Shortcut *shortcut = &g_array_index (session->shortcuts, Shortcut, i);
++
++      for (guint j = 0; j < shortcut->accelerators->len; j++)
++        {
++          Accelerator *accel = &g_array_index (shortcut->accelerators, Accelerator, j);
++          if (g_strcmp0 (accel->native_id, native_id) == 0)
++            return accel;
++        }
++    }
++
++  return NULL;
++}
++
++static void
++native_rebind_done (JsonObject *result,
++                    const char *error,
++                    gpointer    user_data)
++{
++  NativeRebindRequest *request = user_data;
++  Accelerator *accel = global_shortcuts_find_accelerator (request->session,
++                                                           request->native_id);
++
++  (void) result;
++
++  if (error)
++    g_warning ("Gnoblin could not restore portal shortcut %s: %s",
++               request->native_id, error);
++  else if (request->session->closing || !accel)
++    native_control_request ("shortcut.unbind", request->native_id, NULL, NULL,
++                            native_unbind_done, NULL);
++  else
++    accel->bound = TRUE;
++
++  native_rebind_request_free (request);
++}
++
++static void
++native_control_rebind_shortcuts (void)
++{
++  GHashTableIter iter;
++  gpointer value;
++
++  if (!global_shortcuts_sessions)
++    return;
++
++  g_hash_table_iter_init (&iter, global_shortcuts_sessions);
++  while (g_hash_table_iter_next (&iter, NULL, &value))
++    {
++      GlobalShortcutsSession *session = value;
++      if (!session->bound || session->closing)
++        continue;
++
++      for (guint i = 0; i < session->shortcuts->len; i++)
++        {
++          Shortcut *shortcut = &g_array_index (session->shortcuts, Shortcut, i);
++
++          for (guint j = 0; j < shortcut->accelerators->len; j++)
++            {
++              Accelerator *accel = &g_array_index (shortcut->accelerators, Accelerator, j);
++              if (accel->bound || !accel->native_id || !accel->accelerator)
++                continue;
++
++              NativeRebindRequest *request = g_new0 (NativeRebindRequest, 1);
++              request->session = g_object_ref (session);
++              request->native_id = g_strdup (accel->native_id);
++              native_control_request ("shortcut.bind", accel->native_id,
++                                      accel->accelerator, "press",
++                                      native_rebind_done, request);
++            }
++        }
++    }
+ }
+ 
+ static void
+@@ -94,6 +674,7 @@ shortcuts_handle_free (BindShortcutsHandle *handle)
+       g_object_unref (handle->request);
+     }
+   g_clear_pointer (&handle->shortcuts, g_variant_unref);
++  g_clear_object (&handle->session);
+   g_free (handle);
+ }
+ 
+@@ -143,60 +724,20 @@ settings_response_to_shortcuts (GlobalShortcutsSession *session,
+     }
+ }
+ 
+-static GVariant *
+-shortcuts_to_grab_accelerator_variant (GlobalShortcutsSession *shortcuts_session,
+-                                       BindShortcutsHandle    *handle)
+-{
+-  g_auto(GVariantBuilder) builder =
+-    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("a(suu)"));
+-  int i, j;
+-
+-  for (i = 0; i < shortcuts_session->shortcuts->len; i++)
+-    {
+-      Shortcut *shortcut;
+-
+-      shortcut = &g_array_index (shortcuts_session->shortcuts, Shortcut, i);
+-
+-      for (j = 0; j < shortcut->accelerators->len; j++)
+-        {
+-          Accelerator *accel;
+-
+-          accel = &g_array_index (shortcut->accelerators, Accelerator, j);
+-          g_ptr_array_add (handle->mapped_accelerators, accel);
+-
+-          g_variant_builder_add (&builder, "(suu)",
+-                                 accel->accelerator,
+-                                 SHELL_ACTION_MODE_NORMAL,
+-                                 META_KEY_BINDING_TRIGGER_RELEASE);
+-        }
+-    }
++static void bind_next_approved_accelerator (BindShortcutsHandle *handle);
+ 
+-  return g_variant_ref_sink (g_variant_builder_end (&builder));
+-}
+-
+-static GVariant *
+-shortcuts_to_ungrab_accelerator_variant (GlobalShortcutsSession *shortcuts_session)
++static void
++collect_approved_accelerators (GlobalShortcutsSession *session,
++                               BindShortcutsHandle    *handle)
+ {
+-  g_auto(GVariantBuilder) builder =
+-    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE ("au"));
+-  int i, j;
+-
+-  for (i = 0; i < shortcuts_session->shortcuts->len; i++)
++  for (guint i = 0; i < session->shortcuts->len; i++)
+     {
+-      Shortcut *shortcut;
+-
+-      shortcut = &g_array_index (shortcuts_session->shortcuts, Shortcut, i);
+-
+-      for (j = 0; j < shortcut->accelerators->len; j++)
+-        {
+-          Accelerator *accel;
++      Shortcut *shortcut = &g_array_index (session->shortcuts, Shortcut, i);
+ 
+-          accel = &g_array_index (shortcut->accelerators, Accelerator, j);
+-          g_variant_builder_add (&builder, "u", accel->accelerator_id);
+-        }
++      for (guint j = 0; j < shortcut->accelerators->len; j++)
++        g_ptr_array_add (handle->mapped_accelerators,
++                         &g_array_index (shortcut->accelerators, Accelerator, j));
+     }
+-
+-  return g_variant_ref_sink (g_variant_builder_end (&builder));
+ }
+ 
+ static void
+@@ -219,25 +760,20 @@ global_shortcuts_session_finalize (GObject *object)
+ }
+ 
+ static void
+-shell_ungrab_accelerators_done (GObject *source,
+-                                GAsyncResult *result,
+-                                gpointer data)
++native_unbind_done (JsonObject *result,
++                    const char *error,
++                    gpointer    user_data)
+ {
+-  g_autoptr(GError) error = NULL;
+-  gboolean success;
+-
+-  if (!org_gnome_shell_call_ungrab_accelerators_finish (shell, &success, result, &error))
+-    g_debug ("Error from shell UnbindShortcuts: %s", error->message);
+-
+-  if (!success)
+-    g_debug ("Failed to ungrab accelerators");
++  (void) result;
++  (void) user_data;
++  if (error)
++    g_warning ("Gnoblin could not release portal shortcut: %s", error);
+ }
+ 
+ static void
+ global_shortcuts_session_close (Session *session)
+ {
+   GlobalShortcutsSession *shortcuts_session;
+-  g_autoptr(GVariant) variant = NULL;
+ 
+   /* When a session is closed, we need to unbind its shortcuts */
+   g_debug ("Closing session %s", session_get_id (session));
+@@ -249,19 +785,25 @@ global_shortcuts_session_close (Session *session)
+     }
+ 
+   shortcuts_session = (GlobalShortcutsSession *) session;
++  shortcuts_session->closing = TRUE;
++  g_hash_table_remove (global_shortcuts_sessions, shortcuts_session);
+ 
+-  if (!shortcuts_session->bound)
+-    return;
+-
+-  g_debug ("Unbinding shortcuts of session %s", session_get_id (session));
++  for (guint i = 0; i < shortcuts_session->shortcuts->len; i++)
++    {
++      Shortcut *shortcut = &g_array_index (shortcuts_session->shortcuts, Shortcut, i);
+ 
+-  variant = shortcuts_to_ungrab_accelerator_variant (shortcuts_session);
++      for (guint j = 0; j < shortcut->accelerators->len; j++)
++        {
++          Accelerator *accel = &g_array_index (shortcut->accelerators, Accelerator, j);
+ 
+-  org_gnome_shell_call_ungrab_accelerators (shell,
+-                                            variant,
+-                                            NULL,
+-                                            shell_ungrab_accelerators_done,
+-                                            NULL);
++          if (accel->bound)
++            {
++              native_control_request ("shortcut.unbind", accel->native_id, NULL, NULL,
++                                     native_unbind_done, NULL);
++              accel->bound = FALSE;
++            }
++        }
++    }
+ }
+ 
+ static void
+@@ -306,6 +848,8 @@ handle_create_session (XdpImplGlobalShortcuts *object,
+       goto out;
+     }
+ 
++  g_hash_table_add (global_shortcuts_sessions, session);
++
+   g_debug ("creating session %s", session_get_id (session));
+ 
+   response = 0;
+@@ -339,6 +883,24 @@ shortcuts_to_response_variant (GArray *shortcuts)
+       shortcut = &g_array_index (shortcuts, Shortcut, i);
+       g_variant_builder_init (&accels_builder, G_VARIANT_TYPE ("a{sv}"));
+ 
++      guint bound_count = 0;
++      Accelerator *first_bound = NULL;
++      Accelerator *second_bound = NULL;
++      for (guint j = 0; j < shortcut->accelerators->len; j++)
++        {
++          Accelerator *accel = &g_array_index (shortcut->accelerators, Accelerator, j);
++          if (accel->bound)
++            {
++              if (bound_count++ == 0)
++                first_bound = accel;
++              else if (bound_count == 2)
++                second_bound = accel;
++            }
++        }
++
++      if (bound_count == 0)
++        continue;
++
+       if (shortcut->desc)
+         {
+           g_variant_builder_add (&accels_builder, "{sv}",
+@@ -346,24 +908,17 @@ shortcuts_to_response_variant (GArray *shortcuts)
+                                  g_variant_new_string (shortcut->desc));
+         }
+ 
+-      if (shortcut->accelerators->len == 1)
++      if (bound_count == 1)
+         {
+-          Accelerator *accel;
+-
+-          accel = &g_array_index (shortcut->accelerators, Accelerator, 0);
+           /* Translators: This string refers to a key combination */
+-          str = g_strdup_printf (_("Press %s"), accel->accelerator);
++          str = g_strdup_printf (_("Press %s"), first_bound->accelerator);
+         }
+-      else if (shortcut->accelerators->len == 2)
++      else if (bound_count == 2)
+         {
+-          Accelerator *accel1, *accel2;
+-
+-          accel1 = &g_array_index (shortcut->accelerators, Accelerator, 0);
+-          accel2 = &g_array_index (shortcut->accelerators, Accelerator, 1);
+           /* Translators: This string refers to 2 key combinations */
+           str = g_strdup_printf (_("Press %s or %s"),
+-                                 accel1->accelerator,
+-                                 accel2->accelerator);
++                                 first_bound->accelerator,
++                                 second_bound->accelerator);
+         }
+ 
+       if (str)
+@@ -519,80 +1074,136 @@ portal_shortcuts_to_settings (GVariant *input)
+ }
+ 
+ static void
+-shell_grab_accelerators_done (GObject      *source,
+-                              GAsyncResult *result,
+-                              gpointer      data)
++finish_native_bind_batch (BindShortcutsHandle *handle)
+ {
+-  OrgGnomeShell *proxy = (OrgGnomeShell *) source;
+-  GlobalShortcutsSession *shortcuts_session;
+-  g_autoptr(BindShortcutsHandle) handle = data;
+-  g_autoptr(GVariant) results = NULL, shortcuts = NULL;
+-  int response;
+-  GVariantBuilder results_builder;
+-  GVariantIter iter;
+-  g_autoptr(GError) error = NULL;
+-  guint accel_id;
+-  int i = 0;
++  GlobalShortcutsSession *session = (GlobalShortcutsSession *) handle->session;
++  g_autoptr(GVariant) shortcuts = shortcuts_to_response_variant (session->shortcuts);
+ 
+-  if (!org_gnome_shell_call_grab_accelerators_finish (proxy,
+-                                                      &results,
+-                                                      result,
+-                                                      &error))
++  if (handle->canceled && !handle->rebind)
+     {
+-      g_warning ("Error from shell GrabAccelerators: %s", error->message);
+-      response = 2;
+-      goto out;
++      for (guint i = 0; i < session->shortcuts->len; i++)
++        {
++          Shortcut *shortcut = &g_array_index (session->shortcuts, Shortcut, i);
++          for (guint j = 0; j < shortcut->accelerators->len; j++)
++            {
++              Accelerator *accel = &g_array_index (shortcut->accelerators, Accelerator, j);
++              if (accel->bound)
++                native_control_request ("shortcut.unbind", accel->native_id, NULL, NULL,
++                                        native_unbind_done, NULL);
++              accel->bound = FALSE;
++            }
++        }
++      GVariantBuilder canceled_results;
++      g_variant_builder_init (&canceled_results, G_VARIANT_TYPE_VARDICT);
++      xdp_impl_global_shortcuts_complete_bind_shortcuts (global_shortcuts,
++                                                         handle->invocation, 1,
++                                                         g_variant_builder_end (&canceled_results));
++      return;
+     }
+ 
+-  g_variant_iter_init (&iter, results);
+-
+-  while (g_variant_iter_next (&iter, "u", &accel_id))
++  if (handle->rebind)
+     {
+-      Accelerator *accel;
+-
+-      accel = g_ptr_array_index (handle->mapped_accelerators, i);
+-      accel->accelerator_id = accel_id;
+-      i++;
++      if (session->shortcuts->len == 0)
++        {
++          session->bound = FALSE;
++          shortcuts = portal_variant_to_empty_response_variant (session->initial_shortcuts);
++        }
++      if (shortcuts)
++        xdp_impl_global_shortcuts_emit_shortcuts_changed (global_shortcuts,
++                                                          session_get_id (handle->session),
++                                                          g_variant_ref (shortcuts));
++      if (handle->invocation)
++        org_gnoblin_shell_global_shortcuts_rebind_complete_rebind_shortcuts (
++          global_shortcuts_rebind, handle->invocation);
++      return;
+     }
+ 
+-  shortcuts_session = (GlobalShortcutsSession *) handle->session;
+-  shortcuts = shortcuts_to_response_variant (shortcuts_session->shortcuts);
+-
+   if (shortcuts)
+-    {
+-      xdp_impl_global_shortcuts_emit_shortcuts_changed (global_shortcuts,
+-                                                        session_get_id (handle->session),
+-                                                        g_variant_ref (shortcuts));
+-    }
++    xdp_impl_global_shortcuts_emit_shortcuts_changed (global_shortcuts,
++                                                      session_get_id (handle->session),
++                                                      g_variant_ref (shortcuts));
+ 
+-  response = 0;
+-
+- out:
++  GVariantBuilder results_builder;
+   g_variant_builder_init (&results_builder, G_VARIANT_TYPE_VARDICT);
+-
+   if (shortcuts)
+     g_variant_builder_add (&results_builder, "{sv}", "shortcuts", shortcuts);
+-
+   xdp_impl_global_shortcuts_complete_bind_shortcuts (global_shortcuts,
+                                                      handle->invocation,
+-                                                     response,
++                                                     handle->failed ? 2 : 0,
+                                                      g_variant_builder_end (&results_builder));
+ }
+ 
++static void
++native_bind_done (JsonObject *result,
++                  const char *error,
++                  gpointer    user_data)
++{
++  BindShortcutsHandle *handle = user_data;
++  GlobalShortcutsSession *session = (GlobalShortcutsSession *) handle->session;
++  Accelerator *accel = g_ptr_array_index (handle->mapped_accelerators,
++                                          handle->next_accelerator - 1);
++
++  (void) result;
++
++  if (error)
++    {
++      handle->failed = TRUE;
++      g_warning ("Gnoblin could not bind approved accelerator %s: %s",
++                 accel->accelerator, error);
++    }
++  else if (session->closing)
++    native_control_request ("shortcut.unbind", accel->native_id, NULL, NULL,
++                            native_unbind_done, NULL);
++  else
++    accel->bound = TRUE;
++
++  if (session->closing)
++    accel->bound = FALSE;
++
++  bind_next_approved_accelerator (handle);
++}
++
++static void
++bind_next_approved_accelerator (BindShortcutsHandle *handle)
++{
++  if (handle->next_accelerator >= handle->mapped_accelerators->len)
++    {
++      finish_native_bind_batch (handle);
++      shortcuts_handle_free (handle);
++      return;
++    }
++
++  Accelerator *accel = g_ptr_array_index (handle->mapped_accelerators,
++                                          handle->next_accelerator++);
++  GlobalShortcutsSession *session = (GlobalShortcutsSession *) handle->session;
++  if (handle->canceled || session->closing)
++    {
++      handle->failed = TRUE;
++      accel->bound = FALSE;
++      bind_next_approved_accelerator (handle);
++      return;
++    }
++
++  g_free (accel->native_id);
++  accel->native_id = g_strdup_printf ("portal-%" G_GUINT64_FORMAT,
++                                      ++native_control.next_binding_id);
++  native_control_request ("shortcut.bind", accel->native_id, accel->accelerator, "press",
++                          native_bind_done, handle);
++}
++
+ static void
+ settings_bind_shortcuts_done (GObject      *source,
+                               GAsyncResult *result,
+                               gpointer      data)
+ {
+-  OrgGnomeSettingsGlobalShortcutsProvider *proxy = (OrgGnomeSettingsGlobalShortcutsProvider *) source;
++  OrgGnoblinShellGlobalShortcutsProvider *proxy = (OrgGnoblinShellGlobalShortcutsProvider *) source;
+   g_autoptr(BindShortcutsHandle) handle = data;
+   GlobalShortcutsSession *session = (GlobalShortcutsSession *) handle->session;
+   g_autoptr(GVariant) response = NULL;
+   GVariantBuilder results_builder;
+-  g_autoptr(GVariant) variant = NULL;
+   g_autoptr(GError) error = NULL;
+ 
+-  if (!org_gnome_settings_global_shortcuts_provider_call_bind_shortcuts_finish (proxy,
++  if (!org_gnoblin_shell_global_shortcuts_provider_call_bind_shortcuts_finish (proxy,
+                                                                                 &response,
+                                                                                 result,
+                                                                                 &error))
+@@ -617,13 +1228,8 @@ settings_bind_shortcuts_done (GObject      *source,
+     }
+ 
+   settings_response_to_shortcuts (session, response);
+-  variant = shortcuts_to_grab_accelerator_variant (session, handle);
+-
+-  org_gnome_shell_call_grab_accelerators (shell,
+-                                          variant,
+-                                          NULL,
+-                                          shell_grab_accelerators_done,
+-                                          g_steal_pointer (&handle));
++  collect_approved_accelerators (session, handle);
++  bind_next_approved_accelerator (g_steal_pointer (&handle));
+ }
+ 
+ static gboolean
+@@ -675,7 +1281,7 @@ handle_bind_shortcuts (XdpImplGlobalShortcuts *object,
+ 
+   g_assert (object == global_shortcuts);
+   handle = g_new0 (BindShortcutsHandle, 1);
+-  handle->session = session;
++  handle->session = g_object_ref (session);
+   handle->invocation = g_object_ref (invocation);
+   handle->request = g_object_ref (request);
+   handle->shortcuts = g_variant_ref (arg_shortcuts);
+@@ -686,7 +1292,7 @@ handle_bind_shortcuts (XdpImplGlobalShortcuts *object,
+ 
+   settings_shortcuts = portal_shortcuts_to_settings (arg_shortcuts);
+ 
+-  org_gnome_settings_global_shortcuts_provider_call_bind_shortcuts (settings,
++  org_gnoblin_shell_global_shortcuts_provider_call_bind_shortcuts (settings,
+                                                                     shortcuts_session->app_id,
+                                                                     arg_parent_window,
+                                                                     settings_shortcuts,
+@@ -746,83 +1352,6 @@ out:
+   return TRUE;
+ }
+ 
+-static void
+-shell_grab_accelerators_rebind_done (GObject      *object,
+-                                     GAsyncResult *result,
+-                                     gpointer      data)
+-{
+-  GlobalShortcutsSession *shortcuts_session;
+-  BindShortcutsHandle *handle = data;
+-  g_autoptr(GError) error = NULL;
+-  g_autoptr(GVariant) response = NULL, shortcuts = NULL;
+-  GVariantIter iter;
+-  guint accel_id;
+-  guint i = 0;
+-
+-  if (!org_gnome_shell_call_grab_accelerators_finish (shell, &response, result, &error))
+-    g_debug ("Error during RebindShortcuts: %s", error->message);
+-
+-  shortcuts_session = (GlobalShortcutsSession *) handle->session;
+-
+-  g_variant_iter_init (&iter, response);
+-
+-  while (g_variant_iter_next (&iter, "u", &accel_id))
+-    {
+-      Accelerator *accel;
+-
+-      accel = g_ptr_array_index (handle->mapped_accelerators, i);
+-      accel->accelerator_id = accel_id;
+-      i++;
+-    }
+-
+-  if (shortcuts_session->shortcuts->len == 0)
+-    {
+-      shortcuts_session->bound = FALSE;
+-      shortcuts = portal_variant_to_empty_response_variant (shortcuts_session->initial_shortcuts);
+-    }
+-  else
+-    {
+-      shortcuts = shortcuts_to_response_variant (shortcuts_session->shortcuts);
+-    }
+-
+-  if (shortcuts)
+-    {
+-      xdp_impl_global_shortcuts_emit_shortcuts_changed (global_shortcuts,
+-                                                        session_get_id (handle->session),
+-                                                        shortcuts);
+-    }
+-
+-  if (handle->invocation)
+-    org_gnome_global_shortcuts_rebind_complete_rebind_shortcuts (global_shortcuts_rebind,
+-                                                                 handle->invocation);
+-}
+-
+-static void
+-shell_ungrab_accelerators_rebind_done (GObject      *source,
+-                                       GAsyncResult *result,
+-                                       gpointer      data)
+-{
+-  BindShortcutsHandle *handle = data;
+-  GlobalShortcutsSession *session = (GlobalShortcutsSession *) handle->session;
+-  g_autoptr(GVariant) variant = NULL;
+-  g_autoptr(GError) error = NULL;
+-  gboolean success;
+-
+-  if (!org_gnome_shell_call_ungrab_accelerators_finish (shell, &success, result, &error))
+-    g_debug ("Error during RebindShortcuts: %s", error->message);
+-
+-  if (!success)
+-    g_debug ("Failure ungrabbing shortcuts");
+-
+-  variant = shortcuts_to_grab_accelerator_variant (session, handle);
+-
+-  org_gnome_shell_call_grab_accelerators (shell,
+-                                          variant,
+-                                          NULL,
+-                                          shell_grab_accelerators_rebind_done,
+-                                          handle);
+-}
+-
+ static gboolean
+ match_app_id (Session       *session,
+               gconstpointer  data)
+@@ -847,29 +1376,35 @@ rebind_session_shortcuts (GlobalShortcutsSession  *session,
+                           GDBusMethodInvocation   *invocation)
+ {
+   g_autoptr(BindShortcutsHandle) handle = NULL;
+-  g_autoptr(GVariant) variant = NULL;
+ 
+   handle = g_new0 (BindShortcutsHandle, 1);
+-  handle->session = (Session *) session;
++  handle->session = g_object_ref ((Session *) session);
+   handle->invocation = invocation ? g_object_ref (invocation) : NULL;
+   handle->shortcuts = g_variant_ref (shortcuts);
+   handle->mapped_accelerators = g_ptr_array_new ();
++  handle->rebind = TRUE;
+ 
+-  /* Reset shortcuts */
+-  variant = shortcuts_to_ungrab_accelerator_variant (session);
++  /* Queue old releases before replacement binds on the same socket. */
++  for (guint i = 0; i < session->shortcuts->len; i++)
++    {
++      Shortcut *shortcut = &g_array_index (session->shortcuts, Shortcut, i);
++      for (guint j = 0; j < shortcut->accelerators->len; j++)
++        {
++          Accelerator *accel = &g_array_index (shortcut->accelerators, Accelerator, j);
++          if (accel->bound)
++            native_control_request ("shortcut.unbind", accel->native_id, NULL, NULL,
++                                    native_unbind_done, NULL);
++        }
++    }
+   g_array_remove_range (session->shortcuts, 0,
+                         session->shortcuts->len);
+   settings_response_to_shortcuts (session, shortcuts);
+-
+-  org_gnome_shell_call_ungrab_accelerators (shell,
+-                                            variant,
+-                                            NULL,
+-                                            shell_ungrab_accelerators_rebind_done,
+-                                            g_steal_pointer (&handle));
++  collect_approved_accelerators (session, handle);
++  bind_next_approved_accelerator (g_steal_pointer (&handle));
+ }
+ 
+ static gboolean
+-handle_rebind_shortcuts (OrgGnomeGlobalShortcutsRebind *object,
++handle_rebind_shortcuts (OrgGnoblinShellGlobalShortcutsRebind *object,
+                          GDBusMethodInvocation         *invocation,
+                          const char                    *arg_app_id,
+                          GVariant                      *arg_shortcuts)
+@@ -881,7 +1416,7 @@ handle_rebind_shortcuts (OrgGnomeGlobalShortcutsRebind *object,
+   if (!session)
+     {
+       g_debug ("Session for app %s not found in RebindShortcuts", arg_app_id);
+-      org_gnome_global_shortcuts_rebind_complete_rebind_shortcuts (object, invocation);
++      org_gnoblin_shell_global_shortcuts_rebind_complete_rebind_shortcuts (object, invocation);
+       return TRUE;
+     }
+ 
+@@ -898,14 +1433,14 @@ settings_configure_shortcuts_done (GObject      *source,
+                                    GAsyncResult *result,
+                                    gpointer      data)
+ {
+-  OrgGnomeSettingsGlobalShortcutsProvider *proxy = (OrgGnomeSettingsGlobalShortcutsProvider *) source;
++  OrgGnoblinShellGlobalShortcutsProvider *proxy = (OrgGnoblinShellGlobalShortcutsProvider *) source;
+   g_autofree char *app_id = data;
+   g_autoptr(GVariant) response = NULL;
+   g_autoptr(GError) error = NULL;
+   Session *session;
+   GlobalShortcutsSession *shortcuts_session;
+ 
+-  if (!org_gnome_settings_global_shortcuts_provider_call_configure_shortcuts_finish (proxy,
++  if (!org_gnoblin_shell_global_shortcuts_provider_call_configure_shortcuts_finish (proxy,
+                                                                                      &response,
+                                                                                      result,
+                                                                                      &error))
+@@ -967,7 +1502,7 @@ handle_configure_shortcuts (XdpImplGlobalShortcuts *object,
+ 
+   if (shortcuts_session->bound)
+     {
+-      org_gnome_settings_global_shortcuts_provider_call_configure_shortcuts (settings,
++      org_gnoblin_shell_global_shortcuts_provider_call_configure_shortcuts (settings,
+                                                                              shortcuts_session->app_id,
+                                                                              arg_parent_window,
+                                                                              NULL,
+@@ -981,7 +1516,7 @@ handle_configure_shortcuts (XdpImplGlobalShortcuts *object,
+       g_debug ("Recovering session by calling BindShortcuts internally");
+       shortcuts_session->bound = TRUE;
+       settings_shortcuts = portal_shortcuts_to_settings (shortcuts_session->initial_shortcuts);
+-      org_gnome_settings_global_shortcuts_provider_call_bind_shortcuts (settings,
++      org_gnoblin_shell_global_shortcuts_provider_call_bind_shortcuts (settings,
+                                                                         shortcuts_session->app_id,
+                                                                         arg_parent_window,
+                                                                         settings_shortcuts,
+@@ -1003,170 +1538,53 @@ handle_configure_shortcuts (XdpImplGlobalShortcuts *object,
+ }
+ 
+ static gboolean
+-match_accelerator_id (Session       *session,
++match_native_binding (Session       *session,
+                       gconstpointer  data)
+ {
+-  const guint *id = data;
++  const char *id = data;
+   GlobalShortcutsSession *shortcuts_session;
+-  int i, j;
+ 
+   if (!is_global_shortcuts_session (session))
+     return FALSE;
+ 
+   shortcuts_session = (GlobalShortcutsSession *) session;
+-
+-  for (i = 0; i < shortcuts_session->shortcuts->len; i++)
++  for (guint i = 0; i < shortcuts_session->shortcuts->len; i++)
+     {
+-      Shortcut *shortcut;
+-
+-      shortcut = &g_array_index (shortcuts_session->shortcuts, Shortcut, i);
+-
+-      for (j = 0; j < shortcut->accelerators->len; j++)
++      Shortcut *shortcut = &g_array_index (shortcuts_session->shortcuts, Shortcut, i);
++      for (guint j = 0; j < shortcut->accelerators->len; j++)
+         {
+-          Accelerator *accel;
+-
+-          accel = &g_array_index (shortcut->accelerators, Accelerator, j);
+-          if (accel->accelerator_id == *id)
++          Accelerator *accel = &g_array_index (shortcut->accelerators, Accelerator, j);
++          if (accel->bound && g_strcmp0 (accel->native_id, id) == 0)
+             return TRUE;
+         }
+     }
+-
+   return FALSE;
+ }
+ 
+ static GlobalShortcutsSession *
+-find_session_and_shortcut_id (guint        action,
+-                              const char **shortcut_out)
++global_shortcuts_find_binding (const char *id,
++                               const char **shortcut_out)
+ {
+-  GlobalShortcutsSession *shortcuts_session;
+-  const char *shortcut_id = NULL;
+-  Session *session;
+-  int i, j;
+-
+-  session = find_session (match_accelerator_id, &action);
++  Session *session = find_session (match_native_binding, id);
+ 
+   if (!session)
+-    {
+-      g_debug ("Session for accelerator %u not found", action);
+-      return NULL;
+-    }
++    return NULL;
+ 
+-  shortcuts_session = (GlobalShortcutsSession *) session;
+-
+-  for (i = 0; i < shortcuts_session->shortcuts->len; i++)
++  GlobalShortcutsSession *shortcuts_session = (GlobalShortcutsSession *) session;
++  for (guint i = 0; i < shortcuts_session->shortcuts->len; i++)
+     {
+-      Shortcut *shortcut;
+-
+-      shortcut = &g_array_index (shortcuts_session->shortcuts, Shortcut, i);
+-
+-      for (j = 0; j < shortcut->accelerators->len; j++)
++      Shortcut *shortcut = &g_array_index (shortcuts_session->shortcuts, Shortcut, i);
++      for (guint j = 0; j < shortcut->accelerators->len; j++)
+         {
+-          Accelerator *accel;
+-
+-          accel = &g_array_index (shortcut->accelerators, Accelerator, j);
+-
+-          if (accel->accelerator_id == action)
+-            shortcut_id = shortcut->shortcut_id;
++          Accelerator *accel = &g_array_index (shortcut->accelerators, Accelerator, j);
++          if (accel->bound && g_strcmp0 (accel->native_id, id) == 0)
++            {
++              *shortcut_out = shortcut->shortcut_id;
++              return shortcuts_session;
++            }
+         }
+     }
+-
+-  if (!shortcut_id)
+-    {
+-      g_debug ("Shortcut ID not found in session %s", shortcuts_session->app_id);
+-      return NULL;
+-    }
+-
+-  *shortcut_out = shortcut_id;
+-
+-  return shortcuts_session;
+-}
+-
+-static void
+-on_shell_activated (OrgGnomeShell *shell,
+-                    guint          action,
+-                    GVariant      *parameters,
+-                    gpointer       data)
+-{
+-  GlobalShortcutsSession *shortcuts_session;
+-  const char *shortcut_id = NULL;
+-  Session *session;
+-  g_auto(GVariantBuilder) options_builder =
+-    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
+-  g_autoptr(GVariant) val_timestamp = NULL;
+-  g_autoptr(GVariant) val_activation_token = NULL;
+-  uint32_t timestamp = 0;
+-
+-  shortcuts_session = find_session_and_shortcut_id (action, &shortcut_id);
+-  if (!shortcuts_session)
+-    return;
+-
+-  session = (Session *) shortcuts_session;
+-
+-  val_timestamp = g_variant_lookup_value (parameters, "timestamp",
+-                                          G_VARIANT_TYPE_UINT32);
+-  if (val_timestamp)
+-    timestamp = g_variant_get_uint32 (val_timestamp);
+-
+-  val_activation_token = g_variant_lookup_value (parameters, "activation-token",
+-                                                 G_VARIANT_TYPE_STRING);
+-  if (val_activation_token)
+-    {
+-      g_variant_builder_add (&options_builder, "{sv}",
+-                             "activation_token", val_activation_token);
+-    }
+-
+-  g_debug ("Propagating Activated for shortcut %s in group %s at %u",
+-           shortcut_id, shortcuts_session->app_id, timestamp);
+-
+-  xdp_impl_global_shortcuts_emit_activated (global_shortcuts,
+-                                            session_get_id (session),
+-                                            shortcut_id,
+-                                            timestamp,
+-                                            g_variant_builder_end (&options_builder));
+-}
+-
+-static void
+-on_shell_deactivated (OrgGnomeShell *shell,
+-                      guint          action,
+-                      GVariant      *parameters,
+-                      gpointer       data)
+-{
+-  GlobalShortcutsSession *shortcuts_session;
+-  const char *shortcut_id = NULL;
+-  Session *session;
+-  g_auto(GVariantBuilder) options_builder =
+-    G_VARIANT_BUILDER_INIT (G_VARIANT_TYPE_VARDICT);
+-  g_autoptr(GVariant) val_timestamp = NULL;
+-  g_autoptr(GVariant) val_activation_token = NULL;
+-  uint32_t timestamp = 0;
+-
+-  shortcuts_session = find_session_and_shortcut_id (action, &shortcut_id);
+-  if (!shortcuts_session)
+-    return;
+-
+-  session = (Session *) shortcuts_session;
+-
+-  val_timestamp = g_variant_lookup_value (parameters, "timestamp",
+-                                          G_VARIANT_TYPE_UINT32);
+-  if (val_timestamp)
+-    timestamp = g_variant_get_uint32 (val_timestamp);
+-
+-  val_activation_token = g_variant_lookup_value (parameters, "activation-token",
+-                                                 G_VARIANT_TYPE_STRING);
+-  if (val_activation_token)
+-    {
+-      g_variant_builder_add (&options_builder, "{sv}",
+-                             "activation_token", val_activation_token);
+-    }
+-
+-  g_debug ("Propagating Deactivated for shortcut %s in group %s at %u",
+-           shortcut_id, shortcuts_session->app_id, timestamp);
+-
+-  xdp_impl_global_shortcuts_emit_deactivated (global_shortcuts,
+-                                              session_get_id (session),
+-                                              shortcut_id,
+-                                              timestamp,
+-                                              g_variant_builder_end (&options_builder));
++  return NULL;
+ }
+ 
+ gboolean
+@@ -1187,33 +1605,23 @@ global_shortcuts_init (GDBusConnection *bus,
+                                          error))
+     return FALSE;
+ 
+-  global_shortcuts_rebind = org_gnome_global_shortcuts_rebind_skeleton_new ();
++  global_shortcuts_rebind = org_gnoblin_shell_global_shortcuts_rebind_skeleton_new ();
+   g_signal_connect (global_shortcuts_rebind, "handle-rebind-shortcuts", G_CALLBACK (handle_rebind_shortcuts), NULL);
+ 
+   if (!g_dbus_interface_skeleton_export (G_DBUS_INTERFACE_SKELETON (global_shortcuts_rebind),
+                                          bus,
+-                                         "/org/gnome/globalshortcuts",
++                                         "/org/gnoblin/Shell/GlobalShortcuts",
+                                          error))
+     return FALSE;
+ 
+-  shell = org_gnome_shell_proxy_new_sync (bus,
+-                                          G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START,
+-                                          "org.gnome.Shell",
+-                                          "/org/gnome/Shell",
+-                                          NULL,
+-                                          error);
+-  if (shell == NULL)
+-    return FALSE;
+-
+-  g_signal_connect (shell, "accelerator-activated", G_CALLBACK (on_shell_activated), global_shortcuts);
+-  g_signal_connect (shell, "accelerator-deactivated", G_CALLBACK (on_shell_deactivated), global_shortcuts);
+-
+-  g_dbus_proxy_set_default_timeout (G_DBUS_PROXY (shell), G_MAXINT);
++  native_control.queued = g_queue_new ();
++  native_control.pending = g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
++  global_shortcuts_sessions = g_hash_table_new (g_direct_hash, g_direct_equal);
+ 
+-  settings = org_gnome_settings_global_shortcuts_provider_proxy_new_sync (bus,
++  settings = org_gnoblin_shell_global_shortcuts_provider_proxy_new_sync (bus,
+                                                                           G_DBUS_PROXY_FLAGS_NONE,
+-                                                                          "org.gnome.Settings.GlobalShortcutsProvider",
+-                                                                          "/org/gnome/Settings/GlobalShortcutsProvider",
++                                                                          "org.gnoblin.Shell.GlobalShortcutsProvider",
++                                                                          "/org/gnoblin/Shell/GlobalShortcutsProvider",
+                                                                           NULL,
+                                                                           error);
+   if (settings == NULL)
+diff --git a/src/meson.build b/src/meson.build
+index d139976..215995b 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -38,8 +38,8 @@ shell_dbus_interfaces = files(
+   top_srcdir / 'data' / 'org.gnome.Shell.Screenshot.xml',
+   top_srcdir / 'data' / 'org.gtk.Notifications.xml',
+   top_srcdir / 'data' / 'org.gnome.Shell.xml',
+-  top_srcdir / 'data' / 'org.gnome.GlobalShortcutsProvider.xml',
+-  top_srcdir / 'data' / 'org.gnome.GlobalShortcutsRebind.xml',
++  top_srcdir / 'data' / 'org.gnoblin.Shell.GlobalShortcutsProvider.xml',
++  top_srcdir / 'data' / 'org.gnoblin.Shell.GlobalShortcutsRebind.xml',
+ )
+ 
+ built_sources += gnome.gdbus_codegen(
+@@ -82,6 +82,7 @@ deps = [
+   dependency('fontconfig'),
+   dependency('glib-2.0', version: '>= 2.76'),
+   dependency('gio-unix-2.0'),
++  dependency('json-glib-1.0'),
+   dependency('gtk4', version: '>= 4.0'),
+   dependency('gtk4-unix-print', version: '>= 4.0'),
+   dependency('gsettings-desktop-schemas', version: '>= 47.alpha'),

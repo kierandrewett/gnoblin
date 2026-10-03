@@ -145,12 +145,10 @@ installs its input embargo rather than waiting for presentation confirmation.
 Bingux may add policy, compatibility APIs, and logind integration later.
 Gnoblin neither launches a locker nor owns session policy.
 
-Gnoblin's bridge and developer console use the same adapter for their locked
-state. It combines stock `sessionMode.isLocked` with the compositor's active
-state, cancels bridge interaction when the compositor becomes active, and
-refuses screenshots, previews and window operations while locked. A compositor
-which is absent, too old, `covering`, or `unavailable` leaves GNOME's normal
-ScreenShield untouched.
+The standalone Lua runtime reads lock state from Mutter's native-control API.
+It sends lock requests to subscribed shell clients but does not own their lock
+screen UI. Those clients use the `ext-session-lock-v1` protocol; the compositor
+retains lock enforcement and fallback coverage if a client is unavailable.
 
 The Shell screenshot service applies that same predicate before creating a
 `Shell.Screenshot`, opening screenshot or recording UI, interactive capture,

@@ -35,13 +35,19 @@ be unique and match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`; names must be
 nonempty and no longer than 80 characters. Runtime-created workspaces are
 temporary and are not part of this list.
 
-| Option         | Values and default                                   | Effect                                                 |
-| -------------- | ---------------------------------------------------- | ------------------------------------------------------ |
-| `match.app_id` | JavaScript regular expression; unset matches any app | Selects windows by application ID.                     |
-| `workspace`    | `{id = "code"}` or `{number = 1..1024}`; unset       | Places a matching new normal window on that workspace. |
+| Option         | Values and default                                | Effect                                                 |
+| -------------- | ------------------------------------------------- | ------------------------------------------------------ |
+| `match.app_id` | Case-sensitive Lua pattern; unset matches any app | Selects windows by application ID.                     |
+| `workspace`    | `{id = "code"}` or `{number = 1..1024}`; unset    | Places a matching new normal window on that workspace. |
 
-App ID patterns are case-sensitive JavaScript regular expressions. Use `^`
-and `$` to match the whole ID. Reload the configuration to apply these settings.
+App ID patterns use Lua 5.4 `string.find` syntax and search anywhere by
+default. Use `^` and `$` to match the whole ID. Escape literal dots with `%`:
+
+```lua
+match = {type = "window", app_id = [[^org%.example%.Editor$]]}
+```
+
+Reload the configuration to apply these settings.
 
 Placement happens once; it does not lock a window to its workspace. You can
 move it afterward, and Gnoblin will leave it there.

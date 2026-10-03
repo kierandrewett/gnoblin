@@ -1,5 +1,5 @@
 From 85cf142e65f3c8ac38a3528a34e4745a21acfe41 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 21:40:08 +0100
 Subject: [PATCH] session-lock: embargo input before global handling
 

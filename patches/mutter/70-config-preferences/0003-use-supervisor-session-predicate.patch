@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 00:30:00 +0000
+Subject: [PATCH] core: use the supervisor session predicate
+
+---
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index f3e52a3f1..5427ccf69 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -980,7 +980,7 @@ queue_changed (MetaPreference pref)
+ static gboolean
+ is_gnoblin_session (void)
+ {
+-  return g_strcmp0 (g_getenv ("GNOME_SHELL_SESSION_MODE"), "gnoblin") == 0;
++  return meta_is_gnoblin_session ();
+ }
+ 
+ static gboolean

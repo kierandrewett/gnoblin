@@ -1,0 +1,171 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] gnoblin input config controls stylus eraser button
+
+---
+diff --git a/meson.build b/meson.build
+index 99692ab16..f0ab09db7 100644
+--- a/meson.build
++++ b/meson.build
+@@ -25,7 +25,7 @@ pango_req = '>= 1.46.0'
+ cairo_req = '>= 1.10.0'
+ pangocairo_req = '>= 1.20'
+ pixman_req = '>= 0.42'
+-gsettings_desktop_schemas_req = '>= 51.rc'
++gsettings_desktop_schemas_req = '>= 49.1'
+ x11_req = '>= 1.7.0'
+ xcomposite_req = '>= 0.4'
+ xkbcommon_req = '>= 0.4.3'
+diff --git a/src/backends/meta-input-settings-private.h b/src/backends/meta-input-settings-private.h
+index 780bcb6ce..0773b14ad 100644
+--- a/src/backends/meta-input-settings-private.h
++++ b/src/backends/meta-input-settings-private.h
+@@ -31,6 +31,12 @@
+ #include "clutter/clutter.h"
+ #include "meta/display.h"
+ 
++typedef enum
++{
++  META_STYLUS_ERASER_BUTTON_MODE_DEFAULT,
++  META_STYLUS_ERASER_BUTTON_MODE_BUTTON,
++} MetaStylusEraserButtonMode;
++
+ #define META_TYPE_INPUT_SETTINGS (meta_input_settings_get_type ())
+ G_DECLARE_DERIVABLE_TYPE (MetaInputSettings, meta_input_settings,
+                           META, INPUT_SETTINGS, GObject)
+@@ -165,7 +171,7 @@ struct _MetaInputSettingsClass
+   void (* set_eraser_button_action) (MetaInputSettings              *settings,
+                                      ClutterInputDevice             *device,
+                                      ClutterInputDeviceTool         *tool,
+-                                     GDesktopStylusEraserButtonMode  mode,
++                                     MetaStylusEraserButtonMode      mode,
+                                      GDesktopStylusButtonAction      button);
+ 
+   void (* set_mouse_middle_click_emulation) (MetaInputSettings  *settings,
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+index 7cfa28b79..213f18cdd 100644
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -373,6 +373,7 @@ input_get_enum (MetaInputSettings *input_settings,
+           static const char * const tap_map[] = { "default", "lrm", "lmr", NULL };
+           static const char * const click[] = { "default", "none", "areas", "fingers", NULL };
+           static const char * const mapping[] = { "absolute", "relative", NULL };
++          static const char * const eraser_mode[] = { "default", "button", NULL };
+           static const char * const stylus[] = {
+             "default", "middle", "right", "back", "forward",
+             "switch-monitor", "keybinding", NULL
+@@ -390,6 +391,8 @@ input_get_enum (MetaInputSettings *input_settings,
+             nicks = click;
+           else if (g_str_equal (key, "mapping"))
+             nicks = mapping;
++          else if (g_str_equal (key, "eraser-button-mode"))
++            nicks = eraser_mode;
+           else if (g_str_has_suffix (key, "button-action"))
+             nicks = stylus;
+ 
+@@ -2025,7 +2028,7 @@ update_stylus_eraserbutton (MetaInputSettings      *input_settings,
+                             ClutterInputDeviceTool *tool)
+ {
+   MetaInputSettingsClass *input_settings_class;
+-  GDesktopStylusEraserButtonMode mode;
++  MetaStylusEraserButtonMode mode;
+   GDesktopStylusButtonAction action;
+   GSettings *tool_settings;
+ 
+@@ -2038,8 +2041,8 @@ update_stylus_eraserbutton (MetaInputSettings      *input_settings,
+ 
+   tool_settings = lookup_tool_settings (tool, device);
+ 
+-  mode = g_settings_get_enum (tool_settings, "eraser-button-mode");
+-  action = g_settings_get_enum (tool_settings, "eraser-button-action");
++  mode = input_get_enum (input_settings, tool_settings, "eraser-button-mode");
++  action = input_get_enum (input_settings, tool_settings, "eraser-button-action");
+ 
+   input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
+   input_settings_class->set_eraser_button_action (input_settings, device, tool,
+@@ -2605,9 +2608,22 @@ meta_input_settings_get_eraser_button_action (MetaInputSettings       *input_set
+   g_return_val_if_fail (META_IS_INPUT_SETTINGS (input_settings), G_DESKTOP_STYLUS_BUTTON_ACTION_DEFAULT);
+ 
+   settings = lookup_tool_settings (tool, device);
+-  action = g_settings_get_enum (settings, "eraser-button-action");
++  action = input_get_enum (input_settings, settings, "eraser-button-action");
+   if (keybinding && action == G_DESKTOP_STYLUS_BUTTON_ACTION_KEYBINDING)
+-    *keybinding = g_settings_get_string (settings, "eraser-button-keybinding");
++    {
++      GVariant *value = gnoblin_setting (input_settings, settings,
++                                         "eraser-button-keybinding");
++
++      if (value && g_variant_is_of_type (value, G_VARIANT_TYPE_STRING))
++        *keybinding = g_variant_dup_string (value, NULL);
++      else if (input_settings_has_key (input_settings, settings,
++                                       "eraser-button-keybinding"))
++        *keybinding = g_settings_get_string (settings, "eraser-button-keybinding");
++      else
++        *keybinding = g_strdup ("");
++
++      g_clear_pointer (&value, g_variant_unref);
++    }
+ 
+   return action;
+ }
+diff --git a/src/backends/native/meta-input-device-tool-native.c b/src/backends/native/meta-input-device-tool-native.c
+index 9f3c62482..0f3dae403 100644
+--- a/src/backends/native/meta-input-device-tool-native.c
++++ b/src/backends/native/meta-input-device-tool-native.c
+@@ -181,7 +181,7 @@ meta_input_device_tool_native_set_button_code_in_impl (ClutterInputDeviceTool
+ 
+ void
+ meta_input_device_tool_native_set_eraser_button_action_in_impl (ClutterInputDeviceTool         *tool,
+-                                                                GDesktopStylusEraserButtonMode  mode,
++                                                                MetaStylusEraserButtonMode      mode,
+                                                                 GDesktopStylusButtonAction      action)
+ {
+   MetaInputDeviceToolNative *evdev_tool;
+@@ -190,10 +190,10 @@ meta_input_device_tool_native_set_eraser_button_action_in_impl (ClutterInputDevi
+ 
+   switch (mode)
+     {
+-    case G_DESKTOP_STYLUS_ERASER_BUTTON_MODE_DEFAULT:
++    case META_STYLUS_ERASER_BUTTON_MODE_DEFAULT:
+       libinput_mode = LIBINPUT_CONFIG_ERASER_BUTTON_DEFAULT;
+       break;
+-    case G_DESKTOP_STYLUS_ERASER_BUTTON_MODE_BUTTON:
++    case META_STYLUS_ERASER_BUTTON_MODE_BUTTON:
+       libinput_mode = LIBINPUT_CONFIG_ERASER_BUTTON_BUTTON;
+       break;
+     default:
+diff --git a/src/backends/native/meta-input-device-tool-native.h b/src/backends/native/meta-input-device-tool-native.h
+index 6a1804f12..8ec696ea0 100644
+--- a/src/backends/native/meta-input-device-tool-native.h
++++ b/src/backends/native/meta-input-device-tool-native.h
+@@ -26,6 +26,7 @@
+ #include <graphene.h>
+ #include <libinput.h>
+ 
++#include "backends/meta-input-settings-private.h"
+ #include "backends/native/meta-bezier.h"
+ #include "clutter/clutter.h"
+ 
+@@ -62,7 +63,7 @@ void                     meta_input_device_tool_native_set_button_code_in_impl (
+ GDesktopStylusButtonAction meta_input_device_tool_native_get_eraser_button_code_in_impl (ClutterInputDeviceTool *tool);
+ 
+ void                       meta_input_device_tool_native_set_eraser_button_action_in_impl (ClutterInputDeviceTool         *tool,
+-                                                                                           GDesktopStylusEraserButtonMode  mode,
++                                                                                           MetaStylusEraserButtonMode      mode,
+                                                                                            GDesktopStylusButtonAction      action);
+ 
+ G_END_DECLS
+diff --git a/src/backends/native/meta-input-settings-native.c b/src/backends/native/meta-input-settings-native.c
+index b8ee88afb..09eb750c9 100644
+--- a/src/backends/native/meta-input-settings-native.c
++++ b/src/backends/native/meta-input-settings-native.c
+@@ -825,7 +825,7 @@ static void
+ meta_input_settings_native_set_eraser_button_action (MetaInputSettings              *settings,
+                                                      ClutterInputDevice             *device,
+                                                      ClutterInputDeviceTool         *tool,
+-                                                     GDesktopStylusEraserButtonMode  mode,
++                                                     MetaStylusEraserButtonMode      mode,
+                                                      GDesktopStylusButtonAction      action)
+ {
+   if (!clutter_input_device_tool_has_eraser_button (tool))

@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 20:59:15 +0000
+Subject: [PATCH] portal: preserve legacy input capture permission callbacks
+
+---
+diff --git a/src/inputcapture.c b/src/inputcapture.c
+index e67faf8..1fcdf53 100644
+--- a/src/inputcapture.c
++++ b/src/inputcapture.c
+@@ -665,8 +665,10 @@ handle_create_session (XdpImplInputCapture   *object,
+       handle->session_handle = g_strdup (arg_session_handle);
+       handle->create_session_invocation = invocation;
+       handle->capabilities = capabilities;
++      handle->is_legacy_session = TRUE;
+       on_input_capture_dialog_done_cb (NULL,
+-        permission.level == GNOBLIN_PERMISSION_ALLOW ? GTK_RESPONSE_OK : GTK_RESPONSE_CANCEL, handle);
++        permission.level == GNOBLIN_PERMISSION_ALLOW ? GTK_RESPONSE_OK : GTK_RESPONSE_CANCEL,
++        FALSE, FALSE, handle);
+       return TRUE;
+     }
+ 

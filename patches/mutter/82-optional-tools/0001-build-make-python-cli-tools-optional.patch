@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] mutter: make optional Python CLI tools installable separately
+
+---
+diff --git a/meson.options b/meson.options
+index fff441f3a..3d1433e8f 100644
+--- a/meson.options
++++ b/meson.options
+@@ -184,6 +184,12 @@ option('bash_completion',
+   description: 'Integrate bash completion for gdctl'
+ )
+ 
++option('install_tools',
++  type: 'boolean',
++  value: true,
++  description: 'Install the optional gdctl and service client tools'
++)
++
+ option('devkit',
+   type: 'feature',
+   value: 'auto',
+diff --git a/tools/meson.build b/tools/meson.build
+index 639e0cf26..2115435fd 100644
+--- a/tools/meson.build
++++ b/tools/meson.build
+@@ -1,12 +1,14 @@
+-install_data(
+-  'gdctl',
+-  install_dir: bindir,
+-)
++if get_option('install_tools')
++  install_data(
++    'gdctl',
++    install_dir: bindir,
++  )
+ 
+-install_data(
+-  'gnome-service-client',
+-  install_dir: bindir,
+-)
++  install_data(
++    'gnome-service-client',
++    install_dir: bindir,
++  )
++endif
+ 
+ if have_bash_completion
+   bash_completion = dependency('bash-completion', required: false)

@@ -1,182 +1,143 @@
 #!/usr/bin/env python3
-"""Check app activation against real windows in a private Gnoblin session."""
+"""Verify that untrusted Wayland activation cannot steal focus in Gnoblin."""
 
-import ast
 import json
 import os
 from pathlib import Path
+import select
+import socket
 import subprocess
 import time
 
-assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
-root = Path(__file__).resolve().parent.parent
-config = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin/scripts"
-config.mkdir(parents=True, exist_ok=True)
-(config / "focus-transfer-test.js").write_text("""
-import Gio from 'gi://Gio';
-import GLib from 'gi://GLib';
-import Meta from 'gi://Meta';
-import Clutter from 'gi://Clutter';
-export default function(api) {
- if (GLib.getenv("EXPECT_FOCUS_TRANSFER") === "0") GLib.setenv("GNOME_SHELL_SESSION_MODE", "gnome", true);
- const keyboard = global.stage.context.get_backend().get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
- const window = title => global.display.list_all_windows().find(w => w.title === title);
- const impl = Gio.DBusExportedObject.wrapJSObject(`<node><interface name="org.gnoblin.FocusTransferTest">
- <method name="Activate"><arg type="s" direction="in"/><arg type="u" direction="in"/></method>
- <method name="Prepare"><arg type="s" direction="in"/></method>
- <method name="Type"/>
- <method name="State"><arg type="s" direction="out"/></method>
- </interface></node>`, {
- Activate(title, timestamp) { window(title).activate(timestamp); },
- Prepare(title) {
-  const target = window(title);
-  const manager = global.workspace_manager;
-  if (manager.n_workspaces < 2) manager.append_new_workspace(false, global.get_current_time());
-  target.change_workspace_by_index(1, false); target.minimize();
- },
- Type() {
-  for (const code of [Clutter.KEY_f, Clutter.KEY_o, Clutter.KEY_c, Clutter.KEY_u, Clutter.KEY_s, Clutter.KEY_Return]) {
-   keyboard.notify_keyval(GLib.get_monotonic_time(), code, Clutter.KeyState.PRESSED);
-   keyboard.notify_keyval(GLib.get_monotonic_time(), code, Clutter.KeyState.RELEASED);
-  }
- },
- State() { return JSON.stringify({focus: global.display.focus_window?.title ?? null,
-  windows: global.display.list_all_windows().map(w => ({title:w.title, minimized:w.minimized, workspace:w.get_workspace()?.index()}))}); },
- });
- impl.export(Gio.DBus.session, '/org/gnoblin/FocusTransferTest');
- const name = Gio.bus_own_name(Gio.BusType.SESSION,'org.gnoblin.FocusTransferTest',Gio.BusNameOwnerFlags.NONE,null,null,null);
- api.addCleanup(() => { impl.unexport(); Gio.bus_unown_name(name); keyboard.run_dispose(); });
-}
-""")
-subprocess.run([str(root / "src/tools/gnoblinctl"), "reload"], check=True)
+
+EVENT = "gnoblin.window.activation-denied"
+TITLE = "Untrusted Activation Target"
+runtime_dir = Path(os.environ["XDG_RUNTIME_DIR"])
+socket_path = Path(
+    os.environ.get(
+        "GNOBLIN_COMPOSITOR_SOCKET",
+        str(runtime_dir / "gnoblin" / "compositor-v1.sock"),
+    )
+)
+ctl = os.environ["GNOBLIN_DEVKIT_CTL"]
+client_binary = os.environ["GNOBLIN_FOCUS_TEST_CLIENT"]
+request_path = runtime_dir / "request-untrusted-activation"
+request_path.unlink(missing_ok=True)
 
 
-def call(method, *args):
+class JsonLines:
+    def __init__(self, connection):
+        self.connection = connection
+        self.buffer = bytearray()
+
+    def send(self, value):
+        self.connection.sendall(json.dumps(value).encode("utf-8") + b"\n")
+
+    def receive(self, timeout):
+        deadline = time.monotonic() + timeout
+        while True:
+            newline = self.buffer.find(b"\n")
+            if newline >= 0:
+                line = bytes(self.buffer[:newline])
+                del self.buffer[: newline + 1]
+                return json.loads(line)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([self.connection], [], [], remaining)[0]:
+                raise TimeoutError("timed out waiting for a compositor event")
+            chunk = self.connection.recv(65536)
+            if not chunk:
+                raise RuntimeError("compositor closed the event connection")
+            self.buffer.extend(chunk)
+
+
+def window_snapshot():
     result = subprocess.run(
-        [
-            "gdbus",
-            "call",
-            "--session",
-            "--dest",
-            "org.gnoblin.FocusTransferTest",
-            "--object-path",
-            "/org/gnoblin/FocusTransferTest",
-            "--method",
-            "org.gnoblin.FocusTransferTest." + method,
-            *map(str, args),
-        ],
+        [ctl, "--timeout", "1", "--json", "window", "list"],
+        check=True,
         capture_output=True,
         text=True,
-        check=True,
+        timeout=3,
     )
-    return ast.literal_eval(result.stdout)
+    snapshot = json.loads(result.stdout)
+    if isinstance(snapshot, list):
+        return snapshot
+    if isinstance(snapshot, dict) and isinstance(snapshot.get("windows"), list):
+        return snapshot["windows"]
+    raise AssertionError(f"unexpected window-list response: {snapshot!r}")
 
 
-def state():
-    return json.loads(call("State")[0])
+connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+connection.connect(str(socket_path))
+stream = JsonLines(connection)
+hello = stream.receive(3)
+assert hello.get("event") == "hello", hello
+api_minor = hello.get("api_minor", -1)
+assert api_minor >= 69, f"activation denial events require API 1.69; got {api_minor}"
+assert EVENT in hello.get("events", []), f"{EVENT} was not advertised"
 
+stream.send(
+    {
+        "op": "events",
+        "api_version": {"major": 1, "minor": api_minor},
+        "events": [EVENT],
+    }
+)
+subscribed = stream.receive(3)
+assert subscribed.get("event") == "subscribed", subscribed
+assert EVENT in subscribed.get("events", []), subscribed
 
-def wait(predicate):
-    end = time.monotonic() + 4
-    while time.monotonic() < end:
-        current = state()
-        if predicate(current):
-            return current
-        time.sleep(0.05)
-    raise AssertionError(current)
-
-
-apps = []
+client_env = os.environ.copy()
+client_env.pop("DESKTOP_STARTUP_ID", None)
+client_env.pop("XDG_ACTIVATION_TOKEN", None)
+client = subprocess.Popen(
+    [client_binary, str(request_path)],
+    env=client_env,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.PIPE,
+    text=True,
+)
 try:
-    for title in ["Focus Target", "Focus Other"]:
-        destination = config / (title.replace(" ", "-") + ".txt")
-        apps.append(
-            subprocess.Popen(
-                [
-                    "foot",
-                    "--title=" + title,
-                    "sh",
-                    "-c",
-                    'read line; printf "%s" "$line" > "$1"; sleep 30',
-                    "sh",
-                    str(destination),
-                ],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        )
-        wait(lambda s: s["focus"] == title)
-    call("Prepare", "Focus Target")
-    call("Activate", "Focus Other", 0)
-    wait(lambda s: s["focus"] == "Focus Other")
-    call("Activate", "Focus Target", 1)
-    expected = os.environ.get("EXPECT_FOCUS_TRANSFER", "1") == "1"
-    if expected:
-        wait(lambda s: s["focus"] == "Focus Target")
-        call("Type")
-        end = time.monotonic() + 3
-        result = config / "Focus-Target.txt"
-        while time.monotonic() < end and not result.exists():
-            time.sleep(0.05)
-        assert result.read_text() == "focus", "Target must receive keyboard input"
-        assert not next(w for w in state()["windows"] if w["title"] == "Focus Target")["minimized"]
+    deadline = time.monotonic() + 12
+    windows = []
+    while time.monotonic() < deadline:
+        if client.poll() is not None:
+            stderr = client.stderr.read() if client.stderr else ""
+            raise RuntimeError(f"activation test client exited early: {stderr}")
+        windows = window_snapshot()
+        if any(window.get("title") == TITLE for window in windows):
+            break
+        time.sleep(0.05)
     else:
-        time.sleep(0.3)
-        assert state()["focus"] == "Focus Other", "GNOME focus prevention must remain intact"
-    # Exercise xdg_activation_v1 itself, including a token without an input serial.
-    protocol_dir = subprocess.check_output(
-        ["pkg-config", "--variable=pkgdatadir", "wayland-protocols"], text=True
-    ).strip()
-    protocol = str(Path(protocol_dir) / "staging/xdg-activation/xdg-activation-v1.xml")
-    subprocess.run(
-        ["wayland-scanner", "client-header", protocol, str(config / "xdg-activation-v1-client-protocol.h")], check=True
-    )
-    subprocess.run(["wayland-scanner", "private-code", protocol, str(config / "activation-protocol.c")], check=True)
-    flags = subprocess.check_output(
-        ["pkg-config", "--cflags", "--libs", "gtk+-3.0", "wayland-client"], text=True
-    ).split()
-    binary = config / "activation-client"
-    subprocess.run(
-        [
-            "cc",
-            str(root / "tests/focus-transfer-client.c"),
-            str(config / "activation-protocol.c"),
-            "-I" + str(config),
-            "-o",
-            str(binary),
-            *flags,
-        ],
-        check=True,
-    )
-    request = config / "activation-request"
-    received = config / "activation-input"
-    apps.append(
-        subprocess.Popen([str(binary), str(request), str(received)], env=os.environ | {"GDK_BACKEND": "wayland"})
-    )
-    wait(lambda s: any(w["title"] == "Wayland Activation Target" for w in s["windows"]))
-    call("Activate", "Focus Other", 0)
-    wait(lambda s: s["focus"] == "Focus Other")
-    request.touch()
-    if expected:
-        wait(lambda s: s["focus"] == "Wayland Activation Target")
-        call("Type")
-        end = time.monotonic() + 3
-        while time.monotonic() < end and not received.exists():
-            time.sleep(0.05)
-        assert received.read_text() == "focused", "Wayland activation must deliver keyboard input"
+        raise AssertionError(f"Wayland test window did not appear: {windows!r}")
+
+    request_path.touch()
+    event = stream.receive(12)
+    assert event.get("event") == EVENT, event
+    target = next(window for window in windows if window.get("title") == TITLE)
+    assert event.get("window_id") == target.get("id"), (event, target)
+    assert event.get("reason") in {
+        "missing_context",
+        "invalid_context",
+        "stale_context",
+    }, event
+
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        windows = window_snapshot()
+        target = next(window for window in windows if window.get("title") == TITLE)
+        if not target.get("focused"):
+            break
+        time.sleep(0.05)
     else:
-        time.sleep(0.4)
-        assert state()["focus"] == "Focus Other", "GNOME must reject a token without user input"
-    print("PASS: native Wayland activation token policy and keyboard delivery")
-    print(
-        "PASS: "
-        + (
-            "stale app activation restores, changes workspace, and receives typing"
-            if expected
-            else "GNOME retains its focus prevention"
-        )
-    )
+        raise AssertionError("untrusted activation focused its target window")
+
+    print("PASS: Gnoblin denied activation without user context and emitted the denial event")
 finally:
-    for app in apps:
-        app.terminate()
-        app.wait()
+    request_path.unlink(missing_ok=True)
+    client.terminate()
+    try:
+        client.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        client.kill()
+        client.wait(timeout=3)
+    connection.close()

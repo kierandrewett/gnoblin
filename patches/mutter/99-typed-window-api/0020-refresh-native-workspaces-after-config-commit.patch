@@ -1,0 +1,390 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: preserve native workspace configuration rules
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index da1604bc8..03c8e284e 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -756,9 +756,95 @@ meta_display_dispatch_gnoblin_shortcut_event (MetaDisplay *display,
+ #define GNOBLIN_WORKSPACE_ID "gnoblin-native-id"
+ #define GNOBLIN_WORKSPACE_NAME "gnoblin-native-name"
+ #define GNOBLIN_WORKSPACE_PERSISTENT "gnoblin-native-persistent"
++#define GNOBLIN_WORKSPACE_SLOT "gnoblin-native-configured-slot"
+ 
+ static guint64 next_native_workspace_id = 1;
+ 
++typedef struct
++{
++  char *id;
++  char *name;
++} GnoblinNativeWorkspaceDeclaration;
++
++typedef struct
++{
++  guint index;
++  char *id;
++  int slot;
++} GnoblinNativeWorkspaceAssignment;
++
++static void
++gnoblin_native_workspace_declaration_free (gpointer data)
++{
++  GnoblinNativeWorkspaceDeclaration *declaration = data;
++
++  g_free (declaration->id);
++  g_free (declaration->name);
++  g_free (declaration);
++}
++
++static void
++gnoblin_native_workspace_assignment_free (gpointer data)
++{
++  GnoblinNativeWorkspaceAssignment *assignment = data;
++
++  g_free (assignment->id);
++  g_free (assignment);
++}
++
++static gboolean
++gnoblin_native_workspace_id_is_valid (const char *id)
++{
++  gsize length = strlen (id);
++
++  if (length == 0 || length > 64 || !g_ascii_isalnum (id[0]))
++    return FALSE;
++
++  for (const char *p = id + 1; *p; p++)
++    if (!g_ascii_isalnum (*p) && *p != '.' && *p != '_' && *p != '-')
++      return FALSE;
++
++  return TRUE;
++}
++
++static gboolean
++gnoblin_native_workspace_id_is_session (const char *id)
++{
++  const char *suffix;
++
++  if (!g_str_has_prefix (id, "@session-"))
++    return FALSE;
++
++  suffix = id + strlen ("@session-");
++  if (!*suffix || *suffix == '0')
++    return FALSE;
++
++  for (const char *p = suffix; *p; p++)
++    if (!g_ascii_isdigit (*p))
++      return FALSE;
++
++  return TRUE;
++}
++
++static char *
++gnoblin_native_workspace_new_session_id (GHashTable *reserved_ids,
++                                         guint64    *next_id)
++{
++  char *id;
++
++  while (TRUE)
++    {
++      id = g_strdup_printf ("@session-%" G_GUINT64_FORMAT,
++                            (*next_id)++);
++      if (!g_hash_table_contains (reserved_ids, id))
++        break;
++      g_free (id);
++    }
++
++  g_hash_table_add (reserved_ids, g_strdup (id));
++  return id;
++}
++
+ static const char *
+ gnoblin_native_workspace_id (MetaWorkspace *workspace)
+ {
+@@ -781,45 +867,256 @@ meta_gnoblin_initialize_native_workspaces (MetaDisplay *display,
+   g_autoptr (GVariant) document =
+     gnoblin_native_control_get_config_document (display);
+   MetaWorkspaceManager *manager = meta_display_get_workspace_manager (display);
+-  g_object_set_data (G_OBJECT (manager), "gnoblin-native-workspace-count",
+-                     GINT_TO_POINTER (1));
+   g_autoptr (GVariant) configured = document
+     ? g_variant_lookup_value (document, "workspaces", G_VARIANT_TYPE ("av")) : NULL;
+-  if (!configured)
+-    return TRUE;
++  g_autoptr (GPtrArray) declarations =
++    g_ptr_array_new_with_free_func (gnoblin_native_workspace_declaration_free);
++  g_autoptr (GHashTable) declared_ids =
++    g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
++  g_autoptr (GPtrArray) assignments =
++    g_ptr_array_new_with_free_func (gnoblin_native_workspace_assignment_free);
++  g_autoptr (GHashTable) reserved_ids =
++    g_hash_table_new_full (g_str_hash, g_str_equal, g_free, NULL);
++  g_autoptr (GHashTable) workspace_id_owners =
++    g_hash_table_new (g_str_hash, g_str_equal);
++  g_autoptr (GHashTable) changing_workspaces =
++    g_hash_table_new (g_direct_hash, g_direct_equal);
++  g_autoptr (GHashTable) assigned_ids =
++    g_hash_table_new (g_str_hash, g_str_equal);
++  g_autoptr (GPtrArray) current_workspaces = g_ptr_array_new ();
++  int current_count;
++  int desired_count;
++  guint64 next_workspace_id = next_native_workspace_id;
++
++  if (configured)
++    {
++      gsize desired_size = g_variant_n_children (configured);
++
++      if (desired_size < 1 || desired_size > G_MAXINT)
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "workspaces must contain at least one entry");
++          return FALSE;
++        }
++
++      for (gsize index = 0; index < desired_size; index++)
++        {
++          g_autoptr (GVariant) boxed = g_variant_get_child_value (configured, index);
++          g_autoptr (GVariant) entry = g_variant_get_variant (boxed);
++          GnoblinNativeWorkspaceDeclaration *declaration =
++            g_new0 (GnoblinNativeWorkspaceDeclaration, 1);
++          const char *id = NULL;
++          const char *name = NULL;
++          g_autofree char *trimmed_name = NULL;
++
++          if (!g_variant_lookup (entry, "id", "&s", &id) ||
++              !g_variant_lookup (entry, "name", "&s", &name) ||
++              !gnoblin_native_workspace_id_is_valid (id))
++            {
++              g_free (declaration);
++              g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                                   "configured workspace needs a valid ID and name");
++              return FALSE;
++            }
++
++          trimmed_name = g_strdup (name);
++          if (!*g_strstrip (trimmed_name))
++            {
++              g_free (declaration);
++              g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                                   "configured workspace name must not be empty");
++              return FALSE;
++            }
++
++          if (!g_hash_table_add (declared_ids, g_strdup (id)))
++            {
++              g_free (declaration);
++              g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "duplicate workspace ID: %s", id);
++              return FALSE;
++            }
++
++          declaration->id = g_strdup (id);
++          declaration->name = g_strdup (name);
++          g_ptr_array_add (declarations, declaration);
++        }
++    }
+ 
+-  gsize desired_size = g_variant_n_children (configured);
+-  if (desired_size < 1 || desired_size > G_MAXINT)
++  current_count = meta_workspace_manager_get_n_workspaces (manager);
++  desired_count = configured ? declarations->len : current_count;
++  for (int index = 0; index < current_count; index++)
+     {
+-      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+-                           "workspaces must contain at least one entry");
+-      return FALSE;
++      MetaWorkspace *workspace =
++        meta_workspace_manager_get_workspace_by_index (manager, index);
++      const char *id = g_object_get_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_ID);
++
++      g_ptr_array_add (current_workspaces, workspace);
++      if (id)
++        {
++          g_hash_table_add (reserved_ids, g_strdup (id));
++          if (index < desired_count)
++            {
++              if (g_hash_table_contains (workspace_id_owners, id))
++                {
++                  g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "duplicate native workspace ID: %s", id);
++                  return FALSE;
++                }
++              g_hash_table_insert (workspace_id_owners, (gpointer) id,
++                                   GUINT_TO_POINTER (index + 1));
++            }
++        }
+     }
+-  int desired = desired_size;
+-  meta_workspace_manager_update_num_workspaces (
+-    manager, meta_display_get_current_time (display), desired);
+-  for (int index = 0; index < desired; index++)
++
++  for (guint index = 0; index < declarations->len; index++)
+     {
+-      g_autoptr (GVariant) boxed = g_variant_get_child_value (configured, index);
+-      g_autoptr (GVariant) entry = g_variant_get_variant (boxed);
+-      const char *id = NULL;
+-      const char *name = NULL;
+-      if (!g_variant_lookup (entry, "id", "&s", &id) ||
+-          !g_variant_lookup (entry, "name", "&s", &name))
++      GnoblinNativeWorkspaceDeclaration *declaration =
++        g_ptr_array_index (declarations, index);
++      g_hash_table_add (reserved_ids, g_strdup (declaration->id));
++    }
++
++  for (int index = 0; index < desired_count; index++)
++    {
++      MetaWorkspace *workspace = index < current_count
++        ? g_ptr_array_index (current_workspaces, index) : NULL;
++      const char *current_id = workspace
++        ? g_object_get_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_ID) : NULL;
++      int configured_slot = workspace
++        ? GPOINTER_TO_INT (g_object_get_data (G_OBJECT (workspace),
++                                              GNOBLIN_WORKSPACE_SLOT)) - 1
++        : -1;
++      const char *target_id = NULL;
++      int target_slot = -1;
++      g_autofree char *generated_id = NULL;
++
++      if (configured_slot >= 0)
+         {
+-          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+-                               "configured workspace needs an ID and name");
++          if (configured_slot < (int) declarations->len)
++            {
++              GnoblinNativeWorkspaceDeclaration *declaration =
++                g_ptr_array_index (declarations, configured_slot);
++              target_id = declaration->id;
++              target_slot = configured_slot;
++            }
++          else
++            {
++              generated_id = gnoblin_native_workspace_new_session_id (
++                reserved_ids, &next_workspace_id);
++              target_id = generated_id;
++            }
++        }
++      else if ((guint) index < declarations->len &&
++               (!current_id || gnoblin_native_workspace_id_is_session (current_id)))
++        {
++          GnoblinNativeWorkspaceDeclaration *declaration =
++            g_ptr_array_index (declarations, index);
++          target_id = declaration->id;
++          target_slot = index;
++        }
++
++      if (target_id && g_strcmp0 (target_id, current_id) != 0)
++        {
++          GnoblinNativeWorkspaceAssignment *assignment =
++            g_new0 (GnoblinNativeWorkspaceAssignment, 1);
++          assignment->index = index;
++          assignment->id = g_strdup (target_id);
++          assignment->slot = target_slot;
++          g_ptr_array_add (assignments, assignment);
++          g_hash_table_add (changing_workspaces, GUINT_TO_POINTER (index + 1));
++        }
++    }
++
++  for (guint index = 0; index < assignments->len; index++)
++    {
++      GnoblinNativeWorkspaceAssignment *assignment =
++        g_ptr_array_index (assignments, index);
++
++      if (!g_hash_table_add (assigned_ids, assignment->id))
++        {
++          g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                       "workspace ID is already in use: %s", assignment->id);
+           return FALSE;
+         }
++
++      gpointer owner_data = g_hash_table_lookup (workspace_id_owners,
++                                                 assignment->id);
++      if (owner_data)
++        {
++          guint owner_index = GPOINTER_TO_UINT (owner_data) - 1;
++
++          if (owner_index != assignment->index &&
++              !g_hash_table_contains (changing_workspaces,
++                                      GUINT_TO_POINTER (owner_index + 1)))
++            {
++              g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "workspace ID is already in use: %s", assignment->id);
++              return FALSE;
++            }
++        }
++    }
++
++  next_native_workspace_id = next_workspace_id;
++  g_object_set_data (G_OBJECT (manager), "gnoblin-native-workspace-count",
++                     GINT_TO_POINTER (1));
++  if (configured)
++    meta_workspace_manager_update_num_workspaces (
++      manager, meta_display_get_current_time (display), desired_count);
++
++  for (guint index = 0; index < assignments->len; index++)
++    {
++      GnoblinNativeWorkspaceAssignment *assignment =
++        g_ptr_array_index (assignments, index);
++      MetaWorkspace *workspace = meta_workspace_manager_get_workspace_by_index (
++        manager, assignment->index);
++
++      g_object_set_data_full (G_OBJECT (workspace),
++                              GNOBLIN_WORKSPACE_ID,
++                              g_strdup (assignment->id), g_free);
++      g_object_set_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_SLOT,
++                         assignment->slot >= 0
++                           ? GINT_TO_POINTER (assignment->slot + 1)
++                           : NULL);
++    }
++
++  int n_workspaces = meta_workspace_manager_get_n_workspaces (manager);
++  for (int index = 0; index < n_workspaces; index++)
++    {
+       MetaWorkspace *workspace =
+         meta_workspace_manager_get_workspace_by_index (manager, index);
+-      g_object_set_data_full (G_OBJECT (workspace), GNOBLIN_WORKSPACE_ID,
+-                              g_strdup (id), g_free);
+-      g_object_set_data_full (G_OBJECT (workspace), GNOBLIN_WORKSPACE_NAME,
+-                              g_strdup (name), g_free);
+-      g_object_set_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_PERSISTENT,
+-                         GINT_TO_POINTER (1));
++
++      g_object_set_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_PERSISTENT, NULL);
++      gnoblin_native_workspace_id (workspace);
+     }
++
++  for (guint index = 0; index < declarations->len; index++)
++    {
++      GnoblinNativeWorkspaceDeclaration *declaration =
++        g_ptr_array_index (declarations, index);
++
++      for (int workspace_index = 0; workspace_index < n_workspaces;
++           workspace_index++)
++        {
++          MetaWorkspace *workspace =
++            meta_workspace_manager_get_workspace_by_index (manager, workspace_index);
++          const char *id =
++            g_object_get_data (G_OBJECT (workspace), GNOBLIN_WORKSPACE_ID);
++
++          if (g_strcmp0 (id, declaration->id) == 0)
++            {
++              int workspace_index_in_manager = meta_workspace_index (workspace);
++              g_object_set_data (G_OBJECT (workspace),
++                                 GNOBLIN_WORKSPACE_PERSISTENT,
++                                 GINT_TO_POINTER (1));
++              g_object_set_data_full (G_OBJECT (workspace),
++                                      GNOBLIN_WORKSPACE_NAME,
++                                      g_strdup (declaration->name), g_free);
++              meta_prefs_change_workspace_name (workspace_index_in_manager,
++                                                declaration->name);
++              break;
++            }
++        }
++    }
++
+   return TRUE;
+ }
+ 

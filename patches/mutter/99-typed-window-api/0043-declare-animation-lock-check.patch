@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: declare animation lock check
+
+---
+diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
+index a3652e71..a0df990c 100644
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -92,6 +92,7 @@ static void start_window_open_animation(MetaWindowActor *window_actor);
+ static void frame_add_number(GVariantBuilder *builder, const char *key,
+                              double value);
+ static void stop_lock_watch(AnimationState *state);
++static gboolean is_locked(MetaDisplay *display);
+ static GVariant *animation_spec_variant(AnimationSpec *spec);
+ 
+ static void animation_spec_clear(AnimationSpec *spec) {

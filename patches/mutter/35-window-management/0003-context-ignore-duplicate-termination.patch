@@ -1,5 +1,5 @@
 From 13c9eb58d727480210bcd0f827ce86de7ddf4877 Mon Sep 17 00:00:00 2001
-From: Gnoblin Developers <gnoblin@example.invalid>
+From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 22 Jun 2026 00:45:00 +0100
 Subject: [PATCH] context: ignore duplicate termination while loop is stopping
 

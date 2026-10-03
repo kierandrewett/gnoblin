@@ -17,18 +17,16 @@ Install the program first. Gnoblin runs the command directly, without shell
 expansion; use one string for each argument. If you need pipes or redirection,
 explicitly run a shell.
 
-| Setting   | Values                                | Default and effect                                                                             |
-| --------- | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| `when`    | `"on_login"`                          | Starts once per login; this is the only supported trigger.                                     |
-| `restart` | `"never"`, `"on_failure"`, `"always"` | `"never"`; retry nonzero exits or signals with `on_failure`, any exit with `always`. Wait 2 s. |
+`when = "on_login"` is the only supported trigger and is the default. Gnoblin
+starts each named entry once per login and does not restart it after exit.
 
-A new name starts when the config reloads if you are already logged in;
-otherwise it starts at the next login. See the
+A new name starts when the Shell session reloads its config if you are already
+logged in; otherwise it starts at the next login. The standalone native
+compositor reads autostart only when it starts. See the
 [autostart reference](/config/configure/autostart) for launch failures.
 
-Changing an entry does not stop a running process. If its active restart policy
-retries after it exits, the next launch uses the current config; otherwise the
-new command starts at the next login.
+Changing an entry does not stop a running process. The new command starts at
+the next login if that name already launched.
 
 Do not add a program already started by your chosen shell. Bingux is one
 separate shell project that starts its own services.
@@ -67,7 +65,8 @@ stop a process that is already running.
 
 ## When does it run?
 
-- A new name starts when the config reloads.
+- A new name starts when Shell reloads its config. In the native compositor,
+  start a new session to pick up config changes.
 - Each name gets one launch per login. Saving again or unlocking does not
   start a second copy.
 - Changing the command for an entry that already launched takes effect at the

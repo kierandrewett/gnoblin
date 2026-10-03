@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] devkit keep compositor alive when viewer exits
+
+---
+diff --git a/src/core/meta-mdk.c b/src/core/meta-mdk.c
+index 11fb7b27d..0eaaaf7b1 100644
+--- a/src/core/meta-mdk.c
++++ b/src/core/meta-mdk.c
+@@ -100,6 +100,12 @@ on_devkit_died (GObject      *source_object,
+         return;
+     }
+ 
++  if (g_getenv ("GNOBLIN_DEVKIT_KEEP_SESSION"))
++    {
++      g_warning ("Devkit viewer exited; keeping the compositor session alive");
++      return;
++    }
++
+   meta_context_terminate (context);
+ }
+ 

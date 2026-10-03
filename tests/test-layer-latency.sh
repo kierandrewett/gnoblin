@@ -7,8 +7,8 @@
 # before this script.
 #
 # Builds tests/layer-shell-latency-client.c against the in-tree layer-shell
-# XML, runs it inside a headless gnoblin session, and reports process start ->
-# first frame. See the client's header for what each mark means.
+# XML, runs it inside a nested Gnoblin devkit session, and reports process
+# start -> first frame. See the client's header for what each mark means.
 #
 # Env: GNOBLIN_PREFIX (default ./install), LAYER_BUDGET_MS (default 0 = report
 #      only, no budget), SETTLE (passed through).
@@ -41,10 +41,19 @@ cc -std=c11 -Wall -Wextra -Werror \
     "${compiler_args[@]}" \
     -o "$TMP/layer-latency-client"
 
-echo "== layer-shell chrome latency (headless, ${GNOBLIN_PREFIX:-$ROOT/install}) =="
+PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
+RUNTIME_BIN="${GNOBLIN_RUNTIME_BIN:-$ROOT/build/ninja/gnoblin}"
+echo "== layer-shell chrome latency (Gnoblin devkit, $PREFIX) =="
 OUT="$TMP/run.log"
-GNOBLIN_TEST_CLIENT="$TMP/layer-latency-client" \
-    "$ROOT/scripts/run-gnome-shell.sh" >"$OUT" 2>&1 || true
+if ! GNOBLIN_STATE_DIR="$TMP/state" \
+    GNOBLIN_PREFIX="$PREFIX" \
+    GNOBLIN_RUNTIME_BIN="$RUNTIME_BIN" \
+    GNOBLIN_DEVKIT_CTL="$PREFIX/bin/gnoblinctl" \
+    GNOBLIN_DEVKIT_EXEC="$TMP/layer-latency-client" \
+    timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh" >"$OUT" 2>&1; then
+    cat "$OUT" >&2
+    exit 1
+fi
 
 if ! grep -q "LAYER_SHELL_LATENCY" "$OUT"; then
     echo "FAIL: client did not report a measurement" >&2

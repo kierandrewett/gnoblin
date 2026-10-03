@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Gnoblin
-Comment=Wayland session for use with a separate desktop shell
-Exec=env GNOME_SHELL_SESSION_MODE=gnoblin gnome-session --session=gnoblin
+Comment=Standalone Wayland desktop
+Exec=gnoblin
 Type=Application
-DesktopNames=Gnoblin;GNOME;
+DesktopNames=Gnoblin;
 X-GDM-SessionRegisters=true

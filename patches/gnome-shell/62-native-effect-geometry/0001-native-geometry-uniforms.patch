@@ -1,5 +1,5 @@
 From 71dd881c8c77cc26a8a3d51d0e66c2fd78da53f8 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:54:11 +0100
 Subject: [PATCH] shell: update opt-in effect geometry in native paint code
 

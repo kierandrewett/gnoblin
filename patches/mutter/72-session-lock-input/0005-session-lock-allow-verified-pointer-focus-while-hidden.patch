@@ -1,5 +1,5 @@
 From 3829603173984689f3e886fb931ac788667c4eb4 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 21:52:05 +0100
 Subject: [PATCH] session-lock: allow verified pointer focus while hidden
 

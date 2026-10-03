@@ -34,7 +34,7 @@
 #include "meta/meta-selection.h"
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-session-lock.h"
-#include "wayland/gnoblin-config.h"
+#include "core/gnoblin-native-control.h"
 
 #include "ext-data-control-v1-server-protocol.h"
 
@@ -42,7 +42,7 @@
 
 typedef struct _MetaWaylandDataControl MetaWaylandDataControl;
 
-static gboolean data_control_is_embargoed (MetaWaylandDataControl *data_control);
+static gboolean data_control_is_embargoed(MetaWaylandDataControl* data_control);
 
 /* ------------------------------------------------------------------ */
 /* MetaSelectionSource subclass bridging a client ext_data_control_source */
@@ -58,7 +58,7 @@ struct _MetaDataControlSource {
     gboolean used;            /* assigned to a selection already */
     MetaSelection* selection; /* set while owning a selection, else NULL */
     MetaSelectionType sel_type;
-    MetaWaylandDataControl *data_control;
+    MetaWaylandDataControl* data_control;
 };
 
 G_DEFINE_TYPE(MetaDataControlSource, meta_data_control_source, META_TYPE_SELECTION_SOURCE)
@@ -192,8 +192,7 @@ static void device_advertise_selection(MetaWaylandDataControlDevice* device,
                                        MetaSelectionType type);
 
 static void on_session_lock_state_changed(MetaWaylandCompositor* compositor,
-                                          MetaWaylandSessionLockState state,
-                                          gpointer user_data) {
+                                          MetaWaylandSessionLockState state, gpointer user_data) {
     MetaWaylandDataControl* data_control = user_data;
 
     if (state == META_WAYLAND_SESSION_LOCK_UNLOCKED) {
@@ -521,7 +520,7 @@ static void bind_data_control_manager(struct wl_client* client, void* data, uint
 void meta_wayland_init_data_control(MetaWaylandCompositor* compositor) {
     MetaWaylandDataControl* data_control;
 
-    if (!gnoblin_config_protocol_enabled("ext-data-control")) {
+    if (!gnoblin_native_control_protocol_enabled("ext-data-control")) {
         g_message("Gnoblin ext-data-control protocol disabled by settings");
         return;
     }

@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: add typed window unminimize operation
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index cb1304ad2..1ae372933 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -2218,6 +2218,8 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+         }
+       meta_window_minimize (window);
+     }
++  else if (g_str_equal (method, "window.unminimize"))
++    meta_window_unminimize (window);
+   else if (g_str_equal (method, "window.toggle_minimize"))
+     {
+       gboolean minimized = FALSE;
+@@ -2356,6 +2358,7 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+     "window.close",
+     "window.minimize",
+     "window.toggle_minimize",
++    "window.unminimize",
+     "window.restore",
+     "window.set_maximized",
+     "window.set_fullscreen",

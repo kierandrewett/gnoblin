@@ -1,51 +1,35 @@
-# Arch Linux and CachyOS
+# Arch Linux
 
-Gnoblin releases can include an x86_64 Arch package. When the
-[latest Gnoblin release](https://github.com/kierandrewett/gnoblin/releases/latest)
-has an asset named `gnoblin-arch-x86_64.pkg.tar.zst`, download it and install
-it with:
+Gnoblin has no pacman repository yet. Use the source tarball and PKGBUILD
+from a [Gnoblin release](https://github.com/kierandrewett/gnoblin/releases)
+that targets your installed development libraries. See
+[platform support](platform-support.md) before using the package as a login
+session.
 
-```sh
-curl -fLO https://github.com/kierandrewett/gnoblin/releases/latest/download/gnoblin-arch-x86_64.pkg.tar.zst
-sudo pacman -U ./gnoblin-arch-x86_64.pkg.tar.zst
-```
+Download the matching source tarball and Arch PKGBUILD assets from the release
+into `~/Downloads`. Rename the PKGBUILD asset to `PKGBUILD`.
 
-`pacman` obtains the runtime dependencies from your configured Arch
-repositories. This package does not replace Arch's `gnome-shell` or `mutter`.
-It does not install compiler tools or Inkscape.
-
-The Arch package candidate has passed clean installation, coexistence with
-stock GNOME and removal checks in an Arch container. A graphical Gnoblin login
-still needs verification, so keep GNOME or another working session available.
-See [platform support](platform-support.md) for the current status.
-
-## Choose a shell and test the session
-
-[Install a desktop shell](bring-your-own-shell.md) for a bar and launcher.
-Then log out, select **Gnoblin** in your display manager's session menu, and
-log in. Return to GNOME if the session does not start.
-
-Continue with [configuration](/config).
-
-## Update
-
-Run the same commands after a newer release is published. `pacman` replaces
-the previous Gnoblin package and keeps Arch's GNOME packages installed
-separately.
-
-## Remove
-
-Log in to GNOME or another session first, then run:
+Check its `depends` list against the versions available in your configured
+pacman repositories. The desktop schemas must meet the package's minimum
+version; `makepkg` stops before compilation if they do not. When the required
+versions are available, build and install as your normal user:
 
 ```sh
-sudo pacman -Rns gnoblin
+cd ~/Downloads
+mv gnoblin-*-gnome-*.PKGBUILD PKGBUILD
+makepkg -si
 ```
 
-Your configuration in `~/.config/gnoblin` is kept.
+The PKGBUILD installs Gnoblin under `/usr/lib/gnoblin` and registers its login
+session. [Install a desktop shell](bring-your-own-shell.md), log out, and
+select **Gnoblin** at the login screen. Keep another session available while
+testing this package path.
 
-## Build the source recipe
+The core package does not include a portal backend. The release also provides
+an optional `gnoblin-portal` PKGBUILD and matching portal source archive. Build
+them with `makepkg -si` if you want Gnoblin's GTK backend; otherwise install
+and select another portal backend.
 
-The [PKGBUILD](https://github.com/kierandrewett/gnoblin/tree/main/packaging/arch)
-is available for package maintainers and developers. It compiles the private
-GNOME runtime and needs Arch build dependencies. It is not the normal
-installation path.
+For GNOME applications on a minimal Arch system, install the separate
+[`gnoblin-gnome-integration` package](gnome-apps.md). Install the applications
+you want through pacman.

@@ -3,6 +3,9 @@
 
 #include "backends/gnoblin-hyprcursor.h"
 
+typedef struct _MetaDisplay MetaDisplay;
+extern "C" gboolean gnoblin_native_control_is_session(MetaDisplay* display);
+
 #include <hyprcursor/hyprcursor.hpp>
 #include <cstring>
 #include <memory>
@@ -29,8 +32,7 @@ void gnoblin_hyprcursor_invalidate(void) {
 }
 
 XcursorImages* gnoblin_hyprcursor_load(const char* theme, const char* shape, int size) {
-    if (g_strcmp0(g_getenv("GNOME_SHELL_SESSION_MODE"), "gnoblin") != 0 || !shape || size < 1 ||
-        size > 1024)
+    if (!gnoblin_native_control_is_session(nullptr) || !shape || size < 1 || size > 1024)
         return nullptr;
 
     const std::string requested = theme && *theme ? theme : "";

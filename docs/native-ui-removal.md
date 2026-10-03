@@ -19,15 +19,11 @@ See [choose a shell](bring-your-own-shell.md) and [native feature settings](/gui
 - Keyring, network and mount prompts
 - Accessibility services
 - Portal permission and selection dialogs
-- Desktop right-click recovery menu
-- Recovery panel when no shell surface is visible
 
 ## Removed from this session
 
 GNOME's Overview, dash, app grid, extension loader and extension management UI
 are unavailable. User scripts remain supported.
-
-Alt+F2 opens the [developer console](developer-console.md).
 
 Stock GNOME retains its normal behavior. Test both modes when changing shared
 code; see [testing](testing.md).

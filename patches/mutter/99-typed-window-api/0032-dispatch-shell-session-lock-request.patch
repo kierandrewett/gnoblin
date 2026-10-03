@@ -1,0 +1,25 @@
+From 198f632d5553a34466ceade2fd2ef0b6b128a442 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 29 Sep 2026 04:47:52 +0100
+Subject: [PATCH] dispatch shell-owned session lock requests
+
+---
+ src/core/util.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/core/util.c b/src/core/util.c
+index 76c627f8e..5aaa40354 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -2494,6 +2494,8 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+                                                  arguments, error);
+   if (g_strcmp0 (method, "window.match") == 0)
+     return gnoblin_native_window_match (display, arguments, error);
++  if (g_strcmp0 (method, "session.lock") == 0)
++    return gnoblin_native_control_request_session_lock (display, arguments, error);
+   if (g_str_has_prefix (method, "launch."))
+     return gnoblin_native_control_dispatch_launch (display, method,
+                                                   arguments, error);
+-- 
+2.55.0
+

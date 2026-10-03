@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 28 Sep 2026 13:22:48 +0100
+Subject: [PATCH] mutter: route configured touchpad gestures natively
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index 2fe666373..5d885dc9c 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1184,6 +1184,7 @@ libmutter = library(libmutter_name,
+   mutter_sources,
+   mutter_built_sources,
+   files('core/gnoblin-native-control.c'),
++  files('core/gnoblin-touchpad-router.c'),
+   version: '0.0.0',
+   soversion: 0,
+   gnu_symbol_visibility: 'hidden',

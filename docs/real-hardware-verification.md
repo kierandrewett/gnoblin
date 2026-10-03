@@ -35,11 +35,9 @@ Change one visible config setting, then:
 
 ```sh
 gnoblinctl config reload
-gnoblinctl reload
 ```
 
 Confirm the setting changed and existing windows survived.
-The second command also reloads theme and user scripts.
 
 ## 5. Lock and unlock
 

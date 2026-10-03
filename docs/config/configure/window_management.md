@@ -8,7 +8,7 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | Key                            | Values                           | Default             | Effect                                                        |
 | ------------------------------ | -------------------------------- | ------------------- | ------------------------------------------------------------- |
 | `focus_mode`                   | `"click"`, `"sloppy"`, `"mouse"` | `"click"`           | Selects when pointer or click input changes focus. See below. |
-| `focus_new_windows`            | `"smart"`, `"strict"`            | `"smart"`           | Selects Mutter's new-window focus policy. See below.          |
+| `focus_new_windows`            | `"smart"`, `"strict"`            | `"strict"`          | Selects Mutter's new-window focus policy. See below.          |
 | `raise_on_click`               | Boolean                          | `true`              | Raise a window when clicked.                                  |
 | `auto_raise`                   | Boolean                          | `false`             | Raise the focused window automatically.                       |
 | `focus_change_on_pointer_rest` | Boolean                          | `false`             | Change focus when the pointer stops over another window.      |
@@ -41,13 +41,12 @@ Mutter's standard policy has two choices. The [GNOME Shell team's
 focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/)
 explains why the modes differ.
 
-- `"smart"` lets applications activate their windows, even if you have
-  interacted with another window since the app opened them. This is Gnoblin's
-  default behavior.
-- `"strict"` enables Mutter's focus-stealing prevention. Activation requests
+- `"strict"` is the default and enables Mutter's focus-stealing prevention. Activation requests
   need recent launch or user activity. A newly opened window must also be a
   transient descendant of the focused window, such as a dialog opened by that
   app. Requests without valid recent activity leave the window unfocused.
+- `"smart"` allows applications to activate their windows after you have
+  interacted with another window since they opened them.
 
 In a Gnoblin session, `"strict"` makes Mutter use its focus-stealing checks.
 See [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/52-focus-transfer/0001-honour-app-activation.patch)
@@ -59,6 +58,9 @@ example.
 Declare named workspaces in the top-level `workspaces` field of
 `gnoblin.configure`; workspace declarations do not belong in
 `window_management`. Declared workspaces remain available even when empty.
+
+The legacy `workspace_ids`, `workspace_names`, and `num_workspaces` fields are
+rejected; put IDs and names in top-level `workspaces` entries.
 
 Each entry has a required `id` and `name`. Names must be nonempty and no longer
 than 80 characters. IDs must be unique and match

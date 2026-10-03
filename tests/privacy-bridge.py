@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Real Mutter recording and sharing sessions on a private bus."""
+"""Exercise native privacy snapshots against real Mutter ScreenCast sessions."""
 
 import json
 import os
 from pathlib import Path
-import socket
+import shutil
 import subprocess
 import time
 
@@ -13,12 +13,36 @@ import gi
 gi.require_version("Gio", "2.0")
 from gi.repository import Gio, GLib  # noqa: E402 - Select GI versions before importing their modules.
 
-assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
-assert os.environ.get("GNOBLIN_COMPOSITOR_SOCKET", "").startswith("/tmp/")
-repo = Path(__file__).resolve().parents[1]
-scripts = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin/scripts"
-scripts.mkdir(parents=True, exist_ok=True)
-subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload"], check=True)
+ROOT = Path(__file__).resolve().parents[1]
+GNOBLINCTL = Path(os.environ.get("GNOBLINCTL") or shutil.which("gnoblinctl") or ROOT / "build/ninja/gnoblinctl")
+assert os.environ.get("GNOBLIN_COMPOSITOR_SOCKET"), "Run inside a supervised Gnoblin session"
+
+
+def ctl(*arguments):
+    result = subprocess.run(
+        [str(GNOBLINCTL), "--json", *arguments],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    return json.loads(result.stdout)
+
+
+def privacy_state():
+    return ctl("privacy")
+
+
+def wait_for(predicate, timeout=4):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        current = privacy_state()
+        if predicate(current):
+            return current
+        time.sleep(0.05)
+    raise AssertionError(f"Privacy state did not match; current={privacy_state()!r}")
+
+
 bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
 name = "org.gnome.Mutter.ScreenCast"
 
@@ -38,63 +62,42 @@ def call(path, interface, method, signature=None, args=()):
     return result.unpack()
 
 
-class Subscriber:
-    def __init__(self):
-        self.socket = socket.socket(socket.AF_UNIX)
-        self.socket.settimeout(3)
-        self.socket.connect(os.environ["GNOBLIN_COMPOSITOR_SOCKET"])
-        self.file = self.socket.makefile("rwb", buffering=0)
-        self.file.readline()
-        self.send("privacy")
-
-    def send(self, op):
-        self.file.write((json.dumps({"op": op}) + "\n").encode())
-
-    def wait(self, predicate):
-        deadline = time.monotonic() + 4
-        while time.monotonic() < deadline:
-            record = json.loads(self.file.readline())
-            if record["event"] == "privacy" and predicate(record):
-                return record
-        raise AssertionError("Expected privacy state did not arrive")
-
-    def close(self):
-        self.file.close()
-        self.socket.close()
-
-
 def start(recording):
     path = call("/org/gnome/Mutter/ScreenCast", name, "CreateSession", "(a{sv})", ({},))[0]
-    props = {"cursor-mode": GLib.Variant("u", 0), "is-recording": GLib.Variant("b", recording)}
-    call(path, name + ".Session", "RecordMonitor", "(sa{sv})", ("", props))
+    properties = {
+        "cursor-mode": GLib.Variant("u", 0),
+        "is-recording": GLib.Variant("b", recording),
+    }
+    call(path, name + ".Session", "RecordMonitor", "(sa{sv})", ("", properties))
     call(path, name + ".Session", "Start")
     return path
 
 
-client = Subscriber()
 sessions = []
 try:
-    initial = client.wait(lambda state: not state["recording"] and not state["screenSharing"])
-    assert isinstance(initial.get("locationCaptures"), list), "Privacy snapshots include location captures"
+    initial = privacy_state()
+    assert initial["available"]["screen_sharing"] is True, initial
+    assert initial["available"]["recording"] is True, initial
+    assert initial["screen_sharing"] is False and initial["recording"] is False, initial
+
     sessions.append(start(True))
-    client.wait(lambda state: state["recording"] and state["recordingCount"] == 1)
-    time.sleep(1.1)
-    client.send("privacy")
-    before = client.wait(lambda state: state["recordingElapsed"] >= 1)
+    wait_for(lambda state: state["recording"] is True)
     sessions.append(start(False))
-    client.wait(lambda state: state["recording"] and state["screenSharing"])
-    subprocess.run([str(repo / "src/tools/gnoblinctl"), "reload"], check=True)
-    client.close()
-    client = Subscriber()
-    after = client.wait(lambda state: state["recording"] and state["screenSharing"])
-    assert after["recordingElapsed"] >= before["recordingElapsed"], "Reload reset the timer"
-    client.send("stop-sharing")
-    client.wait(lambda state: not state["screenSharing"] and state["recording"])
-    client.send("stop-recording")
-    client.wait(lambda state: not state["screenSharing"] and not state["recording"])
-    print("PASS: real recording/sharing, elapsed time, reload continuity, and separate stop controls")
+    wait_for(lambda state: state["screen_sharing"] is True and state["recording"] is True)
+
+    ctl("config", "reload")
+    after_reload = wait_for(lambda state: state["screen_sharing"] and state["recording"])
+    assert after_reload["revision"] >= initial["revision"], after_reload
+
+    stopped_sharing = ctl("privacy", "stop-sharing")
+    assert stopped_sharing["requested"] >= 1, stopped_sharing
+    wait_for(lambda state: not state["screen_sharing"] and state["recording"])
+
+    stopped_recording = ctl("privacy", "stop-recording")
+    assert stopped_recording["requested"] >= 1, stopped_recording
+    wait_for(lambda state: not state["screen_sharing"] and not state["recording"])
+    print("PASS: native privacy snapshots, reload continuity and separate stop controls")
 finally:
-    client.close()
     for session in sessions:
         try:
             call(session, name + ".Session", "Stop")

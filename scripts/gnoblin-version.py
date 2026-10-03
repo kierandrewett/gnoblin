@@ -22,7 +22,7 @@ def release() -> dict[str, str | int]:
     version = data.get("version")
     if data.get("format") != 1 or not isinstance(version, str) or not SEMVER.fullmatch(version):
         raise RuntimeError(f"{MANIFEST.name}: expected format 1 and a SemVer version")
-    gnome = json.loads(GNOME_MANIFEST.read_text())["components"]["gnome-shell"]["version"]
+    gnome = json.loads(GNOME_MANIFEST.read_text())["components"]["mutter"]["version"]
     return {"format": 1, "version": version, "gnomeVersion": gnome, "tag": f"gnoblin-v{version}"}
 
 

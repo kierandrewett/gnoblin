@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: keep Gnoblin runtime sources as Meson strings
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index 33b568d9..62b8938b 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1173,10 +1173,10 @@ subdir('helpers')
+ 
+ subdir('third_party')
+ 
+-mutter_sources += files(
++mutter_sources += [
+   'core/gnoblin-runtime-protocol.c',
+   'core/gnoblin-runtime-cache.c',
+-)
++]
+ 
+ libmutter = library(libmutter_name,
+   mutter_sources,

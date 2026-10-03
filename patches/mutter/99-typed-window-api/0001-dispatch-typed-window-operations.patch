@@ -1,0 +1,452 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 29 Sep 2026 07:52:22 +0100
+Subject: [PATCH] mutter: dispatch typed window operations
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index fc99229e5..ed002df1c 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -1284,6 +1284,379 @@ missing_window:
+   return NULL;
+ }
+ 
++static gboolean
++gnoblin_native_variant_has_only_keys (GVariant          *arguments,
++                                      const char * const *allowed,
++                                      GError           **error)
++{
++  GVariantIter iter;
++  const char *key;
++  GVariant *value;
++
++  if (!arguments || !g_variant_is_of_type (arguments, G_VARIANT_TYPE_VARDICT))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "window operation arguments must be a dictionary");
++      return FALSE;
++    }
++
++  g_variant_iter_init (&iter, arguments);
++  while (g_variant_iter_next (&iter, "{&sv}", &key, &value))
++    {
++      gboolean known = g_strv_contains (allowed, key);
++      g_variant_unref (value);
++      if (!known)
++        {
++          g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                       "unknown window operation argument '%s'", key);
++          return FALSE;
++        }
++    }
++  return TRUE;
++}
++
++static MetaWindow *
++gnoblin_native_resolve_window (MetaDisplay *display,
++                               GVariant    *arguments,
++                               GError     **error)
++{
++  const char *wanted_id = NULL;
++  g_autoptr (GList) windows = NULL;
++
++  if (!g_variant_lookup (arguments, "id", "&s", &wanted_id) || !*wanted_id)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "window operation requires a stable string ID");
++      return NULL;
++    }
++
++  windows = meta_display_list_all_windows (display);
++  for (GList *item = windows; item; item = item->next)
++    {
++      MetaWindow *window = item->data;
++      g_autofree char *id = NULL;
++
++      if (meta_window_is_skip_taskbar (window) ||
++          meta_window_is_override_redirect (window))
++        continue;
++
++      id = g_strdup_printf ("%u", meta_window_get_stable_sequence (window));
++      if (g_str_equal (id, wanted_id))
++        return window;
++    }
++
++  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                       "window ID not found; list windows first");
++  return NULL;
++}
++
++static GVariant *
++gnoblin_native_typed_window_operation (MetaDisplay *display,
++                                      const char  *method,
++                                      GVariant    *arguments,
++                                      GError     **error)
++{
++  static const char * const id_keys[] = { "id", NULL };
++  static const char * const enabled_keys[] = { "id", "enabled", NULL };
++  static const char * const move_keys[] = { "id", "x", "y", NULL };
++  static const char * const resize_keys[] = { "id", "width", "height", NULL };
++  static const char * const workspace_keys[] = { "id", "workspace", "follow", NULL };
++  static const char * const workspace_selector_keys[] = { "id", "number", NULL };
++  static const char * const monitor_keys[] = { "id", "monitor", NULL };
++  static const char * const focus_keys[] = { "id", NULL };
++  const char * const *allowed = NULL;
++  MetaBackend *backend;
++  MetaWindow *window;
++  const char *id = NULL;
++  gboolean enabled = FALSE;
++  guint32 stable_sequence;
++  GVariantBuilder result;
++  g_autofree char *stable_id = NULL;
++
++  if (g_str_equal (method, "window.focus"))
++    {
++      const char *focus_id = NULL;
++      if (!gnoblin_native_variant_has_only_keys (arguments, focus_keys, error))
++        return NULL;
++      if (!g_variant_lookup (arguments, "id", "&s", &focus_id) || !*focus_id)
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "window.focus requires a stable string ID");
++          return NULL;
++        }
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                           "window.focus requires a verified one-use activation context");
++      return NULL;
++    }
++  if (g_str_equal (method, "window.close") ||
++      g_str_equal (method, "window.minimize") ||
++      g_str_equal (method, "window.toggle_minimize") ||
++      g_str_equal (method, "window.restore"))
++    allowed = id_keys;
++  else if (g_str_equal (method, "window.set_maximized") ||
++           g_str_equal (method, "window.set_fullscreen") ||
++           g_str_equal (method, "window.set_above") ||
++           g_str_equal (method, "window.set_sticky"))
++    allowed = enabled_keys;
++  else if (g_str_equal (method, "window.move"))
++    allowed = move_keys;
++  else if (g_str_equal (method, "window.resize"))
++    allowed = resize_keys;
++  else if (g_str_equal (method, "window.move_to_workspace"))
++    allowed = workspace_keys;
++  else if (g_str_equal (method, "window.move_to_monitor"))
++    allowed = monitor_keys;
++  else
++    return NULL;
++
++  if (!gnoblin_native_variant_has_only_keys (arguments, allowed, error))
++    return NULL;
++  if (!g_variant_lookup (arguments, "id", "&s", &id) || !*id)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "window operation requires a stable string ID");
++      return NULL;
++    }
++  if (allowed == enabled_keys &&
++      !g_variant_lookup (arguments, "enabled", "b", &enabled))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "window state operation requires a boolean 'enabled'");
++      return NULL;
++    }
++  if (allowed == move_keys)
++    {
++      gint64 x, y;
++      if (!g_variant_lookup (arguments, "x", "x", &x) ||
++          !g_variant_lookup (arguments, "y", "x", &y) ||
++          x < -100000 || x > 100000 || y < -100000 || y > 100000)
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "window.move requires x and y from -100000 to 100000");
++          return NULL;
++        }
++    }
++  if (allowed == resize_keys)
++    {
++      gint64 width, height;
++      if (!g_variant_lookup (arguments, "width", "x", &width) ||
++          !g_variant_lookup (arguments, "height", "x", &height) ||
++          width < 1 || width > 32768 || height < 1 || height > 32768)
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "window.resize requires width and height from 1 to 32768");
++          return NULL;
++        }
++    }
++  if (allowed == workspace_keys)
++    {
++      g_autoptr (GVariant) selector =
++        g_variant_lookup_value (arguments, "workspace", G_VARIANT_TYPE_VARDICT);
++      g_autoptr (GVariant) follow_value =
++        g_variant_lookup_value (arguments, "follow", NULL);
++      if (!selector ||
++          !gnoblin_native_variant_has_only_keys (selector,
++                                                 workspace_selector_keys,
++                                                 error))
++        {
++          if (error && !*error)
++            g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                                 "window.move_to_workspace requires a workspace selector");
++          return NULL;
++        }
++      g_autoptr (GVariant) selector_id =
++        g_variant_lookup_value (selector, "id", NULL);
++      g_autoptr (GVariant) selector_number =
++        g_variant_lookup_value (selector, "number", NULL);
++      gboolean valid_selector =
++        (selector_id && g_variant_is_of_type (selector_id, G_VARIANT_TYPE_STRING) &&
++         !selector_number) ||
++        (selector_number && g_variant_is_of_type (selector_number, G_VARIANT_TYPE_INT64) &&
++         !selector_id);
++      if (!valid_selector ||
++          (follow_value &&
++           !g_variant_is_of_type (follow_value, G_VARIANT_TYPE_BOOLEAN)))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "workspace must contain exactly an ID or number; follow must be boolean");
++          return NULL;
++        }
++    }
++  if (allowed == monitor_keys)
++    {
++      gint64 monitor;
++      if (!g_variant_lookup (arguments, "monitor", "x", &monitor) ||
++          monitor < 0 || monitor >= meta_display_get_n_monitors (display))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                               "window.move_to_monitor requires an available monitor index");
++          return NULL;
++        }
++    }
++
++  backend = meta_context_get_backend (meta_display_get_context (display));
++  if (meta_backend_get_gnoblin_session_lock_active (backend))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
++                           "window management is unavailable while the session is locked");
++      return NULL;
++    }
++
++  window = gnoblin_native_resolve_window (display, arguments, error);
++  if (!window)
++    return NULL;
++  stable_sequence = meta_window_get_stable_sequence (window);
++  stable_id = g_strdup_printf ("%u", stable_sequence);
++
++  if (g_str_equal (method, "window.close"))
++    {
++      if (!meta_window_can_close (window))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window cannot be closed");
++          return NULL;
++        }
++      meta_window_delete (window, meta_display_get_current_time (display));
++    }
++  else if (g_str_equal (method, "window.minimize"))
++    {
++      if (!meta_window_can_minimize (window))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window cannot be minimized");
++          return NULL;
++        }
++      meta_window_minimize (window);
++    }
++  else if (g_str_equal (method, "window.toggle_minimize"))
++    {
++      gboolean minimized = FALSE;
++      g_object_get (window, "minimized", &minimized, NULL);
++      if (minimized)
++        meta_window_unminimize (window);
++      else if (meta_window_can_minimize (window))
++        meta_window_minimize (window);
++      else
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window cannot be minimized");
++          return NULL;
++        }
++    }
++  else if (g_str_equal (method, "window.restore"))
++    {
++      gboolean maximized = meta_window_is_maximized (window);
++      gboolean minimized = FALSE;
++      g_object_get (window, "minimized", &minimized, NULL);
++      if (minimized)
++        meta_window_unminimize (window);
++      if (maximized)
++        meta_window_unmaximize (window);
++    }
++  else if (g_str_equal (method, "window.set_maximized"))
++    {
++      if (enabled && !meta_window_is_maximized (window))
++        {
++          if (!meta_window_can_maximize (window))
++            {
++              g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                                   "window cannot be maximized");
++              return NULL;
++            }
++          meta_window_maximize (window);
++        }
++      else if (!enabled && meta_window_is_maximized (window))
++        meta_window_unmaximize (window);
++    }
++  else if (g_str_equal (method, "window.set_fullscreen"))
++    {
++      if (enabled && !meta_window_is_fullscreen (window))
++        meta_window_make_fullscreen (window);
++      else if (!enabled && meta_window_is_fullscreen (window))
++        meta_window_unmake_fullscreen (window);
++    }
++  else if (g_str_equal (method, "window.set_above"))
++    {
++      if (enabled && !meta_window_is_above (window))
++        meta_window_make_above (window);
++      else if (!enabled && meta_window_is_above (window))
++        meta_window_unmake_above (window);
++    }
++  else if (g_str_equal (method, "window.set_sticky"))
++    {
++      gboolean sticky = meta_window_is_always_on_all_workspaces (window);
++      if (enabled && !sticky)
++        meta_window_stick (window);
++      else if (!enabled && sticky)
++        meta_window_unstick (window);
++    }
++  else if (g_str_equal (method, "window.move"))
++    {
++      gint64 x, y;
++      g_variant_lookup (arguments, "x", "x", &x);
++      g_variant_lookup (arguments, "y", "x", &y);
++      if (!meta_window_allows_move (window))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window cannot be moved");
++          return NULL;
++        }
++      meta_window_move_frame (window, FALSE, (int) x, (int) y);
++    }
++  else if (g_str_equal (method, "window.resize"))
++    {
++      gint64 width, height;
++      MtkRectangle frame;
++      g_variant_lookup (arguments, "width", "x", &width);
++      g_variant_lookup (arguments, "height", "x", &height);
++      if (!meta_window_allows_resize (window))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window cannot be resized");
++          return NULL;
++        }
++      meta_window_get_frame_rect (window, &frame);
++      meta_window_move_resize_frame (window, FALSE, frame.x, frame.y,
++                                     (int) width, (int) height);
++    }
++  else if (g_str_equal (method, "window.move_to_workspace"))
++    {
++      if (!meta_window_allows_move (window))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window cannot be moved");
++          return NULL;
++        }
++      MetaWorkspaceManager *manager = meta_display_get_workspace_manager (display);
++      g_autoptr (GVariant) selector =
++        g_variant_lookup_value (arguments, "workspace", G_VARIANT_TYPE_VARDICT);
++      gboolean follow = FALSE;
++      MetaWorkspace *workspace;
++      g_variant_lookup (arguments, "follow", "b", &follow);
++      workspace = gnoblin_native_workspace_resolve (manager, selector, error);
++      if (!workspace)
++        return NULL;
++      meta_window_change_workspace (window, workspace);
++      if (follow)
++        meta_workspace_activate (workspace, meta_display_get_current_time (display));
++    }
++  else if (g_str_equal (method, "window.move_to_monitor"))
++    {
++      gint64 monitor;
++      g_variant_lookup (arguments, "monitor", "x", &monitor);
++      if (!meta_window_allows_move (window))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window cannot be moved");
++          return NULL;
++        }
++      meta_window_move_to_monitor (window, (int) monitor);
++    }
++
++  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_add (&result, "{sv}", "id", g_variant_new_string (stable_id));
++  return g_variant_ref_sink (g_variant_builder_end (&result));
++}
+ 
+ GVariant *
+ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+@@ -1291,13 +1664,50 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+                                   GVariant    *arguments,
+                                   GError     **error)
+ {
++  static const char * const typed_window_methods[] = {
++    "window.close",
++    "window.minimize",
++    "window.toggle_minimize",
++    "window.restore",
++    "window.set_maximized",
++    "window.set_fullscreen",
++    "window.set_above",
++    "window.set_sticky",
++    "window.move",
++    "window.resize",
++    "window.move_to_workspace",
++    "window.move_to_monitor",
++    "window.focus",
++    NULL
++  };
+   GVariantBuilder result;
+   GVariantBuilder monitors;
+   int n_monitors;
+   int primary;
+ 
+   g_return_val_if_fail (META_IS_DISPLAY (display), NULL);
++  if (!method)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "native API method is required");
++      return NULL;
++    }
+ 
++  if (g_strcmp0 (method, "window.action") == 0)
++    return gnoblin_native_window_action (display, arguments, error);
++  if (g_strcmp0 (method, "window.list") == 0)
++    return gnoblin_native_window_list (display, arguments, error);
++  if (g_strv_contains (typed_window_methods, method))
++    return gnoblin_native_typed_window_operation (display, method,
++                                                 arguments, error);
++  if (g_strcmp0 (method, "window.match") == 0)
++    return NULL;
++  if (g_str_has_prefix (method, "window."))
++    {
++      g_set_error (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++                   "unsupported native window method '%s'", method);
++      return NULL;
++    }
+   if (g_strcmp0 (method, "workspace.list") == 0 ||
+       g_strcmp0 (method, "workspace.create") == 0 ||
+       g_strcmp0 (method, "workspace.rename") == 0 ||
+@@ -1308,10 +1718,6 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+       g_strcmp0 (method, "workspace.move_active") == 0 ||
+       g_strcmp0 (method, "workspace.move_window") == 0)
+     return gnoblin_native_workspace_api (display, method, arguments, error);
+-  if (g_strcmp0 (method, "window.action") == 0)
+-    return gnoblin_native_window_action (display, arguments, error);
+-  if (g_strcmp0 (method, "window.list") == 0)
+-    return gnoblin_native_window_list (display, arguments, error);
+   if (g_strcmp0 (method, "monitor.list") != 0)
+     return NULL;
+ 
