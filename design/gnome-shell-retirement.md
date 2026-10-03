@@ -54,8 +54,13 @@ The `78-headless-testing` patch was removed on 2026-10-03. It only added a
 GNOME Shell test override for `loginManager.haveSystemd()`; the standalone
 session does not read `GNOBLIN_TEST_NO_LOGIND`.
 
-The patch directories `79-shutdown-order`,
-`79z-background-manager-shutdown`, `99zzzz-session-mode-startup`,
+The `79-shutdown-order` patch was removed on 2026-10-03. It only ordered
+GNOME Shell's GJS-wrapper cleanup before compositor teardown. The standalone
+guardian shuts down its Mutter process directly and has no GJS context to
+release.
+
+The patch directories `79z-background-manager-shutdown`,
+`99zzzz-session-mode-startup`,
 `99zzzzz-no-session-presence`, `99zzzzzz-logind-actions`,
 `99zzzzzzz-session-ready`, `99zzzzzzzz-no-session-dialog`,
 `99zzzzzzzzzz-standalone-idle`, `99zzzzzzzzzzz-native-scope`,
