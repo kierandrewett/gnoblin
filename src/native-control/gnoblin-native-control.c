@@ -3654,6 +3654,8 @@ static gboolean apply_native_input(GnoblinNativeControl* control, MetaContext* c
                                    GVariant* document, GError** error) {
     g_autoptr(GVariant) input = document ? g_variant_lookup_value(document, "input", NULL) : NULL;
     if (!input) {
+        meta_display_apply_gnoblin_input_config(control->display, NULL);
+        meta_prefs_apply_gnoblin_input_preferences(control->backend, NULL);
         control->orientation_lock_configured = FALSE;
         control->orientation_lock_config_value = FALSE;
         control->orientation_lock_runtime_override = FALSE;
@@ -3738,6 +3740,7 @@ static gboolean apply_native_input(GnoblinNativeControl* control, MetaContext* c
     }
     normalized_input = g_variant_ref_sink(g_variant_builder_end(&converted));
     meta_display_apply_gnoblin_input_config(control->display, normalized_input);
+    meta_prefs_apply_gnoblin_input_preferences(control->backend, normalized_input);
     keyboard = g_variant_lookup_value(normalized_input, "keyboard", G_VARIANT_TYPE_VARDICT);
     meta_prefs_apply_gnoblin_keyboard_preferences(keyboard);
     MetaOrientationManager* orientation =
