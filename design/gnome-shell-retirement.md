@@ -89,8 +89,13 @@ disabled GNOME Session presence tracking in GNOME Shell's ScreenShield for the
 old standalone mode. Gnoblin exposes idle state through its own service; shell
 clients choose if and when to request a lock.
 
-The patch directories `99zzzzzzzzzzz-native-scope`,
-`99zzzzzzzzzzzz-native-xkb`, `99zzzzzzzzzzzzz-timezone`,
+The `99zzzzzzzzzzz-native-scope` patch was removed on 2026-10-03. It only
+assigned applications spawned by GNOME Shell to transient systemd scopes.
+Shell-client launch policy belongs to the shell; Gnoblin's standalone session
+does not build or run Shell.
+
+The patch directories `99zzzzzzzzzzzz-native-xkb`,
+`99zzzzzzzzzzzzz-timezone`,
 `99zzzzzzzzzzzzzz-native-slideshow`, and
 `99zzzzzzzzzzzzzzzz-wallpaper-host-defaults` still need individual review.
 The input-specific unresolved patches are listed below.
