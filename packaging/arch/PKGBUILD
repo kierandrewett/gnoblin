@@ -36,6 +36,7 @@ package() {
     ln -s "$_prefix/bin/gnoblin" "$pkgdir/usr/bin/gnoblin"
     ln -s "$_prefix/bin/gnoblinctl" "$pkgdir/usr/bin/gnoblinctl"
     install -Dm644 "$pkgdir$_prefix/lib/systemd/user/gnoblin-session.target" "$pkgdir/usr/lib/systemd/user/gnoblin-session.target"
+    install -Dm644 "$pkgdir$_prefix/lib/systemd/user/gnoblin-idle.service" "$pkgdir/usr/lib/systemd/user/gnoblin-idle.service"
     install -Dm644 "$pkgdir$_prefix/share/wayland-sessions/gnoblin.desktop" "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
     sed -i -e 's|^Exec=.*|Exec=/usr/lib/gnoblin/bin/gnoblin|' -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
     api="$(scripts/gnome-versions.py get mutter api)"
