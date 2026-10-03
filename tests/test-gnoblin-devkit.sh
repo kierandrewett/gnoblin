@@ -52,12 +52,16 @@ gnoblin.configure {
         focus_mode = "click",
         focus_new_windows = "strict",
     },
+    input = {
+        mouse = {drag_threshold = 24},
+    },
 }
 gnoblin.events.once("gnoblin.config.reloaded", function(event)
     assert(type(event.sequence) == "number" and event.sequence > 0)
     assert(type(event.time) == "number" and event.time > 0)
     assert(type(gnoblin.settings) == "userdata")
     assert(gnoblin.settings.window_management.focus_mode == "click")
+    assert(gnoblin.settings.input.mouse.drag_threshold == 24)
     assert(not pcall(function()
         gnoblin.settings.window_management.focus_mode = "sloppy"
     end))
@@ -140,6 +144,12 @@ gnoblin.configure {
 }
 LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/input-sources-set.txt"
+cat > "$XDG_RUNTIME_DIR/mouse-threshold-reset.lua" <<'LUA'
+local input = gnoblin.settings.input
+assert(not input or not input.mouse or input.mouse.drag_threshold == nil)
+print("INPUT:mouse-drag-threshold-inherited")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/mouse-threshold-reset.lua"
 cat > "$XDG_RUNTIME_DIR/input-sources.lua" <<'LUA'
 local sources = gnoblin.input.sources()
 assert(#sources == 2 and sources[1].id == "us")
@@ -392,6 +402,7 @@ require_output 'WORKER:recovered-with-compositor-alive'
 require_output 'INPUT_SOURCE:empty-without-lua-setting'
 require_output 'INPUT_SOURCE:configured-from-lua'
 require_output 'INPUT_SOURCE:selected-through-cli'
+require_output 'INPUT:mouse-drag-threshold-inherited'
 require_output 'IBUS:selected-through-cli'
 require_output 'IBUS:owner-lost'
 require_output 'IBUS:reconnected-after-owner-restart'
