@@ -267,6 +267,25 @@ class IsolationTests(unittest.TestCase):
         self.assertIn("BuildRequires:  pkgconfig(gtk4) >= 4.22.0", expanded)
         self.assertIn("Requires:       gtk4 >= 4.22.0", expanded)
 
+    def test_geoclue_agent_authorization_is_an_optional_rpm_package(self):
+        expanded = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin.spec")], text=True)
+        base_package = expanded.split("%package -n gnoblin-gnome-integration", 1)[0]
+        integration = expanded.split("%package -n gnoblin-geoclue-integration", 1)[1]
+        self.assertNotRegex(base_package, r"(?m)^Requires:\s+geoclue2(?:\s|$)")
+        self.assertIn("Requires:       geoclue2 >= 2.7.2", integration)
+        self.assertIn("/etc/geoclue/conf.d/50-gnoblin.conf", integration)
+        whitelist = (ROOT / "packaging/geoclue/50-gnoblin.conf").read_text()
+        for agent_id in (
+            "geoclue-demo-agent",
+            "gnome-shell",
+            "io.elementary.desktop.agent-geoclue2",
+            "sm.puri.Phosh",
+            "lipstick",
+            "gnoblin",
+        ):
+            with self.subTest(agent_id=agent_id):
+                self.assertIn(agent_id, whitelist)
+
     def test_nix_package_has_no_gnome_shell_runtime_path(self):
         package = (ROOT / "nix/package.nix").read_text()
         flake = (ROOT / "flake.nix").read_text()
