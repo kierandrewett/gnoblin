@@ -386,6 +386,50 @@ int main(void) {
         g_clear_error(&error);
     }
 
+    const char* valid_locate_pointer_configs[] = {
+        "gnoblin.configure {compositor = {locate_pointer_key = 'Control_L'}}\n",
+        "gnoblin.configure {compositor = {locate_pointer_key = 'Control'}}\n",
+        "gnoblin.configure {compositor = {locate_pointer_key = 'F12'}}\n",
+        "gnoblin.configure {compositor = {locate_pointer_key = 'disabled'}}\n",
+        "gnoblin.configure {compositor = {locate_pointer_key = ''}}\n",
+        NULL,
+    };
+    const char* expected_locate_pointer_keys[] = {
+        "Control_L", "Control", "F12", "disabled", "", NULL,
+    };
+    g_autoptr(GVariant) compositor_config = NULL;
+    for (guint i = 0; valid_locate_pointer_configs[i]; i++) {
+        g_assert_true(
+            g_file_set_contents(explicit_root, valid_locate_pointer_configs[i], -1, &error));
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(explicit_root, NULL, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(document);
+        g_clear_pointer(&compositor_config, g_variant_unref);
+        compositor_config = g_variant_lookup_value(document, "compositor", G_VARIANT_TYPE_VARDICT);
+        g_assert_nonnull(compositor_config);
+        const char* locate_pointer_key = NULL;
+        g_assert_true(
+            g_variant_lookup(compositor_config, "locate-pointer-key", "&s", &locate_pointer_key));
+        g_assert_cmpstr(locate_pointer_key, ==, expected_locate_pointer_keys[i]);
+    }
+
+    const char* invalid_locate_pointer_configs[] = {
+        "gnoblin.configure {compositor = {locate_pointer_key = 'NoSuchKeyName'}}\n",
+        "gnoblin.configure {compositor = {locate_pointer_key = '<Control>F12'}}\n",
+        "gnoblin.configure {compositor = {locate_pointer_key = 'Control_L Shift_L'}}\n",
+        NULL,
+    };
+    for (guint i = 0; invalid_locate_pointer_configs[i]; i++) {
+        g_assert_true(
+            g_file_set_contents(explicit_root, invalid_locate_pointer_configs[i], -1, &error));
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(explicit_root, NULL, &error);
+        g_assert_null(document);
+        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+        g_clear_error(&error);
+    }
+
     g_assert_true(g_file_set_contents(
         explicit_root,
         "gnoblin.configure {window_management = {mouse_button_modifier = '<Super><Shift>', "

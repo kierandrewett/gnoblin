@@ -10,6 +10,7 @@ find_package(Python3 3.11 REQUIRED COMPONENTS Interpreter)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GNOBLIN_GIO REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0)
 pkg_check_modules(GNOBLIN_CONTROL REQUIRED IMPORTED_TARGET gio-2.0 gio-unix-2.0 json-glib-1.0)
+pkg_check_modules(GNOBLIN_XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 # The cached pkg-config result can outlive a removed Lua development package.
 # Recheck it so a stale build tree fails here instead of at the C compiler.
 unset(GNOBLIN_LUA_FOUND CACHE)
@@ -84,7 +85,8 @@ if(GNOBLIN_LUA_FOUND)
     GNOBLIN_NATIVE_CONTROL_API_MAJOR=${GNOBLIN_NATIVE_CONTROL_API_MAJOR}
     GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR})
   target_link_libraries(gnoblin-config-core PUBLIC
-    PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_LUA m)
+    PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_XKBCOMMON
+    PkgConfig::GNOBLIN_LUA m)
 
   foreach(test_name IN ITEMS lua-config lua-api glob-config)
     add_executable(${test_name}-test tests/${test_name}-test.c)

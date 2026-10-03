@@ -8,6 +8,7 @@
 #include <glib/gstdio.h>
 #include <math.h>
 #include <string.h>
+#include <xkbcommon/xkbcommon.h>
 
 static gboolean input_number(GVariant* value, double* number) {
     if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE)) {
@@ -362,6 +363,26 @@ static gboolean window_modifier_valid(const char* modifier) {
         current = end + 1;
     }
     return TRUE;
+}
+
+static gboolean compositor_key_symbol_valid(const char* name) {
+    if (xkb_keysym_from_name(name, XKB_KEYSYM_CASE_INSENSITIVE) != XKB_KEY_NoSymbol)
+        return TRUE;
+    g_autofree char* xf86_name = g_strconcat("XF86", name, NULL);
+    return xkb_keysym_from_name(xf86_name, XKB_KEYSYM_CASE_INSENSITIVE) != XKB_KEY_NoSymbol;
+}
+
+static gboolean compositor_locate_pointer_key_valid(const char* name) {
+    if (!name[0] || g_str_equal(name, "disabled") || g_str_equal(name, "Above_Tab"))
+        return TRUE;
+    if (strchr(name, '<') || strchr(name, '>') || strpbrk(name, " \t\r\n\v\f"))
+        return FALSE;
+    if (compositor_key_symbol_valid(name))
+        return TRUE;
+
+    g_autofree char* left = g_strconcat(name, "_L", NULL);
+    g_autofree char* right = g_strconcat(name, "_R", NULL);
+    return compositor_key_symbol_valid(left) && compositor_key_symbol_valid(right);
 }
 
 static gboolean touchpad_gesture_fields_allowed(GVariant* gesture) {
@@ -1160,6 +1181,9 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
                      g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
                 const char* bell = g_variant_get_string(value, NULL);
                 valid = g_str_equal(bell, "fullscreen-flash") || g_str_equal(bell, "frame-flash");
+            } else if (g_str_equal(name, "locate-pointer-key") &&
+                       g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+                valid = compositor_locate_pointer_key_valid(g_variant_get_string(value, NULL));
             } else
                 valid = FALSE;
             g_variant_unref(value);
