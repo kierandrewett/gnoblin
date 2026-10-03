@@ -80,8 +80,12 @@ callback started session services after GNOME Shell became ready; the Gnoblin
 guardian starts `graphical-session.target` and initial autostart after Mutter
 readiness.
 
-The patch directories `99zzzzzzzz-no-session-dialog`,
-`99zzzzzzzzzz-standalone-idle`, `99zzzzzzzzzzz-native-scope`,
+The `99zzzzzzzz-no-session-dialog` patch was removed on 2026-10-03. It only
+suppressed GNOME Shell's end-session dialog object; the standalone session has
+no Shell UI, and external shell clients own logout confirmation.
+
+The patch directories `99zzzzzzzzzz-standalone-idle`,
+`99zzzzzzzzzzz-native-scope`,
 `99zzzzzzzzzzzz-native-xkb`, `99zzzzzzzzzzzzz-timezone`,
 `99zzzzzzzzzzzzzz-native-slideshow`, and
 `99zzzzzzzzzzzzzzzz-wallpaper-host-defaults` still need individual review.
