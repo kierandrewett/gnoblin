@@ -108,11 +108,6 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     assert(type(gnoblin.settings) == "userdata")
     assert(gnoblin.settings.window_management.focus_mode == "click")
     assert(gnoblin.settings.input.mouse.drag_threshold == 24)
-    local accessibility = gnoblin.settings.input.keyboard.accessibility
-    assert(accessibility.shortcuts_enabled == false)
-    assert(accessibility.slow_keys.enabled == false)
-    assert(accessibility.slow_keys.delay_ms == 400)
-    print("LUA_API:input-accessibility-config")
     assert(not pcall(function()
         gnoblin.settings.window_management.focus_mode = "sloppy"
     end))
@@ -174,6 +169,14 @@ def contains_click(value):
 assert contains_click(config), config
 print("CONFIG:click")
 PY
+cat > "$XDG_RUNTIME_DIR/input-accessibility.lua" <<'LUA'
+local accessibility = gnoblin.settings.input.keyboard.accessibility
+assert(accessibility.shortcuts_enabled == false)
+assert(accessibility.slow_keys.enabled == false)
+assert(accessibility.slow_keys.delay_ms == 400)
+print("LUA_API:input-accessibility-config")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/input-accessibility.lua"
 cat > "$XDG_RUNTIME_DIR/input-sources.lua" <<'LUA'
 assert(#gnoblin.input.sources() == 0,
     "unconfigured input sources must not inherit GNOME GSettings")
