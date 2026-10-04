@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: fedora:45
-      options: --cap-add=SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined
+      options: --cap-add=SYS_ADMIN --cap-add=NET_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined
     timeout-minutes: 180
     steps:
       - name: Install checkout tools
@@ -73,9 +73,9 @@ jobs:
           # the proc mount Flatpak needs inside its user namespace.
           mount -t proc proc /proc
           # GitHub's hosted kernel blocks UID-map writes from an unprivileged
-          # process inside this container. Check Bubblewrap as container root;
-          # only the Flatpak client smoke test uses this identity below.
-          bwrap --unshare-all --share-net \
+          # process inside this container. Check Flatpak's isolated namespaces
+          # as container root; only its client smoke test uses this identity.
+          bwrap --unshare-all \
             --ro-bind / / --proc /proc --dev /dev true
 
       - name: Install Flatpak client fixture
