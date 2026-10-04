@@ -451,6 +451,49 @@ cloned outputs use the first active connector alphabetically as the canonical
 ID. Each record includes its state revision. Snapshots refresh before monitor
 lifecycle callbacks run.
 
+### Monitor privacy screens
+
+`gnoblin.monitors.privacy_screen()` returns the cached privacy-screen
+snapshot. It contains:
+
+- `requested_enabled`: the effective requested state;
+- `source`: which setting currently supplies that value;
+- `revision`: the snapshot revision;
+- `monitors`: active outputs, each with an `id` and `available` flag. Supported
+  outputs also include `enabled` and `locked`; unsupported outputs omit them.
+
+`gnoblin.monitors.set_privacy_screen(value)` returns an
+`Operation<MonitorPrivacyScreenSnapshot>`. It accepts:
+
+- `true`: enable privacy screens for this session;
+- `false`: disable them for this session;
+- `"inherit"`: clear the runtime override and use the configured value, or the
+  system preference when config omits it.
+
+The snapshot's `source` identifies the active preference:
+
+- `runtime`: a runtime override supplies the value;
+- `config`: `monitors.privacy_screen` is set in the Lua config;
+- `system`: neither runtime nor config supplies a value.
+
+Runtime overrides do not write the system preference. Use `on_complete` to
+read the updated snapshot in the native runtime. `gnoblinctl lua` waits for
+completion and returns the resulting read-only snapshot.
+
+```lua
+gnoblin.monitors.set_privacy_screen(true):on_complete(function(snapshot, err)
+    if err then
+        print(err)
+        return
+    end
+    print(snapshot.source, snapshot.requested_enabled)
+end)
+```
+
+Subscribe to `gnoblin.monitor.privacy-screen-changed` to observe changes to the
+requested value, its source, or per-monitor state. The event carries the same
+snapshot fields plus `sequence` and `time`.
+
 Subscribe to `gnoblin.monitor.added`, `gnoblin.monitor.changed`, and
 `gnoblin.monitor.removed` to track output changes. The `changed` event's
 `changed` array lists changed record properties: `id`, `index`, `x`, `y`,
