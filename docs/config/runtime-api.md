@@ -1209,6 +1209,8 @@ canonical method names directly.
 | `grant.list()`                            | None                                                   | `{grants = {Grant, ...}}`                                        |
 | `grant.revoke(args)`                      | `kind`, `id`                                           | `{ok, id}`                                                       |
 
+### Permission policy
+
 Permission capabilities, identities, grant kinds, and scope fields use the
 same values as [session permissions](/config/configure/permissions).
 `gnoblinctl lua` exposes `gnoblin.permissions.list()` as a deeply read-only
@@ -1218,6 +1220,8 @@ snapshot through native-control API 1.42.
 `monitors` (a string array), `devices` (an array containing any of
 `"keyboard"`, `"pointer"`, and `"touchscreen"`), `clipboard`, and `revision`.
 The revision identifies the committed permission-policy snapshot.
+
+### Privacy state
 
 `gnoblin.privacy.state()` returns an immutable `PrivacyState` record with an
 `available` field and a `revision`.
@@ -1232,6 +1236,8 @@ activity field when its source is unavailable.
 The native runtime reports screen-sharing and recording activity from Mutter's
 tracked remote-access handles. Microphone and camera monitoring are available
 when Mutter is built with remote-desktop support and can connect to PipeWire.
+
+### Privacy controls
 
 `gnoblinctl lua` also exposes `gnoblin.privacy.stop_sharing()` and
 `gnoblin.privacy.stop_recording()`. The console waits for compositor completion
@@ -1249,6 +1255,8 @@ It keeps the activity state for 500 ms after the last node stops to avoid
 flickering. Location availability and activity come from Gnoblin's GeoClue
 agent. A source is unavailable when its service or monitor cannot be reached;
 unavailable does not mean inactive.
+
+### Location requests
 
 GeoClue must allow the `gnoblin` agent ID in its agent whitelist. On Fedora,
 install the optional `gnoblin-geoclue-integration` package to add Gnoblin to
@@ -1300,9 +1308,9 @@ Accuracy levels are:
 - `6`: street.
 - `8`: exact.
 
-An allowed answer must choose a nonzero level no more precise than the
-request. Gnoblin also clamps approval to the system location setting's enabled
-state and maximum accuracy.
+An allowed answer must be nonzero, no more precise than the request, and
+within the global [location policy](/config/configure/location). A disabled
+policy denies the request.
 
 The event fields are `request_id`, `app_id`, `requested_accuracy`, and
 `expires_at_us`, plus the standard event metadata.
@@ -1321,6 +1329,8 @@ count confirms that the calls were issued, not that a session has already
 closed. Mutter reports closure later through `gnoblin.privacy.changed`; these
 methods do not revoke a saved portal grant.
 
+### Permission snapshots
+
 `permissions.policy()` returns the committed Gnoblin policy. The record has a
 default level, ordered rules, and revision. Native-control API 1.16 adds the
 matching socket method and `gnoblin.permission.changed` event.
@@ -1329,6 +1339,8 @@ API 1.44 routes that socket method through the Lua runtime.
 `permissions.list()` returns that policy with capability names, supported
 levels, and the configuration path. Its socket method uses the Lua runtime
 starting at API 1.42.
+
+### Portal grants
 
 Use `gnoblin.grant.revoke {kind, id}` with the `kind` and `id` from a listed
 portal grant. The optional `created_at` timestamp rejects a stale record if a
