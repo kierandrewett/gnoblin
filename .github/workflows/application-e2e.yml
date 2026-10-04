@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: fedora:45
-      options: --security-opt seccomp=unconfined
+      options: --cap-add=SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined
     timeout-minutes: 180
     steps:
       - name: Install checkout tools
@@ -66,6 +66,13 @@ jobs:
           builder_uid="$(id -u builder)"
           install -d -o builder -g builder -m 700 "/run/user/$builder_uid"
           chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Prepare nested Flatpak sandboxing
+        run: |
+          # Docker's masked procfs entries prevent Bubblewrap from creating
+          # the proc mount Flatpak needs inside its user namespace.
+          mount -t proc proc /proc
+          runuser -u builder -- bwrap --unshare-all --ro-bind / / --proc /proc --dev /dev true
 
       - name: Install Flatpak client fixture
         run: |
