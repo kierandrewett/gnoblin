@@ -39,6 +39,7 @@
 #include "compositor/meta-gnoblin-window-effects.h"
 #include "core/display-private.h"
 #include "core/events.h"
+#include "core/keybindings-private.h"
 #include "core/util-private.h"
 #include "core/window-private.h"
 #include "wayland/gnoblin-portal-policy.h"
@@ -3053,7 +3054,7 @@ static gboolean native_action_target(GVariant* action, const char** group, char*
             return FALSE;
         *native_name = g_strdup(name);
         g_strdelimit(*native_name, "_", '-');
-        return TRUE;
+        return meta_keybindings_gnoblin_action_supported(*group, *native_name);
     }
     if (!g_variant_is_of_type(action, G_VARIANT_TYPE_VARDICT) ||
         g_variant_n_children(action) != 2 || !g_variant_lookup(action, "schema", "&s", &schema) ||
@@ -3069,7 +3070,7 @@ static gboolean native_action_target(GVariant* action, const char** group, char*
     else
         return FALSE;
     *native_name = g_strdup(name);
-    return TRUE;
+    return meta_keybindings_gnoblin_action_supported(*group, *native_name);
 }
 
 static GVariant* native_binding_array(GVariant* bindings) {
@@ -3255,6 +3256,12 @@ static gboolean apply_native_keybindings(GVariant* document, GError** error) {
                 if (!g_settings_schema_has_key(schema, native_name)) {
                     g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                                 "unknown keybinding: %s.%s", group, name);
+                    g_variant_builder_clear(&actions);
+                    goto invalid_keybindings;
+                }
+                if (!meta_keybindings_gnoblin_action_supported(group, native_name)) {
+                    g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                                "keybinding has no executable Mutter handler: %s.%s", group, name);
                     g_variant_builder_clear(&actions);
                     goto invalid_keybindings;
                 }
