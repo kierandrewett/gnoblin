@@ -193,6 +193,23 @@ event revision.
 | `gnoblin.animation.finished`               | `animation`, `target`, `event`, `cancelled`                                        | A configured window or layer animation, workspace transition, or preview completes or stops; socket API 1.18. |
 | `gnoblin.operation.completed`              | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | Native API 1.11 completion event; `error` is an `Error` record.                                               |
 
+### Tablet-pad help
+
+API 1.73 adds `gnoblin.input.pad-help-requested`. A configured tablet-pad
+`help` action sends it to Lua listeners and subscribed socket clients.
+
+The event includes:
+
+- `device`: the current input-device record;
+- optional `monitor_id` and `output_names`;
+- zero-based `buttons` with optional localized labels;
+- `mode_groups` with mode counts and switch-button numbers;
+- `features` for rings, strips, and dials, with optional labels;
+- `edition_mode`, false for tablet-button help.
+
+The shell draws and dismisses its own overlay. Gnoblin does not provide an
+image or popup, and emits another event on each help press.
+
 Started animation events include `cancelled: false`. Finished events set it to
 `true` when playback is interrupted and `false` when it reaches its end.
 

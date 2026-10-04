@@ -44,19 +44,22 @@ the commands and their output.
 Tablet-pad button numbers start at `0`. Each entry needs a unique `button` from
 `0` to `255` and an `action`:
 
-| Action             | Effect                                                                                |
-| ------------------ | ------------------------------------------------------------------------------------- |
-| `"default"`        | Use the current system action and keybinding for this button.                         |
-| `"none"`           | Do not handle the button in the compositor; clients may receive the tablet-pad event. |
-| `"help"`           | Request Mutter's tablet help overlay. A shell listener is needed to display it.       |
-| `"switch-monitor"` | Cycle the tablet's mapped monitor.                                                    |
-| `"keybinding"`     | Send the accelerator in `keybinding`.                                                 |
+| Action             | Effect                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| `"default"`        | Use the current system action and keybinding for this button.                              |
+| `"none"`           | Do not handle the button in the compositor; clients may receive the tablet-pad event.      |
+| `"help"`           | Emit `gnoblin.input.pad-help-requested`. The shell displays and dismisses its own overlay. |
+| `"switch-monitor"` | Cycle the tablet's mapped monitor.                                                         |
+| `"keybinding"`     | Send the accelerator in `keybinding`.                                                      |
 
 Buttons you omit keep their current system action. Add `keybinding` only with
 the `"keybinding"` action. The list can contain up to 256 entries. Device IDs
 identify vendor and product, so identical tablets share the same overrides.
 Set `pad_buttons = "inherit"` to clear an earlier list and return every button
 to its system action.
+
+The `"help"` action has no built-in overlay. Subscribe to the
+[pad-help event](/config/runtime-api#tablet-pad-help) in your shell.
 
 Enable `keep_aspect` when you want a drawn circle to stay circular across
 different display and tablet shapes.
