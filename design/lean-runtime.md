@@ -70,15 +70,18 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 | Session    | `gnoblin`, logind, systemd user targets     | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open. |
 | Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                                             |
 | Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                       |
-| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua owns migrated window and keyboard-accessibility input preferences; unmigrated settings still use GSettings.                   |
+| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua owns migrated window, keyboard-accessibility input, and Xwayland preferences; unmigrated settings still use GSettings.        |
 
 For each Gnoblin-owned Mutter preference, expose a domain-specific Lua setting
 and validate its type and accepted values in Gnoblin. At startup and reload,
 Mutter's central preference adapter maps the Lua snapshot into its existing
-in-memory preference slots and queues their normal change notifications. In a
-Gnoblin session, Mutter ignores the matching GSettings change so the desktop
-value cannot override Lua policy. Keep these mappings in the central adapter;
-do not add separate config lookups to consumers.
+in-memory preference slots and queues their normal change notifications. The
+Xwayland adapter covers grabs, grab access rules, disabled extensions,
+byte-swapped clients, and scaling; settings that affect Xwayland startup take
+effect on the next Xwayland start. In a Gnoblin session, Mutter ignores the
+matching GSettings change so the desktop value cannot override Lua policy.
+Keep these mappings in the central adapter; do not add separate config lookups
+to consumers.
 
 Keep the legacy schema and key as the compatibility boundary, but keep
 user-facing configuration in Gnoblin's domain-specific snake_case paths. Add
