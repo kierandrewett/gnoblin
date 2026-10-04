@@ -606,6 +606,10 @@ static JsonNode* json_from_variant(GVariant* value);
 static void send_response(Client* client, char* response);
 static void process_buffer(Client* client);
 static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload);
+static gboolean native_client_has_mutter_event_subscriptions(Client* client);
+static gboolean native_mutter_event_is_subscribable(GnoblinNativeControl* control,
+                                                    const char* name);
+static void native_refresh_all_mutter_signal_watches(GnoblinNativeControl* control);
 static void native_socket_revoke_client_tokens(Client* client);
 static GVariant* native_socket_snap_rect(JsonNode* node);
 static void prune_focus_contexts(GnoblinNativeControl* control, gint64 now);
@@ -4111,9 +4115,13 @@ static void client_close(Client* client) {
         client->closing = TRUE;
         clear_client_dynamic_shortcuts(client);
         if (client->control) {
+            GnoblinNativeControl* control = client->control;
+            gboolean refresh_mutter_watches = native_client_has_mutter_event_subscriptions(client);
             native_socket_revoke_client_tokens(client);
             native_window_drag_client_disconnected(client->control, client->client_id);
             g_hash_table_remove(client->control->clients, client);
+            if (refresh_mutter_watches)
+                native_refresh_all_mutter_signal_watches(control);
         }
         g_clear_pointer(&client->event_subscriptions, g_hash_table_unref);
         if (client->focus_grants)
@@ -6634,6 +6642,21 @@ static gboolean native_event_is_subscribable(const char* name) {
     return FALSE;
 }
 
+static gboolean native_client_has_mutter_event_subscriptions(Client* client) {
+    if (!client || !client->event_subscriptions)
+        return FALSE;
+
+    GHashTableIter iter;
+    gpointer key;
+    g_hash_table_iter_init(&iter, client->event_subscriptions);
+    while (g_hash_table_iter_next(&iter, &key, NULL)) {
+        const char* event = key;
+        if (g_str_has_prefix(event, "mutter."))
+            return TRUE;
+    }
+    return FALSE;
+}
+
 static void remove_private_focus_context(JsonNode* node) {
     if (!node)
         return;
@@ -6772,6 +6795,41 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
             send_response(client, g_strdup(line));
     }
     g_list_free(clients);
+}
+
+static gboolean native_socket_has_event_subscriber(GnoblinNativeControl* control,
+                                                   const char* event) {
+    if (!control || !control->clients || !event)
+        return FALSE;
+
+    GHashTableIter iter;
+    gpointer value;
+    g_hash_table_iter_init(&iter, control->clients);
+    while (g_hash_table_iter_next(&iter, NULL, &value)) {
+        Client* client = value;
+        if (client->event_api_minor >= 9 && client->event_subscriptions &&
+            g_hash_table_contains(client->event_subscriptions, event))
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static void native_publish_mutter_socket_event(GnoblinNativeControl* control, const char* event,
+                                               GVariant* payload) {
+    if (!control || !event || !payload || !g_str_has_prefix(event, "mutter.") ||
+        !native_socket_has_event_subscriber(control, event))
+        return;
+
+    g_autoptr(JsonNode) root = json_from_variant(payload);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root))
+        return;
+
+    JsonObject* object = json_node_get_object(root);
+    json_object_set_string_member(object, "name", event);
+    json_object_set_int_member(object, "sequence", ++control->event_sequence);
+    if (!json_object_has_member(object, "time"))
+        json_object_set_int_member(object, "time", g_get_monotonic_time());
+    publish_native_socket_event(control, root);
 }
 
 static void dispatch_lua_layer_event(GnoblinNativeControl* control, guint64 revision,
@@ -12438,7 +12496,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 return encode_response("", NULL, "events entries must be strings");
             }
             const char* name = json_node_get_string(name_node);
-            if (!native_event_is_subscribable(name)) {
+            if (!native_event_is_subscribable(name) &&
+                !native_mutter_event_is_subscribable(client->control, name)) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "events contains an unsupported event name");
             }
@@ -12576,8 +12635,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         if (client->focus_grants)
             g_hash_table_remove_all(client->focus_grants);
         native_window_drag_client_disconnected(client->control, client->client_id);
+        gboolean refresh_mutter_watches = native_client_has_mutter_event_subscriptions(client);
         g_clear_pointer(&client->event_subscriptions, g_hash_table_unref);
         client->event_subscriptions = subscriptions;
+        refresh_mutter_watches |= native_client_has_mutter_event_subscriptions(client);
+        if (refresh_mutter_watches)
+            native_refresh_all_mutter_signal_watches(client->control);
         client->event_api_minor = client->api_minor;
         return encode_event_subscription(requested, client->event_api_minor);
     }
@@ -13475,10 +13538,57 @@ static gboolean mutter_signal_value_supported(GType type) {
 
 static void add_window_signal_identity(GVariantBuilder* payload, MetaWindow* window);
 
-static gboolean mutter_signal_argument_supported(GType type, const char* source) {
+static gboolean mutter_signal_argument_supported(GType type) {
     type &= ~G_SIGNAL_TYPE_STATIC_SCOPE;
-    return mutter_signal_value_supported(type) ||
-           (g_str_equal(source, "workspace") && type == META_TYPE_WINDOW);
+    return mutter_signal_value_supported(type) || g_type_is_a(type, META_TYPE_WINDOW);
+}
+
+static gboolean native_mutter_event_is_subscribable(GnoblinNativeControl* control,
+                                                    const char* name) {
+    if (!control || !name || strlen(name) > 128 || !g_utf8_validate(name, -1, NULL) ||
+        !g_str_has_prefix(name, "mutter."))
+        return FALSE;
+
+    if (g_str_equal(name, "mutter.touchpad.gesture") ||
+        g_str_equal(name, "mutter.wayland.pointer-window-changed"))
+        return TRUE;
+
+    const char* source_start = name + strlen("mutter.");
+    const char* separator = strchr(source_start, '.');
+    if (!separator || separator == source_start || !separator[1])
+        return FALSE;
+
+    g_autofree char* source = g_strndup(source_start, separator - source_start);
+    const char* signal = separator + 1;
+    GType object_type = G_TYPE_INVALID;
+    if (g_str_equal(source, "display") && control->display)
+        object_type = G_OBJECT_TYPE(control->display);
+    else if (g_str_equal(source, "window"))
+        object_type = META_TYPE_WINDOW;
+    else if (g_str_equal(source, "workspace"))
+        object_type = META_TYPE_WORKSPACE;
+    else if (g_str_equal(source, "workspace-manager") && control->workspace_manager)
+        object_type = G_OBJECT_TYPE(control->workspace_manager);
+    else if (g_str_equal(source, "backend") && control->backend)
+        object_type = G_OBJECT_TYPE(control->backend);
+    else if (g_str_equal(source, "monitor-manager") && control->monitor_manager)
+        object_type = G_OBJECT_TYPE(control->monitor_manager);
+    else if (g_str_equal(source, "cursor-tracker") && control->cursor_tracker)
+        object_type = G_OBJECT_TYPE(control->cursor_tracker);
+    if (object_type == G_TYPE_INVALID)
+        return FALSE;
+
+    guint signal_id = 0;
+    GQuark detail = 0;
+    if (!g_signal_parse_name(signal, object_type, &signal_id, &detail, FALSE))
+        return FALSE;
+
+    GSignalQuery query = {0};
+    g_signal_query(signal_id, &query);
+    gboolean supported = (query.return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE) == G_TYPE_NONE;
+    for (guint i = 0; supported && i < query.n_params; i++)
+        supported = mutter_signal_argument_supported(query.param_types[i]);
+    return supported;
 }
 
 static GVariant* mutter_signal_value_to_variant(const GValue* value) {
@@ -13519,9 +13629,9 @@ static GVariant* mutter_signal_value_to_variant(const GValue* value) {
     return NULL;
 }
 
-static GVariant* mutter_signal_argument_to_variant(const GValue* value, const char* source) {
+static GVariant* mutter_signal_argument_to_variant(const GValue* value) {
     GType type = G_VALUE_TYPE(value) & ~G_SIGNAL_TYPE_STATIC_SCOPE;
-    if (g_str_equal(source, "workspace") && type == META_TYPE_WINDOW) {
+    if (g_type_is_a(type, META_TYPE_WINDOW)) {
         MetaWindow* window = g_value_get_object(value);
         if (!window || !META_IS_WINDOW(window))
             return NULL;
@@ -13581,19 +13691,23 @@ static void native_mutter_signal_marshal(GClosure* closure, GValue* return_value
     }
     for (guint i = 0; i < query.n_params; i++) {
         GType type = query.param_types[i] & ~G_SIGNAL_TYPE_STATIC_SCOPE;
-        g_autoptr(GVariant) argument =
-            mutter_signal_argument_to_variant(&param_values[i + 1], watch->source);
-        if (!argument) {
+        GVariant* raw_argument = mutter_signal_argument_to_variant(&param_values[i + 1]);
+        if (!raw_argument) {
             g_variant_builder_clear(&payload);
             return;
         }
+        g_autoptr(GVariant) argument = g_variant_ref_sink(raw_argument);
         g_autofree char* name = g_strdup_printf("arg%u", i);
         g_autofree char* type_name = g_strdup_printf("arg%u_type", i);
         g_variant_builder_add(&payload, "{sv}", name, argument);
         g_variant_builder_add(&payload, "{sv}", type_name, g_variant_new_string(g_type_name(type)));
     }
     g_autoptr(GVariant) event_payload = g_variant_ref_sink(g_variant_builder_end(&payload));
-    native_runtime_dispatch_event(watch->control, watch->event, event_payload);
+    g_autoptr(GError) error = NULL;
+    if (!gnoblin_native_control_dispatch_runtime_event(watch->control->display, watch->event,
+                                                       event_payload, NULL, &error))
+        g_warning("gnoblin: could not dispatch Mutter event %s: %s", watch->event,
+                  error ? error->message : "unknown error");
 }
 
 static void clear_object_signal_watches(GObject* object, GArray* handler_ids) {
@@ -13610,13 +13724,43 @@ static void clear_object_signal_watches(GObject* object, GArray* handler_ids) {
 static void refresh_object_signal_watches(GnoblinNativeControl* control, GObject* object,
                                           const char* source, GArray* handler_ids) {
     clear_object_signal_watches(object, handler_ids);
-    if (!control || !object || !source || !handler_ids || !control->runtime_event_subscriptions)
+    if (!control || !object || !source || !handler_ids)
         return;
     g_autofree char* prefix = g_strdup_printf("mutter.%s.", source);
     GHashTableIter iter;
     gpointer key;
     g_autoptr(GHashTable) connected = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-    g_hash_table_iter_init(&iter, control->runtime_event_subscriptions);
+    g_autoptr(GHashTable) subscriptions =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    if (control->runtime_event_subscriptions) {
+        GHashTableIter runtime_iter;
+        gpointer runtime_key;
+        g_hash_table_iter_init(&runtime_iter, control->runtime_event_subscriptions);
+        while (g_hash_table_iter_next(&runtime_iter, &runtime_key, NULL)) {
+            const char* event = runtime_key;
+            if (g_str_equal(event, "*") || g_str_has_prefix(event, "mutter."))
+                g_hash_table_add(subscriptions, g_strdup(event));
+        }
+    }
+    if (control->clients) {
+        GHashTableIter client_iter;
+        gpointer client_value;
+        g_hash_table_iter_init(&client_iter, control->clients);
+        while (g_hash_table_iter_next(&client_iter, NULL, &client_value)) {
+            Client* client = client_value;
+            if (!client->event_subscriptions)
+                continue;
+            GHashTableIter event_iter;
+            gpointer event_key;
+            g_hash_table_iter_init(&event_iter, client->event_subscriptions);
+            while (g_hash_table_iter_next(&event_iter, &event_key, NULL)) {
+                const char* event = event_key;
+                if (g_str_has_prefix(event, "mutter."))
+                    g_hash_table_add(subscriptions, g_strdup(event));
+            }
+        }
+    }
+    g_hash_table_iter_init(&iter, subscriptions);
     while (g_hash_table_iter_next(&iter, &key, NULL)) {
         const char* event = key;
         if (g_str_equal(event, "*")) {
@@ -13652,7 +13796,7 @@ static void refresh_object_signal_watches(GnoblinNativeControl* control, GObject
         GType return_type = query.return_type & ~G_SIGNAL_TYPE_STATIC_SCOPE;
         gboolean supported = return_type == G_TYPE_NONE;
         for (guint i = 0; supported && i < query.n_params; i++)
-            supported = mutter_signal_argument_supported(query.param_types[i], source);
+            supported = mutter_signal_argument_supported(query.param_types[i]);
         if (!supported) {
             g_warning("gnoblin: Mutter event %s has a signal signature that Lua cannot represent",
                       event);
@@ -13711,15 +13855,37 @@ static void clear_all_workspace_signal_watches(GnoblinNativeControl* control) {
 }
 
 static gboolean workspace_signal_subscribed(GnoblinNativeControl* control) {
-    if (!control || !control->runtime_event_subscriptions)
+    if (!control)
         return FALSE;
-    GHashTableIter iter;
-    gpointer key;
-    g_hash_table_iter_init(&iter, control->runtime_event_subscriptions);
-    while (g_hash_table_iter_next(&iter, &key, NULL)) {
-        const char* event = key;
-        if (g_str_equal(event, "*") || g_str_has_prefix(event, "mutter.workspace."))
-            return TRUE;
+
+    if (control->runtime_event_subscriptions) {
+        GHashTableIter iter;
+        gpointer key;
+        g_hash_table_iter_init(&iter, control->runtime_event_subscriptions);
+        while (g_hash_table_iter_next(&iter, &key, NULL)) {
+            const char* event = key;
+            if (g_str_equal(event, "*") || g_str_has_prefix(event, "mutter.workspace."))
+                return TRUE;
+        }
+    }
+
+    if (control->clients) {
+        GHashTableIter clients;
+        gpointer value;
+        g_hash_table_iter_init(&clients, control->clients);
+        while (g_hash_table_iter_next(&clients, NULL, &value)) {
+            Client* client = value;
+            if (!client->event_subscriptions)
+                continue;
+            GHashTableIter events;
+            gpointer key;
+            g_hash_table_iter_init(&events, client->event_subscriptions);
+            while (g_hash_table_iter_next(&events, &key, NULL)) {
+                const char* event = key;
+                if (g_str_has_prefix(event, "mutter.workspace."))
+                    return TRUE;
+            }
+        }
     }
     return FALSE;
 }
@@ -13797,6 +13963,18 @@ static void refresh_all_window_signal_watches(GnoblinNativeControl* control) {
     g_hash_table_iter_init(&iter, control->window_signal_handler_ids);
     while (g_hash_table_iter_next(&iter, &window, &handler_ids))
         refresh_object_signal_watches(control, G_OBJECT(window), "window", handler_ids);
+}
+
+static void native_refresh_all_mutter_signal_watches(GnoblinNativeControl* control) {
+    if (!control)
+        return;
+    refresh_display_signal_watches(control);
+    refresh_all_window_signal_watches(control);
+    refresh_all_workspace_signal_watches(control);
+    refresh_workspace_manager_signal_watches(control);
+    refresh_backend_signal_watches(control);
+    refresh_monitor_manager_signal_watches(control);
+    refresh_cursor_tracker_signal_watches(control);
 }
 
 static void window_workspace_changed(MetaWindow* window, gpointer user_data) {
@@ -15404,6 +15582,7 @@ gboolean gnoblin_native_control_dispatch_runtime_event(MetaDisplay* display, con
     if (g_str_equal(event, "mutter.touchpad.gesture") &&
         g_variant_is_of_type(payload, G_VARIANT_TYPE_VARDICT) && claimed)
         *claimed = native_config_event(display, event, NULL, payload, control);
+    native_publish_mutter_socket_event(control, event, payload);
     if (!native_runtime_dispatch_event(control, event, payload)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
                             "could not queue supervised runtime event");

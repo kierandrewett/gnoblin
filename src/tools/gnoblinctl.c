@@ -6096,6 +6096,15 @@ static gboolean cli_lua_event_subscribe_socket(CliLuaEventSubscription* subscrip
         }
         JsonObject* response = json_node_get_object(json_parser_get_root(parser));
         const char* response_event = member_string(response, "event", "");
+        if (g_str_equal(response_event, "hello")) {
+            if (json_object_get_int_member_with_default(response, "api_major", 0) !=
+                GNOBLIN_NATIVE_CONTROL_API_MAJOR) {
+                g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                                    "compositor socket uses an unsupported API major version");
+                return FALSE;
+            }
+            continue;
+        }
         if (g_str_equal(response_event, "error")) {
             g_set_error(error, G_IO_ERROR, G_IO_ERROR_FAILED, "%s",
                         member_string(response, "message", "compositor rejected subscription"));
