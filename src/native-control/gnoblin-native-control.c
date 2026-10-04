@@ -916,6 +916,7 @@ static const char* native_socket_events[] = {
     "gnoblin.window.drag.ended",
     "gnoblin.window.menu-requested",
     "gnoblin.osd.requested",
+    "gnoblin.input.pad-help-requested",
     "gnoblin.focus.policy-changed",
     "gnoblin.permission.changed",
     "gnoblin.config.reloaded",
@@ -4363,6 +4364,64 @@ static void add_input_device_capability(GVariantBuilder* capabilities,
         g_variant_builder_add(capabilities, "s", name);
 }
 
+static const char* native_input_device_id(GnoblinNativeControl* control,
+                                          ClutterInputDevice* device) {
+    const char* id = g_hash_table_lookup(control->input_device_ids, device);
+    if (!id) {
+        char* owned_id =
+            g_strdup_printf("input:%" G_GUINT64_FORMAT, ++control->next_input_device_id);
+        g_hash_table_insert(control->input_device_ids, device, owned_id);
+        id = owned_id;
+    }
+    return id;
+}
+
+static GVariant* input_device_record(GnoblinNativeControl* control, ClutterInputDevice* device) {
+    GVariantBuilder record;
+    GVariantBuilder capabilities;
+    ClutterInputCapabilities available = clutter_input_device_get_capabilities(device);
+    const char* name = clutter_input_device_get_device_name(device);
+    ClutterSeat* seat = clutter_input_device_get_seat(device);
+    guint vendor_id = clutter_input_device_get_vendor_id(device);
+    guint product_id = clutter_input_device_get_product_id(device);
+
+    g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&record, "{sv}", "id",
+                          g_variant_new_string(native_input_device_id(control, device)));
+    g_variant_builder_add(&record, "{sv}", "name", g_variant_new_string(name ? name : ""));
+    g_variant_builder_add(
+        &record, "{sv}", "device_type",
+        g_variant_new_string(input_device_type_name(clutter_input_device_get_device_type(device))));
+    if (seat && clutter_seat_get_name(seat))
+        g_variant_builder_add(&record, "{sv}", "seat",
+                              g_variant_new_string(clutter_seat_get_name(seat)));
+    if (vendor_id)
+        g_variant_builder_add(&record, "{sv}", "vendor_id", g_variant_new_uint32(vendor_id));
+    if (product_id)
+        g_variant_builder_add(&record, "{sv}", "product_id", g_variant_new_uint32(product_id));
+
+    g_variant_builder_init(&capabilities, G_VARIANT_TYPE("as"));
+    add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_POINTER,
+                                "pointer");
+    add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_KEYBOARD,
+                                "keyboard");
+    add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TOUCHPAD,
+                                "touchpad");
+    add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TOUCH, "touch");
+    add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TABLET_TOOL,
+                                "tablet_tool");
+    add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TABLET_PAD,
+                                "tablet_pad");
+    add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TRACKBALL,
+                                "trackball");
+    add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TRACKPOINT,
+                                "trackpoint");
+    g_variant_builder_add(&record, "{sv}", "capabilities", g_variant_builder_end(&capabilities));
+    g_variant_builder_add(&record, "{sv}", "revision",
+                          g_variant_new_int64(control->state_revision));
+    return g_variant_ref_sink(g_variant_builder_end(&record));
+}
+
 static GVariant* input_device_snapshot(GnoblinNativeControl* control) {
     GVariantBuilder devices;
     GVariantBuilder snapshot;
@@ -4373,58 +4432,8 @@ static GVariant* input_device_snapshot(GnoblinNativeControl* control) {
         device_list = clutter_seat_list_devices(control->input_seat);
 
     for (GList* item = device_list; item; item = item->next) {
-        ClutterInputDevice* device = item->data;
-        GVariantBuilder record;
-        GVariantBuilder capabilities;
-        ClutterInputCapabilities available = clutter_input_device_get_capabilities(device);
-        const char* name = clutter_input_device_get_device_name(device);
-        ClutterSeat* seat = clutter_input_device_get_seat(device);
-        guint vendor_id = clutter_input_device_get_vendor_id(device);
-        guint product_id = clutter_input_device_get_product_id(device);
-        char* id = g_hash_table_lookup(control->input_device_ids, device);
-
-        if (!id) {
-            id = g_strdup_printf("input:%" G_GUINT64_FORMAT, ++control->next_input_device_id);
-            g_hash_table_insert(control->input_device_ids, device, id);
-        }
-
-        g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
-        g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string(id));
-        g_variant_builder_add(&record, "{sv}", "name", g_variant_new_string(name ? name : ""));
-        g_variant_builder_add(&record, "{sv}", "device_type",
-                              g_variant_new_string(input_device_type_name(
-                                  clutter_input_device_get_device_type(device))));
-        if (seat && clutter_seat_get_name(seat))
-            g_variant_builder_add(&record, "{sv}", "seat",
-                                  g_variant_new_string(clutter_seat_get_name(seat)));
-        if (vendor_id)
-            g_variant_builder_add(&record, "{sv}", "vendor_id", g_variant_new_uint32(vendor_id));
-        if (product_id)
-            g_variant_builder_add(&record, "{sv}", "product_id", g_variant_new_uint32(product_id));
-
-        g_variant_builder_init(&capabilities, G_VARIANT_TYPE("as"));
-        add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_POINTER,
-                                    "pointer");
-        add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_KEYBOARD,
-                                    "keyboard");
-        add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TOUCHPAD,
-                                    "touchpad");
-        add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TOUCH,
-                                    "touch");
-        add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TABLET_TOOL,
-                                    "tablet_tool");
-        add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TABLET_PAD,
-                                    "tablet_pad");
-        add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TRACKBALL,
-                                    "trackball");
-        add_input_device_capability(&capabilities, available, CLUTTER_INPUT_CAPABILITY_TRACKPOINT,
-                                    "trackpoint");
-        g_variant_builder_add(&record, "{sv}", "capabilities",
-                              g_variant_builder_end(&capabilities));
-        g_variant_builder_add(&record, "{sv}", "revision",
-                              g_variant_new_int64(control->state_revision));
-        g_variant_builder_add_value(&devices,
-                                    g_variant_new_variant(g_variant_builder_end(&record)));
+        g_autoptr(GVariant) record = input_device_record(control, item->data);
+        g_variant_builder_add_value(&devices, g_variant_new_variant(record));
     }
 
     g_variant_builder_init(&snapshot, G_VARIANT_TYPE_VARDICT);
@@ -11094,6 +11103,142 @@ static void native_show_osd_requested(MetaDisplay* display, gint monitor_index,
     native_publish_request_event(control, "gnoblin.osd.requested", payload);
 }
 
+static void native_pad_help_add_button(GVariantBuilder* buttons, MetaDisplay* display,
+                                       ClutterInputDevice* pad, gint button) {
+    GVariantBuilder record;
+    g_autofree char* label = meta_display_get_pad_button_label(display, pad, button);
+    gint mode_group = clutter_input_device_get_mode_switch_button_group(pad, button);
+
+    g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&record, "{sv}", "button", g_variant_new_int32(button));
+    if (label)
+        g_variant_builder_add(&record, "{sv}", "label", g_variant_new_string(label));
+    if (mode_group >= 0)
+        g_variant_builder_add(&record, "{sv}", "mode_group", g_variant_new_int32(mode_group));
+    g_variant_builder_add_value(buttons, g_variant_builder_end(&record));
+}
+
+static void native_pad_help_add_feature_label(GVariantBuilder* record, MetaDisplay* display,
+                                              ClutterInputDevice* pad, MetaPadFeatureType feature,
+                                              MetaPadDirection direction, gint feature_number,
+                                              const char* field) {
+    g_autofree char* label =
+        meta_display_get_pad_feature_label(display, pad, feature, direction, feature_number);
+    if (label)
+        g_variant_builder_add(record, "{sv}", field, g_variant_new_string(label));
+}
+
+static void native_pad_help_add_features(GVariantBuilder* features, MetaDisplay* display,
+                                         ClutterInputDevice* pad, MetaPadFeatureType feature,
+                                         gint feature_count, const char* type_name,
+                                         MetaPadDirection positive_direction,
+                                         const char* positive_label,
+                                         MetaPadDirection negative_direction,
+                                         const char* negative_label) {
+    for (gint index = 0; index < feature_count; index++) {
+        GVariantBuilder record;
+        g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&record, "{sv}", "type", g_variant_new_string(type_name));
+        g_variant_builder_add(&record, "{sv}", "index", g_variant_new_int32(index));
+        native_pad_help_add_feature_label(&record, display, pad, feature, positive_direction, index,
+                                          positive_label);
+        native_pad_help_add_feature_label(&record, display, pad, feature, negative_direction, index,
+                                          negative_label);
+        g_variant_builder_add_value(features, g_variant_builder_end(&record));
+    }
+}
+
+static ClutterActor* native_show_pad_osd_requested(MetaDisplay* display, ClutterInputDevice* pad,
+                                                   GSettings* settings, const gchar* layout_path,
+                                                   gboolean edition_mode, gint monitor_index,
+                                                   gpointer user_data) {
+    GnoblinNativeControl* control = user_data;
+    GVariantBuilder fields;
+    GVariantBuilder buttons;
+    GVariantBuilder mode_groups;
+    GVariantBuilder features;
+    g_autoptr(GVariant) device = NULL;
+    g_autoptr(GVariant) button_records = NULL;
+    g_autoptr(GVariant) mode_records = NULL;
+    g_autoptr(GVariant) feature_records = NULL;
+    g_autoptr(JsonNode) monitor_snapshot = NULL;
+    g_autoptr(GVariant) output_names = NULL;
+    g_autoptr(GError) snapshot_error = NULL;
+    g_autofree char* monitor_id = NULL;
+
+    (void)settings;
+    (void)layout_path;
+    if (!control || control->stopping || control->display != display || !pad)
+        return NULL;
+
+    device = input_device_record(control, pad);
+    g_variant_builder_init(&buttons, G_VARIANT_TYPE("aa{sv}"));
+    for (gint button = 0; button < clutter_input_device_get_n_buttons(pad); button++)
+        native_pad_help_add_button(&buttons, display, pad, button);
+    button_records = g_variant_ref_sink(g_variant_builder_end(&buttons));
+
+    g_variant_builder_init(&mode_groups, G_VARIANT_TYPE("aa{sv}"));
+    for (gint group = 0; group < clutter_input_device_get_n_mode_groups(pad); group++) {
+        GVariantBuilder group_record;
+        GVariantBuilder switch_buttons;
+        g_variant_builder_init(&group_record, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_init(&switch_buttons, G_VARIANT_TYPE("av"));
+        for (gint button = 0; button < clutter_input_device_get_n_buttons(pad); button++) {
+            if (clutter_input_device_get_mode_switch_button_group(pad, button) == group)
+                g_variant_builder_add(&switch_buttons, "v", g_variant_new_int32(button));
+        }
+        g_variant_builder_add(&group_record, "{sv}", "group", g_variant_new_int32(group));
+        g_variant_builder_add(
+            &group_record, "{sv}", "mode_count",
+            g_variant_new_int32(clutter_input_device_get_group_n_modes(pad, group)));
+        g_variant_builder_add(&group_record, "{sv}", "switch_buttons",
+                              g_variant_builder_end(&switch_buttons));
+        g_variant_builder_add_value(&mode_groups, g_variant_builder_end(&group_record));
+    }
+    mode_records = g_variant_ref_sink(g_variant_builder_end(&mode_groups));
+
+    g_variant_builder_init(&features, G_VARIANT_TYPE("aa{sv}"));
+    native_pad_help_add_features(&features, display, pad, META_PAD_FEATURE_RING,
+                                 clutter_input_device_get_n_rings(pad), "ring",
+                                 META_PAD_DIRECTION_CW, "clockwise_label", META_PAD_DIRECTION_CCW,
+                                 "counterclockwise_label");
+    native_pad_help_add_features(
+        &features, display, pad, META_PAD_FEATURE_STRIP, clutter_input_device_get_n_strips(pad),
+        "strip", META_PAD_DIRECTION_UP, "up_label", META_PAD_DIRECTION_DOWN, "down_label");
+    native_pad_help_add_features(&features, display, pad, META_PAD_FEATURE_DIAL,
+                                 clutter_input_device_get_n_dials(pad), "dial",
+                                 META_PAD_DIRECTION_CW, "clockwise_label", META_PAD_DIRECTION_CCW,
+                                 "counterclockwise_label");
+    feature_records = g_variant_ref_sink(g_variant_builder_end(&features));
+
+    monitor_snapshot = monitor_snapshot_json(control, FALSE, &snapshot_error);
+    if (monitor_snapshot)
+        monitor_id = native_monitor_id_for_index(monitor_snapshot, monitor_index);
+    if (monitor_id)
+        output_names = native_monitor_output_names_for_index(control, monitor_index);
+    if (!monitor_id)
+        g_debug("gnoblin-native-control: pad-help request has no stable monitor for index %d%s%s",
+                monitor_index, snapshot_error ? ": " : "",
+                snapshot_error ? snapshot_error->message : "");
+
+    g_variant_builder_init(&fields, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&fields, "{sv}", "device", device);
+    if (monitor_id)
+        g_variant_builder_add(&fields, "{sv}", "monitor_id", g_variant_new_string(monitor_id));
+    if (output_names)
+        g_variant_builder_add(&fields, "{sv}", "output_names", output_names);
+    g_variant_builder_add(&fields, "{sv}", "edition_mode", g_variant_new_boolean(edition_mode));
+    g_variant_builder_add(&fields, "{sv}", "buttons", button_records);
+    g_variant_builder_add(&fields, "{sv}", "mode_groups", mode_records);
+    g_variant_builder_add(&fields, "{sv}", "features", feature_records);
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&fields));
+    native_publish_request_event(control, "gnoblin.input.pad-help-requested", payload);
+
+    /* A shell owns the overlay; returning NULL leaves Mutter free to emit the
+     * next request instead of tracking an actor it does not own. */
+    return NULL;
+}
+
 static gboolean monitor_property_changed(JsonObject* previous, JsonObject* current,
                                          const char* property) {
     JsonNode* old_value = json_object_get_member(previous, property);
@@ -12337,6 +12482,10 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 client->api_minor < 27) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "shell request events require API version 1.27");
+            }
+            if (g_str_equal(name, "gnoblin.input.pad-help-requested") && client->api_minor < 73) {
+                g_hash_table_unref(subscriptions);
+                return encode_response("", NULL, "tablet-pad help events require API version 1.73");
             }
             if (g_str_equal(name, "gnoblin.window.activation-denied") && client->api_minor < 69) {
                 g_hash_table_unref(subscriptions);
@@ -15497,6 +15646,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         control->monitor_state_initialized = TRUE;
     }
     g_signal_connect(control->display, "show-osd", G_CALLBACK(native_show_osd_requested), control);
+    g_signal_connect(control->display, "show-pad-osd", G_CALLBACK(native_show_pad_osd_requested),
+                     control);
     initial_layer_snapshot = layer_snapshot_json(control, TRUE, &layer_error);
     if (!initial_layer_snapshot)
         g_warning("gnoblin-native-control: cannot seed Lua layer snapshot: %s",
