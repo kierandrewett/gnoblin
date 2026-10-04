@@ -42,7 +42,10 @@ jobs:
     steps:
       - name: Install Git for source checkout
         run: |
-          sed -i 's#http://#https://#g' /etc/zypp/repos.d/*.repo
+          sed -i \
+            -e 's#http://#https://#g' \
+            -e 's#https://download.opensuse.org/tumbleweed/repo/oss/#https://downloadcontentcdn.opensuse.org/tumbleweed/repo/oss/#g' \
+            /etc/zypp/repos.d/*.repo
           zypper --non-interactive refresh
           zypper --non-interactive install git
       - uses: actions/checkout@v4
@@ -116,7 +119,10 @@ jobs:
     steps:
       - name: Install Git for source checkout
         run: |
-          sed -i 's#http://#https://#g' /etc/zypp/repos.d/*.repo
+          sed -i \
+            -e 's#http://#https://#g' \
+            -e 's#https://download.opensuse.org/tumbleweed/repo/oss/#https://downloadcontentcdn.opensuse.org/tumbleweed/repo/oss/#g' \
+            /etc/zypp/repos.d/*.repo
           zypper --non-interactive refresh
           zypper --non-interactive install git
       - uses: actions/checkout@v4
