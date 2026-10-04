@@ -5,16 +5,12 @@ Subject: [PATCH] mutter: enable registered overlay modifier capture
 
 ---
 diff --git a/src/core/mutter.c b/src/core/mutter.c
-index bed7552d2..65bd4cdb8 100644
+index bed7552d2..0d081560b 100644
 --- a/src/core/mutter.c
 +++ b/src/core/mutter.c
-@@ -220,6 +220,9 @@ main (int argc, char **argv)
-       return EXIT_FAILURE;
-     }
+@@ -212,2 +212,5 @@ main (int argc, char **argv)
  
 +  gnoblin_native_control_set_overlay_modifier_hook_available (
 +    meta_context_get_display (context), TRUE);
 +
-   meta_context_notify_ready (context);
- 
-   if (command_argv)
+   native_control = gnoblin_native_control_start (

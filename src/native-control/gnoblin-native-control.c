@@ -73,6 +73,7 @@
 #define MAX_REQUEST_BYTES (64 * 1024)
 #define MAX_PENDING_BYTES (1024 * 1024)
 #define NATIVE_CONTROL_OBJECT_DATA_KEY "gnoblin-native-control"
+#define OVERLAY_MODIFIER_HOOK_AVAILABLE_DATA_KEY "gnoblin-overlay-modifier-hook-available"
 #define MAX_LAUNCHES 64
 #define MAX_FOCUS_CONTEXTS 128
 #define MAX_MENU_CONTEXTS 256
@@ -6034,8 +6035,12 @@ gboolean gnoblin_native_control_overlay_modifier_pressed(MetaDisplay* display,
 
 void gnoblin_native_control_set_overlay_modifier_hook_available(MetaDisplay* display,
                                                                 gboolean available) {
+    if (!display)
+        return;
+    g_object_set_data(G_OBJECT(display), OVERLAY_MODIFIER_HOOK_AVAILABLE_DATA_KEY,
+                      GINT_TO_POINTER(available));
     GnoblinNativeControl* control =
-        display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
+        g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY);
     if (!control)
         return;
     control->overlay_modifier_hook_available = available;
@@ -16078,6 +16083,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_layer_state_free);
     control->input_device_ids = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, g_free);
     control->display = meta_context_get_display(context);
+    control->overlay_modifier_hook_available = GPOINTER_TO_INT(
+        g_object_get_data(G_OBJECT(control->display), OVERLAY_MODIFIER_HOOK_AVAILABLE_DATA_KEY));
     g_object_set_data(G_OBJECT(control->display), NATIVE_CONTROL_OBJECT_DATA_KEY, control);
     MetaBackend* backend = meta_context_get_backend(context);
     control->backend = backend;
