@@ -37,7 +37,9 @@ defaults:
 jobs:
   native-session:
     runs-on: ubuntu-latest
-    container: fedora:45
+    container:
+      image: fedora:45
+      options: --security-opt seccomp=unconfined
     timeout-minutes: 180
     steps:
       - name: Install checkout tools
