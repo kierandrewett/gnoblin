@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] input: read disable-while-typing timeout from Lua
+
+---
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+index a143a3cba..8622ee243 100644
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -984,6 +984,7 @@ update_touchpad_disable_while_typing (MetaInputSettings  *input_settings,
+   MetaInputSettingsPrivate *priv;
+   gboolean enabled;
+   uint32_t timeout_ms;
++  g_autoptr (GVariant) timeout_override = NULL;
+   const char *key_dwt = "disable-while-typing";
+   const char *key_timeout = "disable-while-typing-timeout";
+ 
+@@ -996,9 +997,13 @@ update_touchpad_disable_while_typing (MetaInputSettings  *input_settings,
+   priv = meta_input_settings_get_instance_private (input_settings);
+   input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
+   enabled = input_get_boolean (input_settings, priv->touchpad_settings, key_dwt);
+-  timeout_ms = input_settings_has_key (input_settings, priv->touchpad_settings, key_timeout)
+-               ? g_settings_get_uint (priv->touchpad_settings, key_timeout)
+-               : 0;
++  timeout_override = gnoblin_setting (input_settings, priv->touchpad_settings, key_timeout);
++  if (timeout_override)
++    timeout_ms = g_variant_get_uint32 (timeout_override);
++  else
++    timeout_ms = input_settings_has_key (input_settings, priv->touchpad_settings, key_timeout)
++                 ? g_settings_get_uint (priv->touchpad_settings, key_timeout)
++                 : 0;
+ 
+   if (device)
+     {
