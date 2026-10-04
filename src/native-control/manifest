@@ -1,6 +1,7 @@
 # project source destination
 mutter gnoblin-native-control.c src/core/gnoblin-native-control.c
 mutter gnoblin-native-control.h src/core/gnoblin-native-control.h
+mutter meta-x11-display-private.h src/meta/meta-x11-display-private.h
 mutter gnoblin-location-agent.c src/core/gnoblin-location-agent.c
 mutter gnoblin-location-agent.h src/core/gnoblin-location-agent.h
 mutter gnoblin-pipewire-monitor.c src/core/gnoblin-pipewire-monitor.c

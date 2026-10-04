@@ -54,6 +54,9 @@
 #include "meta/meta-logical-monitor.h"
 #include "meta/meta-monitor.h"
 #include "meta/meta-wayland-compositor.h"
+#ifdef HAVE_XWAYLAND
+#include "meta/meta-x11-display-private.h"
+#endif
 #include "meta/meta-monitor-manager.h"
 #include "meta/meta-orientation-manager.h"
 #include "meta/meta-remote-access-controller.h"
@@ -11747,11 +11750,43 @@ static gboolean runtime_config_values_equal(GVariant* left, GVariant* right) {
 
 static gboolean runtime_reload_document_supported(GVariant* current, GVariant* candidate) {
     static const char* const reloadable_settings[] = {
-        "animations",        "input",        "input-sources", "permissions",
-        "touchpad-gestures", "window-rules", "workspaces",    NULL};
+        "animations",   "input",      "input-sources", "permissions", "touchpad-gestures",
+        "window-rules", "workspaces", "xwayland",      NULL};
     GVariantIter iter;
     const char* key;
     GVariant* value;
+
+    GVariant* current_xwayland =
+        g_variant_lookup_value(current, "xwayland", G_VARIANT_TYPE_VARDICT);
+    GVariant* candidate_xwayland =
+        g_variant_lookup_value(candidate, "xwayland", G_VARIANT_TYPE_VARDICT);
+    gboolean current_byte_swapped = FALSE;
+    gboolean candidate_byte_swapped = FALSE;
+    if (current_xwayland)
+        g_variant_lookup(current_xwayland, "allow-byte-swapped-clients", "b",
+                         &current_byte_swapped);
+    if (candidate_xwayland)
+        g_variant_lookup(candidate_xwayland, "allow-byte-swapped-clients", "b",
+                         &candidate_byte_swapped);
+    gboolean xwayland_restart_required_changed = current_byte_swapped != candidate_byte_swapped;
+    g_autoptr(GVariant) current_extensions =
+        current_xwayland ? g_variant_lookup_value(current_xwayland, "disable-extensions", NULL)
+                         : NULL;
+    g_autoptr(GVariant) candidate_extensions =
+        candidate_xwayland ? g_variant_lookup_value(candidate_xwayland, "disable-extensions", NULL)
+                           : NULL;
+    gboolean current_extensions_empty =
+        !current_extensions || g_variant_n_children(current_extensions) == 0;
+    gboolean candidate_extensions_empty =
+        !candidate_extensions || g_variant_n_children(candidate_extensions) == 0;
+    xwayland_restart_required_changed |=
+        current_extensions_empty != candidate_extensions_empty ||
+        (!current_extensions_empty &&
+         !runtime_config_values_equal(current_extensions, candidate_extensions));
+    g_clear_pointer(&current_xwayland, g_variant_unref);
+    g_clear_pointer(&candidate_xwayland, g_variant_unref);
+    if (xwayland_restart_required_changed)
+        return FALSE;
 
     g_variant_iter_init(&iter, current);
     while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
@@ -15442,6 +15477,10 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
             goto fail;
         native_runtime_publish_status(control);
     }
+#ifdef HAVE_XWAYLAND
+    if (control->display->x11_display)
+        meta_x11_display_update_gnoblin_xsettings(control->display->x11_display);
+#endif
     return control;
 
 fail:
