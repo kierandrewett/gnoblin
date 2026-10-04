@@ -59,6 +59,7 @@ static void test_portal_preferences(const char* directory) {
     g_autofree char* config_home = g_build_filename(directory, "portal-config", NULL);
     g_autofree char* portal_dir = g_build_filename(config_home, "xdg-desktop-portal", NULL);
     g_autofree char* portal_path = g_build_filename(portal_dir, "gnoblin-portals.conf", NULL);
+    g_autofree char* generic_portal_path = g_build_filename(portal_dir, "portals.conf", NULL);
     const char* source = "gnoblin.configure { portals = {"
                          " default = {'gtk', 'gnoblin'},"
                          " interfaces = {"
@@ -103,6 +104,28 @@ static void test_portal_preferences(const char* directory) {
     g_assert_true(gnoblin_config_sync_portal_selection(empty, config_home, &error));
     g_assert_no_error(error);
     g_assert_true(g_file_test(portal_path, G_FILE_TEST_EXISTS));
+
+    g_assert_cmpint(g_unlink(portal_path), ==, 0);
+    g_assert_true(g_file_set_contents(generic_portal_path, user_preferences, -1, &error));
+    g_assert_no_error(error);
+    g_assert_false(gnoblin_config_sync_portal_selection(document, config_home, &error));
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_EXIST);
+    g_clear_error(&error);
+    g_assert_false(g_file_test(portal_path, G_FILE_TEST_EXISTS));
+    g_clear_pointer(&actual, g_free);
+    g_assert_true(g_file_get_contents(generic_portal_path, &actual, NULL, &error));
+    g_assert_no_error(error);
+    g_assert_cmpstr(actual, ==, user_preferences);
+
+    g_assert_true(g_file_set_contents(portal_path, expected, -1, &error));
+    g_assert_no_error(error);
+    g_assert_false(gnoblin_config_sync_portal_selection(document, config_home, &error));
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_EXIST);
+    g_clear_error(&error);
+    g_assert_false(g_file_test(portal_path, G_FILE_TEST_EXISTS));
+    g_assert_true(gnoblin_config_sync_portal_selection(empty, config_home, &error));
+    g_assert_no_error(error);
+    g_assert_true(g_file_test(generic_portal_path, G_FILE_TEST_EXISTS));
 
     const char* invalid_sources[] = {
         "gnoblin.configure {portals = {}}\n",

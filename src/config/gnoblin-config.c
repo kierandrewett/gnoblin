@@ -1284,6 +1284,7 @@ gboolean gnoblin_config_sync_portal_selection(GVariant* document, const char* co
     const char* home = config_home && *config_home ? config_home : g_get_user_config_dir();
     g_autofree char* directory = g_build_filename(home, "xdg-desktop-portal", NULL);
     g_autofree char* path = g_build_filename(directory, "gnoblin-portals.conf", NULL);
+    g_autofree char* generic_path = g_build_filename(directory, "portals.conf", NULL);
     g_autofree char* existing = NULL;
     gboolean has_existing = g_file_test(path, G_FILE_TEST_EXISTS);
 
@@ -1308,6 +1309,20 @@ gboolean gnoblin_config_sync_portal_selection(GVariant* document, const char* co
                     "user portal preferences at %s take precedence; move or remove that file to "
                     "use gnoblin.configure.portals from your Lua config",
                     path);
+        return FALSE;
+    }
+    if (g_file_test(generic_path, G_FILE_TEST_EXISTS)) {
+        if (has_existing && portal_config_is_managed(existing) && g_unlink(path) != 0 &&
+            errno != ENOENT) {
+            g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                        "could not remove generated portal preferences %s: %s", path,
+                        g_strerror(errno));
+            return FALSE;
+        }
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_EXIST,
+                    "user portal preferences at %s take precedence; move or remove that file to "
+                    "use gnoblin.configure.portals from your Lua config",
+                    generic_path);
         return FALSE;
     }
 
