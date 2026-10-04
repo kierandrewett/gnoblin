@@ -1322,6 +1322,64 @@ gboolean gnoblin_config_sync_portal_selection(GVariant* document, const char* co
     return TRUE;
 }
 
+static gint titlebar_button_index(const char* name) {
+    static const char* const buttons[] = {"menu", "minimize", "maximize", "close", NULL};
+    for (guint i = 0; buttons[i]; i++)
+        if (g_str_equal(name, buttons[i]))
+            return (gint)i;
+    return -1;
+}
+
+static gboolean titlebar_button_side_valid(GVariant* side) {
+    if (!g_variant_is_of_type(side, G_VARIANT_TYPE("av")) || g_variant_n_children(side) > 7)
+        return FALSE;
+
+    gboolean used[4] = {FALSE};
+    guint button_count = 0;
+    gboolean previous_was_spacer = FALSE;
+    gsize length = g_variant_n_children(side);
+    for (gsize i = 0; i < length; i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(side, i);
+        g_autoptr(GVariant) item = g_variant_get_variant(boxed);
+        if (!g_variant_is_of_type(item, G_VARIANT_TYPE_STRING))
+            return FALSE;
+
+        const char* name = g_variant_get_string(item, NULL);
+        if (g_str_equal(name, "spacer")) {
+            if (i == 0 || i + 1 == length || previous_was_spacer)
+                return FALSE;
+            previous_was_spacer = TRUE;
+            continue;
+        }
+
+        gint index = titlebar_button_index(name);
+        if (index < 0 || used[index])
+            return FALSE;
+        used[index] = TRUE;
+        button_count++;
+        previous_was_spacer = FALSE;
+    }
+
+    return button_count <= G_N_ELEMENTS(used);
+}
+
+static gboolean titlebar_button_layout_valid(GVariant* layout) {
+    if (!g_variant_is_of_type(layout, G_VARIANT_TYPE_VARDICT))
+        return FALSE;
+
+    gboolean valid = TRUE;
+    GVariantIter iter;
+    const char* name;
+    GVariant* value;
+    g_variant_iter_init(&iter, layout);
+    while (valid && g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+        valid = (g_str_equal(name, "left") || g_str_equal(name, "right")) &&
+                titlebar_button_side_valid(value);
+        g_variant_unref(value);
+    }
+    return valid;
+}
+
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     g_autoptr(GVariant) shell = g_variant_lookup_value(document, "shell", NULL);
     if (shell) {
@@ -1484,6 +1542,8 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
                     : g_variant_is_of_type(value, G_VARIANT_TYPE_INT64) ? g_variant_get_int64(value)
                                                                         : -1;
                 valid = number >= 0 && (guint64)number <= G_MAXUINT;
+            } else if (g_str_equal(name, "button-layout")) {
+                valid = titlebar_button_layout_valid(value);
             } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
                 const char* string = g_variant_get_string(value, NULL);
                 if (g_str_equal(name, "focus-mode"))
