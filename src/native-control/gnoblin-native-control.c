@@ -31,6 +31,7 @@
 #include "backends/meta-keymap-description-private.h"
 #include "backends/meta-monitor-private.h"
 #include "backends/meta-output.h"
+#include "backends/meta-settings-private.h"
 #include "clutter/clutter.h"
 #include "compositor/meta-window-actor-private.h"
 #include "compositor/meta-window-actor-x11.h"
@@ -8469,6 +8470,8 @@ static void native_settings_changed(guint64 revision, gpointer user_data) {
             : NULL;
     g_autoptr(GVariant) xwayland_preferences =
         config ? g_variant_lookup_value(config, "xwayland", G_VARIANT_TYPE_VARDICT) : NULL;
+    g_autoptr(GVariant) monitor_preferences =
+        config ? g_variant_lookup_value(config, "monitors", G_VARIANT_TYPE_VARDICT) : NULL;
     native_apply_location_policy(control, config);
     const char* cursor_theme = "default";
     gint64 cursor_size = 24;
@@ -8482,6 +8485,8 @@ static void native_settings_changed(guint64 revision, gpointer user_data) {
     meta_prefs_set_gnoblin_cursor_config(cursor_theme, (int)cursor_size);
     meta_settings_apply_gnoblin_xwayland_preferences(meta_backend_get_settings(control->backend),
                                                      xwayland_preferences);
+    meta_settings_apply_gnoblin_privacy_screen_preferences(
+        meta_backend_get_settings(control->backend), monitor_preferences);
     native_apply_all_window_rules(control);
     g_autoptr(GVariant) configured_gestures =
         config ? g_variant_lookup_value(config, "touchpad-gestures", G_VARIANT_TYPE("av")) : NULL;
