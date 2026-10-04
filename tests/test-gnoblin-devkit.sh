@@ -101,6 +101,9 @@ gnoblin.configure {
                 slow_keys = {enabled = false, delay_ms = 400},
             },
         },
+        tablets = {
+            ["056a:00b9"] = {area = {0.05, 0.1, 0.15, 0.2}},
+        },
     },
     workspaces = {
         {id = "main", name = "Main"},
@@ -115,6 +118,9 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     assert(gnoblin.settings.input.mouse.drag_threshold == 24)
     assert(gnoblin.settings.input.mouse.middle_click_emulation == true)
     assert(gnoblin.settings.input.touchpad.middle_click_emulation == false)
+    local area = gnoblin.settings.input.tablets["056a:00b9"].area
+    assert(#area == 4 and area[1] == 0.05 and area[2] == 0.1 and
+        area[3] == 0.15 and area[4] == 0.2)
     assert(not pcall(function()
         gnoblin.settings.window_management.focus_mode = "sloppy"
     end))
@@ -154,6 +160,13 @@ assert(gnoblin.settings.input.mouse.double_click_time == 350)
 print("LUA_API:mouse-double-click-time")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/mouse-settings.lua"
+cat > "$XDG_RUNTIME_DIR/tablet-area.lua" <<'LUA'
+local area = gnoblin.settings.input.tablets["056a:00b9"].area
+assert(#area == 4 and area[1] == 0.05 and area[2] == 0.1 and
+    area[3] == 0.15 and area[4] == 0.2)
+print("LUA_API:tablet-active-area-config")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/tablet-area.lua"
 cat > "$XDG_RUNTIME_DIR/workspaces.lua" <<'LUA'
 local workspaces = gnoblin.workspaces.list()
 assert(#workspaces == 2)

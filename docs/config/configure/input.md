@@ -39,7 +39,16 @@ the commands and their output.
 | `mapping`     | `"absolute"` or `"relative"`  | Absolute maps pen position to a fixed tablet area; relative moves the pointer like a mouse. |
 | `left_handed` | Boolean                       | Reverses the tablet's button orientation.                                                   |
 | `keep_aspect` | Boolean                       | Preserves proportions when tablet and display have different shapes.                        |
+| `area`        | Four fractions                | Crops the tablet's active area.                                                             |
 | `pad_buttons` | Array of button action tables | Sets actions for tablet-pad buttons.                                                        |
+
+Set `area` in left, right, top, bottom order. Each value is a fraction of the
+tablet dimension: `0.1` means 10%. Values must be at least `0` and below `1`,
+and opposing edges must add to less than `1`.
+
+If you omit `area` or set it to `"inherit"`, Mutter uses the system preference.
+Calibration applies only to integrated tablets that expose a libinput
+calibration matrix; other devices keep their system behavior.
 
 Tablet-pad button numbers start at `0`. Each entry needs a unique `button` from
 `0` to `255` and an `action`:
@@ -71,6 +80,7 @@ gnoblin.configure {
             ["1234:5678"] = {
                 mapping = "absolute",
                 keep_aspect = true,
+                area = {0.03, 0.03, 0.05, 0.05},
                 pad_buttons = {
                     {button = 0, action = "keybinding", keybinding = "<Super>e"},
                     {button = 1, action = "switch-monitor"},
@@ -174,6 +184,7 @@ gnoblin.configure {
                 mapping = "absolute" | "relative"?,
                 left_handed = boolean?,
                 keep_aspect = boolean?,
+                area = {number, number, number, number} | "inherit"?,
                 pad_buttons = TabletPadButtonAction[] | "inherit"?,
             }, ...,
         }?,
