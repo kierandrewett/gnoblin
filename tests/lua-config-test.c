@@ -622,6 +622,7 @@ int main(void) {
         "      sticky_keys = {enabled = true, two_key_off = true, beep_on_modifier = true},"
         "      toggle_keys = {enabled = true} } },"
         "  tablets = { ['056a:00b9'] = { mapping = 'relative', keep_aspect = true,"
+        "    area = {0.05, 0.1, 0.15, 0.2},"
         "    pad_buttons = {{button = 0, action = 'keybinding', keybinding = '<Super>e'},"
         "      {button = 2, action = 'switch-monitor'}} },"
         "    ['1234:abcd'] = { mapping = 'inherit' } },"
@@ -731,6 +732,15 @@ int main(void) {
     g_autoptr(GVariant) mapped_tablet =
         g_variant_lookup_value(tablets, "056a:00b9", G_VARIANT_TYPE_VARDICT);
     g_assert_nonnull(mapped_tablet);
+    g_autoptr(GVariant) area = g_variant_lookup_value(mapped_tablet, "area", G_VARIANT_TYPE("ad"));
+    g_assert_nonnull(area);
+    gsize area_length = 0;
+    const double* area_values = g_variant_get_fixed_array(area, &area_length, sizeof(double));
+    g_assert_cmpuint(area_length, ==, 4);
+    g_assert_cmpfloat(area_values[0], ==, 0.05);
+    g_assert_cmpfloat(area_values[1], ==, 0.1);
+    g_assert_cmpfloat(area_values[2], ==, 0.15);
+    g_assert_cmpfloat(area_values[3], ==, 0.2);
     g_autoptr(GVariant) pad_buttons =
         g_variant_lookup_value(mapped_tablet, "pad-buttons", G_VARIANT_TYPE("av"));
     g_assert_nonnull(pad_buttons);
@@ -763,7 +773,8 @@ int main(void) {
 
     g_assert_true(g_file_set_contents(explicit_root,
                                       "gnoblin.configure {input = {mouse = {speed = 'inherit'},"
-                                      " tablets = {['1234:abcd'] = {mapping = 'inherit'}},"
+                                      " tablets = {['1234:abcd'] = {mapping = 'inherit',"
+                                      " area = 'inherit'}},"
                                       " keyboard = {accessibility = 'inherit'},"
                                       " orientation_lock = 'inherit'}}\n",
                                       -1, &error));
@@ -785,6 +796,10 @@ int main(void) {
         "gnoblin.configure {input = {mouse = {unknown = 'inherit'}}}\n",
         "gnoblin.configure {input = {touchpad = {scroll_speed = 2.1}}}\n",
         "gnoblin.configure {input = {tablets = {['1234:abcd'] = {speed = 'inherit'}}}}\n",
+        "gnoblin.configure {input = {tablets = {['1234:abcd'] = {area = {0, 0, 0}}}}}\n",
+        "gnoblin.configure {input = {tablets = {['1234:abcd'] = {area = {-0.01, 0, 0, 0}}}}}\n",
+        "gnoblin.configure {input = {tablets = {['1234:abcd'] = {area = {1, 0, 0, 0}}}}}\n",
+        "gnoblin.configure {input = {tablets = {['1234:abcd'] = {area = {0.7, 0.3, 0, 0}}}}}\n",
         "gnoblin.configure {input = {keyboard = {delay = 0}}}\n",
         "gnoblin.configure {input = {mouse = {accel_curve = {step = 0, points = {0, 1}}}}}\n",
         "gnoblin.configure {input = {mouse = {accel_curve = {step = 1, points = {0}}}}}\n",

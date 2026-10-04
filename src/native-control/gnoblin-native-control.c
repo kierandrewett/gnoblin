@@ -3334,6 +3334,7 @@ typedef enum {
     INPUT_ACCEL_CURVE,
     INPUT_ACCESSIBILITY,
     INPUT_PAD_BUTTONS,
+    INPUT_TABLET_AREA,
 } InputKind;
 
 typedef struct {
@@ -3397,6 +3398,7 @@ static const InputField input_fields[] = {
     {"tablets", "mapping", INPUT_CHOICE, "absolute relative"},
     {"tablets", "left-handed", INPUT_BOOLEAN},
     {"tablets", "keep-aspect", INPUT_BOOLEAN},
+    {"tablets", "area", INPUT_TABLET_AREA},
     {"tablets", "pad-buttons", INPUT_PAD_BUTTONS},
     {"styluses", "eraser-button-mode", INPUT_CHOICE, "default button"},
     {"styluses", "eraser-button-action", INPUT_CHOICE,
@@ -3532,11 +3534,51 @@ static GVariant* normalize_tablet_pad_buttons(GVariant* value, GError** error) {
     return g_variant_ref_sink(g_variant_builder_end(&buttons));
 }
 
+static GVariant* normalize_tablet_area(GVariant* value, GError** error) {
+    double values[4];
+
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE("ad"))) {
+        gsize length = 0;
+        const double* array = g_variant_get_fixed_array(value, &length, sizeof(double));
+        if (length != G_N_ELEMENTS(values))
+            goto invalid_area;
+        for (gsize i = 0; i < G_N_ELEMENTS(values); i++)
+            values[i] = array[i];
+    } else if (g_variant_is_of_type(value, G_VARIANT_TYPE("av")) &&
+               g_variant_n_children(value) == G_N_ELEMENTS(values)) {
+        for (gsize i = 0; i < G_N_ELEMENTS(values); i++) {
+            g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+            g_autoptr(GVariant) item = g_variant_get_variant(boxed);
+            if (!input_numeric_value(item, &values[i]))
+                goto invalid_area;
+        }
+    } else {
+        goto invalid_area;
+    }
+
+    for (gsize i = 0; i < G_N_ELEMENTS(values); i++)
+        if (!isfinite(values[i]) || values[i] < 0 || values[i] >= 1)
+            goto invalid_area;
+    if (values[0] + values[1] >= 1 || values[2] + values[3] >= 1)
+        goto invalid_area;
+
+    return g_variant_ref_sink(g_variant_new_fixed_array(G_VARIANT_TYPE_DOUBLE, values,
+                                                        G_N_ELEMENTS(values), sizeof(double)));
+
+invalid_area:
+    g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                        "input.tablets.area must contain four fractions in [0, 1), with opposing "
+                        "edges totaling less than 1");
+    return NULL;
+}
+
 static GVariant* normalize_input_value(const InputField* field, GVariant* value, GError** error) {
     if (field->kind == INPUT_ACCESSIBILITY)
         return normalize_input_accessibility(value, error);
     if (field->kind == INPUT_PAD_BUTTONS)
         return normalize_tablet_pad_buttons(value, error);
+    if (field->kind == INPUT_TABLET_AREA)
+        return normalize_tablet_area(value, error);
     if (field->kind == INPUT_ACCEL_CURVE && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
         GVariantBuilder curve;
         GVariantIter iter;
