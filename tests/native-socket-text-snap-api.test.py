@@ -29,6 +29,35 @@ def api_minor(header: str) -> int:
 
 
 class NativeSocketTextSnapTests(unittest.TestCase):
+    def test_configured_shortcut_input_capture_uses_dynamic_bare_super_path(self):
+        source = CONTROL.read_text()
+        capture_start = source.index("static gboolean apply_configured_capture_shortcut(")
+        capture_start = source.index("static gboolean apply_configured_capture_shortcut(", capture_start + 1)
+        apply_capture = source[
+            capture_start : source.index("static void dispatch_dynamic_shortcut_activated(", capture_start)
+        ]
+        start_shortcuts = function_body(
+            source,
+            "static gboolean start_native_shortcuts(",
+            "typedef enum {",
+        )
+        settings_changed = function_body(
+            source,
+            "static void native_settings_changed(",
+            "static gboolean native_touchpad_action_supported(",
+        )
+
+        self.assertIn('g_str_equal(binding, "Super")', apply_capture)
+        self.assertIn('g_str_equal(trigger, "release")', apply_capture)
+        self.assertIn("command || action", apply_capture)
+        self.assertIn("capture_count > 1", apply_capture)
+        self.assertIn("if (has_overlay || has_capture)", start_shortcuts)
+        self.assertIn("arm_bare_super_shortcut", apply_capture)
+        self.assertIn('g_str_has_prefix(shortcut->owner_id, "config:")', source)
+        self.assertIn("apply_configured_capture_shortcut(control, document, error)", start_shortcuts)
+        self.assertIn('clear_configured_capture_shortcut(control, "config_changed")', settings_changed)
+        self.assertIn("apply_configured_capture_shortcut(control, config, &capture_error)", settings_changed)
+
     def test_cmake_api_minor_is_derived_from_control_header(self):
         cmake = (ROOT / "CMakeLists.txt").read_text()
         self.assertIn('REGEX "^#define GNOBLIN_NATIVE_CONTROL_API_MINOR [0-9]+$"', cmake)

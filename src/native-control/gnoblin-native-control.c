@@ -329,6 +329,9 @@ static void revoke_menu_contexts(GnoblinNativeControl* control);
 static void revoke_text_targets(GnoblinNativeControl* control);
 static void native_runtime_fail_pending_requests(GnoblinNativeControl* control, const char* reason);
 static void clear_runtime_dynamic_shortcuts(GnoblinNativeControl* control, const char* reason);
+static void clear_configured_capture_shortcut(GnoblinNativeControl* control, const char* reason);
+static gboolean apply_configured_capture_shortcut(GnoblinNativeControl* control, GVariant* document,
+                                                  GError** error);
 static void stop_native_shortcut_capture(GnoblinNativeControl* control, gboolean complete,
                                          gboolean ok, const char* accelerator,
                                          const char* error_code, const char* message);
@@ -2645,6 +2648,77 @@ static void clear_runtime_dynamic_shortcuts(GnoblinNativeControl* control, const
     }
 }
 
+static void clear_configured_capture_shortcut(GnoblinNativeControl* control, const char* reason) {
+    NativeDynamicShortcut* shortcut = control ? control->bare_super_shortcut : NULL;
+    if (!shortcut || !shortcut->owner_id || !g_str_has_prefix(shortcut->owner_id, "config:"))
+        return;
+    dynamic_shortcut_end_session(control, shortcut, reason);
+    control->bare_super_shortcut = NULL;
+    native_dynamic_shortcut_free(shortcut);
+}
+
+static NativeDynamicShortcut* arm_bare_super_shortcut(GnoblinNativeControl* control, const char* id,
+                                                      const char* owner_id, Client* client,
+                                                      guint64 session_id, GError** error);
+
+static gboolean apply_configured_capture_shortcut(GnoblinNativeControl* control, GVariant* document,
+                                                  GError** error) {
+    g_autoptr(GVariant) declarations =
+        document ? g_variant_lookup_value(document, "shortcuts", G_VARIANT_TYPE("av")) : NULL;
+    guint capture_count = 0;
+    g_autofree char* capture_name = NULL;
+    if (!declarations)
+        return TRUE;
+    for (gsize i = 0; i < g_variant_n_children(declarations); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(declarations, i);
+        g_autoptr(GVariant) entry = g_variant_get_variant(boxed);
+        g_autoptr(GVariant) capture = g_variant_lookup_value(entry, "capture-input", NULL);
+        if (!capture)
+            continue;
+        if (!g_variant_is_of_type(capture, G_VARIANT_TYPE_BOOLEAN)) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "capture_input must be a boolean");
+            return FALSE;
+        }
+        if (!g_variant_get_boolean(capture))
+            continue;
+        const char* name = NULL;
+        const char* binding = NULL;
+        const char* trigger = "press";
+        g_autoptr(GVariant) command = g_variant_lookup_value(entry, "command", NULL);
+        g_autoptr(GVariant) action = g_variant_lookup_value(entry, "action", NULL);
+        g_autoptr(GVariant) trigger_value = g_variant_lookup_value(entry, "trigger", NULL);
+        if (!g_variant_lookup(entry, "name", "&s", &name) ||
+            !g_variant_lookup(entry, "binding", "&s", &binding)) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "capture_input shortcut needs a name and binding");
+            return FALSE;
+        }
+        if (trigger_value && g_variant_is_of_type(trigger_value, G_VARIANT_TYPE_STRING))
+            trigger = g_variant_get_string(trigger_value, NULL);
+        capture_count++;
+        if (command || action || !g_str_equal(binding, "Super") ||
+            !g_str_equal(trigger, "release") || capture_count > 1) {
+            g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                        "shortcuts.%s.capture_input requires the sole command-free, action-free "
+                        "bare Super binding with trigger='release'",
+                        name);
+            return FALSE;
+        }
+        capture_name = g_strdup(name);
+    }
+    if (capture_name) {
+        g_autofree char* owner_id =
+            g_strdup_printf("config:%" G_GUINT64_FORMAT, native_config_generation(control));
+        guint64 session_id = ++control->next_shortcut_session_id;
+        if (!session_id)
+            session_id = ++control->next_shortcut_session_id;
+        if (!arm_bare_super_shortcut(control, capture_name, owner_id, NULL, session_id, error))
+            return FALSE;
+    }
+    return TRUE;
+}
+
 static void dispatch_dynamic_shortcut_activated(GnoblinNativeControl* control, guint action,
                                                 const ClutterEvent* event) {
     if (!control || control->stopping || !event || !control->dynamic_shortcuts ||
@@ -3213,7 +3287,7 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
     g_autoptr(GVariant) declarations =
         document ? g_variant_lookup_value(document, "shortcuts", NULL) : NULL;
     if (!declarations)
-        return TRUE;
+        return apply_configured_capture_shortcut(control, document, error);
     if (!g_variant_is_of_type(declarations, G_VARIANT_TYPE("av")) ||
         g_variant_n_children(declarations) > 256) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -3223,6 +3297,7 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
     g_autoptr(GHashTable) names = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     g_autoptr(GPtrArray) shortcuts = g_ptr_array_new_with_free_func(native_shortcut_free);
     gboolean has_overlay = FALSE;
+    gboolean has_capture = FALSE;
     for (gsize index = 0; index < g_variant_n_children(declarations); index++) {
         g_autoptr(GVariant) boxed = g_variant_get_child_value(declarations, index);
         g_autoptr(GVariant) entry = g_variant_get_variant(boxed);
@@ -3255,6 +3330,15 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
             if (!g_ascii_isalnum(*character) && *character != '_' && *character != '-')
                 goto invalid_shortcut;
         action_value = g_variant_lookup_value(entry, "action", NULL);
+        capture_value = g_variant_lookup_value(entry, "capture-input", NULL);
+        if (capture_value && g_variant_is_of_type(capture_value, G_VARIANT_TYPE_BOOLEAN) &&
+            g_variant_get_boolean(capture_value)) {
+            if (has_overlay || has_capture)
+                goto invalid_shortcut;
+            has_capture = TRUE;
+            g_hash_table_add(names, g_strdup(name));
+            continue;
+        }
         if (action_value) {
             const char* group = NULL;
             g_autofree char* native_name = NULL;
@@ -3294,17 +3378,9 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
             if (!g_str_equal(trigger, "press") && !g_str_equal(trigger, "release"))
                 goto invalid_shortcut;
         }
-        capture_value = g_variant_lookup_value(entry, "capture-input", NULL);
         if (capture_value) {
             if (!g_variant_is_of_type(capture_value, G_VARIANT_TYPE_BOOLEAN))
                 goto invalid_shortcut;
-            if (g_variant_get_boolean(capture_value)) {
-                g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
-                            "shortcuts.%s.capture-input is unsupported in the standalone session; "
-                            "use a command or native action",
-                            name);
-                goto invalid_shortcut;
-            }
         }
         command = g_variant_lookup_value(entry, "command", NULL);
         NativeShortcut* shortcut = g_new0(NativeShortcut, 1);
@@ -3321,7 +3397,7 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
         }
         shortcut->overlay = g_str_equal(binding, "Super");
         shortcut->release = g_str_equal(trigger, "release");
-        if (shortcut->overlay && (!shortcut->release || has_overlay)) {
+        if (shortcut->overlay && (!shortcut->release || has_overlay || has_capture)) {
             native_shortcut_free(shortcut);
             goto invalid_shortcut;
         }
@@ -3359,6 +3435,8 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
         }
     }
     control->shortcuts = g_steal_pointer(&shortcuts);
+    if (!apply_configured_capture_shortcut(control, document, error))
+        return FALSE;
     meta_display_set_gnoblin_shortcut_activated_handler(control->display,
                                                         native_trusted_shortcut_activated, control);
     g_signal_connect(control->display, "accelerator-activated",
@@ -8564,10 +8642,15 @@ static void native_settings_changed(guint64 revision, gpointer user_data) {
     if (!control || control->stopping || !control->display)
         return;
     clear_runtime_dynamic_shortcuts(control, "config_changed");
+    clear_configured_capture_shortcut(control, "config_changed");
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session, "config_changed");
 
     g_autoptr(GVariant) config = native_config_document(control);
+    g_autoptr(GError) capture_error = NULL;
+    if (!apply_configured_capture_shortcut(control, config, &capture_error))
+        g_warning("gnoblin-native-control: could not apply configured shortcut input capture: %s",
+                  capture_error ? capture_error->message : "invalid capture configuration");
     g_autoptr(GVariant) window_management =
         config ? g_variant_lookup_value(config, "window-management", G_VARIANT_TYPE_VARDICT) : NULL;
     g_autoptr(GVariant) compositor_preferences =
