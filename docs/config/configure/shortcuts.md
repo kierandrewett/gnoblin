@@ -25,12 +25,13 @@ _The Gnoblin shortcut opens Fuzzel; Firefox is the selected result._
 
 ## Run a built-in action
 
-An `action` names an existing Mutter keybinding as `group.key`. Accepted
-groups are `wm`, `mutter`, and `wayland`. Each maps to a GSettings schema, and
-the key must exist in that schema on your system.
+An `action` uses the `group.key` form for a built-in Mutter action. Available
+names depend on the Mutter version in your Gnoblin build.
 
-Run `gsettings list-keys SCHEMA` to discover keys. Run
-`gsettings describe SCHEMA KEY` to read one key's purpose.
+Accepted groups are `wm`, `mutter`, and `wayland`.
+
+List actions with `gnoblinctl shortcut actions` while a Gnoblin session is
+running, or read them from Lua with `gnoblin.shortcuts.actions(group?)`.
 
 | Field     | Accepted values                                           | Meaning                                                                       |
 | --------- | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
@@ -55,10 +56,9 @@ gnoblin.configure {
 }
 ```
 
-This binds Mutter's `close` action. GNOME's [Gio.Settings reference](https://docs.gtk.org/gio/class.Settings.html)
-explains schema-backed settings; Gnoblin's
-[keybinding reference](/config/configure/keybindings) lists all groups and
-shows how to find keys on your system.
+This binds Mutter's `close` action. See the
+[keybinding reference](/config/configure/keybindings) for group names and how
+to list available actions.
 
 In the standalone session, `wm`, `mutter`, and `wayland` actions are applied by
 Mutter at startup.

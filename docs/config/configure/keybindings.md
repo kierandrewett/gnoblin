@@ -19,9 +19,9 @@ gnoblin.configure {
 }
 ```
 
-An action is a key in a GSettings schema. Write it as a group and action name;
-the names available depend on the installed GNOME version. For example,
-`wm.close` means the `close` key in Mutter's window-manager schema.
+An action is a built-in Mutter action. Write it as a group and action name;
+the available names depend on the Mutter version in your Gnoblin build. For
+example, `wm.close` selects Mutter's window-manager close action.
 
 The group selects one of these schemas:
 
@@ -31,7 +31,7 @@ The group selects one of these schemas:
 | `mutter`  | `org.gnome.mutter.keybindings`         |
 | `wayland` | `org.gnome.mutter.wayland.keybindings` |
 
-Use the GSettings key with underscores in Lua. Give each action a list of
+Use the action's `key` with underscores in Lua. Give each action a list of
 accelerators. An empty list disables the action, and removing the override
 restores its default binding on reload.
 
@@ -59,7 +59,7 @@ and resolve conflicts between shortcuts.
 ## Type definition
 
 Only the actions you want to override need to be included. Their names and
-available groups depend on the installed GNOME version.
+available groups depend on the Mutter version in your Gnoblin build.
 
 ```lua
 gnoblin.configure {
