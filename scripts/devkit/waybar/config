@@ -1,0 +1,21 @@
+{
+  "layer": "top",
+  "position": "top",
+  "height": 38,
+  "modules-left": ["clock"],
+  "modules-right": ["cpu", "memory"],
+  "clock": {
+    "format": "{:%A, %d %B  %H:%M}",
+    "tooltip": false
+  },
+  "cpu": {
+    "format": "CPU {usage}%",
+    "interval": 5,
+    "tooltip": false
+  },
+  "memory": {
+    "format": "RAM {used:0.1f}/{total:0.1f} GiB",
+    "interval": 5,
+    "tooltip": false
+  }
+}

@@ -18,9 +18,14 @@ A desktop viewer and terminal open. Programs started from that terminal connect
 to the nested compositor. The devkit provides a 1280×720 output inside the
 viewer.
 
-With the default config, that output is empty until you start a client. Gnoblin
-provides the compositor, not a built-in panel, launcher, or desktop shell. The
-terminal is a separate window on your host desktop. The preview also uses a
+When Waybar is installed, the preview starts a small panel that shows the time,
+CPU use, and memory use with a devkit-owned config.
+
+Waybar is an optional shell client; Gnoblin provides the compositor and runtime
+APIs, not a built-in panel or launcher. Without Waybar, the output stays empty
+until you start a shell or layer-shell client.
+
+The terminal is a separate window on your host desktop. The preview uses a
 disposable config directory; it does not load your normal Gnoblin config or
 start shell services from your host login.
 
@@ -62,10 +67,10 @@ Close the terminal to stop the devkit.
 
 ## Options
 
-| Variable                       | Accepted values      | Default | Purpose                                                                |
-| ------------------------------ | -------------------- | ------- | ---------------------------------------------------------------------- |
-| `GNOBLIN_DEVKIT_EXEC`          | Shell command string | Unset   | Runs the command with `bash -c` instead of opening a terminal.         |
-| `GNOBLIN_DEVKIT_CONFIG_SOURCE` | Directory path       | Unset   | Copies this config tree into the devkit's disposable config directory. |
+| Variable                       | Accepted values      | Default | Purpose                                                                                            |
+| ------------------------------ | -------------------- | ------- | -------------------------------------------------------------------------------------------------- |
+| `GNOBLIN_DEVKIT_EXEC`          | Shell command string | Unset   | Runs the command with `bash -c` instead of opening a terminal or starting the sample Waybar panel. |
+| `GNOBLIN_DEVKIT_CONFIG_SOURCE` | Directory path       | Unset   | Copies this config tree into the devkit's disposable config directory.                             |
 
 ## Run a command
 

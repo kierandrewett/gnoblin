@@ -33,8 +33,8 @@ The build does not change system packages.
   --dry-run           Show stages without changing files
   --target NAME       Build a CMake target (default: gnoblin-session)
   --register-session  Add the standalone Gnoblin login
-  --preview           Open an empty compositor viewer and terminal
-                      Start a shell client from the terminal to see its UI.
+  --preview           Open the compositor viewer and terminal; start a sample
+                      Waybar panel when Waybar is installed.
   --terminal NAME     Terminal to open with --preview (default: first available)
   --help              Show this help
 HELP

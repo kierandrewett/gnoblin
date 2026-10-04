@@ -55,6 +55,7 @@ RUNTIME_PID=''
 DBUS_PID=''
 TEST_IBUS_PID_FILE=''
 PREVIEW_PID=''
+SHELL_PID=''
 TERMINAL_PID=''
 cleaned=''
 cleanup() {
@@ -66,6 +67,11 @@ cleanup() {
         kill -- "-$PREVIEW_PID" 2>/dev/null || true
         kill "$PREVIEW_PID" 2>/dev/null || true
         wait "$PREVIEW_PID" 2>/dev/null || true
+    fi
+    if [[ -n $SHELL_PID ]]; then
+        kill -- "-$SHELL_PID" 2>/dev/null || true
+        kill "$SHELL_PID" 2>/dev/null || true
+        wait "$SHELL_PID" 2>/dev/null || true
     fi
     if [[ -n $TERMINAL_PID ]]; then
         kill "$TERMINAL_PID" 2>/dev/null || true
@@ -217,6 +223,23 @@ if [[ -z $terminal ]]; then
         fi
     done
 fi
+
+if command -v waybar >/dev/null 2>&1; then
+    WAYLAND_DISPLAY="$DISP" setsid waybar \
+        --config "$ROOT/scripts/devkit/waybar/config" \
+        --style "$ROOT/scripts/devkit/waybar/style.css" \
+        >"$DK/waybar.log" 2>&1 &
+    SHELL_PID=$!
+    sleep 0.5
+    if kill -0 "$SHELL_PID" 2>/dev/null; then
+        echo 'Started the sample Waybar panel.'
+    else
+        echo 'The sample Waybar panel could not start. Recent output:' >&2
+        tail -n 20 "$DK/waybar.log" >&2
+    fi
+else
+    echo 'Waybar is not installed; the devkit output will stay empty until you start a shell client.'
+fi
 if [[ -z $terminal ]]; then
     echo 'No terminal found. Install foot, kitty, or alacritty, or pass its name.' >&2
     exit 1
@@ -229,7 +252,8 @@ Gnoblin devkit
 
 This terminal is shown on your host desktop. Commands run here target the
 nested Gnoblin session. Its home directory is temporary, so use an absolute
-path to a shell checkout. Start a shell integration, for example:
+path to a shell checkout. If Waybar is installed, the preview starts a sample
+panel. To run your own shell integration, for example:
 
     qs -p /path/to/my-shell
 

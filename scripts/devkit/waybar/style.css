@@ -1,0 +1,22 @@
+* {
+    border: none;
+    border-radius: 0;
+    font-family: sans-serif;
+    font-size: 13px;
+    min-height: 0;
+}
+
+window#waybar {
+    background-color: rgba(28, 30, 36, 0.96);
+    color: #f5f5f5;
+}
+
+#clock {
+    font-weight: 600;
+}
+
+#clock,
+#cpu,
+#memory {
+    padding: 0 12px;
+}
