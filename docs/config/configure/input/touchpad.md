@@ -12,6 +12,7 @@ gnoblin.configure {
             tap_to_click = true,
             middle_click_emulation = true,
             two_finger_scrolling_enabled = true,
+            disable_while_typing_timeout = 500,
         },
     },
 }
@@ -36,8 +37,15 @@ gnoblin.configure {
 | `tap_and_drag`                 | Boolean         | Drag by tapping, then moving a finger.                           |
 | `tap_and_drag_lock`            | Boolean         | Keep a tap-and-drag active briefly after lifting your finger.    |
 | `disable_while_typing`         | Boolean         | Helps prevent pointer movement from a resting palm while typing. |
+| `disable_while_typing_timeout` | 100–5000 ms     | Wait this long after typing before enabling the touchpad again.  |
 | `edge_scrolling_enabled`       | Boolean         | Scroll along the touchpad edge, if supported.                    |
 | `two_finger_scrolling_enabled` | Boolean         | Scroll by moving two fingers, if supported.                      |
+
+Set `disable_while_typing_timeout` to an integer from 100 to 5000
+milliseconds. Omit it or set it to `"inherit"` to keep the system value when
+available. An explicit Lua value works even when the installed settings schema
+does not define this key. The touchpad must support disable-while-typing, and
+the timeout takes effect only while that behavior is enabled.
 
 ## Click mapping
 
@@ -98,6 +106,7 @@ gnoblin.configure {
             tap_and_drag = boolean?,
             tap_and_drag_lock = boolean?,
             disable_while_typing = boolean?,
+            disable_while_typing_timeout = integer?, -- 100 to 5000 milliseconds
             edge_scrolling_enabled = boolean?,
             two_finger_scrolling_enabled = boolean?,
             tap_button_map = "default" | "lrm" | "lmr"?,
