@@ -10,7 +10,7 @@ nested preview, and real login each verify a different part of the session.
 | `just check`                      | Source manifests, patch metadata, scripts, configuration, and packaging checks                         | Python and repository tooling                                      |
 | `just test-runtime`               | CTest runtime, Lua configuration, protocol, and CLI tests                                              | A configured build in `build/ninja`                                |
 | `just test-all`                   | Builds the standalone session, then runs the native runtime checks                                     | Installed source-build dependencies                                |
-| `just test-preview`               | Config and native control behavior in a fresh nested Gnoblin session                                   | A working Wayland desktop                                          |
+| `just test-preview`               | Config, native controls, and visible workspace animation frames in a fresh nested Gnoblin session      | A working Wayland desktop and `grim`                               |
 | `just test-privacy-pipewire`      | Live microphone and camera activity through `gnoblin.privacy.state()`                                  | Source build, Wayland desktop, PipeWire tools                      |
 | `just test-window-csd`            | Lua `remove_csd` pixel behavior in a fresh nested Gnoblin session                                      | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
 | `just test-window-borders`        | Lua border rule pixels in a fresh nested Gnoblin session                                               | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
