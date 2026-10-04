@@ -287,7 +287,7 @@ for the complete example and type shape.
 | ---------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | `WindowRule`     | `match`                                                     | Existing compositor-owned fields in the [window-rule schema](../docs/config/window_rule.md), without shell-only animation events |
 | `PermissionRule` | `name`, `match`, nonempty `capabilities`, `level`           | `monitors` for `screen-cast` or `remote-desktop`; `devices` and `clipboard` for `remote-desktop`                                 |
-| `Shortcut`       | `name`, `binding`, and exactly one of `command` or `action` | `trigger`, `capture_input`, `enable`                                                                                             |
+| `Shortcut`       | `name`, `binding`, and exactly one of `command` or `action` | `trigger`, `enable`                                                                                                              |
 | `Animation`      | `name`, `event`, and `from`/`to` or `keyframes`             | `enable`, `duration`, `ease`, `origin`, `target`                                                                                 |
 | `Autostart`      | `name`, nonempty `command` array                            | `when = "on_login"`, `enable`                                                                                                    |
 
@@ -298,6 +298,9 @@ create a second spelling. `PermissionRule.match` and the string fields in
 verified portal identities for permission rules and window properties for
 window rules. Runtime operations act on resolved object IDs rather than
 re-evaluating configuration rules.
+
+Input capture is available to owner-scoped runtime shortcut bindings through
+`gnoblin.shortcuts.bind`; it is not a field on declarative `Shortcut` records.
 
 `WindowRule.match.app_id`, `title`, and `layer` use Lua 5.4
 `string.find` pattern semantics. Patterns are byte-oriented and search anywhere
