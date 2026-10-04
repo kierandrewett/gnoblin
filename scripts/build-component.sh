@@ -96,6 +96,9 @@ else
     meson install -C "$build_dir" --no-rebuild
 fi
 if [ "$name" = mutter ]; then
+    python3 "$root/scripts/generate-mutter-keybinding-catalog.py" \
+        "$source_dir/src/core/keybindings.c" \
+        "$installed_prefix/share/gnoblin/native-keybindings.json"
     devkit_marker="$installed_prefix/share/gnoblin/mutter-devkit-enabled"
     case "$devkit" in
         enabled | true | TRUE | 1)
