@@ -239,7 +239,18 @@ window:resize {{width = {TARGET_WIDTH}, height = {TARGET_HEIGHT}}}
         stderr=subprocess.PIPE,
         text=True,
     )
-    started = receive_animation(stream, EVENTS[0])
+    try:
+        started = receive_animation(stream, EVENTS[0])
+    except TimeoutError as error:
+        resize_status = resize.poll()
+        if resize_status is None:
+            resize_detail = "Lua resize command is still running"
+        else:
+            stdout, stderr = resize.communicate()
+            resize_detail = f"Lua resize exited {resize_status}; stdout={stdout!r}; stderr={stderr!r}"
+        raise AssertionError(
+            f"resize animation did not start; {resize_detail}; windows={window_records()!r}"
+        ) from error
     assert started.get("animation") == ANIMATION, started
     assert started.get("cancelled") is False, started
 
