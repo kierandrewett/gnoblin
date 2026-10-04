@@ -31,13 +31,17 @@ typedef struct {
     const char* request_path;
     const char* title;
     uint32_t window_color;
+    int width;
+    int height;
+    int buffer_width;
+    int buffer_height;
     int running;
     int activation_requested;
 } Client;
 
 static void draw_surface(Client* client) {
-    const int width = 400;
-    const int height = 240;
+    const int width = client->width;
+    const int height = client->height;
     const int stride = width * 4;
     const int size = height * stride;
     const char* runtime_dir = getenv("XDG_RUNTIME_DIR");
@@ -46,7 +50,7 @@ static void draw_surface(Client* client) {
     uint32_t* pixels;
     struct wl_shm_pool* pool;
 
-    if (client->buffer)
+    if (client->buffer && client->buffer_width == width && client->buffer_height == height)
         return;
     if (!runtime_dir || snprintf(path, sizeof(path), "%s/gnoblin-focus-%ld", runtime_dir,
                                  (long)getpid()) >= (int)sizeof(path))
@@ -63,14 +67,20 @@ static void draw_surface(Client* client) {
     munmap(pixels, size);
 
     pool = wl_shm_create_pool(client->shm, fd, size);
-    client->buffer =
+    struct wl_buffer* buffer =
         wl_shm_pool_create_buffer(pool, 0, width, height, stride, WL_SHM_FORMAT_XRGB8888);
     wl_shm_pool_destroy(pool);
     close(fd);
 
-    wl_surface_attach(client->surface, client->buffer, 0, 0);
+    wl_surface_attach(client->surface, buffer, 0, 0);
     wl_surface_damage(client->surface, 0, 0, width, height);
     wl_surface_commit(client->surface);
+
+    if (client->buffer)
+        wl_buffer_destroy(client->buffer);
+    client->buffer = buffer;
+    client->buffer_width = width;
+    client->buffer_height = height;
 }
 
 static void xdg_surface_configure(void* data, struct xdg_surface* surface, uint32_t serial) {
@@ -84,7 +94,14 @@ static const struct xdg_surface_listener xdg_surface_listener = {
 };
 
 static void toplevel_configure(void* data, struct xdg_toplevel* toplevel, int32_t width,
-                               int32_t height, struct wl_array* states) {}
+                               int32_t height, struct wl_array* states) {
+    Client* client = data;
+
+    if (width > 0)
+        client->width = width;
+    if (height > 0)
+        client->height = height;
+}
 
 static void toplevel_close(void* data, struct xdg_toplevel* toplevel) {
     Client* client = data;
@@ -216,6 +233,8 @@ int main(int argc, char** argv) {
     if (argc != 2)
         return 2;
     client.request_path = argv[1];
+    client.width = 400;
+    client.height = 240;
     client.title = getenv("GNOBLIN_TEST_WINDOW_TITLE");
     if (!client.title || !*client.title)
         client.title = "Untrusted Activation Target";
