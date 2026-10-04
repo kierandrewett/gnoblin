@@ -158,6 +158,10 @@ gnoblin.configure {
         preserve_active_window = true,
     },
 
+    -- Global GeoClue policy is separate from each application's consent.
+    -- Omitted fields follow their org.gnome.system.location settings.
+    -- location = {enabled = true, max_accuracy = "city"},
+
     -- Frame renderers are named argv commands. The built-in renderer is
     -- "native" and cannot be replaced by a service registration.
     frame_renderers = {},
