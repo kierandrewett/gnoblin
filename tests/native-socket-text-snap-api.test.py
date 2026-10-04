@@ -46,6 +46,21 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static void native_settings_changed(",
             "static gboolean native_touchpad_action_supported(",
         )
+        lua_owner = function_body(
+            source,
+            "static gboolean dynamic_shortcut_routes_to_lua_runtime(",
+            "static void dynamic_shortcut_publish_event(",
+        )
+        publish_event = function_body(
+            source,
+            "static void dynamic_shortcut_publish_event(",
+            "static gboolean issue_focus_context_for_session_key(",
+        )
+        focus_context = function_body(
+            source,
+            "static gboolean issue_focus_context_for_session_key(",
+            "static void dynamic_shortcut_end_session(",
+        )
 
         self.assertIn('g_str_equal(binding, "Super")', apply_capture)
         self.assertIn('g_str_equal(trigger, "release")', apply_capture)
@@ -54,6 +69,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("if (has_overlay || has_capture)", start_shortcuts)
         self.assertIn("arm_bare_super_shortcut", apply_capture)
         self.assertIn('g_str_has_prefix(shortcut->owner_id, "config:")', source)
+        self.assertIn('g_str_has_prefix(shortcut->owner_id, "lua:")', lua_owner)
+        self.assertIn('g_str_has_prefix(shortcut->owner_id, "config:")', lua_owner)
+        self.assertIn("dynamic_shortcut_routes_to_lua_runtime(shortcut)", publish_event)
+        self.assertIn("dynamic_shortcut_routes_to_lua_runtime(shortcut)", focus_context)
         self.assertIn("apply_configured_capture_shortcut(control, document, error)", start_shortcuts)
         self.assertIn('clear_configured_capture_shortcut(control, "config_changed")', settings_changed)
         self.assertIn("apply_configured_capture_shortcut(control, config, &capture_error)", settings_changed)

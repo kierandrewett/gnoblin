@@ -92,6 +92,13 @@ gnoblin.configure {
         focus_mode = "click",
         focus_new_windows = "strict",
     },
+    shortcuts = {
+        shell_input_capture = {
+            binding = "Super",
+            trigger = "release",
+            capture_input = true,
+        },
+    },
     input = {
         mouse = {
             double_click_time = 350,
@@ -145,6 +152,19 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     print("LUA_API:runtime-status")
     print("LUA_API:snapshots")
 end)
+gnoblin.events.on("gnoblin.shortcut.session.activated", function(event)
+    if event.id == "shell_input_capture" then
+        assert(type(event.session_id) == "number" and event.session_id > 0)
+        assert(event.trigger == "release")
+        print("SHORTCUT_CAPTURE:session-activated")
+    end
+end)
+gnoblin.events.on("gnoblin.shortcut.session.key", function(event)
+    if event.id == "shell_input_capture" then
+        assert(event.phase == "press" or event.phase == "release")
+        print("SHORTCUT_CAPTURE:key")
+    end
+end)
 gnoblin.events.once("gnoblin.session.activity-changed", function(event)
     local activity = gnoblin.session.activity()
     assert(type(event.revision) == "number" and event.revision > 0)
@@ -183,6 +203,14 @@ assert(workspaces[2].id == "chat" and workspaces[2].name == "Chat")
 print("LUA_API:workspace-config")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/workspaces.lua"
+cat > "$XDG_RUNTIME_DIR/shortcuts.lua" <<'LUA'
+for _, shortcut in ipairs(gnoblin.shortcuts.list()) do
+    assert(shortcut.name ~= "shell_input_capture",
+        "capture-only config must be represented through shortcut-session events")
+end
+print("LUA_API:configured-shortcut-input-capture")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/shortcuts.lua"
 printf 'PING:%s\n' "$(gnoblinctl ping)"
 gnoblinctl --json config show > "$XDG_RUNTIME_DIR/config.json"
 python3 - "$XDG_RUNTIME_DIR/config.json" <<'PY'
@@ -978,6 +1006,7 @@ require_output 'Gnoblin is ready on nested Wayland display'
 require_output 'PING:pong'
 require_output 'GSETTINGS:workspace-names-untouched'
 require_output 'LUA_API:workspace-config'
+require_output 'LUA_API:configured-shortcut-input-capture'
 require_output 'LUA_API:input-accessibility-config'
 require_output 'LUA_API:mouse-double-click-time'
 require_output 'CONFIG:click'
