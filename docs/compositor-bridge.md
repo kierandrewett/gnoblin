@@ -378,6 +378,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.70            | Adds the shared `appearance.color_scheme` read                                                   |
 | 1.71            | Layer lifecycle events                                                                           |
 | 1.72            | `gnoblin.runtime.status-changed`                                                                 |
+| 1.73            | `gnoblin.input.pad-help-requested`                                                               |
 
 ### API 1.27: shell presentation requests
 
@@ -1604,6 +1605,31 @@ Events are not replayed. Subscribe, then call `runtime.status` to get the
 current values; repeat that read after reconnecting. Mutter may close the
 socket before it can send a final `unavailable` event when the compositor
 stops.
+
+### API version 1.73: tablet-pad help requests
+
+Subscribe to the help request from a tablet-pad button action with API 1.73:
+
+```json
+{
+    "op": "events",
+    "api_version": { "major": 1, "minor": 73 },
+    "events": ["gnoblin.input.pad-help-requested"]
+}
+```
+
+The event contains:
+
+- `device`: the current input-device record;
+- optional `monitor_id` and `output_names`;
+- zero-based `buttons` with optional localized labels;
+- `mode_groups` with mode counts and switch-button numbers;
+- `features` for rings, strips, and dials, with optional labels;
+- `edition_mode`, which is false for tablet-button help.
+
+Lua callbacks receive the same event. The shell owns the overlay and can
+dismiss it at any time. Gnoblin retains no OSD actor, so later help presses
+produce new events.
 
 ## Limits and disconnects
 

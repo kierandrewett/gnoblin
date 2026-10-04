@@ -887,6 +887,29 @@ using a fresh Mutter timestamp.
 Mutter provides no OSD level or maximum. Gnoblin does not create the OSD; the
 subscribed shell decides how to present the request.
 
+### Tablet-pad help
+
+Subscribe to `gnoblin.input.pad-help-requested` to show help for a tablet pad
+whose configured button action is `"help"`. Lua listeners receive the event
+directly. Socket clients need API 1.73.
+
+The event contains:
+
+- `device`: the current `gnoblin.input.devices()` record for the pad;
+- `monitor_id` and `output_names`: optional stable target-monitor identity;
+- `buttons`: zero-based button numbers with optional localized action labels
+  and optional `mode_group` values;
+- `mode_groups`: group numbers, each group's `mode_count`, and its
+  `switch_buttons`;
+- `features`: zero-based rings, strips, and dials with optional labels for
+  clockwise, counterclockwise, up, or down actions;
+- `edition_mode`: whether the request is for editing; button help currently
+  sends `false`.
+
+The event provides labels when available, but no image or popup. Draw and
+dismiss the overlay in your shell. Each help press sends a new event; without a
+listener, no overlay appears.
+
 Lua configuration reads windows and workspaces through the immediate,
 immutable `gnoblin.windows.list()` and `gnoblin.workspaces.list()` snapshots.
 The compositor socket keeps `window.list` and `workspace.list` for compatibility
