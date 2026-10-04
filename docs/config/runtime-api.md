@@ -1640,8 +1640,11 @@ deactivation event.
 Modal sessions capture keyboard events only. Pointer input remains available to
 the shell's layer-shell surfaces and client windows.
 
-`gnoblin.shortcuts.actions(group?)` reads built-in actions from installed
-GSettings schemas. Omit `group` to list all installed groups.
+`gnoblin.shortcuts.actions(group?)` reads installed schema metadata and filters
+it against executable handlers in the pinned Mutter build. The catalog comes
+from Mutter's built-in keybinding tables; the schemas provide descriptions and
+default bindings. Omit `group` to list supported actions in every installed
+group.
 
 | Group     | Schema                                 |
 | --------- | -------------------------------------- |
@@ -1650,9 +1653,10 @@ GSettings schemas. Omit `group` to list all installed groups.
 | `wayland` | `org.gnome.mutter.wayland.keybindings` |
 
 An unknown group raises an error. Requesting a supported group whose schema is
-not installed also raises an error. The `shell` group is not included. This
-read API is separate from `gnoblin.configure.shortcuts`, which declares
-shortcut configuration.
+not installed also raises an error. Schema keys without an executable Mutter
+handler are omitted. The `shell` group is not included. This read API is
+separate from `gnoblin.configure.shortcuts`, which declares shortcut
+configuration.
 
 To assign a built-in action, set `action = action.id` on a named
 `gnoblin.configure.shortcuts` entry. See the
