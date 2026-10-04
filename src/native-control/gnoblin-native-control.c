@@ -3375,6 +3375,13 @@ static const InputField input_fields[] = {
     {"touchpad", "edge-scrolling-enabled", INPUT_BOOLEAN},
     {"touchpad", "two-finger-scrolling-enabled", INPUT_BOOLEAN},
     {"touchpad", "click-method", INPUT_CHOICE, "default none areas fingers"},
+    {"trackball", "accel-profile", INPUT_CHOICE, "default flat adaptive"},
+    {"trackball", "middle-click-emulation", INPUT_BOOLEAN},
+    {"trackball", "scroll-wheel-emulation-button", INPUT_INTEGER, NULL, 0, 24},
+    {"trackball", "scroll-wheel-emulation-button-lock", INPUT_BOOLEAN},
+    {"pointing-stick", "speed", INPUT_DOUBLE, NULL, -1, 1},
+    {"pointing-stick", "accel-profile", INPUT_CHOICE, "default flat adaptive"},
+    {"pointing-stick", "scroll-method", INPUT_CHOICE, "default none on-button-down"},
     {"keyboard", "repeat", INPUT_BOOLEAN},
     {"keyboard", "delay", INPUT_MILLISECONDS, NULL, 1, 10000},
     {"keyboard", "repeat-interval", INPUT_MILLISECONDS, NULL, 1, 10000},
@@ -4003,6 +4010,7 @@ static gboolean apply_native_input(GnoblinNativeControl* control, MetaContext* c
             continue;
         }
         if (g_str_equal(group, "mouse") || g_str_equal(group, "touchpad") ||
+            g_str_equal(group, "trackball") || g_str_equal(group, "pointing-stick") ||
             g_str_equal(group, "keyboard")) {
             g_autoptr(GVariant) normalized = normalize_input_fields(group, settings, error);
             if (!normalized)
