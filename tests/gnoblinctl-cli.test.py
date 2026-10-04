@@ -1027,7 +1027,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(116):
+                    for _ in range(120):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -1201,6 +1201,23 @@ def main() -> int:
                                         "revision": 5,
                                     }
                                 ]
+                            elif request["method"] == "monitors.privacy_screen":
+                                result = {
+                                    "requested_enabled": False,
+                                    "source": "system",
+                                    "revision": 31,
+                                    "monitors": [
+                                        {
+                                            "id": "HDMI-1",
+                                            "available": True,
+                                            "enabled": False,
+                                            "locked": False,
+                                        },
+                                        {"id": "DP-1", "available": False},
+                                    ],
+                                }
+                            elif request["method"] == "monitors.set_privacy_screen":
+                                result = {"request_id": 41, "method": request["method"]}
                             elif request["method"] == "layers.list":
                                 result = [
                                     {
@@ -1481,6 +1498,7 @@ def main() -> int:
                                 "window.thumbnail",
                                 "input.select",
                                 "input.set_orientation_lock",
+                                "monitors.set_privacy_screen",
                                 "window.minimize",
                                 "workspace.switch",
                                 "workspace.rename",
@@ -1601,6 +1619,24 @@ def main() -> int:
                                         "orientation": "normal",
                                         "source": "runtime",
                                         "revision": 18,
+                                    }
+                                elif method == "monitors.set_privacy_screen":
+                                    requested = request["arguments"]["value"]
+                                    inherited = requested == "inherit"
+                                    enabled = False if inherited else requested
+                                    value = {
+                                        "requested_enabled": enabled,
+                                        "source": "system" if inherited else "runtime",
+                                        "revision": 34 if inherited else 32,
+                                        "monitors": [
+                                            {
+                                                "id": "HDMI-1",
+                                                "available": True,
+                                                "enabled": enabled,
+                                                "locked": False,
+                                            },
+                                            {"id": "DP-1", "available": False},
+                                        ],
                                     }
                                 elif method == "window.minimize":
                                     value = {"id": "42"}
@@ -2631,6 +2667,30 @@ def main() -> int:
         )
         orientation_lua = run(binary, "--socket", socket_path, "lua", str(orientation_lua_file))
         assert orientation_lua.returncode == 0, orientation_lua.stderr
+        privacy_screen_file = Path(temporary) / "monitor-privacy-screen.lua"
+        privacy_screen_file.write_text(
+            "local initial = gnoblin.monitors.privacy_screen()\n"
+            'assert(not initial.requested_enabled and initial.source == "system" and initial.revision == 31)\n'
+            'assert(initial.monitors[1].id == "HDMI-1" and initial.monitors[1].available)\n'
+            "assert(not initial.monitors[1].enabled and not initial.monitors[1].locked)\n"
+            'assert(initial.monitors[2].id == "DP-1" and not initial.monitors[2].available)\n'
+            "assert(initial.monitors[2].enabled == nil and initial.monitors[2].locked == nil)\n"
+            'assert(not pcall(function() initial.source = "runtime" end))\n'
+            'assert(not pcall(function() rawset(initial, "source", "runtime") end))\n'
+            "local enabled = gnoblin.monitors.set_privacy_screen(true)\n"
+            'assert(enabled.requested_enabled and enabled.source == "runtime" and enabled.revision == 32)\n'
+            "assert(enabled.monitors[1].enabled and not enabled.monitors[2].available)\n"
+            "assert(not pcall(function() enabled.monitors[1].enabled = false end))\n"
+            "local disabled = gnoblin.monitors.set_privacy_screen(false)\n"
+            'assert(not disabled.requested_enabled and disabled.source == "runtime")\n'
+            'local inherited = gnoblin.monitors.set_privacy_screen("inherit")\n'
+            'assert(not inherited.requested_enabled and inherited.source == "system")\n'
+            'assert(not pcall(function() gnoblin.monitors.set_privacy_screen("on") end))\n'
+            "assert(not pcall(function() gnoblin.monitors.privacy_screen(true) end))\n",
+            encoding="utf-8",
+        )
+        privacy_screen_result = run(binary, "--socket", socket_path, "lua", str(privacy_screen_file))
+        assert privacy_screen_result.returncode == 0, privacy_screen_result.stderr
         animation_controls_file = Path(temporary) / "animation-controls.lua"
         animation_controls_file.write_text(
             'local seek = gnoblin.animations.seek {session = "preview-17", progress = 0.4}\n'
@@ -2668,8 +2728,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 116
-        assert len(subscriptions) == 116
+        assert len(received) == 120
+        assert len(subscriptions) == 120
         assert received[-2]["method"] == "runtime.status"
         assert received[-2]["api_version"] == {"major": 1, "minor": 67}
         assert received[-1]["method"] == "session.status"
@@ -2810,6 +2870,22 @@ def main() -> int:
         assert received[108]["method"] == "input.set_orientation_lock"
         assert received[108]["api_version"] == {"major": 1, "minor": 66}
         assert received[108]["arguments"] == {"value": True}
+        privacy_screen_requests = [
+            request
+            for request in received
+            if request.get("method") in {"monitors.privacy_screen", "monitors.set_privacy_screen"}
+        ]
+        assert [request["method"] for request in privacy_screen_requests] == [
+            "monitors.privacy_screen",
+            "monitors.set_privacy_screen",
+            "monitors.set_privacy_screen",
+            "monitors.set_privacy_screen",
+        ]
+        assert all(request["api_version"] == {"major": 1, "minor": 74} for request in privacy_screen_requests)
+        assert privacy_screen_requests[0]["arguments"] == {}
+        assert privacy_screen_requests[1]["arguments"] == {"value": True}
+        assert privacy_screen_requests[2]["arguments"] == {"value": False}
+        assert privacy_screen_requests[3]["arguments"] == {"value": "inherit"}
         animation_control_requests = [
             request
             for request in received
