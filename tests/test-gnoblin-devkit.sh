@@ -1364,3 +1364,27 @@ startup_output="$(
 }
 grep -q 'INPUT_SOURCE:startup-keymap-gb' <<<"$startup_output"
 printf '%s\n' 'PASS: Lua input-source config initializes the startup keymap'
+
+unsupported_action_fixture="$fixture_root/unsupported-action-config"
+mkdir -p "$unsupported_action_fixture/gnoblin"
+cat >"$unsupported_action_fixture/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    keybindings = {
+        wm = {panel_run_dialog = {"<Super>r"}},
+    },
+}
+LUA
+if unsupported_action_output="$(
+    GNOBLIN_STATE_DIR="$fixture_root/unsupported-action-state" \
+        GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
+        GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
+        GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
+        GNOBLIN_DEVKIT_CONFIG_SOURCE="$unsupported_action_fixture" \
+        timeout 45 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1
+)"; then
+    echo 'Schema-only keybinding action unexpectedly started the Gnoblin session' >&2
+    exit 1
+fi
+grep -q 'keybinding has no executable Mutter handler: wm.panel_run_dialog' \
+    <<<"$unsupported_action_output"
+printf '%s\n' 'PASS: startup rejects schema-only keybinding actions'

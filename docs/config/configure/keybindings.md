@@ -19,9 +19,11 @@ gnoblin.configure {
 }
 ```
 
-An action is a built-in Mutter action. Write it as a group and action name;
-the available names depend on the Mutter version in your Gnoblin build. For
-example, `wm.close` selects Mutter's window-manager close action.
+An action must have an executable handler in the Mutter build used by Gnoblin.
+Write it as a group and action name; for example, `wm.close` selects Mutter's
+window-manager close action. Schema keys without a compositor handler cannot
+be overridden. The available names depend on the Mutter version in your Gnoblin
+build.
 
 The group selects one of these schemas:
 
