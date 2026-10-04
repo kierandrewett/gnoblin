@@ -147,6 +147,21 @@ static gboolean tablet_pad_buttons_valid(GVariant* value) {
     return TRUE;
 }
 
+static gboolean tablet_area_valid(GVariant* value) {
+    if (!g_variant_is_of_type(value, G_VARIANT_TYPE("av")) || g_variant_n_children(value) != 4)
+        return FALSE;
+
+    double area[4];
+    for (gsize i = 0; i < G_N_ELEMENTS(area); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+        g_autoptr(GVariant) item = g_variant_get_variant(boxed);
+        if (!input_number(item, &area[i]) || area[i] < 0 || area[i] >= 1)
+            return FALSE;
+    }
+
+    return area[0] + area[1] < 1 && area[2] + area[3] < 1;
+}
+
 static gboolean input_field_known(const char* group, const char* key) {
     static const char* const mouse_fields[] = {
         "speed",         "double-click-time", "drag-threshold",
@@ -176,7 +191,7 @@ static gboolean input_field_known(const char* group, const char* key) {
         "numlock-state", "xkb-options", "accessibility",   NULL,
     };
     static const char* const tablet_fields[] = {
-        "mapping", "left-handed", "keep-aspect", "pad-buttons", NULL,
+        "mapping", "left-handed", "keep-aspect", "area", "pad-buttons", NULL,
     };
     static const char* const stylus_fields[] = {
         "eraser-button-mode",         "eraser-button-action",
@@ -298,6 +313,8 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
         return input_string_is(value, tablet_mapping);
     if (g_str_equal(group, "tablets") && g_str_equal(key, "pad-buttons"))
         return tablet_pad_buttons_valid(value);
+    if (g_str_equal(group, "tablets") && g_str_equal(key, "area"))
+        return tablet_area_valid(value);
     if (g_str_equal(key, "eraser-button-mode"))
         return input_string_is(value, stylus_eraser_modes);
     if (g_str_has_suffix(key, "button-action"))

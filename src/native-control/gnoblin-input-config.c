@@ -44,6 +44,21 @@ static GVariant* normalize_input_curve(GVariant* curve) {
     return g_variant_ref_sink(g_variant_builder_end(&normalized));
 }
 
+static GVariant* normalize_tablet_area(GVariant* area) {
+    if (!g_variant_is_of_type(area, G_VARIANT_TYPE("av")) || g_variant_n_children(area) != 4)
+        return g_variant_ref(area);
+
+    double values[4];
+    for (gsize i = 0; i < G_N_ELEMENTS(values); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(area, i);
+        g_autoptr(GVariant) value = g_variant_get_variant(boxed);
+        if (!input_number(value, &values[i]))
+            return g_variant_ref(area);
+    }
+    return g_variant_ref_sink(g_variant_new_fixed_array(G_VARIANT_TYPE_DOUBLE, values,
+                                                        G_N_ELEMENTS(values), sizeof(double)));
+}
+
 static GVariant* normalize_input_fields(GVariant* fields) {
     GVariantBuilder normalized;
     g_variant_builder_init(&normalized, G_VARIANT_TYPE_VARDICT);
@@ -85,6 +100,9 @@ static GVariant* normalize_input_fields(GVariant* fields) {
         } else if (g_str_equal(key, "accel-curve")) {
             g_autoptr(GVariant) curve = normalize_input_curve(value);
             g_variant_builder_add(&normalized, "{sv}", key, curve);
+        } else if (g_str_equal(key, "area")) {
+            g_autoptr(GVariant) area = normalize_tablet_area(value);
+            g_variant_builder_add(&normalized, "{sv}", key, area);
         } else {
             g_variant_builder_add(&normalized, "{sv}", key, value);
         }
