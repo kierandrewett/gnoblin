@@ -89,7 +89,11 @@ gnoblin.configure {
         focus_new_windows = "strict",
     },
     input = {
-        mouse = {drag_threshold = 24, middle_click_emulation = true},
+        mouse = {
+            double_click_time = 350,
+            drag_threshold = 24,
+            middle_click_emulation = true,
+        },
         touchpad = {middle_click_emulation = false},
         keyboard = {
             accessibility = {
@@ -145,6 +149,11 @@ if [[ ! "$workspace_names" =~ ^(@as )?\[\]$ ]]; then
     exit 1
 fi
 printf 'GSETTINGS:workspace-names-untouched\n'
+cat > "$XDG_RUNTIME_DIR/mouse-settings.lua" <<'LUA'
+assert(gnoblin.settings.input.mouse.double_click_time == 350)
+print("LUA_API:mouse-double-click-time")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/mouse-settings.lua"
 cat > "$XDG_RUNTIME_DIR/workspaces.lua" <<'LUA'
 local workspaces = gnoblin.workspaces.list()
 assert(#workspaces == 2)
@@ -888,6 +897,7 @@ require_output 'PING:pong'
 require_output 'GSETTINGS:workspace-names-untouched'
 require_output 'LUA_API:workspace-config'
 require_output 'LUA_API:input-accessibility-config'
+require_output 'LUA_API:mouse-double-click-time'
 require_output 'CONFIG:click'
 require_output 'WINDOWS:json'
 require_output 'WORKSPACE:next'
