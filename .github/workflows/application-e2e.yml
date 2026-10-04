@@ -60,9 +60,19 @@ jobs:
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
             json-glib-devel desktop-file-utils gsettings-desktop-schemas \
-            python3 weston dbus-daemon dbus-tools ibus flatpak grim util-linux-user
+            python3 weston dbus-daemon dbus-tools ibus flatpak grim util-linux-user \
+            shadow-utils-subid
           dnf -y builddep --allowerasing packaging/rpm/mutter.spec packaging/rpm/gnoblin-portal.spec
           useradd --create-home builder
+          # Fedora can allocate subordinate ranges during useradd when the
+          # subid helper is installed. Keep nested Bubblewrap usable on images
+          # whose defaults omit those ranges.
+          if ! grep -q '^builder:' /etc/subuid; then
+            usermod --add-subuids 524288-589823 builder
+          fi
+          if ! grep -q '^builder:' /etc/subgid; then
+            usermod --add-subgids 524288-589823 builder
+          fi
           builder_uid="$(id -u builder)"
           install -d -o builder -g builder -m 700 "/run/user/$builder_uid"
           chown -R builder:builder "$GITHUB_WORKSPACE"
