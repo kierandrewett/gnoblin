@@ -1,6 +1,6 @@
 #define _GNU_SOURCE
 
-/* Minimal Wayland client that requests activation without input context. */
+/* Minimal Wayland client for activation and compositor integration tests. */
 #include <wayland-client.h>
 
 #include <errno.h>
@@ -29,6 +29,8 @@ typedef struct {
     struct xdg_surface* xdg_surface;
     struct xdg_toplevel* toplevel;
     const char* request_path;
+    const char* title;
+    uint32_t window_color;
     int running;
     int activation_requested;
 } Client;
@@ -57,7 +59,7 @@ static void draw_surface(Client* client) {
     if (pixels == MAP_FAILED)
         exit(22);
     for (int i = 0; i < width * height; i++)
-        pixels[i] = 0xff303840;
+        pixels[i] = client->window_color;
     munmap(pixels, size);
 
     pool = wl_shm_create_pool(client->shm, fd, size);
@@ -175,7 +177,7 @@ static int initialize(Client* client) {
     xdg_surface_add_listener(client->xdg_surface, &xdg_surface_listener, client);
     client->toplevel = xdg_surface_get_toplevel(client->xdg_surface);
     xdg_toplevel_add_listener(client->toplevel, &toplevel_listener, client);
-    xdg_toplevel_set_title(client->toplevel, "Untrusted Activation Target");
+    xdg_toplevel_set_title(client->toplevel, client->title);
     xdg_toplevel_set_app_id(client->toplevel, "org.gnoblin.FocusTransferTest");
     wl_surface_commit(client->surface);
     if (wl_display_roundtrip(client->display) < 0 || !client->buffer)
@@ -214,6 +216,22 @@ int main(int argc, char** argv) {
     if (argc != 2)
         return 2;
     client.request_path = argv[1];
+    client.title = getenv("GNOBLIN_TEST_WINDOW_TITLE");
+    if (!client.title || !*client.title)
+        client.title = "Untrusted Activation Target";
+    const char* color = getenv("GNOBLIN_TEST_WINDOW_ARGB");
+    if (!color || !*color) {
+        client.window_color = 0xff303840;
+    } else {
+        char* end = NULL;
+        errno = 0;
+        unsigned long value = strtoul(color, &end, 0);
+        if (errno || end == color || *end || value > UINT32_MAX) {
+            fprintf(stderr, "invalid GNOBLIN_TEST_WINDOW_ARGB value\n");
+            return 23;
+        }
+        client.window_color = (uint32_t)value;
+    }
     client.running = 1;
     result = initialize(&client);
     if (result != 0) {
