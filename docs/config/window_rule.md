@@ -138,6 +138,10 @@ Omitted values inherit shell settings. `in` needs brackets because it is a Lua k
 `auto` supplies SSD only for explicit client requests. `replace` crops client
 pixels and adds a frame.
 
+`frame.button_layout` sets the buttons drawn by that window's frame renderer.
+For Mutter's global server-side button order, see
+[window management settings](/config/configure/window_management#titlebar-button-placement).
+
 See the [window frames guide](/guides/window_frames) for frame modes and
 extents. Register renderers with
 [`gnoblin.configure`](/config/configure#window-management).

@@ -23,6 +23,10 @@ actions:
 
 A custom SSD renderer implements its own titlebar click behavior.
 
+Set `window_management.button_layout` to choose Mutter's global server-side
+button order. The per-window `frame.button_layout` option controls buttons for
+Gnoblin frame renderers. See [titlebar button placement](/config/configure/window_management#titlebar-button-placement).
+
 Gnoblin's frames are off by default, although your desktop shell can enable
 them through its config. Use `mode` to decide which windows get a frame and
 `renderer` to choose what draws it. Setting a renderer alone does not enable frames.
