@@ -21,6 +21,10 @@ struct _GnoblinLocationAgent {
     gboolean available;
     gboolean in_use;
     gboolean manager_present;
+    gboolean enabled_configured;
+    gboolean enabled_value;
+    gboolean accuracy_configured;
+    guint accuracy_value;
     GDBusConnection* connection;
     GDBusNodeInfo* introspection;
     guint object_id;
@@ -73,10 +77,7 @@ void gnoblin_location_request_unref(GnoblinLocationRequest* request) {
     g_free(request);
 }
 
-static guint accuracy_from_setting(GSettings* settings) {
-    if (!settings || !g_settings_get_boolean(settings, "enabled"))
-        return 0;
-    g_autofree char* nick = g_settings_get_string(settings, "max-accuracy-level");
+static guint accuracy_from_nick(const char* nick) {
     if (g_strcmp0(nick, "country") == 0)
         return 1;
     if (g_strcmp0(nick, "city") == 0)
@@ -88,6 +89,23 @@ static guint accuracy_from_setting(GSettings* settings) {
     if (g_strcmp0(nick, "exact") == 0)
         return 8;
     return 0;
+}
+
+static gboolean location_enabled(GnoblinLocationAgent* agent) {
+    if (agent->enabled_configured)
+        return agent->enabled_value;
+    return agent->settings && g_settings_get_boolean(agent->settings, "enabled");
+}
+
+static guint location_max_accuracy(GnoblinLocationAgent* agent) {
+    if (!location_enabled(agent))
+        return 0;
+    if (agent->accuracy_configured)
+        return agent->accuracy_value;
+    if (!agent->settings)
+        return 0;
+    g_autofree char* nick = g_settings_get_string(agent->settings, "max-accuracy-level");
+    return accuracy_from_nick(nick);
 }
 
 static guint clamp_accuracy(guint level, guint maximum) {
@@ -121,15 +139,15 @@ static void complete_on_context(GnoblinLocationRequest* request, gboolean allowe
     }
     if (agent->pending)
         g_hash_table_remove(agent->pending, request);
-    if (agent->stopped || !agent->available || !agent->settings ||
-        !g_settings_get_boolean(agent->settings, "enabled"))
+    guint maximum = location_max_accuracy(agent);
+    if (agent->stopped || !agent->available || maximum == 0)
         allowed = FALSE;
     if (!allowed) {
         accuracy_level = 0;
     } else {
-        accuracy_level =
-            clamp_accuracy(accuracy_level, MIN(request->requested_accuracy,
-                                               accuracy_from_setting(agent->settings)));
+        accuracy_level = clamp_accuracy(accuracy_level, MIN(request->requested_accuracy, maximum));
+        if (accuracy_level == 0)
+            allowed = FALSE;
     }
     g_dbus_method_invocation_return_value(request->invocation,
                                           g_variant_new("(bu)", allowed, accuracy_level));
@@ -192,7 +210,7 @@ static GVariant* get_property(GDBusConnection* connection, const char* sender,
     (void)object_path;
     (void)interface_name;
     if (g_str_equal(property_name, "MaxAccuracyLevel"))
-        return g_variant_new_uint32(accuracy_from_setting(agent->settings));
+        return g_variant_new_uint32(location_max_accuracy(agent));
     g_set_error(error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY,
                 "Unknown GeoClue agent property %s", property_name);
     return NULL;
@@ -238,8 +256,8 @@ static void method_call(GDBusConnection* connection, const char* sender, const c
     request->agent = agent_ref(agent);
     request->invocation = g_object_ref(invocation);
     request->requested_accuracy = requested_accuracy;
-    if (agent->stopped || !agent->available || !agent->authorize || !agent->settings ||
-        !g_settings_get_boolean(agent->settings, "enabled")) {
+    if (agent->stopped || !agent->available || !agent->authorize ||
+        location_max_accuracy(agent) == 0) {
         complete_on_context(request, FALSE, 0);
         gnoblin_location_request_unref(request);
         return;
@@ -453,22 +471,54 @@ static gboolean begin_stop(gpointer data) {
     return G_SOURCE_REMOVE;
 }
 
+static void emit_max_accuracy_changed(GnoblinLocationAgent* agent) {
+    if (!agent->connection || !agent->object_id)
+        return;
+    GVariantBuilder changed;
+    g_variant_builder_init(&changed, G_VARIANT_TYPE("a{sv}"));
+    g_variant_builder_add(&changed, "{sv}", "MaxAccuracyLevel",
+                          g_variant_new_uint32(location_max_accuracy(agent)));
+    g_dbus_connection_emit_signal(agent->connection, NULL, GEOCLUE_AGENT_PATH,
+                                  "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                                  g_variant_new("(s@a{sv}@as)", GEOCLUE_AGENT_IFACE,
+                                                g_variant_builder_end(&changed),
+                                                g_variant_new_strv(NULL, 0)),
+                                  NULL);
+}
+
 static void settings_changed(GSettings* settings, const char* key, gpointer user_data) {
     GnoblinLocationAgent* agent = user_data;
     (void)settings;
     (void)key;
-    if (agent->connection && agent->object_id) {
-        GVariantBuilder changed;
-        g_variant_builder_init(&changed, G_VARIANT_TYPE("a{sv}"));
-        g_variant_builder_add(&changed, "{sv}", "MaxAccuracyLevel",
-                              g_variant_new_uint32(accuracy_from_setting(agent->settings)));
-        g_dbus_connection_emit_signal(agent->connection, NULL, GEOCLUE_AGENT_PATH,
-                                      "org.freedesktop.DBus.Properties", "PropertiesChanged",
-                                      g_variant_new("(s@a{sv}@as)", GEOCLUE_AGENT_IFACE,
-                                                    g_variant_builder_end(&changed),
-                                                    g_variant_new_strv(NULL, 0)),
-                                      NULL);
-    }
+    emit_max_accuracy_changed(agent);
+}
+
+typedef struct {
+    GnoblinLocationAgent* agent;
+    gboolean enabled_set;
+    gboolean enabled;
+    gboolean accuracy_set;
+    GnoblinLocationAccuracy accuracy;
+} LocationPolicyUpdate;
+
+static gboolean apply_policy(gpointer data) {
+    LocationPolicyUpdate* update = data;
+    GnoblinLocationAgent* agent = update->agent;
+    guint old_maximum = location_max_accuracy(agent);
+    agent->enabled_configured = update->enabled_set;
+    agent->enabled_value = update->enabled;
+    agent->accuracy_configured =
+        update->accuracy_set && update->accuracy != GNOBLIN_LOCATION_ACCURACY_INHERIT;
+    agent->accuracy_value = update->accuracy;
+    if (old_maximum != location_max_accuracy(agent))
+        emit_max_accuracy_changed(agent);
+    return G_SOURCE_REMOVE;
+}
+
+static void policy_update_free(gpointer data) {
+    LocationPolicyUpdate* update = data;
+    agent_unref(update->agent);
+    g_free(update);
 }
 
 GnoblinLocationAgent* gnoblin_location_agent_new(GMainContext* context,
@@ -492,7 +542,8 @@ GnoblinLocationAgent* gnoblin_location_agent_new(GMainContext* context,
         agent->settings = g_settings_new_full(schema, NULL, NULL);
         g_settings_schema_unref(schema);
     } else {
-        g_warning("Missing required GSettings schema org.gnome.system.location");
+        g_debug("GSettings schema org.gnome.system.location is unavailable; Lua policy can still "
+                "supply location defaults");
     }
     if (agent->settings)
         agent->settings_handler =
@@ -503,6 +554,26 @@ GnoblinLocationAgent* gnoblin_location_agent_new(GMainContext* context,
 void gnoblin_location_agent_start(GnoblinLocationAgent* agent) {
     g_main_context_invoke_full(agent->context, G_PRIORITY_DEFAULT, begin_start, agent_ref(agent),
                                (GDestroyNotify)agent_unref);
+}
+
+void gnoblin_location_agent_set_policy(GnoblinLocationAgent* agent, gboolean enabled_set,
+                                       gboolean enabled, gboolean accuracy_set,
+                                       GnoblinLocationAccuracy accuracy) {
+    g_return_if_fail(agent != NULL);
+    g_return_if_fail(!accuracy_set || accuracy == GNOBLIN_LOCATION_ACCURACY_INHERIT ||
+                     accuracy == GNOBLIN_LOCATION_ACCURACY_COUNTRY ||
+                     accuracy == GNOBLIN_LOCATION_ACCURACY_CITY ||
+                     accuracy == GNOBLIN_LOCATION_ACCURACY_NEIGHBORHOOD ||
+                     accuracy == GNOBLIN_LOCATION_ACCURACY_STREET ||
+                     accuracy == GNOBLIN_LOCATION_ACCURACY_EXACT);
+    LocationPolicyUpdate* update = g_new0(LocationPolicyUpdate, 1);
+    update->agent = agent_ref(agent);
+    update->enabled_set = enabled_set;
+    update->enabled = enabled;
+    update->accuracy_set = accuracy_set;
+    update->accuracy = accuracy;
+    g_main_context_invoke_full(agent->context, G_PRIORITY_DEFAULT, apply_policy, update,
+                               policy_update_free);
 }
 
 void gnoblin_location_agent_stop(GnoblinLocationAgent* agent) {
