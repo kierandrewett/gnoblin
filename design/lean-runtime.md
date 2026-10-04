@@ -433,8 +433,8 @@ privacy state transitions without changing the host graph.
    modifier is down; bare-Super bindings can capture type-ahead input when
    Mutter's early modifier hook is available. These APIs let an external shell
    own shortcut behavior and UI without GNOME Shell. Named GNOME Shell actions
-   remain unsupported, and static
-   Static `gnoblin.configure.shortcuts.*.capture_input = true` now arms bare
+   remain unsupported. Static
+   `gnoblin.configure.shortcuts.*.capture_input = true` now arms bare
    Super and routes its shortcut-session events to Lua; capture-only entries are
    omitted from `gnoblin.shortcuts.list()`. Real-seat shortcut behavior and a
    complete standalone login still need verification.
