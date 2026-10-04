@@ -21,6 +21,7 @@ For the common pointer and keyboard settings, see:
 
 - [`gnoblin.configure.input.mouse`](/config/configure/input/mouse)
 - [`gnoblin.configure.input.touchpad`](/config/configure/input/touchpad)
+- [`gnoblin.configure.input.trackball` and `pointing_stick`](/config/configure/input/trackball-pointing-stick)
 - [`gnoblin.configure.input.keyboard`](/config/configure/input/keyboard)
 
 ## Tablets
