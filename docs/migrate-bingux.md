@@ -7,7 +7,9 @@ compositor socket, `gnoblinctl`, Wayland protocols, and desktop portals.
 Keep panel, dock, launcher, notification, and popup UI in Bingux. Use Lua for
 Gnoblin policy and runtime behavior, not for drawing shell surfaces.
 
-## Readiness
+## Current status
+
+### Gnoblin API
 
 Bingux's standalone transport now uses Gnoblin's negotiated Lua-backed API for
 workspace and window state, shortcuts, focus, thumbnails, privacy, snapping,
@@ -20,6 +22,8 @@ Source coverage does not prove each interaction works in a running session.
 Verify shortcut reconnects, window thumbnails, focus handoff, pointer and
 keyboard snapping, privacy controls, emoji insertion, and capture in a fresh
 standalone session.
+
+### Calendar
 
 `ApplicationLauncher.qml` no longer sends Gnoblin a focus request after
 launching the calendar. It waits for the window and lets the application's
@@ -35,15 +39,22 @@ Shell is not running. Replace it with a Bingux-owned Evolution Data Server
 provider, or make calendar events an optional integration with a clear
 unavailable state. Keep this out of Gnoblin's compositor API.
 
+### Text insertion
+
 The standalone emoji path uses `input.text_target` and `input.insert_text`.
 Text insertion needs a fresh Super+Period press after the picker closes and a
 focused Wayland client with an active text-input-v3 session. X11 and clipboard
 fallback are unsupported. The older input-anchor messages remain only for the
 compatibility path.
 
+### OSD
+
 `osd-bridge.js` patches GNOME Shell's OSD manager and calls
-`org.gnoblin.Shell`. Keep it inside the GNOME compatibility session. The
-standalone path should render OSDs in Bingux from `gnoblin.osd.requested`.
+`org.gnoblin.Shell`. Keep it inside the GNOME compatibility session. Bingux's
+OSD surface currently reads its records from a separate
+`$XDG_RUNTIME_DIR/bingux/osd-v2.sock` socket. The standalone path does not yet
+subscribe to Gnoblin's `gnoblin.osd.requested` event or forward those requests
+to that surface, so Mutter OSD requests are not shown in a standalone session.
 
 The standalone session has no `org.gnome.Shell` service or GJS bridge. Keep any
 GNOME-session compatibility path separate from the standalone path.
@@ -102,9 +113,12 @@ its QML state rather than replace them with new Gnoblin APIs.
 
 The `org.gnoblin.LaunchFeedback` D-Bus service is available in the standalone
 session. Bingux can keep using it to show the busy cursor while an app starts.
-For OSDs, subscribe to `gnoblin.osd.requested` and draw the OSD in Bingux. The
-event reports compositor state; it does not provide a popup or prescribe its
-appearance. Keep OSD rendering independent of GNOME Shell monkey-patches and
+
+Gnoblin publishes `gnoblin.osd.requested` over the compositor socket, but Bingux
+does not yet consume it. The event carries the monitor identity and optional
+icon and label; it has no numeric level or maximum. Connect the event to the
+Bingux OSD surface and define how requests without a numeric level appear.
+Keep OSD rendering independent of GNOME Shell monkey-patches and
 `org.gnoblin.Shell`.
 
 For tablet-pad help, subscribe to `gnoblin.input.pad-help-requested` and draw a
@@ -123,9 +137,10 @@ or render Bingux UI.
 1. Verify that a launched calendar window receives focus through its normal
    activation request. If it does not, pass a valid XDG Activation token on
    the same socket connection.
-2. Subscribe to `gnoblin.osd.requested` and draw OSDs in Bingux. Keep the
-   GNOME Shell OSD shim in the compatibility session and keep LaunchFeedback
-   on its documented D-Bus API.
+2. Connect `gnoblin.osd.requested` to the Bingux OSD surface. Decide how to
+   present requests without a numeric level before claiming standalone OSD
+   support. Keep the GNOME Shell OSD shim in the compatibility session and
+   keep LaunchFeedback on its documented D-Bus API.
 3. Replace the calendar helper's GNOME Shell CalendarServer dependency with a
    Bingux-owned provider, or disable event loading cleanly when that optional
    provider is unavailable.
