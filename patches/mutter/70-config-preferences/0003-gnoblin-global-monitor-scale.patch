@@ -5,40 +5,30 @@ Subject: [PATCH] Apply Lua global monitor scale preference
 
 ---
 diff --git a/src/backends/meta-settings-private.h b/src/backends/meta-settings-private.h
-index 4a3fc4dca8..70ba03da63 100644
+index 2ba4443a0..08f3ce6fb 100644
 --- a/src/backends/meta-settings-private.h
 +++ b/src/backends/meta-settings-private.h
-@@ -53,9 +53,14 @@ void meta_settings_post_init (MetaSettings *settings);
- 
- void meta_settings_update_ui_scaling_factor (MetaSettings *settings);
+@@ -51,2 +51,3 @@ void meta_settings_update_ui_scaling_factor (MetaSettings *settings);
  
 +META_EXPORT_TEST
  gboolean meta_settings_get_global_scaling_factor (MetaSettings *settings,
-                                                   int          *scaing_factor);
+@@ -54,2 +55,6 @@ gboolean meta_settings_get_global_scaling_factor (MetaSettings *settings,
  
 +META_EXPORT_TEST
 +void meta_settings_apply_gnoblin_monitor_preferences (MetaSettings *settings,
 +                                                       GVariant     *preferences);
 +
  META_EXPORT_TEST
- gboolean meta_settings_is_experimental_feature_enabled (MetaSettings           *settings,
-                                                         MetaExperimentalFeature feature);
 diff --git a/src/backends/meta-settings.c b/src/backends/meta-settings.c
-index a9c3e912bd..9ca113af7b 100644
+index e5b49ba57..842da4a66 100644
 --- a/src/backends/meta-settings.c
 +++ b/src/backends/meta-settings.c
-@@ -70,6 +70,8 @@ struct _MetaSettings
- 
-   int ui_scaling_factor;
+@@ -67,2 +67,4 @@ struct _MetaSettings
    int global_scaling_factor;
 +  gboolean gnoblin_global_scaling_factor_overridden;
 +  int gnoblin_global_scaling_factor;
  
-   int font_dpi;
- 
-@@ -154,8 +156,10 @@ update_global_scaling_factor (MetaSettings *settings)
-   int global_scaling_factor;
- 
+@@ -147,4 +149,6 @@ update_global_scaling_factor (MetaSettings *settings)
    global_scaling_factor =
 -    (int) g_settings_get_uint (settings->interface_settings,
 -                               "scaling-factor");
@@ -47,11 +37,7 @@ index a9c3e912bd..9ca113af7b 100644
 +      : (int) g_settings_get_uint (settings->interface_settings,
 +                                   "scaling-factor");
  
-   if (settings->global_scaling_factor != global_scaling_factor)
-     {
-@@ -179,6 +183,46 @@ meta_settings_get_global_scaling_factor (MetaSettings *settings,
-   return TRUE;
- }
+@@ -172,2 +176,42 @@ meta_settings_get_global_scaling_factor (MetaSettings *settings,
  
 +void
 +meta_settings_apply_gnoblin_monitor_preferences (MetaSettings *settings,
@@ -94,11 +80,9 @@ index a9c3e912bd..9ca113af7b 100644
 +}
 +
  static gboolean
- update_font_dpi (MetaSettings *settings)
- {
 diff --git a/src/tests/gnoblin-monitor-settings-test.c b/src/tests/gnoblin-monitor-settings-test.c
 new file mode 100644
-index 0000000000..97aef10711
+index 000000000..97aef1071
 --- /dev/null
 +++ b/src/tests/gnoblin-monitor-settings-test.c
 @@ -0,0 +1,89 @@
@@ -192,23 +176,10 @@ index 0000000000..97aef10711
 +    return ret;
 +}
 diff --git a/src/tests/meson.build b/src/tests/meson.build
-index 89fe5d2bcc..b12644e8ac 100644
+index a58ddacf5..cb556fcb9 100644
 --- a/src/tests/meson.build
 +++ b/src/tests/meson.build
-@@ -1278,15 +1278,22 @@
- # Miscellaneous tests
- test_cases += [
-   {
-     'name': 'service-channel',
-     'suite': 'wayland',
-     'sources': [
-       'service-channel-tests.c',
-       wayland_test_client_utils,
-       wayland_test_utils,
-     ],
-     'depends': [
-       test_client_executables.get('service-client'),
-     ],
+@@ -1291,2 +1291,9 @@ test_cases += [
    },
 +  {
 +    'name': 'gnoblin-monitor-settings',
