@@ -59,17 +59,22 @@ Accepted groups are `wm`, `mutter`, and `wayland`.
 List actions with `gnoblinctl shortcut actions` while a Gnoblin session is
 running, or read them from Lua with `gnoblin.shortcuts.actions(group?)`.
 
-| Field     | Accepted values                                           | Meaning                                                                       |
-| --------- | --------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| `action`  | `"wm.KEY"`, `"mutter.KEY"`, or `"wayland.KEY"`            | Selects a built-in action from that schema. Use underscores in Lua key names. |
-| `binding` | GTK accelerator string for a command; array for an action | Required. An empty action list disables its current binding.                  |
-| `command` | Nonempty array of strings                                 | Alternative to `action`; runs the program directly without shell expansion.   |
-| `trigger` | `"press"` or `"release"`                                  | `"press"` by default; selects which key edge launches a command.              |
+| Field           | Accepted values                                           | Meaning                                                                                                 |
+| --------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `action`        | `"wm.KEY"`, `"mutter.KEY"`, or `"wayland.KEY"`            | Selects a built-in action from that schema. Use underscores in Lua key names.                           |
+| `binding`       | GTK accelerator string for a command; array for an action | Required. An empty action list disables its current binding.                                            |
+| `command`       | Nonempty array of strings                                 | Alternative to `action`; runs the program directly without shell expansion.                             |
+| `trigger`       | `"press"` or `"release"`                                  | `"press"` by default; selects which key edge launches a command.                                        |
+| `capture_input` | `true`                                                    | Reserves bare `Super` for shell input capture. Requires a release trigger and no `command` or `action`. |
 
-Input capture is available to transient runtime bindings, not named config
-entries. See [shortcut state and capture](/config/runtime-api#shortcut-state-and-capture).
+The named `capture_input` form above is for a shell binding that belongs in
+your config. It emits shortcut-session events instead of launching a command.
+Runtime bindings can also set `capture_input` when a shell registers the
+binding dynamically. Neither form appears in `gnoblin.shortcuts.list()`;
+static capture declarations use the shortcut-session event API. See
+[shortcut state and capture](/config/runtime-api#shortcut-state-and-capture).
 
-Set exactly one of `action` or `command`:
+For a command or action shortcut, set exactly one of `action` or `command`:
 
 ```lua
 gnoblin.configure {
@@ -121,7 +126,9 @@ Run `gnoblinctl shortcut capture` to print the GTK accelerator for a key combina
 
 ## Type definition
 
-Every named entry uses exactly one of `command` or `action`. `?` marks
+Every named entry uses exactly one of `command`, `action`, or the special
+`capture_input = true` form. The capture form requires `binding = "Super"` and
+`trigger = "release"`, and it cannot include `command` or `action`. `?` marks
 optional fields; `|` separates alternatives.
 
 ```lua

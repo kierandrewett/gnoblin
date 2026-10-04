@@ -29,10 +29,12 @@ Shortcut names use letters, numbers, `_` and `-`. A config can declare up to
 256 shortcuts. Removing a command shortcut releases its binding; it does not
 stop a launched program.
 
-The standalone session accepts command shortcuts and Mutter actions at startup,
-including release triggers and bare Super. It does not provide GNOME Shell
-actions or popup input capture. Restart the compositor after changing its
-config.
+The standalone session accepts command shortcuts and compositor actions at
+startup, including release triggers and bare Super. GNOME Shell actions require
+GNOME Shell. For a standalone shell to receive keystrokes while bare Super is
+held, configure `capture_input` as described in
+[Popups that capture typing](#popups-that-capture-typing). Restart the
+compositor after changing its config.
 
 ## Open an application launcher
 
