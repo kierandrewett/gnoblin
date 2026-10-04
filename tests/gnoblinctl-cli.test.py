@@ -984,6 +984,18 @@ def main() -> int:
     assert mutter_result.returncode == 0, mutter_result.stderr
     assert "MUTTER:mutter.test.signal" in mutter_result.stdout, mutter_result.stdout
 
+    with tempfile.TemporaryDirectory(prefix="mutter-name-", dir=build_directory) as temporary:
+        socket_path = str(Path(temporary) / "unused.sock")
+        for method in ("on", "once"):
+            script_path = Path(temporary) / f"{method}.lua"
+            script_path.write_text(
+                f'gnoblin.events.mutter.{method}("gnoblin.window.created", function() end)\n',
+                encoding="utf-8",
+            )
+            invalid_mutter_name = run(binary, "--socket", socket_path, "lua", str(script_path))
+            assert invalid_mutter_name.returncode != 0
+            assert "Mutter event name must start with 'mutter.'" in invalid_mutter_name.stderr
+
     focus_context_result = run_focus_context_cli_test(binary, build_directory)
     assert focus_context_result.returncode == 0, focus_context_result.stderr
 
