@@ -3347,6 +3347,7 @@ typedef struct {
 
 static const InputField input_fields[] = {
     {"mouse", "speed", INPUT_DOUBLE, NULL, -1, 1},
+    {"mouse", "double-click-time", INPUT_INTEGER, NULL, 0, G_MAXINT},
     {"mouse", "drag-threshold", INPUT_INTEGER, NULL, 1, G_MAXINT},
     {"mouse", "left-handed", INPUT_BOOLEAN},
     {"mouse", "natural-scroll", INPUT_BOOLEAN},

@@ -68,6 +68,7 @@ gnoblin.configure {
     input = {
         mouse = {
             -- speed = 0.0, -- -1..1
+            -- double_click_time = 400, -- milliseconds between clicks
             -- drag_threshold = 8, -- pointer distance in pixels; omitted uses the system value
             -- left_handed = false,
             -- natural_scroll = false,

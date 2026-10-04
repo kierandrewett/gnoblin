@@ -61,7 +61,7 @@ static GVariant* normalize_input_fields(GVariant* fields) {
             double number = 0;
             input_number(value, &number);
             g_variant_builder_add(&normalized, "{sv}", key, g_variant_new_double(number));
-        } else if (g_str_equal(key, "drag-threshold")) {
+        } else if (g_str_equal(key, "double-click-time") || g_str_equal(key, "drag-threshold")) {
             double number = 0;
             input_number(value, &number);
             g_variant_builder_add(&normalized, "{sv}", key, g_variant_new_int32((gint32)number));

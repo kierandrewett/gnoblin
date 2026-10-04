@@ -1,0 +1,118 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] configure mouse double-click time from Lua
+
+---
+diff --git a/clutter/clutter/clutter-settings-private.h b/clutter/clutter/clutter-settings-private.h
+index 8eb93fa4b..9de5aac29 100644
+--- a/clutter/clutter/clutter-settings-private.h
++++ b/clutter/clutter/clutter-settings-private.h
+@@ -9,9 +9,11 @@ void    _clutter_settings_set_backend           (ClutterSettings *settings,
+                                                  ClutterBackend  *backend);
+ 
+ CLUTTER_EXPORT
+-void    _clutter_settings_set_gnoblin_drag_threshold (ClutterSettings *settings,
+-                                                      gboolean         configured,
+-                                                      int              threshold);
++void    _clutter_settings_set_gnoblin_mouse_options (ClutterSettings *settings,
++                                                     gboolean         double_click_configured,
++                                                     int              double_click_time,
++                                                     gboolean         drag_threshold_configured,
++                                                     int              drag_threshold);
+ 
+ void clutter_settings_ensure_pointer_a11y_settings (ClutterSettings *settings,
+                                                     ClutterSeat     *seat);
+diff --git a/clutter/clutter/clutter-settings.c b/clutter/clutter/clutter-settings.c
+index 29bae17df..2b0d9c8e0 100644
+--- a/clutter/clutter/clutter-settings.c
++++ b/clutter/clutter/clutter-settings.c
+@@ -45,6 +45,8 @@ struct _ClutterSettings
+ 
+   gint double_click_time;
+   gint double_click_distance;
++  gboolean gnoblin_double_click_time_configured;
++  gint gnoblin_double_click_time;
+ 
+   gint dnd_drag_threshold;
+   gboolean gnoblin_drag_threshold_configured;
+@@ -222,7 +224,9 @@ sync_mouse_options (ClutterSettings *self)
+   int double_click;
+   int drag_threshold;
+ 
+-  double_click = g_settings_get_int (self->mouse_settings, "double-click");
++  double_click = self->gnoblin_double_click_time_configured
++                 ? self->gnoblin_double_click_time
++                 : g_settings_get_int (self->mouse_settings, "double-click");
+   drag_threshold = self->gnoblin_drag_threshold_configured
+                    ? self->gnoblin_drag_threshold
+                    : g_settings_get_int (self->mouse_settings, "drag-threshold");
+@@ -234,14 +238,18 @@ sync_mouse_options (ClutterSettings *self)
+ }
+ 
+ void
+-_clutter_settings_set_gnoblin_drag_threshold (ClutterSettings *settings,
+-                                              gboolean         configured,
+-                                              int              threshold)
++_clutter_settings_set_gnoblin_mouse_options (ClutterSettings *settings,
++                                             gboolean         double_click_configured,
++                                             int              double_click_time,
++                                             gboolean         drag_threshold_configured,
++                                             int              drag_threshold)
+ {
+   g_return_if_fail (CLUTTER_IS_SETTINGS (settings));
+ 
+-  settings->gnoblin_drag_threshold_configured = configured;
+-  settings->gnoblin_drag_threshold = threshold;
++  settings->gnoblin_double_click_time_configured = double_click_configured;
++  settings->gnoblin_double_click_time = double_click_time;
++  settings->gnoblin_drag_threshold_configured = drag_threshold_configured;
++  settings->gnoblin_drag_threshold = drag_threshold;
+   sync_mouse_options (settings);
+ }
+ 
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index 40408d0c4..6324d5816 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -1272,8 +1272,11 @@ meta_prefs_apply_gnoblin_input_preferences (MetaBackend *backend,
+   g_autoptr (GVariant) mouse = input
+     ? g_variant_lookup_value (input, "mouse", G_VARIANT_TYPE_VARDICT)
+     : NULL;
++  int configured_double_click_time;
+   int configured_threshold;
++  gboolean double_click_configured;
+   gboolean configured;
++  int double_click_time;
+   int threshold;
+ 
+   g_return_if_fail (META_IS_BACKEND (backend));
+@@ -1281,6 +1284,13 @@ meta_prefs_apply_gnoblin_input_preferences (MetaBackend *backend,
+   if (!is_gnoblin_session ())
+     return;
+ 
++  double_click_configured = mouse &&
++                            g_variant_lookup (mouse, "double-click-time", "i",
++                                              &configured_double_click_time);
++  double_click_time = double_click_configured
++    ? configured_double_click_time
++    : g_settings_get_int (SETTINGS (SCHEMA_MOUSE), "double-click");
++
+   configured = mouse &&
+                g_variant_lookup (mouse, "drag-threshold", "i",
+                                  &configured_threshold);
+@@ -1301,9 +1311,11 @@ meta_prefs_apply_gnoblin_input_preferences (MetaBackend *backend,
+     ClutterSettings *clutter_settings =
+       clutter_context_get_settings (clutter_context);
+ 
+-    _clutter_settings_set_gnoblin_drag_threshold (clutter_settings,
+-                                                  configured,
+-                                                  threshold);
++    _clutter_settings_set_gnoblin_mouse_options (clutter_settings,
++                                                 double_click_configured,
++                                                 double_click_time,
++                                                 configured,
++                                                 threshold);
+   }
+ }
+ 

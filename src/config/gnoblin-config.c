@@ -149,8 +149,8 @@ static gboolean tablet_pad_buttons_valid(GVariant* value) {
 
 static gboolean input_field_known(const char* group, const char* key) {
     static const char* const mouse_fields[] = {
-        "speed",         "drag-threshold", "left-handed", "natural-scroll",
-        "accel-profile", "accel-curve",    NULL,
+        "speed",          "double-click-time", "drag-threshold", "left-handed",
+        "natural-scroll", "accel-profile",     "accel-curve",    NULL,
     };
     static const char* const touchpad_fields[] = {
         "speed",
@@ -259,6 +259,11 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
     if (g_str_equal(key, "drag-threshold")) {
         double number;
         return input_number(value, &number) && number >= 1 && number <= G_MAXINT &&
+               number == floor(number);
+    }
+    if (g_str_equal(key, "double-click-time")) {
+        double number;
+        return input_number(value, &number) && number >= 0 && number <= G_MAXINT &&
                number == floor(number);
     }
     if (g_str_equal(key, "xkb-options")) {
