@@ -64,8 +64,8 @@ Gnoblin forwards signals from these Mutter sources:
 
 It watches newly created windows and workspaces as they appear.
 
-Gnoblin starts this signal watcher only when the config registers one of these
-events or the `*` listener.
+Gnoblin starts a signal watcher when the supervised Lua config or a compositor
+socket client subscribes to that signal.
 
 Gnoblin also exposes the Wayland pointer-window transition as
 `mutter.wayland.pointer-window-changed`, with `app_id`, `wm_class`, and
@@ -105,10 +105,11 @@ The standalone native runtime also dispatches the stable
 Within the gesture stream, `sequence` increases and `time` uses monotonic-clock
 microseconds. Device names and input tokens are omitted.
 
-Socket clients receive the stable `gnoblin.input.gesture` event, not Mutter's
-internal event. They need API 1.9 and request it with `op: "events"`. Frames
-use `event` instead of Lua's `name` and include socket-stream sequence and
-time. See the [compositor bridge](/compositor-bridge).
+Compositor socket clients can subscribe to stable `gnoblin.*` events and raw
+`mutter.*` signals with API 1.9 and `op: "events"`. Frames use `event` instead
+of Lua's `name` and include socket-stream sequence and time. Raw Mutter signal
+names and payloads can change with the pinned Mutter version. See the
+[compositor bridge](/compositor-bridge).
 
 ```lua
 gnoblin.events.on("gnoblin.input.gesture", function(event)
@@ -123,9 +124,9 @@ Every signal event includes `source` and `signal`.
 - Scalar signal arguments appear as `arg0`, `arg1`, and so on. Their GObject
   types appear in `arg0_type`, `arg1_type`, and so on.
 - Workspace signals include `workspace_index`.
-- `window-added` and `window-removed` include a window identity record in
-  `argN`. It contains `window_id`, `app_id`, and `window_title`; `argN_type` is
-  `MetaWindow`.
+- Signals that pass a `MetaWindow`, including `mutter.display.window-created`,
+  include a window identity record in `argN`. It contains `window_id`, `app_id`,
+  and `window_title`; `argN_type` is `MetaWindow`.
 - `mutter.window.*` events include `window_id`, `app_id`, and `window_title`.
 
 Values that cannot be represented as simple Lua event fields are omitted or
