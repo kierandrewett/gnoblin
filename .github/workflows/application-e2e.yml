@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: fedora:45
-      options: --cap-add=SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined
+      options: --cap-add=SYS_ADMIN --cap-add=NET_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined
     timeout-minutes: 180
     steps:
       - name: Install checkout tools
