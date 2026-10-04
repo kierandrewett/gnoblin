@@ -609,7 +609,7 @@ int main(void) {
         "    accel_curve = { step = 1, points = {0, 0.5, 1} },"
         "    left_handed = 'inherit', middle_click_emulation = true },"
         "  touchpad = { scroll_speed = 2, left_handed = 'mouse', click_method = 'fingers',"
-        "    middle_click_emulation = false },"
+        "    middle_click_emulation = false, disable_while_typing_timeout = 500 },"
         "  keyboard = { delay = 10000, repeat_interval = 30, ['repeat'] = true,"
         "    xkb_options = {'caps:escape'},"
         "    numlock_state = 'inherit', accessibility = {"
@@ -671,6 +671,19 @@ int main(void) {
     g_autoptr(GVariant) touchpad_middle_click_emulation =
         g_variant_lookup_value(touchpad, "middle-click-emulation", G_VARIANT_TYPE_BOOLEAN);
     g_assert_false(g_variant_get_boolean(touchpad_middle_click_emulation));
+    g_autoptr(GVariant) touchpad_dwt_timeout =
+        g_variant_lookup_value(touchpad, "disable-while-typing-timeout", NULL);
+    g_assert_nonnull(touchpad_dwt_timeout);
+    gint64 touchpad_dwt_timeout_ms = 0;
+    if (g_variant_is_of_type(touchpad_dwt_timeout, G_VARIANT_TYPE_INT32))
+        touchpad_dwt_timeout_ms = g_variant_get_int32(touchpad_dwt_timeout);
+    else if (g_variant_is_of_type(touchpad_dwt_timeout, G_VARIANT_TYPE_UINT32))
+        touchpad_dwt_timeout_ms = g_variant_get_uint32(touchpad_dwt_timeout);
+    else {
+        g_assert_true(g_variant_is_of_type(touchpad_dwt_timeout, G_VARIANT_TYPE_INT64));
+        touchpad_dwt_timeout_ms = g_variant_get_int64(touchpad_dwt_timeout);
+    }
+    g_assert_cmpint(touchpad_dwt_timeout_ms, ==, 500);
     g_autoptr(GVariant) keyboard =
         g_variant_lookup_value(input_overlay, "keyboard", G_VARIANT_TYPE_VARDICT);
     g_assert_null(g_variant_lookup_value(keyboard, "numlock-state", NULL));
@@ -795,6 +808,9 @@ int main(void) {
         "gnoblin.configure {input = {mouse = {drag_threshold = 2147483648}}}\n",
         "gnoblin.configure {input = {mouse = {unknown = 'inherit'}}}\n",
         "gnoblin.configure {input = {touchpad = {scroll_speed = 2.1}}}\n",
+        "gnoblin.configure {input = {touchpad = {disable_while_typing_timeout = 99}}}\n",
+        "gnoblin.configure {input = {touchpad = {disable_while_typing_timeout = 5001}}}\n",
+        "gnoblin.configure {input = {touchpad = {disable_while_typing_timeout = 500.5}}}\n",
         "gnoblin.configure {input = {tablets = {['1234:abcd'] = {speed = 'inherit'}}}}\n",
         "gnoblin.configure {input = {tablets = {['1234:abcd'] = {area = {0, 0, 0}}}}}\n",
         "gnoblin.configure {input = {tablets = {['1234:abcd'] = {area = {-0.01, 0, 0, 0}}}}}\n",

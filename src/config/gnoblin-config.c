@@ -181,6 +181,7 @@ static gboolean input_field_known(const char* group, const char* key) {
         "tap-and-drag",
         "tap-and-drag-lock",
         "disable-while-typing",
+        "disable-while-typing-timeout",
         "edge-scrolling-enabled",
         "two-finger-scrolling-enabled",
         "click-method",
@@ -267,6 +268,11 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
             return FALSE;
         return g_str_equal(key, "scroll-speed") ? number >= 0 && number <= 2
                                                 : number >= -1 && number <= 1;
+    }
+    if (g_str_equal(group, "touchpad") && g_str_equal(key, "disable-while-typing-timeout")) {
+        double number;
+        return input_number(value, &number) && number >= 100 && number <= 5000 &&
+               number == floor(number);
     }
     if (g_str_equal(key, "delay") || g_str_equal(key, "repeat-interval")) {
         double number;
