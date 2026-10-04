@@ -47,16 +47,16 @@ gnoblin.animation {name = "soft-open", enable = false}
 Each declaration uses one event. Choose the event that describes **when** the
 animation runs:
 
-| Event                         | When it runs                                     |
-| ----------------------------- | ------------------------------------------------ |
-| `minimize`                    | When a window minimizes                          |
-| `restore`                     | When a window restores                           |
-| `open`, `close`               | When a window opens or closes                    |
-| `dialog-open`, `dialog-close` | When a dialog opens or closes                    |
-| `layer-open`, `layer-close`   | When a layer-shell surface appears or disappears |
-| `workspace-switch`            | When the active workspace changes                |
-| `shadow-change`               | When a window shadow changes                     |
-| `resize`                      | When Mutter changes a window's geometry          |
+| Event                         | When it runs                                                                   |
+| ----------------------------- | ------------------------------------------------------------------------------ |
+| `minimize`                    | When a window minimizes                                                        |
+| `restore`                     | When a window restores                                                         |
+| `open`, `close`               | When a window opens or closes                                                  |
+| `dialog-open`, `dialog-close` | When a dialog opens or closes                                                  |
+| `layer-open`, `layer-close`   | When a layer-shell surface appears or disappears                               |
+| `workspace-switch`            | When the active workspace changes                                              |
+| `shadow-change`               | When a window shadow changes                                                   |
+| `resize`                      | When Mutter changes a window's geometry, including `window:resize()` requests. |
 
 Bingux-owned UI transitions remain Bingux's responsibility.
 

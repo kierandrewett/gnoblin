@@ -26,6 +26,9 @@ that a Lua configuration loads and that `gnoblinctl` can query and mutate
 compositor state. It uses temporary home and XDG directories, a private D-Bus
 session, and the host Wayland display. It is not a login or a sandbox.
 
+The test also resizes a Wayland client through `Window:resize`, checks the
+animation lifecycle events, and captures intermediate rendered frames.
+
 For an interactive preview, run:
 
 ```sh
