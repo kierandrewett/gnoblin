@@ -70,7 +70,7 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 | Session    | `gnoblin`, logind, systemd user targets     | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open.                                                                          |
 | Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                                                                                                                      |
 | Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                                                                                                |
-| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua owns migrated window, pointer, keyboard, tablet, touchpad, Xwayland, and session-scoped privacy-screen preferences; GeoClue policy accepts Lua overrides while retaining per-field GSettings fallback. |
+| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua can override window, pointer, keyboard, tablet, touchpad, Xwayland, and privacy-screen preferences; omitted input options retain GSettings values for compatibility. GeoClue keeps per-field fallback. |
 
 For each Gnoblin-owned Mutter preference, expose a domain-specific Lua setting
 and validate its type and accepted values in Gnoblin. At startup and reload,
@@ -95,8 +95,12 @@ Prefer this Mutter-owned adapter over replacing the process-wide default
 GSettings backend: a backend swap would also affect unrelated GSettings users
 inside Mutter, while the backend extension API has weaker stability guarantees
 than public GIO APIs. Non-Gnoblin sessions continue to use GSettings. For
-settings already moved into Lua, omitted fields use their documented Gnoblin
-defaults; unmigrated preferences continue to use their existing schema values.
+input settings exposed in Lua, an explicit Lua value overrides the current
+system preference. Omitted fields and `"inherit"` retain the current GSettings
+value for compatibility. This keeps existing pointer and keyboard behavior as
+shell clients move to Gnoblin's settings API; replacing that fallback with
+Gnoblin-owned defaults is a separate compatibility change. Other unmigrated
+preferences continue to use their existing schema values.
 The `location.enabled` and `location.max_accuracy` fields are an explicit
 compatibility seam: either field can override its matching GNOME setting, and
 omitting it or setting it to `inherit` keeps the existing system value. These
