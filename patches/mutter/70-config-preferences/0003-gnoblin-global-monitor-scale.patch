@@ -5,10 +5,14 @@ Subject: [PATCH] Apply Lua global monitor scale preference
 
 ---
 diff --git a/src/backends/meta-settings-private.h b/src/backends/meta-settings-private.h
-index 4a3fc4dca8..2078e2a239 100644
+index 4a3fc4dca8..70ba03da63 100644
 --- a/src/backends/meta-settings-private.h
 +++ b/src/backends/meta-settings-private.h
-@@ -56,6 +56,10 @@ void meta_settings_update_ui_scaling_factor (MetaSettings *settings);
+@@ -53,9 +53,14 @@ void meta_settings_post_init (MetaSettings *settings);
+ 
+ void meta_settings_update_ui_scaling_factor (MetaSettings *settings);
+ 
++META_EXPORT_TEST
  gboolean meta_settings_get_global_scaling_factor (MetaSettings *settings,
                                                    int          *scaing_factor);
  
