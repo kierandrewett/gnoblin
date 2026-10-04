@@ -620,7 +620,9 @@ int main(void) {
         "        beep_on_press = true, beep_on_accept = false, beep_on_reject = true},"
         "      sticky_keys = {enabled = true, two_key_off = true, beep_on_modifier = true},"
         "      toggle_keys = {enabled = true} } },"
-        "  tablets = { ['056a:00b9'] = { mapping = 'relative', keep_aspect = true },"
+        "  tablets = { ['056a:00b9'] = { mapping = 'relative', keep_aspect = true,"
+        "    pad_buttons = {{button = 0, action = 'keybinding', keybinding = '<Super>e'},"
+        "      {button = 2, action = 'switch-monitor'}} },"
         "    ['1234:abcd'] = { mapping = 'inherit' } },"
         "  styluses = { ['123'] = { eraser_button_mode = 'button',"
         "    eraser_button_action = 'keybinding',"
@@ -722,6 +724,26 @@ int main(void) {
     g_autoptr(GVariant) mapped_tablet =
         g_variant_lookup_value(tablets, "056a:00b9", G_VARIANT_TYPE_VARDICT);
     g_assert_nonnull(mapped_tablet);
+    g_autoptr(GVariant) pad_buttons =
+        g_variant_lookup_value(mapped_tablet, "pad-buttons", G_VARIANT_TYPE("av"));
+    g_assert_nonnull(pad_buttons);
+    g_assert_cmpuint(g_variant_n_children(pad_buttons), ==, 2);
+    g_autoptr(GVariant) first_pad_button_box = g_variant_get_child_value(pad_buttons, 0);
+    g_autoptr(GVariant) first_pad_button = g_variant_get_variant(first_pad_button_box);
+    g_autoptr(GVariant) first_button_number =
+        g_variant_lookup_value(first_pad_button, "button", G_VARIANT_TYPE_INT64);
+    g_autoptr(GVariant) first_button_action =
+        g_variant_lookup_value(first_pad_button, "action", G_VARIANT_TYPE_STRING);
+    g_autoptr(GVariant) first_button_keybinding =
+        g_variant_lookup_value(first_pad_button, "keybinding", G_VARIANT_TYPE_STRING);
+    g_assert_cmpint(g_variant_get_int64(first_button_number), ==, 0);
+    g_assert_cmpstr(g_variant_get_string(first_button_action, NULL), ==, "keybinding");
+    g_assert_cmpstr(g_variant_get_string(first_button_keybinding, NULL), ==, "<Super>e");
+    g_autoptr(GVariant) second_pad_button_box = g_variant_get_child_value(pad_buttons, 1);
+    g_autoptr(GVariant) second_pad_button = g_variant_get_variant(second_pad_button_box);
+    g_autoptr(GVariant) second_button_action =
+        g_variant_lookup_value(second_pad_button, "action", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(second_button_action, NULL), ==, "switch-monitor");
     g_autoptr(GVariant) styluses =
         g_variant_lookup_value(input_overlay, "styluses", G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) stylus = g_variant_lookup_value(styluses, "123", G_VARIANT_TYPE_VARDICT);
@@ -759,6 +781,16 @@ int main(void) {
         "gnoblin.configure {input = {mouse = {accel_curve = {step = 0, points = {0, 1}}}}}\n",
         "gnoblin.configure {input = {mouse = {accel_curve = {step = 1, points = {0}}}}}\n",
         "gnoblin.configure {input = {tablets = {['not-a-device'] = {mapping = 'absolute'}}}}\n",
+        "gnoblin.configure {input = {tablets = {['1234:abcd'] = {pad_buttons = "
+        "{{button = 0, action = 'unknown'}}}}}}\n",
+        "gnoblin.configure {input = {tablets = {['1234:abcd'] = {pad_buttons = "
+        "{{button = 0, action = 'keybinding'}}}}}}\n",
+        "gnoblin.configure {input = {tablets = {['1234:abcd'] = {pad_buttons = "
+        "{{button = 0, action = 'none'}, {button = 0, action = 'help'}}}}}}\n",
+        "gnoblin.configure {input = {tablets = {['1234:abcd'] = {pad_buttons = "
+        "{{button = 1.5, action = 'none'}}}}}}\n",
+        "gnoblin.configure {input = {tablets = {['1234:abcd'] = {pad_buttons = "
+        "{{button = 256, action = 'none'}}}}}}\n",
         "gnoblin.configure {input = {keyboard = {accessibility = {unknown = true}}}}\n",
         "gnoblin.configure {input = {keyboard = {accessibility = {shortcuts_enabled = 1}}}}\n",
         "gnoblin.configure {input = {keyboard = {accessibility = {bounce_keys = {delay_ms = "

@@ -94,6 +94,59 @@ static gboolean input_string_is(GVariant* value, const char* const* choices) {
     return FALSE;
 }
 
+static gboolean tablet_pad_buttons_valid(GVariant* value) {
+    static const char* actions[] = {"default",        "none",       "help",
+                                    "switch-monitor", "keybinding", NULL};
+    if (!g_variant_is_of_type(value, G_VARIANT_TYPE("av")) || g_variant_n_children(value) > 256)
+        return FALSE;
+
+    gboolean seen[256] = {FALSE};
+    for (gsize i = 0; i < g_variant_n_children(value); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+        g_autoptr(GVariant) button = g_variant_get_variant(boxed);
+        if (!g_variant_is_of_type(button, G_VARIANT_TYPE_VARDICT))
+            return FALSE;
+
+        g_autoptr(GVariant) button_value = g_variant_lookup_value(button, "button", NULL);
+        g_autoptr(GVariant) action_value = g_variant_lookup_value(button, "action", NULL);
+        g_autoptr(GVariant) keybinding_value = g_variant_lookup_value(button, "keybinding", NULL);
+        double button_number;
+        if (!button_value || !input_number(button_value, &button_number) || button_number < 0 ||
+            button_number > 255 || button_number != floor(button_number) || !action_value ||
+            !input_string_is(action_value, actions))
+            return FALSE;
+
+        guint button_id = (guint)button_number;
+        if (seen[button_id])
+            return FALSE;
+        seen[button_id] = TRUE;
+
+        const char* action = g_variant_get_string(action_value, NULL);
+        if (g_str_equal(action, "keybinding")) {
+            if (!keybinding_value || !g_variant_is_of_type(keybinding_value, G_VARIANT_TYPE_STRING))
+                return FALSE;
+            const char* keybinding = g_variant_get_string(keybinding_value, NULL);
+            if (!*keybinding || strlen(keybinding) > 160)
+                return FALSE;
+        } else if (keybinding_value) {
+            return FALSE;
+        }
+
+        GVariantIter fields;
+        const char* name;
+        GVariant* field_value;
+        g_variant_iter_init(&fields, button);
+        while (g_variant_iter_next(&fields, "{&sv}", &name, &field_value)) {
+            gboolean known = g_str_equal(name, "button") || g_str_equal(name, "action") ||
+                             g_str_equal(name, "keybinding");
+            g_variant_unref(field_value);
+            if (!known)
+                return FALSE;
+        }
+    }
+    return TRUE;
+}
+
 static gboolean input_field_known(const char* group, const char* key) {
     static const char* const mouse_fields[] = {
         "speed",         "drag-threshold", "left-handed", "natural-scroll",
@@ -120,7 +173,9 @@ static gboolean input_field_known(const char* group, const char* key) {
         "repeat",        "delay",       "repeat-interval", "remember-numlock-state",
         "numlock-state", "xkb-options", "accessibility",   NULL,
     };
-    static const char* const tablet_fields[] = {"mapping", "left-handed", "keep-aspect", NULL};
+    static const char* const tablet_fields[] = {
+        "mapping", "left-handed", "keep-aspect", "pad-buttons", NULL,
+    };
     static const char* const stylus_fields[] = {
         "eraser-button-mode",         "eraser-button-action",
         "eraser-button-keybinding",   "button-action",
@@ -234,6 +289,8 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
         return input_string_is(value, click_methods);
     if (g_str_equal(key, "mapping"))
         return input_string_is(value, tablet_mapping);
+    if (g_str_equal(group, "tablets") && g_str_equal(key, "pad-buttons"))
+        return tablet_pad_buttons_valid(value);
     if (g_str_equal(key, "eraser-button-mode"))
         return input_string_is(value, stylus_eraser_modes);
     if (g_str_has_suffix(key, "button-action"))
