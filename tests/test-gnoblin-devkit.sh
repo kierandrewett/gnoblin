@@ -15,6 +15,10 @@ fi
     echo "No Gnoblin runtime executable found: $GNOBLIN_TEST_RUNTIME" >&2
     exit 1
 }
+command -v grim >/dev/null || {
+    echo "Missing required screenshot tool: grim" >&2
+    exit 1
+}
 mkdir -p "$ROOT/build/tmp"
 fixture_root="$(mktemp -d "$ROOT/build/tmp/devkit-e2e-config.XXXXXX")"
 mkdir -p "$fixture_root/gnoblin"
@@ -1003,7 +1007,7 @@ require_output 'LUA_API:runtime-status'
 require_output 'LUA_API:snapshots'
 require_output 'CLI_MUTTER_EVENT:socket-forwarded'
 require_output 'PASS: Gnoblin denied activation without user context and emitted the denial event'
-require_output 'PASS: workspace animation lifecycle events reach socket clients'
+require_output 'PASS: workspace animation rendered '
 require_output 'LUA_LAYER:live-unmap:false'
 for layer_event in created-snapshot mapped-snapshot unmapped-snapshot removed-snapshot; do
     if ! grep -Fq "LUA_LAYER:$layer_event" "$fixture_root/state/devkit-last.log"; then
