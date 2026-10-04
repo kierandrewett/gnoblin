@@ -2382,13 +2382,19 @@ static gboolean dynamic_shortcut_owner_subscribed(NativeDynamicShortcut* shortcu
            g_hash_table_contains(shortcut->client->event_subscriptions, event);
 }
 
+static gboolean dynamic_shortcut_routes_to_lua_runtime(NativeDynamicShortcut* shortcut) {
+    return shortcut && shortcut->owner_id &&
+           (g_str_has_prefix(shortcut->owner_id, "lua:") ||
+            g_str_has_prefix(shortcut->owner_id, "config:"));
+}
+
 static void dynamic_shortcut_publish_event(GnoblinNativeControl* control,
                                            NativeDynamicShortcut* shortcut, const char* event,
                                            GVariant* payload) {
     if (!control || !shortcut || !event || !payload ||
         !g_variant_is_of_type(payload, G_VARIANT_TYPE_VARDICT))
         return;
-    if (shortcut->owner_id && g_str_has_prefix(shortcut->owner_id, "lua:")) {
+    if (dynamic_shortcut_routes_to_lua_runtime(shortcut)) {
         native_runtime_dispatch_event(control, event, payload);
         return;
     }
@@ -2432,7 +2438,7 @@ static gboolean issue_focus_context_for_session_key(GnoblinNativeControl* contro
         return FALSE;
 
     Client* client = shortcut->client;
-    if ((!client && (!shortcut->owner_id || !g_str_has_prefix(shortcut->owner_id, "lua:"))) ||
+    if ((!client && !dynamic_shortcut_routes_to_lua_runtime(shortcut)) ||
         (client && (client->closing || client->api_minor < 68 || !client->focus_grants ||
                     g_hash_table_size(client->focus_grants) >= MAX_FOCUS_CONTEXTS)))
         return FALSE;
