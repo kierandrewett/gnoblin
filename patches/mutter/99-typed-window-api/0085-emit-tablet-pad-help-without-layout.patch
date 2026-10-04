@@ -1,0 +1,20 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] emit tablet-pad help requests without a layout file
+
+---
+diff --git a/src/core/display.c b/src/core/display.c
+index b9931eafb..8fa8bee62 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -2445,9 +2445,6 @@ meta_display_request_pad_osd (MetaDisplay        *display,
+ #endif
+     }
+ 
+-  if (!layout_path || !settings)
+-    return;
+-
+   if (!logical_monitor)
+     logical_monitor = meta_backend_get_current_logical_monitor (backend);
+ 
