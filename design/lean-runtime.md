@@ -434,8 +434,10 @@ privacy state transitions without changing the host graph.
    Mutter's early modifier hook is available. These APIs let an external shell
    own shortcut behavior and UI without GNOME Shell. Named GNOME Shell actions
    remain unsupported, and static
-   `gnoblin.configure.shortcuts.*.capture_input` remains unsupported. Real-seat
-   shortcut behavior and a complete standalone login still need verification.
+   Static `gnoblin.configure.shortcuts.*.capture_input = true` now arms bare
+   Super and routes its shortcut-session events to Lua; capture-only entries are
+   omitted from `gnoblin.shortcuts.list()`. Real-seat shortcut behavior and a
+   complete standalone login still need verification.
    On Fedora 43, a clean permanent worktree completed the full source build
    with GCC 15.3.1. Host versions of GNOME schemas (49.1), xdg-desktop-portal
    (1.20.4), and GTK (4.20.4) were below the pinned GNOME 51 build floors, so

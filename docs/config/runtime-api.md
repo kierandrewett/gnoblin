@@ -1513,11 +1513,12 @@ the connection before that reply flushes; the client can receive EOF instead.
 
 ## Shortcut state and capture
 
-`gnoblin.shortcuts.list()` returns named command and action shortcuts
-registered by the native compositor. Records do not include shortcuts owned by
-external shell clients. A named config entry with `capture_input = true` is
-registered as a shortcut session and emits the session events below; it does
-not produce a `ShortcutState` record. Each read-only record contains:
+`gnoblin.shortcuts.list()` returns native command and action shortcuts. It
+omits shortcuts owned by shell clients. A configured entry with
+`capture_input = true` starts a shortcut session and sends events to Lua
+listeners. It has no `ShortcutState` record. Socket clients receive session
+events for dynamic bindings they register and subscribe to. Each read-only
+record contains:
 
 - `name`, `binding`, `enabled`, `trigger`, and `revision`.
 - Either `command` (an argument array) or `action` (a `group.key` identifier).
