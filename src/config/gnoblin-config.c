@@ -560,6 +560,47 @@ static gboolean input_group_valid(const char* group, GVariant* values, GError** 
     return TRUE;
 }
 
+static gboolean validate_location(GVariant* location, GError** error) {
+    if (!g_variant_is_of_type(location, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "location must be a table");
+        return FALSE;
+    }
+
+    GVariantIter iter;
+    const char* name;
+    GVariant* value;
+    g_variant_iter_init(&iter, location);
+    while (g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+        gboolean valid = FALSE;
+        if (g_str_equal(name, "enabled")) {
+            valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN) ||
+                    (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+                     g_str_equal(g_variant_get_string(value, NULL), "inherit"));
+            if (!valid)
+                g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                    "location.enabled must be a boolean or inherit");
+        } else if (g_str_equal(name, "max-accuracy")) {
+            if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+                const char* accuracy = g_variant_get_string(value, NULL);
+                valid = g_str_equal(accuracy, "inherit") || g_str_equal(accuracy, "country") ||
+                        g_str_equal(accuracy, "city") || g_str_equal(accuracy, "neighborhood") ||
+                        g_str_equal(accuracy, "street") || g_str_equal(accuracy, "exact");
+            }
+            if (!valid)
+                g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                    "location.max_accuracy must be inherit, country, city, "
+                                    "neighborhood, street, or exact");
+        } else {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "location.%s is an unsupported setting", name);
+        }
+        g_variant_unref(value);
+        if (!valid)
+            return FALSE;
+    }
+    return TRUE;
+}
+
 static gboolean validate_input(GVariant* input, GError** error) {
     if (!g_variant_is_of_type(input, G_VARIANT_TYPE_VARDICT))
         goto invalid_table;
@@ -1291,6 +1332,9 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
         return FALSE;
     }
     if (!gnoblin_permission_policy_validate(document, error))
+        return FALSE;
+    g_autoptr(GVariant) location = g_variant_lookup_value(document, "location", NULL);
+    if (location && !validate_location(location, error))
         return FALSE;
     g_autoptr(GVariant) portals = g_variant_lookup_value(document, "portals", NULL);
     if (portals && !validate_portal_selection(portals, error))

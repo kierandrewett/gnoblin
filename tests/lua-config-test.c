@@ -586,6 +586,53 @@ int main(void) {
     xwayland_scaling_factor = variant_number(xwayland_scale_value);
     g_assert_cmpfloat(xwayland_scaling_factor, ==, 2147483520.0);
 
+    const char* valid_location_configs[] = {
+        "gnoblin.configure {location = {enabled = true, max_accuracy = 'city'}}\n",
+        "gnoblin.configure {location = {enabled = 'inherit'}}\n",
+        "gnoblin.configure {location = {max_accuracy = 'inherit'}}\n",
+        NULL,
+    };
+    for (guint i = 0; valid_location_configs[i]; i++) {
+        g_assert_true(g_file_set_contents(explicit_root, valid_location_configs[i], -1, &error));
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(explicit_root, NULL, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(document);
+        if (i == 0) {
+            g_autoptr(GVariant) configured_location =
+                g_variant_lookup_value(document, "location", G_VARIANT_TYPE_VARDICT);
+            g_assert_nonnull(configured_location);
+            gboolean enabled = FALSE;
+            g_assert_true(g_variant_lookup(configured_location, "enabled", "b", &enabled));
+            g_assert_true(enabled);
+            const char* accuracy = NULL;
+            g_assert_true(g_variant_lookup(configured_location, "max-accuracy", "&s", &accuracy));
+            g_assert_cmpstr(accuracy, ==, "city");
+        }
+    }
+    g_autoptr(GVariant) location_config =
+        g_variant_lookup_value(document, "location", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(location_config);
+    const char* location_accuracy = NULL;
+    g_assert_true(g_variant_lookup(location_config, "max-accuracy", "&s", &location_accuracy));
+    g_assert_cmpstr(location_accuracy, ==, "inherit");
+
+    const char* invalid_location_configs[] = {
+        "gnoblin.configure {location = true}\n",
+        "gnoblin.configure {location = {enabled = 1}}\n",
+        "gnoblin.configure {location = {max_accuracy = 'none'}}\n",
+        "gnoblin.configure {location = {accuracy = 'city'}}\n",
+        NULL,
+    };
+    for (guint i = 0; invalid_location_configs[i]; i++) {
+        g_assert_true(g_file_set_contents(explicit_root, invalid_location_configs[i], -1, &error));
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(explicit_root, NULL, &error);
+        g_assert_null(document);
+        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+        g_clear_error(&error);
+    }
+
     const char* invalid_xwayland_configs[] = {
         "gnoblin.configure {xwayland = true}\n",
         "gnoblin.configure {xwayland = {unknown = true}}\n",
