@@ -39,7 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: fedora:45
-      options: --cap-add=SYS_ADMIN --cap-add=NET_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined
+      options: --cap-add=SYS_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined
     timeout-minutes: 180
     steps:
       - name: Install checkout tools
@@ -72,7 +72,8 @@ jobs:
           # Docker's masked procfs entries prevent Bubblewrap from creating
           # the proc mount Flatpak needs inside its user namespace.
           mount -t proc proc /proc
-          runuser -u builder -- bwrap --unshare-all --ro-bind / / --proc /proc --dev /dev true
+          runuser -u builder -- bwrap --unshare-user --unshare-pid --unshare-uts --unshare-ipc \
+            --ro-bind / / --proc /proc --dev /dev true
 
       - name: Install Flatpak client fixture
         run: |
@@ -80,6 +81,9 @@ jobs:
             https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --system --noninteractive --assumeyes \
             flathub org.gnome.TextEditor
+          # Keep this window-lifecycle fixture out of network namespace
+          # setup, which requires host capabilities unrelated to the test.
+          flatpak override --system --share=network org.gnome.TextEditor
 
       - name: Build Gnoblin with the nested-session viewer
         run: |
