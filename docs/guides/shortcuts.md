@@ -168,10 +168,12 @@ This appends the current time to `~/shortcut.log` when you press Super+Shift+T.
 
 ## Popups that capture typing
 
-For a shell popup that needs the keys typed after bare Super, use the runtime
-`gnoblin.shortcuts.bind` API with `capture_input = true`. This is a runtime
-binding, not a `gnoblin.configure.shortcuts` option. See
-[shortcut state and capture](/config/runtime-api#shortcut-state-and-capture)
-for the binding contract and events.
+For a shell popup that needs keys typed after bare Super, configure a named
+shortcut with `capture_input = true`, `binding = "Super"`, and
+`trigger = "release"`. Handle `gnoblin.shortcut.session.key` events in Lua.
+Only one command-free, action-free bare Super capture binding can be active at
+a time. See the [shortcut configuration reference](/config/configure/shortcuts)
+and [shortcut state and capture](/config/runtime-api#shortcut-state-and-capture)
+for the event fields and session behavior.
 
 See also [restore-or-minimise bindings](/guides/window_state_shortcuts).

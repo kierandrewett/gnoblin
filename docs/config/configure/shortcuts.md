@@ -14,8 +14,34 @@ gnoblin.configure {
 ```
 
 See the [shortcuts guide](/guides/shortcuts) for key names, conflicts and command behavior.
-The native compositor preview accepts command shortcuts at startup. It
-supports release triggers and bare Super on release.
+The native compositor accepts command shortcuts at startup. It supports
+release triggers and bare Super on release. Set `capture_input = true` on a
+command-free entry to receive the dynamic shortcut events while bare Super is
+held:
+
+```lua
+gnoblin.configure {
+    shortcuts = {
+        launcher = {
+            binding = "Super",
+            trigger = "release",
+            capture_input = true,
+        },
+    },
+}
+
+gnoblin.events.on("gnoblin.shortcut.session.key", function(event)
+    if event.id == "launcher" and event.phase == "press" then
+        -- Handle keys typed after pressing Super.
+    end
+end)
+```
+
+Input capture is limited to one command-free, action-free bare `Super` entry
+with `trigger = "release"`. It requires the compositor's early modifier hook.
+The entry raises shortcut events; it does not launch a command. See
+[shortcut state and capture](/config/runtime-api#shortcut-state-and-capture)
+for session events and key event fields.
 
 It also applies named actions from the `wm`, `mutter`, and `wayland` groups.
 
@@ -106,6 +132,7 @@ gnoblin.configure {
             command = {string, ...}?,
             action = string | {schema = string, key = string}?,
             trigger = "press" | "release"?,
+            capture_input = boolean?,
             enable = boolean?,
         }, ...,
     },
