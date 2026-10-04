@@ -8344,15 +8344,24 @@ static void native_settings_changed(guint64 revision, gpointer user_data) {
         config ? g_variant_lookup_value(config, "compositor", G_VARIANT_TYPE_VARDICT) : NULL;
     g_autoptr(GVariant) input_preferences =
         config ? g_variant_lookup_value(config, "input", G_VARIANT_TYPE_VARDICT) : NULL;
+    g_autoptr(GVariant) cursor_preferences =
+        config ? g_variant_lookup_value(config, "cursor", G_VARIANT_TYPE_VARDICT) : NULL;
     g_autoptr(GVariant) keyboard_preferences =
         input_preferences
             ? g_variant_lookup_value(input_preferences, "keyboard", G_VARIANT_TYPE_VARDICT)
             : NULL;
     g_autoptr(GVariant) xwayland_preferences =
         config ? g_variant_lookup_value(config, "xwayland", G_VARIANT_TYPE_VARDICT) : NULL;
+    const char* cursor_theme = "default";
+    gint64 cursor_size = 24;
+    if (cursor_preferences) {
+        g_variant_lookup(cursor_preferences, "theme", "&s", &cursor_theme);
+        g_variant_lookup(cursor_preferences, "size", "x", &cursor_size);
+    }
     meta_prefs_apply_gnoblin_window_preferences(window_management);
     meta_prefs_apply_gnoblin_compositor_preferences(compositor_preferences);
     meta_prefs_apply_gnoblin_keyboard_preferences(keyboard_preferences);
+    meta_prefs_set_gnoblin_cursor_config(cursor_theme, (int)cursor_size);
     meta_settings_apply_gnoblin_xwayland_preferences(meta_backend_get_settings(control->backend),
                                                      xwayland_preferences);
     native_apply_all_window_rules(control);
