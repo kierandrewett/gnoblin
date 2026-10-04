@@ -281,6 +281,13 @@ gnoblin.configure {
         focus_mode = "click",
         focus_new_windows = "strict",
     },
+    shortcuts = {
+        shell_input_capture = {
+            binding = "Super",
+            trigger = "release",
+            capture_input = true,
+        },
+    },
     input_sources = {
         sources = {
             {type = "xkb", id = "us"},
@@ -366,6 +373,13 @@ gnoblin.configure {
     window_management = {
         focus_mode = "click",
         focus_new_windows = "strict",
+    },
+    shortcuts = {
+        shell_input_capture = {
+            binding = "Super",
+            trigger = "release",
+            capture_input = true,
+        },
     },
     input_sources = {
         sources = {
@@ -536,6 +550,13 @@ gnoblin.configure {
         focus_mode = "click",
         focus_new_windows = "strict",
     },
+    shortcuts = {
+        shell_input_capture = {
+            binding = "Super",
+            trigger = "release",
+            capture_input = true,
+        },
+    },
     xwayland = {
         scaling_factor = 2,
     },
@@ -550,6 +571,13 @@ gnoblin.configure {
     window_management = {
         focus_mode = "click",
         focus_new_windows = "strict",
+    },
+    shortcuts = {
+        shell_input_capture = {
+            binding = "Super",
+            trigger = "release",
+            capture_input = true,
+        },
     },
 }
 LUA
@@ -637,6 +665,13 @@ gnoblin.configure {
         focus_mode = "click",
         focus_new_windows = "strict",
     },
+    shortcuts = {
+        shell_input_capture = {
+            binding = "Super",
+            trigger = "release",
+            capture_input = true,
+        },
+    },
 }
 local function report_workspace_animation(event)
     if event.event == "workspace-switch" then
@@ -663,6 +698,13 @@ gnoblin.configure {
     window_management = {
         focus_mode = "click",
         focus_new_windows = "strict",
+    },
+    shortcuts = {
+        shell_input_capture = {
+            binding = "Super",
+            trigger = "release",
+            capture_input = true,
+        },
     },
 }
 local namespace = "gnoblin-lua-layer-lifecycle-e2e"
@@ -897,7 +939,10 @@ else:
 config_path = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin" / "init.lua"
 config_path.write_text(
     "gnoblin.configure { window_management = { focus_mode = 'click', "
-    "focus_new_windows = 'strict' }, input = { mouse = { drag_threshold = 37 } } }\n",
+    "focus_new_windows = 'strict' }, "
+    "shortcuts = { shell_input_capture = { binding = 'Super', "
+    "trigger = 'release', capture_input = true } }, "
+    "input = { mouse = { drag_threshold = 37 } } }\n",
     encoding="utf-8",
 )
 subprocess.run([gnoblinctl, "config", "reload"], check=True, timeout=10)
