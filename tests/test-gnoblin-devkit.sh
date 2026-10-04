@@ -618,6 +618,7 @@ gnoblin.events.on("gnoblin.animation.finished", report_workspace_animation)
 LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/config-reload.txt"
 python3 "$GNOBLIN_TEST_ROOT/tests/test-workspace-animation-events.py"
+python3 "$GNOBLIN_TEST_ROOT/tests/test-resize-animation-events.py"
 cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
     window_management = {
@@ -1008,6 +1009,7 @@ require_output 'LUA_API:snapshots'
 require_output 'CLI_MUTTER_EVENT:socket-forwarded'
 require_output 'PASS: Gnoblin denied activation without user context and emitted the denial event'
 require_output 'PASS: workspace animation rendered '
+require_output 'PASS: resize animation rendered '
 require_output 'LUA_LAYER:live-unmap:false'
 for layer_event in created-snapshot mapped-snapshot unmapped-snapshot removed-snapshot; do
     if ! grep -Fq "LUA_LAYER:$layer_event" "$fixture_root/state/devkit-last.log"; then
