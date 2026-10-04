@@ -8191,9 +8191,13 @@ static void native_settings_changed(guint64 revision, gpointer user_data) {
         input_preferences
             ? g_variant_lookup_value(input_preferences, "keyboard", G_VARIANT_TYPE_VARDICT)
             : NULL;
+    g_autoptr(GVariant) xwayland_preferences =
+        config ? g_variant_lookup_value(config, "xwayland", G_VARIANT_TYPE_VARDICT) : NULL;
     meta_prefs_apply_gnoblin_window_preferences(window_management);
     meta_prefs_apply_gnoblin_compositor_preferences(compositor_preferences);
     meta_prefs_apply_gnoblin_keyboard_preferences(keyboard_preferences);
+    meta_settings_apply_gnoblin_xwayland_preferences(meta_backend_get_settings(control->backend),
+                                                     xwayland_preferences);
     native_apply_all_window_rules(control);
     g_autoptr(GVariant) configured_gestures =
         config ? g_variant_lookup_value(config, "touchpad-gestures", G_VARIANT_TYPE("av")) : NULL;
