@@ -3,6 +3,7 @@
 #include "gnoblin-portal-policy.h"
 
 #include <gio/gio.h>
+#include <json-glib/json-glib.h>
 #include <lauxlib.h>
 #include <lua.h>
 #include <lualib.h>
@@ -4618,6 +4619,114 @@ static gint compare_string_pointers(gconstpointer left, gconstpointer right) {
     return g_strcmp0(*(const gchar* const*)left, *(const gchar* const*)right);
 }
 
+static gchar* native_keybinding_catalog_path(void) {
+    const char* prefix = g_getenv("GNOBLIN_PREFIX");
+    if (prefix && *prefix) {
+        g_autofree char* candidate =
+            g_build_filename(prefix, "share", "gnoblin", "native-keybindings.json", NULL);
+        if (g_file_test(candidate, G_FILE_TEST_IS_REGULAR))
+            return g_steal_pointer(&candidate);
+    }
+
+    const char* const* data_dirs = g_get_system_data_dirs();
+    for (guint i = 0; data_dirs[i]; i++) {
+        g_autofree char* candidate =
+            g_build_filename(data_dirs[i], "gnoblin", "native-keybindings.json", NULL);
+        if (g_file_test(candidate, G_FILE_TEST_IS_REGULAR))
+            return g_steal_pointer(&candidate);
+    }
+    return NULL;
+}
+
+static GHashTable* load_native_keybinding_catalog(GError** error) {
+    g_autofree char* path = native_keybinding_catalog_path();
+    if (!path) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_NOENT,
+                            "Mutter keybinding catalog is missing; build the Gnoblin Mutter "
+                            "component before listing native actions");
+        return NULL;
+    }
+
+    g_autoptr(JsonParser) parser = json_parser_new();
+    if (!json_parser_load_from_file(parser, path, error))
+        return NULL;
+
+    JsonNode* root = json_parser_get_root(parser);
+    if (!JSON_NODE_HOLDS_OBJECT(root)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Mutter keybinding catalog root must be an object");
+        return NULL;
+    }
+
+    JsonObject* object = json_node_get_object(root);
+    JsonNode* format_node = json_object_get_member(object, "format");
+    JsonNode* groups_node = json_object_get_member(object, "groups");
+    GType format_type =
+        JSON_NODE_HOLDS_VALUE(format_node) ? json_node_get_value_type(format_node) : G_TYPE_INVALID;
+    if (!JSON_NODE_HOLDS_VALUE(format_node) ||
+        (format_type != G_TYPE_INT && format_type != G_TYPE_INT64) ||
+        json_node_get_int(format_node) != 1 || !JSON_NODE_HOLDS_OBJECT(groups_node)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Mutter keybinding catalog has an unsupported format");
+        return NULL;
+    }
+
+    static const char* groups[] = {"wm", "mutter", "wayland"};
+    JsonObject* catalog_groups = json_node_get_object(groups_node);
+    if (json_object_get_size(catalog_groups) != G_N_ELEMENTS(groups)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Mutter keybinding catalog must contain exactly three groups");
+        return NULL;
+    }
+
+    GHashTable* actions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    for (guint group_index = 0; group_index < G_N_ELEMENTS(groups); group_index++) {
+        JsonNode* actions_node = json_object_get_member(catalog_groups, groups[group_index]);
+        if (!JSON_NODE_HOLDS_ARRAY(actions_node)) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "Mutter keybinding catalog group '%s' must be an array",
+                        groups[group_index]);
+            g_hash_table_unref(actions);
+            return NULL;
+        }
+
+        JsonArray* group_actions = json_node_get_array(actions_node);
+        for (guint action_index = 0; action_index < json_array_get_length(group_actions);
+             action_index++) {
+            JsonNode* action_node = json_array_get_element(group_actions, action_index);
+            if (!JSON_NODE_HOLDS_VALUE(action_node) ||
+                json_node_get_value_type(action_node) != G_TYPE_STRING) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Mutter keybinding catalog group '%s' contains a non-string action",
+                            groups[group_index]);
+                g_hash_table_unref(actions);
+                return NULL;
+            }
+
+            const char* key = json_node_get_string(action_node);
+            if (!key || !*key || strlen(key) > 128 ||
+                !g_regex_match_simple("^[a-z0-9]+(?:-[a-z0-9]+)*$", key, 0, 0)) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Mutter keybinding catalog group '%s' contains an invalid action",
+                            groups[group_index]);
+                g_hash_table_unref(actions);
+                return NULL;
+            }
+
+            g_autofree char* id = g_strdup_printf("%s.%s", groups[group_index], key);
+            if (!g_hash_table_add(actions, g_steal_pointer(&id))) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "Mutter keybinding catalog repeats action '%s.%s'", groups[group_index],
+                            key);
+                g_hash_table_unref(actions);
+                return NULL;
+            }
+        }
+    }
+
+    return actions;
+}
+
 static int lua_shortcut_actions(lua_State* state) {
     static const struct {
         const char* group;
@@ -4640,6 +4749,11 @@ static int lua_shortcut_actions(lua_State* state) {
             return luaL_error(
                 state, "unknown shortcut action group; expected 'wm', 'mutter', or 'wayland'");
     }
+
+    g_autoptr(GError) catalog_error = NULL;
+    g_autoptr(GHashTable) supported_actions = load_native_keybinding_catalog(&catalog_error);
+    if (!supported_actions)
+        return luaL_error(state, "%s", catalog_error->message);
 
     GSettingsSchemaSource* source = g_settings_schema_source_get_default();
     if (!source)
@@ -4668,6 +4782,9 @@ static int lua_shortcut_actions(lua_State* state) {
         }
         qsort(keys, g_strv_length(keys), sizeof(*keys), compare_string_pointers);
         for (guint key_index = 0; keys[key_index]; key_index++) {
+            g_autofree char* action_id = g_strdup_printf("%s.%s", group, keys[key_index]);
+            if (!g_hash_table_contains(supported_actions, action_id))
+                continue;
             GSettingsSchemaKey* schema_key = g_settings_schema_get_key(schema, keys[key_index]);
             if (!schema_key)
                 continue;
