@@ -29,6 +29,15 @@ static void capture_animation_callback_warning(const gchar* domain, GLogLevelFla
         g_log_default_handler(domain, level, message, NULL);
 }
 
+static void capture_gesture_callback_warning(const gchar* domain, GLogLevelFlags level,
+                                             const gchar* message, gpointer user_data) {
+    gchar** warning = user_data;
+    if (!*warning && strstr(message, "Lua event 'gnoblin.input.gesture' failed:"))
+        *warning = g_strdup(message);
+    else
+        g_log_default_handler(domain, level, message, NULL);
+}
+
 static GVariant* load(const char* path, GPtrArray** paths, GError** error) {
     return gnoblin_config_load_document(path, paths, NULL, error);
 }
@@ -136,6 +145,63 @@ static void test_runtime_document_ownership(const char* path) {
     gnoblin_config_finish_load(TRUE);
     g_variant_unref(document);
     g_variant_unref(g_steal_pointer(&result));
+}
+
+static void load_gesture_sequence_runtime(const char* path, const char* source) {
+    g_autoptr(GError) error = NULL;
+    g_assert_true(g_file_set_contents(path, source, -1, &error));
+    g_assert_no_error(error);
+    g_autoptr(GVariant) document = gnoblin_config_load_runtime(path, NULL, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    gnoblin_config_finish_load(TRUE);
+}
+
+static void dispatch_gesture_sequence_event(gint64 source_sequence) {
+    g_autoptr(GError) error = NULL;
+    GVariantBuilder payload_builder;
+    g_variant_builder_init(&payload_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&payload_builder, "{sv}", "gesture", g_variant_new_string("swipe"));
+    g_variant_builder_add(&payload_builder, "{sv}", "phase", g_variant_new_string("update"));
+    g_variant_builder_add(&payload_builder, "{sv}", "fingers", g_variant_new_int64(3));
+    if (source_sequence > 0)
+        g_variant_builder_add(&payload_builder, "{sv}", "sequence",
+                              g_variant_new_int64(source_sequence));
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&payload_builder));
+    gchar* callback_warning = NULL;
+    guint warning_handler = g_log_set_handler(NULL, G_LOG_LEVEL_WARNING,
+                                              capture_gesture_callback_warning, &callback_warning);
+    g_autoptr(GVariant) document =
+        gnoblin_config_dispatch_event("mutter.touchpad.gesture", payload, &error);
+    g_log_remove_handler(NULL, warning_handler);
+    if (callback_warning)
+        g_error("unexpected gesture callback warning: %s", callback_warning);
+    g_assert_null(callback_warning);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    gnoblin_config_finish_event(TRUE);
+}
+
+static void test_input_gesture_sequence(const char* path) {
+    const char* first_source =
+        "local g=require('gnoblin')\n"
+        "g.animation {name='gesture-sequence-one', event='open', duration=100}\n"
+        "g.on('gnoblin.input.gesture', function(event) assert(event.sequence == 7000) end)\n";
+    const char* reloaded_source =
+        "local g=require('gnoblin')\n"
+        "g.animation {name='gesture-sequence-two', event='open', duration=100}\n"
+        "g.on('gnoblin.input.gesture', function(event) assert(event.sequence == 7001) end)\n";
+    const char* compositor_source =
+        "local g=require('gnoblin')\n"
+        "g.animation {name='gesture-sequence-three', event='open', duration=100}\n"
+        "g.on('gnoblin.input.gesture', function(event) assert(event.sequence == 9000) end)\n";
+
+    load_gesture_sequence_runtime(path, first_source);
+    dispatch_gesture_sequence_event(7000);
+    load_gesture_sequence_runtime(path, reloaded_source);
+    dispatch_gesture_sequence_event(0);
+    load_gesture_sequence_runtime(path, compositor_source);
+    dispatch_gesture_sequence_event(9000);
 }
 
 int main(void) {
@@ -2308,12 +2374,15 @@ int main(void) {
     g_assert_cmpstr(legacy_surface_namespace, ==, "test-panel");
     g_assert_cmpstr(legacy_surface_title, ==, "Panel");
 
+    test_input_gesture_sequence(runtime_root);
+
     g_unlink(fragment);
     g_unlink(malformed_patterns);
     g_unlink(nested);
     g_unlink(module);
     g_unlink(root);
     g_unlink(explicit_root);
+    g_unlink(runtime_root);
     g_rmdir(conf);
     g_rmdir(dir);
     g_print("PASS: Lua config, runtime events, direct values, load, glob and errors\n");
