@@ -4662,6 +4662,7 @@ static int lua_shortcut_actions(lua_State* state) {
                 lua_setfield(state, -2, "description");
             }
             lua_newtable(state);
+            mark_array_table(state, -1);
             for (gsize binding_index = 0; binding_index < g_variant_n_children(defaults);
                  binding_index++) {
                 g_autoptr(GVariant) binding = g_variant_get_child_value(defaults, binding_index);

@@ -1964,6 +1964,21 @@ int main(void) {
         gnoblin_config_read_api("shortcuts.actions", shortcut_action_arguments, &error);
     g_assert_no_error(error);
     g_assert_true(g_variant_is_of_type(wm_shortcut_actions, G_VARIANT_TYPE("av")));
+    gboolean found_empty_shortcut_default_bindings = FALSE;
+    gboolean found_nonempty_shortcut_default_bindings = FALSE;
+    for (gsize i = 0; i < g_variant_n_children(wm_shortcut_actions); i++) {
+        g_autoptr(GVariant) boxed_action = g_variant_get_child_value(wm_shortcut_actions, i);
+        g_autoptr(GVariant) action = g_variant_get_variant(boxed_action);
+        g_autoptr(GVariant) default_bindings =
+            g_variant_lookup_value(action, "default_bindings", G_VARIANT_TYPE("av"));
+        g_assert_nonnull(default_bindings);
+        if (g_variant_n_children(default_bindings) == 0)
+            found_empty_shortcut_default_bindings = TRUE;
+        else
+            found_nonempty_shortcut_default_bindings = TRUE;
+    }
+    g_assert_true(found_empty_shortcut_default_bindings);
+    g_assert_true(found_nonempty_shortcut_default_bindings);
     GVariantBuilder invalid_shortcut_action_arguments_builder;
     g_variant_builder_init(&invalid_shortcut_action_arguments_builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&invalid_shortcut_action_arguments_builder, "{sv}", "group",
