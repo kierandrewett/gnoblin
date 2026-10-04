@@ -84,6 +84,7 @@ versions used by this migration are:
 - window thumbnails: 1.23; text targets: 1.28;
 - privacy state: 1.17; privacy stop actions: 1.31;
 - OSD requests: 1.27.
+- tablet-pad help requests: 1.73 (`gnoblin.input.pad-help-requested`).
 
 `workspace.list` and `window.list` are Lua-backed from API 1.52 and 1.53. The
 [compositor bridge reference](compositor-bridge.md) lists every version,
@@ -105,6 +106,12 @@ For OSDs, subscribe to `gnoblin.osd.requested` and draw the OSD in Bingux. The
 event reports compositor state; it does not provide a popup or prescribe its
 appearance. Keep OSD rendering independent of GNOME Shell monkey-patches and
 `org.gnoblin.Shell`.
+
+For tablet-pad help, subscribe to `gnoblin.input.pad-help-requested` and draw a
+Bingux-owned layer surface. The event includes the pad record, button labels,
+mode groups, feature labels, and optional monitor identity. Labels and monitor
+identity may be unavailable; Mutter no longer requires a Wacom layout image
+for the event. Bingux controls the overlay's appearance and lifetime.
 
 Use standard Wayland protocols for Bingux's own windows and the portal
 interfaces for screen sharing, remote desktop, and other application requests.
