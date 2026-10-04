@@ -15099,6 +15099,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     g_autoptr(GError) monitor_error = NULL;
     g_autoptr(JsonNode) initial_monitors = NULL;
     g_autoptr(GError) layer_error = NULL;
+    g_autoptr(JsonNode) initial_layer_snapshot = NULL;
     g_autoptr(GVariant) capabilities = NULL;
     g_autoptr(GVariant) input_devices = NULL;
     g_autoptr(GVariant) input_sources = NULL;
@@ -15361,7 +15362,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         control->monitor_state_initialized = TRUE;
     }
     g_signal_connect(control->display, "show-osd", G_CALLBACK(native_show_osd_requested), control);
-    g_autoptr(JsonNode) initial_layer_snapshot = layer_snapshot_json(control, TRUE, &layer_error);
+    initial_layer_snapshot = layer_snapshot_json(control, TRUE, &layer_error);
     if (!initial_layer_snapshot)
         g_warning("gnoblin-native-control: cannot seed Lua layer snapshot: %s",
                   layer_error ? layer_error->message : "layer listing unavailable");
