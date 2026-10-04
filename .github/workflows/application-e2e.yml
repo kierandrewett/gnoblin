@@ -72,7 +72,7 @@ jobs:
           # Docker's masked procfs entries prevent Bubblewrap from creating
           # the proc mount Flatpak needs inside its user namespace.
           mount -t proc proc /proc
-          runuser -u builder -- bwrap --unshare-pid --unshare-uts --unshare-ipc \
+          runuser -u builder -- bwrap --unshare-all --share-net \
             --ro-bind / / --proc /proc --dev /dev true
 
       - name: Install Flatpak client fixture
