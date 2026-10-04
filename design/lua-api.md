@@ -282,6 +282,15 @@ IDs identify vendor and product, so identical tablets share overrides. See the
 [input config schema](../docs/config/configure/input.md) for the complete
 example and type shape.
 
+`input.tablets["vvvv:pppp"].output` accepts `"auto"` or an output connector ID
+from `gnoblin.monitors.list()`. Omitted or `"inherit"` follows system tablet
+mapping preferences; `"auto"` explicitly requests Mutter's automatic mapping.
+A disconnected configured output leaves the tablet unmapped until that output
+returns, and cloned connectors resolve to their shared logical monitor. The
+`switch-monitor` action keeps system persistence when no output is configured;
+with an explicit Lua output, it changes the mapping for the current session and
+config reload restores the configured value.
+
 ### Declaration types
 
 | Record           | Required fields                                             | Optional fields                                                                                                                  |
