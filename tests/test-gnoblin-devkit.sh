@@ -1178,3 +1178,55 @@ grep -q 'SUPERVISOR:retry-exhaustion-reported-unavailable' <<<"$guardian_output"
 grep -q 'AUTOSTART:ran-once-across-supervisor-recovery' <<<"$guardian_output"
 grep -q 'SESSION_STATUS:available-with-supervisor-stopped' <<<"$guardian_output"
 printf '%s\n' 'PASS: session supervisor recovery and terminal status preserve the Mutter session'
+
+startup_fixture="$fixture_root/startup-input-config"
+mkdir -p "$startup_fixture/gnoblin"
+cat >"$startup_fixture/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    input_sources = {
+        sources = {
+            {type = "xkb", id = "gb"},
+            {type = "xkb", id = "us"},
+        },
+    },
+}
+LUA
+cat >"$fixture_root/check-startup-input.lua" <<'LUA'
+local sources = gnoblin.input.sources()
+assert(#sources == 2 and sources[1].id == "gb" and sources[2].id == "us")
+local current = gnoblin.input.current_source()
+assert(current and current.type == "xkb" and current.id == "gb")
+print("INPUT_SOURCE:startup-keymap-gb")
+LUA
+startup_exec=$(
+    cat <<'SCRIPT'
+set -euo pipefail
+for _ in {1..100}; do
+    if gnoblinctl lua "$GNOBLIN_STARTUP_INPUT_CHECK" \
+        >"$XDG_RUNTIME_DIR/startup-input-check.txt" 2>&1; then
+        cat "$XDG_RUNTIME_DIR/startup-input-check.txt"
+        exit 0
+    fi
+    sleep 0.05
+done
+cat "$XDG_RUNTIME_DIR/startup-input-check.txt" >&2
+echo 'Lua-configured startup keyboard layout did not become active' >&2
+exit 1
+SCRIPT
+)
+startup_output="$(
+    GNOBLIN_STATE_DIR="$fixture_root/startup-input-state" \
+        XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
+        GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
+        GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
+        GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
+        GNOBLIN_DEVKIT_CONFIG_SOURCE="$startup_fixture" \
+        GNOBLIN_STARTUP_INPUT_CHECK="$fixture_root/check-startup-input.lua" \
+        GNOBLIN_DEVKIT_EXEC="$startup_exec" \
+        timeout 45 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1
+)" || {
+    printf '%s\n' "$startup_output" >&2
+    exit 1
+}
+grep -q 'INPUT_SOURCE:startup-keymap-gb' <<<"$startup_output"
+printf '%s\n' 'PASS: Lua input-source config initializes the startup keymap'

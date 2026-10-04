@@ -159,11 +159,12 @@ The remaining input-specific patches are listed below.
 - `77-keymap-initialization`, `78-ibus-disconnect-guard`,
   `zzzzzzz-on-demand-ibus`, and shutdown-order patches: a nested-session E2E
   with a synthetic GNOME source schema confirms Lua-only input-source listing,
-  configuration, XKB and IBus selection through `gnoblinctl`, current-source
-  reporting, clearing on IBus owner loss, re-selection after the daemon
-  restarts, and removal on reload. Real-seat startup keymap initialization and
-  full input-service teardown remain unverified before retiring these
-  historical patches.
+  configuration, startup selection of the first configured XKB layout, XKB
+  and IBus selection through `gnoblinctl`, current-source reporting, clearing
+  on IBus owner loss, re-selection after the daemon restarts, and removal on
+  reload. The startup check uses Mutter's virtual devkit output; real-seat
+  startup keymap initialization and full input-service teardown remain
+  unverified before retiring these historical patches.
 - `96-touchpad-gestures`: removed on 2026-10-02. The patch only connected
   GNOME Shell swipe trackers for its Overview, app grid, emoji pager, and lock
   screen to the old GJS configuration bridge. The standalone runtime exposes
