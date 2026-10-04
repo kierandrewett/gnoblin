@@ -225,6 +225,100 @@ int main(void) {
     g_autoptr(GVariant) api_arguments =
         g_variant_ref_sink(g_variant_builder_end(&api_arguments_builder));
 
+    GVariantBuilder privacy_monitor_builder;
+    g_variant_builder_init(&privacy_monitor_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&privacy_monitor_builder, "{sv}", "id", g_variant_new_string("eDP-1"));
+    g_variant_builder_add(&privacy_monitor_builder, "{sv}", "available",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&privacy_monitor_builder, "{sv}", "enabled", g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&privacy_monitor_builder, "{sv}", "locked", g_variant_new_boolean(FALSE));
+    GVariantBuilder privacy_monitors_builder;
+    g_variant_builder_init(&privacy_monitors_builder, G_VARIANT_TYPE("av"));
+    g_variant_builder_add_value(
+        &privacy_monitors_builder,
+        g_variant_new_variant(g_variant_builder_end(&privacy_monitor_builder)));
+    GVariantBuilder monitor_privacy_snapshot_builder;
+    g_variant_builder_init(&monitor_privacy_snapshot_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&monitor_privacy_snapshot_builder, "{sv}", "requested_enabled",
+                          g_variant_new_boolean(TRUE));
+    g_variant_builder_add(&monitor_privacy_snapshot_builder, "{sv}", "source",
+                          g_variant_new_string("runtime"));
+    g_variant_builder_add(&monitor_privacy_snapshot_builder, "{sv}", "monitors",
+                          g_variant_builder_end(&privacy_monitors_builder));
+    g_autoptr(GVariant) monitor_privacy_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&monitor_privacy_snapshot_builder));
+    gnoblin_config_update_monitor_privacy_screen_snapshot(monitor_privacy_snapshot, 12);
+    g_autoptr(GVariant) monitor_privacy_read =
+        gnoblin_config_read_api("monitors.privacy_screen", api_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(monitor_privacy_read);
+    gboolean requested_enabled = FALSE;
+    gint64 privacy_revision = 0;
+    const char* privacy_source = NULL;
+    g_assert_true(
+        g_variant_lookup(monitor_privacy_read, "requested_enabled", "b", &requested_enabled));
+    g_assert_true(g_variant_lookup(monitor_privacy_read, "source", "&s", &privacy_source));
+    g_assert_true(g_variant_lookup(monitor_privacy_read, "revision", "x", &privacy_revision));
+    g_assert_true(requested_enabled);
+    g_assert_cmpstr(privacy_source, ==, "runtime");
+    g_assert_cmpint(privacy_revision, ==, 12);
+    g_autoptr(GVariant) privacy_monitors =
+        g_variant_lookup_value(monitor_privacy_read, "monitors", G_VARIANT_TYPE("av"));
+    g_assert_nonnull(privacy_monitors);
+    g_assert_cmpuint(g_variant_n_children(privacy_monitors), ==, 1);
+
+    GVariantBuilder set_privacy_arguments_builder;
+    g_variant_builder_init(&set_privacy_arguments_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&set_privacy_arguments_builder, "{sv}", "value",
+                          g_variant_new_string("inherit"));
+    g_autoptr(GVariant) set_privacy_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&set_privacy_arguments_builder));
+    g_autoptr(GVariant) set_privacy_operation =
+        gnoblin_config_call_api("monitors.set_privacy_screen", set_privacy_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(set_privacy_operation);
+    g_autoptr(GVariant) set_privacy_method =
+        g_variant_lookup_value(set_privacy_operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_nonnull(set_privacy_method);
+    g_assert_cmpstr(g_variant_get_string(set_privacy_method, NULL), ==,
+                    "monitors.set_privacy_screen");
+    g_autoptr(GVariant) set_privacy_action_arguments =
+        g_variant_lookup_value(set_privacy_operation, "arguments", G_VARIANT_TYPE_VARDICT);
+    const char* set_privacy_value = NULL;
+    g_assert_true(
+        g_variant_lookup(set_privacy_action_arguments, "value", "&s", &set_privacy_value));
+    g_assert_cmpstr(set_privacy_value, ==, "inherit");
+
+    GVariantBuilder set_privacy_boolean_builder;
+    g_variant_builder_init(&set_privacy_boolean_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&set_privacy_boolean_builder, "{sv}", "value",
+                          g_variant_new_boolean(FALSE));
+    g_autoptr(GVariant) set_privacy_boolean_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&set_privacy_boolean_builder));
+    g_autoptr(GVariant) set_privacy_boolean_operation = gnoblin_config_call_api(
+        "monitors.set_privacy_screen", set_privacy_boolean_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(set_privacy_boolean_operation);
+    g_autoptr(GVariant) set_privacy_boolean_action_arguments =
+        g_variant_lookup_value(set_privacy_boolean_operation, "arguments", G_VARIANT_TYPE_VARDICT);
+    gboolean set_privacy_enabled = TRUE;
+    g_assert_true(
+        g_variant_lookup(set_privacy_boolean_action_arguments, "value", "b", &set_privacy_enabled));
+    g_assert_false(set_privacy_enabled);
+
+    GVariantBuilder invalid_privacy_builder;
+    g_variant_builder_init(&invalid_privacy_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&invalid_privacy_builder, "{sv}", "value", g_variant_new_string("yes"));
+    g_autoptr(GVariant) invalid_privacy_arguments =
+        g_variant_ref_sink(g_variant_builder_end(&invalid_privacy_builder));
+    g_autoptr(GVariant) invalid_privacy_operation =
+        gnoblin_config_call_api("monitors.set_privacy_screen", invalid_privacy_arguments, &error);
+    g_assert_null(invalid_privacy_operation);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_clear_error(&error);
+    g_autoptr(GVariant) privacy_operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(privacy_operations), ==, 2);
+
     GVariantBuilder activity_snapshot_builder;
     g_variant_builder_init(&activity_snapshot_builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&activity_snapshot_builder, "{sv}", "available",
