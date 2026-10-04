@@ -3332,6 +3332,7 @@ typedef enum {
     INPUT_CHOICE,
     INPUT_ACCEL_CURVE,
     INPUT_ACCESSIBILITY,
+    INPUT_PAD_BUTTONS,
 } InputKind;
 
 typedef struct {
@@ -3392,6 +3393,7 @@ static const InputField input_fields[] = {
     {"tablets", "mapping", INPUT_CHOICE, "absolute relative"},
     {"tablets", "left-handed", INPUT_BOOLEAN},
     {"tablets", "keep-aspect", INPUT_BOOLEAN},
+    {"tablets", "pad-buttons", INPUT_PAD_BUTTONS},
     {"styluses", "eraser-button-mode", INPUT_CHOICE, "default button"},
     {"styluses", "eraser-button-action", INPUT_CHOICE,
      "default middle right back forward switch-monitor keybinding"},
@@ -3430,9 +3432,107 @@ static gboolean input_accessibility_section_known(const char* section) {
 
 static GVariant* normalize_input_accessibility(GVariant* accessibility, GError** error);
 
+static gboolean input_numeric_value(GVariant* value, double* number) {
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
+        *number = g_variant_get_double(value);
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
+        *number = (double)g_variant_get_int64(value);
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32))
+        *number = (double)g_variant_get_int32(value);
+    else if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32))
+        *number = (double)g_variant_get_uint32(value);
+    else
+        return FALSE;
+
+    return isfinite(*number);
+}
+
+static GVariant* normalize_tablet_pad_buttons(GVariant* value, GError** error) {
+    static const char* actions[] = {"default",        "none",       "help",
+                                    "switch-monitor", "keybinding", NULL};
+    if (!g_variant_is_of_type(value, G_VARIANT_TYPE("av")) || g_variant_n_children(value) > 256) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "input.tablets.pad-buttons must be an array with at most 256 entries");
+        return NULL;
+    }
+
+    gboolean seen[256] = {FALSE};
+    GVariantBuilder buttons;
+    g_variant_builder_init(&buttons, G_VARIANT_TYPE("av"));
+    for (gsize i = 0; i < g_variant_n_children(value); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+        g_autoptr(GVariant) button = g_variant_get_variant(boxed);
+        g_autoptr(GVariant) number_value = NULL;
+        g_autoptr(GVariant) action_value = NULL;
+        g_autoptr(GVariant) keybinding_value = NULL;
+        double number;
+        guint button_id;
+        if (!g_variant_is_of_type(button, G_VARIANT_TYPE_VARDICT))
+            goto invalid_button;
+
+        number_value = g_variant_lookup_value(button, "button", NULL);
+        action_value = g_variant_lookup_value(button, "action", G_VARIANT_TYPE_STRING);
+        keybinding_value = g_variant_lookup_value(button, "keybinding", NULL);
+        if (!number_value || !input_numeric_value(number_value, &number) || number < 0 ||
+            number > 255 || number != floor(number) || !action_value)
+            goto invalid_button;
+        button_id = (guint)number;
+        if (seen[button_id])
+            goto invalid_button;
+        seen[button_id] = TRUE;
+
+        const char* action = g_variant_get_string(action_value, NULL);
+        if (!g_strv_contains(actions, action))
+            goto invalid_button;
+        if (g_str_equal(action, "keybinding")) {
+            if (!keybinding_value || !g_variant_is_of_type(keybinding_value, G_VARIANT_TYPE_STRING))
+                goto invalid_button;
+            const char* keybinding = g_variant_get_string(keybinding_value, NULL);
+            if (!*keybinding || strlen(keybinding) > 160)
+                goto invalid_button;
+        } else if (keybinding_value) {
+            goto invalid_button;
+        }
+
+        GVariantIter fields;
+        const char* name;
+        GVariant* field_value;
+        g_variant_iter_init(&fields, button);
+        while (g_variant_iter_next(&fields, "{&sv}", &name, &field_value)) {
+            gboolean known = g_str_equal(name, "button") || g_str_equal(name, "action") ||
+                             g_str_equal(name, "keybinding");
+            g_variant_unref(field_value);
+            if (!known)
+                goto invalid_button;
+        }
+
+        GVariantBuilder normalized;
+        g_variant_builder_init(&normalized, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&normalized, "{sv}", "button", g_variant_new_uint32(button_id));
+        g_variant_builder_add(&normalized, "{sv}", "action", action_value);
+        if (keybinding_value)
+            g_variant_builder_add(&normalized, "{sv}", "keybinding", keybinding_value);
+        g_variant_builder_add_value(&buttons,
+                                    g_variant_new_variant(g_variant_builder_end(&normalized)));
+        continue;
+
+    invalid_button:
+        g_variant_builder_clear(&buttons);
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                    "input.tablets.pad-buttons[%zu] needs a unique button from 0 to 255, a valid "
+                    "action, and a keybinding only when action is 'keybinding'",
+                    i + 1);
+        return NULL;
+    }
+
+    return g_variant_ref_sink(g_variant_builder_end(&buttons));
+}
+
 static GVariant* normalize_input_value(const InputField* field, GVariant* value, GError** error) {
     if (field->kind == INPUT_ACCESSIBILITY)
         return normalize_input_accessibility(value, error);
+    if (field->kind == INPUT_PAD_BUTTONS)
+        return normalize_tablet_pad_buttons(value, error);
     if (field->kind == INPUT_ACCEL_CURVE && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
         GVariantBuilder curve;
         GVariantIter iter;
