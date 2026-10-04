@@ -11,6 +11,10 @@
 
 #include "config.h"
 
+#include "clutter/clutter.h"
+#include "meta/display.h"
+#include "meta/meta-backend.h"
+#include "meta/meta-context.h"
 #include "meta/meta-plugin.h"
 #include "core/gnoblin-animation.h"
 #include "core/gnoblin-native-control.h"
@@ -27,6 +31,14 @@ struct _MetaGnoblinPluginClass {
 };
 
 META_PLUGIN_DECLARE(MetaGnoblinPlugin, meta_gnoblin_plugin);
+
+static void gnoblin_plugin_start(MetaPlugin* plugin) {
+    MetaDisplay* display = meta_plugin_get_display(plugin);
+    MetaContext* context = meta_display_get_context(display);
+    MetaBackend* backend = meta_context_get_backend(context);
+
+    clutter_actor_show(meta_backend_get_stage(backend));
+}
 
 static void gnoblin_plugin_map(MetaPlugin* plugin, MetaWindowActor* actor) {
     /* No asynchronous effect is active, so release Mutter's map lifecycle now. */
@@ -82,6 +94,7 @@ static void gnoblin_plugin_show_window_menu(MetaPlugin* plugin, MetaWindow* wind
 static void meta_gnoblin_plugin_class_init(MetaGnoblinPluginClass* klass) {
     MetaPluginClass* plugin_class = META_PLUGIN_CLASS(klass);
 
+    plugin_class->start = gnoblin_plugin_start;
     plugin_class->show_window_menu = gnoblin_plugin_show_window_menu;
     plugin_class->map = gnoblin_plugin_map;
     plugin_class->minimize = gnoblin_plugin_minimize;
