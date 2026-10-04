@@ -3282,6 +3282,9 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
                             "shortcuts must be an array of at most 256 entries");
         return FALSE;
     }
+    g_autoptr(GnoblinKeybindingCatalog) catalog = gnoblin_keybinding_catalog_load(error);
+    if (!catalog)
+        return FALSE;
     g_autoptr(GHashTable) names = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     g_autoptr(GPtrArray) shortcuts = g_ptr_array_new_with_free_func(native_shortcut_free);
     gboolean has_overlay = FALSE;
@@ -3330,7 +3333,7 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
         if (action_value) {
             const char* group = NULL;
             g_autofree char* native_name = NULL;
-            if (!native_action_target(action_value, &group, &native_name)) {
+            if (!native_action_target(action_value, catalog, &group, &native_name)) {
                 g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
                             "shortcuts.%s.action is unsupported; use a command or a wm, mutter, "
                             "or wayland native action",
