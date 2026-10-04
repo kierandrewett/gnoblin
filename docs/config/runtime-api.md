@@ -1513,17 +1513,18 @@ the connection before that reply flushes; the client can receive EOF instead.
 
 ## Shortcut state and capture
 
-`gnoblin.shortcuts.list()` returns named shortcuts configured for the native
-compositor. Records do not include shortcuts owned by external shell clients.
-Each read-only record contains:
+`gnoblin.shortcuts.list()` returns named command and action shortcuts
+registered by the native compositor. Records do not include shortcuts owned by
+external shell clients. A named config entry with `capture_input = true` is
+registered as a shortcut session and emits the session events below; it does
+not produce a `ShortcutState` record. Each read-only record contains:
 
 - `name`, `binding`, `enabled`, `trigger`, and `revision`.
 - Either `command` (an argument array) or `action` (a `group.key` identifier).
 - `binding` as a string for one accelerator or an array for multiple bindings.
 
 `enabled` is false for a configured built-in action with no bindings. Disabled
-shortcut declarations and shortcuts that need shell input capture are not
-registered by the native compositor and are not listed.
+shortcut declarations are omitted.
 
 ```lua
 for _, shortcut in ipairs(gnoblin.shortcuts.list()) do
