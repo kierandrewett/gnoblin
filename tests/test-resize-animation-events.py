@@ -228,7 +228,7 @@ try:
     lua_path = runtime_dir / "resize-window.lua"
     lua_path.write_text(
         f"""
-local window = gnoblin.windows.by_id({window["id"]})
+local window = gnoblin.windows.by_id({json.dumps(window["id"])})
 assert(window and window.title == {json.dumps(WINDOW_TITLE)})
 window:resize {{width = {TARGET_WIDTH}, height = {TARGET_HEIGHT}}}
 """
