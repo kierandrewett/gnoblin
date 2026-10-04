@@ -76,10 +76,10 @@ Touchpad swipe, pinch, and hold input is available as
 compositor handler. That handler makes any synchronous input-claim decision and
 queues the event for the supervised Lua runtime.
 
-Each event includes its gesture type, phase, finger count, and timestamp. Swipe
-updates include unaccelerated movement deltas. Pinch updates include scale and
-angle changes. Accumulate the deltas in a callback to measure total movement.
-Hold events have no movement fields.
+Each event includes its gesture type, phase, finger count, sequence, and
+timestamp. Swipe updates include unaccelerated movement deltas. Pinch updates
+include scale and angle changes. Accumulate the deltas in a callback to measure
+total movement. Hold events have no movement fields.
 
 ```lua
 gnoblin.on("mutter.touchpad.gesture", function(event)
@@ -102,8 +102,10 @@ The standalone native runtime also dispatches the stable
 - `dx` and `dy` on swipe events; `scale` and `angle_delta` on pinch events.
 - `input_time`, Mutter's original input timestamp.
 
-Within the gesture stream, `sequence` increases and `time` uses monotonic-clock
-microseconds. Device names and input tokens are omitted.
+The compositor assigns `sequence` before dispatch, so it continues increasing
+across Lua config reloads and runtime-worker recovery within one compositor
+session. `time` uses monotonic-clock microseconds. Device names and input tokens
+are omitted.
 
 Compositor socket clients can subscribe to stable `gnoblin.*` events and raw
 `mutter.*` signals with API 1.9 and `op: "events"`. Frames use `event` instead
