@@ -340,45 +340,46 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 
 ### API additions from 1.37
 
-| Minimum version | Added methods or events                                                                          |
-| --------------- | ------------------------------------------------------------------------------------------------ |
-| 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches                       |
-| 1.38            | Adds `window.restore_or_minimize`; all supported clients use the Lua operation                   |
-| 1.39            | `launches.snapshot` with collection revision                                                     |
-| 1.40            | Shared `shortcuts.list` snapshot read                                                            |
-| 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime                              |
-| 1.42            | Adds Lua-backed `permissions.list`; all client versions now use it                               |
-| 1.43            | Adds Lua-backed `permissions.check`; all client versions now use it                              |
-| 1.44            | Adds Lua-backed `permissions.policy`; all client versions now use it                             |
-| 1.45            | Adds the Lua-backed `portals.grants` read; all client versions now use it                        |
-| 1.46            | Adds shared Lua input reads; all client versions now use them                                    |
-| 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                                  |
-| 1.48            | Adds Lua operation for `window.restore_or_minimize`; all clients now use it                      |
-| 1.49            | Lua runtime operation for `session.lock`                                                         |
-| 1.50            | Lua operations for `launch.begin` and `launch.end`                                               |
-| 1.51            | Added a Lua-backed response adapter; current builds answer directly from Mutter                  |
-| 1.52            | Adds Lua-backed `workspace.list`; all client versions now use it                                 |
-| 1.53            | Adds Lua-backed `window.list`; all client versions now use it                                    |
-| 1.54            | Adds Lua-backed `launch.status`; all client versions now use it                                  |
-| 1.55            | Lua-backed `shortcut.list` read                                                                  |
-| 1.56            | Lua-backed `shortcut.actions` read                                                               |
-| 1.57            | Adds Lua-backed `layer.list`; all client versions now use it                                     |
-| 1.58            | Adds Lua-backed `monitor.list`; all client versions now use it                                   |
-| 1.59            | Adds the Lua-backed `window.match` read; all client versions now use it                          |
-| 1.60            | Basic legacy `window.action` requests use typed Lua operations for all supported client versions |
-| 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`                      |
-| 1.62            | Legacy `window.action` maps move to `window.move`                                                |
-| 1.63            | Adds `workspace` and `monitor` actions to `window.action`                                        |
-| 1.64            | `shortcut.session.end` ends an owned active session without removing its binding                 |
-| 1.65            | `location.authorize_app` grants location access for a verified application identity              |
-| 1.66            | `input.orientation_lock` read and `input.set_orientation_lock` update                            |
-| 1.67            | Native status reads remain available while a Lua worker restarts                                 |
-| 1.68            | `gnoblin.shortcut.session.key` may carry one-use focus authority                                 |
-| 1.69            | Adds `gnoblin.window.activation-denied` for strict focus-policy denials                          |
-| 1.70            | Adds the shared `appearance.color_scheme` read                                                   |
-| 1.71            | Layer lifecycle events                                                                           |
-| 1.72            | `gnoblin.runtime.status-changed`                                                                 |
-| 1.73            | `gnoblin.input.pad-help-requested`                                                               |
+| Minimum version | Added methods or events                                                                                |
+| --------------- | ------------------------------------------------------------------------------------------------------ |
+| 1.37            | Lua snapshot reads for windows, workspaces, monitors, layers, and launches                             |
+| 1.38            | Adds `window.restore_or_minimize`; all supported clients use the Lua operation                         |
+| 1.39            | `launches.snapshot` with collection revision                                                           |
+| 1.40            | Shared `shortcuts.list` snapshot read                                                                  |
+| 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime                                    |
+| 1.42            | Adds Lua-backed `permissions.list`; all client versions now use it                                     |
+| 1.43            | Adds Lua-backed `permissions.check`; all client versions now use it                                    |
+| 1.44            | Adds Lua-backed `permissions.policy`; all client versions now use it                                   |
+| 1.45            | Adds the Lua-backed `portals.grants` read; all client versions now use it                              |
+| 1.46            | Adds shared Lua input reads; all client versions now use them                                          |
+| 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                                        |
+| 1.48            | Adds Lua operation for `window.restore_or_minimize`; all clients now use it                            |
+| 1.49            | Lua runtime operation for `session.lock`                                                               |
+| 1.50            | Lua operations for `launch.begin` and `launch.end`                                                     |
+| 1.51            | Added a Lua-backed response adapter; current builds answer directly from Mutter                        |
+| 1.52            | Adds Lua-backed `workspace.list`; all client versions now use it                                       |
+| 1.53            | Adds Lua-backed `window.list`; all client versions now use it                                          |
+| 1.54            | Adds Lua-backed `launch.status`; all client versions now use it                                        |
+| 1.55            | Lua-backed `shortcut.list` read                                                                        |
+| 1.56            | Lua-backed `shortcut.actions` read                                                                     |
+| 1.57            | Adds Lua-backed `layer.list`; all client versions now use it                                           |
+| 1.58            | Adds Lua-backed `monitor.list`; all client versions now use it                                         |
+| 1.59            | Adds the Lua-backed `window.match` read; all client versions now use it                                |
+| 1.60            | Basic legacy `window.action` requests use typed Lua operations for all supported client versions       |
+| 1.61            | Legacy `window.action` adds a resize request routed through `window.resize`                            |
+| 1.62            | Legacy `window.action` maps move to `window.move`                                                      |
+| 1.63            | Adds `workspace` and `monitor` actions to `window.action`                                              |
+| 1.64            | `shortcut.session.end` ends an owned active session without removing its binding                       |
+| 1.65            | `location.authorize_app` grants location access for a verified application identity                    |
+| 1.66            | `input.orientation_lock` read and `input.set_orientation_lock` update                                  |
+| 1.67            | Native status reads remain available while a Lua worker restarts                                       |
+| 1.68            | `gnoblin.shortcut.session.key` may carry one-use focus authority                                       |
+| 1.69            | Adds `gnoblin.window.activation-denied` for strict focus-policy denials                                |
+| 1.70            | Adds the shared `appearance.color_scheme` read                                                         |
+| 1.71            | Layer lifecycle events                                                                                 |
+| 1.72            | `gnoblin.runtime.status-changed`                                                                       |
+| 1.73            | `gnoblin.input.pad-help-requested`                                                                     |
+| 1.74            | `monitors.privacy_screen`, `monitors.set_privacy_screen`, and `gnoblin.monitor.privacy-screen-changed` |
 
 ### API 1.27: shell presentation requests
 
@@ -575,6 +576,7 @@ The socket exposes these reads at the listed API versions:
 | 1.37        | `windows.list`            | `gnoblin.windows.list(filter)`      | `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` |
 | 1.37        | `workspaces.list`         | `gnoblin.workspaces.list()`         | None                                                       |
 | 1.37        | `monitors.list`           | `gnoblin.monitors.list()`           | None                                                       |
+| 1.74        | `monitors.privacy_screen` | `gnoblin.monitors.privacy_screen()` | None                                                       |
 | 1.37        | `layers.list`             | `gnoblin.layers.list(filter)`       | `monitor_id`, `namespace`, `layer`                         |
 | 1.37        | `launches.list`           | `gnoblin.launches.list()`           | None                                                       |
 | 1.39        | `launches.snapshot`       | `gnoblin.launches.snapshot()`       | None                                                       |
@@ -1630,6 +1632,56 @@ The event contains:
 Lua callbacks receive the same event. The shell owns the overlay and can
 dismiss it at any time. Gnoblin retains no OSD actor, so later help presses
 produce new events.
+
+### API version 1.74: monitor privacy screens
+
+API 1.74 adds `monitors.privacy_screen` and the `monitors.set_privacy_screen`
+operation. The read returns the effective requested state, its source, a
+revision, and per-monitor support and state:
+
+```json
+{
+    "op": "api",
+    "api_version": { "major": 1, "minor": 74 },
+    "id": "read-privacy-screen",
+    "method": "monitors.privacy_screen",
+    "arguments": {}
+}
+```
+
+Each monitor record has:
+
+- `id`: the active connector name;
+- `available`: whether the output supports a privacy screen;
+- `enabled` and `locked`: present only when `available` is true.
+
+The snapshot's `source` value is one of:
+
+- `runtime`: an explicit runtime override supplies the request;
+- `config`: the config sets `monitors.privacy_screen`;
+- `system`: neither the runtime nor config sets a value.
+
+Runtime overrides apply for the current session and do not write the system
+preference.
+
+Set a session-only override with `true` or `false`. Pass `"inherit"` to clear
+the runtime override, exposing the configured value or the system preference:
+
+```json
+{
+    "op": "api",
+    "api_version": { "major": 1, "minor": 74 },
+    "id": "set-privacy-screen",
+    "method": "monitors.set_privacy_screen",
+    "arguments": { "value": true }
+}
+```
+
+The setter returns an operation descriptor. Its completion value is the
+updated privacy-screen snapshot. Subscribe to
+`gnoblin.monitor.privacy-screen-changed` at API 1.74 to receive the same
+snapshot fields with `sequence` and `time` when the effective request, source,
+or per-monitor state changes.
 
 ## Limits and disconnects
 
