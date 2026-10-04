@@ -758,6 +758,9 @@ int main(void) {
     g_autoptr(GVariant) trackball =
         g_variant_lookup_value(input_overlay, "trackball", G_VARIANT_TYPE_VARDICT);
     g_assert_nonnull(trackball);
+    g_autoptr(GVariant) trackball_accel_profile =
+        g_variant_lookup_value(trackball, "accel-profile", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(trackball_accel_profile, NULL), ==, "adaptive");
     g_autoptr(GVariant) trackball_button =
         g_variant_lookup_value(trackball, "scroll-wheel-emulation-button", G_VARIANT_TYPE_INT32);
     g_assert_nonnull(trackball_button);
@@ -771,6 +774,9 @@ int main(void) {
     g_autoptr(GVariant) pointing_stick =
         g_variant_lookup_value(input_overlay, "pointing-stick", G_VARIANT_TYPE_VARDICT);
     g_assert_nonnull(pointing_stick);
+    g_autoptr(GVariant) pointing_stick_accel_profile =
+        g_variant_lookup_value(pointing_stick, "accel-profile", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(pointing_stick_accel_profile, NULL), ==, "flat");
     g_autoptr(GVariant) pointing_stick_speed =
         g_variant_lookup_value(pointing_stick, "speed", G_VARIANT_TYPE_DOUBLE);
     g_assert_cmpfloat(g_variant_get_double(pointing_stick_speed), ==, -0.5);
