@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "groups": {
+    "wm": ["close", "lower"],
+    "mutter": [],
+    "wayland": []
+  }
+}

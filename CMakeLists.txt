@@ -94,8 +94,16 @@ if(GNOBLIN_LUA_FOUND)
     add_test(NAME ${test_name} COMMAND ${test_name}-test)
     set_tests_properties(${test_name} PROPERTIES TIMEOUT 20)
   endforeach()
-  set_tests_properties(lua-config PROPERTIES
-    ENVIRONMENT "GNOBLIN_TEST_SOURCE_ROOT=${PROJECT_SOURCE_DIR}")
+set_tests_properties(lua-config PROPERTIES
+  ENVIRONMENT
+    "GNOBLIN_TEST_SOURCE_ROOT=${PROJECT_SOURCE_DIR};GNOBLIN_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/gnoblin-config-test-prefix")
+set(GNOBLIN_CONFIG_TEST_CATALOG_DIR
+  "${CMAKE_CURRENT_BINARY_DIR}/gnoblin-config-test-prefix/share/gnoblin")
+file(MAKE_DIRECTORY "${GNOBLIN_CONFIG_TEST_CATALOG_DIR}")
+configure_file(
+  "${PROJECT_SOURCE_DIR}/tests/fixtures/native-keybindings.json"
+  "${GNOBLIN_CONFIG_TEST_CATALOG_DIR}/native-keybindings.json"
+  COPYONLY)
 
   add_executable(gnoblin
     src/session/gnoblin-runtime.c
