@@ -1,11 +1,11 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Fri, 25 Sep 2026 00:30:00 +0000
+Date: Sun, 4 Oct 2026 16:04:44 +0100
 Subject: [PATCH] core: configure modified click resize button from Lua
 
 ---
 diff --git a/src/core/prefs.c b/src/core/prefs.c
-index 39be73983..ae54a59c3 100644
+index 39be739833..1897ad5e88 100644
 --- a/src/core/prefs.c
 +++ b/src/core/prefs.c
 @@ -1114,6 +1114,7 @@ meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
@@ -26,8 +26,3 @@ index 39be73983..ae54a59c3 100644
    };
    for (int i = 0; keys[i]; i++)
      if (g_str_equal (key, keys[i]))
-@@ -2657,4 +2659,3 @@ meta_prefs_set_gnoblin_cursor_config (const char *theme,
- 
-   set_gnoblin_cursor_config (theme, size);
- }
--
