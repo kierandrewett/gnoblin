@@ -33,6 +33,17 @@ static GVariant* load(const char* path, GPtrArray** paths, GError** error) {
     return gnoblin_config_load_document(path, paths, NULL, error);
 }
 
+static double variant_number(GVariant* value) {
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_DOUBLE))
+        return g_variant_get_double(value);
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT64))
+        return (double)g_variant_get_int64(value);
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32))
+        return (double)g_variant_get_int32(value);
+    g_assert_not_reached();
+    return 0;
+}
+
 static void test_portal_preferences(const char* directory) {
     g_autoptr(GError) error = NULL;
     g_autofree char* source_path = g_build_filename(directory, "portals.lua", NULL);
@@ -448,6 +459,83 @@ int main(void) {
     for (guint i = 0; invalid_locate_pointer_configs[i]; i++) {
         g_assert_true(
             g_file_set_contents(explicit_root, invalid_locate_pointer_configs[i], -1, &error));
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(explicit_root, NULL, &error);
+        g_assert_null(document);
+        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+        g_clear_error(&error);
+    }
+
+    const char* valid_xwayland_config =
+        "gnoblin.configure {xwayland = {allow_grabs = true, "
+        "grab_access_rules = {'*legacy-app', '!blocked-app'}, "
+        "disable_extensions = {'security', 'xtest'}, "
+        "allow_byte_swapped_clients = false, scaling_factor = 1.5}}\n";
+    g_assert_true(g_file_set_contents(explicit_root, valid_xwayland_config, -1, &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_autoptr(GVariant) xwayland =
+        g_variant_lookup_value(document, "xwayland", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(xwayland);
+    gboolean xwayland_allow_grabs = FALSE;
+    g_assert_true(g_variant_lookup(xwayland, "allow-grabs", "b", &xwayland_allow_grabs));
+    g_assert_true(xwayland_allow_grabs);
+    g_autoptr(GVariant) xwayland_grab_rules =
+        g_variant_lookup_value(xwayland, "grab-access-rules", G_VARIANT_TYPE("av"));
+    g_assert_nonnull(xwayland_grab_rules);
+    g_assert_cmpuint(g_variant_n_children(xwayland_grab_rules), ==, 2);
+    g_autoptr(GVariant) xwayland_extensions =
+        g_variant_lookup_value(xwayland, "disable-extensions", G_VARIANT_TYPE("av"));
+    g_assert_nonnull(xwayland_extensions);
+    g_assert_cmpuint(g_variant_n_children(xwayland_extensions), ==, 2);
+    g_autoptr(GVariant) xwayland_scale_value =
+        g_variant_lookup_value(xwayland, "scaling-factor", NULL);
+    g_assert_nonnull(xwayland_scale_value);
+    double xwayland_scaling_factor = variant_number(xwayland_scale_value);
+    g_assert_cmpfloat(xwayland_scaling_factor, ==, 1.5);
+
+    const char* valid_xwayland_configs[] = {
+        "gnoblin.configure {xwayland = {}}\n",
+        "gnoblin.configure {xwayland = {scaling_factor = 0}}\n",
+        "gnoblin.configure {xwayland = {scaling_factor = 0.5}}\n",
+        "gnoblin.configure {xwayland = {scaling_factor = 2147483520}}\n",
+        NULL,
+    };
+    for (guint i = 0; valid_xwayland_configs[i]; i++) {
+        g_assert_true(g_file_set_contents(explicit_root, valid_xwayland_configs[i], -1, &error));
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(explicit_root, NULL, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(document);
+    }
+    g_clear_pointer(&xwayland, g_variant_unref);
+    xwayland = g_variant_lookup_value(document, "xwayland", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(xwayland);
+    g_clear_pointer(&xwayland_scale_value, g_variant_unref);
+    xwayland_scale_value = g_variant_lookup_value(xwayland, "scaling-factor", NULL);
+    g_assert_nonnull(xwayland_scale_value);
+    xwayland_scaling_factor = variant_number(xwayland_scale_value);
+    g_assert_cmpfloat(xwayland_scaling_factor, ==, 2147483520.0);
+
+    const char* invalid_xwayland_configs[] = {
+        "gnoblin.configure {xwayland = true}\n",
+        "gnoblin.configure {xwayland = {unknown = true}}\n",
+        "gnoblin.configure {xwayland = {allow_grabs = 'yes'}}\n",
+        "gnoblin.configure {xwayland = {grab_access_rules = 'app'}}\n",
+        "gnoblin.configure {xwayland = {grab_access_rules = {1}}}\n",
+        "gnoblin.configure {xwayland = {disable_extensions = {'xinput'}}}\n",
+        "gnoblin.configure {xwayland = {disable_extensions = {'Security'}}}\n",
+        "gnoblin.configure {xwayland = {allow_byte_swapped_clients = 1}}\n",
+        "gnoblin.configure {xwayland = {scaling_factor = -1}}\n",
+        "gnoblin.configure {xwayland = {scaling_factor = 0.49}}\n",
+        "gnoblin.configure {xwayland = {scaling_factor = 2147483521}}\n",
+        "gnoblin.configure {xwayland = {scaling_factor = math.huge}}\n",
+        NULL,
+    };
+    for (guint i = 0; invalid_xwayland_configs[i]; i++) {
+        g_assert_true(g_file_set_contents(explicit_root, invalid_xwayland_configs[i], -1, &error));
         g_clear_pointer(&document, g_variant_unref);
         document = load(explicit_root, NULL, &error);
         g_assert_null(document);

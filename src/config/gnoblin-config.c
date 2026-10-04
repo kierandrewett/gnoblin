@@ -26,6 +26,63 @@ static gboolean input_number(GVariant* value, double* number) {
     return FALSE;
 }
 
+static gboolean xwayland_string_array_valid(GVariant* value, gboolean extensions) {
+    if (!g_variant_is_of_type(value, G_VARIANT_TYPE("av")))
+        return FALSE;
+
+    GVariantIter iter;
+    GVariant* boxed;
+    g_variant_iter_init(&iter, value);
+    while ((boxed = g_variant_iter_next_value(&iter))) {
+        g_autoptr(GVariant) item = g_variant_get_variant(boxed);
+        gboolean valid = g_variant_is_of_type(item, G_VARIANT_TYPE_STRING);
+        if (valid && extensions) {
+            const char* name = g_variant_get_string(item, NULL);
+            valid = g_str_equal(name, "security") || g_str_equal(name, "xtest");
+        }
+        g_variant_unref(boxed);
+        if (!valid)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static gboolean validate_xwayland(GVariant* xwayland, GError** error) {
+    gboolean valid = g_variant_is_of_type(xwayland, G_VARIANT_TYPE_VARDICT);
+    GVariantIter iter;
+    const char* name;
+    GVariant* value;
+    if (valid)
+        g_variant_iter_init(&iter, xwayland);
+
+    while (valid && g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+        if (g_str_equal(name, "allow-grabs") || g_str_equal(name, "allow-byte-swapped-clients")) {
+            valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
+        } else if (g_str_equal(name, "grab-access-rules")) {
+            valid = xwayland_string_array_valid(value, FALSE);
+        } else if (g_str_equal(name, "disable-extensions")) {
+            valid = xwayland_string_array_valid(value, TRUE);
+        } else if (g_str_equal(name, "scaling-factor")) {
+            double number;
+            const double maximum = (double)nextafterf((float)G_MAXINT, 0.0f);
+            valid = input_number(value, &number) &&
+                    (number == 0 || (number >= 0.5 && number <= maximum));
+        } else {
+            valid = FALSE;
+        }
+        g_variant_unref(value);
+    }
+
+    if (!valid) {
+        g_set_error_literal(
+            error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+            "xwayland contains an unsupported name or value; scaling-factor must be 0 or a "
+            "finite value from 0.5 through the largest safe signed-integer scale");
+        return FALSE;
+    }
+    return TRUE;
+}
+
 static gboolean input_string_is(GVariant* value, const char* const* choices) {
     if (!g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
         return FALSE;
@@ -1362,6 +1419,9 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
             return FALSE;
         }
     }
+    g_autoptr(GVariant) xwayland = g_variant_lookup_value(document, "xwayland", NULL);
+    if (xwayland && !validate_xwayland(xwayland, error))
+        return FALSE;
     return TRUE;
 }
 
