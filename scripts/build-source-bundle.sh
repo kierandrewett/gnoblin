@@ -4,11 +4,12 @@
 # The public GitHub source archive is insufficient: it omits Git submodules and
 # therefore cannot reproduce Gnoblin's patched Mutter and portal backend. The
 # component archives passed here are already materialised by
-# scripts/make-tarball.sh and include Gnoblin's patch stacks.
+# scripts/make-tarball.sh and include Gnoblin's patch stacks. The pinned
+# gsettings-desktop-schemas source supplies the WM shortcut descriptors.
 set -euo pipefail
 
-if [ "$#" -ne 4 ]; then
-    echo "Usage: $0 <output> <gnoblin-version> <mutter.tar.xz> <portal.tar.xz>" >&2
+if [ "$#" -ne 5 ]; then
+    echo "Usage: $0 <output> <gnoblin-version> <mutter.tar.xz> <portal.tar.xz> <gsettings-desktop-schemas.tar.xz>" >&2
     exit 2
 fi
 
@@ -16,6 +17,7 @@ OUTPUT="$(realpath -m "$1")"
 VERSION="$2"
 MUTTER="$(realpath "$3")"
 PORTAL="$(realpath "$4")"
+SCHEMAS="$(realpath "$5")"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 EPOCH="${SOURCE_DATE_EPOCH:-$(git -C "$ROOT" show -s --format=%ct HEAD)}"
 STAGING="$(mktemp -d)"
@@ -24,7 +26,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-for source in "$MUTTER" "$PORTAL"; do
+for source in "$MUTTER" "$PORTAL" "$SCHEMAS"; do
     [ -f "$source" ] || {
         echo "missing prepared component source: $source" >&2
         exit 1
@@ -67,6 +69,7 @@ Path(output).write_text(json.dumps({"gitSha": sha, "gitRemote": url, "sourceModi
 PY
 install -m 0644 -- "$MUTTER" "$STAGING/$TOP/sources/"
 install -m 0644 -- "$PORTAL" "$STAGING/$TOP/sources/"
+install -m 0644 -- "$SCHEMAS" "$STAGING/$TOP/sources/"
 
 mkdir -p "$(dirname "$OUTPUT")"
 tar -C "$STAGING" \

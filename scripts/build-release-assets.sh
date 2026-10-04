@@ -16,6 +16,7 @@ if [ -n "$SOURCE_ONLY" ] && [ "$SOURCE_ONLY" != --source-only ]; then
     exit 2
 fi
 GNOME_VERSION="$($ROOT/scripts/gnome-versions.py get mutter version)"
+SCHEMAS_VERSION="$($ROOT/scripts/gnome-versions.py get gsettings-desktop-schemas version)"
 GNOBLIN_VERSION="$($ROOT/scripts/gnoblin-version.py get version)"
 PUBLIC_RELEASE_TAG="${4:-gnoblin-v$GNOBLIN_VERSION}"
 EXPECTED_TAG="gnoblin-v$GNOBLIN_VERSION"
@@ -41,6 +42,7 @@ mkdir -p "$OUTPUT" "$SOURCES" "$SRPMS"
 
 "$ROOT/scripts/make-tarball.sh" mutter "$SOURCES"
 "$ROOT/scripts/make-tarball.sh" xdg-desktop-portal-gnome "$SOURCES"
+"$ROOT/scripts/make-gsettings-desktop-schemas-tarball.sh" "$SOURCES"
 install -m 0644 -- "$SOURCES/mutter-$GNOME_VERSION.tar.xz" "$OUTPUT/"
 install -m 0644 -- "$SOURCES/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" "$OUTPUT/"
 SOURCE_BUNDLE="$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-source.tar.xz"
@@ -48,7 +50,8 @@ SOURCE_BUNDLE="$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-source.tar.
     "$SOURCE_BUNDLE" \
     "$GNOBLIN_VERSION" \
     "$SOURCES/mutter-$GNOME_VERSION.tar.xz" \
-    "$SOURCES/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz"
+    "$SOURCES/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" \
+    "$SOURCES/gsettings-desktop-schemas-$SCHEMAS_VERSION.tar.xz"
 # The main source RPM consumes the same complete bundle under its Source0
 # filename. Keep this alias in the private staging directory; the public
 # release still publishes one versioned source bundle.

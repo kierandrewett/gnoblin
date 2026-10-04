@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "gnoblin-keybinding-catalog.h"
 #include "gnoblin-lua-pattern.h"
 
 #if __has_include("../core/gnoblin-native-control.h")
@@ -4615,127 +4616,8 @@ static int lua_launches_finish(lua_State* state) {
     return call_launch_operation(state, "launch.end", arguments);
 }
 
-static gint compare_string_pointers(gconstpointer left, gconstpointer right) {
-    return g_strcmp0(*(const gchar* const*)left, *(const gchar* const*)right);
-}
-
-static gchar* native_keybinding_catalog_path(void) {
-    const char* prefix = g_getenv("GNOBLIN_PREFIX");
-    if (prefix && *prefix) {
-        g_autofree char* candidate =
-            g_build_filename(prefix, "share", "gnoblin", "native-keybindings.json", NULL);
-        if (g_file_test(candidate, G_FILE_TEST_IS_REGULAR))
-            return g_steal_pointer(&candidate);
-    }
-
-    const char* const* data_dirs = g_get_system_data_dirs();
-    for (guint i = 0; data_dirs[i]; i++) {
-        g_autofree char* candidate =
-            g_build_filename(data_dirs[i], "gnoblin", "native-keybindings.json", NULL);
-        if (g_file_test(candidate, G_FILE_TEST_IS_REGULAR))
-            return g_steal_pointer(&candidate);
-    }
-    return NULL;
-}
-
-static GHashTable* load_native_keybinding_catalog(GError** error) {
-    g_autofree char* path = native_keybinding_catalog_path();
-    if (!path) {
-        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_NOENT,
-                            "Mutter keybinding catalog is missing; build the Gnoblin Mutter "
-                            "component before listing native actions");
-        return NULL;
-    }
-
-    g_autoptr(JsonParser) parser = json_parser_new();
-    if (!json_parser_load_from_file(parser, path, error))
-        return NULL;
-
-    JsonNode* root = json_parser_get_root(parser);
-    if (!JSON_NODE_HOLDS_OBJECT(root)) {
-        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "Mutter keybinding catalog root must be an object");
-        return NULL;
-    }
-
-    JsonObject* object = json_node_get_object(root);
-    JsonNode* format_node = json_object_get_member(object, "format");
-    JsonNode* groups_node = json_object_get_member(object, "groups");
-    GType format_type =
-        JSON_NODE_HOLDS_VALUE(format_node) ? json_node_get_value_type(format_node) : G_TYPE_INVALID;
-    if (!JSON_NODE_HOLDS_VALUE(format_node) ||
-        (format_type != G_TYPE_INT && format_type != G_TYPE_INT64) ||
-        json_node_get_int(format_node) != 1 || !JSON_NODE_HOLDS_OBJECT(groups_node)) {
-        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "Mutter keybinding catalog has an unsupported format");
-        return NULL;
-    }
-
-    static const char* groups[] = {"wm", "mutter", "wayland"};
-    JsonObject* catalog_groups = json_node_get_object(groups_node);
-    if (json_object_get_size(catalog_groups) != G_N_ELEMENTS(groups)) {
-        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "Mutter keybinding catalog must contain exactly three groups");
-        return NULL;
-    }
-
-    GHashTable* actions = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
-    for (guint group_index = 0; group_index < G_N_ELEMENTS(groups); group_index++) {
-        JsonNode* actions_node = json_object_get_member(catalog_groups, groups[group_index]);
-        if (!JSON_NODE_HOLDS_ARRAY(actions_node)) {
-            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                        "Mutter keybinding catalog group '%s' must be an array",
-                        groups[group_index]);
-            g_hash_table_unref(actions);
-            return NULL;
-        }
-
-        JsonArray* group_actions = json_node_get_array(actions_node);
-        for (guint action_index = 0; action_index < json_array_get_length(group_actions);
-             action_index++) {
-            JsonNode* action_node = json_array_get_element(group_actions, action_index);
-            if (!JSON_NODE_HOLDS_VALUE(action_node) ||
-                json_node_get_value_type(action_node) != G_TYPE_STRING) {
-                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "Mutter keybinding catalog group '%s' contains a non-string action",
-                            groups[group_index]);
-                g_hash_table_unref(actions);
-                return NULL;
-            }
-
-            const char* key = json_node_get_string(action_node);
-            if (!key || !*key || strlen(key) > 128 ||
-                !g_regex_match_simple("^[a-z0-9]+(?:-[a-z0-9]+)*$", key, 0, 0)) {
-                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "Mutter keybinding catalog group '%s' contains an invalid action",
-                            groups[group_index]);
-                g_hash_table_unref(actions);
-                return NULL;
-            }
-
-            g_autofree char* id = g_strdup_printf("%s.%s", groups[group_index], key);
-            if (!g_hash_table_add(actions, g_steal_pointer(&id))) {
-                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                            "Mutter keybinding catalog repeats action '%s.%s'", groups[group_index],
-                            key);
-                g_hash_table_unref(actions);
-                return NULL;
-            }
-        }
-    }
-
-    return actions;
-}
-
 static int lua_shortcut_actions(lua_State* state) {
-    static const struct {
-        const char* group;
-        const char* schema_id;
-    } schemas[] = {
-        {"wm", "org.gnome.desktop.wm.keybindings"},
-        {"mutter", "org.gnome.mutter.keybindings"},
-        {"wayland", "org.gnome.mutter.wayland.keybindings"},
-    };
+    static const char* groups[] = {"wm", "mutter", "wayland"};
     if (lua_gettop(state) > 1 ||
         (lua_gettop(state) == 1 && !lua_isnil(state, 1) && lua_type(state, 1) != LUA_TSTRING))
         return luaL_error(state, "gnoblin.shortcuts.actions takes an optional group string");
@@ -4743,68 +4625,33 @@ static int lua_shortcut_actions(lua_State* state) {
     const char* requested_group = lua_isnoneornil(state, 1) ? NULL : lua_tostring(state, 1);
     if (requested_group) {
         gboolean known = FALSE;
-        for (guint i = 0; i < G_N_ELEMENTS(schemas); i++)
-            known |= g_str_equal(requested_group, schemas[i].group);
+        for (guint i = 0; i < G_N_ELEMENTS(groups); i++)
+            known |= g_str_equal(requested_group, groups[i]);
         if (!known)
             return luaL_error(
                 state, "unknown shortcut action group; expected 'wm', 'mutter', or 'wayland'");
     }
 
     g_autoptr(GError) catalog_error = NULL;
-    g_autoptr(GHashTable) supported_actions = load_native_keybinding_catalog(&catalog_error);
-    if (!supported_actions)
+    g_autoptr(GnoblinKeybindingCatalog) catalog = gnoblin_keybinding_catalog_load(&catalog_error);
+    if (!catalog)
         return luaL_error(state, "%s", catalog_error->message);
-
-    GSettingsSchemaSource* source = g_settings_schema_source_get_default();
-    if (!source)
-        return luaL_error(state, "GSettings schema source is unavailable");
 
     lua_newtable(state);
     int result = lua_absindex(state, -1);
     guint result_index = 1;
-    for (guint group_index = 0; group_index < G_N_ELEMENTS(schemas); group_index++) {
-        const char* group = schemas[group_index].group;
+    for (guint group_index = 0; group_index < G_N_ELEMENTS(groups); group_index++) {
+        const char* group = groups[group_index];
         if (requested_group && !g_str_equal(requested_group, group))
             continue;
 
-        GSettingsSchema* schema =
-            g_settings_schema_source_lookup(source, schemas[group_index].schema_id, TRUE);
-        if (!schema) {
-            if (requested_group)
-                return luaL_error(state, "shortcut schema is not installed for group '%s'", group);
-            continue;
-        }
-
-        gchar** keys = g_settings_schema_list_keys(schema);
-        if (!keys) {
-            g_settings_schema_unref(schema);
-            continue;
-        }
-        qsort(keys, g_strv_length(keys), sizeof(*keys), compare_string_pointers);
-        for (guint key_index = 0; keys[key_index]; key_index++) {
-            g_autofree char* action_id = g_strdup_printf("%s.%s", group, keys[key_index]);
-            if (!g_hash_table_contains(supported_actions, action_id))
-                continue;
-            GSettingsSchemaKey* schema_key = g_settings_schema_get_key(schema, keys[key_index]);
-            if (!schema_key)
-                continue;
-            if (!g_variant_type_equal(g_settings_schema_key_get_value_type(schema_key),
-                                      G_VARIANT_TYPE_STRING_ARRAY)) {
-                g_settings_schema_key_unref(schema_key);
-                continue;
-            }
-
-            GVariant* defaults = g_settings_schema_key_get_default_value(schema_key);
-            if (!defaults || !g_variant_is_of_type(defaults, G_VARIANT_TYPE_STRING_ARRAY)) {
-                g_clear_pointer(&defaults, g_variant_unref);
-                g_settings_schema_key_unref(schema_key);
-                continue;
-            }
-
-            g_autofree char* public_key = g_strdup(keys[key_index]);
+        const GPtrArray* actions = gnoblin_keybinding_catalog_get_group(catalog, group);
+        for (guint action_index = 0; actions && action_index < actions->len; action_index++) {
+            const GnoblinKeybindingAction* action =
+                g_ptr_array_index((GPtrArray*)actions, action_index);
+            g_autofree char* public_key = g_strdup(action->key);
             g_strdelimit(public_key, "-", '_');
             g_autofree char* id = g_strdup_printf("%s.%s", group, public_key);
-            const char* description = g_settings_schema_key_get_description(schema_key);
 
             lua_newtable(state);
             lua_pushstring(state, id);
@@ -4813,28 +4660,22 @@ static int lua_shortcut_actions(lua_State* state) {
             lua_setfield(state, -2, "group");
             lua_pushstring(state, public_key);
             lua_setfield(state, -2, "key");
-            if (description && *description) {
-                lua_pushstring(state, description);
+            if (action->description && *action->description) {
+                lua_pushstring(state, action->description);
                 lua_setfield(state, -2, "description");
             }
             lua_newtable(state);
             mark_array_table(state, -1);
-            for (gsize binding_index = 0; binding_index < g_variant_n_children(defaults);
+            for (gsize binding_index = 0; action->default_bindings[binding_index];
                  binding_index++) {
-                g_autoptr(GVariant) binding = g_variant_get_child_value(defaults, binding_index);
-                lua_pushstring(state, g_variant_get_string(binding, NULL));
+                lua_pushstring(state, action->default_bindings[binding_index]);
                 lua_rawseti(state, -2, binding_index + 1);
             }
             lua_setfield(state, -2, "default_bindings");
             push_readonly_copy(state, -1);
             lua_remove(state, -2);
             lua_rawseti(state, result, result_index++);
-
-            g_variant_unref(defaults);
-            g_settings_schema_key_unref(schema_key);
         }
-        g_strfreev(keys);
-        g_settings_schema_unref(schema);
     }
 
     push_readonly_copy(state, result);

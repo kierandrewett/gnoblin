@@ -76,6 +76,7 @@ if(GNOBLIN_LUA_FOUND)
     src/config/gnoblin-lua.c
     src/config/gnoblin-lua-pattern.c
     src/config/gnoblin-glob.c
+    src/native-control/gnoblin-keybinding-catalog.c
     src/permissions/gnoblin-portal-identity.c
     src/permissions/gnoblin-portal-policy.c)
   add_library(gnoblin-config-core STATIC ${GNOBLIN_CONFIG_SOURCES})
@@ -184,8 +185,15 @@ foreach(name IN ITEMS mutter xdg-desktop-portal-gnome)
     USES_TERMINAL
     COMMENT "Check ${name} development libraries")
 endforeach()
+add_custom_target(prepare-gsettings-desktop-schemas-source
+  COMMAND "${PROJECT_SOURCE_DIR}/scripts/prepare-build-sources.sh"
+    "${GNOBLIN_SOURCE_MODE}" gsettings-desktop-schemas
+  WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+  USES_TERMINAL
+  COMMENT "Prepare pinned gsettings-desktop-schemas metadata source")
 add_custom_target(prepare-sources DEPENDS
-  prepare-mutter-source prepare-xdg-desktop-portal-gnome-source)
+  prepare-mutter-source prepare-xdg-desktop-portal-gnome-source
+  prepare-gsettings-desktop-schemas-source)
 
 function(gnoblin_component name)
   cmake_parse_arguments(COMPONENT "EXCLUDE_FROM_ALL" "" "" ${ARGN})
@@ -212,7 +220,7 @@ function(gnoblin_component name)
     USES_TERMINAL_BUILD TRUE)
 endfunction()
 
-gnoblin_component(mutter)
+gnoblin_component(mutter prepare-gsettings-desktop-schemas-source)
 
 add_custom_target(gnoblin-session ALL
   COMMAND "${CMAKE_COMMAND}" -E env "GNOBLIN_LIBDIR=${GNOBLIN_LIBDIR}"

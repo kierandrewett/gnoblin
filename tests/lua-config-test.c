@@ -2415,9 +2415,12 @@ int main(void) {
     g_assert_true(g_variant_is_of_type(wm_shortcut_actions, G_VARIANT_TYPE("av")));
     gboolean found_empty_shortcut_default_bindings = FALSE;
     gboolean found_nonempty_shortcut_default_bindings = FALSE;
+    gboolean found_close_shortcut_action = FALSE;
     for (gsize i = 0; i < g_variant_n_children(wm_shortcut_actions); i++) {
         g_autoptr(GVariant) boxed_action = g_variant_get_child_value(wm_shortcut_actions, i);
         g_autoptr(GVariant) action = g_variant_get_variant(boxed_action);
+        const gchar* action_id = NULL;
+        g_assert_true(g_variant_lookup(action, "id", "&s", &action_id));
         g_autoptr(GVariant) default_bindings =
             g_variant_lookup_value(action, "default_bindings", G_VARIANT_TYPE("av"));
         g_assert_nonnull(default_bindings);
@@ -2425,9 +2428,27 @@ int main(void) {
             found_empty_shortcut_default_bindings = TRUE;
         else
             found_nonempty_shortcut_default_bindings = TRUE;
+
+        if (g_str_equal(action_id, "wm.close")) {
+            const gchar* group = NULL;
+            const gchar* key = NULL;
+            const gchar* description = NULL;
+            g_assert_true(g_variant_lookup(action, "group", "&s", &group));
+            g_assert_true(g_variant_lookup(action, "key", "&s", &key));
+            g_assert_true(g_variant_lookup(action, "description", "&s", &description));
+            g_assert_cmpstr(group, ==, "wm");
+            g_assert_cmpstr(key, ==, "close");
+            g_assert_cmpstr(description, ==, "Close the window");
+            g_assert_cmpuint(g_variant_n_children(default_bindings), ==, 1);
+            g_autoptr(GVariant) binding_box = g_variant_get_child_value(default_bindings, 0);
+            g_autoptr(GVariant) binding = g_variant_get_variant(binding_box);
+            g_assert_cmpstr(g_variant_get_string(binding, NULL), ==, "<Alt>F4");
+            found_close_shortcut_action = TRUE;
+        }
     }
     g_assert_true(found_empty_shortcut_default_bindings);
     g_assert_true(found_nonempty_shortcut_default_bindings);
+    g_assert_true(found_close_shortcut_action);
     GVariantBuilder invalid_shortcut_action_arguments_builder;
     g_variant_builder_init(&invalid_shortcut_action_arguments_builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&invalid_shortcut_action_arguments_builder, "{sv}", "group",

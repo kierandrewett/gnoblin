@@ -41,6 +41,7 @@ jobs:
           python3 tests/session-lock-api.test.py
           python3 tests/focus-policy-contract.test.py
           python3 tests/check-build-deps.test.py
+          python3 tests/test_generate_mutter_keybinding_catalog.py
       - name: Build the release source tarball
         env:
           GIT_COMMITTER_NAME: Gnoblin CI
@@ -202,13 +203,16 @@ jobs:
           mkdir -p "$source_dir" "$package_dir" "$portal_package_dir"
           ./scripts/make-tarball.sh mutter "$source_dir"
           ./scripts/make-tarball.sh xdg-desktop-portal-gnome "$source_dir"
+          ./scripts/make-gsettings-desktop-schemas-tarball.sh "$source_dir"
           version="$(./scripts/gnoblin-version.py get version)"
           gnome_version="$(./scripts/gnoblin-version.py get gnomeVersion)"
+          schemas_version="$(./scripts/gnome-versions.py get gsettings-desktop-schemas version)"
           source_bundle="$package_dir/gnoblin-$version-gnome-$gnome_version-source.tar.xz"
           ./scripts/build-source-bundle.sh \
             "$source_bundle" "$version" \
             "$source_dir/mutter-$gnome_version.tar.xz" \
-            "$source_dir/xdg-desktop-portal-gnome-$gnome_version.tar.xz"
+            "$source_dir/xdg-desktop-portal-gnome-$gnome_version.tar.xz" \
+            "$source_dir/gsettings-desktop-schemas-$schemas_version.tar.xz"
           source_sha256="$(sha256sum "$source_bundle" | awk '{print $1}')"
           python3 scripts/sync-package-manifest.py arch-release \
             --output "$package_dir/PKGBUILD" \

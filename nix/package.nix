@@ -64,8 +64,16 @@ let
     src = mutterSrc;
     patches = patchesFor "mutter";
     prePatch = (old.prePatch or "") + copyOverlay "mutter" + addSubproject gvdbSrc "gvdb";
-    postPatch = old.postPatch or "";
-    nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ git ];
+    postPatch = (old.postPatch or "") + ''
+      python3 ${gnoblinSrc}/scripts/generate-mutter-keybinding-catalog.py \
+        "$PWD" \
+        ${gsettingsDesktopSchemasSrc} \
+        "$NIX_BUILD_TOP/native-keybindings.json"
+    '';
+    nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [
+      git
+      python3
+    ];
     preConfigure = ''
       export PKG_CONFIG_PATH="${schemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
     ''
@@ -86,6 +94,8 @@ let
       ++ [ "-Dhyprcursor=enabled" ];
     postInstall = (old.postInstall or "") + ''
       mkdir -p "$devdoc"
+      install -Dm644 "$NIX_BUILD_TOP/native-keybindings.json" \
+        "$out/share/gnoblin/native-keybindings.json"
     '';
   });
   gnoblinPortal = gnomePortal.overrideAttrs (old: {

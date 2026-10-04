@@ -212,13 +212,13 @@ print("LUA_API:configured-shortcut-input-capture")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/shortcuts.lua"
 cat > "$XDG_RUNTIME_DIR/shortcut-actions.lua" <<'LUA'
-local schema_keys = {}
+local available_actions = {}
 for _, action in ipairs(gnoblin.shortcuts.actions("wm")) do
-    schema_keys[action.id] = true
+    available_actions[action.id] = true
 end
-assert(schema_keys["wm.close"], "handler-backed Mutter actions must be listed")
-assert(not schema_keys["wm.panel_run_dialog"],
-    "schema-only actions without an executable Mutter handler must be omitted")
+assert(available_actions["wm.close"], "handler-backed Mutter actions must be listed")
+assert(not available_actions["wm.panel_run_dialog"],
+    "actions without an executable Mutter handler must be omitted")
 print("LUA_API:executable-shortcut-actions")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/shortcut-actions.lua"
@@ -1262,9 +1262,9 @@ if unsupported_action_output="$(
         GNOBLIN_DEVKIT_CONFIG_SOURCE="$unsupported_action_fixture" \
         timeout 45 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1
 )"; then
-    echo 'Schema-only keybinding action unexpectedly started the Gnoblin session' >&2
+    echo 'Keybinding action without a Mutter handler unexpectedly started the Gnoblin session' >&2
     exit 1
 fi
 grep -q 'keybinding has no executable Mutter handler: wm.panel_run_dialog' \
     <<<"$unsupported_action_output"
-printf '%s\n' 'PASS: startup rejects schema-only keybinding actions'
+printf '%s\n' 'PASS: startup rejects keybinding actions without a Mutter handler'

@@ -96,8 +96,16 @@ else
     meson install -C "$build_dir" --no-rebuild
 fi
 if [ "$name" = mutter ]; then
+    schemas_source_dir="$root/build/source-inputs/gsettings-desktop-schemas-pinned"
+    expected_schemas_revision="$("$root/scripts/gnome-versions.py" get gsettings-desktop-schemas commit)"
+    actual_schemas_revision="$(git -C "$schemas_source_dir" rev-parse HEAD 2>/dev/null || cat "$schemas_source_dir/GNOBLIN_SOURCE_REVISION" 2>/dev/null || true)"
+    if [ "$actual_schemas_revision" != "$expected_schemas_revision" ]; then
+        echo "pinned gsettings-desktop-schemas source is missing or mismatched; prepare it with scripts/prepare-build-sources.sh $mode gsettings-desktop-schemas" >&2
+        exit 1
+    fi
     python3 "$root/scripts/generate-mutter-keybinding-catalog.py" \
-        "$source_dir/src/core/keybindings.c" \
+        "$source_dir" \
+        "$schemas_source_dir" \
         "$installed_prefix/share/gnoblin/native-keybindings.json"
     devkit_marker="$installed_prefix/share/gnoblin/mutter-devkit-enabled"
     case "$devkit" in

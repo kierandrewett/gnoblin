@@ -731,16 +731,15 @@ event; an external shell client decides what UI, if any, to show.
 
 `ShortcutAction` fields: `id` (the stable `group.key` identifier), `group`
 (`"wm"`, `"mutter"`, or `"wayland"`), `key` (Lua snake_case key), optional
-`description`, and `default_bindings` (the schema's accelerator strings).
-Records have no runtime revision because they describe installed schema
-metadata. `gnoblin.shortcuts.actions(group?)` reads descriptions and defaults
-from installed schemas, then filters them through a catalog generated from the
-pinned Mutter keybinding tables. Only actions with an executable Mutter
-handler are returned, so schema-only keys are not advertised. An omitted group
-lists supported actions in all installed groups; an explicitly requested group
-errors if its schema is missing. The standalone target does not register the
-`gnome:shell` group. Declare a binding for an action with `action = action.id`
-in `gnoblin.configure.shortcuts`.
+`description`, and `default_bindings` (the pinned schema's accelerator
+strings). Records have no runtime revision because they describe Gnoblin's
+packaged keybinding catalogue. The build generates this catalogue from the
+pinned Mutter handler tables and matching keybinding schema sources. Runtime
+listing and validation do not read installed GSettings schemas. Only actions
+with an executable Mutter handler are included. An omitted group lists actions
+from `wm`, `mutter`, and `wayland`; an unknown group errors. The standalone
+target does not register the `gnome:shell` group. Declare a binding for an
+action with `action = action.id` in `gnoblin.configure.shortcuts`.
 `gnoblin.shortcuts.bind()` registers a Gnoblin shortcut event and does not
 invoke a schema action.
 

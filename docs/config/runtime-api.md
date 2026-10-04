@@ -64,8 +64,8 @@ Native-control API 1.40 adds `shortcuts.list`, a shared read backed by
 array and requires the Lua supervisor.
 
 Native-control API 1.41 adds `shortcuts.actions`, a shared read backed by
-`gnoblin.shortcuts.actions(group?)`. It returns built-in action metadata from
-the installed GSettings schemas and requires the Lua supervisor.
+`gnoblin.shortcuts.actions(group?)`. It returns the built-in actions that
+Gnoblin packages for its pinned Mutter build and requires the Lua supervisor.
 
 Native-control API 1.42 adds the `permissions.list` Lua read. Every supported
 socket client uses `gnoblin.permissions.list()`. It returns the committed
@@ -1640,23 +1640,23 @@ deactivation event.
 Modal sessions capture keyboard events only. Pointer input remains available to
 the shell's layer-shell surfaces and client windows.
 
-`gnoblin.shortcuts.actions(group?)` reads installed schema metadata and filters
-it against executable handlers in the pinned Mutter build. The catalog comes
-from Mutter's built-in keybinding tables; the schemas provide descriptions and
-default bindings. Omit `group` to list supported actions in every installed
-group.
+`gnoblin.shortcuts.actions(group?)` reads Gnoblin's packaged keybinding
+catalogue. The build generates it from executable handlers in the pinned
+Mutter source and the matching pinned keybinding schema sources. Gnoblin ships
+the descriptions and default bindings with the runtime, so listing actions and
+validating configured actions do not need installed GSettings schemas.
+Omit `group` to list actions from all three groups.
 
-| Group     | Schema                                 |
-| --------- | -------------------------------------- |
-| `wm`      | `org.gnome.desktop.wm.keybindings`     |
-| `mutter`  | `org.gnome.mutter.keybindings`         |
-| `wayland` | `org.gnome.mutter.wayland.keybindings` |
+| Group     | Contains                                                           |
+| --------- | ------------------------------------------------------------------ |
+| `wm`      | Window-manager actions, such as closing or maximizing a window.    |
+| `mutter`  | Compositor actions defined by Mutter.                              |
+| `wayland` | Actions defined by Mutter specifically for its Wayland compositor. |
 
-An unknown group raises an error. Requesting a supported group whose schema is
-not installed also raises an error. Schema keys without an executable Mutter
-handler are omitted. The `shell` group is not included. This read API is
-separate from `gnoblin.configure.shortcuts`, which declares shortcut
-configuration.
+An unknown group raises an error. The catalogue includes only actions with an
+executable handler in Gnoblin's pinned Mutter build. The `gnome:shell` group is
+not included. This read API is separate from `gnoblin.configure.shortcuts`,
+which declares shortcut configuration.
 
 To assign a built-in action, set `action = action.id` on a named
 `gnoblin.configure.shortcuts` entry. See the
@@ -1667,12 +1667,13 @@ it does not invoke a built-in action.
 Each action record contains:
 
 - `id`, `group`, and `key`.
-- Optional `description`, when the schema provides one.
-- `default_bindings`, the schema's exact accelerator string array.
+- Optional `description`, when the pinned schema provides one.
+- `default_bindings`, the pinned schema's exact accelerator string array.
 
-These are schema defaults, not the current user override. An empty array means
-that the action has no default accelerator. Actions are returned in `wm`,
-`mutter`, `wayland` order, with keys sorted alphabetically within each group.
+These are packaged schema defaults, not the current user override. An empty
+array means that the action has no default accelerator. Actions are returned
+in `wm`, `mutter`, `wayland` order, with keys sorted alphabetically within each
+group.
 
 ```lua
 for _, action in ipairs(gnoblin.shortcuts.actions("wm")) do

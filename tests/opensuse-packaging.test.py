@@ -73,6 +73,8 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         chain = (SPECS / "build-chain.sh").read_text()
         self.assertIn('install -m 0644 -- "$gnoblin_source" "$SOURCES/"', chain)
         self.assertIn('"$ROOT/scripts/build-source-bundle.sh"', chain)
+        self.assertIn('"$ROOT/scripts/make-gsettings-desktop-schemas-tarball.sh" "$SOURCES"', chain)
+        self.assertIn('"$SOURCES/gsettings-desktop-schemas-$schemas_version.tar.xz"', chain)
         self.assertLess(
             chain.index("git fetch --force --tags origin"),
             chain.index('"$ROOT/scripts/make-tarball.sh"'),

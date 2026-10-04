@@ -2,6 +2,7 @@
 #include "config.h"
 
 #include "core/gnoblin-native-control.h"
+#include "core/gnoblin-keybinding-catalog.h"
 #include "core/gnoblin-location-agent.h"
 #ifdef HAVE_REMOTE_DESKTOP
 #include "core/gnoblin-pipewire-monitor.h"
@@ -3035,7 +3036,8 @@ static void native_overlay_key(MetaDisplay* display, gpointer user_data) {
     }
 }
 
-static gboolean native_action_target(GVariant* action, const char** group, char** native_name) {
+static gboolean native_action_target(GVariant* action, const GnoblinKeybindingCatalog* catalog,
+                                     const char** group, char** native_name) {
     const char* name = NULL;
     const char* schema = NULL;
     if (g_variant_is_of_type(action, G_VARIANT_TYPE_STRING)) {
@@ -3054,7 +3056,8 @@ static gboolean native_action_target(GVariant* action, const char** group, char*
             return FALSE;
         *native_name = g_strdup(name);
         g_strdelimit(*native_name, "_", '-');
-        return meta_keybindings_gnoblin_action_supported(*group, *native_name);
+        return gnoblin_keybinding_catalog_lookup(catalog, *group, *native_name) &&
+               meta_keybindings_gnoblin_action_supported(*group, *native_name);
     }
     if (!g_variant_is_of_type(action, G_VARIANT_TYPE_VARDICT) ||
         g_variant_n_children(action) != 2 || !g_variant_lookup(action, "schema", "&s", &schema) ||
@@ -3070,7 +3073,8 @@ static gboolean native_action_target(GVariant* action, const char** group, char*
     else
         return FALSE;
     *native_name = g_strdup(name);
-    return meta_keybindings_gnoblin_action_supported(*group, *native_name);
+    return gnoblin_keybinding_catalog_lookup(catalog, *group, *native_name) &&
+           meta_keybindings_gnoblin_action_supported(*group, *native_name);
 }
 
 static GVariant* native_binding_array(GVariant* bindings) {
@@ -3089,7 +3093,8 @@ static GVariant* native_binding_array(GVariant* bindings) {
     return g_variant_ref_sink(g_variant_new_strv((const char* const*)strings, -1));
 }
 
-static gboolean merge_native_action(GVariantDict* groups, GVariant* entry, GError** error) {
+static gboolean merge_native_action(GVariantDict* groups, GVariant* entry,
+                                    const GnoblinKeybindingCatalog* catalog, GError** error) {
     g_autoptr(GVariant) action = g_variant_lookup_value(entry, "action", NULL);
     g_autoptr(GVariant) command = g_variant_lookup_value(entry, "command", NULL);
     g_autoptr(GVariant) trigger = g_variant_lookup_value(entry, "trigger", NULL);
@@ -3100,7 +3105,7 @@ static gboolean merge_native_action(GVariantDict* groups, GVariant* entry, GErro
     g_autoptr(GVariant) existing_action = NULL;
     const char* group = NULL;
     g_autofree char* native_name = NULL;
-    if (!native_action_target(action, &group, &native_name)) {
+    if (!native_action_target(action, catalog, &group, &native_name)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "named shortcut action must identify a supported Mutter or Wayland "
                             "keybinding; GNOME Shell actions are not supported");
@@ -3120,25 +3125,6 @@ static gboolean merge_native_action(GVariantDict* groups, GVariant* entry, GErro
                             "named built-in action needs an array of accelerators");
         return FALSE;
     }
-    const char* schema_name = g_str_equal(group, "wm") ? "org.gnome.desktop.wm.keybindings"
-                              : g_str_equal(group, "mutter")
-                                  ? "org.gnome.mutter.keybindings"
-                                  : "org.gnome.mutter.wayland.keybindings";
-    GSettingsSchemaSource* source = g_settings_schema_source_get_default();
-    g_autoptr(GSettingsSchema) schema =
-        source ? g_settings_schema_source_lookup(source, schema_name, TRUE) : NULL;
-    if (!schema || !g_settings_schema_has_key(schema, native_name)) {
-        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                    "unknown native shortcut action: %s.%s", group, native_name);
-        return FALSE;
-    }
-    g_autoptr(GSettingsSchemaKey) schema_key = g_settings_schema_get_key(schema, native_name);
-    if (!g_variant_type_equal(g_settings_schema_key_get_value_type(schema_key),
-                              G_VARIANT_TYPE_STRING_ARRAY)) {
-        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                    "native shortcut action does not accept bindings: %s.%s", group, native_name);
-        return FALSE;
-    }
     existing_group = g_variant_dict_lookup_value(groups, group, G_VARIANT_TYPE_VARDICT);
     existing_action =
         existing_group ? g_variant_lookup_value(existing_group, native_name, NULL) : NULL;
@@ -3155,7 +3141,8 @@ static gboolean merge_native_action(GVariantDict* groups, GVariant* entry, GErro
     return TRUE;
 }
 
-static GVariant* merge_native_actions(GVariant* base, GVariant* document, GError** error) {
+static GVariant* merge_native_actions(GVariant* base, GVariant* document,
+                                      const GnoblinKeybindingCatalog* catalog, GError** error) {
     g_autoptr(GVariant) shortcuts =
         document ? g_variant_lookup_value(document, "shortcuts", NULL) : NULL;
     if (!shortcuts)
@@ -3178,7 +3165,7 @@ static GVariant* merge_native_actions(GVariant* base, GVariant* document, GError
             return NULL;
         }
         g_autoptr(GVariant) action = g_variant_lookup_value(entry, "action", NULL);
-        if (action && !merge_native_action(&groups, entry, error)) {
+        if (action && !merge_native_action(&groups, entry, catalog, error)) {
             g_variant_dict_clear(&groups);
             return NULL;
         }
@@ -3187,14 +3174,6 @@ static GVariant* merge_native_actions(GVariant* base, GVariant* document, GError
 }
 
 static gboolean apply_native_keybindings(GVariant* document, GError** error) {
-    static const struct {
-        const char* group;
-        const char* schema;
-    } schemas[] = {
-        {"wm", "org.gnome.desktop.wm.keybindings"},
-        {"mutter", "org.gnome.mutter.keybindings"},
-        {"wayland", "org.gnome.mutter.wayland.keybindings"},
-    };
     g_autoptr(GVariant) configured =
         document ? g_variant_lookup_value(document, "keybindings", NULL) : NULL;
     if (configured && !g_variant_is_of_type(configured, G_VARIANT_TYPE_VARDICT)) {
@@ -3202,6 +3181,10 @@ static gboolean apply_native_keybindings(GVariant* document, GError** error) {
                             "keybindings must be a table");
         return FALSE;
     }
+    g_autoptr(GnoblinKeybindingCatalog) catalog = gnoblin_keybinding_catalog_load(error);
+    if (!catalog)
+        return FALSE;
+
     GVariantBuilder groups;
     g_autoptr(GVariant) normalized = NULL;
     g_autoptr(GVariant) merged = NULL;
@@ -3210,15 +3193,10 @@ static gboolean apply_native_keybindings(GVariant* document, GError** error) {
         GVariantIter iter;
         const char* group;
         GVariant* entries;
-        GSettingsSchemaSource* source = g_settings_schema_source_get_default();
         g_variant_iter_init(&iter, configured);
         while (g_variant_iter_next(&iter, "{&sv}", &group, &entries)) {
             g_autoptr(GVariant) group_entries = entries;
-            const char* schema_name = NULL;
-            for (guint i = 0; i < G_N_ELEMENTS(schemas); i++)
-                if (g_str_equal(group, schemas[i].group))
-                    schema_name = schemas[i].schema;
-            if (!schema_name) {
+            if (!gnoblin_keybinding_catalog_get_group(catalog, group)) {
                 g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
                             "keybindings.%s is unsupported in the standalone session; use wm, "
                             "mutter, or wayland",
@@ -3228,13 +3206,6 @@ static gboolean apply_native_keybindings(GVariant* document, GError** error) {
             if (!g_variant_is_of_type(group_entries, G_VARIANT_TYPE_VARDICT)) {
                 g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "keybindings.%s must be a table", group);
-                goto invalid_keybindings;
-            }
-            g_autoptr(GSettingsSchema) schema =
-                source ? g_settings_schema_source_lookup(source, schema_name, TRUE) : NULL;
-            if (!schema) {
-                g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-                            "keybinding schema %s is not installed", schema_name);
                 goto invalid_keybindings;
             }
             GVariantBuilder actions;
@@ -3253,9 +3224,16 @@ static gboolean apply_native_keybindings(GVariant* document, GError** error) {
                 }
                 g_autofree char* native_name = g_strdup(name);
                 g_strdelimit(native_name, "_", '-');
-                if (!g_settings_schema_has_key(schema, native_name)) {
-                    g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                                "unknown keybinding: %s.%s", group, name);
+                if (!gnoblin_keybinding_catalog_lookup(catalog, group, native_name)) {
+                    if (meta_keybindings_gnoblin_action_supported(group, native_name))
+                        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                    "keybinding is missing from the installed Gnoblin catalog: "
+                                    "%s.%s",
+                                    group, name);
+                    else
+                        g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                                    "keybinding has no executable Mutter handler: %s.%s", group,
+                                    name);
                     g_variant_builder_clear(&actions);
                     goto invalid_keybindings;
                 }
@@ -3265,12 +3243,8 @@ static gboolean apply_native_keybindings(GVariant* document, GError** error) {
                     g_variant_builder_clear(&actions);
                     goto invalid_keybindings;
                 }
-                g_autoptr(GSettingsSchemaKey) schema_key =
-                    g_settings_schema_get_key(schema, native_name);
                 g_autoptr(GVariant) native_bindings = native_binding_array(bindings);
-                if (!g_variant_type_equal(g_settings_schema_key_get_value_type(schema_key),
-                                          G_VARIANT_TYPE_STRING_ARRAY) ||
-                    !native_bindings) {
+                if (!native_bindings) {
                     g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                                 "keybindings.%s.%s needs an array of accelerators", group, name);
                     g_variant_builder_clear(&actions);
@@ -3285,7 +3259,7 @@ static gboolean apply_native_keybindings(GVariant* document, GError** error) {
         }
     }
     normalized = g_variant_ref_sink(g_variant_builder_end(&groups));
-    merged = merge_native_actions(normalized, document, error);
+    merged = merge_native_actions(normalized, document, catalog, error);
     if (!merged)
         return FALSE;
     meta_prefs_apply_gnoblin_keybindings(merged);

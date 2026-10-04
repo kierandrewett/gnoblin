@@ -148,6 +148,7 @@ verify-fast:
     python3 tests/session-environment.test.py
     python3 tests/package-isolation.test.py
     python3 tests/check-build-deps.test.py
+    python3 tests/test_generate_mutter_keybinding_catalog.py
     just test-config
 
 [private]

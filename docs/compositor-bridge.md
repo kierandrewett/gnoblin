@@ -96,12 +96,16 @@ version 1.4 to receive lifecycle events:
 
 API version 1.5 adds `shortcut.actions` to list built-in Mutter and window
 manager shortcut actions. Its optional `group` argument
-accepts `wm`, `mutter`, or `wayland`. Omit it to list all installed groups.
+accepts `wm` (window-manager actions), `mutter` (Mutter compositor actions),
+or `wayland` (Mutter actions specific to Wayland). Omit it to list all
+supported groups.
 
 Each result record contains `id`, `group`, `key`, and `default_bindings`. A
-record also contains `description` when the schema provides one. Bindings come
-from installed GSettings schema defaults and do not reflect user-overridden
-bindings. Request API version 1.5:
+record also contains `description` when the pinned schema provides one. Gnoblin
+ships this metadata in a catalogue generated from the pinned Mutter handlers
+and matching schema sources, so the API does not read the host's installed
+schemas. Defaults do not reflect user-overridden bindings. Request API version
+1.5:
 
 ```json
 {

@@ -37,13 +37,16 @@ else
     for project in mutter xdg-desktop-portal-gnome; do
         "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
     done
+    "$ROOT/scripts/make-gsettings-desktop-schemas-tarball.sh" "$SOURCES"
     mutter_version="$("$ROOT/scripts/gnome-versions.py" get mutter version)"
     portal_version="$("$ROOT/scripts/gnome-versions.py" get xdg-desktop-portal-gnome version)"
+    schemas_version="$("$ROOT/scripts/gnome-versions.py" get gsettings-desktop-schemas version)"
     "$ROOT/scripts/build-source-bundle.sh" \
         "$SOURCES/gnoblin-$gnoblin_version-source.tar.xz" \
         "$gnoblin_version" \
         "$SOURCES/mutter-$mutter_version.tar.xz" \
-        "$SOURCES/xdg-desktop-portal-gnome-$portal_version.tar.xz"
+        "$SOURCES/xdg-desktop-portal-gnome-$portal_version.tar.xz" \
+        "$SOURCES/gsettings-desktop-schemas-$schemas_version.tar.xz"
 fi
 "$ROOT/scripts/stage-rpm-sources.sh" mutter "$SOURCES"
 

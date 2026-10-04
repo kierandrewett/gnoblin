@@ -20,10 +20,11 @@ Each release publishes these paired assets:
 - `gnoblin-portal-<gnome-version>.PKGBUILD`
 - `xdg-desktop-portal-gnome-<gnome-version>.tar.xz`
 
-The source archive includes the tracked Gnoblin tree and the two materialised,
-patch-applied component source archives for Mutter and the portal backend. It
-is also the general source-build tarball: users can extract it and run
-`./build.sh` without Git or submodules.
+The source archive includes the tracked Gnoblin tree, the materialised,
+patch-applied source archives for Mutter and the portal backend, and the pinned
+schema source used to generate keybinding metadata. It is also the general
+source-build tarball: users can extract it and run `./build.sh` without Git or
+submodules.
 
 The core release PKGBUILD contains the source archive SHA-256. Download the
 source archive and core recipe from the same release, place `PKGBUILD` beside
