@@ -187,6 +187,19 @@ static gboolean input_field_known(const char* group, const char* key) {
         "click-method",
         NULL,
     };
+    static const char* const trackball_fields[] = {
+        "accel-profile",
+        "middle-click-emulation",
+        "scroll-wheel-emulation-button",
+        "scroll-wheel-emulation-button-lock",
+        NULL,
+    };
+    static const char* const pointing_stick_fields[] = {
+        "speed",
+        "accel-profile",
+        "scroll-method",
+        NULL,
+    };
     static const char* const keyboard_fields[] = {
         "repeat",        "delay",       "repeat-interval", "remember-numlock-state",
         "numlock-state", "xkb-options", "accessibility",   NULL,
@@ -201,12 +214,14 @@ static gboolean input_field_known(const char* group, const char* key) {
         "button-keybinding",          "secondary-button-keybinding",
         "tertiary-button-keybinding", NULL,
     };
-    const char* const* fields = g_str_equal(group, "mouse")      ? mouse_fields
-                                : g_str_equal(group, "touchpad") ? touchpad_fields
-                                : g_str_equal(group, "keyboard") ? keyboard_fields
-                                : g_str_equal(group, "tablets")  ? tablet_fields
-                                : g_str_equal(group, "styluses") ? stylus_fields
-                                                                 : NULL;
+    const char* const* fields = g_str_equal(group, "mouse")            ? mouse_fields
+                                : g_str_equal(group, "touchpad")       ? touchpad_fields
+                                : g_str_equal(group, "trackball")      ? trackball_fields
+                                : g_str_equal(group, "pointing-stick") ? pointing_stick_fields
+                                : g_str_equal(group, "keyboard")       ? keyboard_fields
+                                : g_str_equal(group, "tablets")        ? tablet_fields
+                                : g_str_equal(group, "styluses")       ? stylus_fields
+                                                                       : NULL;
     if (!fields)
         return FALSE;
     for (guint i = 0; fields[i]; i++) {
@@ -221,6 +236,9 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
     static const char* handedness[] = {"right", "left", "mouse", NULL};
     static const char* tap_button_maps[] = {"default", "lrm", "lmr", NULL};
     static const char* click_methods[] = {"default", "none", "areas", "fingers", NULL};
+    static const char* trackball_accel_profiles[] = {"default", "flat", "adaptive", NULL};
+    static const char* pointing_stick_scroll_methods[] = {"default", "none", "on-button-down",
+                                                          NULL};
     static const char* tablet_mapping[] = {"absolute", "relative", NULL};
     static const char* stylus_eraser_modes[] = {"default", "button", NULL};
     static const char* stylus_actions[] = {"default", "middle",         "right",      "back",
@@ -289,6 +307,11 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
         return input_number(value, &number) && number >= 0 && number <= G_MAXINT &&
                number == floor(number);
     }
+    if (g_str_equal(key, "scroll-wheel-emulation-button")) {
+        double number;
+        return input_number(value, &number) && number >= 0 && number <= 24 &&
+               number == floor(number);
+    }
     if (g_str_equal(key, "xkb-options")) {
         if (!g_variant_is_of_type(value, G_VARIANT_TYPE("av")))
             return FALSE;
@@ -304,8 +327,13 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
         }
         return TRUE;
     }
-    if (g_str_equal(key, "accel-profile"))
+    if (g_str_equal(key, "accel-profile")) {
+        if (g_str_equal(group, "trackball") || g_str_equal(group, "pointing-stick"))
+            return input_string_is(value, trackball_accel_profiles);
         return input_string_is(value, accel_profiles);
+    }
+    if (g_str_equal(group, "pointing-stick") && g_str_equal(key, "scroll-method"))
+        return input_string_is(value, pointing_stick_scroll_methods);
     if (g_str_equal(key, "left-handed")) {
         if (g_str_equal(group, "touchpad"))
             return input_string_is(value, handedness);
@@ -330,6 +358,7 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
     static const char* boolean_fields[] = {
         "natural-scroll",
         "middle-click-emulation",
+        "scroll-wheel-emulation-button-lock",
         "repeat",
         "remember-numlock-state",
         "numlock-state",
@@ -548,6 +577,7 @@ static gboolean validate_input(GVariant* input, GError** error) {
                 g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                                     "input.orientation-lock must be a boolean or inherit");
         } else if (g_str_equal(group, "mouse") || g_str_equal(group, "touchpad") ||
+                   g_str_equal(group, "trackball") || g_str_equal(group, "pointing-stick") ||
                    g_str_equal(group, "keyboard") || g_str_equal(group, "tablets") ||
                    g_str_equal(group, "styluses")) {
             valid = input_group_valid(group, values, error);
