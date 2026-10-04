@@ -134,6 +134,7 @@ def main() -> int:
         stdout=subprocess.DEVNULL,
     )
     env = os.environ.copy()
+    env["GNOBLIN_DEVKIT_KEEP_SESSION"] = "1"
     env["GNOBLIN_DEVKIT_EXEC"] = shlex.join([sys.executable, str(__file__), "--inside"])
     env["GNOBLIN_TEST_FLATPAK_PORTAL"] = "1"
     return subprocess.run([str(ROOT / "scripts" / "run-gnoblin-devkit.sh")], env=env).returncode
