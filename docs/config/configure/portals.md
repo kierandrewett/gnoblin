@@ -84,5 +84,8 @@ If you omit `portals`, the default installed for the Gnoblin session applies.
 It uses Gnoblin's backend when installed and otherwise selects another
 installed backend. Other desktops continue using their own defaults.
 
-An existing user portal preference takes precedence. Gnoblin leaves it alone
-and reports a conflict rather than overwriting it.
+An existing per-user `gnoblin-portals.conf` or generic `portals.conf` takes
+precedence. Gnoblin leaves it alone and reports a conflict rather than
+overwriting it. If a generated Gnoblin file exists when a generic `portals.conf`
+is added, Gnoblin removes its generated file so the user's configuration can
+take effect.
