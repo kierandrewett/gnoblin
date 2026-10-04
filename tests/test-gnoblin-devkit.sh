@@ -94,7 +94,10 @@ gnoblin.configure {
             drag_threshold = 24,
             middle_click_emulation = true,
         },
-        touchpad = {middle_click_emulation = false},
+        touchpad = {
+            middle_click_emulation = false,
+            disable_while_typing_timeout = 500,
+        },
         keyboard = {
             accessibility = {
                 shortcuts_enabled = false,
@@ -118,6 +121,7 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     assert(gnoblin.settings.input.mouse.drag_threshold == 24)
     assert(gnoblin.settings.input.mouse.middle_click_emulation == true)
     assert(gnoblin.settings.input.touchpad.middle_click_emulation == false)
+    assert(gnoblin.settings.input.touchpad.disable_while_typing_timeout == 500)
     local area = gnoblin.settings.input.tablets["056a:00b9"].area
     assert(#area == 4 and area[1] == 0.05 and area[2] == 0.1 and
         area[3] == 0.15 and area[4] == 0.2)
