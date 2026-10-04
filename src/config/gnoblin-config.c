@@ -205,7 +205,7 @@ static gboolean input_field_known(const char* group, const char* key) {
         "numlock-state", "xkb-options", "accessibility",   NULL,
     };
     static const char* const tablet_fields[] = {
-        "mapping", "left-handed", "keep-aspect", "area", "pad-buttons", NULL,
+        "mapping", "output", "left-handed", "keep-aspect", "area", "pad-buttons", NULL,
     };
     static const char* const stylus_fields[] = {
         "eraser-button-mode",         "eraser-button-action",
@@ -345,6 +345,14 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
         return input_string_is(value, click_methods);
     if (g_str_equal(key, "mapping"))
         return input_string_is(value, tablet_mapping);
+    if (g_str_equal(group, "tablets") && g_str_equal(key, "output")) {
+        if (!g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+            return FALSE;
+        const char* output = g_variant_get_string(value, NULL);
+        return g_str_equal(output, "auto") ||
+               g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", output, G_REGEX_OPTIMIZE,
+                                    0);
+    }
     if (g_str_equal(group, "tablets") && g_str_equal(key, "pad-buttons"))
         return tablet_pad_buttons_valid(value);
     if (g_str_equal(group, "tablets") && g_str_equal(key, "area"))

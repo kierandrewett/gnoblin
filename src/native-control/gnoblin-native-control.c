@@ -3378,6 +3378,7 @@ typedef enum {
     INPUT_ACCESSIBILITY,
     INPUT_PAD_BUTTONS,
     INPUT_TABLET_AREA,
+    INPUT_TABLET_OUTPUT,
 } InputKind;
 
 typedef struct {
@@ -3447,6 +3448,7 @@ static const InputField input_fields[] = {
     {"keyboard-accessibility", "sticky-keys.beep-on-modifier", INPUT_BOOLEAN},
     {"keyboard-accessibility", "toggle-keys.enabled", INPUT_BOOLEAN},
     {"tablets", "mapping", INPUT_CHOICE, "absolute relative"},
+    {"tablets", "output", INPUT_TABLET_OUTPUT},
     {"tablets", "left-handed", INPUT_BOOLEAN},
     {"tablets", "keep-aspect", INPUT_BOOLEAN},
     {"tablets", "area", INPUT_TABLET_AREA},
@@ -3630,6 +3632,15 @@ static GVariant* normalize_input_value(const InputField* field, GVariant* value,
         return normalize_tablet_pad_buttons(value, error);
     if (field->kind == INPUT_TABLET_AREA)
         return normalize_tablet_area(value, error);
+    if (field->kind == INPUT_TABLET_OUTPUT && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+        const char* output = g_variant_get_string(value, NULL);
+        if (g_str_equal(output, "auto") ||
+            g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$", output, G_REGEX_OPTIMIZE, 0))
+            return g_variant_ref(value);
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "input.tablets.output must be 'auto' or a monitor connector ID");
+        return NULL;
+    }
     if (field->kind == INPUT_ACCEL_CURVE && g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT)) {
         GVariantBuilder curve;
         GVariantIter iter;
