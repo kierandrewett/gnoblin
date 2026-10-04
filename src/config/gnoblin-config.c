@@ -1388,6 +1388,33 @@ static gboolean titlebar_button_layout_valid(GVariant* layout) {
     return valid;
 }
 
+static gboolean validate_monitors(GVariant* monitors, GError** error) {
+    if (!g_variant_is_of_type(monitors, G_VARIANT_TYPE_VARDICT))
+        goto invalid;
+
+    GVariantIter iter;
+    const char* name;
+    GVariant* value;
+    g_variant_iter_init(&iter, monitors);
+    while (g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+        gboolean valid = FALSE;
+        if (g_str_equal(name, "privacy-screen")) {
+            valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
+            if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+                valid = g_str_equal(g_variant_get_string(value, NULL), "inherit");
+        }
+        g_variant_unref(value);
+        if (!valid)
+            goto invalid;
+    }
+    return TRUE;
+
+invalid:
+    g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "monitors accepts only privacy-screen = true, false, or 'inherit'");
+    return FALSE;
+}
+
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     g_autoptr(GVariant) shell = g_variant_lookup_value(document, "shell", NULL);
     if (shell) {
@@ -1404,6 +1431,9 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
         return FALSE;
     g_autoptr(GVariant) portals = g_variant_lookup_value(document, "portals", NULL);
     if (portals && !validate_portal_selection(portals, error))
+        return FALSE;
+    g_autoptr(GVariant) monitors = g_variant_lookup_value(document, "monitors", NULL);
+    if (monitors && !validate_monitors(monitors, error))
         return FALSE;
     if (!validate_window_rule_patterns(document, error))
         return FALSE;

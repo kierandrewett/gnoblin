@@ -124,6 +124,45 @@ static void test_portal_preferences(const char* directory) {
     }
 }
 
+static void test_monitor_preferences(const char* directory) {
+    g_autoptr(GError) error = NULL;
+    g_autofree char* source_path = g_build_filename(directory, "monitors.lua", NULL);
+    const char* valid_sources[] = {
+        "gnoblin.configure {monitors = {privacy_screen = true}}\n",
+        "gnoblin.configure {monitors = {privacy_screen = false}}\n",
+        "gnoblin.configure {monitors = {privacy_screen = 'inherit'}}\n",
+        "gnoblin.configure {monitors = {}}\n",
+        NULL,
+    };
+    for (guint i = 0; valid_sources[i]; i++) {
+        g_assert_true(g_file_set_contents(source_path, valid_sources[i], -1, &error));
+        g_assert_no_error(error);
+        g_autoptr(GVariant) document = load(source_path, NULL, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(document);
+        g_autoptr(GVariant) monitors =
+            g_variant_lookup_value(document, "monitors", G_VARIANT_TYPE_VARDICT);
+        g_assert_nonnull(monitors);
+    }
+
+    const char* invalid_sources[] = {
+        "gnoblin.configure {monitors = {privacy_screen = 'on'}}\n",
+        "gnoblin.configure {monitors = {privacy_screen = 1}}\n",
+        "gnoblin.configure {monitors = {unknown = true}}\n",
+        "gnoblin.configure {monitors = true}\n",
+        NULL,
+    };
+    for (guint i = 0; invalid_sources[i]; i++) {
+        g_assert_true(g_file_set_contents(source_path, invalid_sources[i], -1, &error));
+        g_assert_no_error(error);
+        g_autoptr(GVariant) document = load(source_path, NULL, &error);
+        g_assert_null(document);
+        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+        g_clear_error(&error);
+    }
+    g_unlink(source_path);
+}
+
 static void test_runtime_document_ownership(const char* path) {
     g_autoptr(GError) error = NULL;
     GVariant* document = gnoblin_config_load_runtime(path, NULL, NULL, &error);
@@ -225,6 +264,7 @@ int main(void) {
 
     g_autofree char* dir = g_dir_make_tmp("gnoblin-lua-test-XXXXXX", &error);
     test_portal_preferences(dir);
+    test_monitor_preferences(dir);
     g_autofree char* conf = g_build_filename(dir, "conf.d", NULL);
     g_autofree char* root = g_build_filename(dir, "init.lua", NULL);
     g_autofree char* example_root = g_build_filename(dir, "example.lua", NULL);
