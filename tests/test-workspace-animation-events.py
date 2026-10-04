@@ -160,15 +160,22 @@ def capture_frame(name):
     }
 
 
-def wait_for_visible_surface(name, color_name):
+def wait_for_workspace_frame(name, visible_color, hidden_color):
     deadline = time.monotonic() + 5
     last_frame = None
+    stable_frames = 0
     while time.monotonic() < deadline:
         last_frame = capture_frame(name)
-        if last_frame[color_name] > 5000:
-            return last_frame
-        time.sleep(0.1)
-    raise AssertionError(f"{color_name} surface never appeared in screencopy: {last_frame!r}")
+        if last_frame[visible_color] > 5000 and last_frame[hidden_color] < 500:
+            stable_frames += 1
+            if stable_frames >= 3:
+                return last_frame
+        else:
+            stable_frames = 0
+        time.sleep(0.05)
+    raise AssertionError(
+        f"workspace frame did not stabilize with {visible_color} visible and {hidden_color} hidden: {last_frame!r}"
+    )
 
 
 def install_test_animation():
@@ -267,8 +274,7 @@ try:
     assert windows[SOURCE_TITLE].get("workspace_id") == source_id, windows[SOURCE_TITLE]
     assert windows[DESTINATION_TITLE].get("workspace_id") == destination_id, windows[DESTINATION_TITLE]
 
-    before = wait_for_visible_surface("before", "red_pixels")
-    assert before["blue_pixels"] < 500, f"destination surface is visible on the source workspace: {before!r}"
+    before = wait_for_workspace_frame("before", "red_pixels", "blue_pixels")
 
     visual_switch = subprocess.Popen(
         [ctl, "--timeout", "2", "workspace", "switch", "--id", destination_id],
@@ -292,8 +298,7 @@ try:
         stderr = visual_switch.stderr.read() if visual_switch.stderr else ""
         raise RuntimeError(f"visual workspace switch failed: {stderr}")
 
-    after = wait_for_visible_surface("after", "blue_pixels")
-    assert after["red_pixels"] < 500, f"source surface remains visible after the switch: {after!r}"
+    after = wait_for_workspace_frame("after", "blue_pixels", "red_pixels")
     distinct_frames = {frame["sha256"] for frame in visual_frames}
     assert len(distinct_frames) >= 3, f"workspace animation produced too few distinct frames: {visual_frames!r}"
     assert any(frame["red_pixels"] + frame["blue_pixels"] > 5000 for frame in visual_frames), (
