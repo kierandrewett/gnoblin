@@ -245,6 +245,8 @@ struct _GnoblinNativeControl {
     guint portal_grant_retry_count;
     guint64 session_lock_revision;
     guint64 event_sequence;
+    /* Gesture ordering belongs to the compositor and survives Lua worker recovery. */
+    guint64 input_gesture_sequence;
     guint64 next_focus_context_handle;
     guint64 next_menu_context_handle;
     guint64 next_text_target_handle;
@@ -15587,6 +15589,31 @@ gboolean gnoblin_native_control_dispatch_runtime_event(MetaDisplay* display, con
     }
     if (claimed)
         *claimed = FALSE;
+    g_autoptr(GVariant) sequenced_payload = NULL;
+    if (g_str_equal(event, "mutter.touchpad.gesture")) {
+        if (control->input_gesture_sequence >= G_MAXINT64) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
+                                "touchpad gesture sequence is exhausted");
+            return FALSE;
+        }
+        GVariantBuilder builder;
+        GVariantIter iterator;
+        const char* key;
+        GVariant* value;
+        g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+        g_variant_iter_init(&iterator, payload);
+        while (g_variant_iter_next(&iterator, "{&sv}", &key, &value)) {
+            g_autoptr(GVariant) field = value;
+            if (g_str_equal(key, "sequence"))
+                continue;
+            g_variant_builder_add(&builder, "{sv}", key, field);
+        }
+        control->input_gesture_sequence++;
+        g_variant_builder_add(&builder, "{sv}", "sequence",
+                              g_variant_new_int64((gint64)control->input_gesture_sequence));
+        sequenced_payload = g_variant_ref_sink(g_variant_builder_end(&builder));
+        payload = sequenced_payload;
+    }
     if (g_str_equal(event, "mutter.touchpad.gesture") &&
         g_variant_is_of_type(payload, G_VARIANT_TYPE_VARDICT) && claimed)
         *claimed = native_config_event(display, event, NULL, payload, control);

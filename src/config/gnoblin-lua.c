@@ -5616,6 +5616,8 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
     runtime->config.modules = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     runtime->config.current_path = g_canonicalize_filename(path, NULL);
     LuaRuntime* snapshot_source = active_runtime ? active_runtime : pending_runtime;
+    if (snapshot_source)
+        runtime->config.input_gesture_sequence = snapshot_source->config.input_gesture_sequence;
     if (snapshot_source && snapshot_source->config.window_snapshot) {
         runtime->config.window_snapshot = g_variant_ref(snapshot_source->config.window_snapshot);
         runtime->config.window_revision = snapshot_source->config.window_revision;
@@ -5995,8 +5997,15 @@ static GVariant* input_gesture_event(LuaConfig* config, GVariant* payload) {
         if (value)
             g_variant_builder_add(&event, "{sv}", fields[i].target, value);
     }
-    g_variant_builder_add(&event, "{sv}", "sequence",
-                          g_variant_new_int64(++config->input_gesture_sequence));
+    gint64 source_sequence = 0;
+    guint64 sequence = config->input_gesture_sequence;
+    if (g_variant_lookup(payload, "sequence", "x", &source_sequence) && source_sequence > 0 &&
+        (guint64)source_sequence > sequence)
+        sequence = (guint64)source_sequence;
+    else if (sequence < G_MAXINT64)
+        sequence++;
+    config->input_gesture_sequence = sequence;
+    g_variant_builder_add(&event, "{sv}", "sequence", g_variant_new_int64((gint64)sequence));
     g_variant_builder_add(&event, "{sv}", "time", g_variant_new_int64(g_get_monotonic_time()));
     return g_variant_ref_sink(g_variant_builder_end(&event));
 }
