@@ -9,6 +9,7 @@ CONTROL = ROOT / "src/native-control/gnoblin-native-control.c"
 API_HEADER = ROOT / "src/native-control/gnoblin-native-control.h"
 BUILD = ROOT / "CMakeLists.txt"
 LUA = ROOT / "src/config/gnoblin-lua.c"
+CONFIG = ROOT / "src/config/gnoblin-config.c"
 
 
 class LocationAgentContractTests(unittest.TestCase):
@@ -18,6 +19,7 @@ class LocationAgentContractTests(unittest.TestCase):
         cls.header = (ROOT / "src/native-control/gnoblin-location-agent.h").read_text()
         cls.control = CONTROL.read_text()
         cls.lua = LUA.read_text()
+        cls.config = CONFIG.read_text()
 
     def test_agent_exports_expected_geo_clue_contract(self):
         self.assertIn('"/org/freedesktop/GeoClue2/Agent"', self.source)
@@ -28,10 +30,10 @@ class LocationAgentContractTests(unittest.TestCase):
 
     def test_accuracy_setting_is_mapped_to_geo_clue_levels(self):
         self.assertRegex(self.source, r"g_settings_schema_source_lookup\(source, \"org\.gnome\.system\.location\"")
-        accuracy_helper = self.source.split("static guint accuracy_from_setting", 1)[1].split(
-            "static guint clamp_accuracy", 1
-        )[0]
-        self.assertIn('!g_settings_get_boolean(settings, "enabled")', accuracy_helper)
+        self.assertIn('g_settings_get_boolean(agent->settings, "enabled")', self.source)
+        self.assertIn('g_settings_get_string(agent->settings, "max-accuracy-level")', self.source)
+        self.assertIn("agent->enabled_configured", self.source)
+        self.assertIn("agent->accuracy_configured", self.source)
         self.assertIn('g_signal_connect(agent->settings, "changed"', self.source)
         for nick, level in (("country", 1), ("city", 4), ("neighborhood", 5), ("street", 6), ("exact", 8)):
             self.assertRegex(self.source, rf'(?s)g_strcmp0\(nick, "{nick}"\) == 0\).*?return {level};')
@@ -43,8 +45,9 @@ class LocationAgentContractTests(unittest.TestCase):
     def test_async_authorization_fails_closed_and_is_bounded(self):
         self.assertIn("#define AUTHORIZATION_TIMEOUT_SECONDS 30", self.source)
         self.assertIn(".method_call = method_call", self.source)
-        self.assertIn("!agent->available || !agent->authorize || !agent->settings", self.source)
-        self.assertIn('g_settings_get_boolean(agent->settings, "enabled")', self.source)
+        self.assertIn("location_max_accuracy(agent) == 0", self.source)
+        self.assertIn("if (agent->stopped || !agent->available || maximum == 0)", self.source)
+        self.assertIn("gnoblin_location_agent_set_policy", self.source)
         self.assertIn("if (!allowed) {\n        accuracy_level = 0;", self.source)
         self.assertIn("gnoblin_location_request_ref", self.header)
         self.assertIn("g_main_context_invoke_full(request->agent->context", self.source)
@@ -85,6 +88,15 @@ class LocationAgentContractTests(unittest.TestCase):
         self.assertIn("only a client that received the location request can answer it", self.control)
         self.assertIn("clear_pending_location_authorizations(control)", self.control)
         self.assertIn("native_location_authorize_operation(control, arguments, client_id", self.control)
+
+    def test_global_location_policy_is_configurable_and_reloaded(self):
+        self.assertIn('g_variant_lookup_value(document, "location", NULL)', self.config)
+        self.assertIn('"location.enabled must be a boolean or inherit"', self.config)
+        self.assertIn('"location.max_accuracy must be inherit, country, city, "', self.config)
+        self.assertIn('g_variant_lookup_value(config, "location", G_VARIANT_TYPE_VARDICT)', self.control)
+        self.assertIn("gnoblin_location_agent_set_policy(control->location_agent", self.control)
+        self.assertIn("native_apply_location_policy(control, config)", self.control)
+        self.assertIn("native_apply_location_policy(control, initial_config)", self.control)
 
     def test_shutdown_does_not_dispatch_callbacks_through_destroyed_control(self):
         stop = self.source.split("static gboolean begin_stop(", 1)[1].split("static void settings_changed(", 1)[0]

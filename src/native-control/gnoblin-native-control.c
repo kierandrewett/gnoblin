@@ -386,6 +386,43 @@ static GVariant* native_config_document(GnoblinNativeControl* control) {
     return NULL;
 }
 
+static GnoblinLocationAccuracy native_location_accuracy(const char* nick) {
+    if (g_strcmp0(nick, "country") == 0)
+        return GNOBLIN_LOCATION_ACCURACY_COUNTRY;
+    if (g_strcmp0(nick, "city") == 0)
+        return GNOBLIN_LOCATION_ACCURACY_CITY;
+    if (g_strcmp0(nick, "neighborhood") == 0)
+        return GNOBLIN_LOCATION_ACCURACY_NEIGHBORHOOD;
+    if (g_strcmp0(nick, "street") == 0)
+        return GNOBLIN_LOCATION_ACCURACY_STREET;
+    if (g_strcmp0(nick, "exact") == 0)
+        return GNOBLIN_LOCATION_ACCURACY_EXACT;
+    return GNOBLIN_LOCATION_ACCURACY_INHERIT;
+}
+
+static void native_apply_location_policy(GnoblinNativeControl* control, GVariant* config) {
+    if (!control || !control->location_agent)
+        return;
+    g_autoptr(GVariant) location =
+        config ? g_variant_lookup_value(config, "location", G_VARIANT_TYPE_VARDICT) : NULL;
+    g_autoptr(GVariant) enabled_value =
+        location ? g_variant_lookup_value(location, "enabled", NULL) : NULL;
+    g_autoptr(GVariant) accuracy_value =
+        location ? g_variant_lookup_value(location, "max-accuracy", NULL) : NULL;
+    gboolean enabled_set =
+        enabled_value && g_variant_is_of_type(enabled_value, G_VARIANT_TYPE_BOOLEAN);
+    gboolean enabled = enabled_set && g_variant_get_boolean(enabled_value);
+    gboolean accuracy_set =
+        accuracy_value && g_variant_is_of_type(accuracy_value, G_VARIANT_TYPE_STRING);
+    GnoblinLocationAccuracy accuracy =
+        accuracy_set ? native_location_accuracy(g_variant_get_string(accuracy_value, NULL))
+                     : GNOBLIN_LOCATION_ACCURACY_INHERIT;
+    if (accuracy == GNOBLIN_LOCATION_ACCURACY_INHERIT)
+        accuracy_set = FALSE;
+    gnoblin_location_agent_set_policy(control->location_agent, enabled_set, enabled, accuracy_set,
+                                      accuracy);
+}
+
 static guint64 native_config_revision(GnoblinNativeControl* control) {
     if (control && control->supervised_runtime)
         return gnoblin_runtime_cache_get_settings_revision(control->runtime_cache);
@@ -8421,6 +8458,7 @@ static void native_settings_changed(guint64 revision, gpointer user_data) {
             : NULL;
     g_autoptr(GVariant) xwayland_preferences =
         config ? g_variant_lookup_value(config, "xwayland", G_VARIANT_TYPE_VARDICT) : NULL;
+    native_apply_location_policy(control, config);
     const char* cursor_theme = "default";
     gint64 cursor_size = 24;
     if (cursor_preferences) {
@@ -15950,8 +15988,11 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
 #endif
     control->location_agent = gnoblin_location_agent_new(
         NULL, location_authorize_app, privacy_location_state_changed, control, NULL);
-    if (control->location_agent)
+    if (control->location_agent) {
+        g_autoptr(GVariant) initial_config = native_config_document(control);
+        native_apply_location_policy(control, initial_config);
         gnoblin_location_agent_start(control->location_agent);
+    }
     schedule_windows(control);
     if (control->input_sources && control->input_sources->len > 0 &&
         !control->input_keymap_description) {
