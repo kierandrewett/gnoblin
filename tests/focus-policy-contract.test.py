@@ -30,7 +30,10 @@ class FocusPolicyContractTests(unittest.TestCase):
     def test_user_documentation_names_strict_as_the_default(self):
         reference = (ROOT / "docs/config/configure/window_management.md").read_text()
         guide = (ROOT / "docs/focus-transfer.md").read_text()
-        self.assertIn('`"strict"`          | Selects Mutter\'s new-window focus policy.', reference)
+        focus_row = next(line for line in reference.splitlines() if line.startswith("| `focus_new_windows`"))
+        focus_cells = [cell.strip() for cell in focus_row.strip("|").split("|")]
+        self.assertEqual(focus_cells[2], '`"strict"`')
+        self.assertEqual(focus_cells[3], "Selects Mutter's new-window focus policy.")
         self.assertIn('`"strict"` | Selects Mutter\'s focus policy for new windows.', guide)
         self.assertIn('"strict"` is the default', reference)
 

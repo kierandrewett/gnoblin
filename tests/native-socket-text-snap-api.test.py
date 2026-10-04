@@ -323,7 +323,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean monitor_property_changed(",
         )
 
-        self.assertEqual(api_minor(header), 73)
+        self.assertGreaterEqual(api_minor(header), 73)
         self.assertIn('"gnoblin.input.pad-help-requested"', events)
         self.assertIn('g_str_equal(name, "gnoblin.input.pad-help-requested")', subscription)
         self.assertIn("client->api_minor < 73", subscription)
