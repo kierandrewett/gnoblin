@@ -54,12 +54,23 @@ mkdir -m 700 "$DK"/{runtime,home,config,data,cache,state}
 RUNTIME_PID=''
 DBUS_PID=''
 TEST_IBUS_PID_FILE=''
+PREVIEW_PID=''
+TERMINAL_PID=''
 cleaned=''
 cleanup() {
     if [[ -n $cleaned ]]; then
         return 0
     fi
     cleaned=1
+    if [[ -n $PREVIEW_PID ]]; then
+        kill -- "-$PREVIEW_PID" 2>/dev/null || true
+        kill "$PREVIEW_PID" 2>/dev/null || true
+        wait "$PREVIEW_PID" 2>/dev/null || true
+    fi
+    if [[ -n $TERMINAL_PID ]]; then
+        kill "$TERMINAL_PID" 2>/dev/null || true
+        wait "$TERMINAL_PID" 2>/dev/null || true
+    fi
     if [[ -n $RUNTIME_PID ]]; then
         kill -- "-$RUNTIME_PID" 2>/dev/null || true
         kill "$RUNTIME_PID" 2>/dev/null || true
@@ -73,6 +84,26 @@ cleanup() {
         gnoblin_publish_log "$DK/runtime.log" devkit-last.log 2>/dev/null || true
     fi
     rm -rf -- "$DK"
+}
+wait_for_preview_child() {
+    local child_pid="$1"
+    local child_name="$2"
+    local completed_pid=''
+    local status=0
+
+    if wait -n -p completed_pid "$RUNTIME_PID" "$child_pid"; then
+        status=0
+    else
+        status=$?
+    fi
+
+    if [[ $completed_pid == "$RUNTIME_PID" ]]; then
+        echo "Gnoblin stopped while the devkit $child_name was still open. Recent output:" >&2
+        tail -n 30 "$DK/runtime.log" >&2
+        return 1
+    fi
+
+    return "$status"
 }
 trap cleanup EXIT
 trap 'exit 130' INT
@@ -171,7 +202,9 @@ if [[ -n ${GNOBLIN_DEVKIT_EXEC:-} ]]; then
     GNOBLIN_DEVKIT_HOST_PID="$RUNTIME_PID"
     export GNOBLIN_DEVKIT_RUNTIME_LOG
     export GNOBLIN_DEVKIT_HOST_PID
-    WAYLAND_DISPLAY="$DISP" bash -c "$GNOBLIN_DEVKIT_EXEC"
+    WAYLAND_DISPLAY="$DISP" setsid bash -c "$GNOBLIN_DEVKIT_EXEC" &
+    PREVIEW_PID=$!
+    wait_for_preview_child "$PREVIEW_PID" 'command'
     exit $?
 fi
 
@@ -204,7 +237,10 @@ Close this terminal to stop the nested session.
 EOF
 exec bash -i"
 case "$terminal" in
-    alacritty | wezterm | konsole | xterm) XDG_RUNTIME_DIR="$HOST_RUNTIME" WAYLAND_DISPLAY="$HOST_WAYLAND" "$terminal" -e bash -c "$inner" ;;
-    gnome-terminal) XDG_RUNTIME_DIR="$HOST_RUNTIME" WAYLAND_DISPLAY="$HOST_WAYLAND" "$terminal" -- bash -c "$inner" ;;
-    *) XDG_RUNTIME_DIR="$HOST_RUNTIME" WAYLAND_DISPLAY="$HOST_WAYLAND" "$terminal" bash -c "$inner" ;;
+    alacritty | wezterm | xterm) XDG_RUNTIME_DIR="$HOST_RUNTIME" WAYLAND_DISPLAY="$HOST_WAYLAND" "$terminal" -e bash -c "$inner" & ;;
+    konsole) XDG_RUNTIME_DIR="$HOST_RUNTIME" WAYLAND_DISPLAY="$HOST_WAYLAND" "$terminal" --nofork -e bash -c "$inner" & ;;
+    gnome-terminal) XDG_RUNTIME_DIR="$HOST_RUNTIME" WAYLAND_DISPLAY="$HOST_WAYLAND" "$terminal" --wait -- bash -c "$inner" & ;;
+    *) XDG_RUNTIME_DIR="$HOST_RUNTIME" WAYLAND_DISPLAY="$HOST_WAYLAND" "$terminal" bash -c "$inner" & ;;
 esac
+TERMINAL_PID=$!
+wait_for_preview_child "$TERMINAL_PID" 'terminal'
