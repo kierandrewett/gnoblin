@@ -1,0 +1,27 @@
+From f0ab37eab6bc82d9f554c5af9c6b8a0a10e4de2f Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 4 Oct 2026 06:45:57 +0100
+Subject: [PATCH] input: read tablet area from Gnoblin config
+
+---
+ src/backends/meta-input-settings.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+index 02aecbd27..a143a3cba 100644
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -1593,7 +1593,9 @@ update_tablet_area (MetaInputSettings  *input_settings,
+ #endif
+ 
+   input_settings_class = META_INPUT_SETTINGS_GET_CLASS (input_settings);
+-  variant = g_settings_get_value (settings, "area");
++  variant = gnoblin_setting (input_settings, settings, "area");
++  if (!variant)
++    variant = g_settings_get_value (settings, "area");
+ 
+   area = g_variant_get_fixed_array (variant, &n_elems, sizeof (gdouble));
+   if (n_elems == 4)
+-- 
+2.55.0
+
