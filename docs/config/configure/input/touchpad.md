@@ -10,6 +10,7 @@ gnoblin.configure {
     input = {
         touchpad = {
             tap_to_click = true,
+            middle_click_emulation = true,
             two_finger_scrolling_enabled = true,
         },
     },
@@ -40,10 +41,11 @@ gnoblin.configure {
 
 ## Click mapping
 
-| Field            | Accepted values                                  | Meaning                                                                                                                            |
-| ---------------- | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `tap_button_map` | `"default"`, `"lrm"`, or `"lmr"`                 | `"lrm"` maps one-, two-, and three-finger taps to left, right, and middle click. `"lmr"` swaps the two- and three-finger mappings. |
-| `click_method`   | `"default"`, `"none"`, `"areas"`, or `"fingers"` | Keep hardware behavior, disable software-emulated clicks, or emulate clicks using click areas or finger counts.                    |
+| Field                    | Accepted values                                  | Meaning                                                                                                                            |
+| ------------------------ | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `tap_button_map`         | `"default"`, `"lrm"`, or `"lmr"`                 | `"lrm"` maps one-, two-, and three-finger taps to left, right, and middle click. `"lmr"` swaps the two- and three-finger mappings. |
+| `click_method`           | `"default"`, `"none"`, `"areas"`, or `"fingers"` | Keep hardware behavior, disable software-emulated clicks, or emulate clicks using click areas or finger counts.                    |
+| `middle_click_emulation` | Boolean                                          | Setting true enables middle-click when both buttons are pressed; omitted uses the current device preference, normally off.         |
 
 Each field defaults to the current device preference when omitted. The
 `"default"` enum value asks GNOME/libinput to choose the device behavior.
@@ -92,6 +94,7 @@ gnoblin.configure {
             left_handed = "right" | "left" | "mouse"?,
             natural_scroll = boolean?,
             tap_to_click = boolean?,
+            middle_click_emulation = boolean?,
             tap_and_drag = boolean?,
             tap_and_drag_lock = boolean?,
             disable_while_typing = boolean?,
