@@ -228,9 +228,10 @@ cat <<'EOF'
 Gnoblin devkit
 
 This terminal is shown on your host desktop. Commands run here target the
-nested Gnoblin session. Start a shell integration, for example:
+nested Gnoblin session. Its home directory is temporary, so use an absolute
+path to a shell checkout. Start a shell integration, for example:
 
-    qs -p ~/src/my-shell
+    qs -p /path/to/my-shell
 
 Inspect the session with: gnoblinctl ping | version | reload
 Close this terminal to stop the nested session.

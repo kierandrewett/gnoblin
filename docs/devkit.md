@@ -50,13 +50,14 @@ To choose a terminal explicitly:
 ## Try your shell
 
 From the host terminal opened by the devkit, launch an installed shell or
-layer-shell client:
+layer-shell client. The terminal uses a temporary home directory, so use an
+absolute path to a shell checkout:
 
 ```sh
-waybar
+qs -p /path/to/my-shell
 ```
 
-The bar should appear inside the viewer. Try its menus and launcher.
+The shell should appear inside the viewer. To try only a panel, run `waybar`.
 Close the terminal to stop the devkit.
 
 ## Options
