@@ -91,6 +91,17 @@ gnoblin.configure {
             -- two_finger_scrolling_enabled = true,
             -- click_method = "default", -- "default", "none", "areas", "fingers"
         },
+        trackball = {
+            -- accel_profile = "adaptive", -- "default", "flat", "adaptive"
+            -- middle_click_emulation = false,
+            -- scroll_wheel_emulation_button = 2, -- mouse button 0..24; 0 disables
+            -- scroll_wheel_emulation_button_lock = false,
+        },
+        pointing_stick = {
+            -- speed = 0.0, -- -1..1
+            -- accel_profile = "default", -- "default", "flat", "adaptive"
+            -- scroll_method = "default", -- "default", "none", "on-button-down"
+        },
         keyboard = {
             -- ["repeat"] = true,
             -- delay = 500, -- milliseconds, 1..10000
