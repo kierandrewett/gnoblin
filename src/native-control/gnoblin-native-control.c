@@ -243,6 +243,10 @@ struct _GnoblinNativeControl {
     guint64 launch_revision;
     guint64 portal_grant_revision;
     guint64 privacy_revision;
+    GVariant* monitor_privacy_screen_snapshot;
+    guint64 monitor_privacy_screen_revision;
+    gboolean monitor_privacy_screen_runtime_override;
+    gboolean monitor_privacy_screen_runtime_value;
     guint portal_grant_retry_count;
     guint64 session_lock_revision;
     guint64 event_sequence;
@@ -660,6 +664,7 @@ static void publish_shortcut_focus_event(GnoblinNativeControl* control, const ch
 static void publish_input_source_changes(GnoblinNativeControl* control, guint64 revision);
 static GVariant* native_orientation_lock_snapshot(GnoblinNativeControl* control, guint64 revision);
 static void native_orientation_lock_publish(GnoblinNativeControl* control);
+static void native_monitor_privacy_screen_publish(GnoblinNativeControl* control);
 static void update_launch_snapshot(GnoblinNativeControl* control);
 static void dispatch_dynamic_shortcut_activated(GnoblinNativeControl* control, guint action,
                                                 const ClutterEvent* event);
@@ -986,6 +991,7 @@ static const char* native_socket_events[] = {
     "gnoblin.input.sources-changed",
     "gnoblin.input.source-changed",
     "gnoblin.input.orientation-lock-changed",
+    "gnoblin.monitor.privacy-screen-changed",
     "gnoblin.input.gesture",
     "gnoblin.launch.changed",
     "gnoblin.session.lock-requested",
@@ -3993,6 +3999,112 @@ static void native_orientation_lock_publish(GnoblinNativeControl* control) {
     if (JSON_NODE_HOLDS_OBJECT(json))
         publish_native_socket_event(control, json);
     native_runtime_dispatch_event(control, "gnoblin.input.orientation-lock-changed", event_payload);
+}
+
+static GVariant* native_monitor_privacy_screen_snapshot(GnoblinNativeControl* control,
+                                                        guint64 revision) {
+    MetaSettings* settings = meta_backend_get_settings(control->backend);
+    const char* source = control->monitor_privacy_screen_runtime_override ? "runtime" : "system";
+    gboolean configured = FALSE;
+    g_autoptr(GVariant) document = gnoblin_runtime_cache_get_document(control->runtime_cache);
+    g_autoptr(GVariant) preferences =
+        document ? g_variant_lookup_value(document, "monitors", G_VARIANT_TYPE_VARDICT) : NULL;
+    if (!control->monitor_privacy_screen_runtime_override && preferences &&
+        g_variant_lookup(preferences, "privacy-screen", "b", &configured))
+        source = "config";
+
+    GVariantBuilder monitors;
+    g_variant_builder_init(&monitors, G_VARIANT_TYPE("av"));
+    GList* logical_monitors =
+        control->monitor_manager
+            ? meta_monitor_manager_get_logical_monitors(control->monitor_manager)
+            : NULL;
+    for (GList* logical_item = logical_monitors; logical_item; logical_item = logical_item->next) {
+        MetaLogicalMonitor* logical_monitor = logical_item->data;
+        GList* monitor_list = meta_logical_monitor_get_monitors(logical_monitor);
+        for (GList* monitor_item = monitor_list; monitor_item; monitor_item = monitor_item->next) {
+            MetaMonitor* monitor = monitor_item->data;
+            if (!meta_monitor_is_active(monitor))
+                continue;
+
+            const char* connector = meta_monitor_get_connector(monitor);
+            if (!connector || !*connector)
+                continue;
+
+            MetaPrivacyScreenState state = meta_monitor_get_privacy_screen_state(monitor);
+            gboolean available = state != META_PRIVACY_SCREEN_UNAVAILABLE;
+            GVariantBuilder record;
+            g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string(connector));
+            g_variant_builder_add(&record, "{sv}", "available", g_variant_new_boolean(available));
+            if (available) {
+                g_variant_builder_add(
+                    &record, "{sv}", "enabled",
+                    g_variant_new_boolean(!!(state & META_PRIVACY_SCREEN_ENABLED)));
+                g_variant_builder_add(
+                    &record, "{sv}", "locked",
+                    g_variant_new_boolean(!!(state & META_PRIVACY_SCREEN_LOCKED)));
+            }
+            g_variant_builder_add_value(&monitors,
+                                        g_variant_new_variant(g_variant_builder_end(&record)));
+        }
+    }
+
+    GVariantBuilder snapshot;
+    g_variant_builder_init(&snapshot, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(
+        &snapshot, "{sv}", "requested_enabled",
+        g_variant_new_boolean(settings && meta_settings_is_privacy_screen_enabled(settings)));
+    g_variant_builder_add(&snapshot, "{sv}", "source", g_variant_new_string(source));
+    g_variant_builder_add(&snapshot, "{sv}", "revision", g_variant_new_uint64(revision));
+    g_variant_builder_add(&snapshot, "{sv}", "monitors", g_variant_builder_end(&monitors));
+    return g_variant_ref_sink(g_variant_builder_end(&snapshot));
+}
+
+static void native_monitor_privacy_screen_publish(GnoblinNativeControl* control) {
+    if (!control || control->stopping)
+        return;
+
+    g_autoptr(GVariant) candidate =
+        native_monitor_privacy_screen_snapshot(control, control->monitor_privacy_screen_revision);
+    gboolean initialized = control->monitor_privacy_screen_snapshot != NULL;
+    if (initialized && g_variant_equal(control->monitor_privacy_screen_snapshot, candidate))
+        return;
+
+    if (control->monitor_privacy_screen_revision < G_MAXUINT64)
+        control->monitor_privacy_screen_revision++;
+    g_clear_pointer(&control->monitor_privacy_screen_snapshot, g_variant_unref);
+    control->monitor_privacy_screen_snapshot =
+        native_monitor_privacy_screen_snapshot(control, control->monitor_privacy_screen_revision);
+    native_publish_runtime_snapshot(control, "monitor-privacy-screen",
+                                    control->monitor_privacy_screen_snapshot,
+                                    control->monitor_privacy_screen_revision);
+
+    /* The first value seeds the Lua worker; only later changes are events. */
+    if (!initialized)
+        return;
+
+    guint64 sequence = ++control->event_sequence;
+    gint64 time = g_get_monotonic_time();
+    GVariantBuilder event_builder;
+    GVariantIter fields;
+    const char* field_name;
+    GVariant* field_value;
+    g_variant_builder_init(&event_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&event_builder, "{sv}", "name",
+                          g_variant_new_string("gnoblin.monitor.privacy-screen-changed"));
+    g_variant_iter_init(&fields, control->monitor_privacy_screen_snapshot);
+    while (g_variant_iter_next(&fields, "{&sv}", &field_name, &field_value)) {
+        g_autoptr(GVariant) value = field_value;
+        g_variant_builder_add(&event_builder, "{sv}", field_name, g_variant_ref(value));
+    }
+    g_variant_builder_add(&event_builder, "{sv}", "sequence", g_variant_new_uint64(sequence));
+    g_variant_builder_add(&event_builder, "{sv}", "time", g_variant_new_int64(time));
+    g_autoptr(GVariant) event_payload = g_variant_ref_sink(g_variant_builder_end(&event_builder));
+    g_autoptr(JsonNode) json = json_from_variant(event_payload);
+    if (JSON_NODE_HOLDS_OBJECT(json))
+        publish_native_socket_event(control, json);
+    native_runtime_dispatch_event(control, "gnoblin.monitor.privacy-screen-changed", event_payload);
 }
 
 static void native_orientation_manager_notified(GObject* manager, GParamSpec* property,
@@ -8487,6 +8599,11 @@ static void native_settings_changed(guint64 revision, gpointer user_data) {
                                                      xwayland_preferences);
     meta_settings_apply_gnoblin_privacy_screen_preferences(
         meta_backend_get_settings(control->backend), monitor_preferences);
+    meta_settings_apply_gnoblin_privacy_screen_runtime_override(
+        meta_backend_get_settings(control->backend),
+        control->monitor_privacy_screen_runtime_override,
+        control->monitor_privacy_screen_runtime_value);
+    native_monitor_privacy_screen_publish(control);
     native_apply_all_window_rules(control);
     g_autoptr(GVariant) configured_gestures =
         config ? g_variant_lookup_value(config, "touchpad-gestures", G_VARIANT_TYPE("av")) : NULL;
@@ -12120,9 +12237,9 @@ static gboolean native_api_read_method(const char* method) {
             g_str_equal(method, "runtime.status") ||
             g_str_equal(method, "layer.animation_policy") ||
             g_str_equal(method, "workspaces.list") || g_str_equal(method, "monitors.list") ||
-            g_str_equal(method, "layers.list") || g_str_equal(method, "launches.list") ||
-            g_str_equal(method, "launches.snapshot") || g_str_equal(method, "shortcuts.list") ||
-            g_str_equal(method, "shortcuts.actions") ||
+            g_str_equal(method, "monitors.privacy_screen") || g_str_equal(method, "layers.list") ||
+            g_str_equal(method, "launches.list") || g_str_equal(method, "launches.snapshot") ||
+            g_str_equal(method, "shortcuts.list") || g_str_equal(method, "shortcuts.actions") ||
             g_str_equal(method, "input.orientation_lock"));
 }
 
@@ -12614,6 +12731,12 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 return encode_response("", NULL,
                                        "orientation lock events require API version 1.66");
             }
+            if (g_str_equal(name, "gnoblin.monitor.privacy-screen-changed") &&
+                client->api_minor < 74) {
+                g_hash_table_unref(subscriptions);
+                return encode_response("", NULL,
+                                       "monitor privacy-screen events require API version 1.74");
+            }
             if (g_str_equal(name, "gnoblin.capability.changed") && client->api_minor < 33) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL,
@@ -12739,6 +12862,10 @@ static char* handle_request(Client* client, const char* data, gsize length) {
          g_str_equal(method, "input.set_orientation_lock")) &&
         client->api_minor < 66)
         return encode_response(id, NULL, "orientation lock methods require API version 1.66");
+    if ((g_str_equal(method, "monitors.privacy_screen") ||
+         g_str_equal(method, "monitors.set_privacy_screen")) &&
+        client->api_minor < 74)
+        return encode_response(id, NULL, "monitor privacy-screen methods require API version 1.74");
     if (g_str_equal(method, "appearance.color_scheme") && client->api_minor < 70)
         return encode_response(id, NULL, "appearance.color_scheme requires API version 1.70");
     if (g_str_equal(method, "shortcut.actions") && client->api_minor < 5)
@@ -14119,6 +14246,16 @@ static void workspace_manager_changed(MetaWorkspaceManager* manager, gpointer us
 
 static void monitor_manager_changed(MetaMonitorManager* manager, gpointer user_data) {
     schedule_windows(user_data);
+    native_monitor_privacy_screen_publish(user_data);
+}
+
+static void monitor_privacy_screen_changed(MetaMonitorManager* manager,
+                                           MetaLogicalMonitor* logical_monitor, gboolean enabled,
+                                           gpointer user_data) {
+    (void)manager;
+    (void)logical_monitor;
+    (void)enabled;
+    native_monitor_privacy_screen_publish(user_data);
 }
 
 static void backend_keymap_changed(MetaBackend* backend, gpointer user_data) {
@@ -14230,6 +14367,8 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         "layers.list",
         "monitor.list",
         "monitors.list",
+        "monitors.privacy_screen",
+        "monitors.set_privacy_screen",
         "settings",
         "shortcut.actions",
         "shortcut.bind",
@@ -14913,6 +15052,7 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
                   snapshot_error ? snapshot_error->message : "monitor listing unavailable");
     g_autoptr(GVariant) monitor_value = monitors ? variant_from_json(monitors) : NULL;
     native_publish_runtime_snapshot(control, "monitors", monitor_value, revision);
+    native_monitor_privacy_screen_publish(control);
 
     g_clear_error(&snapshot_error);
     g_autoptr(JsonNode) layers = layer_snapshot_json(control, TRUE, &snapshot_error);
@@ -14997,6 +15137,40 @@ static GVariant* native_set_orientation_lock(GnoblinNativeControl* control, GVar
     control->orientation_lock_notifications_suppressed = FALSE;
     native_orientation_lock_publish(control);
     return g_variant_ref(control->orientation_lock_snapshot);
+}
+
+static GVariant* native_set_monitor_privacy_screen(GnoblinNativeControl* control,
+                                                   GVariant* arguments, GError** error) {
+    if (!arguments || !g_variant_is_of_type(arguments, G_VARIANT_TYPE_VARDICT) ||
+        g_variant_n_children(arguments) != 1) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "monitors.set_privacy_screen requires only value");
+        return NULL;
+    }
+
+    g_autoptr(GVariant) value = g_variant_lookup_value(arguments, "value", NULL);
+    if (value && g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN)) {
+        control->monitor_privacy_screen_runtime_override = TRUE;
+        control->monitor_privacy_screen_runtime_value = g_variant_get_boolean(value);
+    } else if (value && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING) &&
+               g_str_equal(g_variant_get_string(value, NULL), "inherit")) {
+        control->monitor_privacy_screen_runtime_override = FALSE;
+        control->monitor_privacy_screen_runtime_value = FALSE;
+    } else {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "monitors.set_privacy_screen value must be boolean or 'inherit'");
+        return NULL;
+    }
+
+    MetaSettings* settings = meta_backend_get_settings(control->backend);
+    meta_settings_apply_gnoblin_privacy_screen_runtime_override(
+        settings, control->monitor_privacy_screen_runtime_override,
+        control->monitor_privacy_screen_runtime_value);
+    native_monitor_privacy_screen_publish(control);
+    return control->monitor_privacy_screen_snapshot
+               ? g_variant_ref(control->monitor_privacy_screen_snapshot)
+               : native_monitor_privacy_screen_snapshot(control,
+                                                        control->monitor_privacy_screen_revision);
 }
 
 static gboolean native_runtime_send_config_result(GnoblinNativeControl* control,
@@ -15153,6 +15327,8 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
             native_location_authorize_operation(control, arguments, client_id, &operation_error);
     } else if (g_str_equal(method, "input.set_orientation_lock")) {
         result = native_set_orientation_lock(control, arguments, &operation_error);
+    } else if (g_str_equal(method, "monitors.set_privacy_screen")) {
+        result = native_set_monitor_privacy_screen(control, arguments, &operation_error);
     } else if (g_str_equal(method, "session.lock")) {
         result = gnoblin_native_control_request_session_lock(control->display, arguments,
                                                              &operation_error);
@@ -15912,6 +16088,9 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     if (control->monitor_manager)
         g_signal_connect(control->monitor_manager, "monitors-changed",
                          G_CALLBACK(monitor_manager_changed), control);
+    if (control->monitor_manager)
+        g_signal_connect(control->monitor_manager, "monitor-privacy-screen-changed",
+                         G_CALLBACK(monitor_privacy_screen_changed), control);
     g_signal_connect(control->backend, "keymap-layout-group-changed",
                      G_CALLBACK(backend_keymap_layout_group_changed), control);
     g_signal_connect(control->backend, "keymap-changed", G_CALLBACK(backend_keymap_changed),
@@ -16195,7 +16374,10 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     }
     g_clear_pointer(&control->privacy_snapshot, g_variant_unref);
     g_clear_pointer(&control->orientation_lock_snapshot, g_variant_unref);
+    g_clear_pointer(&control->monitor_privacy_screen_snapshot, g_variant_unref);
     native_publish_runtime_snapshot(control, "privacy", NULL, control->privacy_revision);
+    native_publish_runtime_snapshot(control, "monitor-privacy-screen", NULL,
+                                    control->monitor_privacy_screen_revision);
     g_clear_object(&control->remote_access_controller);
     if (control->window_state)
         g_hash_table_unref(control->window_state);
