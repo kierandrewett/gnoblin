@@ -212,7 +212,7 @@ supervisor operations such as configuration reload.
 
 | `gnoblin.windows` | `list(filter?)`, `focused()`, `by_id(id)`, `snap_context(context)` | **Current.** The native runtime exposes snapshots and trusted snapping. `gnoblinctl lua` exposes snapshots and typed window methods; event callbacks can use trusted focus, menu, move, resize, and snapping contexts on their originating connection. |
 | `gnoblin.workspaces` | `list()`, `active()`, `by_id(id)`, workspace mutations | **Current.** The native runtime exposes read-only revisioned snapshots and typed operations. `gnoblinctl lua` exposes the same reads and namespace mutations; operations wait for completion and return read-only records. |
-| `gnoblin.monitors` | `list()`, `primary()` | **Current.** Both the supervised runtime and `gnoblinctl lua` expose read-only revisioned monitor snapshots. |
+| `gnoblin.monitors` | `list()`, `primary()`, `privacy_screen()`, `set_privacy_screen(value)` | **Current.** Both the supervised runtime and `gnoblinctl lua` expose read-only revisioned monitor snapshots and session-scoped privacy-screen overrides. |
 | `gnoblin.layers` | `list(filter?)`, `animation_policy(namespace)` | **Current.** Native runtime and `gnoblinctl lua` expose read-only layer surfaces and effective animation/shadow policy; the console returns a deeply read-only `LayerAnimationPolicy`. |
 | `gnoblin.input` | `devices()`, `list()`, `current()`, `sources()`, `current_source()`, `select_source(selector)`, `orientation_lock()`, `set_orientation_lock(value)`, `text_target(context)` | **Current.** The native runtime and `gnoblinctl lua` expose all methods. The console creates and consumes trusted text targets only from a live event `FocusContext`, over the connection that delivered it. |
 | `gnoblin.appearance` | `color_scheme()` | **Current; native-control API 1.70.** Read the current desktop color scheme as a string or `nil` when the setting is unavailable; `gnoblinctl lua` exposes the same result. |
@@ -612,11 +612,13 @@ or `WorkspaceMove` value instead of an `Operation` handle.
 
 ### Monitors and layer surfaces
 
-| Lua call                       | Arguments                                                        | Result                              | Canonical operation                                |
-| ------------------------------ | ---------------------------------------------------------------- | ----------------------------------- | -------------------------------------------------- |
-| `gnoblin.monitors.list()`      | none                                                             | `Monitor[]`                         | cached native monitor snapshot                     |
-| `gnoblin.monitors.primary()`   | none                                                             | `Monitor or nil`                    | cached native monitor snapshot                     |
-| `gnoblin.layers.list(filter?)` | optional `monitor_id`, `namespace`, `layer` exact string matches | read-only `LayerSurface[]` snapshot | native cached snapshot refreshed from `layer.list` |
+| Lua call                                     | Arguments                                                        | Result                                    | Canonical operation                                          |
+| -------------------------------------------- | ---------------------------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------ |
+| `gnoblin.monitors.list()`                    | none                                                             | `Monitor[]`                               | cached native monitor snapshot                               |
+| `gnoblin.monitors.primary()`                 | none                                                             | `Monitor or nil`                          | cached native monitor snapshot                               |
+| `gnoblin.monitors.privacy_screen()`          | none                                                             | `MonitorPrivacyScreenSnapshot`            | cached privacy-screen state and effective source             |
+| `gnoblin.monitors.set_privacy_screen(value)` | `true`, `false`, or `"inherit"`                                  | `Operation<MonitorPrivacyScreenSnapshot>` | session-only override; `inherit` clears the runtime override |
+| `gnoblin.layers.list(filter?)`               | optional `monitor_id`, `namespace`, `layer` exact string matches | read-only `LayerSurface[]` snapshot       | native cached snapshot refreshed from `layer.list`           |
 
 `Monitor` fields: string `id` (the canonical active connector name); optional strings `name`, `make`,
 `model`, `serial`; booleans `primary` and `enabled`; logical-pixel
@@ -643,6 +645,15 @@ cached record includes the state `revision`. `gnoblin.monitors.primary()`
 returns the primary record or `nil` when none is marked primary. Native monitor
 snapshots refresh before lifecycle events are dispatched. The legacy
 `monitor.list()` operation remains available for compatibility.
+
+`MonitorPrivacyScreenSnapshot` contains `requested_enabled`, `source`,
+`revision`, and `monitors`. Its source is `runtime`, `config`, or `system`.
+Each monitor has `id` and `available`; `enabled` and `locked` are present only
+when the monitor supports privacy screens. The setter's `"inherit"` value
+clears the runtime override and follows an explicit config value, or the
+system preference when config omits one. It never writes the system setting.
+The `gnoblin.monitor.privacy-screen-changed` event carries this snapshot plus
+`sequence` and `time`.
 
 `LayerSurface` fields: string `id`; optional strings `title`, `namespace`,
 and `monitor_id`; `layer` is `"background"`,
@@ -1550,6 +1561,7 @@ Raw `mutter.*` and `gnome.*` events are not included in this stable catalog.
 | `gnoblin.monitor.added`                    | `monitor: Monitor`                                                                                             | An output becomes available.                                                                                                                                                    |
 | `gnoblin.monitor.removed`                  | `monitor_id`, `last: Monitor`                                                                                  | An output is removed.                                                                                                                                                           |
 | `gnoblin.monitor.changed`                  | `monitor: Monitor`, `changed: string[]`                                                                        | Output properties change.                                                                                                                                                       |
+| `gnoblin.monitor.privacy-screen-changed`   | `requested_enabled`, `source`, `revision`, `monitors`, `sequence`, `time`                                      | API 1.74; the effective privacy-screen request or an output's support/state changes.                                                                                            |
 | `gnoblin.layer.created`                    | `layer: LayerSurface`                                                                                          | API 1.71; a layer role first appears in the snapshot and may be unmapped.                                                                                                       |
 | `gnoblin.layer.changed`                    | `layer_id`, `layer: LayerSurface`, `changed: string[]`                                                         | API 1.71; layer fields change, including mapped state.                                                                                                                          |
 | `gnoblin.layer.removed`                    | `layer_id`, `last: LayerSurface`                                                                               | API 1.71; the layer disappears from the published snapshot.                                                                                                                     |
