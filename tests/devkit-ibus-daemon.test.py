@@ -8,6 +8,7 @@ import pathlib
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SERVICE_NAME = "org.freedesktop.IBus"
@@ -40,6 +41,9 @@ def main() -> int:
             env=env,
             text=True,
         ).strip()
+        listen = ET.parse(config).findtext("listen")
+        if listen != f"unix:tmpdir={dbus_dir.resolve()}":
+            raise RuntimeError(f"private D-Bus socket is outside the devkit run directory: {listen}")
         service_file = dbus_dir / "dbus-services" / f"{SERVICE_NAME}.service"
         if service_file.exists():
             raise RuntimeError("the private test bus must not transiently activate IBus")

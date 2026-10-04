@@ -67,6 +67,7 @@ def write_config(
 
     conf = tmp / "dbus-session.conf"
     service_dir_xml = html.escape(str(service_dir), quote=False)
+    socket_dir_xml = html.escape(str(tmp), quote=False)
 
     # Expose services installed by the Gnoblin runtime on demand. Adding this
     # directory does not activate any service by itself.
@@ -83,7 +84,7 @@ def write_config(
         "<busconfig>\n"
         "  <type>session</type>\n"
         "  <keep_umask/>\n"
-        "  <listen>unix:tmpdir=/tmp</listen>\n"
+        f"  <listen>unix:tmpdir={socket_dir_xml}</listen>\n"
         "  <auth>EXTERNAL</auth>\n"
         f"  <servicedir>{service_dir_xml}</servicedir>\n"
         f"{prefix_service_dir_xml}"
