@@ -464,6 +464,21 @@ gnoblin.configure {
         focus_mode = "click",
         focus_new_windows = "strict",
     },
+    xwayland = {
+        scaling_factor = 2,
+    },
+}
+LUA
+gnoblinctl config reload > "$XDG_RUNTIME_DIR/xwayland-scale-set.txt"
+GNOBLIN_EXPECTED_SCALE=2 \
+    python3 "$GNOBLIN_TEST_ROOT/tests/test-xwayland-xsettings.py"
+printf 'XWAYLAND:xsettings-live-scaling-selection-loss\n'
+cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    window_management = {
+        focus_mode = "click",
+        focus_new_windows = "strict",
+    },
 }
 LUA
 gnoblinctl config reload > "$XDG_RUNTIME_DIR/input-sources-cleared.txt"
@@ -893,6 +908,7 @@ require_output 'IBUS:owner-lost'
 require_output 'IBUS:reconnected-after-owner-restart'
 require_output 'INPUT_SOURCE:cleared-with-lua-config'
 require_output 'CONFIG_RELOAD:stable'
+require_output 'XWAYLAND:xsettings-live-scaling-selection-loss'
 require_output 'LUA_API:runtime-status'
 require_output 'LUA_API:snapshots'
 require_output 'PASS: Gnoblin denied activation without user context and emitted the denial event'

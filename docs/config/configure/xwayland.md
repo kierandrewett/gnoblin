@@ -35,6 +35,11 @@ Changing `disable_extensions` or `allow_byte_swapped_clients` requires
 restarting Xwayland; restart the Gnoblin session for those changes to affect
 the running X server. The other settings can be reloaded during the session.
 
+Gnoblin exposes the effective scale to X11 clients through XSettings and the
+`Xft.dpi` resource. A config reload updates these values live. If another
+XSettings manager already owns the XWayland display, Gnoblin leaves it in
+control.
+
 The upper scale limit keeps Mutter's conversion to a signed integer in range:
 Mutter stores the value as a `float`, rounds it, and converts it to `int` for
 Xwayland coordinate scaling. Values below `0.5` would round to zero, so they
