@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] configure server-side titlebar buttons from Lua
+
+---
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index 29b90ececa..c748da6d16 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -1146,6 +1146,47 @@ meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
+   APPLY_ENUM ("action-double-click-titlebar", action_double_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE, META_PREF_ACTION_DOUBLE_CLICK_TITLEBAR);
+   APPLY_ENUM ("action-middle-click-titlebar", action_middle_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_LOWER, META_PREF_ACTION_MIDDLE_CLICK_TITLEBAR);
+   APPLY_ENUM ("action-right-click-titlebar", action_right_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_MENU, META_PREF_ACTION_RIGHT_CLICK_TITLEBAR);
++  {
++    g_autoptr (GVariant) configured_button_layout = preferences
++      ? g_variant_lookup_value (preferences, "button-layout", G_VARIANT_TYPE_VARDICT)
++      : NULL;
++    g_autofree char *left_layout = NULL;
++    g_autofree char *right_layout = NULL;
++    gpointer ignored = NULL;
++
++    if (configured_button_layout)
++      {
++        g_autoptr (GVariant) left_value = g_variant_lookup_value (
++          configured_button_layout, "left", NULL);
++        g_autoptr (GVariant) right_value = g_variant_lookup_value (
++          configured_button_layout, "right", NULL);
++
++        if (left_value)
++          {
++            g_auto (GStrv) buttons = variant_dup_strv_compat (left_value);
++            if (buttons)
++              left_layout = g_strjoinv (",", buttons);
++          }
++        if (right_value)
++          {
++            g_auto (GStrv) buttons = variant_dup_strv_compat (right_value);
++            if (buttons)
++              right_layout = g_strjoinv (",", buttons);
++          }
++      }
++
++    if (!left_layout)
++      left_layout = g_strdup ("");
++    if (!right_layout)
++      right_layout = g_strdup ("minimize,maximize,close");
++
++    g_autofree char *layout = g_strdup_printf ("%s:%s",
++                                                left_layout,
++                                                right_layout);
++    g_autoptr (GVariant) layout_value = g_variant_ref_sink (
++      g_variant_new_string (layout));
++    button_layout_handler (layout_value, &ignored, NULL);
++  }
+   APPLY_BOOL ("resize-with-right-button", resize_with_right_button, FALSE, META_PREF_RESIZE_WITH_RIGHT_BUTTON);
+   {
+     const char *mouse_button_modifier = "<Super>";
+@@ -1257,7 +1298,7 @@ gnoblin_owns_window_preference (const char *key)
+     "focus-change-on-pointer-rest", "dynamic-workspaces", "num-workspaces",
+     "workspaces-only-on-primary", "edge-tiling", "center-new-windows",
+     "attach-modal-dialogs", "workspace-names", "mouse-button-modifier",
+-    "resize-with-right-button", "disable-workarounds", NULL
++    "resize-with-right-button", "disable-workarounds", "button-layout", NULL
+   };
+   for (int i = 0; keys[i]; i++)
+     if (g_str_equal (key, keys[i]))
