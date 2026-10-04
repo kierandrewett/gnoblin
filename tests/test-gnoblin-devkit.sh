@@ -211,6 +211,17 @@ end
 print("LUA_API:configured-shortcut-input-capture")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/shortcuts.lua"
+cat > "$XDG_RUNTIME_DIR/shortcut-actions.lua" <<'LUA'
+local schema_keys = {}
+for _, action in ipairs(gnoblin.shortcuts.actions("wm")) do
+    schema_keys[action.id] = true
+end
+assert(schema_keys["wm.close"], "handler-backed Mutter actions must be listed")
+assert(not schema_keys["wm.panel_run_dialog"],
+    "schema-only actions without an executable Mutter handler must be omitted")
+print("LUA_API:executable-shortcut-actions")
+LUA
+gnoblinctl lua "$XDG_RUNTIME_DIR/shortcut-actions.lua"
 printf 'PING:%s\n' "$(gnoblinctl ping)"
 gnoblinctl --json config show > "$XDG_RUNTIME_DIR/config.json"
 python3 - "$XDG_RUNTIME_DIR/config.json" <<'PY'
