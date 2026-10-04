@@ -5,30 +5,50 @@ Configure this part of `gnoblin.configure` with the `window_management` key.
 Put these fields inside `gnoblin.configure {window_management = {...}}`.
 Changes apply on configuration reload. Omitted fields use the defaults below.
 
-| Key                            | Values                           | Default             | Effect                                                                  |
-| ------------------------------ | -------------------------------- | ------------------- | ----------------------------------------------------------------------- |
-| `focus_mode`                   | `"click"`, `"sloppy"`, `"mouse"` | `"click"`           | Selects when pointer or click input changes focus. See below.           |
-| `focus_new_windows`            | `"smart"`, `"strict"`            | `"strict"`          | Selects Mutter's new-window focus policy. See below.                    |
-| `mouse_button_modifier`        | Mutter modifier expression       | `"<Super>"`         | Modifier for moving or resizing windows and opening menus.              |
-| `resize_with_right_button`     | Boolean                          | `false`             | Use modified right click to resize instead of opening a menu.           |
-| `auto_maximize`                | Boolean                          | `true`              | Maximize new windows that nearly fill the monitor.                      |
-| `raise_on_click`               | Boolean                          | `true`              | Raise a window when clicked.                                            |
-| `auto_raise`                   | Boolean                          | `false`             | Raise the focused window automatically.                                 |
-| `focus_change_on_pointer_rest` | Boolean                          | `false`             | Change focus when the pointer stops over another window.                |
-| `auto_raise_delay`             | 0–10000 ms                       | `500`               | Delay before automatic raise.                                           |
-| `check_alive_timeout`          | 0–4294967295 ms                  | `5000`              | Client ping timeout before it is marked frozen; `0` disables the check. |
-| `action_double_click_titlebar` | Titlebar action below            | `"toggle-maximize"` | Action for a titlebar double-click.                                     |
-| `action_middle_click_titlebar` | Titlebar action below            | `"lower"`           | Action for a titlebar middle-click.                                     |
-| `action_right_click_titlebar`  | Titlebar action below            | `"menu"`            | Action for a titlebar right-click.                                      |
-| `workspaces_only_on_primary`   | Boolean                          | `false`             | Keep workspaces on the primary monitor.                                 |
-| `edge_tiling`                  | Boolean                          | `false`             | Enable Mutter's edge tiling.                                            |
-| `center_new_windows`           | Boolean                          | `false`             | Center newly created windows.                                           |
-| `attach_modal_dialogs`         | Boolean                          | `false`             | Place modal dialogs with their parent window.                           |
-| `disable_workarounds`          | Boolean                          | `false`             | Disable Mutter's compatibility workarounds for broken X11 applications. |
-| `constrain_drag_to_work_area`  | Boolean                          | `true`              | Keep interactive window moves inside the work area.                     |
+## Settings at a glance
+
+### Focus and raising
+
+| Key                            | Values                           | Default    | Effect                                                    |
+| ------------------------------ | -------------------------------- | ---------- | --------------------------------------------------------- |
+| `focus_mode`                   | `"click"`, `"sloppy"`, `"mouse"` | `"click"`  | Selects when pointer movement changes focus.              |
+| `focus_new_windows`            | `"smart"`, `"strict"`            | `"strict"` | Selects Mutter's new-window focus policy.                 |
+| `raise_on_click`               | Boolean                          | `true`     | Raise a window when clicked.                              |
+| `auto_raise`                   | Boolean                          | `false`    | Raise the focused window automatically.                   |
+| `auto_raise_delay`             | 0–10000 ms                       | `500`      | Delay before automatically raising the focused window.    |
+| `focus_change_on_pointer_rest` | Boolean                          | `false`    | Change focus after the pointer rests over another window. |
+
+### Modified window clicks
+
+| Key                        | Values                     | Default     | Effect                                                        |
+| -------------------------- | -------------------------- | ----------- | ------------------------------------------------------------- |
+| `mouse_button_modifier`    | Mutter modifier expression | `"<Super>"` | Modifier for moving, resizing, and opening menus.             |
+| `resize_with_right_button` | Boolean                    | `false`     | Use modified right click to resize instead of opening a menu. |
+
+### Placement and responsiveness
+
+| Key                           | Values          | Default | Effect                                                                  |
+| ----------------------------- | --------------- | ------- | ----------------------------------------------------------------------- |
+| `auto_maximize`               | Boolean         | `true`  | Maximize new windows that nearly fill the monitor.                      |
+| `check_alive_timeout`         | 0–4294967295 ms | `5000`  | Client ping timeout before it is marked frozen; `0` disables the check. |
+| `workspaces_only_on_primary`  | Boolean         | `false` | Keep workspaces on the primary monitor.                                 |
+| `edge_tiling`                 | Boolean         | `false` | Enable Mutter's edge tiling.                                            |
+| `center_new_windows`          | Boolean         | `false` | Center newly created windows.                                           |
+| `attach_modal_dialogs`        | Boolean         | `false` | Place modal dialogs with their parent window.                           |
+| `disable_workarounds`         | Boolean         | `false` | Disable Mutter's compatibility workarounds for broken X11 applications. |
+| `constrain_drag_to_work_area` | Boolean         | `true`  | Keep interactive window moves inside the work area.                     |
 
 Leave `disable_workarounds` set to `false` unless you are debugging an X11
 application. Enabling it can make some applications behave incorrectly.
+
+### Titlebar buttons and actions
+
+| Key                            | Values                  | Default                               | Effect                               |
+| ------------------------------ | ----------------------- | ------------------------------------- | ------------------------------------ |
+| `action_double_click_titlebar` | Titlebar action below   | `"toggle-maximize"`                   | Action for a titlebar double-click.  |
+| `action_middle_click_titlebar` | Titlebar action below   | `"lower"`                             | Action for a titlebar middle-click.  |
+| `action_right_click_titlebar`  | Titlebar action below   | `"menu"`                              | Action for a titlebar right-click.   |
+| `button_layout`                | Left/right button lists | Empty left; standard buttons on right | Places server-side titlebar buttons. |
 
 ## Focus behavior
 
@@ -62,6 +82,36 @@ Control and Shift aliases:
 Set the modifier to `"disabled"` or `""` to disable modified window clicks.
 These settings apply to the Gnoblin session; other desktop sessions keep their
 own settings.
+
+## Titlebar button placement
+
+`button_layout` places Mutter's server-side titlebar buttons. It also controls
+the built-in fallback SSD. It does not change client-side titlebars or custom
+frame renderers. The default leaves the left side empty and puts minimize,
+maximize, and close on the right.
+
+Set either side to an ordered list of `"menu"`, `"minimize"`, `"maximize"`, or
+`"close"`. A `"spacer"` between two buttons adds a gap. A button can appear at
+most once on each side.
+
+```lua
+gnoblin.configure {
+    window_management = {
+        button_layout = {
+            left = {"menu"},
+            right = {"minimize", "maximize", "close"},
+        },
+    },
+}
+```
+
+Omitting either side keeps its default. Use `gnoblin.array {}` to hide all
+buttons on a side because an unmarked empty Lua table is treated as a map. See
+[`gnoblin.array`](/config/array).
+
+This setting is separate from `frame.button_layout` in a window rule, which
+configures the selected frame renderer for that window. Mutter ignores the
+desktop `button-layout` value while Gnoblin is running.
 
 `focus_new_windows` controls when app activation requests can focus a window.
 Mutter's standard policy has two choices. The [GNOME Shell team's
@@ -164,6 +214,10 @@ gnoblin.configure {
         action_double_click_titlebar = TitlebarAction?,
         action_middle_click_titlebar = TitlebarAction?,
         action_right_click_titlebar = TitlebarAction?,
+        button_layout = {
+            left = TitlebarButton[]?,
+            right = TitlebarButton[]?,
+        }?,
         workspaces_only_on_primary = boolean?,
         edge_tiling = boolean?,
         center_new_windows = boolean?,
@@ -180,4 +234,5 @@ gnoblin.configure {
 -- TitlebarAction = "toggle-maximize" | "toggle-maximize-horizontally"
 --                | "toggle-maximize-vertically" | "minimize" | "lower"
 --                | "menu" | "none"
+-- TitlebarButton = "menu" | "minimize" | "maximize" | "close" | "spacer"
 ```

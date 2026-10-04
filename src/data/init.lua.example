@@ -41,6 +41,10 @@ gnoblin.configure {
         action_right_click_titlebar = "menu",
         -- Actions: "toggle-maximize", "toggle-maximize-horizontally",
         -- "toggle-maximize-vertically", "minimize", "lower", "menu", "none".
+        -- button_layout = {
+        --     left = {"menu"},
+        --     right = {"minimize", "maximize", "close"},
+        -- },
     },
 
     -- Give each workspace a stable ID so rules survive renaming and reordering.
