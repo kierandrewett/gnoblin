@@ -58,8 +58,9 @@ index 48cf77fd27..f10aecf7a2 100644
      'name': 'a11y-gnoblin-settings',
      'suite': 'a11y',
 diff --git a/src/tests/trackball-gnoblin-settings-test.c b/src/tests/trackball-gnoblin-settings-test.c
-index e69de29bb2..9be2a58d5e 100644
---- a/src/tests/trackball-gnoblin-settings-test.c
+new file mode 100644
+index 0000000000..9be2a58d5e
+--- /dev/null
 +++ b/src/tests/trackball-gnoblin-settings-test.c
 @@ -0,0 +1,337 @@
 +/*
