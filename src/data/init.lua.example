@@ -128,6 +128,10 @@ gnoblin.configure {
     --     per_window = false,
     -- },
 
+    -- Set privacy_screen to true or false to override the system preference
+    -- for this session, or use "inherit" to follow it.
+    -- monitors = {privacy_screen = "inherit"},
+
     -- Define swipe gestures as paths relative to their start point.
     -- Commands and direct actions can use multi-point paths with turns.
     touchpad_gestures = {
