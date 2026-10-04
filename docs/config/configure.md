@@ -34,6 +34,7 @@ Each entry below is a real top-level key accepted by `gnoblin.configure`.
 - [`gnoblin.configure.protocols`](/config/configure/protocols)
 - [`gnoblin.configure.frame_renderers`](/config/configure/frame_renderers)
 - [`gnoblin.configure.cursor`](/config/configure/cursor)
+- [`gnoblin.configure.xwayland`](/config/configure/xwayland)
 - [`gnoblin.configure.shortcuts`](/config/configure/shortcuts)
 - [`gnoblin.configure.autostart`](/config/configure/autostart)
 
@@ -69,6 +70,7 @@ gnoblin.configure {
     protocols = {...}?,
     frame_renderers = {...}?,
     cursor = {...}?,
+    xwayland = {...}?,
     shortcuts = {...}?,
     autostart = {...}?,
 }
