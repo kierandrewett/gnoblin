@@ -64,13 +64,13 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 
 ## Current seams
 
-| Part       | Current dependency                          | Reason it remains                                                                                                                                                                                     |
-| ---------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Compositor | Mutter 51                                   | Current patches add Gnoblin protocols, input, rendering, configuration, and native control. Target: `gnoblin-mutter`, with a small patch set over upstream.                                           |
-| Session    | `gnoblin`, logind, systemd user targets     | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open.                   |
-| Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                                                               |
-| Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                                         |
-| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua owns migrated window, keyboard-accessibility, tablet-area, touchpad timeout, and Xwayland preferences; unmigrated settings still use GSettings. |
+| Part       | Current dependency                          | Reason it remains                                                                                                                                                                               |
+| ---------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compositor | Mutter 51                                   | Current patches add Gnoblin protocols, input, rendering, configuration, and native control. Target: `gnoblin-mutter`, with a small patch set over upstream.                                     |
+| Session    | `gnoblin`, logind, systemd user targets     | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open.             |
+| Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                                                         |
+| Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                                   |
+| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua owns migrated window, pointer, keyboard, tablet, touchpad, and Xwayland preferences; settings not yet migrated continue to use GSettings. |
 
 For each Gnoblin-owned Mutter preference, expose a domain-specific Lua setting
 and validate its type and accepted values in Gnoblin. At startup and reload,
@@ -151,20 +151,22 @@ Settings Daemon, GDM, and `xdg-desktop-portal-gtk` absent. That transaction
 confirms package installation and script execution, but no graphical login
 or application behavior.
 
-Shell now creates launched-app scopes with its own native systemd call and
-selects input-source names and language codes through libxkbregistry. Its
-native slideshow parser reads GNOME wallpaper XML once and retains timed
-transitions and monitor-size variants. The Gnoblin session no longer imports
-`GnomeBG` or `GnomeDesktop`; GNOME-only date and unlock UI still uses
-`GnomeDesktop.WallClock` when that mode is selected. Wallpaper backgrounds
-share one `/etc/localtime` watcher. Meson and the base RPM and Arch recipes no
-longer require `gnome-desktop-4`. The new Shell library and typelib compiled on
-Fedora 45, and the native parser returned a schedule through GJS. This is not
-yet a graphical slideshow proof.
+At an earlier Shell-based packaging checkpoint, the private Shell carried a
+native systemd call for launched-app scopes, selected input-source names and
+language codes through libxkbregistry, and parsed GNOME wallpaper XML for timed
+transitions and monitor-size variants. Those details describe the retired
+Shell integration, not the standalone Gnoblin session. The standalone session
+does not build or run Shell; wallpaper presentation and launched-app scope
+policy belong to shell clients or their launchers. The old Shell implementation
+also stopped importing `GnomeBG` and `GnomeDesktop` in Gnoblin mode, while
+GNOME-only date and unlock UI retained `GnomeDesktop.WallClock`. At that
+checkpoint the Shell library and typelib compiled on Fedora 45 and its parser
+returned a schedule through GJS; this did not prove a graphical slideshow.
 
-Fedora 45 RPM builds of Shell, Mutter, portal, session, and the matching
-`gnoblin` metapackage completed. A fresh Fedora 45 container installed these
-five local RPMs with weak dependencies disabled. The transaction selected 204
+At that earlier Fedora 45 packaging checkpoint, RPM builds of the private
+Shell, Mutter, portal, session, and matching `gnoblin` metapackage completed.
+A fresh Fedora 45 container installed those five local RPMs with weak
+dependencies disabled. The transaction selected 204
 packages and 637 MiB. After installation, `rpm -q` confirmed all five Gnoblin
 packages and the absence of `gnome-desktop4`, `gnome-desktop3`, GTK3, stock
 GNOME Shell, Mutter, GNOME Session, Settings Daemon, and GDM. The installed
@@ -197,80 +199,66 @@ inhibitors need separate session-lifecycle handling.
 
 GNOME Control Center is not built or shipped, so its unused source submodule
 and release pin are removed; users can install their distribution's Settings
-app separately. The disposable CI source-build images no longer request stock
-GNOME Shell, Mutter, or GNOME Session packages; the source build uses patched
-Mutter and Shell.
+app separately. Earlier CI source-build images stopped installing stock GNOME
+Shell, Mutter, and GNOME Session packages while the project still built its
+private Shell. That packaging stage is historical: the current source build
+builds patched Mutter and Gnoblin, and does not build or package GNOME Shell.
 The main Fedora verification job now builds the release source tarball after
 extracting it without Git metadata. This exercises the tarball path before
 package adapters and catches files omitted from the archive.
 
-The RPM component and session packages do not require `gnome-settings-daemon`.
-Mutter's optional settings-daemon headers are no longer mandatory to compile.
-The CI source-build dependency installer now omits the settings daemon too;
-the optional GNOME Session login needs it for the services listed below.
-It also omits Just: the source tarball's build, nested preview, and session
-registration paths are all available through `./build.sh`.
-The Fedora Shell RPM also drops inherited requirements for Tecla, the
-dual-GPU launch service, and user-directory setup; the last is provided by
-the optional GNOME app integration package.
-It no longer recommends Bolt by default: the Gnoblin session has no GNOME
-Thunderbolt menu, and users can install Bolt when their devices need it.
-The direct session also skips GNOME's power menu and end-session dialog, so
-the Shell RPM no longer requires UPower. GNOME and the optional GNOME Session
-path still load UPower for those interfaces.
+The following package notes record an earlier private-Shell packaging phase;
+they do not describe current Gnoblin components or a supported Shell RPM.
+The RPM component and session packages do not require
+`gnome-settings-daemon`. Mutter's optional settings-daemon headers are not
+mandatory to compile. The CI source-build dependency installer omits the
+settings daemon too. The tarball's build, nested preview, and session
+registration paths are available through `./build.sh` without Just.
+During the Shell RPM phase, inherited requirements for Tecla, the dual-GPU
+launch service, user-directory setup, Bolt, and UPower were removed or made
+optional for the panel-free Gnoblin mode. The standalone session has no Shell
+panel or power menu; those old RPM adjustments are retained here as packaging
+history only.
 
-The remaining Shell requirements cannot be removed by editing the spec alone.
-`js/misc/dependencies.js` still eagerly imports AccountsService, which the
-polkit agent and other Shell modules use. GDM, Geoclue, and GWeather now load
-only for the Shell UI that needs them in Gnoblin mode or another session.
-The GnomeQR typelib is now optional: Shell loads it only for QR rendering and
-web login keeps the URL and code visible when it is unavailable.
-The Gnoblin date menu is empty, so its weather module now skips the Geoclue
-and GWeather typelibs in Gnoblin mode. The Fedora Shell RPM no longer names
-those libraries as direct requirements. GNOME's normal date menu still loads
-them; the session's remaining services may depend on the same libraries.
-Gnoblin also has no network menu in its Shell panel. Shell now skips the NMA4
-typelib in Gnoblin mode, while retaining the NM typelib for its network secret
-agent. The source tarball carries this change in the Shell patch series; RPM
-metadata follows the source behavior.
-The Gnoblin session also skips GNOME's login and unlock dialogs and loads
-GDM's typelib only if it is present for system actions. Without it, the
-switch-user action is unavailable, while logout still works. The source
-tarball carries this Shell patch, and the Fedora Shell RPM no longer directly
-requires `gdm-libs`. Shell loads session mode after its main module is ready so
-GNOME's login and unlock dialogs can still import that module when needed.
-Shell already probes for GNOME Bluetooth at runtime and Gnoblin never creates
-the upstream Bluetooth panel. Its explicit Fedora build requirement and
-generated Shell typelib requirement are removed from the package metadata.
-Gnoblin's session mode also omits Shell's automatic removable-media mount and
-autorun components. Those components call GNOME SessionManager to check active
-session state and automount inhibitors. File-manager-initiated mounts remain
-available through the user's chosen file manager and its services.
-The Shell build now disables the matching HotplugSniffer executable and D-Bus
-service. A fresh source-tarball build on Fedora 45 installed neither file.
-The Shell MessageTray no longer subscribes to GNOME SessionManager presence in
-Gnoblin mode; that subscription only controlled native notification banners,
-which Gnoblin does not show.
-The source build registers a standalone login entry by default with
-`./build.sh --register-session`. It launches the compositor
-without `gnome-session` or `gnome-settings-daemon`. In that branch, Shell routes
-logout, power, reboot, and suspend actions to logind. Once the compositor
-reports ready, Shell copies its display address to D-Bus activation and the
-systemd user manager, then the session target starts `graphical-session.target`
-and XDG autostart. The wrapper stops that target when the compositor exits.
-The wrapper clears stale display addresses left by another desktop before
-launch, then removes them from the user manager at logout.
-Standalone Shell skips GNOME's end-session dialog and its startup proxies;
-logout terminates the logind session directly.
-Both the wrapper and Shell use `XDG_CURRENT_DESKTOP=Gnoblin` so GNOME-only
-autostart entries do not become part of the minimal session. Source and package
-login entries use the direct launcher. This path does not start the selected
-settings-daemon services and has not been verified at a real login screen.
-The GNOME extension tool is disabled in every build route. Its only
+At that checkpoint, remaining Shell requirements could not be removed by
+editing the spec alone. `js/misc/dependencies.js` eagerly imported
+AccountsService, which the polkit agent and other Shell modules used. GDM,
+Geoclue, and GWeather were loaded only for Shell UI that needed them. The
+GnomeQR typelib was made optional, and web login kept the URL and code visible
+when it was unavailable. The empty Gnoblin date menu caused the weather module
+to skip Geoclue and GWeather typelibs in Gnoblin mode; the Fedora Shell RPM
+then stopped naming those libraries as direct requirements. The Shell network
+menu was also absent in Gnoblin mode, so Shell skipped the NMA4 typelib while
+retaining NM for its network secret agent. The source tarball carried these
+changes as Shell patches and RPM metadata followed them.
+
+That Shell mode skipped GNOME's login and unlock dialogs and loaded GDM's
+typelib only when available for system actions. Without it, switch-user was
+unavailable while logout remained available. Its Shell patch and Fedora RPM
+metadata removed the direct `gdm-libs` requirement. Session mode loaded after
+Shell's main module so GNOME's login and unlock dialogs could still import it
+in other modes. Shell's runtime probe made GNOME Bluetooth optional, and the
+Fedora metadata dropped the explicit build and generated-typelib requirements.
+That mode also omitted Shell's automatic removable-media mount and autorun
+components, which called GNOME SessionManager for active-session state and
+automount inhibitors. File-manager-initiated mounts remained available through
+the selected file manager. The Shell build disabled HotplugSniffer and its
+D-Bus service; a Fedora 45 source-tarball build installed neither file. Shell's
+MessageTray stopped subscribing to GNOME SessionManager presence in Gnoblin
+mode because the subscription only controlled native notification banners.
+An earlier standalone-login implementation used `./build.sh --register-session`
+to launch the compositor without `gnome-session` or
+`gnome-settings-daemon`, but still relied on a Gnoblin-mode Shell for session
+actions and D-Bus/systemd environment handoff. That Shell-based path is
+retired. The current direct launcher is the supported direction; its display
+manager registration, real-seat environment handoff, failure cleanup, and
+switch-back-to-GNOME behavior remain unverified at a real login screen, as
+recorded in the replacement gates below.
+The GNOME extension tool was disabled in every Shell build route. Its only
 `gnome-autoar` dependency is therefore removed from source-build provisioning
-and both RPM build recipes. The Shell RPMs also drop the extension tool's
-`bash-completion` requirement; Fedora's Shell RPM drops `rst2man` because its
-manpages are disabled. Mutter still builds manpages and needs `rst2man` in the
+and both RPM build recipes. The Shell RPMs also dropped the extension tool's
+`bash-completion` requirement; Fedora's Shell RPM dropped `rst2man` because its
+manpages were disabled. Mutter still builds manpages and needs `rst2man` in the
 combined source build.
 The source tarball exposes Mutter's existing XWayland build switch through
 `./build.sh --without-xwayland`. It avoids X11 build dependencies for a
@@ -291,19 +279,13 @@ removed still selected 207 packages and 661 MiB: `at-spi2-core`, `gstreamer1`,
 and `libwacom` each require Python in that distribution. That experimental
 CLI was reverted. No graphical session was run for the experimental package.
 
-Gnoblin's private Shell build also disables the captive-network portal helper,
-which its panel-free session does not expose; the network secret agent and
-camera monitor remain enabled. The same panel-free session has no date menu,
-so its Shell build also omits the calendar server and direct Evolution Data
-Server build requirement. These changes reduce the install and build graph;
-they do not make the compositor independent of GNOME Shell or Mutter.
-Shell's native code no longer calls libxml2. The source patch stack removes its
-remaining Meson links, and the source-build dependency installer and Fedora
-Shell recipe no longer request its development package. That Shell build
-retained its camera monitor because its PipeWire state fed `cameraInUse` in the
-compositor bridge. The standalone session now monitors camera and microphone
-activity in native code. With remote-desktop support enabled and PipeWire
-connected, native-control publishes activity through `gnoblin.privacy.state()`
+The retired private Shell build disabled its captive-network portal helper and
+calendar server and removed direct Evolution Data Server and libxml2 build
+requirements. Those Shell build changes reduced the old install graph; they did
+not remove Mutter from the compositor architecture. The standalone session
+monitors camera and microphone activity in native code. With remote-desktop
+support enabled and PipeWire connected, native-control publishes activity
+through `gnoblin.privacy.state()`
 and the `camera-monitor` and `microphone-monitor` capabilities. Camera activity
 remains active for 500 ms after the last camera node stops. The native socket
 contract test checks the snapshot and capability wiring. The isolated
