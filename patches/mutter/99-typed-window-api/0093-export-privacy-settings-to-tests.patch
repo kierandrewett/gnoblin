@@ -1,0 +1,30 @@
+From 4ce6e03302a5a04aecd839fe5cbb5707200b8ae8 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 4 Oct 2026 15:42:00 +0100
+Subject: [PATCH] mutter: export privacy-screen helpers to tests
+
+---
+ src/backends/meta-settings-private.h | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/src/backends/meta-settings-private.h b/src/backends/meta-settings-private.h
+index ef354d93e0..fd7dc2cf0e 100644
+--- a/src/backends/meta-settings-private.h
++++ b/src/backends/meta-settings-private.h
+@@ -80,10 +80,13 @@ gboolean meta_settings_are_xwayland_byte_swapped_clients_allowed (MetaSettings *
+ gboolean meta_settings_get_xwayland_scaling_factor (MetaSettings *settings,
+                                                     float        *scaling_factor);
+ 
++META_EXPORT_TEST
+ gboolean meta_settings_is_privacy_screen_enabled (MetaSettings *settings);
+ 
++META_EXPORT_TEST
+ void meta_settings_set_privacy_screen_enabled (MetaSettings *settings,
+                                                gboolean      enabled);
+ 
++META_EXPORT_TEST
+ void meta_settings_apply_gnoblin_privacy_screen_preferences (MetaSettings *settings,
+                                                               GVariant     *preferences);
+-- 
+2.55.0
+
