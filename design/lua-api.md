@@ -294,13 +294,13 @@ config reload restores the configured value.
 
 ### Declaration types
 
-| Record           | Required fields                                             | Optional fields                                                                                                                  |
-| ---------------- | ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `WindowRule`     | `match`                                                     | Existing compositor-owned fields in the [window-rule schema](../docs/config/window_rule.md), without shell-only animation events |
-| `PermissionRule` | `name`, `match`, nonempty `capabilities`, `level`           | `monitors` for `screen-cast` or `remote-desktop`; `devices` and `clipboard` for `remote-desktop`                                 |
-| `Shortcut`       | `name`, `binding`, and exactly one of `command` or `action` | `trigger`, `enable`                                                                                                              |
-| `Animation`      | `name`, `event`, and `from`/`to` or `keyframes`             | `enable`, `duration`, `ease`, `origin`, `target`                                                                                 |
-| `Autostart`      | `name`, nonempty `command` array                            | `when = "on_login"`, `enable`                                                                                                    |
+| Record           | Required fields                                                                      | Optional fields                                                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------- |
+| `WindowRule`     | `match`                                                                              | Existing compositor-owned fields in the [window-rule schema](../docs/config/window_rule.md), without shell-only animation events |
+| `PermissionRule` | `name`, `match`, nonempty `capabilities`, `level`                                    | `monitors` for `screen-cast` or `remote-desktop`; `devices` and `clipboard` for `remote-desktop`                                 |
+| `Shortcut`       | `name`, `binding`, and exactly one of `command`, `action`, or `capture_input = true` | `trigger`, `capture_input`, `enable`                                                                                             |
+| `Animation`      | `name`, `event`, and `from`/`to` or `keyframes`                                      | `enable`, `duration`, `ease`, `origin`, `target`                                                                                 |
+| `Autostart`      | `name`, nonempty `command` array                                                     | `when = "on_login"`, `enable`                                                                                                    |
 
 The precise fields, enum members, and defaults are validated by the current
 configuration schema. The target API reuses those schema types rather than
@@ -311,7 +311,11 @@ window rules. Runtime operations act on resolved object IDs rather than
 re-evaluating configuration rules.
 
 Input capture is available to owner-scoped runtime shortcut bindings through
-`gnoblin.shortcuts.bind`; it is not a field on declarative `Shortcut` records.
+`gnoblin.shortcuts.bind` and to one declarative `Shortcut`. A configured
+capture entry has no command or action, uses the bare `Super` binding with
+`trigger = "release"`, and publishes the same shortcut-session events. It
+requires Mutter's early modifier hook and cannot coexist with a separate bare
+`Super` command shortcut.
 
 `WindowRule.match.app_id`, `title`, and `layer` use Lua 5.4
 `string.find` pattern semantics. Patterns are byte-oriented and search anywhere
