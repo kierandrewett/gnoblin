@@ -127,6 +127,8 @@ let
     buildInputs = [
       glib
       json-glib
+      libsysprof-capture
+      libxkbcommon
       lua5_4
     ];
     configurePhase = ''
