@@ -611,6 +611,10 @@ int main(void) {
         "    left_handed = 'inherit', middle_click_emulation = true },"
         "  touchpad = { scroll_speed = 2, left_handed = 'mouse', click_method = 'fingers',"
         "    middle_click_emulation = false, disable_while_typing_timeout = 500 },"
+        "  trackball = { accel_profile = 'adaptive', middle_click_emulation = true,"
+        "    scroll_wheel_emulation_button = 2, scroll_wheel_emulation_button_lock = true },"
+        "  pointing_stick = { speed = -0.5, accel_profile = 'flat',"
+        "    scroll_method = 'on-button-down' },"
         "  keyboard = { delay = 10000, repeat_interval = 30, ['repeat'] = true,"
         "    xkb_options = {'caps:escape'},"
         "    numlock_state = 'inherit', accessibility = {"
@@ -685,6 +689,28 @@ int main(void) {
         touchpad_dwt_timeout_ms = g_variant_get_int64(touchpad_dwt_timeout);
     }
     g_assert_cmpint(touchpad_dwt_timeout_ms, ==, 500);
+    g_autoptr(GVariant) trackball =
+        g_variant_lookup_value(input_overlay, "trackball", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(trackball);
+    g_autoptr(GVariant) trackball_button =
+        g_variant_lookup_value(trackball, "scroll-wheel-emulation-button", G_VARIANT_TYPE_INT32);
+    g_assert_nonnull(trackball_button);
+    g_assert_cmpint(g_variant_get_int32(trackball_button), ==, 2);
+    g_autoptr(GVariant) trackball_middle_click =
+        g_variant_lookup_value(trackball, "middle-click-emulation", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_true(g_variant_get_boolean(trackball_middle_click));
+    g_autoptr(GVariant) trackball_scroll_lock = g_variant_lookup_value(
+        trackball, "scroll-wheel-emulation-button-lock", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_true(g_variant_get_boolean(trackball_scroll_lock));
+    g_autoptr(GVariant) pointing_stick =
+        g_variant_lookup_value(input_overlay, "pointing-stick", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(pointing_stick);
+    g_autoptr(GVariant) pointing_stick_speed =
+        g_variant_lookup_value(pointing_stick, "speed", G_VARIANT_TYPE_DOUBLE);
+    g_assert_cmpfloat(g_variant_get_double(pointing_stick_speed), ==, -0.5);
+    g_autoptr(GVariant) pointing_stick_scroll_method =
+        g_variant_lookup_value(pointing_stick, "scroll-method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(pointing_stick_scroll_method, NULL), ==, "on-button-down");
     g_autoptr(GVariant) keyboard =
         g_variant_lookup_value(input_overlay, "keyboard", G_VARIANT_TYPE_VARDICT);
     g_assert_null(g_variant_lookup_value(keyboard, "numlock-state", NULL));
