@@ -528,6 +528,66 @@ print("LUA_API:snapshots")
 LUA
 gnoblinctl lua "$XDG_RUNTIME_DIR/lua-api.lua"
 python3 "$GNOBLIN_FOCUS_TEST_SCRIPT"
+python3 - <<'PY'
+import os
+from pathlib import Path
+import subprocess
+import time
+
+runtime_dir = Path(os.environ["XDG_RUNTIME_DIR"])
+ctl = os.environ["GNOBLIN_DEVKIT_CTL"]
+client_binary = os.environ["GNOBLIN_FOCUS_TEST_CLIENT"]
+event_script = runtime_dir / "mutter-event.lua"
+request_path = runtime_dir / "mutter-event-client-request"
+request_path.unlink(missing_ok=True)
+event_script.write_text(
+    'gnoblin.events.mutter.once("mutter.display.window-created", function(event)\n'
+    '  assert(event.event == "mutter.display.window-created")\n'
+    '  assert(event.source == "display" and event.signal == "window-created")\n'
+    '  assert(type(event.sequence) == "number" and event.sequence > 0)\n'
+    '  assert(type(event.time) == "number" and event.time > 0)\n'
+    '  assert(type(event.arg0) == "table" and type(event.arg0.window_id) == "number")\n'
+    '  print("CLI_MUTTER_EVENT:display.window-created")\n'
+    'end)\n',
+    encoding="utf-8",
+)
+listener = subprocess.Popen(
+    [ctl, "--timeout", "1", "lua", str(event_script)],
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
+)
+client = None
+try:
+    time.sleep(0.25)
+    if listener.poll() is not None:
+        stdout, stderr = listener.communicate()
+        raise AssertionError(f"Mutter event listener exited before a client was started: {stdout}\n{stderr}")
+
+    client = subprocess.Popen(
+        [client_binary, str(request_path)],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        stdout, stderr = listener.communicate(timeout=10)
+    except subprocess.TimeoutExpired as error:
+        raise AssertionError("gnoblinctl lua did not receive Mutter display.window-created") from error
+    assert listener.returncode == 0, f"Mutter event listener failed: {stdout}\n{stderr}"
+    assert "CLI_MUTTER_EVENT:display.window-created" in stdout, stdout
+    print("CLI_MUTTER_EVENT:socket-forwarded")
+finally:
+    request_path.unlink(missing_ok=True)
+    for process in (client, listener):
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=3)
+PY
 cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
     window_management = {
@@ -941,6 +1001,7 @@ require_output 'CONFIG_RELOAD:stable'
 require_output 'XWAYLAND:xsettings-live-scaling-selection-loss'
 require_output 'LUA_API:runtime-status'
 require_output 'LUA_API:snapshots'
+require_output 'CLI_MUTTER_EVENT:socket-forwarded'
 require_output 'PASS: Gnoblin denied activation without user context and emitted the denial event'
 require_output 'PASS: workspace animation lifecycle events reach socket clients'
 require_output 'LUA_LAYER:live-unmap:false'
