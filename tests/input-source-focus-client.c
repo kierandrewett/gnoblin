@@ -315,6 +315,32 @@ static bool connect_display(struct app* app) {
     return true;
 }
 
+static void report_display_error(struct app* app, const char* operation, const char* title) {
+    int saved_errno = errno;
+    int error = wl_display_get_error(app->display);
+    if (error == EPROTO) {
+        const struct wl_interface* interface = NULL;
+        uint32_t object_id = 0;
+        uint32_t code = wl_display_get_protocol_error(app->display, &interface, &object_id);
+        fprintf(stderr, "Wayland %s failed for window '%s': protocol error %u on %s object %u\n",
+                operation, title, code, interface ? interface->name : "unknown interface",
+                object_id);
+        return;
+    }
+
+    if (error == 0)
+        error = saved_errno;
+    fprintf(stderr, "Wayland %s failed for window '%s': error %d (%s)\n", operation, title, error,
+            error ? strerror(error) : "no error detail available");
+}
+
+static void report_activation_timeout(const char* title, int64_t started) {
+    int64_t now = monotonic_milliseconds();
+    int64_t elapsed = now >= started ? now - started : ACTIVATION_TIMEOUT_MS;
+    fprintf(stderr, "window activation was not confirmed for '%s' after %lld ms (timeout %d ms)\n",
+            title, (long long)elapsed, ACTIVATION_TIMEOUT_MS);
+}
+
 static void create_test_window(struct app* app, const char* title) {
     app->window.app = app;
     app->window.surface = wl_compositor_create_surface(app->compositor);
@@ -356,25 +382,42 @@ static int run_activation(struct app* app, const char* title) {
         return 1;
     }
     app->requested_title = title;
-    int64_t deadline = monotonic_milliseconds() + ACTIVATION_TIMEOUT_MS;
+    int64_t started = monotonic_milliseconds();
+    int64_t deadline = started + ACTIVATION_TIMEOUT_MS;
     while (!app->activation_confirmed) {
         struct pollfd fd = {.fd = wl_display_get_fd(app->display), .events = POLLIN};
         int64_t remaining = deadline - monotonic_milliseconds();
         if (remaining <= 0) {
-            fprintf(stderr, "window was not activated before timeout: %s\n", title);
+            report_activation_timeout(title, started);
             return 1;
         }
-        if (wl_display_dispatch_pending(app->display) < 0)
+        if (wl_display_dispatch_pending(app->display) < 0) {
+            report_display_error(app, "dispatch pending events", title);
             return 1;
+        }
         if (app->activation_confirmed)
             break;
-        if (wl_display_flush(app->display) < 0 && errno != EAGAIN)
+        if (wl_display_flush(app->display) < 0 && errno != EAGAIN) {
+            report_display_error(app, "flush requests", title);
             return 1;
+        }
         int result = poll(&fd, 1, (int)remaining);
         if (result < 0 && errno == EINTR)
             continue;
-        if (result <= 0 || wl_display_dispatch(app->display) < 0)
+        if (result == 0) {
+            report_activation_timeout(title, started);
             return 1;
+        }
+        if (result < 0) {
+            int error = errno;
+            fprintf(stderr, "poll for window activation '%s' failed: error %d (%s)\n", title, error,
+                    strerror(error));
+            return 1;
+        }
+        if (wl_display_dispatch(app->display) < 0) {
+            report_display_error(app, "dispatch events", title);
+            return 1;
+        }
     }
     printf("ACTIVATED:%s\n", title);
     return 0;
