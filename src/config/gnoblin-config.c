@@ -149,14 +149,16 @@ static gboolean tablet_pad_buttons_valid(GVariant* value) {
 
 static gboolean input_field_known(const char* group, const char* key) {
     static const char* const mouse_fields[] = {
-        "speed",          "double-click-time", "drag-threshold", "left-handed",
-        "natural-scroll", "accel-profile",     "accel-curve",    NULL,
+        "speed",         "double-click-time", "drag-threshold",
+        "left-handed",   "natural-scroll",    "middle-click-emulation",
+        "accel-profile", "accel-curve",       NULL,
     };
     static const char* const touchpad_fields[] = {
         "speed",
         "scroll-speed",
         "left-handed",
         "natural-scroll",
+        "middle-click-emulation",
         "accel-profile",
         "accel-curve",
         "tap-to-click",
@@ -304,6 +306,7 @@ static gboolean input_value_valid(const char* group, const char* key, GVariant* 
         return g_variant_is_of_type(value, G_VARIANT_TYPE_STRING);
     static const char* boolean_fields[] = {
         "natural-scroll",
+        "middle-click-emulation",
         "repeat",
         "remember-numlock-state",
         "numlock-state",
