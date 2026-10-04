@@ -86,6 +86,7 @@ typedef struct {
     guint64 workspace_revision;
     GVariant* monitor_snapshot;
     guint64 monitor_revision;
+    GVariant* monitor_privacy_screen_snapshot;
     GVariant* layer_snapshot;
     guint64 layer_revision;
     GVariant* capability_snapshot;
@@ -161,6 +162,7 @@ static gpointer settings_changed_data;
 
 static int lua_workspace_action(lua_State* state);
 static int lua_generic_api_action(lua_State* state);
+static int call_launch_operation(lua_State* state, const char* method, int arguments);
 static int lua_focus_history(lua_State* state);
 static int lua_animation_preview_method(lua_State* state);
 static int lua_permissions_list(lua_State* state);
@@ -278,6 +280,7 @@ static const char* api_methods[] = {
     "window.thumbnail",
     "layer.list",
     "monitor.list",
+    "monitors.set_privacy_screen",
     "animation.list",
     "animation.get",
     "animation.surfaces",
@@ -4003,6 +4006,41 @@ static int lua_monitors_primary(lua_State* state) {
     return 1;
 }
 
+static int lua_monitors_privacy_screen(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.monitors.privacy_screen takes no arguments");
+    if (!config || !config->monitor_privacy_screen_snapshot)
+        return luaL_error(state, "native monitor privacy-screen snapshot is unavailable");
+    push_variant(state, config->monitor_privacy_screen_snapshot);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+static int lua_monitors_set_privacy_screen(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (config && config->api_calling && lua_gettop(state) == 1 && lua_istable(state, 1)) {
+        static const char* const fields[] = {"value", NULL};
+        if (!table_fields_allowed(state, 1, fields))
+            return luaL_error(state, "monitors.set_privacy_screen accepts only value");
+        lua_getfield(state, 1, "value");
+        lua_replace(state, 1);
+        lua_settop(state, 1);
+    }
+    if (lua_gettop(state) != 1 ||
+        (!lua_isboolean(state, 1) &&
+         !(lua_type(state, 1) == LUA_TSTRING && g_str_equal(lua_tostring(state, 1), "inherit"))))
+        return luaL_error(state,
+                          "gnoblin.monitors.set_privacy_screen requires true, false, or 'inherit'");
+
+    lua_newtable(state);
+    lua_pushvalue(state, 1);
+    lua_setfield(state, -2, "value");
+    int arguments = lua_absindex(state, -1);
+    return call_launch_operation(state, "monitors.set_privacy_screen", arguments);
+}
+
 static GVariant* lua_layer_array(LuaConfig* config) {
     if (!config || !config->layer_snapshot)
         return NULL;
@@ -4943,6 +4981,12 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_monitors_primary, 1);
     lua_setfield(state, -2, "primary");
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_monitors_privacy_screen, 1);
+    lua_setfield(state, -2, "privacy_screen");
+    lua_pushlightuserdata(state, config);
+    lua_pushcclosure(state, lua_monitors_set_privacy_screen, 1);
+    lua_setfield(state, -2, "set_privacy_screen");
     lua_setfield(state, -2, "monitors");
     lua_newtable(state);
     lua_pushlightuserdata(state, config);
@@ -5244,6 +5288,7 @@ static void lua_runtime_free(LuaRuntime* runtime) {
     g_clear_pointer(&runtime->config.window_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.workspace_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.monitor_snapshot, g_variant_unref);
+    g_clear_pointer(&runtime->config.monitor_privacy_screen_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.layer_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.capability_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.input_device_snapshot, g_variant_unref);
@@ -5311,6 +5356,109 @@ void gnoblin_config_update_monitor_snapshot(GVariant* snapshot, guint64 revision
         runtime->config.monitor_revision = snapshot ? revision : 0;
         if (snapshot)
             runtime->config.monitor_snapshot = g_variant_ref(snapshot);
+    }
+}
+
+static gboolean monitor_privacy_screen_snapshot_valid(GVariant* snapshot) {
+    static const char* const snapshot_fields[] = {"requested_enabled", "source", "revision",
+                                                  "monitors", NULL};
+    static const char* const monitor_fields[] = {"id", "available", "enabled", "locked", NULL};
+    if (!snapshot || !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
+        return FALSE;
+    GVariantIter fields;
+    const char* key;
+    GVariant* value;
+    g_variant_iter_init(&fields, snapshot);
+    while (g_variant_iter_next(&fields, "{&sv}", &key, &value)) {
+        g_autoptr(GVariant) field = value;
+        gboolean known = FALSE;
+        for (guint i = 0; snapshot_fields[i]; i++)
+            known |= g_str_equal(key, snapshot_fields[i]);
+        if (!known)
+            return FALSE;
+    }
+    g_autoptr(GVariant) requested_any = g_variant_lookup_value(snapshot, "requested_enabled", NULL);
+    g_autoptr(GVariant) requested =
+        g_variant_lookup_value(snapshot, "requested_enabled", G_VARIANT_TYPE_BOOLEAN);
+    g_autoptr(GVariant) source = g_variant_lookup_value(snapshot, "source", G_VARIANT_TYPE_STRING);
+    g_autoptr(GVariant) monitors =
+        g_variant_lookup_value(snapshot, "monitors", G_VARIANT_TYPE("av"));
+    g_autoptr(GVariant) monitors_any = g_variant_lookup_value(snapshot, "monitors", NULL);
+    g_autoptr(GVariant) revision = g_variant_lookup_value(snapshot, "revision", NULL);
+    const char* source_name = source ? g_variant_get_string(source, NULL) : NULL;
+    if ((requested_any && !requested) || !source ||
+        !(g_str_equal(source_name, "runtime") || g_str_equal(source_name, "config") ||
+          g_str_equal(source_name, "system")) ||
+        !monitors || (monitors_any && !g_variant_is_of_type(monitors_any, G_VARIANT_TYPE("av"))) ||
+        (revision && !g_variant_is_of_type(revision, G_VARIANT_TYPE_UINT64) &&
+         !g_variant_is_of_type(revision, G_VARIANT_TYPE_INT64)))
+        return FALSE;
+    if (revision && g_variant_is_of_type(revision, G_VARIANT_TYPE_INT64) &&
+        g_variant_get_int64(revision) < 0)
+        return FALSE;
+    for (gsize i = 0; i < g_variant_n_children(monitors); i++) {
+        g_autoptr(GVariant) wrapped = g_variant_get_child_value(monitors, i);
+        g_autoptr(GVariant) monitor = g_variant_is_of_type(wrapped, G_VARIANT_TYPE_VARIANT)
+                                          ? g_variant_get_variant(wrapped)
+                                          : g_variant_ref(wrapped);
+        if (!g_variant_is_of_type(monitor, G_VARIANT_TYPE_VARDICT))
+            return FALSE;
+        GVariantIter monitor_iter;
+        const char* monitor_key;
+        GVariant* monitor_value;
+        g_variant_iter_init(&monitor_iter, monitor);
+        while (g_variant_iter_next(&monitor_iter, "{&sv}", &monitor_key, &monitor_value)) {
+            g_autoptr(GVariant) field = monitor_value;
+            gboolean known = FALSE;
+            for (guint j = 0; monitor_fields[j]; j++)
+                known |= g_str_equal(monitor_key, monitor_fields[j]);
+            if (!known)
+                return FALSE;
+        }
+        g_autoptr(GVariant) id = g_variant_lookup_value(monitor, "id", G_VARIANT_TYPE_STRING);
+        g_autoptr(GVariant) available =
+            g_variant_lookup_value(monitor, "available", G_VARIANT_TYPE_BOOLEAN);
+        g_autoptr(GVariant) id_any = g_variant_lookup_value(monitor, "id", NULL);
+        g_autoptr(GVariant) available_any = g_variant_lookup_value(monitor, "available", NULL);
+        if (!id || !g_variant_get_string(id, NULL)[0] || (id_any && !id) || !available ||
+            (available_any && !available))
+            return FALSE;
+        const char* const optional_boolean_fields[] = {"enabled", "locked", NULL};
+        for (guint j = 0; optional_boolean_fields[j]; j++) {
+            g_autoptr(GVariant) optional =
+                g_variant_lookup_value(monitor, optional_boolean_fields[j], NULL);
+            if (optional && !g_variant_is_of_type(optional, G_VARIANT_TYPE_BOOLEAN))
+                return FALSE;
+        }
+    }
+    return TRUE;
+}
+
+void gnoblin_config_update_monitor_privacy_screen_snapshot(GVariant* snapshot, guint64 revision) {
+    if (snapshot && !monitor_privacy_screen_snapshot_valid(snapshot))
+        return;
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
+    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
+        LuaRuntime* runtime = runtimes[i];
+        if (!runtime || (i == 1 && runtime == runtimes[0]))
+            continue;
+        g_clear_pointer(&runtime->config.monitor_privacy_screen_snapshot, g_variant_unref);
+        if (!snapshot)
+            continue;
+        GVariantBuilder with_revision;
+        g_variant_builder_init(&with_revision, G_VARIANT_TYPE_VARDICT);
+        GVariantIter iter;
+        const char* name;
+        GVariant* field;
+        g_variant_iter_init(&iter, snapshot);
+        while (g_variant_iter_next(&iter, "{&sv}", &name, &field)) {
+            g_autoptr(GVariant) item = field;
+            if (!g_str_equal(name, "revision"))
+                g_variant_builder_add(&with_revision, "{sv}", name, item);
+        }
+        g_variant_builder_add(&with_revision, "{sv}", "revision", g_variant_new_uint64(revision));
+        runtime->config.monitor_privacy_screen_snapshot =
+            g_variant_ref_sink(g_variant_builder_end(&with_revision));
     }
 }
 
@@ -5638,6 +5786,9 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
         runtime->config.monitor_snapshot = g_variant_ref(snapshot_source->config.monitor_snapshot);
         runtime->config.monitor_revision = snapshot_source->config.monitor_revision;
     }
+    if (snapshot_source && snapshot_source->config.monitor_privacy_screen_snapshot)
+        runtime->config.monitor_privacy_screen_snapshot =
+            g_variant_ref(snapshot_source->config.monitor_privacy_screen_snapshot);
     if (snapshot_source && snapshot_source->config.layer_snapshot) {
         runtime->config.layer_snapshot = g_variant_ref(snapshot_source->config.layer_snapshot);
         runtime->config.layer_revision = snapshot_source->config.layer_revision;
@@ -6823,6 +6974,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "layer.animation_policy",
         "workspaces.list",
         "monitors.list",
+        "monitors.privacy_screen",
         "layers.list",
         "launches.list",
         "launches.snapshot",
@@ -6976,6 +7128,11 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "monitor.list") || g_str_equal(method, "monitors.list")) {
         lua_getfield(state, -1, "monitors");
         lua_getfield(state, -1, "list");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "monitors.privacy_screen")) {
+        lua_getfield(state, -1, "monitors");
+        lua_getfield(state, -1, "privacy_screen");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "layers.list") || g_str_equal(method, "layer.list")) {

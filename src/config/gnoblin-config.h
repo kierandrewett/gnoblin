@@ -46,6 +46,8 @@ void gnoblin_config_update_window_snapshot(GVariant* snapshot, guint64 revision)
 void gnoblin_config_update_workspace_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the latest native monitor snapshot for immediate Lua reads. */
 void gnoblin_config_update_monitor_snapshot(GVariant* snapshot, guint64 revision);
+/* Cache the monitor privacy-screen snapshot used by immediate Lua reads. */
+void gnoblin_config_update_monitor_privacy_screen_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the latest native layer-surface snapshot for immediate Lua reads. */
 void gnoblin_config_update_layer_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the latest native capability snapshot for immediate Lua reads. */
