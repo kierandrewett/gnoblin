@@ -34,11 +34,29 @@ guide](https://wayland.freedesktop.org/libinput/doc/latest/tools.html) and
 [`udevadm` manual](https://man7.org/linux/man-pages/man8/udevadm.8.html) explain
 the commands and their output.
 
-| Field         | Accepted values              | Meaning                                                                                     |
-| ------------- | ---------------------------- | ------------------------------------------------------------------------------------------- |
-| `mapping`     | `"absolute"` or `"relative"` | Absolute maps pen position to a fixed tablet area; relative moves the pointer like a mouse. |
-| `left_handed` | Boolean                      | Reverses the tablet's button orientation.                                                   |
-| `keep_aspect` | Boolean                      | Preserves proportions when tablet and display have different shapes.                        |
+| Field         | Accepted values               | Meaning                                                                                     |
+| ------------- | ----------------------------- | ------------------------------------------------------------------------------------------- |
+| `mapping`     | `"absolute"` or `"relative"`  | Absolute maps pen position to a fixed tablet area; relative moves the pointer like a mouse. |
+| `left_handed` | Boolean                       | Reverses the tablet's button orientation.                                                   |
+| `keep_aspect` | Boolean                       | Preserves proportions when tablet and display have different shapes.                        |
+| `pad_buttons` | Array of button action tables | Sets actions for tablet-pad buttons.                                                        |
+
+Tablet-pad button numbers start at `0`. Each entry needs a unique `button` from
+`0` to `255` and an `action`:
+
+| Action             | Effect                                                                                |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| `"default"`        | Use the current system action and keybinding for this button.                         |
+| `"none"`           | Do not handle the button in the compositor; clients may receive the tablet-pad event. |
+| `"help"`           | Request Mutter's tablet help overlay. A shell listener is needed to display it.       |
+| `"switch-monitor"` | Cycle the tablet's mapped monitor.                                                    |
+| `"keybinding"`     | Send the accelerator in `keybinding`.                                                 |
+
+Buttons you omit keep their current system action. Add `keybinding` only with
+the `"keybinding"` action. The list can contain up to 256 entries. Device IDs
+identify vendor and product, so identical tablets share the same overrides.
+Set `pad_buttons = "inherit"` to clear an earlier list and return every button
+to its system action.
 
 Enable `keep_aspect` when you want a drawn circle to stay circular across
 different display and tablet shapes.
@@ -50,6 +68,11 @@ gnoblin.configure {
             ["1234:5678"] = {
                 mapping = "absolute",
                 keep_aspect = true,
+                pad_buttons = {
+                    {button = 0, action = "keybinding", keybinding = "<Super>e"},
+                    {button = 1, action = "switch-monitor"},
+                    {button = 2, action = "none"},
+                },
             },
         },
     },
@@ -148,6 +171,7 @@ gnoblin.configure {
                 mapping = "absolute" | "relative"?,
                 left_handed = boolean?,
                 keep_aspect = boolean?,
+                pad_buttons = TabletPadButtonAction[] | "inherit"?,
             }, ...,
         }?,
         styluses = {
@@ -168,5 +192,8 @@ gnoblin.configure {
 
 -- StylusAction = "default" | "middle" | "right" | "back" | "forward"
 --             | "switch-monitor" | "keybinding"
+-- TabletPadButtonAction = {button = integer 0..255, action = TabletPadAction,
+--                          keybinding = string?}
+-- TabletPadAction = "default" | "none" | "help" | "switch-monitor" | "keybinding"
 -- StylusEraserMode = "default" | "button"
 ```

@@ -271,6 +271,16 @@ The linked pages give the full current nested schema. The standalone runtime
 keeps Gnoblin-owned policy and omits GNOME Shell preferences and actions.
 External shell projects own their UI and its configuration.
 
+`input.tablets["vvvv:pppp"].pad_buttons` is an array of tablet-pad button
+records. Each record has a unique zero-based `button` from 0 to 255 and an
+`action`: `default` follows the system action, `none` leaves the button for
+clients, `help` requests Mutter's tablet overlay (a shell listener must display
+it), `switch-monitor` cycles the tablet's mapped monitor, and `keybinding`
+sends its required `keybinding` accelerator. Omitted buttons follow the system action. Config reload applies
+the new values without restarting the session; IDs identify vendor and product,
+so identical tablets share overrides. See the [input config schema](../docs/config/configure/input.md)
+for the complete example and type shape.
+
 ### Declaration types
 
 | Record           | Required fields                                             | Optional fields                                                                                                                  |
