@@ -64,13 +64,13 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 
 ## Current seams
 
-| Part       | Current dependency                          | Reason it remains                                                                                                                                                                                                                    |
-| ---------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Compositor | Mutter 51                                   | Current patches add Gnoblin protocols, input, rendering, configuration, and native control. Target: `gnoblin-mutter`, with a small patch set over upstream.                                                                          |
-| Session    | `gnoblin`, logind, systemd user targets     | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open.                                                  |
-| Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                                                                                              |
-| Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                                                                        |
-| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua owns migrated window, pointer, keyboard, tablet, touchpad, and Xwayland preferences; global GeoClue policy accepts Lua overrides while retaining per-field GSettings fallback. |
+| Part       | Current dependency                          | Reason it remains                                                                                                                                                                                                                                            |
+| ---------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Compositor | Mutter 51                                   | Current patches add Gnoblin protocols, input, rendering, configuration, and native control. Target: `gnoblin-mutter`, with a small patch set over upstream.                                                                                                  |
+| Session    | `gnoblin`, logind, systemd user targets     | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open.                                                                          |
+| Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                                                                                                                      |
+| Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                                                                                                |
+| Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua owns migrated window, pointer, keyboard, tablet, touchpad, Xwayland, and session-scoped privacy-screen preferences; GeoClue policy accepts Lua overrides while retaining per-field GSettings fallback. |
 
 For each Gnoblin-owned Mutter preference, expose a domain-specific Lua setting
 and validate its type and accepted values in Gnoblin. At startup and reload,
@@ -102,6 +102,13 @@ compatibility seam: either field can override its matching GNOME setting, and
 omitting it or setting it to `inherit` keeps the existing system value. These
 global controls do not replace per-application authorization through Lua and
 the GeoClue agent.
+
+`monitors.privacy_screen` uses a session-scoped override. `true` and `false`
+control supported monitor privacy screens without writing the system key;
+omitting the field or setting it to `inherit` follows the system preference.
+While the override is active, system preference changes do not override the
+Lua value. Removing the override restores the current system value.
+
 This adapter does not remove the schema package by itself: GSettings still
 needs key types, enum definitions, and defaults, and other Mutter or portal
 consumers may continue reading schemas. The configured input-source list is an
