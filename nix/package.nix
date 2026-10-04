@@ -4,6 +4,8 @@
   gcc16Stdenv ? stdenv,
   glib,
   json-glib,
+  libsysprof-capture,
+  libxkbcommon,
   lua5_4,
   pkg-config,
   cmake,
