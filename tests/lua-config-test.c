@@ -607,8 +607,9 @@ int main(void) {
         "gnoblin.configure { input = {"
         "  mouse = { speed = 0.25, drag_threshold = 12, accel_profile = 'custom',"
         "    accel_curve = { step = 1, points = {0, 0.5, 1} },"
-        "    left_handed = 'inherit' },"
-        "  touchpad = { scroll_speed = 2, left_handed = 'mouse', click_method = 'fingers' },"
+        "    left_handed = 'inherit', middle_click_emulation = true },"
+        "  touchpad = { scroll_speed = 2, left_handed = 'mouse', click_method = 'fingers',"
+        "    middle_click_emulation = false },"
         "  keyboard = { delay = 10000, repeat_interval = 30, ['repeat'] = true,"
         "    xkb_options = {'caps:escape'},"
         "    numlock_state = 'inherit', accessibility = {"
@@ -649,6 +650,9 @@ int main(void) {
         g_variant_lookup_value(mouse, "drag-threshold", G_VARIANT_TYPE_INT32);
     g_assert_nonnull(drag_threshold);
     g_assert_cmpint(g_variant_get_int32(drag_threshold), ==, 12);
+    g_autoptr(GVariant) mouse_middle_click_emulation =
+        g_variant_lookup_value(mouse, "middle-click-emulation", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_true(g_variant_get_boolean(mouse_middle_click_emulation));
     g_autoptr(GVariant) curve = g_variant_lookup_value(mouse, "accel-curve", NULL);
     g_autoptr(GVariant) step = g_variant_lookup_value(curve, "step", NULL);
     g_autoptr(GVariant) points = g_variant_lookup_value(curve, "points", NULL);
@@ -663,6 +667,9 @@ int main(void) {
     g_autoptr(GVariant) scroll_speed =
         g_variant_lookup_value(touchpad, "scroll-speed", G_VARIANT_TYPE_DOUBLE);
     g_assert_cmpfloat(g_variant_get_double(scroll_speed), ==, 2.0);
+    g_autoptr(GVariant) touchpad_middle_click_emulation =
+        g_variant_lookup_value(touchpad, "middle-click-emulation", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_false(g_variant_get_boolean(touchpad_middle_click_emulation));
     g_autoptr(GVariant) keyboard =
         g_variant_lookup_value(input_overlay, "keyboard", G_VARIANT_TYPE_VARDICT);
     g_assert_null(g_variant_lookup_value(keyboard, "numlock-state", NULL));
@@ -771,6 +778,7 @@ int main(void) {
     const char* invalid_input_sources[] = {
         "gnoblin.configure {input = {mouse = {unknown = true}}}\n",
         "gnoblin.configure {input = {mouse = {speed = '0.5'}}}\n",
+        "gnoblin.configure {input = {mouse = {middle_click_emulation = 'yes'}}}\n",
         "gnoblin.configure {input = {mouse = {drag_threshold = 0}}}\n",
         "gnoblin.configure {input = {mouse = {drag_threshold = 1.5}}}\n",
         "gnoblin.configure {input = {mouse = {drag_threshold = 2147483648}}}\n",

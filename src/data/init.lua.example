@@ -70,6 +70,7 @@ gnoblin.configure {
             -- speed = 0.0, -- -1..1
             -- double_click_time = 400, -- milliseconds between clicks
             -- drag_threshold = 8, -- pointer distance in pixels; omitted uses the system value
+            -- middle_click_emulation = true, -- press left and right together for a middle click
             -- left_handed = false,
             -- natural_scroll = false,
             -- accel_profile = "adaptive", -- "default", "flat", "adaptive"
@@ -81,6 +82,7 @@ gnoblin.configure {
             -- natural_scroll = true,
             -- accel_profile = "adaptive", -- "default", "flat", "adaptive"
             -- tap_to_click = false,
+            -- middle_click_emulation = true, -- press left and right together for a middle click
             -- tap_button_map = "default", -- "default", "lrm", "lmr"
             -- tap_and_drag = true,
             -- tap_and_drag_lock = false,
