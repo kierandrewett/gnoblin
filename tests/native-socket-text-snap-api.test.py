@@ -12,6 +12,7 @@ HEADER = ROOT / "src/native-control/gnoblin-native-control.h"
 LUA = ROOT / "src/config/gnoblin-lua.c"
 SESSION = ROOT / "src/session/gnoblin-runtime.c"
 CLI = ROOT / "src/tools/gnoblinctl.c"
+PAD_HELP_PATCH = ROOT / "patches/mutter/99-typed-window-api/0085-emit-tablet-pad-help-without-layout.patch"
 
 
 def function_body(source: str, signature: str, end_marker: str) -> str:
@@ -284,7 +285,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "gboolean gnoblin_native_control_dispatch_runtime_event(",
         )
 
-        self.assertEqual(api_minor(header), 72)
+        self.assertGreaterEqual(api_minor(header), 72)
         self.assertIn('"gnoblin.runtime.status-changed"', events)
         self.assertIn('"gnoblin.runtime.status-changed"', status)
         self.assertIn("native_runtime_status_state(control)", status)
@@ -296,6 +297,45 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("native_runtime_republish_full_state(control, &error)", runtime_handler)
         self.assertIn("runtime_generation_changed", runtime_handler)
         self.assertIn("native_runtime_publish_status(control)", runtime_handler)
+
+    def test_tablet_pad_help_event_is_available_to_lua_and_socket_clients(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        patch = PAD_HELP_PATCH.read_text()
+        events = function_body(
+            source,
+            "static const char* native_socket_events[] = {",
+            "static const char native_policy_introspection[]",
+        )
+        subscription = function_body(
+            source,
+            'if (g_str_equal(op, "events"))',
+            'if (g_str_equal(op, "windows"))',
+        )
+        startup = function_body(
+            source,
+            "GnoblinNativeControl* gnoblin_native_control_start(",
+            "void gnoblin_native_control_stop(",
+        )
+        callback = function_body(
+            source,
+            "static ClutterActor* native_show_pad_osd_requested(",
+            "static gboolean monitor_property_changed(",
+        )
+
+        self.assertEqual(api_minor(header), 73)
+        self.assertIn('"gnoblin.input.pad-help-requested"', events)
+        self.assertIn('g_str_equal(name, "gnoblin.input.pad-help-requested")', subscription)
+        self.assertIn("client->api_minor < 73", subscription)
+        self.assertIn("tablet-pad help events require API version 1.73", subscription)
+        self.assertIn('"show-pad-osd"', startup)
+        self.assertIn('native_publish_request_event(control, "gnoblin.input.pad-help-requested"', callback)
+        for field in ("device", "monitor_id", "output_names", "edition_mode", "buttons", "mode_groups", "features"):
+            self.assertIn(f'"{field}"', callback)
+        self.assertIn("meta_display_get_pad_button_label", source)
+        self.assertIn("meta_display_get_pad_feature_label", source)
+        self.assertIn("return NULL;", callback)
+        self.assertIn("-  if (!layout_path || !settings)", patch)
 
     def test_layer_event_baseline_is_seeded_before_startup_returns(self):
         source = CONTROL.read_text()

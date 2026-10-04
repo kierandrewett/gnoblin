@@ -949,6 +949,20 @@ int main(void) {
         "  assert(event.sequence > 0 and event.time > 0)\n"
         "  g.workspaces.previous()\n"
         "end)\n"
+        "g.on('gnoblin.input.pad-help-requested', function(event)\n"
+        "  assert(event.name == 'gnoblin.input.pad-help-requested')\n"
+        "  assert(event.device.id == 'input:1' and event.device.name == 'Test pad')\n"
+        "  assert(event.monitor_id == 'monitor:1' and event.output_names[1] == 'DP-1')\n"
+        "  assert(event.edition_mode == false)\n"
+        "  assert(event.buttons[1].button == 0 and event.buttons[1].label == 'Show on-screen "
+        "help')\n"
+        "  assert(event.mode_groups[1].mode_count == 3 and event.mode_groups[1].switch_buttons[1] "
+        "== 2)\n"
+        "  assert(event.features[1].type == 'ring' and event.features[1].clockwise_label == "
+        "'Volume')\n"
+        "  assert(event.sequence > 0 and event.time > 0)\n"
+        "  g.workspaces.next()\n"
+        "end)\n"
         "g.on('test.animation', function()\n"
         "  local animations=g.animations.list()\n"
         "  assert(animations ~= nil, 'g.animations.list() returned nil')\n"
@@ -1190,9 +1204,13 @@ int main(void) {
 
     g_auto(GStrv) event_names = gnoblin_config_runtime_events();
     gboolean has_touchpad_event = FALSE;
+    gboolean has_pad_help_event = FALSE;
     for (guint i = 0; event_names && event_names[i]; i++)
         has_touchpad_event |= g_str_equal(event_names[i], "mutter.touchpad.gesture");
+    for (guint i = 0; event_names && event_names[i]; i++)
+        has_pad_help_event |= g_str_equal(event_names[i], "gnoblin.input.pad-help-requested");
     g_assert_true(has_touchpad_event);
+    g_assert_true(has_pad_help_event);
 
     GVariantBuilder payload_builder;
     g_variant_builder_init(&payload_builder, G_VARIANT_TYPE_VARDICT);
@@ -1207,6 +1225,74 @@ int main(void) {
     g_assert_cmpuint(g_variant_n_children(operations), ==, 1);
     g_autoptr(GVariant) operation = g_variant_get_child_value(operations, 0);
     g_autoptr(GVariant) method = g_variant_lookup_value(operation, "method", G_VARIANT_TYPE_STRING);
+    g_assert_cmpstr(g_variant_get_string(method, NULL), ==, "workspace.next");
+    gnoblin_config_finish_event(TRUE);
+
+    GVariantBuilder pad_device_builder;
+    g_variant_builder_init(&pad_device_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&pad_device_builder, "{sv}", "id", g_variant_new_string("input:1"));
+    g_variant_builder_add(&pad_device_builder, "{sv}", "name", g_variant_new_string("Test pad"));
+    GVariantBuilder pad_button_builder;
+    GVariantBuilder pad_buttons_builder;
+    g_variant_builder_init(&pad_button_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&pad_button_builder, "{sv}", "button", g_variant_new_int32(0));
+    g_variant_builder_add(&pad_button_builder, "{sv}", "label",
+                          g_variant_new_string("Show on-screen help"));
+    g_variant_builder_init(&pad_buttons_builder, G_VARIANT_TYPE("aa{sv}"));
+    g_variant_builder_add_value(&pad_buttons_builder, g_variant_builder_end(&pad_button_builder));
+    GVariantBuilder pad_mode_group_builder;
+    GVariantBuilder pad_switch_buttons_builder;
+    GVariantBuilder pad_mode_groups_builder;
+    g_variant_builder_init(&pad_mode_group_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&pad_mode_group_builder, "{sv}", "group", g_variant_new_int32(0));
+    g_variant_builder_add(&pad_mode_group_builder, "{sv}", "mode_count", g_variant_new_int32(3));
+    g_variant_builder_init(&pad_switch_buttons_builder, G_VARIANT_TYPE("av"));
+    g_variant_builder_add(&pad_switch_buttons_builder, "v", g_variant_new_int32(2));
+    g_variant_builder_add(&pad_mode_group_builder, "{sv}", "switch_buttons",
+                          g_variant_builder_end(&pad_switch_buttons_builder));
+    g_variant_builder_init(&pad_mode_groups_builder, G_VARIANT_TYPE("aa{sv}"));
+    g_variant_builder_add_value(&pad_mode_groups_builder,
+                                g_variant_builder_end(&pad_mode_group_builder));
+    GVariantBuilder pad_feature_builder;
+    GVariantBuilder pad_features_builder;
+    g_variant_builder_init(&pad_feature_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&pad_feature_builder, "{sv}", "type", g_variant_new_string("ring"));
+    g_variant_builder_add(&pad_feature_builder, "{sv}", "index", g_variant_new_int32(0));
+    g_variant_builder_add(&pad_feature_builder, "{sv}", "clockwise_label",
+                          g_variant_new_string("Volume"));
+    g_variant_builder_init(&pad_features_builder, G_VARIANT_TYPE("aa{sv}"));
+    g_variant_builder_add_value(&pad_features_builder, g_variant_builder_end(&pad_feature_builder));
+    GVariantBuilder pad_event_builder;
+    g_variant_builder_init(&pad_event_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&pad_event_builder, "{sv}", "device",
+                          g_variant_builder_end(&pad_device_builder));
+    g_variant_builder_add(&pad_event_builder, "{sv}", "monitor_id",
+                          g_variant_new_string("monitor:1"));
+    const char* pad_output_names[] = {"DP-1", NULL};
+    g_variant_builder_add(&pad_event_builder, "{sv}", "output_names",
+                          g_variant_new_strv(pad_output_names, -1));
+    g_variant_builder_add(&pad_event_builder, "{sv}", "edition_mode", g_variant_new_boolean(FALSE));
+    g_variant_builder_add(&pad_event_builder, "{sv}", "buttons",
+                          g_variant_builder_end(&pad_buttons_builder));
+    g_variant_builder_add(&pad_event_builder, "{sv}", "mode_groups",
+                          g_variant_builder_end(&pad_mode_groups_builder));
+    g_variant_builder_add(&pad_event_builder, "{sv}", "features",
+                          g_variant_builder_end(&pad_features_builder));
+    g_variant_builder_add(&pad_event_builder, "{sv}", "sequence", g_variant_new_int64(1));
+    g_variant_builder_add(&pad_event_builder, "{sv}", "time", g_variant_new_int64(1));
+    g_autoptr(GVariant) pad_help_payload =
+        g_variant_ref_sink(g_variant_builder_end(&pad_event_builder));
+    dispatched_document =
+        gnoblin_config_dispatch_event("gnoblin.input.pad-help-requested", pad_help_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(dispatched_document);
+    g_clear_pointer(&operations, g_variant_unref);
+    operations = gnoblin_config_drain_runtime_operations();
+    g_assert_cmpuint(g_variant_n_children(operations), ==, 1);
+    g_clear_pointer(&operation, g_variant_unref);
+    operation = g_variant_get_child_value(operations, 0);
+    g_clear_pointer(&method, g_variant_unref);
+    method = g_variant_lookup_value(operation, "method", G_VARIANT_TYPE_STRING);
     g_assert_cmpstr(g_variant_get_string(method, NULL), ==, "workspace.next");
     gnoblin_config_finish_event(TRUE);
 
