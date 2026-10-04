@@ -3442,6 +3442,9 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
         }
     }
     control->shortcuts = g_steal_pointer(&shortcuts);
+    /* native_settings_changed() applies the initial config before shortcut
+     * registrations are initialized. Replace that provisional arm now. */
+    clear_configured_capture_shortcut(control, "config_changed");
     if (!apply_configured_capture_shortcut(control, document, error))
         return FALSE;
     meta_display_set_gnoblin_shortcut_activated_handler(control->display,
