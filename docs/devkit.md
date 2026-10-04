@@ -22,6 +22,12 @@ With the default config, that output is empty until you start a client. Gnoblin
 provides the compositor, not a built-in panel, launcher, or desktop shell. The
 terminal is a separate window on your host desktop.
 
+If Waybar is installed, start it automatically with the preview:
+
+```sh
+GNOBLIN_DEVKIT_EXEC='waybar' ./build.sh --preview
+```
+
 ![GNOME Settings in a Gnoblin devkit desktop with Waybar](images/gnoblin-waybar-settings.png)
 
 _The nested session can run a separate bar and stock desktop applications._
