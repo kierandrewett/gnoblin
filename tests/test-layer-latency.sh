@@ -45,7 +45,8 @@ PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 RUNTIME_BIN="${GNOBLIN_RUNTIME_BIN:-$ROOT/build/ninja/gnoblin}"
 echo "== layer-shell chrome latency (Gnoblin devkit, $PREFIX) =="
 OUT="$TMP/run.log"
-if ! GNOBLIN_STATE_DIR="$TMP/state" \
+if ! GNOBLIN_DEVKIT_KEEP_SESSION=1 \
+    GNOBLIN_STATE_DIR="$TMP/state" \
     GNOBLIN_PREFIX="$PREFIX" \
     GNOBLIN_RUNTIME_BIN="$RUNTIME_BIN" \
     GNOBLIN_DEVKIT_CTL="$PREFIX/bin/gnoblinctl" \
