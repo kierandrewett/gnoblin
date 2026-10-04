@@ -3367,12 +3367,13 @@ static const InputField input_fields[] = {
     {"touchpad", "tap-and-drag", INPUT_BOOLEAN},
     {"touchpad", "tap-and-drag-lock", INPUT_BOOLEAN},
     {"touchpad", "disable-while-typing", INPUT_BOOLEAN},
+    {"touchpad", "disable-while-typing-timeout", INPUT_MILLISECONDS, NULL, 100, 5000},
     {"touchpad", "edge-scrolling-enabled", INPUT_BOOLEAN},
     {"touchpad", "two-finger-scrolling-enabled", INPUT_BOOLEAN},
     {"touchpad", "click-method", INPUT_CHOICE, "default none areas fingers"},
     {"keyboard", "repeat", INPUT_BOOLEAN},
-    {"keyboard", "delay", INPUT_MILLISECONDS},
-    {"keyboard", "repeat-interval", INPUT_MILLISECONDS},
+    {"keyboard", "delay", INPUT_MILLISECONDS, NULL, 1, 10000},
+    {"keyboard", "repeat-interval", INPUT_MILLISECONDS, NULL, 1, 10000},
     {"keyboard", "remember-numlock-state", INPUT_BOOLEAN},
     {"keyboard", "numlock-state", INPUT_BOOLEAN},
     {"keyboard", "xkb-options", INPUT_STRINGS},
@@ -3706,7 +3707,7 @@ static GVariant* normalize_input_value(const InputField* field, GVariant* value,
             milliseconds = g_variant_get_uint32(value);
         else
             return NULL;
-        if (milliseconds >= 1 && milliseconds <= 10000)
+        if (milliseconds >= field->minimum && milliseconds <= field->maximum)
             return g_variant_ref_sink(g_variant_new_uint32((guint32)milliseconds));
     }
     if (field->kind == INPUT_STRINGS && g_variant_is_of_type(value, G_VARIANT_TYPE("av"))) {
