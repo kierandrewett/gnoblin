@@ -35,13 +35,14 @@ guide](https://wayland.freedesktop.org/libinput/doc/latest/tools.html) and
 [`udevadm` manual](https://man7.org/linux/man-pages/man8/udevadm.8.html) explain
 the commands and their output.
 
-| Field         | Accepted values               | Meaning                                                                                     |
-| ------------- | ----------------------------- | ------------------------------------------------------------------------------------------- |
-| `mapping`     | `"absolute"` or `"relative"`  | Absolute maps pen position to a fixed tablet area; relative moves the pointer like a mouse. |
-| `left_handed` | Boolean                       | Reverses the tablet's button orientation.                                                   |
-| `keep_aspect` | Boolean                       | Preserves proportions when tablet and display have different shapes.                        |
-| `area`        | Four fractions                | Crops the tablet's active area.                                                             |
-| `pad_buttons` | Array of button action tables | Sets actions for tablet-pad buttons.                                                        |
+| Field         | Accepted values                    | Meaning                                                                                     |
+| ------------- | ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| `mapping`     | `"absolute"` or `"relative"`       | Absolute maps pen position to a fixed tablet area; relative moves the pointer like a mouse. |
+| `output`      | `"auto"` or a monitor connector ID | Maps the tablet to that active output; `"auto"` asks Mutter to choose.                      |
+| `left_handed` | Boolean                            | Reverses the tablet's button orientation.                                                   |
+| `keep_aspect` | Boolean                            | Preserves proportions when tablet and display have different shapes.                        |
+| `area`        | Four fractions                     | Crops the tablet's active area.                                                             |
+| `pad_buttons` | Array of button action tables      | Sets actions for tablet-pad buttons.                                                        |
 
 Set `area` in left, right, top, bottom order. Each value is a fraction of the
 tablet dimension: `0.1` means 10%. Values must be at least `0` and below `1`,
@@ -50,6 +51,20 @@ and opposing edges must add to less than `1`.
 If you omit `area` or set it to `"inherit"`, Mutter uses the system preference.
 Calibration applies only to integrated tablets that expose a libinput
 calibration matrix; other devices keep their system behavior.
+
+If you omit `output` or set it to `"inherit"`, Gnoblin follows the system
+tablet mapping, including its saved output or automatic selection. Set
+`output = "auto"` to explicitly use Mutter's automatic selection.
+
+To choose an output, use its connector ID from `gnoblin.monitors.list()`, such
+as `"DP-1"`. The ID can change when you move the display to another port. A
+disconnected configured output leaves the tablet unmapped until it returns.
+Cloned outputs map to their shared logical monitor.
+
+The `"switch-monitor"` pad or stylus action keeps its system behavior when
+`output` is omitted. With an explicit Lua output, it changes the tablet's
+mapping for the current session; reloading the Lua config restores the
+configured output. This session override does not change the system setting.
 
 Tablet-pad button numbers start at `0`. Each entry needs a unique `button` from
 `0` to `255` and an `action`:
@@ -80,6 +95,7 @@ gnoblin.configure {
         tablets = {
             ["1234:5678"] = {
                 mapping = "absolute",
+                output = "DP-1", -- use an ID from gnoblin.monitors.list()
                 keep_aspect = true,
                 area = {0.03, 0.03, 0.05, 0.05},
                 pad_buttons = {
@@ -183,6 +199,7 @@ gnoblin.configure {
         tablets = {
             ["vvvv:pppp"] = {
                 mapping = "absolute" | "relative"?,
+                output = string?, -- "auto" or a monitor connector ID
                 left_handed = boolean?,
                 keep_aspect = boolean?,
                 area = {number, number, number, number} | "inherit"?,

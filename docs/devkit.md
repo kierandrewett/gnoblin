@@ -20,7 +20,16 @@ viewer.
 
 With the default config, that output is empty until you start a client. Gnoblin
 provides the compositor, not a built-in panel, launcher, or desktop shell. The
-terminal is a separate window on your host desktop.
+terminal is a separate window on your host desktop. The preview also uses a
+disposable config directory; it does not load your normal Gnoblin config or
+start shell services from your host login.
+
+If your Gnoblin config autostarts a shell, copy it into the preview with:
+
+```sh
+GNOBLIN_DEVKIT_CONFIG_SOURCE="${XDG_CONFIG_HOME:-$HOME/.config}/gnoblin" \
+./build.sh --preview
+```
 
 If Waybar is installed, start it automatically with the preview:
 
