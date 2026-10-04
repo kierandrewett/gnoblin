@@ -372,7 +372,10 @@ cat > "$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
     window_management = {
         focus_mode = "click",
-        focus_new_windows = "strict",
+        -- This fixture uses the shell activation protocol without simulated
+        -- user input. Keep activation permissive so it tests per-window input
+        -- restoration rather than strict focus policy.
+        focus_new_windows = "smart",
     },
     shortcuts = {
         shell_input_capture = {
