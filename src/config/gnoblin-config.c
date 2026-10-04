@@ -1417,6 +1417,12 @@ static gboolean validate_monitors(GVariant* monitors, GError** error) {
             valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
             if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
                 valid = g_str_equal(g_variant_get_string(value, NULL), "inherit");
+        } else if (g_str_equal(name, "global-scale")) {
+            double scale;
+            if (input_number(value, &scale))
+                valid = scale >= 0 && scale <= 4 && scale == floor(scale);
+            if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+                valid = g_str_equal(g_variant_get_string(value, NULL), "inherit");
         }
         g_variant_unref(value);
         if (!valid)
@@ -1426,7 +1432,8 @@ static gboolean validate_monitors(GVariant* monitors, GError** error) {
 
 invalid:
     g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                        "monitors accepts only privacy-screen = true, false, or 'inherit'");
+                        "monitors accepts privacy-screen = true, false, or 'inherit', and "
+                        "global-scale = 'inherit' or an integer from 0 through 4");
     return FALSE;
 }
 

@@ -154,6 +154,12 @@ static void test_monitor_preferences(const char* directory) {
         "gnoblin.configure {monitors = {privacy_screen = true}}\n",
         "gnoblin.configure {monitors = {privacy_screen = false}}\n",
         "gnoblin.configure {monitors = {privacy_screen = 'inherit'}}\n",
+        "gnoblin.configure {monitors = {global_scale = 0}}\n",
+        "gnoblin.configure {monitors = {global_scale = 1}}\n",
+        "gnoblin.configure {monitors = {global_scale = 2}}\n",
+        "gnoblin.configure {monitors = {global_scale = 4}}\n",
+        "gnoblin.configure {monitors = {global_scale = 'inherit'}}\n",
+        "gnoblin.configure {monitors = {privacy_screen = true, global_scale = 2}}\n",
         "gnoblin.configure {monitors = {}}\n",
         NULL,
     };
@@ -166,11 +172,20 @@ static void test_monitor_preferences(const char* directory) {
         g_autoptr(GVariant) monitors =
             g_variant_lookup_value(document, "monitors", G_VARIANT_TYPE_VARDICT);
         g_assert_nonnull(monitors);
+        if (i == 8) {
+            gint64 global_scale = 0;
+            g_assert_true(g_variant_lookup(monitors, "global-scale", "x", &global_scale));
+            g_assert_cmpint(global_scale, ==, 2);
+        }
     }
 
     const char* invalid_sources[] = {
         "gnoblin.configure {monitors = {privacy_screen = 'on'}}\n",
         "gnoblin.configure {monitors = {privacy_screen = 1}}\n",
+        "gnoblin.configure {monitors = {global_scale = -1}}\n",
+        "gnoblin.configure {monitors = {global_scale = 1.5}}\n",
+        "gnoblin.configure {monitors = {global_scale = 5}}\n",
+        "gnoblin.configure {monitors = {global_scale = 'auto'}}\n",
         "gnoblin.configure {monitors = {unknown = true}}\n",
         "gnoblin.configure {monitors = true}\n",
         NULL,
