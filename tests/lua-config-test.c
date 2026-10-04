@@ -231,7 +231,8 @@ int main(void) {
         "g.animation { name='test-open', duration=260 }\n"
         "g.animation { name='removed', event='close', from={opacity=1}, to={opacity=0} }\n"
         "g.animation { name='removed', enable=false }\n"
-        "g.load('nested.lua'); g.load('conf.d/**/*.lua')\n",
+        "assert(g.load('nested.lua') == true)\n"
+        "assert(g.load('conf.d/**/*.lua') == true)\n",
         -1, &error));
     g_assert_no_error(error);
     g_autoptr(GPtrArray) paths = NULL;

@@ -3485,7 +3485,8 @@ static int lua_config_load(lua_State* state) {
     for (guint i = 0; i < paths->len; i++)
         if (!evaluate_path(state, config, g_ptr_array_index(paths, i), FALSE, &error))
             return luaL_error(state, "%s", error->message);
-    return 0;
+    lua_pushboolean(state, TRUE);
+    return 1;
 }
 
 static gboolean safe_module_name(const char* name) {
