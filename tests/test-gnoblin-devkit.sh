@@ -89,7 +89,8 @@ gnoblin.configure {
         focus_new_windows = "strict",
     },
     input = {
-        mouse = {drag_threshold = 24},
+        mouse = {drag_threshold = 24, middle_click_emulation = true},
+        touchpad = {middle_click_emulation = false},
         keyboard = {
             accessibility = {
                 shortcuts_enabled = false,
@@ -108,6 +109,8 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     assert(type(gnoblin.settings) == "userdata")
     assert(gnoblin.settings.window_management.focus_mode == "click")
     assert(gnoblin.settings.input.mouse.drag_threshold == 24)
+    assert(gnoblin.settings.input.mouse.middle_click_emulation == true)
+    assert(gnoblin.settings.input.touchpad.middle_click_emulation == false)
     assert(not pcall(function()
         gnoblin.settings.window_management.focus_mode = "sloppy"
     end))
