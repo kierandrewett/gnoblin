@@ -14,5 +14,9 @@ cmake -S "$ROOT" -B "$build" -G Ninja \
 cmake --build "$build" \
     --target lua-config-test lua-api-test glob-config-test \
     --parallel "$jobs"
-ctest --test-dir "$build" --output-on-failure \
+mkdir -p "$build/install/share/gnoblin"
+cat >"$build/install/share/gnoblin/native-keybindings.json" <<'JSON'
+{"format":1,"groups":{"wm":["close","lower"],"mutter":[],"wayland":[]}}
+JSON
+GNOBLIN_PREFIX="$build/install" ctest --test-dir "$build" --output-on-failure \
     -R '^(lua-config|lua-api|glob-config)$'
