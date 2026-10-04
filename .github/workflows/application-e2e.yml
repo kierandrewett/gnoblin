@@ -84,9 +84,6 @@ jobs:
             https://dl.flathub.org/repo/flathub.flatpakrepo
           flatpak install --system --noninteractive --assumeyes \
             flathub org.gnome.TextEditor
-          # Keep this window-lifecycle fixture out of network namespace
-          # setup, which requires host capabilities unrelated to the test.
-          flatpak override --system --share=network org.gnome.TextEditor
 
       - name: Build Gnoblin with the nested-session viewer
         run: |

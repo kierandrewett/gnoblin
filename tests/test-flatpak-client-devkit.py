@@ -59,8 +59,9 @@ def run_inside_devkit() -> int:
 
     try:
         with app_log.open("wb") as output:
+            # This window-lifecycle check does not need network isolation.
             client = subprocess.Popen(
-                ["flatpak", "run", "--system", APP_ID],
+                ["flatpak", "run", "--system", "--share=network", APP_ID],
                 stdout=output,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
