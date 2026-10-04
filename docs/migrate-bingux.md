@@ -50,11 +50,17 @@ compatibility path.
 ### OSD
 
 `osd-bridge.js` patches GNOME Shell's OSD manager and calls
-`org.gnoblin.Shell`. Keep it inside the GNOME compatibility session. Bingux's
-OSD surface currently reads its records from a separate
-`$XDG_RUNTIME_DIR/bingux/osd-v2.sock` socket. The standalone path does not yet
-subscribe to Gnoblin's `gnoblin.osd.requested` event or forward those requests
-to that surface, so Mutter OSD requests are not shown in a standalone session.
+`org.gnoblin.Shell`. Keep it inside the GNOME compatibility session.
+
+Bingux's OSD surface reads its records from a separate
+`$XDG_RUNTIME_DIR/bingux/osd-v2.sock` socket. In a standalone Gnoblin session,
+`bingux-statusd` subscribes to `gnoblin.osd.requested` and forwards each request
+to that socket. It routes requests by monitor and shows the compositor's icon
+and label.
+
+Gnoblin supplies no numeric level or maximum, so this path displays no level
+meter. A compositor without the API 1.27 event keeps the compatibility OSD
+bridge.
 
 The standalone session has no `org.gnome.Shell` service or GJS bridge. Keep any
 GNOME-session compatibility path separate from the standalone path.
@@ -114,12 +120,9 @@ its QML state rather than replace them with new Gnoblin APIs.
 The `org.gnoblin.LaunchFeedback` D-Bus service is available in the standalone
 session. Bingux can keep using it to show the busy cursor while an app starts.
 
-Gnoblin publishes `gnoblin.osd.requested` over the compositor socket, but Bingux
-does not yet consume it. The event carries the monitor identity and optional
-icon and label; it has no numeric level or maximum. Connect the event to the
-Bingux OSD surface and define how requests without a numeric level appear.
-Keep OSD rendering independent of GNOME Shell monkey-patches and
-`org.gnoblin.Shell`.
+The compositor event provides request data, not a popup. Bingux owns the layer
+surface and shows the icon and label without a level meter. Keep OSD rendering
+independent of GNOME Shell monkey-patches and `org.gnoblin.Shell`.
 
 For tablet-pad help, subscribe to `gnoblin.input.pad-help-requested` and draw a
 Bingux-owned layer surface. The event includes the pad record, button labels,
@@ -137,14 +140,10 @@ or render Bingux UI.
 1. Verify that a launched calendar window receives focus through its normal
    activation request. If it does not, pass a valid XDG Activation token on
    the same socket connection.
-2. Connect `gnoblin.osd.requested` to the Bingux OSD surface. Decide how to
-   present requests without a numeric level before claiming standalone OSD
-   support. Keep the GNOME Shell OSD shim in the compatibility session and
-   keep LaunchFeedback on its documented D-Bus API.
-3. Replace the calendar helper's GNOME Shell CalendarServer dependency with a
+2. Replace the calendar helper's GNOME Shell CalendarServer dependency with a
    Bingux-owned provider, or disable event loading cleanly when that optional
    provider is unavailable.
-4. Verify the standalone path in a fresh session, including shortcut
+3. Verify the standalone path in a fresh session, including shortcut
    reconnects, workspace and window events, focus, previews, snapping, emoji
    insertion, OSD, launch feedback, calendar availability, and portal capture.
    Check the GNOME compatibility path separately if Bingux continues to
