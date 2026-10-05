@@ -27,8 +27,6 @@ history or the relevant guide.
 
 ## Deferred protocols
 
-- [ ] Implement `ext-session-lock-v1` with the security and hardware checks in
-      `src/protocols/session-lock/README.md`.
 - [ ] Implement `wlr-output-management-unstable-v1` with transactional apply,
       rollback and real-display validation from
       `src/protocols/output-management/README.md`.
