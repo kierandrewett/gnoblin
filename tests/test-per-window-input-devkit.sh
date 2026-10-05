@@ -20,13 +20,18 @@ LUA
 
 "$focus_client" window "$title_a" >"$window_log_a" 2>&1 &
 window_a_pid=$!
-"$focus_client" window "$title_b" >"$window_log_b" 2>&1 &
-window_b_pid=$!
+window_b_pid=""
 cleanup_windows() {
     local result=$?
-    kill -TERM "$window_a_pid" "$window_b_pid" 2>/dev/null || true
+    if [[ -n $window_b_pid ]]; then
+        kill -TERM "$window_a_pid" "$window_b_pid" 2>/dev/null || true
+    else
+        kill -TERM "$window_a_pid" 2>/dev/null || true
+    fi
     wait "$window_a_pid" 2>/dev/null || true
-    wait "$window_b_pid" 2>/dev/null || true
+    if [[ -n $window_b_pid ]]; then
+        wait "$window_b_pid" 2>/dev/null || true
+    fi
     if ((result != 0)); then
         printf '%s\n' 'Input-source fixture A log:' >&2
         cat "$window_log_a" >&2
@@ -130,10 +135,12 @@ activate_window() {
 }
 
 wait_for_window "$title_a"
-wait_for_window "$title_b"
 activate_window "$title_a"
 select_source us
 wait_for_source xkb us
+"$focus_client" window "$title_b" >"$window_log_b" 2>&1 &
+window_b_pid=$!
+wait_for_window "$title_b"
 activate_window "$title_b"
 wait_for_source xkb us
 printf 'INPUT_SOURCE:per-window-first-focus-inherits\n'

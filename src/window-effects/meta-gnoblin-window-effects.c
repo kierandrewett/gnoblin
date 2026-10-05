@@ -571,6 +571,9 @@ gboolean meta_gnoblin_window_effects_set_shader(ClutterActor* surface_actor,
     /* Keep the current effect attached until the replacement is fully built. */
     if (existing)
         clutter_actor_remove_effect(surface_actor, existing);
+    /* The actor sinks floating ClutterActorMeta instances; keep one local ref
+     * so the autoptr releases only our reference after the actor takes its own. */
+    g_object_ref_sink(replacement);
     clutter_actor_add_effect_with_name(surface_actor, WINDOW_SHADER_EFFECT_NAME, replacement);
     return TRUE;
 }
@@ -621,6 +624,7 @@ void meta_gnoblin_window_effects_set_window_shadow(
         clutter_actor_set_reactive(shadow_actor, FALSE);
         clutter_actor_set_background_color(shadow_actor, &COGL_COLOR_INIT(255, 255, 255, 255));
         effect = g_object_new(META_TYPE_GNOBLIN_WINDOW_SHADOW_EFFECT, NULL);
+        g_object_ref_sink(effect);
         clutter_actor_add_effect_with_name(shadow_actor, WINDOW_SHADOW_EFFECT_NAME,
                                            CLUTTER_EFFECT(effect));
         g_object_unref(effect);
@@ -1218,6 +1222,7 @@ void meta_gnoblin_window_effects_set_rounded_clip(ClutterActor* actor, double ra
         clip->exponent = exponent;
         clip->automatic = automatic;
         memcpy(clip->padding, clamped_padding, sizeof(clip->padding));
+        g_object_ref_sink(clip);
         clutter_actor_add_effect_with_name(actor, ROUNDED_CLIP_EFFECT_NAME, CLUTTER_EFFECT(clip));
         g_object_unref(clip);
         return;

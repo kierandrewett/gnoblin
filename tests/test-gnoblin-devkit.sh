@@ -1315,3 +1315,41 @@ released_binding_output="$(
 }
 grep -q 'SHORTCUT:claimed-released-mutter-binding' <<<"$released_binding_output"
 printf '%s\n' 'PASS: Lua shortcut claims a Mutter binding released during startup'
+
+effect_fixture="$fixture_root/effect-ownership-config"
+mkdir -p "$effect_fixture/gnoblin"
+cat >"$effect_fixture/gnoblin/init.lua" <<'LUA'
+gnoblin.window_rule {
+    match = {title = "^Gnoblin effect ownership fixture$"},
+    corners = {
+        radius = 14,
+        mode = "force",
+        shadow = {x = 0, y = 4, blur = 12, spread = 0, opacity = 0.4, color = "#000000"},
+    },
+    shader = "effect.frag",
+    shader_uniforms = {strength = 0.5},
+}
+LUA
+cat >"$effect_fixture/gnoblin/effect.frag" <<'GLSL'
+uniform float strength;
+vec4 gnoblin_effect(vec4 color, vec2 uv) {
+    return vec4(mix(color.rgb, vec3(1.0, 0.0, 0.0), strength), color.a);
+}
+GLSL
+effect_ownership_output="$(
+    GNOBLIN_STATE_DIR="$fixture_root/effect-ownership-state" \
+        XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
+        GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
+        GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
+        GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
+        GNOBLIN_DEVKIT_CONFIG_SOURCE="$effect_fixture" \
+        GNOBLIN_INPUT_SOURCE_FOCUS_CLIENT="$fixture_root/input-source-focus-client" \
+        GNOBLIN_DEVKIT_EXEC="python3 '$ROOT/tests/test-window-effect-ownership.py'" \
+        timeout 45 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1
+)" || {
+    printf '%s\n' "$effect_ownership_output" >&2
+    exit 1
+}
+grep -q 'PASS: rounded clip, replacement shadow and shader survive map, repaint and close' \
+    <<<"$effect_ownership_output"
+printf '%s\n' "$effect_ownership_output"
