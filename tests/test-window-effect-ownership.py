@@ -51,6 +51,13 @@ with client_log.open("w") as log:
                 break
             time.sleep(0.1)
         assert windows, "effect ownership fixture did not appear in the window list"
+        subprocess.run(
+            [gnoblinctl, "config", "reload"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         time.sleep(0.5)
         subprocess.run([gnoblinctl, "ping"], check=True, capture_output=True, text=True, timeout=3)
         assert listed_window(), "window disappeared while its effects were attached"
