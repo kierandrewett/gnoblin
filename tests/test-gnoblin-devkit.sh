@@ -839,6 +839,7 @@ event_stream.close()
 event_socket.close()
 print("RUNTIME_STATUS_EVENT:recovery-config-reload-and-terminal-failure")
 PY
+python3 "$GNOBLIN_UI_SESSION_TEST"
 SCRIPT
 )
 
@@ -853,6 +854,7 @@ output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$fixture_root" \
     GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
     GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
+    GNOBLIN_UI_SESSION_TEST="$ROOT/tests/ui-session-devkit.py" \
     GNOBLIN_FOCUS_TEST_CLIENT="$fixture_root/focus-transfer-client" \
     GNOBLIN_FOCUS_TEST_SCRIPT="$ROOT/tests/test-focus-transfer.py" \
     GNOBLIN_INPUT_SOURCE_FOCUS_CLIENT="$fixture_root/input-source-focus-client" \
@@ -897,6 +899,12 @@ require_output 'CONFIG_RELOAD:stable'
 require_output 'XWAYLAND:xsettings-live-scaling-selection-loss'
 require_output 'LUA_API:runtime-status'
 require_output 'LUA_API:snapshots'
+require_output 'UI_SESSION:capability-and-watch'
+require_output 'UI_SESSION:state-update-and-late-snapshot'
+require_output 'UI_SESSION:ownership-and-payload-validation'
+require_output 'UI_SESSION:command-broadcast'
+require_output 'UI_SESSION:disconnect-clears-state'
+require_output 'PASS: native shell UI session relay works in a fresh Gnoblin devkit'
 require_output 'CLI_MUTTER_EVENT:socket-forwarded'
 require_output 'PASS: Gnoblin denied activation without user context and emitted the denial event'
 require_output 'PASS: workspace animation rendered '
@@ -1268,3 +1276,42 @@ fi
 grep -q 'keybinding has no executable Mutter handler: wm.panel_run_dialog' \
     <<<"$unsupported_action_output"
 printf '%s\n' 'PASS: startup rejects keybinding actions without a Mutter handler'
+
+released_binding_fixture="$fixture_root/released-keybinding-config"
+mkdir -p "$released_binding_fixture/gnoblin"
+cat >"$released_binding_fixture/gnoblin/init.lua" <<'LUA'
+gnoblin.configure {
+    keybindings = {
+        wm = {unmaximize = {}},
+    },
+    shortcuts = {
+        restore_or_minimize = {
+            binding = "<Super>Down",
+            command = {"/usr/bin/true"},
+        },
+    },
+}
+LUA
+released_binding_exec=$(
+    cat <<'SCRIPT'
+set -euo pipefail
+shortcuts="$(gnoblinctl shortcut list --json)"
+grep -q 'restore_or_minimize' <<<"$shortcuts"
+grep -q '<Super>Down' <<<"$shortcuts"
+echo 'SHORTCUT:claimed-released-mutter-binding'
+SCRIPT
+)
+released_binding_output="$(
+    GNOBLIN_STATE_DIR="$fixture_root/released-keybinding-state" \
+        GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
+        GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
+        GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
+        GNOBLIN_DEVKIT_CONFIG_SOURCE="$released_binding_fixture" \
+        GNOBLIN_DEVKIT_EXEC="$released_binding_exec" \
+        timeout 45 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1
+)" || {
+    printf '%s\n' "$released_binding_output" >&2
+    exit 1
+}
+grep -q 'SHORTCUT:claimed-released-mutter-binding' <<<"$released_binding_output"
+printf '%s\n' 'PASS: Lua shortcut claims a Mutter binding released during startup'
