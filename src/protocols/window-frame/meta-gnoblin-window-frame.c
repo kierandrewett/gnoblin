@@ -554,7 +554,6 @@ static void kde_manager_create(struct wl_client* client, struct wl_resource* man
 }
 
 static const struct org_kde_kwin_server_decoration_manager_interface kde_manager_impl = {
-    .destroy = destroy_resource,
     .create = kde_manager_create,
 };
 
