@@ -1,6 +1,7 @@
 [submodule "subprojects/mutter"]
 	path = subprojects/mutter
-	url = https://gitlab.gnome.org/GNOME/mutter.git
+	url = https://github.com/kierandrewett/gnoblin-mutter.git
+	branch = gnoblin-51
 	shallow = true
 [submodule "subprojects/xdg-desktop-portal-gnome"]
 	path = subprojects/xdg-desktop-portal-gnome

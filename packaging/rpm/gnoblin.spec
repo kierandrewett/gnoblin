@@ -12,7 +12,8 @@ License:        GPL-2.0-or-later
 URL:            https://github.com/kierandrewett/gnoblin
 Source0:        gnoblin-%{version}-source.tar.xz
 Provides:       gnoblin-session = %{version}
-Obsoletes:      gnoblin-session <= %{version}-%{release}
+Obsoletes:      gnoblin-session < 51
+Obsoletes:      gnoblin-shell < 51
 
 Requires:       gnoblin-mutter >= 51
 Requires:       gnoblin-mutter < 52
@@ -34,8 +35,6 @@ BuildRequires:  cmake
 BuildRequires:  desktop-file-utils
 BuildRequires:  gcc
 BuildRequires:  glib2-devel >= 2.86
-BuildRequires:  gnoblin-mutter-devel >= 51
-BuildRequires:  gnoblin-mutter-devel < 52
 BuildRequires:  json-glib-devel
 BuildRequires:  ninja-build
 BuildRequires:  pkgconfig(gio-2.0)

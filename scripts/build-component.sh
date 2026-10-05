@@ -18,7 +18,12 @@ mutter_api="${mutter_version%%.*}"
 source_dir="$root/subprojects/$name"
 build_dir="$build_root/$name"
 
-if [ "$mode" = checkout ]; then
+if [ "$mode" = checkout ] && [ "$name" = mutter ]; then
+    # The pinned fork carries Mutter's patch series. Gnoblin-owned source files
+    # remain in this repository and are copied in as overlays for each build.
+    "$root/scripts/ensure-release-subprojects.sh" mutter
+    "$root/scripts/copy-overlay.sh" mutter "$source_dir"
+elif [ "$mode" = checkout ]; then
     inputs=("$root/gnome-versions.json")
     while IFS= read -r -d '' patch; do inputs+=("$patch"); done < <(
         find "$root/patches/$name" -type f -name '*.patch' -print0 | sort -z

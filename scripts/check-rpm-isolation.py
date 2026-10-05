@@ -2,7 +2,8 @@
 """Reject Gnoblin RPMs that could replace system GNOME files or providers."""
 
 import argparse
-from pathlib import PurePosixPath
+import json
+from pathlib import Path, PurePosixPath
 import re
 import subprocess
 
@@ -12,6 +13,12 @@ PACKAGES = {
     "gnoblin-mutter",
     "gnoblin-mutter-devel",
     "gnoblin-portal",
+}
+MANIFEST = json.loads((Path(__file__).resolve().parents[1] / "packaging/native-packages.json").read_text())
+GNOME_MAJOR = MANIFEST["release"]["gnomeMajor"]
+ALLOWED_OBSOLETES = {
+    f"gnoblin-session < {GNOME_MAJOR}",
+    f"gnoblin-shell < {GNOME_MAJOR}",
 }
 PUBLIC_FILES = {
     "/usr/bin/gnoblin",
@@ -33,7 +40,7 @@ def validate(name, files, provides, conflicts, obsoletes):
     if conflicts.strip():
         raise ValueError(f"{name} declares Conflicts")
     for obsolete in obsoletes.splitlines():
-        if name != "gnoblin" or not obsolete.startswith("gnoblin-session"):
+        if name != "gnoblin" or obsolete not in ALLOWED_OBSOLETES:
             raise ValueError(f"{name} declares an unexpected Obsoletes entry: {obsolete}")
     for capability in provides.splitlines():
         if re.match(

@@ -7,8 +7,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RPM_DIR="${GNOBLIN_RPM_DIR:-$HOME/rpmbuild/RPMS}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-# Exact artifact from older source installs; use only to recognize and remove it.
+# Exact artifacts from older source installs; recognize and remove only these.
 LEGACY_GNOME_SESSION_DROPIN="$ROOT/scripts/legacy/gnome-session@gnoblin.target.d.conf"
+LEGACY_SHELL_DROPIN="$ROOT/scripts/legacy/gnome-session@gnoblin.target.d-legacy-shell.conf"
 LEGACY_GNOME_SESSION_DROPIN_PATH="$UNIT_DIR/gnome-session@gnoblin.target.d/gnoblin.conf"
 COPR_OWNER="${GNOBLIN_COPR_OWNER:-kierandrewett}"
 COPR_PROJECT="${GNOBLIN_COPR_PROJECT:-gnoblin}"
@@ -16,6 +17,12 @@ SOURCE=copr
 DRY_RUN=0
 VERB=install
 DNF_OPTIONS=()
+
+is_managed_legacy_dropin() {
+    cmp -s "$LEGACY_GNOME_SESSION_DROPIN" "$LEGACY_GNOME_SESSION_DROPIN_PATH" ||
+        cmp -s "$LEGACY_SHELL_DROPIN" "$LEGACY_GNOME_SESSION_DROPIN_PATH"
+}
+
 for arg in "$@"; do
     case "$arg" in
         --yes | -y) DNF_OPTIONS+=(-y) ;;
@@ -45,11 +52,11 @@ for unit in "${units[@]}"; do
     fi
 done
 
-# Remove only the exact old source-build drop-in after the package update. A
+# Remove only exact known source-build drop-ins after the package update. A
 # user-edited file remains protected by the same preflight used for unit files.
 if [ -e "$LEGACY_GNOME_SESSION_DROPIN_PATH" ] &&
     [ ! -L "$LEGACY_GNOME_SESSION_DROPIN_PATH" ]; then
-    if cmp -s "$LEGACY_GNOME_SESSION_DROPIN" "$LEGACY_GNOME_SESSION_DROPIN_PATH"; then
+    if is_managed_legacy_dropin; then
         echo "Recognized old managed Gnoblin drop-in: $LEGACY_GNOME_SESSION_DROPIN_PATH"
     else
         echo "Move the custom Gnoblin override aside first: $LEGACY_GNOME_SESSION_DROPIN_PATH" >&2
@@ -92,9 +99,20 @@ else
     META_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin.spec")"
     MUTTER_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/mutter.spec")"
     PORTAL_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin-portal.spec")"
-    packages=("gnoblin:$META_VERSION" "gnoblin-mutter:$MUTTER_VERSION" "gnoblin-portal:$PORTAL_VERSION")
+    packages=("gnoblin:$META_VERSION" "gnoblin-mutter:$MUTTER_VERSION")
     if rpm -q gnoblin-mutter-devel >/dev/null 2>&1; then
         packages+=("gnoblin-mutter-devel:$MUTTER_VERSION")
+    fi
+    portal_release="$(rpmspec -q --srpm --qf '%{RELEASE}' "$ROOT/packaging/rpm/gnoblin-portal.spec")"
+    mapfile -t portal_matches < <(find "$RPM_DIR" -type f \
+        -name "gnoblin-portal-$PORTAL_VERSION-$portal_release.*.rpm" | sort)
+    if [ "${#portal_matches[@]}" -gt 1 ]; then
+        echo "Expected at most one gnoblin-portal-$PORTAL_VERSION-$portal_release RPM under $RPM_DIR; found ${#portal_matches[@]}." >&2
+        exit 1
+    elif [ "${#portal_matches[@]}" -eq 1 ]; then
+        packages+=("gnoblin-portal:$PORTAL_VERSION")
+    else
+        echo "No matching Gnoblin portal RPM found; installing the core session without it."
     fi
     rpms=()
     for package in "${packages[@]}"; do
@@ -134,11 +152,15 @@ done
 if [ -L "$LEGACY_GNOME_SESSION_DROPIN_PATH" ]; then
     unlink "$LEGACY_GNOME_SESSION_DROPIN_PATH"
 elif [ -f "$LEGACY_GNOME_SESSION_DROPIN_PATH" ] &&
-    cmp -s "$LEGACY_GNOME_SESSION_DROPIN" "$LEGACY_GNOME_SESSION_DROPIN_PATH"; then
+    is_managed_legacy_dropin; then
     rm -- "$LEGACY_GNOME_SESSION_DROPIN_PATH"
     echo 'Removed the obsolete managed GNOME session drop-in.'
 fi
 systemctl --user daemon-reload
-rpm -q gnoblin gnoblin-mutter gnoblin-portal
+rpm -q gnoblin gnoblin-mutter
+if rpm -q gnoblin-portal >/dev/null 2>&1; then
+    rpm -q gnoblin-portal
+fi
 printf '%s\n' 'Installed. Select Gnoblin at login; GNOME remains available.' \
-    'Remove with: sudo dnf remove gnoblin gnoblin-portal gnoblin-mutter'
+    'Remove with: sudo dnf remove gnoblin gnoblin-mutter' \
+    'Remove the optional portal separately: sudo dnf remove gnoblin-portal'

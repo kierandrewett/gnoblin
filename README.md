@@ -91,10 +91,12 @@ prerequisites and login setup.
 [try a nested session](docs/devkit.md) without logging out.
 On a minimal installation, [add GNOME application services](docs/gnome-apps.md)
 only if you need them.
+
 Every install method adds Gnoblin alongside GNOME. Your existing GNOME binaries
 and login session stay in place; choose either session at login.
 
 [Configuration](docs/config.md) · [Window effects](docs/guides/window_effects.md) · [Lua config](docs/user-scripts.md) · [All docs](docs/index.md)
 
-Built from [Mutter](https://gitlab.gnome.org/GNOME/mutter) and the GNOME
+Built from the [Gnoblin Mutter fork](https://github.com/kierandrewett/gnoblin-mutter),
+based on [upstream Mutter](https://gitlab.gnome.org/GNOME/mutter), and the GNOME
 desktop portal backend.

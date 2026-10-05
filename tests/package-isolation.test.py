@@ -153,7 +153,7 @@ class IsolationTests(unittest.TestCase):
         for name, conflicts, obsoletes in (
             ("gnome-shell", "", ""),
             ("gnoblin-session", "", ""),
-            ("gnoblin", "gnome-shell < 49", "gnoblin-session <= 0.1.7-21"),
+            ("gnoblin", "gnome-shell < 49", "gnoblin-session < 51"),
             ("gnoblin", "", "mutter"),
         ):
             with self.subTest(name=name, conflicts=conflicts, obsoletes=obsoletes), self.assertRaises(ValueError):
@@ -173,7 +173,7 @@ class IsolationTests(unittest.TestCase):
             paths,
             "gnoblin-session = 0.1.7",
             "",
-            "gnoblin-session <= 0.1.7-21.fc45",
+            "gnoblin-session < 51\ngnoblin-shell < 51",
         )
 
     def test_manifest_has_one_gnoblin_runtime_package(self):
@@ -248,11 +248,11 @@ class IsolationTests(unittest.TestCase):
                 version = subprocess.check_output(
                     [str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True
                 ).strip()
+                gnome_major = json.loads((ROOT / "packaging/native-packages.json").read_text())["release"]["gnomeMajor"]
                 self.assertIn(f"Provides:       gnoblin-session = {version}", expanded)
-                release = next(
-                    line.split(":", 1)[1].strip() for line in expanded.splitlines() if line.startswith("Release:")
-                )
-                self.assertIn(f"Obsoletes:      gnoblin-session <= {version}-{release}", expanded)
+                self.assertIn(f"Obsoletes:      gnoblin-session < {gnome_major}", expanded)
+                self.assertIn(f"Obsoletes:      gnoblin-shell < {gnome_major}", expanded)
+                self.assertNotIn("BuildRequires:  gnoblin-mutter-devel", expanded)
                 self.assertNotIn("Requires:       gnoblin-session", expanded)
                 self.assertNotIn("Requires:       gnoblin-shell", expanded)
                 self.assertNotIn("Requires:       gjs", expanded)

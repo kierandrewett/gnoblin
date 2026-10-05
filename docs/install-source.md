@@ -20,9 +20,13 @@ your distribution. The build reports missing libraries and minimum versions.
 Python is used while building; the installed control command is a native
 GLib/GIO program.
 
+The compositor is built from the public [Gnoblin Mutter fork](https://github.com/kierandrewett/gnoblin-mutter),
+based on the Mutter release pinned in `gnome-versions.json`. Git checkouts and
+source tarballs pin its source revision.
+
 The installed `gsettings-desktop-schemas` development package must be at least
-the version pinned in `gnome-versions.json`. The pinned Mutter compatibility
-patches build remote-desktop support with
+the version pinned in `gnome-versions.json`. The Gnoblin Mutter fork includes
+the remote-desktop compatibility changes used by the build, including
 `libpipewire-0.3` version 1.4.11 or newer. PipeWire 1.5.84 and 1.6 add
 optional color-capability and device-ID negotiation.
 

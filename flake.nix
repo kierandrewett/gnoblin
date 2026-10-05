@@ -2,8 +2,9 @@
   description = "Gnoblin session package and NixOS module";
 
   inputs = {
-    # Track the release train that carries the current GNOME major. The source
-    # revisions below remain pinned by gnome-versions.json.
+    # Track the release train that carries the current GNOME major. Upstream
+    # release versions remain pinned by gnome-versions.json; the Mutter fork
+    # revision follows the Gnoblin source pin and is recorded in flake.lock.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # Keep each release input independent.  The compatibility evaluations below
@@ -14,7 +15,7 @@
     nixpkgs_26_05.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     mutter-src = {
-      url = "git+https://gitlab.gnome.org/GNOME/mutter.git?rev=138a14fbeef09d49ebf5be8a0cb83b042dd5c841";
+      url = "git+https://github.com/kierandrewett/gnoblin-mutter.git?ref=gnoblin-51&rev=15761641006132ab027e86b997fa22be06e7e8e9";
       flake = false;
     };
 

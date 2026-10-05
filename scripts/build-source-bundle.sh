@@ -2,10 +2,9 @@
 # Build the self-contained Gnoblin source tarball.
 #
 # The public GitHub source archive is insufficient: it omits Git submodules and
-# therefore cannot reproduce Gnoblin's patched Mutter and portal backend. The
-# component archives passed here are already materialised by
-# scripts/make-tarball.sh and include Gnoblin's patch stacks. The pinned
-# gsettings-desktop-schemas source supplies the WM shortcut descriptors.
+# therefore cannot reproduce the Gnoblin Mutter fork or patched portal backend.
+# The component archives passed here are materialised by scripts/make-tarball.sh.
+# The pinned gsettings-desktop-schemas source supplies WM shortcut descriptors.
 set -euo pipefail
 
 if [ "$#" -ne 5 ]; then

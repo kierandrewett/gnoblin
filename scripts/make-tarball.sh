@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Produce a release tarball of a subproject with gnoblin's changes applied.
+# Produce a release tarball from the pinned Gnoblin Mutter fork or patched portal source.
 #
-# apply-patches.sh materialises the owned overlays and patch series. The archive
-# manifest combines Git-tracked paths, pinned mandatory Meson subprojects, and
-# Gnoblin's overlay destinations. Unrelated checkout state is excluded.
+# The archive manifest combines Git-tracked paths, pinned mandatory Meson
+# subprojects, and any portal overlay destinations. Unrelated checkout state is excluded.
 # Metadata and compression are normalised so identical source yields identical
 # bytes. RPM-specific sidecar sources are staged when building RPMs.
 set -euo pipefail
@@ -30,7 +29,13 @@ case "$EPOCH" in
         ;;
 esac
 
-"$ROOT/scripts/apply-patches.sh" "$PROJ" >&2
+if [ "$PROJ" = mutter ]; then
+    "$ROOT/scripts/ensure-release-subprojects.sh" mutter
+    "$ROOT/scripts/subproject-state.sh" check mutter "$VER"
+    "$ROOT/scripts/copy-overlay.sh" mutter "$SM"
+else
+    "$ROOT/scripts/apply-patches.sh" "$PROJ" >&2
+fi
 
 mkdir -p "$OUTDIR"
 ARCHIVE_NAME="$PROJ"

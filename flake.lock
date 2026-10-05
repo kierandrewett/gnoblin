@@ -54,18 +54,19 @@
     "mutter-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1789422496,
-        "narHash": "sha256-kwHVCnAtKnyal3+fMZtXqJ/Afn3UJFyHugg4xiGugo0=",
-        "ref": "refs/heads/main",
-        "rev": "138a14fbeef09d49ebf5be8a0cb83b042dd5c841",
-        "revCount": 36216,
+        "lastModified": 1791190778,
+        "narHash": "sha256-I3D7f8Uwdi1Yb76QyRwqXPGZr44aoO7ewojqBG+4FF4=",
+        "ref": "gnoblin-51",
+        "rev": "15761641006132ab027e86b997fa22be06e7e8e9",
+        "revCount": 36401,
         "type": "git",
-        "url": "https://gitlab.gnome.org/GNOME/mutter.git"
+        "url": "https://github.com/kierandrewett/gnoblin-mutter.git"
       },
       "original": {
-        "rev": "138a14fbeef09d49ebf5be8a0cb83b042dd5c841",
+        "ref": "gnoblin-51",
+        "rev": "15761641006132ab027e86b997fa22be06e7e8e9",
         "type": "git",
-        "url": "https://gitlab.gnome.org/GNOME/mutter.git"
+        "url": "https://github.com/kierandrewett/gnoblin-mutter.git"
       }
     },
     "nixpkgs": {
