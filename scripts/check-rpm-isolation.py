@@ -13,6 +13,10 @@ PACKAGES = {
     "gnoblin-mutter-devel",
     "gnoblin-portal",
 }
+ALLOWED_OBSOLETES = {
+    "gnoblin-session < 51",
+    "gnoblin-shell < 51",
+}
 PUBLIC_FILES = {
     "/usr/bin/gnoblin",
     "/usr/bin/gnoblinctl",
@@ -33,7 +37,7 @@ def validate(name, files, provides, conflicts, obsoletes):
     if conflicts.strip():
         raise ValueError(f"{name} declares Conflicts")
     for obsolete in obsoletes.splitlines():
-        if name != "gnoblin" or not obsolete.startswith("gnoblin-session"):
+        if name != "gnoblin" or obsolete not in ALLOWED_OBSOLETES:
             raise ValueError(f"{name} declares an unexpected Obsoletes entry: {obsolete}")
     for capability in provides.splitlines():
         if re.match(
