@@ -1,0 +1,126 @@
+From 0b8311fd411e3a161042c303ce5eccde274c050a Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 5 Oct 2026 19:45:26 +0100
+Subject: [PATCH] mutter: read client pixels through offscreen GPU path
+
+---
+ src/compositor/meta-shaped-texture.c | 96 ++++++++++++++++++++++++++--
+ 1 file changed, 91 insertions(+), 5 deletions(-)
+
+diff --git a/src/compositor/meta-shaped-texture.c b/src/compositor/meta-shaped-texture.c
+index 5e22e3d90..5ae0da429 100644
+--- a/src/compositor/meta-shaped-texture.c
++++ b/src/compositor/meta-shaped-texture.c
+@@ -1035,6 +1035,93 @@ meta_shaped_texture_clutter_paint_content (ClutterContent      *content,
+                                      paint_context);
+ }
+ 
++static CoglBitmap *
++meta_shaped_texture_render_to_bitmap (MetaShapedTexture *stex,
++                                      CoglPixelFormat    format,
++                                      GError           **error)
++{
++  ClutterBackend *clutter_backend;
++  CoglContext *cogl_context;
++  CoglTexture *texture;
++  CoglOffscreen *offscreen;
++  CoglFramebuffer *framebuffer;
++  ClutterActor *actor;
++  ClutterPaintContext *paint_context;
++  CoglBitmap *bitmap;
++  CoglColor clear_color;
++  int width, height;
++
++  meta_shaped_texture_ensure_size_valid (stex);
++  width = stex->dst_width;
++  height = stex->dst_height;
++  if (width <= 0 || height <= 0 || (gint64) width * height > 16000000)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "Client dimensions are empty or exceed sampling limit");
++      return NULL;
++    }
++
++  clutter_backend = clutter_context_get_backend (stex->clutter_context);
++  cogl_context = clutter_backend_get_cogl_context (clutter_backend);
++  texture = cogl_texture_2d_new_with_format (cogl_context, width, height, format);
++  if (!texture)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "Could not allocate client pixel readback texture");
++      return NULL;
++    }
++
++  cogl_texture_2d_set_auto_mipmap (COGL_TEXTURE_2D (texture), FALSE);
++  offscreen = cogl_offscreen_new_with_texture (texture);
++  g_object_unref (texture);
++  if (!offscreen)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "Could not create client pixel readback framebuffer");
++      return NULL;
++    }
++
++  framebuffer = COGL_FRAMEBUFFER (offscreen);
++  if (!cogl_framebuffer_allocate (framebuffer, error))
++    {
++      g_object_unref (offscreen);
++      return NULL;
++    }
++
++  cogl_color_init_from_4f (&clear_color, 0, 0, 0, 0);
++  cogl_framebuffer_clear (framebuffer, COGL_BUFFER_BIT_COLOR, &clear_color);
++  cogl_framebuffer_orthographic (framebuffer, 0, 0, width, height, 0, 1);
++  actor = clutter_actor_new ();
++  clutter_actor_set_content (actor, CLUTTER_CONTENT (stex));
++  clutter_actor_set_size (actor, width, height);
++  paint_context = clutter_paint_context_new_for_framebuffer (
++    framebuffer, NULL, CLUTTER_PAINT_FLAG_NONE, stex->color_state);
++  clutter_actor_paint (actor, paint_context);
++  clutter_paint_context_destroy (paint_context);
++  g_object_unref (actor);
++
++  bitmap = cogl_bitmap_new_with_malloc_buffer (cogl_context, width, height, format, NULL);
++  if (!bitmap)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "Could not allocate client pixel readback buffer");
++      g_object_unref (offscreen);
++      return NULL;
++    }
++  if (!cogl_framebuffer_read_pixels_into_bitmap (framebuffer, 0, 0,
++                                                 COGL_READ_PIXELS_COLOR_BUFFER, bitmap))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                           "Could not read client pixels from the GPU");
++      g_object_unref (bitmap);
++      g_object_unref (offscreen);
++      return NULL;
++    }
++
++  g_object_unref (offscreen);
++  return bitmap;
++}
++
+ static gboolean
+ meta_shaped_texture_get_preferred_size (ClutterContent *content,
+                                         float          *width,
+@@ -1628,11 +1715,10 @@ meta_shaped_texture_get_pixels (MetaShapedTexture *stex,
+   bitmap = meta_shaped_texture_paint_to_bitmap (
+     stex, NULL, COGL_PIXEL_FORMAT_RGBA_8888_PRE);
+   if (!bitmap)
+-    {
+-      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+-                           "Client pixels are unavailable for direct readback");
+-      return NULL;
+-    }
++    bitmap = meta_shaped_texture_render_to_bitmap (
++      stex, COGL_PIXEL_FORMAT_RGBA_8888_PRE, error);
++  if (!bitmap)
++    return NULL;
+ 
+   *width = cogl_bitmap_get_width (bitmap);
+   *height = cogl_bitmap_get_height (bitmap);
+-- 
+2.55.0
+

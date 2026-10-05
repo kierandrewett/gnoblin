@@ -41,7 +41,7 @@ def frame():
         text=True,
     )
     windows = json.loads(result.stdout)["windows"]
-    return windows[0]["geometry"] if windows else None
+    return windows[0]["frame"] if windows else None
 
 
 def capture(box=None):
@@ -83,7 +83,7 @@ with (root / "csd-reconstruction-client.log").open("w") as log:
         geometry = None
         for _ in range(100):
             geometry = frame()
-            if geometry:
+            if geometry and geometry["width"] > 0 and geometry["height"] > 0:
                 break
             time.sleep(0.1)
         assert geometry, "CSD reconstruction fixture did not appear in the window list"

@@ -3,6 +3,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
 mkdir -p "$ROOT/build/tmp"
 TMP="$(mktemp -d "$ROOT/build/tmp/protocol-boundaries.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
@@ -39,8 +40,8 @@ cc -std=c11 -Wall -Wextra -Werror \
     -o "$TMP/protocol-boundary-client"
 
 GNOBLIN_STATE_DIR="$TMP/state" \
-    GNOBLIN_PREFIX="$ROOT/install" \
-    GNOBLIN_RUNTIME_BIN="$ROOT/build/ninja/gnoblin" \
-    GNOBLIN_DEVKIT_CTL="$ROOT/install/bin/gnoblinctl" \
+    GNOBLIN_PREFIX="$PREFIX" \
+    GNOBLIN_RUNTIME_BIN="$PREFIX/bin/gnoblin" \
+    GNOBLIN_DEVKIT_CTL="$PREFIX/bin/gnoblinctl" \
     GNOBLIN_DEVKIT_EXEC="$TMP/protocol-boundary-client" \
     timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh"

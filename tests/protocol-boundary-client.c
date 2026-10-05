@@ -989,7 +989,10 @@ static bool test_kde_server_decoration(struct wl_display* display, struct protoc
                                                 ORG_KDE_KWIN_SERVER_DECORATION_MODE_CLIENT);
     if (wl_display_roundtrip(display) < 0 || decoration_state.mode_events != 2 ||
         decoration_state.mode != ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
-        fprintf(stderr, "FAIL: pre-role GTK decoration request was not kept server-side\n");
+        fprintf(stderr,
+                "FAIL: pre-role GTK decoration request was not kept server-side "
+                "(events=%u mode=%u)\n",
+                decoration_state.mode_events, decoration_state.mode);
         return false;
     }
 
@@ -997,17 +1000,18 @@ static bool test_kde_server_decoration(struct wl_display* display, struct protoc
     xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, &xdg_state);
     xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
     xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.KdeDecorationProtocolTest");
+    /* xdg-shell sends the initial configure in response to the first empty
+     * surface commit, after the role has been assigned. */
+    wl_surface_commit(surface);
     if (wl_display_roundtrip(display) < 0 || !xdg_state.configured ||
         decoration_state.mode != ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
-        fprintf(stderr, "FAIL: GTK-order KDE decoration did not configure as server-side\n");
+        fprintf(stderr,
+                "FAIL: GTK-order KDE decoration did not configure as server-side "
+                "(configured=%d events=%u mode=%u)\n",
+                xdg_state.configured, decoration_state.mode_events, decoration_state.mode);
         return false;
     }
 
-    wl_surface_commit(surface);
-    if (wl_display_roundtrip(display) < 0 || !xdg_state.configured) {
-        fprintf(stderr, "FAIL: KDE-decorated surface did not complete xdg initial configure\n");
-        return false;
-    }
     xdg_surface_ack_configure(xdg_surface, xdg_state.serial);
     wl_surface_commit(surface);
     if (wl_display_roundtrip(display) < 0) {
