@@ -54,7 +54,7 @@ def run_inside_devkit() -> int:
     artifact_dir = pathlib.Path(os.environ.get("GNOBLIN_ARTIFACT_DIR", ROOT / "build" / "logs"))
     artifact_dir.mkdir(parents=True, exist_ok=True)
     app_log = artifact_dir / "flatpak-text-editor.log"
-    document_mount = pathlib.Path(os.environ["XDG_RUNTIME_DIR"]) / "doc"
+    document_mount = pathlib.Path(os.environ["XDG_CONFIG_HOME"]).parent / "doc"
     (document_mount / "by-app" / APP_ID).mkdir(parents=True, exist_ok=True)
     client: subprocess.Popen[bytes] | None = None
     open_window_id: str | None = None
