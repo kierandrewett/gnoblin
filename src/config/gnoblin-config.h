@@ -74,6 +74,7 @@ void gnoblin_config_update_privacy_snapshot(GVariant* snapshot, guint64 revision
 void gnoblin_config_update_session_activity_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the compositor's current lock availability and state for status reads. */
 void gnoblin_config_update_session_lock_snapshot(GVariant* snapshot, guint64 revision);
+void gnoblin_config_update_session_lifecycle_snapshot(GVariant* snapshot, guint64 revision);
 /* Notify the native host after a committed change to the effective focus policy. */
 typedef void (*GnoblinConfigFocusPolicyChangedFunc)(GVariant* policy, guint64 revision,
                                                     gpointer user_data);

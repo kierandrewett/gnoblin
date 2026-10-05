@@ -116,6 +116,8 @@ typedef struct {
     gint64 session_activity_sampled_at_us;
     GVariant* session_lock_snapshot;
     guint64 session_lock_revision;
+    GVariant* session_lifecycle_snapshot;
+    guint64 session_lifecycle_revision;
     guint64 input_gesture_sequence;
     guint64 dispatch_focus_handle;
     guint64 dispatch_focus_generation;
@@ -4238,10 +4240,14 @@ static int lua_session_status(lua_State* state) {
         return luaL_error(state, "gnoblin.session.status takes no arguments");
     gboolean lock_available = FALSE;
     const char* lock_state = NULL;
+    const char* session_state = NULL;
     if (config && config->session_lock_snapshot) {
         g_variant_lookup(config->session_lock_snapshot, "lock_available", "b", &lock_available);
         g_variant_lookup(config->session_lock_snapshot, "lock_state", "&s", &lock_state);
     }
+    gboolean has_session_lifecycle =
+        config && config->session_lifecycle_snapshot &&
+        g_variant_lookup(config->session_lifecycle_snapshot, "state", "&s", &session_state);
     GVariantBuilder builder;
     g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&builder, "{sv}", "state", g_variant_new_string("running"));
@@ -4251,6 +4257,12 @@ static int lua_session_status(lua_State* state) {
                           g_variant_new_uint64(config ? config->session_lock_revision : 0));
     if (lock_available && lock_state)
         g_variant_builder_add(&builder, "{sv}", "lock_state", g_variant_new_string(lock_state));
+    if (has_session_lifecycle) {
+        g_variant_builder_add(&builder, "{sv}", "session_state",
+                              g_variant_new_string(session_state));
+        g_variant_builder_add(&builder, "{sv}", "session_revision",
+                              g_variant_new_uint64(config->session_lifecycle_revision));
+    }
     g_autoptr(GVariant) status = g_variant_ref_sink(g_variant_builder_end(&builder));
     push_variant(state, status);
     push_readonly_copy(state, -1);
@@ -5260,6 +5272,7 @@ static void lua_runtime_free(LuaRuntime* runtime) {
     g_clear_pointer(&runtime->config.privacy_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.session_activity_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.session_lock_snapshot, g_variant_unref);
+    g_clear_pointer(&runtime->config.session_lifecycle_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.settings_document, g_variant_unref);
     g_clear_pointer(&runtime->config.focus_history_ids, g_ptr_array_unref);
     g_clear_pointer(&runtime->config.paths, g_ptr_array_unref);
@@ -5619,6 +5632,30 @@ void gnoblin_config_update_session_lock_snapshot(GVariant* snapshot, guint64 rev
     }
 }
 
+void gnoblin_config_update_session_lifecycle_snapshot(GVariant* snapshot, guint64 revision) {
+    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
+        return;
+    const char* state = NULL;
+    guint64 snapshot_revision = 0;
+    if (snapshot && (g_variant_n_children(snapshot) != 2 ||
+                     !g_variant_lookup(snapshot, "state", "&s", &state) ||
+                     !(g_str_equal(state, "starting") || g_str_equal(state, "running") ||
+                       g_str_equal(state, "stopping")) ||
+                     !g_variant_lookup(snapshot, "revision", "t", &snapshot_revision) ||
+                     snapshot_revision != revision))
+        return;
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
+    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
+        LuaRuntime* runtime = runtimes[i];
+        if (!runtime || (i == 1 && runtime == runtimes[0]))
+            continue;
+        g_clear_pointer(&runtime->config.session_lifecycle_snapshot, g_variant_unref);
+        runtime->config.session_lifecycle_revision = snapshot ? revision : 0;
+        if (snapshot)
+            runtime->config.session_lifecycle_snapshot = g_variant_ref(snapshot);
+    }
+}
+
 void gnoblin_config_update_privacy_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
@@ -5813,6 +5850,12 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
         runtime->config.session_lock_snapshot =
             g_variant_ref(snapshot_source->config.session_lock_snapshot);
         runtime->config.session_lock_revision = snapshot_source->config.session_lock_revision;
+    }
+    if (snapshot_source && snapshot_source->config.session_lifecycle_snapshot) {
+        runtime->config.session_lifecycle_snapshot =
+            g_variant_ref(snapshot_source->config.session_lifecycle_snapshot);
+        runtime->config.session_lifecycle_revision =
+            snapshot_source->config.session_lifecycle_revision;
     }
     if (snapshot_source && snapshot_source->config.settings_document) {
         runtime->config.settings_document =
