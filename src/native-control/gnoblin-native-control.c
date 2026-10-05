@@ -50,6 +50,8 @@
 #include "wayland/meta-wayland-activation.h"
 #include "wayland/meta-wayland-seat.h"
 #include "wayland/meta-wayland-text-input.h"
+#include "wayland/meta-window-wayland.h"
+#include "wayland/meta-gnoblin-window-frame.h"
 #include "meta/display.h"
 #include "meta/meta-backend.h"
 #include "meta/meta-cursor-tracker.h"
@@ -7624,6 +7626,98 @@ static gboolean native_rule_get_number(GVariant* record, const char* key, double
     return isfinite(*number);
 }
 
+static GVariant* native_rule_lookup_alias(GVariant* record, const char* key,
+                                          const char* alternate_key) {
+    GVariant* value = g_variant_lookup_value(record, key, NULL);
+    if (!value && alternate_key)
+        value = g_variant_lookup_value(record, alternate_key, NULL);
+    if (value && g_variant_is_of_type(value, G_VARIANT_TYPE_VARIANT)) {
+        GVariant* unboxed = g_variant_get_variant(value);
+        g_variant_unref(value);
+        return unboxed;
+    }
+    return value;
+}
+
+static gboolean native_frame_read_extents(GVariant* frame, const char* key, int extents[4]) {
+    g_autoptr(GVariant) values = native_rule_lookup_alias(frame, key, NULL);
+    if (!values || !g_variant_is_of_type(values, G_VARIANT_TYPE("av")) ||
+        g_variant_n_children(values) != 4)
+        return FALSE;
+
+    int parsed[4];
+    for (gsize i = 0; i < G_N_ELEMENTS(parsed); i++) {
+        g_autoptr(GVariant) item = g_variant_get_child_value(values, i);
+        if (g_variant_is_of_type(item, G_VARIANT_TYPE_VARIANT)) {
+            GVariant* unboxed = g_variant_get_variant(item);
+            g_variant_unref(g_steal_pointer(&item));
+            item = unboxed;
+        }
+        if (g_variant_is_of_type(item, G_VARIANT_TYPE_INT32))
+            parsed[i] = g_variant_get_int32(item);
+        else if (g_variant_is_of_type(item, G_VARIANT_TYPE_INT64)) {
+            gint64 number = g_variant_get_int64(item);
+            if (number > G_MAXINT || number < G_MININT)
+                return FALSE;
+            parsed[i] = (int)number;
+        } else {
+            return FALSE;
+        }
+        if (parsed[i] < 0 || parsed[i] > 256)
+            return FALSE;
+    }
+
+    memcpy(extents, parsed, sizeof(parsed));
+    return TRUE;
+}
+
+static void native_frame_style_merge_string(GVariantDict* style, GVariant* frame, const char* key,
+                                            const char* alternate_key, const char* style_key) {
+    g_autoptr(GVariant) value = native_rule_lookup_alias(frame, key, alternate_key);
+    if (value && g_variant_is_of_type(value, G_VARIANT_TYPE_STRING))
+        g_variant_dict_insert_value(style, style_key, value);
+}
+
+static void native_frame_style_merge_buttons(GVariantDict* style, GVariant* frame) {
+    g_autoptr(GVariant) layout = native_rule_lookup_alias(frame, "button_layout", "button-layout");
+    if (!layout || !g_variant_is_of_type(layout, G_VARIANT_TYPE("av")))
+        return;
+
+    GVariantBuilder values;
+    g_variant_builder_init(&values, G_VARIANT_TYPE_STRING_ARRAY);
+    gboolean valid = TRUE;
+    for (gsize i = 0; i < g_variant_n_children(layout); i++) {
+        g_autoptr(GVariant) item = g_variant_get_child_value(layout, i);
+        if (g_variant_is_of_type(item, G_VARIANT_TYPE_VARIANT)) {
+            GVariant* unboxed = g_variant_get_variant(item);
+            g_variant_unref(g_steal_pointer(&item));
+            item = unboxed;
+        }
+        if (!g_variant_is_of_type(item, G_VARIANT_TYPE_STRING)) {
+            valid = FALSE;
+            break;
+        }
+        g_variant_builder_add(&values, "s", g_variant_get_string(item, NULL));
+    }
+
+    if (valid) {
+        g_autoptr(GVariant) string_array = g_variant_ref_sink(g_variant_builder_end(&values));
+        g_variant_dict_insert_value(style, "button-layout", string_array);
+    } else {
+        g_variant_builder_clear(&values);
+    }
+}
+
+static int native_frame_policy_from_name(const char* mode) {
+    if (g_strcmp0(mode, "auto") == 0)
+        return 1;
+    if (g_strcmp0(mode, "prefer-server") == 0)
+        return 2;
+    if (g_strcmp0(mode, "replace") == 0)
+        return 3;
+    return 0;
+}
+
 static gboolean native_rule_get_padding(GVariant* record, double padding[4]) {
     g_autoptr(GVariant) values = g_variant_lookup_value(record, "padding", G_VARIANT_TYPE("av"));
     if (!values || g_variant_n_children(values) != 4)
@@ -8432,6 +8526,12 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     };
     g_autoptr(GVariant) shadow_animation_config = NULL;
     g_autofree char* mode = g_strdup("auto");
+    int frame_policy = 0;
+    int frame_extents[4] = {32, 1, 1, 1};
+    int frame_crop[4] = {0, 0, 0, 0};
+    GVariantDict frame_style;
+    g_variant_dict_init(&frame_style, NULL);
+    g_variant_dict_insert(&frame_style, "renderer", "s", "native");
     g_autofree char* shader_path = NULL;
     g_autoptr(GVariant) shader_uniforms = NULL;
     gboolean shader_selected = FALSE;
@@ -8455,6 +8555,36 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
             const char* configured_shader = g_variant_get_string(shader, NULL);
             shader_path =
                 *configured_shader ? native_window_shader_resolve_path(configured_shader) : NULL;
+        }
+
+        g_autoptr(GVariant) frame = g_variant_lookup_value(rule, "frame", NULL);
+        if (frame) {
+            g_autoptr(GVariant) unboxed_frame = NULL;
+            GVariant* frame_options = frame;
+            if (g_variant_is_of_type(frame_options, G_VARIANT_TYPE_VARIANT)) {
+                unboxed_frame = g_variant_get_variant(frame_options);
+                frame_options = unboxed_frame;
+            }
+            if (g_variant_is_of_type(frame_options, G_VARIANT_TYPE_VARDICT)) {
+                g_autoptr(GVariant) frame_mode =
+                    native_rule_lookup_alias(frame_options, "mode", NULL);
+                if (frame_mode && g_variant_is_of_type(frame_mode, G_VARIANT_TYPE_STRING))
+                    frame_policy =
+                        native_frame_policy_from_name(g_variant_get_string(frame_mode, NULL));
+                native_frame_read_extents(frame_options, "extents", frame_extents);
+                native_frame_read_extents(frame_options, "crop", frame_crop);
+                native_frame_style_merge_string(&frame_style, frame_options, "renderer", NULL,
+                                                "renderer");
+                native_frame_style_merge_string(&frame_style, frame_options, "style", NULL,
+                                                "style");
+                native_frame_style_merge_string(&frame_style, frame_options, "background", NULL,
+                                                "background");
+                native_frame_style_merge_string(&frame_style, frame_options, "foreground", NULL,
+                                                "foreground");
+                native_frame_style_merge_string(&frame_style, frame_options, "inactive_background",
+                                                "inactive-background", "inactive-background");
+                native_frame_style_merge_buttons(&frame_style, frame_options);
+            }
         }
         g_autoptr(GVariant) configured_uniforms =
             g_variant_lookup_value(rule, "shader-uniforms", NULL);
@@ -8608,6 +8738,18 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         meta_window_actor_x11_set_rounded_clip(META_WINDOW_ACTOR_X11(actor), effect_radius,
                                                exponent, g_str_equal(mode, "auto") && !csd_detected,
                                                padding);
+    g_variant_dict_insert(&frame_style, "radius", "d", radius);
+    g_variant_dict_insert(&frame_style, "exponent", "d", exponent);
+    g_autoptr(GVariant) frame_style_options = g_variant_ref_sink(g_variant_dict_end(&frame_style));
+    meta_gnoblin_window_frame_style(window, frame_style_options);
+    g_autoptr(GError) frame_error = NULL;
+    g_autoptr(GVariant) frame_policy_value = g_variant_ref_sink(g_variant_new(
+        "(iiiiiiiii)", frame_policy, frame_crop[0], frame_crop[1], frame_crop[2], frame_crop[3],
+        frame_extents[0], frame_extents[1], frame_extents[2], frame_extents[3]));
+    if (!meta_gnoblin_window_frame_set(window, frame_policy_value, &frame_error) && frame_error &&
+        frame_error->code != G_IO_ERROR_INVALID_ARGUMENT)
+        g_warning("gnoblin-frame: could not apply frame rule for %s: %s",
+                  meta_window_get_title(window) ?: "(untitled)", frame_error->message);
     meta_gnoblin_window_effects_set_rounded_border(CLUTTER_ACTOR(actor),
                                                    effect_enabled ? border_width : 0, border_color);
     const gboolean shadow_state_allowed =
@@ -8620,6 +8762,13 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     if (META_IS_WINDOW_ACTOR_WAYLAND(actor)) {
         meta_window_actor_wayland_get_surface_container_bounds(actor, shadow_geometry);
         shadow_child_index = meta_window_actor_wayland_get_shadow_child_index(actor);
+        MtkRectangle visible_geometry = {0};
+        if (meta_gnoblin_window_frame_get_visible_geometry(window, &visible_geometry)) {
+            shadow_geometry[0] = visible_geometry.x;
+            shadow_geometry[1] = visible_geometry.y;
+            shadow_geometry[2] = visible_geometry.x + visible_geometry.width;
+            shadow_geometry[3] = visible_geometry.y + visible_geometry.height;
+        }
     } else {
         if (surface && clutter_actor_has_allocation(CLUTTER_ACTOR(surface))) {
             ClutterActorBox surface_box;
@@ -8630,11 +8779,14 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
             shadow_geometry[3] = surface_box.y2;
         }
     }
+    /* Client geometry is already in window-local coordinates. The window
+     * actor may still be unallocated when this rule first runs, so clamping
+     * it to the current actor size would collapse a valid shadow to 0x0. */
     double shadow_bounds[4] = {
-        CLAMP(shadow_geometry[0] + padding[3], 0., actor_width),
-        CLAMP(shadow_geometry[1] + padding[0], 0., actor_height),
-        CLAMP(shadow_geometry[2] - padding[1], 0., actor_width),
-        CLAMP(shadow_geometry[3] - padding[2], 0., actor_height),
+        shadow_geometry[0] + padding[3],
+        shadow_geometry[1] + padding[0],
+        shadow_geometry[2] - padding[1],
+        shadow_geometry[3] - padding[2],
     };
     meta_gnoblin_window_effects_set_window_shadow(
         CLUTTER_ACTOR(actor), shadow_state_allowed && n_shadow_layers > 0, shadow_bounds, radius,

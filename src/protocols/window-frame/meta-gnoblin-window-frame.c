@@ -3,6 +3,7 @@
 #include "config.h"
 #include "wayland/meta-gnoblin-window-frame.h"
 #include "wayland/meta-gnoblin-frame-renderer.h"
+#include "compositor/meta-gnoblin-window-effects.h"
 
 #include <gio/gio.h>
 #include <math.h>
@@ -233,16 +234,59 @@ void meta_gnoblin_window_frame_sync_actor(MetaWindow* window, ClutterActor* surf
     FrameState* state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
     if (!state)
         return;
-    if (state->committed.mode == 2 || state->committed.crop[0] || state->committed.crop[1] ||
-        state->committed.crop[2] || state->committed.crop[3])
+    /* xdg_surface.set_window_geometry describes the visible window bounds;
+     * clients use it to exclude invisible CSD shadows from the buffer. A
+     * prefer-server policy must apply those bounds even when a client ignores
+     * the requested SSD mode and keeps drawing its own frame. */
+    MtkRectangle visible_geometry = {0};
+    const gboolean has_visible_geometry =
+        meta_gnoblin_window_frame_get_visible_geometry(window, &visible_geometry);
+    const gboolean has_manual_crop = state->committed.crop[0] || state->committed.crop[1] ||
+                                     state->committed.crop[2] || state->committed.crop[3];
+    if (has_visible_geometry) {
+        /* The rounded-clip effect maps these surface-buffer bounds into its
+         * offscreen target. A Clutter actor clip uses local allocation
+         * coordinates instead and would crop the visible content twice. */
+        clutter_actor_remove_clip(surface);
+    } else if (state->committed.mode == 2 || has_manual_crop) {
         clutter_actor_set_clip(
             surface, state->client_geometry.x + state->committed.crop[3],
             state->client_geometry.y + state->committed.crop[0],
             state->client_geometry.width - state->committed.crop[1] - state->committed.crop[3],
             state->client_geometry.height - state->committed.crop[0] - state->committed.crop[2]);
-    else
+    } else {
         clutter_actor_remove_clip(surface);
+    }
+
+    double visible_bounds[4] = {visible_geometry.x, visible_geometry.y,
+                                visible_geometry.x + visible_geometry.width,
+                                visible_geometry.y + visible_geometry.height};
+    meta_gnoblin_window_effects_set_rounded_clip_geometry(
+        surface, has_visible_geometry ? visible_bounds : NULL,
+        meta_window_wayland_get_geometry_scale(window));
     meta_gnoblin_frame_renderer_sync(window, &state->committed);
+}
+
+gboolean meta_gnoblin_window_frame_get_visible_geometry(MetaWindow* window,
+                                                        MtkRectangle* geometry) {
+    FrameState* state;
+    g_return_val_if_fail(META_IS_WINDOW(window), FALSE);
+    g_return_val_if_fail(geometry != NULL, FALSE);
+
+    state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
+    if (!state || state->policy != 2)
+        return FALSE;
+
+    *geometry = state->client_geometry;
+    /* Manual crop applies only while the client keeps CSD. Negotiated SSD
+     * uses the client's declared geometry without extra crop margins. */
+    if (state->committed.mode == 1) {
+        geometry->x += state->committed.crop[3];
+        geometry->y += state->committed.crop[0];
+        geometry->width -= state->committed.crop[1] + state->committed.crop[3];
+        geometry->height -= state->committed.crop[0] + state->committed.crop[2];
+    }
+    return geometry->width > 0 && geometry->height > 0;
 }
 
 /**

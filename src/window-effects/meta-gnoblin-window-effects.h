@@ -43,6 +43,11 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* actor, double inse
 void meta_gnoblin_window_effects_set_csd_reconstruction(ClutterActor* actor, gboolean enabled,
                                                         const double insets[4]);
 
+/* Set the rounded clip and border bounds in logical surface coordinates.
+ * Bounds are ordered left, top, right, bottom. */
+void meta_gnoblin_window_effects_set_rounded_clip_geometry(ClutterActor* actor,
+                                                           const double bounds[4], double scale);
+
 #define META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS 4
 
 typedef struct {
