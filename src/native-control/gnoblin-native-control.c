@@ -256,6 +256,9 @@ struct _GnoblinNativeControl {
     gboolean monitor_privacy_screen_runtime_value;
     guint portal_grant_retry_count;
     guint64 session_lock_revision;
+    gboolean session_lifecycle_supported;
+    GVariant* session_lifecycle_snapshot;
+    guint64 session_lifecycle_revision;
     guint64 event_sequence;
     /* Gesture ordering belongs to the compositor and survives Lua worker recovery. */
     guint64 input_gesture_sequence;
@@ -1018,6 +1021,7 @@ static const char* native_socket_events[] = {
     "gnoblin.session.lock-requested",
     "gnoblin.session.lock-state-changed",
     "gnoblin.session.activity-changed",
+    "gnoblin.session.state-changed",
     "gnoblin.runtime.status-changed",
     "gnoblin.shortcut.activated",
     "gnoblin.shortcut.binding-activated",
@@ -7054,6 +7058,8 @@ static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode*
             subscribed = FALSE;
         if (g_str_equal(name, "gnoblin.runtime.status-changed") && client->event_api_minor < 72)
             subscribed = FALSE;
+        if (g_str_equal(name, "gnoblin.session.state-changed") && client->event_api_minor < 76)
+            subscribed = FALSE;
         if (subscribed)
             send_response(client, g_strdup(line));
     }
@@ -13056,6 +13062,18 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "session lock events require API version 1.21");
             }
+            if (g_str_equal(name, "gnoblin.session.state-changed")) {
+                if (client->api_minor < 76) {
+                    g_hash_table_unref(subscriptions);
+                    return encode_response("", NULL,
+                                           "session lifecycle events require API version 1.76");
+                }
+                if (!client->control->session_lifecycle_supported) {
+                    g_hash_table_unref(subscriptions);
+                    return encode_response(
+                        "", NULL, "session lifecycle events are unavailable in this session");
+                }
+            }
             if ((g_str_equal(name, "gnoblin.window.drag.started") ||
                  g_str_equal(name, "gnoblin.window.drag.updated") ||
                  g_str_equal(name, "gnoblin.window.drag.ended")) &&
@@ -13283,6 +13301,18 @@ static char* handle_request(Client* client, const char* data, gsize length) {
         json_object_set_int_member(result_object, "revision", (gint64)MIN(revision, G_MAXINT64));
         if (lock_available && lock_state)
             json_object_set_string_member(result_object, "lock_state", lock_state);
+        const char* session_state = NULL;
+        guint64 session_revision = 0;
+        if (client->api_minor >= 76 && client->control->session_lifecycle_supported &&
+            client->control->session_lifecycle_snapshot &&
+            g_variant_lookup(client->control->session_lifecycle_snapshot, "state", "&s",
+                             &session_state) &&
+            g_variant_lookup(client->control->session_lifecycle_snapshot, "revision", "t",
+                             &session_revision)) {
+            json_object_set_string_member(result_object, "session_state", session_state);
+            json_object_set_int_member(result_object, "session_revision",
+                                       (gint64)MIN(session_revision, G_MAXINT64));
+        }
         g_autoptr(JsonNode) result = json_node_new(JSON_NODE_OBJECT);
         json_node_take_object(result, result_object);
         return encode_response(id, result, NULL);
@@ -14762,8 +14792,12 @@ static gboolean client_connected(GSocketService* service, GSocketConnection* con
         json_array_add_string_element(method_array, methods[i]);
     json_object_set_array_member(hello, "methods", method_array);
     JsonArray* event_array = json_array_new();
-    for (guint i = 0; native_socket_events[i]; i++)
+    for (guint i = 0; native_socket_events[i]; i++) {
+        if (g_str_equal(native_socket_events[i], "gnoblin.session.state-changed") &&
+            !control->session_lifecycle_supported)
+            continue;
         json_array_add_string_element(event_array, native_socket_events[i]);
+    }
     json_object_set_array_member(hello, "events", event_array);
     JsonArray* capability_array = json_array_new();
     for (guint i = 0; i < G_N_ELEMENTS(native_capabilities); i++)
@@ -14869,9 +14903,11 @@ static gboolean native_runtime_write_ready(gint fd, GIOCondition condition, gpoi
 static gboolean native_runtime_send(GnoblinNativeControl* control, GnoblinRuntimePacketType type,
                                     guint64 request_id, GVariant* payload, GError** error) {
     if (control->runtime_worker_suspended && type != GNOBLIN_RUNTIME_PACKET_WORKER_SUSPENDED &&
-        type != GNOBLIN_RUNTIME_PACKET_ERROR) {
+        type != GNOBLIN_RUNTIME_PACKET_ERROR &&
+        type != GNOBLIN_RUNTIME_PACKET_SESSION_STATE_PUBLISHED) {
         /* Runtime output is intentionally discarded while no Lua worker owns
-         * the session. Resume publishes fresh snapshots after HELLO. */
+         * the session. Resume publishes fresh snapshots after HELLO. The
+         * lifecycle acknowledgement goes to the guardian, not the worker. */
         return TRUE;
     }
     if (!control->supervised_runtime || control->runtime_fd < 0 || control->stopping) {
@@ -15370,12 +15406,65 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
         native_publish_runtime_snapshot(control, "session-activity",
                                         control->session_activity_snapshot,
                                         control->session_activity_revision);
+    if (control->session_lifecycle_supported && control->session_lifecycle_snapshot)
+        native_publish_runtime_snapshot(control, "session-lifecycle",
+                                        control->session_lifecycle_snapshot,
+                                        control->session_lifecycle_revision);
     g_autoptr(GVariant) lock_snapshot =
         native_session_lock_snapshot(control->wayland_compositor, control->session_lock_revision);
     native_publish_runtime_snapshot(control, "session-lock", lock_snapshot,
                                     control->session_lock_revision);
     update_launch_snapshot(control);
     return native_runtime_flush_state_snapshots(control, error);
+}
+
+static gboolean native_runtime_handle_session_lifecycle_state(GnoblinNativeControl* control,
+                                                              const GnoblinRuntimePacket* packet,
+                                                              GError** error) {
+    const char* state = NULL;
+    const char* previous_state = NULL;
+    guint64 revision = 0;
+    if (!control->supervised_runtime || !control->session_lifecycle_supported ||
+        packet->request_id != 0 || g_variant_n_children(packet->payload) != 2 ||
+        !g_variant_lookup(packet->payload, "state", "&s", &state) || !state ||
+        !g_variant_lookup(packet->payload, "revision", "t", &revision) || revision == 0) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "guardian sent an invalid session lifecycle update");
+        return FALSE;
+    }
+    if (control->session_lifecycle_snapshot)
+        g_variant_lookup(control->session_lifecycle_snapshot, "state", "&s", &previous_state);
+    if (revision == control->session_lifecycle_revision && g_strcmp0(state, previous_state) == 0) {
+        /* The guardian may retry after the packet reached Mutter but its
+         * bounded write attempt did not observe completion. */
+    } else {
+        gboolean valid_transition =
+            (!previous_state && g_str_equal(state, "starting")) ||
+            (g_strcmp0(previous_state, "starting") == 0 &&
+             (g_str_equal(state, "running") || g_str_equal(state, "stopping"))) ||
+            (g_strcmp0(previous_state, "running") == 0 && g_str_equal(state, "stopping"));
+        if (!valid_transition || control->session_lifecycle_revision == G_MAXUINT64 ||
+            revision != control->session_lifecycle_revision + 1) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                "guardian sent an out-of-order session lifecycle update");
+            return FALSE;
+        }
+        control->session_lifecycle_revision = revision;
+        g_clear_pointer(&control->session_lifecycle_snapshot, g_variant_unref);
+        control->session_lifecycle_snapshot = g_variant_ref(packet->payload);
+        native_publish_runtime_snapshot(control, "session-lifecycle",
+                                        control->session_lifecycle_snapshot, revision);
+        native_publish_request_event(control, "gnoblin.session.state-changed",
+                                     control->session_lifecycle_snapshot);
+    }
+
+    if (g_str_equal(state, "stopping")) {
+        g_autoptr(GVariant) empty =
+            g_variant_ref_sink(g_variant_new_array(G_VARIANT_TYPE("{sv}"), NULL, 0));
+        return native_runtime_send(control, GNOBLIN_RUNTIME_PACKET_SESSION_STATE_PUBLISHED,
+                                   revision, empty, error);
+    }
+    return TRUE;
 }
 
 static GVariant* native_set_orientation_lock(GnoblinNativeControl* control, GVariant* arguments,
@@ -15766,7 +15855,9 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
         if (!available)
             return G_SOURCE_CONTINUE;
         gboolean handled = FALSE;
-        if (packet.type == GNOBLIN_RUNTIME_PACKET_RECOVERY_FAILED) {
+        if (packet.type == GNOBLIN_RUNTIME_PACKET_SESSION_STATE_CHANGED) {
+            handled = native_runtime_handle_session_lifecycle_state(control, &packet, &error);
+        } else if (packet.type == GNOBLIN_RUNTIME_PACKET_RECOVERY_FAILED) {
             if (!control->supervised_runtime || packet.request_id != 0 ||
                 g_variant_n_children(packet.payload) != 0) {
                 g_set_error_literal(&error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
@@ -15828,6 +15919,9 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                 g_variant_builder_init(&hello, G_VARIANT_TYPE_VARDICT);
                 g_variant_builder_add(&hello, "{sv}", "role", g_variant_new_string("compositor"));
                 g_variant_builder_add(&hello, "{sv}", "document_version", g_variant_new_uint32(1));
+                if (control->session_lifecycle_supported)
+                    g_variant_builder_add(&hello, "{sv}", "session_lifecycle_version",
+                                          g_variant_new_uint32(1));
                 g_autoptr(GVariant) hello_payload =
                     g_variant_ref_sink(g_variant_builder_end(&hello));
                 handled = native_runtime_send(control, GNOBLIN_RUNTIME_PACKET_HELLO, 0,
@@ -16200,6 +16294,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     GnoblinNativeControl* control = g_new0(GnoblinNativeControl, 1);
     control->runtime_fd = -1;
     control->supervised_runtime = TRUE;
+    control->session_lifecycle_supported =
+        g_strcmp0(g_getenv("GNOBLIN_SESSION_LIFECYCLE_VERSION"), "1") == 0;
     control->runtime_fd = runtime_fd;
     control->runtime_generation = bootstrap_runtime_generation;
     control->runtime_cache = gnoblin_runtime_cache_new();
@@ -16504,6 +16600,9 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         g_variant_builder_init(&hello, G_VARIANT_TYPE_VARDICT);
         g_variant_builder_add(&hello, "{sv}", "role", g_variant_new_string("compositor"));
         g_variant_builder_add(&hello, "{sv}", "document_version", g_variant_new_uint32(1));
+        if (control->session_lifecycle_supported)
+            g_variant_builder_add(&hello, "{sv}", "session_lifecycle_version",
+                                  g_variant_new_uint32(1));
         GVariantBuilder environment;
         g_variant_builder_init(&environment, G_VARIANT_TYPE("a{ss}"));
         const char* display_environment[] = {"WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", NULL};
@@ -16662,6 +16761,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         control->privacy_handles = NULL;
     }
     g_clear_pointer(&control->privacy_snapshot, g_variant_unref);
+    g_clear_pointer(&control->session_lifecycle_snapshot, g_variant_unref);
     g_clear_pointer(&control->orientation_lock_snapshot, g_variant_unref);
     g_clear_pointer(&control->monitor_privacy_screen_snapshot, g_variant_unref);
     native_publish_runtime_snapshot(control, "privacy", NULL, control->privacy_revision);

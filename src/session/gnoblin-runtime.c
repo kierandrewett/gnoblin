@@ -33,6 +33,7 @@ extern char** environ;
 #define GUARDIAN_STATUS_STARTED 1
 #define GUARDIAN_STATUS_READY 2
 #define GUARDIAN_STATUS_LOGOUT 3
+#define GUARDIAN_STATUS_SESSION_LIFECYCLE_SUPPORTED 4
 #define SESSION_SUPERVISOR_BUS_NAME "org.gnoblin.SessionSupervisor"
 #define PORTAL_BACKEND_BUS_NAME "org.freedesktop.impl.portal.desktop.gnoblin"
 #define PORTAL_LIFECYCLE_INTERFACE "org.gnoblin.Portal.InhibitLifecycle"
@@ -1105,6 +1106,8 @@ static gboolean handle_state(Runtime* runtime, GVariant* payload, GError** error
         update = gnoblin_config_update_session_activity_snapshot;
     else if (g_str_equal(name, "session-lock"))
         update = gnoblin_config_update_session_lock_snapshot;
+    else if (g_str_equal(name, "session-lifecycle"))
+        update = gnoblin_config_update_session_lifecycle_snapshot;
     else if (g_str_equal(name, "animations"))
         update = gnoblin_config_update_animation_snapshot;
     if (!update) {
@@ -1225,6 +1228,17 @@ static gboolean handle_runtime_packet(Runtime* runtime, GnoblinRuntimePacket* pa
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
                                 "compositor runtime handshake is incompatible");
         else {
+            guint32 session_lifecycle_version = 0;
+            if (runtime->guardian_status_fd >= 0 &&
+                g_variant_lookup(packet->payload, "session_lifecycle_version", "u",
+                                 &session_lifecycle_version) &&
+                session_lifecycle_version == 1 &&
+                !guardian_send_status(runtime->guardian_status_fd,
+                                      GUARDIAN_STATUS_SESSION_LIFECYCLE_SUPPORTED)) {
+                g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                                    "could not report session lifecycle protocol support");
+                return FALSE;
+            }
             if (runtime->send_initial_autostart &&
                 !send_initial_autostart(runtime->host_control_fd, runtime->initial_document,
                                         packet->payload, error))
@@ -1456,6 +1470,11 @@ static gboolean host_reap_compositor(Runtime* runtime) {
 static GPid spawn_compositor(const char* path, const char* plugin, int parent_fd, int child_fd,
                              gboolean xwayland, gboolean devkit, const char* wayland_display,
                              GError** error) {
+    /* This private capability marker makes packet 17 opt-in across mixed
+     * Gnoblin/Mutter installations. Do not leak it to applications spawned
+     * by the session. */
+    g_auto(GStrv) compositor_environment =
+        g_environ_setenv(g_get_environ(), "GNOBLIN_SESSION_LIFECYCLE_VERSION", "1", TRUE);
     posix_spawn_file_actions_t actions;
     int result = posix_spawn_file_actions_init(&actions);
     if (result != 0) {
@@ -1489,7 +1508,7 @@ static GPid spawn_compositor(const char* path, const char* plugin, int parent_fd
     g_ptr_array_add(argv, NULL);
 
     pid_t pid = 0;
-    result = posix_spawn(&pid, path, &actions, NULL, (char**)argv->pdata, environ);
+    result = posix_spawn(&pid, path, &actions, NULL, (char**)argv->pdata, compositor_environment);
     posix_spawn_file_actions_destroy(&actions);
     if (temporary_fd >= 0)
         close(temporary_fd);
@@ -1935,12 +1954,12 @@ static gboolean drain_worker_ready_fd(int fd, gboolean* start_packet_sent) {
     return ready;
 }
 
-static gboolean send_runtime_control_packet(int channel_fd, GnoblinRuntimePacketType type,
-                                            const char* notification, GError** error) {
+static gboolean send_runtime_control_packet_with_payload(int channel_fd,
+                                                         GnoblinRuntimePacketType type,
+                                                         GVariant* payload,
+                                                         const char* notification, GError** error) {
     g_autoptr(GnoblinRuntimeWriter) writer = gnoblin_runtime_writer_new();
-    g_autoptr(GVariant) empty =
-        g_variant_ref_sink(g_variant_new_array(G_VARIANT_TYPE("{sv}"), NULL, 0));
-    if (!gnoblin_runtime_writer_queue(writer, type, 0, empty, error))
+    if (!gnoblin_runtime_writer_queue(writer, type, 0, payload, error))
         return FALSE;
     gint64 deadline = g_get_monotonic_time() + SUSPEND_TIMEOUT_MS * 1000;
     for (;;) {
@@ -1964,6 +1983,86 @@ static gboolean send_runtime_control_packet(int channel_fd, GnoblinRuntimePacket
             return FALSE;
         }
     }
+}
+
+static gboolean send_runtime_control_packet(int channel_fd, GnoblinRuntimePacketType type,
+                                            const char* notification, GError** error) {
+    g_autoptr(GVariant) empty =
+        g_variant_ref_sink(g_variant_new_array(G_VARIANT_TYPE("{sv}"), NULL, 0));
+    return send_runtime_control_packet_with_payload(channel_fd, type, empty, notification, error);
+}
+
+static gboolean send_session_lifecycle_state(int channel_fd, const char* state, guint64 revision,
+                                             GError** error) {
+    GVariantBuilder builder;
+    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&builder, "{sv}", "state", g_variant_new_string(state));
+    g_variant_builder_add(&builder, "{sv}", "revision", g_variant_new_uint64(revision));
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&builder));
+    return send_runtime_control_packet_with_payload(
+        channel_fd, GNOBLIN_RUNTIME_PACKET_SESSION_STATE_CHANGED, payload,
+        "Mutter did not accept the session lifecycle update", error);
+}
+
+static gboolean wait_for_session_state_published(int channel_fd, guint64 revision) {
+    g_autoptr(GnoblinRuntimeReader) reader = gnoblin_runtime_reader_new();
+    gint64 deadline = g_get_monotonic_time() + 500 * 1000;
+    while (g_get_monotonic_time() < deadline) {
+        gint64 remaining = deadline - g_get_monotonic_time();
+        struct pollfd pfd = {.fd = channel_fd, .events = POLLIN | POLLHUP};
+        int timeout = (int)MIN((remaining + 999) / 1000, 50);
+        int result;
+        do {
+            result = poll(&pfd, 1, timeout);
+        } while (result < 0 && errno == EINTR);
+        if (result < 0 || (result > 0 && (pfd.revents & (POLLERR | POLLNVAL))))
+            return FALSE;
+        if (result == 0)
+            continue;
+        for (;;) {
+            GnoblinRuntimePacket packet = {0};
+            gboolean available = FALSE;
+            g_autoptr(GError) error = NULL;
+            if (!gnoblin_runtime_reader_receive(reader, channel_fd, &packet, &available, &error))
+                return FALSE;
+            if (!available)
+                break;
+            gboolean published = packet.type == GNOBLIN_RUNTIME_PACKET_SESSION_STATE_PUBLISHED &&
+                                 packet.request_id == revision &&
+                                 g_variant_n_children(packet.payload) == 0;
+            gnoblin_runtime_packet_clear(&packet);
+            if (published)
+                return TRUE;
+        }
+        if (pfd.revents & POLLHUP)
+            return FALSE;
+    }
+    return FALSE;
+}
+
+static gboolean guardian_set_session_lifecycle_state(int channel_fd, const char** current_state,
+                                                     guint64* revision, const char* state) {
+    if (!current_state || !revision || !state)
+        return FALSE;
+    if (g_strcmp0(*current_state, state) == 0)
+        return TRUE;
+    if (!g_str_equal(state, "starting") && !g_str_equal(state, "running") &&
+        !g_str_equal(state, "stopping"))
+        return FALSE;
+    if (*revision == G_MAXUINT64) {
+        g_printerr("gnoblin: session lifecycle revision overflow\n");
+        return FALSE;
+    }
+    guint64 next_revision = *revision + 1;
+    g_autoptr(GError) error = NULL;
+    if (!send_session_lifecycle_state(channel_fd, state, next_revision, &error)) {
+        g_printerr("gnoblin: could not publish session lifecycle state: %s\n",
+                   error ? error->message : "notification failed");
+        return FALSE;
+    }
+    *current_state = state;
+    *revision = next_revision;
+    return TRUE;
 }
 
 static gboolean send_worker_disconnected(int channel_fd, GError** error) {
@@ -2606,7 +2705,7 @@ static int session_supervisor_main(int argc, char** argv) {
 static gboolean guardian_drain_status(int fd, gboolean* native_channel_started,
                                       gboolean* supervisor_ready, gboolean* session_ready,
                                       gint64* ready_since_us, gboolean* explicit_logout,
-                                      GError** error) {
+                                      gboolean* session_lifecycle_supported, GError** error) {
     for (;;) {
         guint8 status = 0;
         ssize_t count = recv(fd, &status, sizeof status, MSG_DONTWAIT);
@@ -2638,6 +2737,9 @@ static gboolean guardian_drain_status(int fd, gboolean* native_channel_started,
             break;
         case GUARDIAN_STATUS_LOGOUT:
             *explicit_logout = TRUE;
+            break;
+        case GUARDIAN_STATUS_SESSION_LIFECYCLE_SUPPORTED:
+            *session_lifecycle_supported = TRUE;
             break;
         default:
             g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
@@ -2797,6 +2899,9 @@ static int session_guardian_main(int argc, char** argv) {
     gboolean native_channel_started = FALSE;
     gboolean supervisor_ready = FALSE;
     gboolean session_ready = FALSE;
+    gboolean session_lifecycle_supported = FALSE;
+    const char* session_lifecycle_state = NULL;
+    guint64 session_lifecycle_revision = 0;
     gboolean explicit_logout = FALSE;
     gboolean stop_session = FALSE;
     gboolean retain_session = FALSE;
@@ -2841,12 +2946,21 @@ static int session_guardian_main(int argc, char** argv) {
         (void)poll(polls, G_N_ELEMENTS(polls), 50);
         if (!guardian_drain_status(status_fd, &native_channel_started, &supervisor_ready,
                                    &session_ready, &supervisor_ready_since_us, &explicit_logout,
-                                   &error)) {
+                                   &session_lifecycle_supported, &error)) {
             g_printerr("gnoblin: session supervisor status failed: %s\n",
                        error ? error->message : "invalid message");
             stop_session = TRUE;
             break;
         }
+        if (session_lifecycle_supported && !session_lifecycle_state &&
+            !guardian_set_session_lifecycle_state(guardian.channel_fd, &session_lifecycle_state,
+                                                  &session_lifecycle_revision, "starting"))
+            session_lifecycle_supported = FALSE;
+        if (session_lifecycle_supported && supervisor_ready &&
+            g_strcmp0(session_lifecycle_state, "starting") == 0 &&
+            !guardian_set_session_lifecycle_state(guardian.channel_fd, &session_lifecycle_state,
+                                                  &session_lifecycle_revision, "running"))
+            session_lifecycle_supported = FALSE;
         if (!guardian_receive_autostart(autostart_fd, autostart_reader, &autostart_received,
                                         &autostart_complete, &autostart_entries,
                                         &autostart_environment, autostart_children, &error)) {
@@ -2881,7 +2995,7 @@ static int session_guardian_main(int argc, char** argv) {
         kill(-supervisor_result, SIGKILL);
         if (!guardian_drain_status(status_fd, &native_channel_started, &supervisor_ready,
                                    &session_ready, &supervisor_ready_since_us, &explicit_logout,
-                                   &error) ||
+                                   &session_lifecycle_supported, &error) ||
             !guardian_receive_autostart(autostart_fd, autostart_reader, &autostart_received,
                                         &autostart_complete, &autostart_entries,
                                         &autostart_environment, autostart_children, &error)) {
@@ -2889,6 +3003,15 @@ static int session_guardian_main(int argc, char** argv) {
                        error ? error->message : "invalid message");
             stop_session = TRUE;
         }
+        if (session_lifecycle_supported && !session_lifecycle_state &&
+            !guardian_set_session_lifecycle_state(guardian.channel_fd, &session_lifecycle_state,
+                                                  &session_lifecycle_revision, "starting"))
+            session_lifecycle_supported = FALSE;
+        if (session_lifecycle_supported && supervisor_ready &&
+            g_strcmp0(session_lifecycle_state, "starting") == 0 &&
+            !guardian_set_session_lifecycle_state(guardian.channel_fd, &session_lifecycle_state,
+                                                  &session_lifecycle_revision, "running"))
+            session_lifecycle_supported = FALSE;
         close(status_fd);
         close(autostart_fd);
         status_fd = autostart_fd = -1;
@@ -2981,8 +3104,15 @@ static int session_guardian_main(int argc, char** argv) {
     if (stop_session && session_ready)
         notify_portal_session_ending(lifecycle_bus);
     reap_autostart_children(autostart_children);
-    if (stop_session && guardian.compositor_pid)
+    if (stop_session && guardian.compositor_pid) {
+        if (session_lifecycle_supported &&
+            guardian_set_session_lifecycle_state(guardian.channel_fd, &session_lifecycle_state,
+                                                 &session_lifecycle_revision, "stopping") &&
+            !wait_for_session_state_published(guardian.channel_fd, session_lifecycle_revision))
+            g_printerr(
+                "gnoblin: Mutter did not confirm the session stopping event before shutdown\n");
         terminate_and_reap(&guardian);
+    }
     close(guardian.channel_fd);
     return guardian.exit_status;
 }

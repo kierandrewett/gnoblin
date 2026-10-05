@@ -124,6 +124,13 @@ gnoblin.configure {
         {id = "chat", name = "Chat"},
     },
 }
+gnoblin.events.on("gnoblin.session.state-changed", function(event)
+    assert(event.state == "starting" or event.state == "running" or event.state == "stopping")
+    local status = gnoblin.session.status()
+    assert(status.session_state == event.state)
+    assert(status.session_revision == event.revision)
+    print("SESSION_LIFECYCLE:" .. event.state)
+end)
 gnoblin.events.once("gnoblin.config.reloaded", function(event)
     assert(type(event.sequence) == "number" and event.sequence > 0)
     assert(type(event.time) == "number" and event.time > 0)
@@ -145,6 +152,8 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     local session_status = gnoblin.session.status()
     assert(session_status.state == "running")
     assert(type(session_status.revision) == "number" and session_status.revision >= 0)
+    assert(session_status.session_state == "running")
+    assert(type(session_status.session_revision) == "number" and session_status.session_revision > 0)
     assert(not pcall(function() session_status.revision = 0 end))
     local status = gnoblin.runtime.status()
     assert(status.state == "running" and status.generation > 0)
@@ -998,7 +1007,8 @@ session_status_script = Path(os.environ["XDG_RUNTIME_DIR"]) / "session-status.lu
 session_status_script.write_text(
     'local s=gnoblin.session.status(); '
     'assert(s.state == "running" and type(s.revision) == "number" and s.revision >= 0); '
-    'print("SESSION_STATUS:"..s.state..":"..s.revision)\n',
+    'assert(s.session_state == "running" and type(s.session_revision) == "number"); '
+    'print("SESSION_STATUS:"..s.state..":"..s.session_state..":"..s.session_revision)\n',
     encoding="utf-8",
 )
 
@@ -1354,3 +1364,18 @@ effect_ownership_output="$(
 grep -q 'PASS: rounded clip, replacement shadow and shader survive map, repaint and close' \
     <<<"$effect_ownership_output"
 printf '%s\n' "$effect_ownership_output"
+
+lifecycle_output="$(
+    GNOBLIN_DEVKIT_EXPECT_RUNTIME_EXIT=1 \
+        GNOBLIN_STATE_DIR="$fixture_root/session-lifecycle-state" \
+        GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
+        GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
+        GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
+        GNOBLIN_DEVKIT_EXEC="python3 '$ROOT/tests/test-session-lifecycle.py'" \
+        timeout 45 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1
+)" || {
+    printf '%s\n' "$lifecycle_output" >&2
+    exit 1
+}
+grep -q 'SESSION_LIFECYCLE:stopping-socket-event' <<<"$lifecycle_output"
+printf '%s\n' 'PASS: guardian publishes the stopping event before session shutdown'
