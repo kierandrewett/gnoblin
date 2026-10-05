@@ -2189,6 +2189,8 @@ int main(void) {
     g_assert_true(g_variant_lookup(session_status, "revision", "x", &session_status_revision));
     g_assert_cmpint(session_status_revision, ==, 0);
     g_assert_null(g_variant_lookup_value(session_status, "lock_state", NULL));
+    g_assert_null(g_variant_lookup_value(session_status, "session_state", NULL));
+    g_assert_null(g_variant_lookup_value(session_status, "session_revision", NULL));
 
     GVariantBuilder session_lock_builder;
     g_variant_builder_init(&session_lock_builder, G_VARIANT_TYPE_VARDICT);
@@ -2208,6 +2210,31 @@ int main(void) {
     g_assert_cmpstr(session_state, ==, "locked");
     g_assert_true(g_variant_lookup(session_status, "revision", "x", &session_status_revision));
     g_assert_cmpint(session_status_revision, ==, 43);
+
+    GVariantBuilder session_lifecycle_builder;
+    g_variant_builder_init(&session_lifecycle_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&session_lifecycle_builder, "{sv}", "state",
+                          g_variant_new_string("running"));
+    g_variant_builder_add(&session_lifecycle_builder, "{sv}", "revision", g_variant_new_uint64(7));
+    g_autoptr(GVariant) session_lifecycle_snapshot =
+        g_variant_ref_sink(g_variant_builder_end(&session_lifecycle_builder));
+    gnoblin_config_update_session_lifecycle_snapshot(session_lifecycle_snapshot, 7);
+    g_clear_pointer(&session_status, g_variant_unref);
+    session_status = gnoblin_config_read_api("session.status", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    const char* lifecycle_state = NULL;
+    gint64 lifecycle_revision = 0;
+    g_assert_true(g_variant_lookup(session_status, "session_state", "&s", &lifecycle_state));
+    g_assert_cmpstr(lifecycle_state, ==, "running");
+    g_assert_true(g_variant_lookup(session_status, "session_revision", "x", &lifecycle_revision));
+    g_assert_cmpint(lifecycle_revision, ==, 7);
+
+    gnoblin_config_update_session_lifecycle_snapshot(session_lifecycle_snapshot, 8);
+    g_clear_pointer(&session_status, g_variant_unref);
+    session_status = gnoblin_config_read_api("session.status", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_lookup(session_status, "session_revision", "x", &lifecycle_revision));
+    g_assert_cmpint(lifecycle_revision, ==, 7);
 
     g_autoptr(GVariant) capabilities =
         gnoblin_config_read_api("capabilities.list", empty_read_arguments, &error);
