@@ -12,7 +12,8 @@ License:        GPL-2.0-or-later
 URL:            https://github.com/kierandrewett/gnoblin
 Source0:        gnoblin-%{version}-source.tar.xz
 Provides:       gnoblin-session = %{version}
-Obsoletes:      gnoblin-session <= %{version}-%{release}
+Obsoletes:      gnoblin-session < 51
+Obsoletes:      gnoblin-shell < 51
 
 Requires:       gnoblin-mutter >= 51
 Requires:       gnoblin-mutter < 52

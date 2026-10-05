@@ -7,8 +7,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 RPM_DIR="${GNOBLIN_RPM_DIR:-$HOME/rpmbuild/RPMS}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
-# Exact artifact from older source installs; use only to recognize and remove it.
+# Exact artifacts from older source installs; recognize and remove only these.
 LEGACY_GNOME_SESSION_DROPIN="$ROOT/scripts/legacy/gnome-session@gnoblin.target.d.conf"
+LEGACY_SHELL_DROPIN="$ROOT/scripts/legacy/gnome-session@gnoblin.target.d-legacy-shell.conf"
 LEGACY_GNOME_SESSION_DROPIN_PATH="$UNIT_DIR/gnome-session@gnoblin.target.d/gnoblin.conf"
 COPR_OWNER="${GNOBLIN_COPR_OWNER:-kierandrewett}"
 COPR_PROJECT="${GNOBLIN_COPR_PROJECT:-gnoblin}"
@@ -16,6 +17,12 @@ SOURCE=copr
 DRY_RUN=0
 VERB=install
 DNF_OPTIONS=()
+
+is_managed_legacy_dropin() {
+    cmp -s "$LEGACY_GNOME_SESSION_DROPIN" "$LEGACY_GNOME_SESSION_DROPIN_PATH" ||
+        cmp -s "$LEGACY_SHELL_DROPIN" "$LEGACY_GNOME_SESSION_DROPIN_PATH"
+}
+
 for arg in "$@"; do
     case "$arg" in
         --yes | -y) DNF_OPTIONS+=(-y) ;;
@@ -45,11 +52,11 @@ for unit in "${units[@]}"; do
     fi
 done
 
-# Remove only the exact old source-build drop-in after the package update. A
+# Remove only exact known source-build drop-ins after the package update. A
 # user-edited file remains protected by the same preflight used for unit files.
 if [ -e "$LEGACY_GNOME_SESSION_DROPIN_PATH" ] &&
     [ ! -L "$LEGACY_GNOME_SESSION_DROPIN_PATH" ]; then
-    if cmp -s "$LEGACY_GNOME_SESSION_DROPIN" "$LEGACY_GNOME_SESSION_DROPIN_PATH"; then
+    if is_managed_legacy_dropin; then
         echo "Recognized old managed Gnoblin drop-in: $LEGACY_GNOME_SESSION_DROPIN_PATH"
     else
         echo "Move the custom Gnoblin override aside first: $LEGACY_GNOME_SESSION_DROPIN_PATH" >&2
@@ -145,7 +152,7 @@ done
 if [ -L "$LEGACY_GNOME_SESSION_DROPIN_PATH" ]; then
     unlink "$LEGACY_GNOME_SESSION_DROPIN_PATH"
 elif [ -f "$LEGACY_GNOME_SESSION_DROPIN_PATH" ] &&
-    cmp -s "$LEGACY_GNOME_SESSION_DROPIN" "$LEGACY_GNOME_SESSION_DROPIN_PATH"; then
+    is_managed_legacy_dropin; then
     rm -- "$LEGACY_GNOME_SESSION_DROPIN_PATH"
     echo 'Removed the obsolete managed GNOME session drop-in.'
 fi
