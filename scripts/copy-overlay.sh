@@ -4,9 +4,10 @@
 # Large new files we author (e.g. the layer-shell implementation) live as real,
 # tracked source under src/<feature>/ and are copied verbatim into the submodule
 # here — they are NOT shipped as additive patches. Each src/<feature>/manifest
-# maps a source file to its destination path inside a subproject. The copied
-# files are untracked in the submodule (added to .git/info/exclude and removed by
-# `git clean` on reset), so the submodule stays pristine.
+# maps a source file to its destination path inside a subproject. In a Git
+# submodule, copied files are added to .git/info/exclude and removed by
+# `git clean` on reset. Release archives have no Git metadata, so copying there
+# does not need an exclude entry.
 #
 # Usage: copy-overlay.sh <project> <submodule-dir> [--list-destinations|--remove-destinations]
 set -euo pipefail
@@ -22,6 +23,13 @@ case "$MODE" in
         ;;
 esac
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+case "$PROJ" in
+    mutter | xdg-desktop-portal-gnome) ;;
+    *)
+        echo "unsupported overlay project: $PROJ" >&2
+        exit 2
+        ;;
+esac
 
 n=0
 # Manifests live under src/ at any depth (src/protocols/<feature>/manifest,
@@ -53,9 +61,13 @@ while IFS= read -r manifest; do
         fi
         mkdir -p "$SM/$(dirname "$dest")"
         cp "$feature_dir/$src" "$SM/$dest"
-        # keep the submodule's git status clean
-        excl="$SM/.git/info/exclude"
-        [ -f "$excl" ] && ! grep -qxF "/$dest" "$excl" 2>/dev/null && echo "/$dest" >>"$excl"
+        # Keep a submodule's Git status clean; source archives have no Git
+        # metadata and do not need a local exclude file.
+        if git -C "$SM" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+            git_dir="$(git -C "$SM" rev-parse --absolute-git-dir)"
+            excl="$git_dir/info/exclude"
+            [ -f "$excl" ] && ! grep -qxF "/$dest" "$excl" 2>/dev/null && echo "/$dest" >>"$excl"
+        fi
         n=$((n + 1))
     done <"$manifest"
 done < <(find "$ROOT/src" -name manifest -type f | sort)

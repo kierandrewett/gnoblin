@@ -1,0 +1,449 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] mutter: animate configured window size changes
+
+---
+diff --git a/src/compositor/compositor.c b/src/compositor/compositor.c
+index 4c7cc173..71ece744 100644
+--- a/src/compositor/compositor.c
++++ b/src/compositor/compositor.c
+@@ -845,7 +845,8 @@ meta_compositor_sync_window_geometry (MetaCompositor *compositor,
+ 
+   changes = meta_window_actor_sync_actor_geometry (window_actor, did_placement);
+ 
+-  if (changes & META_WINDOW_ACTOR_CHANGE_SIZE)
++  if ((changes & META_WINDOW_ACTOR_CHANGE_SIZE) ||
++      meta_window_actor_size_change_in_progress (window_actor))
+     meta_plugin_manager_event_size_changed (priv->plugin_mgr, window_actor);
+ }
+ 
+diff --git a/src/compositor/meta-window-actor-private.h b/src/compositor/meta-window-actor-private.h
+index 1b937190..a8283a62 100644
+--- a/src/compositor/meta-window-actor-private.h
++++ b/src/compositor/meta-window-actor-private.h
+@@ -69,6 +69,8 @@ void meta_window_actor_frame_complete (MetaWindowActor    *self,
+ META_EXPORT_TEST
+ gboolean meta_window_actor_effect_in_progress  (MetaWindowActor *self);
+ 
++gboolean meta_window_actor_size_change_in_progress (MetaWindowActor *self);
++
+ MetaWindowActorChanges meta_window_actor_sync_actor_geometry (MetaWindowActor *self,
+                                                               gboolean         did_placement);
+ 
+diff --git a/src/compositor/meta-window-actor.c b/src/compositor/meta-window-actor.c
+index 169b659f..ddc9791c 100644
+--- a/src/compositor/meta-window-actor.c
++++ b/src/compositor/meta-window-actor.c
+@@ -849,6 +849,15 @@ meta_window_actor_effect_in_progress (MetaWindowActor *self)
+           priv->destroy_in_progress);
+ }
+ 
++gboolean
++meta_window_actor_size_change_in_progress (MetaWindowActor *self)
++{
++  MetaWindowActorPrivate *priv =
++    meta_window_actor_get_instance_private (self);
++
++  return priv->size_change_in_progress > 0;
++}
++
+ static gboolean
+ is_freeze_thaw_effect (MetaPluginEffect event)
+ {
+diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
+index 1d4ccef4..2e78d47b 100644
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -41,6 +41,7 @@ typedef enum {
+   ANIMATION_COMPLETION_DESTROY,
+   ANIMATION_COMPLETION_MINIMIZE,
+   ANIMATION_COMPLETION_UNMINIMIZE,
++  ANIMATION_COMPLETION_SIZE_CHANGE,
+ } AnimationCompletion;
+ 
+ typedef struct {
+@@ -56,6 +57,8 @@ typedef struct {
+   gboolean lifecycle;
+   MetaPlugin *lifecycle_plugin;
+   AnimationCompletion lifecycle_completion;
++  gboolean resize_geometry;
++  double resize_x, resize_y, resize_scale_x, resize_scale_y;
+   float base_x, base_y, base_z;
+   double base_sx, base_sy, base_rotation;
+   guint8 base_opacity;
+@@ -92,6 +95,13 @@ typedef struct {
+   MetaBackend *backend;
+ } AnimationState;
+ 
++typedef struct {
++  MetaPlugin *plugin;
++  MtkRectangle old_buffer_rect;
++} PendingResize;
++
++#define RESIZE_PENDING_KEY "gnoblin-animation-pending-resize"
++
+ typedef struct {
+   const char *name;
+   const char *event;
+@@ -381,13 +391,14 @@ static gboolean builtin_previewable(const char *name) {
+          g_str_equal(name, "gnome-open") || g_str_equal(name, "gnome-close") ||
+          g_str_equal(name, "gnome-dialog-open") ||
+          g_str_equal(name, "gnome-dialog-close") ||
+-         g_str_equal(name, "gnome-workspace-switch");
++         g_str_equal(name, "gnome-workspace-switch") ||
++         g_str_equal(name, "gnome-resize");
+ }
+ 
+ static gboolean builtin_supports_event(const char *name, const char *event) {
+   static const char *const gnome_events[] = {
+       "minimize",     "restore",    "open",        "close", "dialog-open",
+-      "dialog-close", "layer-open", "layer-close", NULL};
++      "dialog-close", "layer-open", "layer-close", "resize", NULL};
+   static const char *const fade_events[] = {
+       "minimize",     "restore",    "open",        "close", "dialog-open",
+       "dialog-close", "layer-open", "layer-close", NULL};
+@@ -423,13 +434,17 @@ static void builtin_event_defaults(const char *event, guint *duration,
+   } else if (g_str_equal(event, "workspace-switch")) {
+     *duration = 250;
+     *ease = "ease-out-cubic";
++  } else if (g_str_equal(event, "resize")) {
++    *duration = 250;
++    *ease = "ease-out-quad";
+   }
+ }
+ 
+ static gboolean actor_event(const char *event) {
+   static const char *const names[] = {
+       "minimize",     "restore",    "open",        "close", "dialog-open",
+-      "dialog-close", "layer-open", "layer-close", "workspace-switch", NULL};
++      "dialog-close", "layer-open", "layer-close", "workspace-switch",
++      "resize", NULL};
+   return g_strv_contains(names, event);
+ }
+ 
+@@ -732,6 +747,11 @@ static gboolean parse_spec(AnimationSpec *spec, const char *name,
+       frame_add_number(&to, "scale_x", .8);
+       frame_add_number(&to, "scale_y", .8);
+       frame_add_number(&to, "opacity", 0);
++    } else if (g_str_equal(name, "gnome-resize") ||
++               (g_str_equal(name, "gnome") &&
++                g_str_equal(spec->event, "resize"))) {
++      g_clear_pointer(&spec->origin, g_variant_unref);
++      spec->origin = g_variant_ref_sink(g_variant_new_string("top-left"));
+     } else if (g_str_equal(name, "gnome-dialog-open") ||
+                g_str_equal(name, "gnome-dialog-close") ||
+                (g_str_equal(name, "gnome") &&
+@@ -818,7 +838,8 @@ static gboolean parse_spec(AnimationSpec *spec, const char *name,
+   if (!spec->to)
+     spec->to = empty_dict();
+   if (!spec->origin)
+-    spec->origin = g_variant_ref_sink(g_variant_new_string("center"));
++    spec->origin = g_variant_ref_sink(g_variant_new_string(
++        g_str_equal(spec->event, "resize") ? "top-left" : "center"));
+   if (!spec->target)
+     spec->target = g_variant_ref_sink(g_variant_new_string("none"));
+   if (g_str_equal(spec->event, "workspace-switch")) {
+@@ -1000,20 +1021,37 @@ static void render_preview(AnimationPreview *preview, double progress) {
+   if (preview->finished)
+     return;
+   progress = CLAMP(progress, 0, 1);
+-  sample_property(&preview->spec, "x", progress, preview->base_x, &x);
+-  sample_property(&preview->spec, "y", progress, preview->base_y, &y);
+-  if (spec_has_property(&preview->spec, "scale_x"))
+-    sample_property(&preview->spec, "scale_x", progress, preview->base_sx, &sx);
+-  else
+-    sample_property(&preview->spec, "scale", progress, preview->base_sx, &sx);
+-  if (spec_has_property(&preview->spec, "scale_y"))
+-    sample_property(&preview->spec, "scale_y", progress, preview->base_sy, &sy);
+-  else
+-    sample_property(&preview->spec, "scale", progress, preview->base_sy, &sy);
+-  sample_property(&preview->spec, "rotation", progress, preview->base_rotation,
+-                  &rotation);
+-  sample_property(&preview->spec, "opacity", progress,
+-                  preview->base_opacity / 255.0, &opacity);
++  if (preview->resize_geometry) {
++    double resize_progress;
++    sample_property(&preview->spec, "progress", progress, 0,
++                    &resize_progress);
++    resize_progress = CLAMP(resize_progress, 0, 1);
++    x = preview->base_x + preview->resize_x * (1 - resize_progress);
++    y = preview->base_y + preview->resize_y * (1 - resize_progress);
++    sx = preview->base_sx *
++         (preview->resize_scale_x +
++          (1 - preview->resize_scale_x) * resize_progress);
++    sy = preview->base_sy *
++         (preview->resize_scale_y +
++          (1 - preview->resize_scale_y) * resize_progress);
++    rotation = preview->base_rotation;
++    opacity = preview->base_opacity / 255.0;
++  } else {
++    sample_property(&preview->spec, "x", progress, preview->base_x, &x);
++    sample_property(&preview->spec, "y", progress, preview->base_y, &y);
++    if (spec_has_property(&preview->spec, "scale_x"))
++      sample_property(&preview->spec, "scale_x", progress, preview->base_sx, &sx);
++    else
++      sample_property(&preview->spec, "scale", progress, preview->base_sx, &sx);
++    if (spec_has_property(&preview->spec, "scale_y"))
++      sample_property(&preview->spec, "scale_y", progress, preview->base_sy, &sy);
++    else
++      sample_property(&preview->spec, "scale", progress, preview->base_sy, &sy);
++    sample_property(&preview->spec, "rotation", progress, preview->base_rotation,
++                    &rotation);
++    sample_property(&preview->spec, "opacity", progress,
++                    preview->base_opacity / 255.0, &opacity);
++  }
+   float tx, ty, tz;
+   clutter_actor_get_translation(preview->actor, &tx, &ty, &tz);
+   clutter_actor_set_translation(preview->actor, (float)x, (float)y, tz);
+@@ -1123,6 +1161,9 @@ static void complete_lifecycle(MetaPlugin *plugin, MetaWindowActor *actor,
+   case ANIMATION_COMPLETION_UNMINIMIZE:
+     meta_plugin_unminimize_completed(plugin, actor);
+     break;
++  case ANIMATION_COMPLETION_SIZE_CHANGE:
++    meta_plugin_size_change_completed(plugin, actor);
++    break;
+   default:
+     g_assert_not_reached();
+   }
+@@ -1270,8 +1311,10 @@ static gboolean validate_previewable(AnimationSpec *spec, GError **error) {
+   static const char *const actor_keys[] = {
+       "x", "y", "scale", "scale_x", "scale_y", "rotation", "opacity", NULL};
+   static const char *const workspace_keys[] = {"progress", NULL};
++  static const char *const resize_keys[] = {"progress", NULL};
+   const char *const *allowed_keys =
+       g_str_equal(spec->event, "workspace-switch") ? workspace_keys
++      : g_str_equal(spec->event, "resize")         ? resize_keys
+                                                      : actor_keys;
+   GVariant *maps[] = {spec->from, spec->to};
+   for (guint i = 0; i < G_N_ELEMENTS(maps); i++)
+@@ -1765,8 +1808,8 @@ static gboolean animation_supports_lifecycle_event(const char *name,
+ 
+   if (g_str_equal(name, "none"))
+     return g_strv_contains((const char *const[]){"minimize", "restore", "open",
+-                                                  "close", "workspace-switch",
+-                                                  NULL},
++                                                  "close", "resize",
++                                                  "workspace-switch", NULL},
+                            event);
+ 
+   return builtin_supports_event(name, event);
+@@ -1781,6 +1824,7 @@ static char *animation_for_event(const char *event) {
+       {"restore", "gnome-restore"},
+       {"open", "gnome-open"},
+       {"close", "gnome-close"},
++      {"resize", "gnome-resize"},
+       {NULL, NULL},
+   };
+   g_autoptr(GVariant) animations = config_animations();
+@@ -1869,7 +1913,7 @@ static gboolean select_window_lifecycle_animation(
+ 
+     if (g_variant_is_of_type(animation, G_VARIANT_TYPE_STRING)) {
+       name = g_variant_get_string(animation, NULL);
+-      if (!g_str_equal(event, "open") ||
++      if ((!g_str_equal(event, "open") && !g_str_equal(event, "resize")) ||
+           !animation_supports_lifecycle_event(name, event))
+         continue;
+       g_free(*selected_name);
+@@ -2237,9 +2281,36 @@ void meta_gnoblin_animation_kill_switch_workspace(MetaPlugin *plugin) {
+     workspace_switch_stop(state->workspace_switch, TRUE);
+ }
+ 
++static GVariant *dict_with_progress_default(GVariant *source,
++                                            double default_progress) {
++  GVariantBuilder builder;
++  GVariantIter iter;
++  const char *key;
++  GVariant *value;
++  gboolean has_progress = FALSE;
++
++  if (source && !g_variant_is_of_type(source, G_VARIANT_TYPE_VARDICT))
++    return g_variant_ref(source);
++
++  g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
++  if (source) {
++    g_variant_iter_init(&iter, source);
++    while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
++      if (g_str_equal(key, "progress"))
++        has_progress = TRUE;
++      g_variant_builder_add(&builder, "{sv}", key, value);
++      g_variant_unref(value);
++    }
++  }
++  if (!has_progress)
++    frame_add_number(&builder, "progress", default_progress);
++  return g_variant_ref_sink(g_variant_builder_end(&builder));
++}
++
+ static gboolean start_window_lifecycle_animation(
+     MetaPlugin *plugin, AnimationCompletion completion,
+-    MetaWindowActor *window_actor, const char *event) {
++    MetaWindowActor *window_actor, const char *event,
++    const MtkRectangle *old_buffer_rect) {
+   MetaWindow *window = meta_window_actor_get_meta_window(window_actor);
+   if (!window)
+     return FALSE;
+@@ -2279,6 +2350,33 @@ static gboolean start_window_lifecycle_animation(
+   if (!parse_spec(&spec, name, event, window, &error))
+     return FALSE;
+   apply_rule_overrides(&spec, overrides);
++  gboolean resize_geometry = g_str_equal(event, "resize");
++  double resize_x = 0, resize_y = 0;
++  double resize_scale_x = 1, resize_scale_y = 1;
++  if (resize_geometry) {
++    MtkRectangle new_buffer_rect;
++    if (!old_buffer_rect || old_buffer_rect->width <= 0 ||
++        old_buffer_rect->height <= 0) {
++      animation_spec_clear(&spec);
++      return FALSE;
++    }
++    meta_window_get_buffer_rect(window, &new_buffer_rect);
++    if (new_buffer_rect.width <= 0 || new_buffer_rect.height <= 0) {
++      animation_spec_clear(&spec);
++      return FALSE;
++    }
++
++    resize_x = old_buffer_rect->x - new_buffer_rect.x;
++    resize_y = old_buffer_rect->y - new_buffer_rect.y;
++    resize_scale_x = old_buffer_rect->width / (double)new_buffer_rect.width;
++    resize_scale_y = old_buffer_rect->height / (double)new_buffer_rect.height;
++    GVariant *from = dict_with_progress_default(spec.from, 0);
++    GVariant *to = dict_with_progress_default(spec.to, 1);
++    g_clear_pointer(&spec.from, g_variant_unref);
++    g_clear_pointer(&spec.to, g_variant_unref);
++    spec.from = from;
++    spec.to = to;
++  }
+   if (!validate_previewable(&spec, &error) || spec.duration == 0) {
+     animation_spec_clear(&spec);
+     return FALSE;
+@@ -2311,6 +2409,11 @@ static gboolean start_window_lifecycle_animation(
+   preview->lifecycle = TRUE;
+   preview->lifecycle_plugin = plugin ? g_object_ref(plugin) : NULL;
+   preview->lifecycle_completion = completion;
++  preview->resize_geometry = resize_geometry;
++  preview->resize_x = resize_x;
++  preview->resize_y = resize_y;
++  preview->resize_scale_x = resize_scale_x;
++  preview->resize_scale_y = resize_scale_y;
+   if (completion == ANIMATION_COMPLETION_UNMINIMIZE)
+     clutter_actor_show(preview->actor);
+   save_actor_state(preview);
+@@ -2337,7 +2440,7 @@ static gboolean start_window_lifecycle_animation(
+ 
+ static void start_window_open_animation(MetaWindowActor *window_actor) {
+   start_window_lifecycle_animation(NULL, ANIMATION_COMPLETION_NONE,
+-                                   window_actor, "open");
++                                   window_actor, "open", NULL);
+ }
+ 
+ void meta_gnoblin_animation_window_mapped(MetaWindowActor *window_actor) {
+@@ -2351,7 +2454,7 @@ gboolean meta_gnoblin_animation_window_destroying(MetaPlugin *plugin,
+   g_return_val_if_fail(META_IS_WINDOW_ACTOR(window_actor), FALSE);
+   return start_window_lifecycle_animation(plugin,
+                                           ANIMATION_COMPLETION_DESTROY,
+-                                          window_actor, "close");
++                                          window_actor, "close", NULL);
+ }
+ 
+ gboolean meta_gnoblin_animation_window_minimizing(
+@@ -2360,7 +2463,7 @@ gboolean meta_gnoblin_animation_window_minimizing(
+   g_return_val_if_fail(META_IS_WINDOW_ACTOR(window_actor), FALSE);
+   return start_window_lifecycle_animation(plugin,
+                                           ANIMATION_COMPLETION_MINIMIZE,
+-                                          window_actor, "minimize");
++                                          window_actor, "minimize", NULL);
+ }
+ 
+ gboolean meta_gnoblin_animation_window_restoring(
+@@ -2369,7 +2472,56 @@ gboolean meta_gnoblin_animation_window_restoring(
+   g_return_val_if_fail(META_IS_WINDOW_ACTOR(window_actor), FALSE);
+   return start_window_lifecycle_animation(plugin,
+                                           ANIMATION_COMPLETION_UNMINIMIZE,
+-                                          window_actor, "restore");
++                                          window_actor, "restore", NULL);
++}
++
++static void pending_resize_free(gpointer user_data) {
++  PendingResize *pending = user_data;
++  g_clear_object(&pending->plugin);
++  g_free(pending);
++}
++
++void meta_gnoblin_animation_size_change(MetaPlugin *plugin,
++                                        MetaWindowActor *window_actor,
++                                        MetaSizeChange which_change,
++                                        MtkRectangle *old_frame_rect,
++                                        MtkRectangle *old_buffer_rect) {
++  g_return_if_fail(META_IS_PLUGIN(plugin));
++  g_return_if_fail(META_IS_WINDOW_ACTOR(window_actor));
++  g_return_if_fail(old_buffer_rect != NULL);
++  (void)which_change;
++  (void)old_frame_rect;
++
++  PendingResize *previous = g_object_steal_data(G_OBJECT(window_actor),
++                                                RESIZE_PENDING_KEY);
++  if (previous) {
++    meta_plugin_size_change_completed(previous->plugin, window_actor);
++    pending_resize_free(previous);
++  }
++
++  PendingResize *pending = g_new0(PendingResize, 1);
++  pending->plugin = g_object_ref(plugin);
++  pending->old_buffer_rect = *old_buffer_rect;
++  g_object_set_data_full(G_OBJECT(window_actor), RESIZE_PENDING_KEY, pending,
++                         pending_resize_free);
++}
++
++void meta_gnoblin_animation_size_changed(MetaPlugin *plugin,
++                                         MetaWindowActor *window_actor) {
++  g_return_if_fail(META_IS_PLUGIN(plugin));
++  g_return_if_fail(META_IS_WINDOW_ACTOR(window_actor));
++
++  PendingResize *pending = g_object_steal_data(G_OBJECT(window_actor),
++                                                RESIZE_PENDING_KEY);
++  if (!pending)
++    return;
++
++  gboolean started = start_window_lifecycle_animation(
++      pending->plugin, ANIMATION_COMPLETION_SIZE_CHANGE, window_actor,
++      "resize", &pending->old_buffer_rect);
++  if (!started)
++    meta_plugin_size_change_completed(pending->plugin, window_actor);
++  pending_resize_free(pending);
+ }
+ 
+ void meta_gnoblin_animation_cancel_window_effects(MetaPlugin *plugin,
+@@ -2377,6 +2529,12 @@ void meta_gnoblin_animation_cancel_window_effects(MetaPlugin *plugin,
+   g_return_if_fail(META_IS_PLUGIN(plugin));
+   g_return_if_fail(META_IS_WINDOW_ACTOR(window_actor));
+   MetaDisplay *display = meta_plugin_get_display(plugin);
++  PendingResize *pending = g_object_steal_data(G_OBJECT(window_actor),
++                                                RESIZE_PENDING_KEY);
++  if (pending) {
++    meta_plugin_size_change_completed(pending->plugin, window_actor);
++    pending_resize_free(pending);
++  }
+   AnimationState *state =
+       g_object_get_data(G_OBJECT(display), ANIMATION_ID_KEY);
+   if (!state)
+diff --git a/src/core/gnoblin-animation.h b/src/core/gnoblin-animation.h
+index af42d956..1756a6c5 100644
+--- a/src/core/gnoblin-animation.h
++++ b/src/core/gnoblin-animation.h
+@@ -8,6 +8,15 @@
+ 
+ void meta_gnoblin_animation_window_mapped (MetaWindowActor *window_actor);
+ META_EXPORT
++void meta_gnoblin_animation_size_change (MetaPlugin       *plugin,
++                                         MetaWindowActor  *window_actor,
++                                         MetaSizeChange    which_change,
++                                         MtkRectangle     *old_frame_rect,
++                                         MtkRectangle     *old_buffer_rect);
++META_EXPORT
++void meta_gnoblin_animation_size_changed (MetaPlugin      *plugin,
++                                          MetaWindowActor *window_actor);
++META_EXPORT
+ gboolean meta_gnoblin_animation_window_destroying (MetaPlugin *plugin,
+                                                    MetaWindowActor *window_actor);
+ META_EXPORT

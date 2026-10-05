@@ -51,3 +51,19 @@ gnoblin_test_ibus_stop() {
     wait "$pid" 2>/dev/null || true
     rm -f "$pid_file"
 }
+
+gnoblin_test_ibus_select_source() {
+    local gnoblinctl="$1"
+    local result_file="$2"
+
+    for _ in {1..100}; do
+        if "$gnoblinctl" --timeout 2 input select ibus xkb:us::eng >"$result_file" 2>&1; then
+            return 0
+        fi
+        sleep 0.1
+    done
+
+    cat "$result_file" >&2
+    echo 'Gnoblin could not select the configured IBus engine' >&2
+    return 1
+}

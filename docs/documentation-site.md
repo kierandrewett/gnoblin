@@ -35,8 +35,6 @@ Set these repository values in **Settings → Secrets and variables → Actions*
 | `CLOUDFLARE_API_TOKEN`  | Secret   | Token with **Account → Cloudflare Pages → Edit** access |
 | `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare account ID that owns `gnoblin-docs`          |
 
-The APT archive continues to use the `gh-pages` branch independently.
-
 ## Write for the reader
 
 - Give each page one job. Start with what the reader can do.

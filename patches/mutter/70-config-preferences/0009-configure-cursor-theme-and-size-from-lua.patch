@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] core: keep Gnoblin cursor preferences in Lua
+
+---
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index 6324d5816..29b90ecec 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -1510,6 +1510,10 @@ settings_changed (GSettings *settings,
+     return;
+   if (is_gnoblin_session () && gnoblin_owns_compositor_preference (key))
+     return;
++  if (is_gnoblin_session () && settings == SETTINGS (SCHEMA_INTERFACE) &&
++      (g_str_equal (key, KEY_GNOME_CURSOR_THEME) ||
++       g_str_equal (key, KEY_GNOME_CURSOR_SIZE)))
++    return;
+   if (is_gnoblin_session () && gnoblin_drag_threshold_configured &&
+       settings == SETTINGS (SCHEMA_MOUSE) && g_str_equal (key, "drag-threshold"))
+     return;

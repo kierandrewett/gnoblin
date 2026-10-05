@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import time
 
-assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
+assert os.environ.get("GNOBLIN_COMPOSITOR_SOCKET"), "Run inside a supervised Gnoblin session"
 config = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin"
 config.mkdir(parents=True, exist_ok=True)
 (config / "init.lua").write_text(
@@ -30,7 +30,9 @@ def wait_for(predicate):
 
 call("reload")
 wait_for(lambda: Path(os.environ["GNOBLIN_COMPOSITOR_SOCKET"]).exists())
-assert call("feature", "list")["features"]
+assert call("ping") == "pong"
+identity = call("version")
+assert identity["version"] and identity["gitSha"], identity
 window = subprocess.Popen(["foot", "--app-id", "gnoblin-package-test", "sleep", "60"])
 try:
     wait_for(lambda: any("gnoblin-package-test" in item["appId"] for item in call("window", "list")["windows"]))

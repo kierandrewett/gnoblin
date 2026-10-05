@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] mutter: select configured lifecycle animations
+
+---
+diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
+index c4ee37452..08508e333 100644
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -1692,13 +1692,62 @@ static gboolean animation_supports_lifecycle_event(const char *name,
+     return enabled && g_strcmp0(configured_event, event) == 0;
+   }
+ 
+-  if (g_str_equal(event, "open"))
+-    return g_str_equal(name, "fade") || g_str_equal(name, "gnome") ||
+-           g_str_equal(name, "gnome-open") || g_str_equal(name, "none");
+-  if (g_str_equal(event, "close"))
+-    return g_str_equal(name, "fade") || g_str_equal(name, "gnome") ||
+-           g_str_equal(name, "gnome-close") || g_str_equal(name, "none");
+-  return FALSE;
++  if (g_str_equal(name, "none"))
++    return g_strv_contains((const char *const[]){"minimize", "restore", "open",
++                                                  "close", NULL},
++                           event);
++
++  return builtin_supports_event(name, event);
++}
++
++static char *animation_for_event(const char *event) {
++  static const struct {
++    const char *event;
++    const char *name;
++  } defaults[] = {
++      {"minimize", "gnome-minimize"},
++      {"restore", "gnome-restore"},
++      {"open", "gnome-open"},
++      {"close", "gnome-close"},
++      {NULL, NULL},
++  };
++  g_autoptr(GVariant) animations = config_animations();
++
++  if (animations && g_variant_is_container(animations)) {
++    GVariantIter iter;
++    GVariant *candidate;
++
++    g_variant_iter_init(&iter, animations);
++    while ((candidate = g_variant_iter_next_value(&iter))) {
++      if (g_variant_is_of_type(candidate, G_VARIANT_TYPE_VARIANT)) {
++        GVariant *unboxed = g_variant_get_variant(candidate);
++        g_variant_unref(candidate);
++        candidate = unboxed;
++      }
++
++      const char *name = NULL;
++      const char *candidate_event = NULL;
++      gboolean enabled = TRUE;
++      g_variant_lookup(candidate, "name", "&s", &name);
++      g_variant_lookup(candidate, "event", "&s", &candidate_event);
++      g_variant_lookup(candidate, "enable", "b", &enabled);
++
++      if (enabled && name && g_strcmp0(candidate_event, event) == 0 &&
++          animation_supports_lifecycle_event(name, event)) {
++        char *selected = g_strdup(name);
++        g_variant_unref(candidate);
++        return selected;
++      }
++
++      g_variant_unref(candidate);
++    }
++  }
++
++  for (guint i = 0; defaults[i].event; i++)
++    if (g_str_equal(defaults[i].event, event))
++      return g_strdup(defaults[i].name);
++
++  return NULL;
+ }
+ 
+ static gboolean select_window_lifecycle_animation(
+@@ -1710,7 +1759,7 @@ static gboolean select_window_lifecycle_animation(
+   GVariantIter iter;
+   GVariant *rule_value;
+ 
+-  *selected_name = NULL;
++  *selected_name = animation_for_event(event);
+   *selected_overrides = NULL;
+   if (!rules || !g_variant_is_container(rules))
+     return TRUE;

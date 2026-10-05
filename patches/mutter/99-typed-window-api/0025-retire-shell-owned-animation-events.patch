@@ -1,0 +1,23 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 1 Oct 2026 00:06:56 +0100
+Subject: [PATCH] mutter: remove shell-owned animation events
+
+---
+diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
+index 7d3c9af..60d2113 100644
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -370,11 +370,9 @@ static gboolean actor_event(const char *event) {
+ 
+ static gboolean internal_event(const char *event) {
+   static const char *const names[] = {
+-      "console-open",       "console-close",
+       "shadow-change",      "tile-preview-open",
+       "tile-preview-close", "dialog-dim",
+-      "dialog-undim",       "layer-companion-close",
+-      "workspace-switch",   NULL};
++      "dialog-undim",       "workspace-switch", NULL};
+   return g_strv_contains(names, event);
+ }
+ 

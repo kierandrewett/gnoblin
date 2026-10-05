@@ -107,14 +107,7 @@ Their button layout is fixed. Native fallback separately supports Lua's
 `button_layout`. Other toolkits need an adapter; ordinary toolkit windows
 cannot be attached directly.
 
-## Reload and tests
+## Reload
 
 `gnoblinctl config reload` restarts configured services, even when an
 executable's path is unchanged. Compositor upgrades require a new session.
-
-Private tests cover pixels, crop, controls, fullscreen, theme reload and fallback.
-Start with `tests/test-window-frames.py`; use `GNOBLIN_SSD_RENDERER=cairo`
-or `qt` for adapters.
-
-Mixed-scale transitions, popup-heavy cropped apps, adversarial fuzzing and
-GPU-buffer adapters need further coverage.

@@ -1,5 +1,5 @@
 From d4aafac327b56dc142983974e0f34ad1514ea587 Mon Sep 17 00:00:00 2001
-From: Gnoblin contributors <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 21:05:00 +0100
 Subject: [PATCH] wayland: tolerate dependencies gone during shutdown
 

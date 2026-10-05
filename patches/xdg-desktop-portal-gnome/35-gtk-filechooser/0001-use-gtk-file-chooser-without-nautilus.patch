@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 26 Sep 2026 20:59:15 +0000
+Subject: [PATCH] portal: let GTK handle file selection without Nautilus
+
+---
+diff --git a/data/meson.build b/data/meson.build
+index bcbc8d5..8290989 100644
+--- a/data/meson.build
++++ b/data/meson.build
+@@ -11,7 +11,6 @@ gnome_portal_interfaces = [
+   'org.freedesktop.impl.portal.Background',
+   'org.freedesktop.impl.portal.Clipboard',
+   'org.freedesktop.impl.portal.DynamicLauncher',
+-  'org.freedesktop.impl.portal.FileChooser',
+   'org.freedesktop.impl.portal.GlobalShortcuts',
+   'org.freedesktop.impl.portal.InputCapture',
+   'org.freedesktop.impl.portal.Lockdown',
+diff --git a/src/meson.build b/src/meson.build
+index 8103dc5..829770b 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -105,7 +105,6 @@ sources = built_sources + files(
+   'displaystatetracker.c',
+   'dynamic-launcher.c',
+   'fc-monitor.c',
+-  'filechooser.c',
+   'inputcapture.c',
+   'inputcapturedialog.c',
+   'globalshortcuts.c',
+diff --git a/src/xdg-desktop-portal-gnome.c b/src/xdg-desktop-portal-gnome.c
+index bd1a3f7..e3f474e 100644
+--- a/src/xdg-desktop-portal-gnome.c
++++ b/src/xdg-desktop-portal-gnome.c
+@@ -49,7 +49,6 @@
+ #include "appchooser.h"
+ #include "background.h"
+ #include "clipboard.h"
+-#include "filechooser.h"
+ #include "globalshortcuts.h"
+ #include "lockdown.h"
+ #include "print.h"
+@@ -123,12 +122,6 @@ on_bus_acquired (GDBusConnection *connection,
+   if (settings_only)
+     return;
+ 
+-  if (!file_chooser_init (connection, &error))
+-    {
+-      g_warning ("error: %s\n", error->message);
+-      g_clear_error (&error);
+-    }
+-
+   if (!access_init (connection, &error))
+     {
+       g_warning ("error: %s\n", error->message);

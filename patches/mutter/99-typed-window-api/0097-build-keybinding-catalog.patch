@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 4 Oct 2026 20:08:52 +0100
+Subject: [PATCH] mutter: build Gnoblin keybinding catalog
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index fc38bbb..1dae974 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1191,6 +1191,7 @@ libmutter = library(libmutter_name,
+   files('core/gnoblin-native-control.c'),
+   files('core/gnoblin-location-agent.c'),
+   files('core/gnoblin-touchpad-router.c'),
++  files('core/gnoblin-keybinding-catalog.c'),
+   version: '0.0.0',
+   soversion: 0,
+   gnu_symbol_visibility: 'hidden',

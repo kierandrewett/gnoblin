@@ -1,0 +1,82 @@
+From fbfbb285d34884f06a123e0bd7d8a23c96929be8 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 4 Oct 2026 15:32:20 +0100
+Subject: [PATCH] mutter: allow Lua privacy-screen override
+
+---
+ src/backends/meta-settings-private.h |  3 +++
+ src/backends/meta-settings.c         | 33 ++++++++++++++++++++++++++--
+ 2 files changed, 34 insertions(+), 2 deletions(-)
+
+diff --git a/src/backends/meta-settings-private.h b/src/backends/meta-settings-private.h
+index 0c96daff2a..ef354d93e0 100644
+--- a/src/backends/meta-settings-private.h
++++ b/src/backends/meta-settings-private.h
+@@ -84,3 +84,6 @@ gboolean meta_settings_is_privacy_screen_enabled (MetaSettings *settings);
+ 
+ void meta_settings_set_privacy_screen_enabled (MetaSettings *settings,
+                                                gboolean      enabled);
++
++void meta_settings_apply_gnoblin_privacy_screen_preferences (MetaSettings *settings,
++                                                              GVariant     *preferences);
+diff --git a/src/backends/meta-settings.c b/src/backends/meta-settings.c
+index 759f914696..6dea6ceec3 100644
+--- a/src/backends/meta-settings.c
++++ b/src/backends/meta-settings.c
+@@ -74,6 +74,7 @@ struct _MetaSettings
+   int font_dpi;
+ 
+   gboolean privacy_screen;
++  gboolean privacy_screen_overridden;
+ 
+   MetaExperimentalFeature experimental_features;
+   gboolean experimental_features_overridden;
+@@ -252,6 +253,9 @@ privacy_settings_changed (GSettings    *privacy_settings,
+     {
+       gboolean privacy_screen;
+ 
++      if (settings->privacy_screen_overridden)
++        return;
++
+       privacy_screen = g_settings_get_boolean (privacy_settings, key);
+ 
+       if (settings->privacy_screen != privacy_screen)
+@@ -654,8 +658,33 @@ meta_settings_set_privacy_screen_enabled (MetaSettings *settings,
+     return;
+ 
+   settings->privacy_screen = enabled;
+-  g_settings_set_boolean (settings->privacy_settings, "privacy-screen",
+-                          enabled);
++
++  if (!settings->privacy_screen_overridden)
++    g_settings_set_boolean (settings->privacy_settings, "privacy-screen",
++                            enabled);
++}
++
++void
++meta_settings_apply_gnoblin_privacy_screen_preferences (MetaSettings *settings,
++                                                        GVariant     *preferences)
++{
++  gboolean overridden = FALSE;
++  gboolean enabled = FALSE;
++
++  if (preferences)
++    overridden = g_variant_lookup (preferences, "privacy-screen", "b", &enabled);
++
++  settings->privacy_screen_overridden = overridden;
++
++  if (!overridden)
++    enabled = g_settings_get_boolean (settings->privacy_settings,
++                                      "privacy-screen");
++
++  if (settings->privacy_screen != enabled)
++    {
++      settings->privacy_screen = enabled;
++      g_signal_emit (settings, signals[PRIVACY_SCREEN_CHANGED], 0);
++    }
+ }
+ 
+ MetaSettings *
+-- 
+2.55.0
+

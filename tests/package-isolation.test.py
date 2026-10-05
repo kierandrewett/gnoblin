@@ -2,6 +2,7 @@
 """Regression checks for installation alongside an existing GNOME session."""
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -14,7 +15,56 @@ isolation = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(isolation)
 
 
+def session_build_inputs(base):
+    fixture = base / "session-build-inputs"
+    fixture.mkdir()
+    binary = fixture / "helper"
+    binary.write_text("#!/bin/sh\nexit 0\n")
+    binary.chmod(0o755)
+    identity = fixture / "version.json"
+    identity.write_text('{"version":"0.1.7"}\n')
+    version = fixture / "version.ini"
+    version.write_text("version=0.1.7\n")
+    return {
+        "GNOBLIN_IDLE_BINARY": str(binary),
+        "GNOBLINCTL_BINARY": str(binary),
+        "GNOBLIN_IDENTITY_FILE": str(identity),
+        "GNOBLIN_VERSION_METADATA_FILE": str(version),
+        "GNOBLIN_BINARY": str(binary),
+        "GNOBLIN_VECTOR_CURSORS": "OFF",
+    }
+
+
 class IsolationTests(unittest.TestCase):
+    def test_source_install_removes_known_legacy_shell_files_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            prefix = base / "runtime"
+            old_files = (
+                "bin/gnome-shell",
+                "libexec/gnome-shell-hotplug-sniffer",
+                "share/gnome-shell/modes/gnoblin.json",
+                "share/gnome-shell/gnome-shell-theme.gresource",
+                "share/gnome-shell/org.gnome.Shell.Notifications.src.gresource",
+            )
+            for relative in old_files:
+                old = prefix / relative
+                old.parent.mkdir(parents=True, exist_ok=True)
+                old.write_text("old Gnoblin Shell payload\n")
+            marker = prefix / "share/gnome-shell/local-marker.txt"
+            marker.write_text("preserve local data\n")
+
+            subprocess.run(
+                ["bash", str(ROOT / "scripts/install-session.sh"), str(prefix)],
+                env={**os.environ, **session_build_inputs(base)},
+                check=True,
+                capture_output=True,
+            )
+
+            for relative in old_files:
+                self.assertFalse((prefix / relative).exists(), relative)
+            self.assertEqual(marker.read_text(), "preserve local data\n")
+
     def test_local_registration_preserves_stock_units(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
@@ -29,10 +79,20 @@ class IsolationTests(unittest.TestCase):
             systemctl = fake_bin / "systemctl"
             systemctl.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$TEST_SYSTEMCTL_LOG"\n')
             systemctl.chmod(0o755)
+            sudo = fake_bin / "sudo"
+            sudo.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$TEST_SYSTEMCTL_LOG"\n')
+            sudo.chmod(0o755)
+            dbus_update_environment = fake_bin / "dbus-update-activation-environment"
+            dbus_update_environment.write_text("#!/bin/sh\nexit 0\n")
+            dbus_update_environment.chmod(0o755)
+            gnome_session = fake_bin / "gnome-session"
+            gnome_session.write_text("#!/bin/sh\nexit 0\n")
+            gnome_session.chmod(0o755)
             env = {
                 **os.environ,
                 "XDG_CONFIG_HOME": str(config),
                 "GNOBLIN_LIBDIR": "lib64",
+                **session_build_inputs(base),
                 "PATH": f"{fake_bin}:{os.environ['PATH']}",
                 "TEST_SYSTEMCTL_LOG": str(base / "calls"),
             }
@@ -49,13 +109,29 @@ class IsolationTests(unittest.TestCase):
                 capture_output=True,
             )
             self.assertEqual(stock.read_text(), "stock GNOME unit\n")
-            self.assertEqual(
-                (units / "gnome-session@gnoblin.target.d/gnoblin.conf").resolve(),
-                prefix / "lib/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf",
+            core_registration = (base / "calls").read_text()
+            self.assertIn("gnoblin-session.target", core_registration)
+            self.assertNotIn("xdg-desktop-portal-gnoblin.service", core_registration)
+            for relative in (
+                "lib/systemd/user/xdg-desktop-portal-gnoblin.service",
+                "libexec/xdg-desktop-portal-gnoblin",
+                "share/xdg-desktop-portal/portals/gnoblin.portal",
+                "share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service",
+            ):
+                destination = prefix / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text("portal fixture\n")
+            subprocess.run(
+                ["bash", str(ROOT / "scripts/register-session.sh"), str(prefix)],
+                env=env,
+                check=True,
+                capture_output=True,
             )
+            self.assertEqual(stock.read_text(), "stock GNOME unit\n")
             calls = (base / "calls").read_text()
             self.assertNotIn("org.gnome.Shell", calls)
-            self.assertIn("org.gnoblin.Shell.target", calls)
+            self.assertIn("gnoblin-session.target", calls)
+            self.assertIn("xdg-desktop-portal-gnoblin.service", calls)
 
     def test_rejects_stock_files_and_capabilities(self):
         for path in (
@@ -65,7 +141,7 @@ class IsolationTests(unittest.TestCase):
             "/usr/share/glib-2.0/schemas/org.gnome.shell.gschema.xml",
         ):
             with self.subTest(path=path), self.assertRaises(ValueError):
-                isolation.validate("gnoblin-shell", path, "", "", "")
+                isolation.validate("gnoblin", path, "", "", "")
         for capability in (
             "gnome-shell = 51.0",
             "mutter = 51.0",
@@ -73,25 +149,53 @@ class IsolationTests(unittest.TestCase):
             "pkgconfig(libmutter-51) = 51.0",
         ):
             with self.subTest(capability=capability), self.assertRaises(ValueError):
-                isolation.validate("gnoblin-shell", "", capability, "", "")
+                isolation.validate("gnoblin", "", capability, "", "")
         for name, conflicts, obsoletes in (
             ("gnome-shell", "", ""),
-            ("gnoblin-shell", "gnome-shell < 49", ""),
-            ("gnoblin-shell", "", "mutter"),
+            ("gnoblin-session", "", ""),
+            ("gnoblin", "gnome-shell < 49", "gnoblin-session <= 0.1.7-21"),
+            ("gnoblin", "", "mutter"),
         ):
             with self.subTest(name=name, conflicts=conflicts, obsoletes=obsoletes), self.assertRaises(ValueError):
                 isolation.validate(name, "", "", conflicts, obsoletes)
 
-    def test_accepts_private_runtime_and_session_entries(self):
-        paths = "\n".join(sorted(isolation.PUBLIC_FILES)) + "\n/usr/lib/gnoblin/bin/gnome-shell"
-        isolation.validate("gnoblin-shell", paths, "gnoblin-shell = 51.0", "", "")
-        isolation.validate(
-            "gnoblin-compat-runtime",
-            "/usr/lib/gnoblin/deps/lib64/libglib-2.0.so.0",
-            "gnoblin-compat-runtime = 51.0",
-            "",
-            "",
+    def test_gnoblin_payload_provides_and_obsoletes_the_old_session_package(self):
+        portal_files = {
+            "/usr/share/xdg-desktop-portal/portals/gnoblin.portal",
+            "/usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service",
+            "/usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service",
+        }
+        paths = (
+            "\n".join(sorted(isolation.PUBLIC_FILES - portal_files)) + "\n/usr/lib/gnoblin/lib/libgnoblin-runtime.so"
         )
+        isolation.validate(
+            "gnoblin",
+            paths,
+            "gnoblin-session = 0.1.7",
+            "",
+            "gnoblin-session <= 0.1.7-21.fc45",
+        )
+
+    def test_manifest_has_one_gnoblin_runtime_package(self):
+        manifest = json.loads((ROOT / "packaging/native-packages.json").read_text())
+        packages = manifest["packages"]
+        self.assertNotIn("gnoblin-session", packages)
+        self.assertIn("lua", packages["gnoblin"]["requires"])
+        self.assertEqual(manifest["requirements"]["lua"]["minVersion"], "5.4")
+        self.assertIn("gtk4", packages["gnoblin-portal"]["requires"])
+        self.assertEqual(manifest["requirements"]["gtk4"]["minVersion"], "4.22.0")
+        self.assertNotIn("gnoblin-portal", packages["gnoblin"].get("requiresSameMajor", []))
+        self.assertEqual(manifest["requirements"]["gsettings-desktop-schemas"]["minVersion"], "49.1")
+        arch = (ROOT / "packaging/arch/PKGBUILD").read_text()
+        self.assertIn("'lua>=5.4'", arch)
+        self.assertIn("'gsettings-desktop-schemas>=49.1'", arch)
+        self.assertNotIn("'gtk4>=4.22.0'", arch)
+        self.assertNotIn("'xdg-desktop-portal>=1.21.1'", arch)
+        portal_arch = (ROOT / "packaging/arch/portal/PKGBUILD").read_text()
+        self.assertIn("'gtk4>=4.22.0'", portal_arch)
+        self.assertIn("'xdg-desktop-portal>=1.21.1'", portal_arch)
+        self.assertIn("systemd", packages["gnoblin"]["requires"])
+        self.assertEqual(packages["gnoblin-gnome-integration"]["requiresExact"], ["gnoblin"])
 
     def test_source_install_rejects_shared_prefixes_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -123,125 +227,94 @@ class IsolationTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_service_failure_does_not_disable_gnome_extensions(self):
-        unit = (ROOT / "src/data/session/systemd-user/org.gnoblin.Shell@wayland.service.in").read_text()
-        self.assertNotIn("org.gnome.Shell-disable-extensions.service", unit)
-
-    def test_session_install_removes_legacy_extension_manager_files(self):
-        with tempfile.TemporaryDirectory() as directory:
-            prefix = Path(directory) / "runtime"
-            legacy_paths = (
-                "bin/gnome-extensions",
-                "bin/gnome-extensions-app",
-                "share/applications/org.gnome.Extensions.desktop",
-                "share/dbus-1/services/org.gnome.Extensions.service",
-                "share/glib-2.0/schemas/org.gnome.Extensions.gschema.xml",
-                "share/metainfo/org.gnome.Extensions.metainfo.xml",
-                "share/gnome-shell/org.gnome.Extensions",
-                "share/gnome-shell/org.gnome.Extensions.data.gresource",
-                "share/gnome-shell/org.gnome.Extensions.src.gresource",
-                "share/gnome-shell/org.gnome.Shell.Extensions",
-                "share/gnome-shell/org.gnome.Shell.Extensions.src.gresource",
-                "share/bash-completion/completions/gnome-extensions",
-                "share/applications/org.gnome.Shell.Extensions.desktop",
-                "share/dbus-1/services/org.gnome.Shell.Extensions.service",
-                "lib/systemd/user/org.gnome.Shell-disable-extensions.service",
-                "share/icons/hicolor/64x64/apps/org.gnome.Extensions.png",
-                "share/icons/hicolor/64x64/apps/org.gnome.Shell.Extensions.png",
-            )
-            for relative_path in legacy_paths:
-                path = prefix / relative_path
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("legacy extension manager file\n")
-
-            subprocess.run(
-                ["bash", str(ROOT / "scripts/install-session.sh"), str(prefix)], check=True, capture_output=True
-            )
-
-            for relative_path in legacy_paths:
-                with self.subTest(path=relative_path):
-                    self.assertFalse((prefix / relative_path).exists())
-
     def test_rpm_build_paths_and_metadata(self):
-        shell_spec = (ROOT / "packaging/rpm/gnome-shell.spec").read_text()
-        for project in ("mutter", "gnome-shell"):
+        for project in ("mutter", "gnoblin-portal", "gnoblin"):
             expanded = subprocess.check_output(
                 ["rpmspec", "-P", str(ROOT / f"packaging/rpm/{project}.spec")], text=True
             )
-            self.assertIn("--prefix=/usr/lib/gnoblin", expanded)
-            self.assertIn("--libdir=/usr/lib/gnoblin/lib64", expanded)
-            self.assertNotRegex(expanded, r"(?m)^(?:Conflicts|Obsoletes):")
+            if project in ("mutter", "gnoblin-portal"):
+                self.assertIn("--prefix=/usr/lib/gnoblin", expanded)
+                self.assertIn("--libdir=/usr/lib/gnoblin/lib64", expanded)
+            elif project == "gnoblin":
+                self.assertIn("-DGNOBLIN_PREFIX=/usr/lib/gnoblin", expanded)
+
+                self.assertIn("-DGNOBLIN_LIBDIR=lib64", expanded)
+            if project != "gnoblin":
+                self.assertNotRegex(expanded, r"(?m)^(?:Conflicts|Obsoletes):")
             self.assertNotRegex(expanded, r"(?m)^Name:\s+(?:mutter|gnome-shell)$")
             self.assertNotRegex(expanded, r"(?m)^Provides:\s+lib(?:mutter|shell-|st-)")
             self.assertNotIn("-Degl_device", expanded)
-            if project == "gnome-shell":
-                self.assertIn("BuildRequires:  gnoblin-mutter-devel", expanded)
-                self.assertIn("BuildRequires:  chrpath", expanded)
-                self.assertIn("Exec=/usr/lib/gnoblin/bin/gnoblin-session", expanded)
-                self.assertNotIn("-Dextensions_app=false", expanded)
-                self.assertIn("-Dextensions_tool=false", expanded)
-                self.assertNotIn("Requires:       gnome-control-center", expanded)
-                self.assertNotRegex(expanded, r"(?m)^Requires:\s+gettext$")
-                self.assertIn(
-                    "chrpath --replace '/usr/lib/gnoblin/lib64' redhat-linux-build/src/gnome-shell-portal-helper",
-                    expanded,
+            if project == "gnoblin":
+                version = subprocess.check_output(
+                    [str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True
+                ).strip()
+                self.assertIn(f"Provides:       gnoblin-session = {version}", expanded)
+                release = next(
+                    line.split(":", 1)[1].strip() for line in expanded.splitlines() if line.startswith("Release:")
                 )
-                self.assertIn(
-                    "s|%{buildroot}%{_prefix}|%{_prefix}|g",
-                    shell_spec,
-                )
+                self.assertIn(f"Obsoletes:      gnoblin-session <= {version}-{release}", expanded)
+                self.assertNotIn("Requires:       gnoblin-session", expanded)
+                self.assertNotIn("Requires:       gnoblin-shell", expanded)
+                self.assertNotIn("Requires:       gjs", expanded)
+                self.assertNotIn("GNOBLIN_INSTALL_GNOME_COMPAT", expanded)
+                self.assertIn("cmake --build build/session --target gnoblin gnoblin-idle gnoblinctl", expanded)
+                self.assertIn("Exec=/usr/lib/gnoblin/bin/gnoblin", expanded)
 
-    def test_private_gnome_schemas_are_built_before_the_compositor(self):
-        schemas = subprocess.check_output(
-            ["rpmspec", "-P", str(ROOT / "packaging/rpm/gsettings-desktop-schemas.spec")], text=True
+    def test_portal_rpm_requires_gtk_422_for_build_and_runtime(self):
+        expanded = subprocess.check_output(
+            ["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin-portal.spec")], text=True
         )
+        self.assertIn("BuildRequires:  pkgconfig(gtk4) >= 4.22.0", expanded)
+        self.assertIn("Requires:       gtk4 >= 4.22.0", expanded)
+
+    def test_geoclue_agent_authorization_is_an_optional_rpm_package(self):
+        expanded = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin.spec")], text=True)
+        base_package = expanded.split("%package -n gnoblin-gnome-integration", 1)[0]
+        integration = expanded.split("%package -n gnoblin-geoclue-integration", 1)[1]
+        self.assertNotRegex(base_package, r"(?m)^Requires:\s+geoclue2(?:\s|$)")
+        self.assertIn("Requires:       geoclue2 >= 2.7.2", integration)
+        self.assertIn("/etc/geoclue/conf.d/50-gnoblin.conf", integration)
+        whitelist = (ROOT / "packaging/geoclue/50-gnoblin.conf").read_text()
+        for agent_id in (
+            "geoclue-demo-agent",
+            "gnome-shell",
+            "io.elementary.desktop.agent-geoclue2",
+            "sm.puri.Phosh",
+            "lipstick",
+            "gnoblin",
+        ):
+            with self.subTest(agent_id=agent_id):
+                self.assertIn(agent_id, whitelist)
+
+    def test_nix_package_has_no_gnome_shell_runtime_path(self):
+        package = (ROOT / "nix/package.nix").read_text()
+        flake = (ROOT / "flake.nix").read_text()
+        lock = (ROOT / "flake.lock").read_text()
+        for obsolete in ("gnoblinShell", "gnomeShellSrc", "gnoblin-shell-service", "gjs"):
+            with self.subTest(obsolete=obsolete):
+                self.assertNotIn(obsolete, package)
+        self.assertNotIn('"gnome-shell-src"', flake)
+        self.assertNotIn('"gnome-shell-src"', lock)
+        self.assertNotIn("pkgs.gnome-shell", flake)
+
+    def test_system_schemas_are_required_before_the_compositor(self):
         mutter = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/mutter.spec")], text=True)
         publisher = (ROOT / "scripts/publish-copr.sh").read_text()
-        self.assertIn("Name:           gnoblin-gsettings-desktop-schemas", schemas)
-        self.assertIn("--prefix=/usr/lib/gnoblin", schemas)
-        self.assertIn("BuildRequires:  gobject-introspection-devel", schemas)
-        self.assertNotIn("-Dintrospection=false", schemas)
-        self.assertIn("BuildRequires: gnoblin-gsettings-desktop-schemas >= 51.0", mutter)
+        self.assertIn("BuildRequires: pkgconfig(gsettings-desktop-schemas) >= 49.1", mutter)
+        self.assertNotIn("BuildRequires: pkgconfig(lua)", mutter)
+        self.assertIn("Requires: gsettings-desktop-schemas >= 49.1", mutter)
         self.assertIn("GI_GIR_PATH=/usr/lib/gnoblin/share/gir-1.0", mutter)
-        self.assertIn("GI_GIR_PATH=%{_datadir}/gir-1.0", (ROOT / "packaging/rpm/gnome-shell.spec").read_text())
-        env_script = (ROOT / "src/tools/gnoblin-env.sh").read_text()
-        self.assertIn('local shell_libdir="$prefix/$libdir/gnome-shell"', env_script)
-        self.assertIn(
-            'export GI_TYPELIB_PATH="$shell_libdir/girepository-1.0:$shell_libdir:$prefix/$libdir/gjs/girepository-1.0:$prefix/$libdir/girepository-1.0:$prefix/$libdir/mutter-$mutter_api',
-            env_script,
-        )
-        self.assertLess(
-            publisher.index('build_in_supported_fedora_chroots "$schemas_srpm"'),
-            publisher.index('build_in_supported_fedora_chroots "$mutter_srpm"'),
-        )
-        isolation.validate(
-            "gnoblin-gsettings-desktop-schemas",
-            "/usr/lib/gnoblin/share/pkgconfig/gsettings-desktop-schemas.pc",
-            "pkgconfig(gsettings-desktop-schemas) = 51.0",
-            "",
-            "",
-        )
+        runtime_env = (ROOT / "src/tools/gnoblin-env.sh").read_text()
+        self.assertNotIn("GI_TYPELIB_PATH", runtime_env)
+        build_order = [
+            publisher.index(f'build_in_supported_fedora_chroots "${name}_srpm"')
+            for name in ("mutter", "portal", "meta")
+        ]
+        self.assertEqual(build_order, sorted(build_order))
 
-    def test_build_routes_disable_extension_manager_tools(self):
-        justfile = (ROOT / "Justfile").read_text()
-        nix_package = (ROOT / "nix/package.nix").read_text()
-        no_extensions_patch = (
-            ROOT / "patches/gnome-shell/65-no-extensions/0002-build-omit-extension-preferences-service.patch"
-        ).read_text()
-        self.assertIn('if [ "{{PROJ}}" = gnome-shell ]; then options=(-Dextensions_tool=false)', justfile)
-        self.assertNotIn("-Dextensions_app=false", justfile)
-        self.assertIn("-Dextensions_tool=false", justfile)
-        self.assertNotIn('"-Dextensions_app=false"', nix_package)
-        self.assertIn('"-Dextensions_tool=false"', nix_package)
-        self.assertIn("-  'org.gnome.Shell.Extensions': 'extensions',", no_extensions_patch)
-
-    def test_nix_workspace_resource_patch_is_an_existing_file_edit(self):
-        patch = (
-            ROOT / "patches/gnome-shell/96-workspace-resource/0001-register-workspace-service-resource.patch"
-        ).read_text()
-        self.assertNotIn("index 000000000..000000000", patch)
-        self.assertIn("--- a/js/js-resources.gresource.xml", patch)
-        self.assertIn("+    <file>ui/components/gnoblinWorkspaces.js</file>", patch)
+    def test_lua_build_dependency_belongs_to_the_gnoblin_runtime(self):
+        gnoblin = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin.spec")], text=True)
+        self.assertIn("BuildRequires:  pkgconfig(lua)", gnoblin)
 
     def test_system_install_defaults_to_official_copr(self):
         installer = (ROOT / "scripts/install-system.sh").read_text()
@@ -251,10 +324,109 @@ class IsolationTests(unittest.TestCase):
         self.assertIn('dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"', installer)
         self.assertIn('packages=("gnoblin:$META_VERSION"', installer)
         self.assertIn("gnoblin) project=gnoblin", installer)
-        self.assertIn("dnf -y install --refresh gnoblin", (ROOT / ".github/workflows/verify.yml").read_text())
-        self.assertIn('MODE == "local"', justfile)
-        self.assertIn('"--local-rpms"', justfile)
-        self.assertIn('cmp -s "$ROOT/src/data/session/systemd-user/gnome-session@gnoblin.target.d.conf"', installer)
+        self.assertIn("install --refresh gnoblin", (ROOT / ".github/workflows/verify.yml").read_text())
+        self.assertIn("install-fedora:", justfile)
+        self.assertIn("./scripts/install-system.sh", justfile)
+        self.assertNotIn('"--local-rpms"', justfile)
+        self.assertIn("scripts/legacy/gnome-session@gnoblin.target.d.conf", installer)
+
+    def test_system_installer_removes_only_the_exact_legacy_gnome_dropin(self):
+        installer = (ROOT / "scripts/install-system.sh").read_text()
+        session_installer = (ROOT / "scripts/install-session.sh").read_text()
+
+        self.assertIn('cmp -s "$LEGACY_GNOME_SESSION_DROPIN"', installer)
+        self.assertIn('rm -- "$LEGACY_GNOME_SESSION_DROPIN_PATH"', installer)
+        self.assertNotIn("gnome-session@gnoblin.target.d.conf", session_installer)
+
+    def test_system_installer_removes_exact_legacy_dropin_after_dnf_success(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            dnf_log = base / "dnf.log"
+            (fake_bin / "dnf").write_text(
+                "#!/bin/sh\n"
+                'printf "%s\\n" "$*" >> "$GNOBLIN_FAKE_DNF_LOG"\n'
+                'if [ "$1" = repoquery ]; then printf "gnoblin-45-1.noarch\\n"; fi\n'
+                "exit 0\n"
+            )
+            (fake_bin / "rpm").write_text(
+                "#!/bin/sh\n"
+                'if [ "$1" = -E ]; then\n'
+                '  case "$2" in\n'
+                '    %fedora) printf "45\\n" ;;\n'
+                '    %_arch) printf "x86_64\\n" ;;\n'
+                "  esac\n"
+                "fi\n"
+                "exit 0\n"
+            )
+            (fake_bin / "sudo").write_text('#!/bin/sh\nexec "$@"\n')
+            (fake_bin / "systemctl").write_text("#!/bin/sh\nexit 0\n")
+            for command in fake_bin.iterdir():
+                command.chmod(0o755)
+
+            legacy = ROOT / "scripts/legacy/gnome-session@gnoblin.target.d.conf"
+            config_home = base / "config"
+            dropin = config_home / "systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
+            dropin.parent.mkdir(parents=True)
+            dropin.write_bytes(legacy.read_bytes())
+            environment = os.environ | {
+                "HOME": str(base / "home"),
+                "XDG_CONFIG_HOME": str(config_home),
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "GNOBLIN_FAKE_DNF_LOG": str(dnf_log),
+            }
+            (base / "home").mkdir()
+
+            result = subprocess.run(
+                ["bash", str(ROOT / "scripts/install-system.sh")],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(dropin.exists())
+            self.assertIn("Removed the obsolete managed GNOME session drop-in.", result.stdout)
+            self.assertIn("install --refresh", dnf_log.read_text())
+
+    def test_system_installer_preserves_custom_legacy_dropin_and_aborts(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            fake_bin = base / "bin"
+            fake_bin.mkdir()
+            dnf_log = base / "dnf.log"
+            (fake_bin / "dnf").write_text('#!/bin/sh\necho called >> "$GNOBLIN_FAKE_DNF_LOG"\n')
+            for command in fake_bin.iterdir():
+                command.chmod(0o755)
+            config_home = base / "config"
+            dropin = config_home / "systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
+            dropin.parent.mkdir(parents=True)
+            dropin.write_text("[Unit]\nWants=custom.service\n")
+            home = base / "home"
+            home.mkdir()
+            environment = os.environ | {
+                "HOME": str(home),
+                "XDG_CONFIG_HOME": str(config_home),
+                "PATH": f"{fake_bin}:{os.environ['PATH']}",
+                "GNOBLIN_FAKE_DNF_LOG": str(dnf_log),
+            }
+
+            result = subprocess.run(
+                ["bash", str(ROOT / "scripts/install-system.sh")],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Move the custom Gnoblin override aside first:", result.stderr)
+            self.assertEqual(dropin.read_text(), "[Unit]\nWants=custom.service\n")
+            self.assertFalse(dnf_log.exists())
 
 
 if __name__ == "__main__":

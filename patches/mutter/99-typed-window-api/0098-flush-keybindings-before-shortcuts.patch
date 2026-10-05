@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 4 Oct 2026 20:08:52 +0100
+Subject: [PATCH] Apply Gnoblin keybinding overrides before shortcuts
+
+---
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index 1a6c04bee..2eaf71ec7 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -979,6 +979,19 @@ queue_changed (MetaPreference pref)
+     }
+ }
+ 
++static void
++flush_changed (MetaPreference pref)
++{
++  if (!g_list_find (changes, GINT_TO_POINTER (pref)))
++    return;
++
++  changes = g_list_remove (changes, GINT_TO_POINTER (pref));
++  if (changes == NULL && changed_idle != 0)
++    g_clear_handle_id (&changed_idle, mtk_source_remove);
++
++  emit_changed (pref);
++}
++
+ static gboolean
+ is_gnoblin_session (void)
+ {
+@@ -2418,7 +2431,13 @@ meta_prefs_apply_gnoblin_keybindings (GVariant *keybindings)
+       changed |= update_binding (pref, strokes);
+     }
+   if (changed)
+-    queue_changed (META_PREF_KEYBINDINGS);
++    {
++      queue_changed (META_PREF_KEYBINDINGS);
++      /* Native shortcuts are registered immediately after this function.
++       * Apply the grabs first so they can claim bindings released by the
++       * configured Mutter keybinding table. */
++      flush_changed (META_PREF_KEYBINDINGS);
++    }
+ }
+ 
+ const char*

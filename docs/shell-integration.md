@@ -1,10 +1,10 @@
 # Integrate a desktop shell
 
-These APIs are for shell authors. Desktop configuration starts with
-[the configuration guide](/config).
-
-For session status, input sources, live feature switches and permission state,
-see the [`org.gnoblin.Shell` D-Bus reference](/shell-dbus-api).
+These APIs are for shell authors. The
+[compositor bridge](/compositor-bridge) provides live compositor state and
+operations. Desktop configuration starts with [the configuration guide](/config).
+For the Bingux-specific transition from the compatibility bridge, see the
+[standalone migration guide](/migrate-bingux).
 
 ## Dock animation targets
 
@@ -57,6 +57,37 @@ Choose a window interface based on what the shell needs:
 
 See the [Wayland protocol catalogue](wayland-protocols.md) for advertised globals
 and versions. For persistent keybindings, use the [Lua shortcut config](/config/configure/shortcuts).
-Use the [window-menu contract](/guides/window_menu#write-a-handler) for titlebar
+Use the [window-menu contract](/guides/window_menu) for titlebar
 menus and the [snapping contract](/guides/window_snapping#shell-integration) for
 layout pickers.
+
+## Global shortcut portal
+
+The Gnoblin portal delegates shortcut approval and configuration to the active
+shell. The portal does not draw shortcut UI. A shell that implements the
+Global Shortcuts portal can provide this UI over the session D-Bus.
+
+Own the bus name `org.gnoblin.Shell.GlobalShortcutsProvider` and export the
+interface `org.gnoblin.Shell.GlobalShortcutsProvider` at
+`/org/gnoblin/Shell/GlobalShortcutsProvider`.
+
+`BindShortcuts` receives the application ID, parent window, and a shortcut list
+of type `a(sa{sv})`. Each entry can include:
+
+- `description` (`s`): a label for the shortcut.
+- `preferred_trigger` (`s`): the application's suggested accelerator.
+
+Return the same IDs with a `shortcuts` (`as`) option containing only
+user-approved accelerators. Return an empty list for shortcuts the user did
+not approve. The portal registers only returned accelerators with Gnoblin.
+
+`ConfigureShortcuts` receives the application ID and parent window. Return the
+updated list in the same format. The shell owns the approval UI and any stored
+selection; the portal owns the portal session and activation signals.
+
+When the user changes saved bindings, call `RebindShortcuts` on
+`org.freedesktop.impl.portal.desktop.gnoblin`, at
+`/org/gnoblin/Shell/GlobalShortcuts`, using
+`org.gnoblin.Shell.GlobalShortcutsRebind`. Pass the application ID and the
+updated `a(sa{sv})` list. The portal replaces the active bindings and emits
+`ShortcutsChanged` to portal clients.

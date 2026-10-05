@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] input: keep default acceleration fallback quiet
+
+---
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+index b38732852..a1ff39fb6 100644
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -745,6 +745,7 @@ update_pointer_accel_profile (MetaInputSettings  *input_settings,
+     .points_len = G_N_ELEMENTS (default_points)
+   };
+   gboolean use_fallback = FALSE;
++  gboolean warn_about_fallback = FALSE;
+ 
+   profile = input_get_enum (input_settings, settings, "accel-profile");
+   gnoblin_accel_curve = gnoblin_setting (input_settings, settings, "accel-curve");
+@@ -769,14 +770,18 @@ update_pointer_accel_profile (MetaInputSettings  *input_settings,
+ 
+   if (!step_variant || !speeds_variant)
+     {
+-      g_warning ("Failed to find entries for either pointer-step of type d, "
+-                 "or pointer-speeds of type ad.");
+-      g_warning ("They could exist, but their types might not be right; make "
+-                 "sure all numbers have decimals. If pointer-step doesn't have "
+-                 "a decimal, it won't be recognized, and if any numbers in "
+-                 "pointer-speeds are missing a decimal, it also might not work "
+-                 "correctly. pointer-speeds also needs to be an array. Make "
+-                 "sure your variants are set up properly!");
++      warn_about_fallback = gnoblin_accel_curve != NULL || custom_accel_config != NULL;
++      if (warn_about_fallback)
++        {
++          g_warning ("Failed to find entries for either pointer-step of type d, "
++                     "or pointer-speeds of type ad.");
++          g_warning ("They could exist, but their types might not be right; make "
++                     "sure all numbers have decimals. If pointer-step doesn't have "
++                     "a decimal, it won't be recognized, and if any numbers in "
++                     "pointer-speeds are missing a decimal, it also might not work "
++                     "correctly. pointer-speeds also needs to be an array. Make "
++                     "sure your variants are set up properly!");
++        }
+       use_fallback = TRUE;
+     }
+   else
+@@ -792,17 +797,20 @@ update_pointer_accel_profile (MetaInputSettings  *input_settings,
+           g_warning ("Invalid step set for custom pointer acceleration, "
+                      "the step needs to be higher than 0.");
+           use_fallback = TRUE;
++          warn_about_fallback = TRUE;
+         }
+       if (pointer_accel_config.points_len < 2)
+         {
+           g_warning ("Failed to find required minimum of 2 custom pointer acceleration points.");
+           use_fallback = TRUE;
++          warn_about_fallback = TRUE;
+         }
+     }
+ 
+   if (use_fallback)
+     {
+-      g_warning ("Falling back to default step of 1.0 and speeds [0.0, 1.0]");
++      if (warn_about_fallback)
++        g_warning ("Falling back to default step of 1.0 and speeds [0.0, 1.0]");
+       pointer_accel_config = fallback_accel_config;
+     }
+ 

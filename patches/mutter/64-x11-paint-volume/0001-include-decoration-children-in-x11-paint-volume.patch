@@ -1,5 +1,5 @@
 From 670de2bcbd7851c71d26b606eb4423485c6ab368 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:09:57 +0100
 Subject: [PATCH] compositor: include decoration children in X11 paint volume
 

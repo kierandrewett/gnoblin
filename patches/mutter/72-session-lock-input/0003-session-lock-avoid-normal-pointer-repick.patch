@@ -1,5 +1,5 @@
 From 099e296c8f9487842b2be8461e42a1e7216e1163 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 21:47:05 +0100
 Subject: [PATCH] session-lock: avoid normal pointer repick
 

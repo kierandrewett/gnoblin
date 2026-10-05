@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Deterministic unit checks for lifecycle fuzz plan generation and replay."""
+"""Deterministic unit checks for native lifecycle fuzz plan generation/replay."""
 
 import importlib.util
 import json
 from pathlib import Path
 import tempfile
-
-import gnoblin_test_session as session
 
 module_path = Path(__file__).with_name("window-lifecycle-fuzz.py")
 spec = importlib.util.spec_from_file_location("window_lifecycle_fuzz", module_path)
@@ -19,31 +17,8 @@ second = fuzz.generate_plan(seed=1738, steps=200, max_windows=5)
 assert first == second, "same seed must generate the same plan"
 assert len(first["actions"]) >= 201
 assert first["actions"][0]["op"] == "open"
-assert first["actions"][-1]["op"] == "shell_shutdown"
-assert fuzz.window_operation_expression({"op": "maximize"}, "window").endswith(".maximize()")
-assert fuzz.window_operation_expression(
-    {"op": "resize", "x": 10, "y": 20, "width": 300, "height": 200}, "window"
-).endswith(".move_resize_frame(false,10,20,300,200)")
-assert fuzz.frame_button_center(
-    {
-        "x": 100,
-        "y": 50,
-        "layout": {"presentation": {"regions": [[2, 300, 10, 20, 16]]}},
-    },
-    session.FRAME_ACTION_CLOSE,
-) == (410, 68)
-
-pointer_calls = []
-original_eval_shell = session.eval_shell
-session.eval_shell = pointer_calls.append
-try:
-    session.send_pointer("press", 10, 20)
-    session.send_pointer("release", 10, 20)
-finally:
-    session.eval_shell = original_eval_shell
-assert len(pointer_calls) == 2
-assert "ButtonState.PRESSED" in pointer_calls[0] and "ButtonState.RELEASED" not in pointer_calls[0]
-assert "ButtonState.RELEASED" in pointer_calls[1] and "ButtonState.PRESSED" not in pointer_calls[1]
+assert all(action["op"] in fuzz.VALID_OPERATIONS for action in first["actions"])
+assert fuzz.VALID_OPERATIONS.isdisjoint(fuzz.SEPARATE_TEST_OPERATIONS)
 
 live = set()
 peak = 0
@@ -52,11 +27,13 @@ for action in first["actions"]:
         assert action["window"] not in live
         live.add(action["window"])
         peak = max(peak, len(live))
-    elif action["op"] in {"wm_close", "graceful_close", "abrupt_close", "frame_click"}:
+    elif action["op"] in fuzz.CLOSE_OPERATIONS:
         assert action["window"] in live
         live.remove(action["window"])
     else:
         assert action["window"] in live
+        if action["op"] == "resize":
+            assert all(isinstance(action[key], int) for key in ("x", "y", "width", "height"))
 assert peak <= 5
 
 with tempfile.TemporaryDirectory() as temporary:
@@ -64,4 +41,14 @@ with tempfile.TemporaryDirectory() as temporary:
     path.write_text(json.dumps(first))
     assert fuzz.read_plan(path) == first
 
-print("PASS: deterministic seeded plans, bounded window lifetimes, and replay loading")
+    unsupported = json.loads(json.dumps(first))
+    unsupported["actions"].append({"op": "frame_click", "window": 0})
+    path.write_text(json.dumps(unsupported))
+    try:
+        fuzz.read_plan(path)
+    except ValueError as error:
+        assert "invalid action" in str(error)
+    else:
+        raise AssertionError("legacy frame_click plans must be rejected explicitly")
+
+print("PASS: deterministic native plans, bounded window lifetimes, and replay loading")

@@ -89,39 +89,21 @@ source "$root/src/tools/gnoblin-env.sh"
 # gnoblin_env_apply prepends this build's share directory to /usr/share.
 export XDG_DATA_DIRS=/usr/share
 gnoblin_env_apply "$GNOBLIN_PREFIX"
-expected_version="$(python3 "$root/scripts/gnome-versions.py" get gnome-shell version)"
-installed_version="$("$GNOBLIN_PREFIX/bin/gnome-shell" --version)"
-case "$installed_version" in
-    *"$expected_version"*) ;;
-    *)
-        echo "Build the current Gnoblin source before capturing (expected $expected_version, found $installed_version)" >&2
-        exit 1
-        ;;
-esac
+expected_version="$(python3 "$root/scripts/gnome-versions.py" get mutter version)"
+installed_version="$("$GNOBLIN_PREFIX/bin/gnoblinctl" --version --format=json | python3 -c 'import json,sys; print(json.load(sys.stdin)["gnomeVersion"])')"
+if [ "$installed_version" != "$expected_version" ]; then
+    echo "Build the current Gnoblin source before capturing (expected GNOME $expected_version, found $installed_version)" >&2
+    exit 1
+fi
 
 mkdir -p "$XDG_CONFIG_HOME/gnoblin" "$XDG_CONFIG_HOME/waybar" \
     "$XDG_CONFIG_HOME/mako" "$XDG_CONFIG_HOME/foot" "$XDG_CONFIG_HOME/fuzzel"
 mkdir -p "$HOME/Documents" "$HOME/Downloads" "$HOME/Pictures"
 
-# Make the packaged vector cursor theme available in the disposable profile.
-cursor_theme="${GNOBLIN_DOC_CURSOR_THEME:-$GNOBLIN_PREFIX/share/icons/Adwaita-Hyprcursor}"
-if [ ! -d "$cursor_theme/hyprcursors" ] && [ -d "$root/build/Adwaita-Hyprcursor/hyprcursors" ]; then
-    cursor_theme="$root/build/Adwaita-Hyprcursor"
-fi
-if [ ! -d "$cursor_theme/hyprcursors" ] && [ -d /usr/share/icons/Adwaita-Hyprcursor/hyprcursors ]; then
-    cursor_theme=/usr/share/icons/Adwaita-Hyprcursor
-fi
-if [ ! -d "$cursor_theme/hyprcursors" ]; then
-    echo "Adwaita-Hyprcursor is required; see docs/guides/cursors.md" >&2
-    exit 1
-fi
 if [ ! -f "$wallpaper" ]; then
     echo "Documentation wallpaper not found at $wallpaper" >&2
     exit 1
 fi
-mkdir -p "$XDG_DATA_HOME/icons" "$HOME/.local/share/icons"
-ln -s "$cursor_theme" "$XDG_DATA_HOME/icons/Adwaita-Hyprcursor"
-ln -s "$cursor_theme" "$HOME/.local/share/icons/Adwaita-Hyprcursor"
 
 if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
     command -v gnoblin-quickshell >/dev/null || {
@@ -149,7 +131,7 @@ if [ "$example" = bingux-firefox ] || [ "$example" = bingux-files ]; then
     cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 local gnoblin = require("gnoblin")
 gnoblin.configure {
-    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+    cursor = {theme = "default", size = 28},
     shell = {wallpaper = false},
 }
 gnoblin.load("conf.d/**/*.lua")
@@ -157,7 +139,7 @@ LUA
 else
     cat >"$XDG_CONFIG_HOME/gnoblin/init.lua" <<'LUA'
 gnoblin.configure {
-    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+    cursor = {theme = "default", size = 28},
 }
 LUA
 fi
@@ -461,5 +443,5 @@ fi
 pointer_command="YDOTOOL_SOCKET='$ydotool_socket' ydotool mousemove --absolute $pointer_position"
 post_app_command="${post_app_command:-:}"
 desktop_command="set -e; gsettings set org.gnome.desktop.interface color-scheme prefer-dark; gsettings set org.gnome.desktop.interface gtk-theme Adwaita-dark; swaybg -i '$wallpaper' -m fill & sleep 3; $app_command & sleep 9; $post_app_command; $pointer_command; sleep 2; grim '$capture_path'; DISPLAY='$host_xdisplay' GNOBLIN_DOC_POINTER='$pointer_position' GNOBLIN_DOC_VIEWPORT_X='${GNOBLIN_DOC_VIEWPORT_X:-}' GNOBLIN_DOC_VIEWPORT_Y='${GNOBLIN_DOC_VIEWPORT_Y:-}' python3 '$root/scripts/composite-doc-cursor.py' '$capture_path'"
-export GNOME_DEVKIT_EXEC="$desktop_command"
-bash "$root/scripts/run-gnome-devkit.sh"
+export GNOBLIN_DEVKIT_EXEC="$desktop_command"
+bash "$root/scripts/run-gnoblin-devkit.sh"

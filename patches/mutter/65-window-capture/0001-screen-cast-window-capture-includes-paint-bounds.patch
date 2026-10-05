@@ -1,5 +1,5 @@
 From c025e976a8641cfbe9d3a734172ff13b8b9eb46e Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 24 Sep 2026 21:35:07 +0100
 Subject: [PATCH] screen cast: include compositor paint bounds in window
  capture

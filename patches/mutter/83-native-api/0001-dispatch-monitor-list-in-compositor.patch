@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] mutter: dispatch monitor queries natively
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 59e09d84..13c783e9 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -704,3 +704,43 @@ meta_display_dispatch_gnoblin_event (MetaDisplay *display,
+   return FALSE;
+ #endif
+ }
++
++GVariant *
++meta_gnoblin_dispatch_native_api (MetaDisplay *display,
++                                  const char  *method)
++{
++  GVariantBuilder result;
++  GVariantBuilder monitors;
++  int n_monitors;
++  int primary;
++
++  if (g_strcmp0 (method, "monitor.list") != 0)
++    return NULL;
++
++  g_return_val_if_fail (META_IS_DISPLAY (display), NULL);
++
++  n_monitors = meta_display_get_n_monitors (display);
++  primary = meta_display_get_primary_monitor (display);
++  g_variant_builder_init (&monitors, G_VARIANT_TYPE ("aa{sv}"));
++  for (int index = 0; index < n_monitors; index++)
++    {
++      GVariantBuilder monitor;
++      MtkRectangle geometry;
++
++      meta_display_get_monitor_geometry (display, index, &geometry);
++      g_variant_builder_init (&monitor, G_VARIANT_TYPE_VARDICT);
++      g_variant_builder_add (&monitor, "{sv}", "id", g_variant_new_int32 (index));
++      g_variant_builder_add (&monitor, "{sv}", "x", g_variant_new_int32 (geometry.x));
++      g_variant_builder_add (&monitor, "{sv}", "y", g_variant_new_int32 (geometry.y));
++      g_variant_builder_add (&monitor, "{sv}", "width", g_variant_new_int32 (geometry.width));
++      g_variant_builder_add (&monitor, "{sv}", "height", g_variant_new_int32 (geometry.height));
++      g_variant_builder_add (&monitor, "{sv}", "primary", g_variant_new_boolean (index == primary));
++      g_variant_builder_add (&monitor, "{sv}", "scale",
++                             g_variant_new_double (meta_display_get_monitor_scale (display, index)));
++      g_variant_builder_add_value (&monitors, g_variant_builder_end (&monitor));
++    }
++
++  g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_add (&result, "{sv}", "monitors", g_variant_builder_end (&monitors));
++  return g_variant_ref_sink (g_variant_builder_end (&result));
++}
+diff --git a/src/meta/util.h b/src/meta/util.h
+index 0764bef7..62d9bc66 100644
+--- a/src/meta/util.h
++++ b/src/meta/util.h
+@@ -123,3 +123,7 @@ META_EXPORT
+ void meta_gnoblin_window_frame_style (MetaWindow *window, GVariant *options);
+ META_EXPORT
+ gboolean meta_gnoblin_frame_renderers_configure (GVariant *services, gboolean restart, GError **error);
++
++META_EXPORT
++GVariant *meta_gnoblin_dispatch_native_api (MetaDisplay *display,
++                                            const char  *method);

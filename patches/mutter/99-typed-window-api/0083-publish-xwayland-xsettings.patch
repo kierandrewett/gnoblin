@@ -1,0 +1,560 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] Publish Gnoblin XWayland scale settings
+
+---
+diff --git a/src/x11/meta-x11-display-private.h b/src/x11/meta-x11-display-private.h
+index 2b947de3f..79ae99740 100644
+--- a/src/x11/meta-x11-display-private.h
++++ b/src/x11/meta-x11-display-private.h
+@@ -99,6 +99,16 @@ struct _MetaX11Display
+   Atom wm_sn_atom;
+   guint32 wm_sn_timestamp;
+ 
++  Window xsettings_selection_window;
++  Atom xsettings_selection_atom;
++  Atom xsettings_settings_atom;
++  Atom xsettings_resource_manager_atom;
++  unsigned int xsettings_event_filter_id;
++  guint32 xsettings_serial;
++  int xsettings_scale;
++  GPtrArray *xsettings_original_resource_lines;
++  char *xsettings_last_resource_line;
++
+   guint display_close_idle;
+   guint32 xselectionclear_timestamp;
+ 
+diff --git a/src/x11/meta-x11-display.c b/src/x11/meta-x11-display.c
+index caf29b8fb..a8b93d676 100644
+--- a/src/x11/meta-x11-display.c
++++ b/src/x11/meta-x11-display.c
+@@ -51,10 +51,12 @@
+ #include "backends/meta-cursor-xcursor.h"
+ #include "backends/meta-logical-monitor-private.h"
+ #include "backends/meta-settings-private.h"
++#include "core/gnoblin-native-control.h"
+ #include "core/meta-workspace-manager-private.h"
+ #include "core/util-private.h"
+ #include "core/workspace-private.h"
+ #include "meta/main.h"
++#include "meta/meta-x11-display-private.h"
+ #include "mtk/mtk-x11.h"
+ #include "third_party/xcursor/xcursor.h"
+ #include "x11/events.h"
+@@ -117,6 +119,15 @@ static Window meta_x11_display_create_offscreen_window (MetaX11Display *x11_disp
+                                                         Window          parent,
+                                                         long            valuemask);
+ 
++static void update_gnoblin_xsettings (MetaX11Display *x11_display,
++                                      int             scale);
++static void initialize_gnoblin_xsettings (MetaX11Display *x11_display,
++                                          int             scale);
++static void release_gnoblin_xsettings (MetaX11Display *x11_display);
++static void gnoblin_xsettings_event_func (MetaX11Display *x11_display,
++                                          XEvent         *event,
++                                          gpointer        user_data);
++
+ static MetaBackend *
+ backend_from_x11_display (MetaX11Display *x11_display)
+ {
+@@ -209,6 +220,462 @@ update_ui_scaling_factor (MetaX11Display *x11_display)
+     meta_xwayland_get_x11_ui_scaling_factor (xwayland_manager);
+ 
+   meta_dbus_x11_set_ui_scaling_factor (priv->dbus_api, ui_scaling_factor);
++
++  if (x11_display->xdisplay && x11_display->xroot != None)
++    update_gnoblin_xsettings (x11_display, ui_scaling_factor);
++}
++
++static gboolean
++is_xft_dpi_resource_line (const guint8 *line,
++                          gsize         length)
++{
++  const guint8 *line_end = line + length;
++  const guint8 *name_end;
++  const guint8 *colon;
++
++  while (line < line_end && g_ascii_isspace (*line))
++    line++;
++
++  if (line == line_end || *line == '#' || *line == '!')
++    return FALSE;
++
++  colon = memchr (line, ':', line_end - line);
++  if (!colon)
++    return FALSE;
++
++  name_end = colon;
++  while (name_end > line && g_ascii_isspace (name_end[-1]))
++    name_end--;
++
++  return (gsize) (name_end - line) == strlen ("Xft.dpi") &&
++         memcmp (line, "Xft.dpi", strlen ("Xft.dpi")) == 0;
++}
++
++static GByteArray *
++read_resource_manager (MetaX11Display *x11_display)
++{
++  unsigned char *property = NULL;
++  Atom actual_type = None;
++  int actual_format = 0;
++  unsigned long n_items = 0;
++  unsigned long bytes_after = 0;
++  GByteArray *result;
++
++  /* Resource databases should be small. Avoid allocating an unbounded X
++   * property if another client has replaced RESOURCE_MANAGER unexpectedly.
++   */
++  if (XGetWindowProperty (x11_display->xdisplay,
++                          x11_display->xroot,
++                          x11_display->xsettings_resource_manager_atom,
++                          0, 65536, False, AnyPropertyType,
++                          &actual_type, &actual_format,
++                          &n_items, &bytes_after,
++                          &property) != Success)
++    return NULL;
++
++  if (actual_type == None)
++    {
++      if (property)
++        XFree (property);
++      return g_byte_array_new ();
++    }
++
++  if (actual_type != XA_STRING || actual_format != 8 || bytes_after != 0 ||
++      (n_items > 0 &&
++       (!property || memchr (property, '\0', n_items) != NULL)))
++    {
++      if (property)
++        XFree (property);
++      return NULL;
++    }
++
++  result = g_byte_array_sized_new ((guint) n_items);
++  if (n_items > 0)
++    g_byte_array_append (result, property, (guint) n_items);
++  if (property)
++    XFree (property);
++
++  return result;
++}
++
++static void
++copy_resource_manager_lines (GByteArray *destination,
++                             GByteArray *source,
++                             GPtrArray  *xft_dpi_lines)
++{
++  gsize offset = 0;
++
++  while (offset < source->len)
++    {
++      const guint8 *line = source->data + offset;
++      const guint8 *newline = memchr (line, '\n', source->len - offset);
++      gsize line_length = newline ? newline - line + 1 : source->len - offset;
++
++      if (is_xft_dpi_resource_line (line, line_length))
++        {
++          if (xft_dpi_lines)
++            g_ptr_array_add (xft_dpi_lines,
++                             g_strndup ((const char *) line, line_length));
++        }
++      else
++        {
++          g_byte_array_append (destination, line, (guint) line_length);
++        }
++
++      offset += line_length;
++    }
++}
++
++static gboolean
++write_resource_manager_dpi (MetaX11Display *x11_display,
++                            int             scale)
++{
++  g_autoptr (GByteArray) current = NULL;
++  g_autoptr (GByteArray) updated = NULL;
++  g_autofree char *line = NULL;
++
++  current = read_resource_manager (x11_display);
++  if (!current)
++    return FALSE;
++
++  if (!x11_display->xsettings_original_resource_lines)
++    {
++      GByteArray *ignored = g_byte_array_new ();
++      x11_display->xsettings_original_resource_lines =
++        g_ptr_array_new_with_free_func (g_free);
++      copy_resource_manager_lines (ignored, current,
++                                   x11_display->xsettings_original_resource_lines);
++      g_byte_array_unref (ignored);
++    }
++
++  updated = g_byte_array_new ();
++  copy_resource_manager_lines (updated, current, NULL);
++  line = g_strdup_printf ("Xft.dpi:\t%d\n", 96 * scale);
++  g_byte_array_append (updated, (const guint8 *) line, strlen (line));
++
++  XChangeProperty (x11_display->xdisplay,
++                   x11_display->xroot,
++                   x11_display->xsettings_resource_manager_atom,
++                   XA_STRING,
++                   8, PropModeReplace, updated->data, updated->len);
++
++  g_free (x11_display->xsettings_last_resource_line);
++  x11_display->xsettings_last_resource_line = g_steal_pointer (&line);
++
++  return TRUE;
++}
++
++static void
++restore_resource_manager_dpi (MetaX11Display *x11_display)
++{
++  g_autoptr (GByteArray) current = NULL;
++  g_autoptr (GByteArray) restored = NULL;
++  g_autoptr (GPtrArray) current_xft_dpi_lines = NULL;
++  gsize last_line_length;
++
++  if (!x11_display->xsettings_last_resource_line ||
++      !x11_display->xsettings_original_resource_lines)
++    return;
++
++  current = read_resource_manager (x11_display);
++  if (!current)
++    return;
++
++  current_xft_dpi_lines = g_ptr_array_new_with_free_func (g_free);
++  restored = g_byte_array_new ();
++  copy_resource_manager_lines (restored, current, current_xft_dpi_lines);
++
++  last_line_length = strlen (x11_display->xsettings_last_resource_line);
++  if (current_xft_dpi_lines->len != 1 ||
++      strlen (g_ptr_array_index (current_xft_dpi_lines, 0)) != last_line_length ||
++      memcmp (g_ptr_array_index (current_xft_dpi_lines, 0),
++              x11_display->xsettings_last_resource_line,
++              last_line_length) != 0)
++    return;
++
++  for (gsize i = 0; i < x11_display->xsettings_original_resource_lines->len; i++)
++    {
++      const char *line = g_ptr_array_index (x11_display->xsettings_original_resource_lines, i);
++
++      g_byte_array_append (restored, (const guint8 *) line, (guint) strlen (line));
++    }
++
++  if (restored->len == 0)
++    XDeleteProperty (x11_display->xdisplay,
++                     x11_display->xroot,
++                     x11_display->xsettings_resource_manager_atom);
++  else
++    XChangeProperty (x11_display->xdisplay,
++                     x11_display->xroot,
++                     x11_display->xsettings_resource_manager_atom,
++                     XA_STRING,
++                     8, PropModeReplace, restored->data, restored->len);
++}
++
++static void
++append_xsettings_uint16 (GByteArray *settings,
++                         gboolean    little_endian,
++                         guint16     value)
++{
++  guint8 bytes[2];
++
++  bytes[little_endian ? 0 : 1] = (guint8) (value & 0xff);
++  bytes[little_endian ? 1 : 0] = (guint8) (value >> 8);
++  g_byte_array_append (settings, bytes, sizeof (bytes));
++}
++
++static void
++append_xsettings_uint32 (GByteArray *settings,
++                         gboolean    little_endian,
++                         guint32     value)
++{
++  guint8 bytes[4];
++
++  if (little_endian)
++    {
++      bytes[0] = (guint8) (value & 0xff);
++      bytes[1] = (guint8) ((value >> 8) & 0xff);
++      bytes[2] = (guint8) ((value >> 16) & 0xff);
++      bytes[3] = (guint8) (value >> 24);
++    }
++  else
++    {
++      bytes[0] = (guint8) (value >> 24);
++      bytes[1] = (guint8) ((value >> 16) & 0xff);
++      bytes[2] = (guint8) ((value >> 8) & 0xff);
++      bytes[3] = (guint8) (value & 0xff);
++    }
++
++  g_byte_array_append (settings, bytes, sizeof (bytes));
++}
++
++static void
++append_xsettings_integer (GByteArray *settings,
++                          gboolean    little_endian,
++                          guint32     serial,
++                          const char *name,
++                          guint32     value)
++{
++  guint8 integer_type[2] = { 0, 0 };
++  gsize name_length = strlen (name);
++  guint8 padding = 0;
++
++  g_assert (name_length <= G_MAXUINT16);
++  g_byte_array_append (settings, integer_type, sizeof (integer_type));
++  append_xsettings_uint16 (settings, little_endian, (guint16) name_length);
++  g_byte_array_append (settings, (const guint8 *) name, (guint) name_length);
++  while (settings->len % 4 != 0)
++    g_byte_array_append (settings, &padding, 1);
++  append_xsettings_uint32 (settings, little_endian, serial);
++  append_xsettings_uint32 (settings, little_endian, value);
++}
++
++static void
++publish_gnoblin_xsettings (MetaX11Display *x11_display,
++                           int             scale)
++{
++  g_autoptr (GByteArray) settings = NULL;
++  gboolean little_endian;
++  guint32 serial;
++  guint8 header[4] = { 0, };
++
++  if (scale < 1 || scale > G_MAXINT / (96 * 1024))
++    {
++      g_warning ("Ignoring invalid XSettings UI scale %d", scale);
++      return;
++    }
++
++  serial = x11_display->xsettings_serial + 1;
++  little_endian = ImageByteOrder (x11_display->xdisplay) == LSBFirst;
++  settings = g_byte_array_new ();
++
++  header[0] = little_endian ? 'l' : 'B';
++  g_byte_array_append (settings, header, sizeof (header));
++  append_xsettings_uint32 (settings, little_endian, serial);
++  append_xsettings_uint32 (settings, little_endian, 3);
++  append_xsettings_integer (settings, little_endian, serial,
++                            "Gdk/WindowScalingFactor", scale);
++  append_xsettings_integer (settings, little_endian, 1,
++                            "Gdk/UnscaledDPI", 96 * 1024);
++  append_xsettings_integer (settings, little_endian, serial,
++                            "Xft/DPI", 96 * 1024 * scale);
++
++  XChangeProperty (x11_display->xdisplay,
++                   x11_display->xsettings_selection_window,
++                   x11_display->xsettings_settings_atom,
++                   x11_display->xsettings_settings_atom,
++                   8, PropModeReplace, settings->data, settings->len);
++  write_resource_manager_dpi (x11_display, scale);
++
++  x11_display->xsettings_serial = serial;
++  x11_display->xsettings_scale = scale;
++}
++
++static void
++update_gnoblin_xsettings (MetaX11Display *x11_display,
++                          int             scale)
++{
++  Window owner;
++
++  if (x11_display->xsettings_selection_window == None)
++    {
++      if (gnoblin_native_control_is_session (x11_display->display))
++        initialize_gnoblin_xsettings (x11_display, scale);
++      return;
++    }
++
++  XGrabServer (x11_display->xdisplay);
++  owner = XGetSelectionOwner (x11_display->xdisplay,
++                              x11_display->xsettings_selection_atom);
++  if (owner != x11_display->xsettings_selection_window)
++    {
++      XUngrabServer (x11_display->xdisplay);
++      release_gnoblin_xsettings (x11_display);
++      return;
++    }
++
++  if (scale == x11_display->xsettings_scale)
++    {
++      XUngrabServer (x11_display->xdisplay);
++      return;
++    }
++
++  publish_gnoblin_xsettings (x11_display, scale);
++  XUngrabServer (x11_display->xdisplay);
++  XFlush (x11_display->xdisplay);
++}
++
++static void
++gnoblin_xsettings_event_func (MetaX11Display *x11_display,
++                              XEvent         *event,
++                              gpointer        user_data)
++{
++  (void) user_data;
++
++  if (event->type == SelectionClear &&
++      event->xselectionclear.window == x11_display->xsettings_selection_window &&
++      event->xselectionclear.selection == x11_display->xsettings_selection_atom)
++    release_gnoblin_xsettings (x11_display);
++}
++
++static void
++initialize_gnoblin_xsettings (MetaX11Display *x11_display,
++                              int             scale)
++{
++  g_autofree char *selection_name = NULL;
++  Window owner;
++  gboolean is_session = gnoblin_native_control_is_session (x11_display->display);
++
++  if (!is_session || !x11_display->xdisplay ||
++      x11_display->xroot == None)
++    return;
++
++  selection_name = g_strdup_printf ("_XSETTINGS_S%d",
++                                    DefaultScreen (x11_display->xdisplay));
++  x11_display->xsettings_selection_atom =
++    XInternAtom (x11_display->xdisplay, selection_name, False);
++  x11_display->xsettings_settings_atom =
++    XInternAtom (x11_display->xdisplay, "_XSETTINGS_SETTINGS", False);
++  x11_display->xsettings_resource_manager_atom =
++    XInternAtom (x11_display->xdisplay, "RESOURCE_MANAGER", False);
++
++  XGrabServer (x11_display->xdisplay);
++  owner = XGetSelectionOwner (x11_display->xdisplay,
++                              x11_display->xsettings_selection_atom);
++  if (owner != None)
++    {
++      XUngrabServer (x11_display->xdisplay);
++      meta_topic (META_DEBUG_X11,
++                  "Not publishing Gnoblin XSettings: selection already has an owner");
++      return;
++    }
++
++  x11_display->xsettings_selection_window =
++    meta_x11_display_create_offscreen_window (x11_display,
++                                              x11_display->xroot,
++                                              NoEventMask);
++  XSetSelectionOwner (x11_display->xdisplay,
++                      x11_display->xsettings_selection_atom,
++                      x11_display->xsettings_selection_window,
++                      x11_display->wm_sn_timestamp);
++  owner = XGetSelectionOwner (x11_display->xdisplay,
++                              x11_display->xsettings_selection_atom);
++  if (owner != x11_display->xsettings_selection_window)
++    {
++      XDestroyWindow (x11_display->xdisplay,
++                      x11_display->xsettings_selection_window);
++      x11_display->xsettings_selection_window = None;
++      XUngrabServer (x11_display->xdisplay);
++      meta_topic (META_DEBUG_X11,
++                  "Could not acquire the XSettings manager selection");
++      return;
++    }
++  x11_display->xsettings_event_filter_id =
++    meta_x11_display_add_event_func (x11_display,
++                                    gnoblin_xsettings_event_func,
++                                    NULL, NULL);
++  XUngrabServer (x11_display->xdisplay);
++
++  publish_gnoblin_xsettings (x11_display, scale);
++
++  {
++    XClientMessageEvent event = { 0, };
++
++    event.type = ClientMessage;
++    event.window = x11_display->xroot;
++    event.message_type = x11_display->atom_MANAGER;
++    event.format = 32;
++    event.data.l[0] = x11_display->wm_sn_timestamp;
++    event.data.l[1] = x11_display->xsettings_selection_atom;
++    event.data.l[2] = x11_display->xsettings_selection_window;
++    XSendEvent (x11_display->xdisplay, x11_display->xroot, False,
++                StructureNotifyMask, (XEvent *) &event);
++    XFlush (x11_display->xdisplay);
++  }
++}
++
++void
++meta_x11_display_update_gnoblin_xsettings (MetaX11Display *x11_display)
++{
++  update_ui_scaling_factor (x11_display);
++}
++
++static void
++release_gnoblin_xsettings (MetaX11Display *x11_display)
++{
++  if (x11_display->xsettings_selection_window == None)
++    return;
++
++  if (x11_display->xsettings_event_filter_id != 0)
++    {
++      unsigned int event_filter_id = x11_display->xsettings_event_filter_id;
++
++      x11_display->xsettings_event_filter_id = 0;
++      meta_x11_display_remove_event_func (x11_display, event_filter_id);
++    }
++
++  XGrabServer (x11_display->xdisplay);
++  restore_resource_manager_dpi (x11_display);
++  if (XGetSelectionOwner (x11_display->xdisplay,
++                          x11_display->xsettings_selection_atom) ==
++      x11_display->xsettings_selection_window)
++    XSetSelectionOwner (x11_display->xdisplay,
++                        x11_display->xsettings_selection_atom,
++                        None, CurrentTime);
++  XDestroyWindow (x11_display->xdisplay,
++                  x11_display->xsettings_selection_window);
++  XUngrabServer (x11_display->xdisplay);
++  XFlush (x11_display->xdisplay);
++
++  x11_display->xsettings_selection_window = None;
++  x11_display->xsettings_selection_atom = None;
++  x11_display->xsettings_settings_atom = None;
++  x11_display->xsettings_resource_manager_atom = None;
++  x11_display->xsettings_serial = 0;
++  x11_display->xsettings_scale = 0;
++  g_clear_pointer (&x11_display->xsettings_original_resource_lines,
++                   g_ptr_array_unref);
++  g_clear_pointer (&x11_display->xsettings_last_resource_line, g_free);
+ }
+ 
+ static void
+@@ -228,6 +695,8 @@ meta_x11_display_dispose (GObject *object)
+   g_clear_handle_id (&priv->dbus_name_id, g_bus_unown_name);
+   g_clear_object (&priv->dbus_api);
+ 
++  release_gnoblin_xsettings (x11_display);
++
+   g_clear_pointer (&x11_display->alarm_filters, g_ptr_array_unref);
+ 
+   g_clear_list (&x11_display->event_funcs,
+@@ -1173,6 +1642,7 @@ initialize_dbus_interface (MetaX11Display *x11_display)
+ static void
+ ui_scaling_factor_changed (MetaX11Display *x11_display)
+ {
++  update_ui_scaling_factor (x11_display);
+   update_cursor_theme (x11_display);
+ }
+ 
+@@ -1400,6 +1870,10 @@ meta_x11_display_new (MetaDisplay  *display,
+                             "ui-scaling-factor-changed",
+                             G_CALLBACK (ui_scaling_factor_changed),
+                             x11_display);
++  g_signal_connect_swapped (settings,
++                            "xwayland-scaling-factor-changed",
++                            G_CALLBACK (ui_scaling_factor_changed),
++                            x11_display);
+ 
+   set_work_area_hint (display, x11_display);
+ 
+@@ -1447,6 +1921,8 @@ meta_x11_display_new (MetaDisplay  *display,
+   x11_display->wm_sn_atom = wm_sn_atom;
+   x11_display->wm_sn_timestamp = timestamp;
+ 
++  update_ui_scaling_factor (x11_display);
++
+   init_event_masks (x11_display);
+ 
+   meta_x11_display_init_frames_client (x11_display);

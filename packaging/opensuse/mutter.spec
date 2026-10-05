@@ -12,23 +12,18 @@
 %global glib_version 2.81.1
 %global gobject_introspection_version 1.41.4
 %global gtk4_version 4.14.0
-%global gsettings_desktop_schemas_version 51.0
+%global gsettings_desktop_schemas_version 49.1
 %global libdrm_version 2.4.118
-%global libinput_version 1.27.0
-%global pipewire_version 1.4.0
+%global libinput_version 1.30.0
+%global pipewire_version 1.4.11
 %global libei_version 1.3.901
 %global wayland_protocols_version 1.48
-%global wayland_server_version 1.24
+%global wayland_server_version 1.25
 %global tarball_version %%(echo %{version} | tr '~' '.')
-
-# Enable this when building against the locally built schema RPM.  CI leaves
-# it disabled to resolve only repository-provided BuildRequires.
-%bcond_with gnoblin_stack
-%bcond_with gnoblin_compat_runtime
 
 Name:           gnoblin-mutter
 Version:        51.0
-Release:        1%{?dist}
+Release:        20%{?dist}
 Summary:        Private Mutter runtime for Gnoblin
 License:        GPL-2.0-or-later
 URL:            https://github.com/kierandrewett/gnoblin
@@ -40,72 +35,64 @@ BuildRequires:  gettext-tools
 BuildRequires:  git
 BuildRequires:  meson
 BuildRequires:  pam-devel
-BuildRequires:  pkgconfig(bash-completion)
+BuildRequires:  pkgconfig(atk)
 BuildRequires:  pkgconfig(colord)
 BuildRequires:  pkgconfig(gbm)
 BuildRequires:  pkgconfig(glesv2)
-%if %{with gnoblin_compat_runtime}
-BuildRequires:  gnoblin-compat-runtime >= %{version}
-%else
 BuildRequires:  pkgconfig(glib-2.0) >= %{glib_version}
 BuildRequires:  pkgconfig(glycin-2) >= 2.0.beta.2
-%endif
-BuildRequires:  pkgconfig(gnome-desktop-4)
-BuildRequires:  pkgconfig(gnome-settings-daemon)
-%if ! %{with gnoblin_compat_runtime}
 BuildRequires:  pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
-%endif
 BuildRequires:  pkgconfig(graphene-gobject-1.0)
-%if ! %{with gnoblin_compat_runtime}
 BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
-%endif
 BuildRequires:  pkgconfig(gudev-1.0)
-%if ! %{with gnoblin_compat_runtime}
-BuildRequires:  pkgconfig(hyprcursor) >= 0.1.11
-%endif
+BuildRequires:  pkgconfig(egl)
+BuildRequires:  pkgconfig(fribidi)
+BuildRequires:  pkgconfig(gl)
+BuildRequires:  pkgconfig(harfbuzz) >= 2.6
 BuildRequires:  pkgconfig(lcms2)
-BuildRequires:  pkgconfig(libadwaita-1)
 BuildRequires:  pkgconfig(libcanberra)
-%if ! %{with gnoblin_compat_runtime}
+BuildRequires:  pkgconfig(json-glib-1.0)
 BuildRequires:  pkgconfig(libdisplay-info) >= 0.2
-%endif
 BuildRequires:  pkgconfig(libdrm) >= %{libdrm_version}
 BuildRequires:  libxcvt
-%if ! %{with gnoblin_compat_runtime}
 BuildRequires:  pkgconfig(libei-1.0) >= %{libei_version}
 BuildRequires:  pkgconfig(libeis-1.0) >= %{libei_version}
 BuildRequires:  pkgconfig(libinput) >= %{libinput_version}
 BuildRequires:  pkgconfig(libpipewire-0.3) >= %{pipewire_version}
-%endif
 BuildRequires:  pkgconfig(libstartup-notification-1.0)
 BuildRequires:  pkgconfig(libsystemd)
+BuildRequires:  pkgconfig(libudev) >= 228
 BuildRequires:  pkgconfig(libwacom)
-%if ! %{with gnoblin_compat_runtime}
-BuildRequires:  pkgconfig(lua)
-%endif
+BuildRequires:  pkgconfig(pango) >= 1.46.0
+BuildRequires:  pkgconfig(pangocairo) >= 1.20
 BuildRequires:  pkgconfig(pixman-1)
 BuildRequires:  pkgconfig(sm)
-BuildRequires:  pkgconfig(sysprof-capture-4)
-BuildRequires:  pkgconfig(umockdev-1.0)
+BuildRequires:  pkgconfig(wayland-client) >= %{wayland_server_version}
+BuildRequires:  pkgconfig(wayland-cursor)
+BuildRequires:  pkgconfig(wayland-egl)
+BuildRequires:  pkgconfig(x11) >= 1.7.0
+BuildRequires:  pkgconfig(x11-xcb)
+BuildRequires:  pkgconfig(xau)
+BuildRequires:  pkgconfig(xcb-res)
+BuildRequires:  pkgconfig(xcomposite) >= 0.4
+BuildRequires:  pkgconfig(xcursor)
+BuildRequires:  pkgconfig(xdamage)
+BuildRequires:  pkgconfig(xext)
+BuildRequires:  pkgconfig(xfixes) >= 6
+BuildRequires:  pkgconfig(xinerama)
+BuildRequires:  pkgconfig(xi) >= 1.7.4
+BuildRequires:  pkgconfig(xrandr) >= 1.5.0
+BuildRequires:  pkgconfig(xkbregistry)
+BuildRequires:  pkgconfig(xkeyboard-config)
 BuildRequires:  pkgconfig(udev)
-%if ! %{with gnoblin_compat_runtime}
 BuildRequires:  pkgconfig(wayland-protocols) >= %{wayland_protocols_version}
 BuildRequires:  pkgconfig(wayland-server) >= %{wayland_server_version}
-%endif
 BuildRequires:  pkgconfig(xkbcommon)
 BuildRequires:  pkgconfig(xwayland)
-BuildRequires:  python3dist(argcomplete)
 BuildRequires:  python3dist(docutils)
-%if %{with gnoblin_stack}
-BuildRequires:  gnoblin-gsettings-desktop-schemas >= %{gsettings_desktop_schemas_version}
-%endif
-%if %{with gnoblin_compat_runtime}
-Requires:       gnoblin-compat-runtime >= %{version}
-%else
+BuildRequires:  pkgconfig(gsettings-desktop-schemas) >= %{gsettings_desktop_schemas_version}
 Requires:       glib2 >= %{glib_version}
-%endif
-Requires:       gnome-settings-daemon
-Requires:       gnoblin-gsettings-desktop-schemas >= %{gsettings_desktop_schemas_version}
+Requires:       gsettings-desktop-schemas >= %{gsettings_desktop_schemas_version}
 Requires:       polkit
 Recommends:     Mesa-dri
 
@@ -123,16 +110,8 @@ Private headers and pkg-config files for Gnoblin builds.
 %autosetup -S git -n mutter-%{tarball_version}
 
 %build
-%if %{with gnoblin_compat_runtime}
-export PATH=%{_prefix}/deps/bin:$PATH
-export PKG_CONFIG_PATH=%{_prefix}/deps/lib64/pkgconfig:%{_prefix}/deps/share/pkgconfig:%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
-export GI_GIR_PATH=%{_prefix}/deps/share/gir-1.0:%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
-export GI_TYPELIB_PATH=%{_prefix}/deps/lib64/girepository-1.0${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}
-export LD_LIBRARY_PATH=%{_prefix}/deps/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
-%else
 export PKG_CONFIG_PATH=%{_datadir}/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
 export GI_GIR_PATH=%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
-%endif
 /usr/bin/meson setup build . --buildtype=plain \
   --prefix=%{_prefix} --libdir=%{_libdir} --libexecdir=%{_libexecdir} \
   --bindir=%{_bindir} --sbindir=%{_sbindir} --includedir=%{_includedir} \
@@ -141,7 +120,8 @@ export GI_GIR_PATH=%{_datadir}/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}
   --localstatedir=%{_localstatedir} --sharedstatedir=%{_sharedstatedir} \
   --wrap-mode=nodownload --auto-features=enabled \
   -Dc_args='-std=gnu17 -fPIE' -Dcpp_args='-std=c++20 -fPIE' -Db_pie=false \
-  -Dintrospection=true -Dtests=disabled -Ddocs=false -Dprofiler=false \
+  -Dintrospection=true -Dlibgnome_desktop=false -Dinstall_tools=false -Dtests=disabled -Ddocs=false -Dprofiler=false -Ddevkit=disabled -Dbash_completion=false \
+  -Dhyprcursor=disabled \
   -Dudev_dir=%{_prefix}/lib/udev
 /usr/bin/meson compile -C build %{?_smp_mflags}
 
@@ -178,5 +158,48 @@ fi
 %{_libdir}/lib*.so
 
 %changelog
+* Sun Sep 27 2026 Gnoblin contributors
+- Apply native Lua keybinding overrides without GNOME Shell.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Apply native Lua input settings without GNOME Shell.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Register native command shortcuts without GNOME Shell.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Launch native Lua autostart commands after the Wayland display starts.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Apply native Lua window and compositor preferences without Shell.
+- Own native workspace IDs and counts without changing GNOME preferences.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Answer native control requests without GNOME Shell or GJS.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Load compositor-only Lua settings in the native Mutter host.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Return compositor monitor details through the native Lua API dispatch path.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Omit optional Python developer commands from the runtime package.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Remove the unused duplicate Lua event dispatch entry point.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Send owned Lua operation variants from the supervisor to the native compositor.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Commit Lua event documents before sending updated configuration to Mutter.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Skip Mutter configuration updates when a Lua event makes no document changes.
+
+* Sun Sep 27 2026 Gnoblin contributors
+- Release session-lock resources safely and enable the Wayland runtime API.
+
 * Fri Sep 25 2026 Gnoblin contributors
 - Initial openSUSE Tumbleweed adapter.

@@ -4,7 +4,9 @@
 import json
 import os
 from pathlib import Path
+import socket
 import subprocess
+import threading
 import time
 
 assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-"), "Use the private test session"
@@ -66,6 +68,50 @@ export default function enable(api) {
 """.replace("REPORT", json.dumps(str(report))).replace("MOTION", json.dumps(str(motion)))
 )
 subprocess.run(["gnoblinctl", "reload"], check=True)
+
+socket_path = os.environ.get(
+    "GNOBLIN_COMPOSITOR_SOCKET",
+    os.path.join(os.environ["XDG_RUNTIME_DIR"], "gnoblin/compositor-v1.sock"),
+)
+event_socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+event_socket.connect(socket_path)
+event_reader = event_socket.makefile("r", encoding="utf-8")
+hello = json.loads(event_reader.readline())
+assert hello.get("event") == "hello", hello
+event_names = [
+    "gnoblin.layer.created",
+    "gnoblin.layer.changed",
+    "gnoblin.layer.removed",
+]
+event_socket.sendall(
+    (
+        json.dumps(
+            {
+                "op": "events",
+                "api_version": {"major": 1, "minor": 71},
+                "events": event_names,
+            }
+        )
+        + "\n"
+    ).encode()
+)
+subscription = json.loads(event_reader.readline())
+assert subscription.get("event") == "subscribed", subscription
+layer_events = []
+
+
+def collect_layer_events():
+    try:
+        for line in event_reader:
+            event = json.loads(line)
+            if event.get("event") in event_names:
+                layer_events.append(event)
+    except (OSError, ValueError):
+        pass
+
+
+layer_event_reader = threading.Thread(target=collect_layer_events, daemon=True)
+layer_event_reader.start()
 
 cases = [
     (13, "slide", 240),
@@ -154,6 +200,35 @@ PanelWindow {
                 "Interrupted entrance jumped to its final position",
                 [entry["frames"][0] for entry in exits],
             )
+
+    def surface_events_for_namespace():
+        return [
+            event for event in layer_events if (event.get("layer") or event.get("last") or {}).get("namespace") == name
+        ]
+
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        current_events = surface_events_for_namespace()
+        if any(event.get("event") == "gnoblin.layer.removed" for event in current_events):
+            break
+        time.sleep(0.02)
+    surface_events = surface_events_for_namespace()
+    created = [event for event in surface_events if event.get("event") == "gnoblin.layer.created"]
+    changed = [event for event in surface_events if event.get("event") == "gnoblin.layer.changed"]
+    removed = [event for event in surface_events if event.get("event") == "gnoblin.layer.removed"]
+    assert len(created) == 1, (name, surface_events)
+    assert len(removed) == 1, (name, surface_events)
+    assert "layer_id" not in created[0], created[0]
+    layer_id = created[0]["layer"]["id"]
+    assert all({"revision", "sequence", "time"} <= event.keys() for event in surface_events)
+    assert removed[0]["layer_id"] == layer_id, removed[0]
+    mapped_changes = [event["layer"]["mapped"] for event in changed if "mapped" in event["changed"]]
+    assert False in mapped_changes and True in mapped_changes, (name, surface_events)
+    assert all(event["layer_id"] == layer_id for event in changed), surface_events
     print(
-        f"PASS: anchor={anchor} {animation} duration={duration} reduced={reduced_motion} interrupted={interrupted}: frames and cleanup"
+        f"PASS: anchor={anchor} {animation} duration={duration} reduced={reduced_motion} interrupted={interrupted}: frames, layer events, and cleanup"
     )
+
+event_socket.shutdown(socket.SHUT_RDWR)
+event_socket.close()
+layer_event_reader.join(timeout=1)

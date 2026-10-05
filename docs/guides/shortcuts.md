@@ -4,7 +4,7 @@
 
 Gnoblin reads global shortcuts from its Lua config. Use
 `gnoblin.configure.shortcuts` to run commands and
-`gnoblin.configure.keybindings` to change built-in GNOME actions. Add the
+`gnoblin.configure.keybindings` to change built-in Mutter actions. Add the
 examples to `~/.config/gnoblin/init.lua`; changes apply when the config reloads.
 
 ## Launch a command
@@ -28,6 +28,13 @@ string. Spaces inside a string stay in that argument.
 Shortcut names use letters, numbers, `_` and `-`. A config can declare up to
 256 shortcuts. Removing a command shortcut releases its binding; it does not
 stop a launched program.
+
+The standalone session accepts command shortcuts and compositor actions at
+startup, including release triggers and bare Super. GNOME Shell actions require
+GNOME Shell. For a standalone shell to receive keystrokes while bare Super is
+held, configure `capture_input` as described in
+[Popups that capture typing](#popups-that-capture-typing). Restart the
+compositor after changing its config.
 
 ## Open an application launcher
 
@@ -92,28 +99,27 @@ gnoblin.configure {
 ```
 
 Built-in actions accept a list of accelerator strings. Use an empty list to
-disable one. The group must be `shell`, `wm`, `mutter`, or `wayland`; each group
-maps to a GNOME GSettings keybinding schema. The action names and defaults
-depend on your installed GNOME version; Gnoblin does not define a fixed list for
-every version.
+disable one. The group must be `wm`, `mutter`, or `wayland`; each group maps to
+a Mutter GSettings keybinding schema. The action names and defaults depend on
+your installed desktop schemas; Gnoblin does not define a fixed list for every
+version.
 
 Find the schema and action names on your system with
 `gsettings list-schemas` and `gsettings list-keys SCHEMA`. Run
-`gsettings describe SCHEMA KEY` to read an action's description. GSettings prints
-`show-screenshot-ui`; the Lua key is `shell.show_screenshot_ui`.
-The [keybinding reference](/config/configure/keybindings) lists all four
-groups and gives examples.
+`gsettings describe SCHEMA KEY` to read an action's description. The
+[keybinding reference](/config/configure/keybindings) lists the three supported
+Mutter groups and gives examples.
 
-GNOME Settings edits do not change Gnoblin's active bindings. Removing an
+Desktop Settings edits do not change Gnoblin's active bindings. Removing an
 override restores the default on reload.
 
 ## Media keys
 
-The starter config uses command shortcuts for volume, microphone mute, and
-playback. GNOME Shell handles brightness keys itself in 5% steps and shows an
-OSD. To rebind them, set `shell.screen_brightness_up` and
-`shell.screen_brightness_down` in
-[keybindings](/config/configure/keybindings).
+Media keys use command shortcuts. The starter config includes volume and
+microphone mute through WirePlumber's `wpctl`, and playback through
+`playerctl`. Install those commands if you use the matching keys. Brightness
+keys are not handled by the standalone session; bind them to a command such as
+`brightnessctl` if your hardware and permissions support it.
 
 Run `gnoblinctl config path` to see the config file used by your session. Run
 `gnoblinctl config default` to print the packaged starter config. For example,
@@ -130,7 +136,7 @@ gnoblin.configure {
 }
 ```
 
-Edit or remove the command shortcut entries in your Lua config to change their
+Edit or remove these entries in your Lua config to change the media-key
 behavior. The commands they call must be installed.
 
 ## Avoid conflicts
@@ -139,7 +145,7 @@ To override an imported shortcut, use the same map key. Only supplied fields
 change. Different names must use different bindings. See the
 [override example](/recipes/add-a-shortcut).
 
-A built-in action may already use the key. Change or disable it through
+A Mutter action may already use the key. Change or disable it through
 `gnoblin.configure.keybindings` before assigning the same key to a command.
 Gnoblin rejects duplicate bindings in the config and keeps the previous
 working registrations if a reload contains an invalid or conflicting shortcut.
@@ -164,8 +170,12 @@ This appends the current time to `~/shortcut.log` when you press Super+Shift+T.
 
 ## Popups that capture typing
 
-A shortcut can set `capture_input = true` to buffer typing while a popup
-starts. The popup must implement the [input handoff protocol](/compositor-bridge).
-Do not enable it for ordinary terminal or application launch commands.
+For a shell popup that needs keys typed after bare Super, configure a named
+shortcut with `capture_input = true`, `binding = "Super"`, and
+`trigger = "release"`. Handle `gnoblin.shortcut.session.key` events in Lua.
+Only one command-free, action-free bare Super capture binding can be active at
+a time. See the [shortcut configuration reference](/config/configure/shortcuts)
+and [shortcut state and capture](/config/runtime-api#shortcut-state-and-capture)
+for the event fields and session behavior.
 
 See also [restore-or-minimise bindings](/guides/window_state_shortcuts).

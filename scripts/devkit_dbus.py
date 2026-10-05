@@ -21,19 +21,17 @@ import shlex
 import shutil
 import sys
 
-DBUS_SERVICES = (
+REQUIRED_DBUS_SERVICES = (
     "org.freedesktop.portal.Desktop",
     "org.freedesktop.impl.portal.PermissionStore",
+)
+OPTIONAL_DBUS_SERVICES = (
     "org.freedesktop.impl.portal.desktop.gnome",
     "org.freedesktop.impl.portal.desktop.gtk",
-    # dconf: needed for cross-process gsettings change notification in tests that
-    # verify one process reacting to another's SetFeature (e.g. the notifications
-    # toggle). The keyfile backend's file monitor is unavailable in the sandbox.
     "ca.desrt.dconf",
+    "org.freedesktop.impl.portal.desktop.gnome",
+    "org.gnome.Settings.GlobalShortcutsProvider",
 )
-# Older GNOME releases do not provide this portal helper. They can still run
-# the compositor/control tests; global-shortcut portal tests need the helper.
-OPTIONAL_DBUS_SERVICES = ("org.gnome.Settings.GlobalShortcutsProvider",)
 
 
 def write_config(
@@ -47,7 +45,7 @@ def write_config(
     service_dir = tmp / "dbus-services"
     service_dir.mkdir(parents=True, exist_ok=True)
     system_service_dir = pathlib.Path("/usr/share/dbus-1/services")
-    service_names = [*DBUS_SERVICES, *OPTIONAL_DBUS_SERVICES]
+    service_names = [*REQUIRED_DBUS_SERVICES, *OPTIONAL_DBUS_SERVICES]
     if include_flatpak_portal:
         service_names.append("org.freedesktop.portal.Flatpak")
     for name in service_names:
@@ -69,10 +67,10 @@ def write_config(
 
     conf = tmp / "dbus-session.conf"
     service_dir_xml = html.escape(str(service_dir), quote=False)
+    socket_dir_xml = html.escape(str(tmp), quote=False)
 
-    # Also expose gnoblin's own installed D-Bus services (gnome-shell's
-    # dbusServices: notifications, screencast, calendar, …) so tests can activate
-    # them on demand. On-demand only — nothing auto-starts by adding the dir.
+    # Expose services installed by the Gnoblin runtime on demand. Adding this
+    # directory does not activate any service by itself.
     prefix = pathlib.Path(os.environ.get("GNOBLIN_PREFIX", str(repo_root / "install")))
     prefix_service_dir = prefix / "share" / "dbus-1" / "services"
     prefix_service_dir_xml = (
@@ -86,7 +84,7 @@ def write_config(
         "<busconfig>\n"
         "  <type>session</type>\n"
         "  <keep_umask/>\n"
-        "  <listen>unix:tmpdir=/tmp</listen>\n"
+        f"  <listen>unix:tmpdir={socket_dir_xml}</listen>\n"
         "  <auth>EXTERNAL</auth>\n"
         f"  <servicedir>{service_dir_xml}</servicedir>\n"
         f"{prefix_service_dir_xml}"

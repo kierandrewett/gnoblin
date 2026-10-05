@@ -1,0 +1,166 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] core: configure mouse drag threshold from Lua
+
+---
+diff --git a/clutter/clutter/clutter-settings-private.h b/clutter/clutter/clutter-settings-private.h
+index 522f27d11..8eb93fa4b 100644
+--- a/clutter/clutter/clutter-settings-private.h
++++ b/clutter/clutter/clutter-settings-private.h
+@@ -8,6 +8,11 @@ G_BEGIN_DECLS
+ void    _clutter_settings_set_backend           (ClutterSettings *settings,
+                                                  ClutterBackend  *backend);
+ 
++CLUTTER_EXPORT
++void    _clutter_settings_set_gnoblin_drag_threshold (ClutterSettings *settings,
++                                                      gboolean         configured,
++                                                      int              threshold);
++
+ void clutter_settings_ensure_pointer_a11y_settings (ClutterSettings *settings,
+                                                     ClutterSeat     *seat);
+ 
+diff --git a/clutter/clutter/clutter-settings.c b/clutter/clutter/clutter-settings.c
+index f0b463369..29bae17df 100644
+--- a/clutter/clutter/clutter-settings.c
++++ b/clutter/clutter/clutter-settings.c
+@@ -47,6 +47,8 @@ struct _ClutterSettings
+   gint double_click_distance;
+ 
+   gint dnd_drag_threshold;
++  gboolean gnoblin_drag_threshold_configured;
++  gint gnoblin_drag_threshold;
+ 
+   gdouble resolution;
+ 
+@@ -221,7 +223,9 @@ sync_mouse_options (ClutterSettings *self)
+   int drag_threshold;
+ 
+   double_click = g_settings_get_int (self->mouse_settings, "double-click");
+-  drag_threshold = g_settings_get_int (self->mouse_settings, "drag-threshold");
++  drag_threshold = self->gnoblin_drag_threshold_configured
++                   ? self->gnoblin_drag_threshold
++                   : g_settings_get_int (self->mouse_settings, "drag-threshold");
+ 
+   g_object_set (self,
+ 		"double-click-time", double_click,
+@@ -229,6 +233,18 @@ sync_mouse_options (ClutterSettings *self)
+                 NULL);
+ }
+ 
++void
++_clutter_settings_set_gnoblin_drag_threshold (ClutterSettings *settings,
++                                              gboolean         configured,
++                                              int              threshold)
++{
++  g_return_if_fail (CLUTTER_IS_SETTINGS (settings));
++
++  settings->gnoblin_drag_threshold_configured = configured;
++  settings->gnoblin_drag_threshold = threshold;
++  sync_mouse_options (settings);
++}
++
+ #ifdef HAVE_FONTS
+ static gboolean
+ on_font_settings_change_event (GSettings *settings,
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index ec95533b4..15f2d052f 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -33,11 +33,14 @@
+ #include <string.h>
+ #include <stdlib.h>
+ 
++#include "backends/meta-backend-private.h"
+ #include "compositor/meta-plugin-manager.h"
+ #include "core/keybindings-private.h"
+ #include "core/meta-accel-parse.h"
+ #include "core/prefs-private.h"
+ #include "core/util-private.h"
++#include "clutter/clutter-context.h"
++#include "clutter/clutter-settings-private.h"
+ #include "meta/prefs.h"
+ #include "mtk/mtk.h"
+ 
+@@ -114,6 +117,7 @@ static char *cursor_theme = NULL;
+ static int   cursor_size = 24;
+ static int   draggable_border_width = 10;
+ static int   drag_threshold;
++static gboolean gnoblin_drag_threshold_configured;
+ static gboolean resize_with_right_button = FALSE;
+ static gboolean edge_tiling = FALSE;
+ static gboolean force_fullscreen = TRUE;
+@@ -1203,6 +1207,48 @@ gnoblin_owns_window_preference (const char *key)
+   return FALSE;
+ }
+ 
++void
++meta_prefs_apply_gnoblin_input_preferences (MetaBackend *backend,
++                                            GVariant    *input)
++{
++  g_autoptr (GVariant) mouse = input
++    ? g_variant_lookup_value (input, "mouse", G_VARIANT_TYPE_VARDICT)
++    : NULL;
++  int configured_threshold;
++  gboolean configured;
++  int threshold;
++
++  g_return_if_fail (META_IS_BACKEND (backend));
++
++  if (!is_gnoblin_session ())
++    return;
++
++  configured = mouse &&
++               g_variant_lookup (mouse, "drag-threshold", "i",
++                                 &configured_threshold);
++  threshold = configured
++    ? configured_threshold
++    : g_settings_get_int (SETTINGS (SCHEMA_MOUSE), "drag-threshold");
++
++  gnoblin_drag_threshold_configured = configured;
++  if (drag_threshold != threshold)
++    {
++      drag_threshold = threshold;
++      queue_changed (META_PREF_DRAG_THRESHOLD);
++    }
++
++  {
++    ClutterContext *clutter_context =
++      meta_backend_get_clutter_context (backend);
++    ClutterSettings *clutter_settings =
++      clutter_context_get_settings (clutter_context);
++
++    _clutter_settings_set_gnoblin_drag_threshold (clutter_settings,
++                                                  configured,
++                                                  threshold);
++  }
++}
++
+ static gboolean
+ gnoblin_owns_compositor_preference (const char *key)
+ {
+@@ -1392,6 +1438,9 @@ settings_changed (GSettings *settings,
+     return;
+   if (is_gnoblin_session () && gnoblin_owns_compositor_preference (key))
+     return;
++  if (is_gnoblin_session () && gnoblin_drag_threshold_configured &&
++      settings == SETTINGS (SCHEMA_MOUSE) && g_str_equal (key, "drag-threshold"))
++    return;
+   if (is_gnoblin_session () && SETTINGS (SCHEMA_INPUT_SOURCES) == settings &&
+       g_str_equal (key, KEY_XKB_OPTIONS))
+     return;
+diff --git a/src/meta/prefs.h b/src/meta/prefs.h
+index e51d07344..10a345cd9 100644
+--- a/src/meta/prefs.h
++++ b/src/meta/prefs.h
+@@ -114,6 +114,10 @@ void meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences);
+ META_EXPORT
+ void meta_prefs_apply_gnoblin_compositor_preferences (GVariant *preferences);
+ 
++META_EXPORT
++void meta_prefs_apply_gnoblin_input_preferences (MetaBackend *backend,
++                                                 GVariant    *input);
++
+ META_EXPORT
+ void meta_prefs_apply_gnoblin_keyboard_preferences (GVariant *preferences);
+ 

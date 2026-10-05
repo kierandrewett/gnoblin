@@ -1,5 +1,5 @@
 From 1b251739fb37244d938782ea3b60009bb8f6e221 Mon Sep 17 00:00:00 2001
-From: Gnoblin Developers <gnoblin@example.invalid>
+From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 17 Jun 2026 16:10:00 +0100
 Subject: [PATCH] tooling: expose feature variables in uninstalled pkg-config
 

@@ -1,15 +1,14 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
-Date: Thu, 24 Sep 2026 20:30:00 +0000
-Subject: [PATCH] core: add Gnoblin native preferences
-
-Apply window, compositor, keyboard, and keybinding preferences from the
-Gnoblin session configuration without changing GNOME GSettings values.
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] core: add Gnoblin native preferences with strict focus default
 
 ---
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index fe38b341..425cc796 100644
 --- a/src/core/prefs.c
 +++ b/src/core/prefs.c
-@@ -40,7 +40,11 @@
- #include "core/util-private.h"
+@@ -41,6 +41,10 @@
  #include "meta/prefs.h"
  #include "mtk/mtk.h"
  
@@ -20,7 +19,7 @@ Gnoblin session configuration without changing GNOME GSettings values.
  /* If you add a key, it needs updating in init() and in the gsettings
   * notify listener and of course in the .schemas file.
   *
-@@ -75,6 +79,8 @@
+@@ -76,6 +80,8 @@ static GList *changes = NULL;
  static guint changed_idle;
  static GList *listeners = NULL;
  static GHashTable *settings_schemas;
@@ -29,7 +28,7 @@ Gnoblin session configuration without changing GNOME GSettings values.
  
  static ClutterModifierType mouse_button_mods = CLUTTER_MOD1_MASK;
  static MetaKeyCombo overlay_key_combos[2] = { 0 };
-@@ -971,6 +977,284 @@
+@@ -971,6 +977,285 @@ queue_changed (MetaPreference pref)
      }
  }
  
@@ -166,10 +165,11 @@ Gnoblin session configuration without changing GNOME GSettings values.
 +} G_STMT_END
 +
 +  APPLY_ENUM ("focus-mode", focus_mode, focus_modes, G_DESKTOP_FOCUS_MODE_CLICK, META_PREF_FOCUS_MODE);
-+  APPLY_ENUM ("focus-new-windows", focus_new_windows, new_window_modes, G_DESKTOP_FOCUS_NEW_WINDOWS_SMART, META_PREF_FOCUS_NEW_WINDOWS);
++  APPLY_ENUM ("focus-new-windows", focus_new_windows, new_window_modes, G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT, META_PREF_FOCUS_NEW_WINDOWS);
 +  APPLY_ENUM ("action-double-click-titlebar", action_double_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE, META_PREF_ACTION_DOUBLE_CLICK_TITLEBAR);
 +  APPLY_ENUM ("action-middle-click-titlebar", action_middle_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_LOWER, META_PREF_ACTION_MIDDLE_CLICK_TITLEBAR);
 +  APPLY_ENUM ("action-right-click-titlebar", action_right_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_MENU, META_PREF_ACTION_RIGHT_CLICK_TITLEBAR);
++  APPLY_BOOL ("auto-maximize", auto_maximize, TRUE, META_PREF_AUTO_MAXIMIZE);
 +  APPLY_BOOL ("raise-on-click", raise_on_click, TRUE, META_PREF_RAISE_ON_CLICK);
 +  APPLY_BOOL ("auto-raise", auto_raise, FALSE, META_PREF_AUTO_RAISE);
 +  APPLY_INT ("auto-raise-delay", auto_raise_delay, 500, META_PREF_AUTO_RAISE_DELAY);
@@ -248,7 +248,7 @@ Gnoblin session configuration without changing GNOME GSettings values.
 +  static const char *const keys[] = {
 +    "focus-mode", "focus-new-windows", "action-double-click-titlebar",
 +    "action-middle-click-titlebar", "action-right-click-titlebar",
-+    "raise-on-click", "auto-raise", "auto-raise-delay",
++    "auto-maximize", "raise-on-click", "auto-raise", "auto-raise-delay",
 +    "focus-change-on-pointer-rest", "dynamic-workspaces", "num-workspaces",
 +    "workspaces-only-on-primary", "edge-tiling", "center-new-windows",
 +    "attach-modal-dialogs", "workspace-names", NULL
@@ -314,7 +314,7 @@ Gnoblin session configuration without changing GNOME GSettings values.
  
  /****************************************************************************/
  /* Initialisation.                                                          */
-@@ -1024,7 +1308,43 @@
+@@ -1024,7 +1308,43 @@ meta_prefs_init (void)
    handle_preference_init_int ();
    handle_preference_init_uint ();
  
@@ -358,7 +358,7 @@ Gnoblin session configuration without changing GNOME GSettings values.
  }
  
  static gboolean
-@@ -1069,6 +1389,17 @@
+@@ -1069,6 +1389,17 @@ settings_changed (GSettings *settings,
    MetaEnumPreference *cursor;
    gboolean found_enum;
  
@@ -376,7 +376,7 @@ Gnoblin session configuration without changing GNOME GSettings values.
    value = g_settings_get_value (settings, key);
    type = g_variant_get_type (value);
  
-@@ -1114,6 +1445,8 @@
+@@ -1114,6 +1445,8 @@ bindings_changed (GSettings *settings,
                    gpointer data)
  {
    gchar **strokes;
@@ -385,7 +385,7 @@ Gnoblin session configuration without changing GNOME GSettings values.
    strokes = g_settings_get_strv (settings, key);
  
    if (update_key_binding (key, strokes))
-@@ -1862,6 +2195,77 @@
+@@ -1854,6 +2187,77 @@ update_key_binding (const char *key,
      return FALSE;
  }
  
@@ -463,7 +463,7 @@ Gnoblin session configuration without changing GNOME GSettings values.
  const char*
  meta_prefs_get_workspace_name (int i)
  {
-@@ -2004,7 +2408,22 @@
+@@ -1996,7 +2400,22 @@ meta_prefs_add_keybinding (const char           *name,
        queue_changed (META_PREF_KEYBINDINGS);
      }
  
@@ -487,12 +487,15 @@ Gnoblin session configuration without changing GNOME GSettings values.
    update_binding (pref, strokes);
    g_strfreev (strokes);
  
+diff --git a/src/meta/prefs.h b/src/meta/prefs.h
+index 47c6e5ee..b16405b3 100644
 --- a/src/meta/prefs.h
 +++ b/src/meta/prefs.h
-@@ -109,6 +109,18 @@
+@@ -108,6 +108,18 @@ typedef enum
+ typedef void (* MetaPrefsChangedFunc) (MetaPreference pref,
                                         gpointer       user_data);
  
- META_EXPORT
++META_EXPORT
 +void meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences);
 +
 +META_EXPORT
@@ -504,7 +507,6 @@ Gnoblin session configuration without changing GNOME GSettings values.
 +META_EXPORT
 +void meta_prefs_apply_gnoblin_keybindings (GVariant *keybindings);
 +
-+META_EXPORT
+ META_EXPORT
  void meta_prefs_add_listener    (MetaPrefsChangedFunc func,
                                   gpointer             user_data);
- 

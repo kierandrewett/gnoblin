@@ -2,12 +2,14 @@
 """Verify that a Gnoblin shell loaded the user's RustDesk policy."""
 
 import json
+import os
+import shutil
 import subprocess
 
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
-ctl = root / "src/tools/gnoblinctl"
+ctl = Path(os.environ.get("GNOBLINCTL") or shutil.which("gnoblinctl") or root / "build/ninja/gnoblinctl")
 
 
 def call(*args):

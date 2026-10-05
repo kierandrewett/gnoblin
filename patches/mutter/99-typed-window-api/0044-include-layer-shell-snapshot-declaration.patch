@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: include layer shell snapshot declaration
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 62032aa9..cb1304ad 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -55,6 +55,8 @@
+ #include "meta/window.h"
+ #include "meta/workspace.h"
+ 
++#include "wayland/meta-wayland-layer-shell.h"
++
+ gboolean
+ meta_gnoblin_window_pattern_match (const char *pattern,
+                                    const char *value,

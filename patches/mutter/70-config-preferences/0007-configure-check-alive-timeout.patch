@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] prefs: configure client liveness timeout from Lua
+
+---
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index fdcc1a826..99261704f 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -1037,6 +1037,31 @@ gnoblin_int (GVariant   *preferences,
+   return fallback;
+ }
+ 
++static guint
++gnoblin_uint (GVariant   *preferences,
++              const char *key,
++              guint       fallback)
++{
++  g_autoptr (GVariant) value = preferences ? g_variant_lookup_value (preferences, key, NULL) : NULL;
++  gint64 number;
++
++  if (!value)
++    return fallback;
++  if (g_variant_is_of_type (value, G_VARIANT_TYPE_INT64))
++    number = g_variant_get_int64 (value);
++  else if (g_variant_is_of_type (value, G_VARIANT_TYPE_INT32))
++    number = g_variant_get_int32 (value);
++  else if (g_variant_is_of_type (value, G_VARIANT_TYPE_UINT32))
++    return g_variant_get_uint32 (value);
++  else
++    return fallback;
++
++  if (number < 0 || (guint64) number > G_MAXUINT)
++    return fallback;
++
++  return (guint) number;
++}
++
+ static gboolean
+ strv_equal_nullable (const char * const *a,
+                      const char * const *b)
+@@ -1095,6 +1120,7 @@ meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
+   };
+   gboolean boolean_value;
+   gint integer_value;
++  guint unsigned_value;
+ 
+   if (!is_gnoblin_session ())
+     return;
+@@ -1108,6 +1134,10 @@ meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
+   integer_value = gnoblin_int (preferences, key, fallback); \
+   if (target != integer_value) { target = integer_value; queue_changed (pref); } \
+ } G_STMT_END
++#define APPLY_UINT(key, target, fallback, pref) G_STMT_START { \
++  unsigned_value = gnoblin_uint (preferences, key, fallback); \
++  if (target != unsigned_value) { target = unsigned_value; queue_changed (pref); } \
++} G_STMT_END
+ #define APPLY_ENUM(key, target, names, fallback, pref) G_STMT_START { \
+   integer_value = gnoblin_enum (preferences, key, names, fallback); \
+   if (target != integer_value) { target = integer_value; queue_changed (pref); } \
+@@ -1135,6 +1165,7 @@ meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
+   APPLY_BOOL ("raise-on-click", raise_on_click, TRUE, META_PREF_RAISE_ON_CLICK);
+   APPLY_BOOL ("auto-raise", auto_raise, FALSE, META_PREF_AUTO_RAISE);
+   APPLY_INT ("auto-raise-delay", auto_raise_delay, 500, META_PREF_AUTO_RAISE_DELAY);
++  APPLY_UINT ("check-alive-timeout", check_alive_timeout, 5000, META_PREF_CHECK_ALIVE_TIMEOUT);
+   APPLY_BOOL ("focus-change-on-pointer-rest", focus_change_on_pointer_rest, FALSE, META_PREF_FOCUS_CHANGE_ON_POINTER_REST);
+   APPLY_BOOL ("dynamic-workspaces", dynamic_workspaces, FALSE, META_PREF_DYNAMIC_WORKSPACES);
+   APPLY_INT ("num-workspaces", num_workspaces, 4, META_PREF_NUM_WORKSPACES);
+@@ -1161,6 +1192,7 @@ meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
+ 
+ #undef APPLY_BOOL
+ #undef APPLY_INT
++#undef APPLY_UINT
+ #undef APPLY_ENUM
+ }
+ 
+@@ -1269,7 +1301,7 @@ gnoblin_owns_compositor_preference (const char *key)
+ {
+   static const char *const keys[] = {
+     "enable-animations", "locate-pointer", "visual-bell", "audible-bell",
+-    "visual-bell-type", NULL
++    "visual-bell-type", "check-alive-timeout", NULL
+   };
+   for (int i = 0; keys[i]; i++)
+     if (g_str_equal (key, keys[i]))

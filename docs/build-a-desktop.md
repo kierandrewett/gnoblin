@@ -20,7 +20,7 @@ The [configuration reference](/config/configure) describes the Lua
 settings. The [CLI](gnoblinctl.md) is convenient for commands; the
 [compositor bridge](compositor-bridge.md) supplies subscriptions and shortcuts
 to a long-running shell. [Wayland protocols](wayland-protocols.md) serve native
-clients, and [user scripts](user-scripts.md) react inside GNOME Shell.
+clients, and [Lua event handlers](user-scripts.md) react to compositor events.
 
 ## Assemble a small desktop
 
@@ -31,7 +31,7 @@ of them with a component you prefer. Put this in a **new**
 
 ```lua
 gnoblin.configure {
-    cursor = {theme = "Adwaita-Hyprcursor", size = 28},
+    cursor = {theme = "default", size = 28},
     autostart = {
         bar = {command = {"waybar"}},
         notifications = {command = {"mako"}},
@@ -47,8 +47,8 @@ gnoblin.configure {
 
 _A stock GNOME app beneath Waybar._
 
-Gnoblin bundles the Adwaita Hyprcursor theme. See the [cursor guide](/guides/cursors)
-to select it or use another installed theme.
+The cursor uses your system's default theme. See the [cursor guide](/guides/cursors)
+to choose another installed theme.
 
 Capture this example from the checkout with
 `scripts/capture-doc-examples.sh waybar-settings`. It uses a disposable config and
@@ -70,11 +70,12 @@ modules or write a module using [window data](compositor-bridge.md#windows-and-c
 
 ## Give each visible function an owner
 
-Only one notification daemon should own notifications. If your shell handles
-them, leave `shell.notifications` disabled; if it does not, you can enable
-Gnoblin's native service. The same choice applies to a window switcher and
-keyboard-layout popup. See [native features](/guides/session_settings#native-features)
-and [shortcut conflicts](/guides/shortcuts#avoid-conflicts).
+Start one notification daemon from your shell or the session's
+[autostart configuration](/config/configure/autostart). Configure window
+switchers and keyboard-layout popups in your shell. Gnoblin's input API selects
+the active input source; see [input-source settings](/config/configure/input_sources).
+Use [shortcut guidance](/guides/shortcuts#avoid-conflicts) to resolve binding
+conflicts.
 
 A dock can use the foreign toplevel protocols for basic window handles or the
 bridge for records, previews, activation and shortcut sessions. Keep window IDs
@@ -84,15 +85,15 @@ several languages.
 
 ## Choose the right interface
 
-| Task                                     | Interface                                                  |
-| ---------------------------------------- | ---------------------------------------------------------- |
-| Change a window from a script            | `gnoblinctl window ...`                                    |
-| Maintain a live switcher or dock         | Compositor bridge `windows` subscription                   |
-| Place a bar or dock                      | `zwlr_layer_shell_v1`                                      |
-| Capture output with a native client      | `zwlr_screencopy_manager_v1`, subject to its protocol gate |
-| Apply per-app styling                    | `gnoblin.window_rule` in Lua                               |
-| React to a workspace change inside Shell | GJS user script `api.on("workspace-changed", ...)`         |
-| Supply an application titlebar           | Frame rule and optional renderer service                   |
+| Task                                 | Interface                                                  |
+| ------------------------------------ | ---------------------------------------------------------- |
+| Change a window from a script        | `gnoblinctl window ...`                                    |
+| Maintain a live switcher or dock     | Compositor bridge `windows` subscription                   |
+| Place a bar or dock                  | `zwlr_layer_shell_v1`                                      |
+| Capture output with a native client  | `zwlr_screencopy_manager_v1`, subject to its protocol gate |
+| Apply per-app styling                | `gnoblin.window_rule` in Lua                               |
+| React to a window or workspace event | Lua callback registered with `gnoblin.events.on`           |
+| Supply an application titlebar       | Frame rule and optional renderer service                   |
 
 The desktop portal has its own permission policy. Disabling a Wayland protocol
 does not replace [portal permissions](/guides/permissions) for screen sharing or

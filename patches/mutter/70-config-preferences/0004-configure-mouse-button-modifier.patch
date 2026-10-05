@@ -1,0 +1,63 @@
+From e91799a81110fdaa27284d176aa2de490553f8a8 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 00:30:00 +0000
+Subject: [PATCH] core: configure mouse drag modifier from Lua
+
+---
+ src/core/prefs.c | 20 +++++++++++++++-----
+ 1 file changed, 15 insertions(+), 5 deletions(-)
+
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index aa4f5ae5d..39be73983 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -1114,6 +1114,18 @@ meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
+   APPLY_ENUM ("action-double-click-titlebar", action_double_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE, META_PREF_ACTION_DOUBLE_CLICK_TITLEBAR);
+   APPLY_ENUM ("action-middle-click-titlebar", action_middle_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_LOWER, META_PREF_ACTION_MIDDLE_CLICK_TITLEBAR);
+   APPLY_ENUM ("action-right-click-titlebar", action_right_click_titlebar, titlebar_actions, G_DESKTOP_TITLEBAR_ACTION_MENU, META_PREF_ACTION_RIGHT_CLICK_TITLEBAR);
++  {
++    const char *mouse_button_modifier = "<Super>";
++    gpointer ignored = NULL;
++
++    if (preferences)
++      g_variant_lookup (preferences, "mouse-button-modifier", "&s",
++                        &mouse_button_modifier);
++
++    g_autoptr (GVariant) modifier =
++      g_variant_ref_sink (g_variant_new_string (mouse_button_modifier));
++    mouse_button_mods_handler (modifier, &ignored, NULL);
++  }
+   APPLY_BOOL ("auto-maximize", auto_maximize, TRUE, META_PREF_AUTO_MAXIMIZE);
+   APPLY_BOOL ("raise-on-click", raise_on_click, TRUE, META_PREF_RAISE_ON_CLICK);
+   APPLY_BOOL ("auto-raise", auto_raise, FALSE, META_PREF_AUTO_RAISE);
+@@ -1196,7 +1208,7 @@ gnoblin_owns_window_preference (const char *key)
+     "auto-maximize", "raise-on-click", "auto-raise", "auto-raise-delay",
+     "focus-change-on-pointer-rest", "dynamic-workspaces", "num-workspaces",
+     "workspaces-only-on-primary", "edge-tiling", "center-new-windows",
+-    "attach-modal-dialogs", "workspace-names", NULL
++    "attach-modal-dialogs", "workspace-names", "mouse-button-modifier", NULL
+   };
+   for (int i = 0; keys[i]; i++)
+     if (g_str_equal (key, keys[i]))
+@@ -1566,16 +1578,14 @@ mouse_button_mods_handler (GVariant *value,
+ 
+   if (!string_value || !meta_parse_modifier (string_value, &mods))
+     {
+-      g_warning ("Failed to parse new GSettings value: "
+-                 "\"%s\" found in configuration database is "
+-                 "not a valid value for mouse button modifier",
++      g_warning ("Failed to parse mouse button modifier: \"%s\" is not a valid value",
+                  string_value);
+ 
+       return FALSE;
+     }
+ 
+   meta_topic (META_DEBUG_KEYBINDINGS,
+-              "Mouse button modifier has new GSettings value \"%s\"",
++              "Mouse button modifier is now \"%s\"",
+               string_value);
+ 
+   if (mods != mouse_button_mods)
+-- 
+2.55.0
+

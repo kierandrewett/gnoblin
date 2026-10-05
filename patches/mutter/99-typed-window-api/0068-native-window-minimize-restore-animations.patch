@@ -1,0 +1,156 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] mutter: animate native window minimize and restore
+
+---
+diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
+index 398a70eac..c4ee37452 100644
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -34,6 +34,13 @@ typedef struct {
+   gboolean builtin;
+ } AnimationSpec;
+ 
++typedef enum {
++  ANIMATION_COMPLETION_NONE,
++  ANIMATION_COMPLETION_DESTROY,
++  ANIMATION_COMPLETION_MINIMIZE,
++  ANIMATION_COMPLETION_UNMINIMIZE,
++} AnimationCompletion;
++
+ typedef struct {
+   char *id;
+   char *target_type;
+@@ -46,6 +53,7 @@ typedef struct {
+   gboolean finished;
+   gboolean lifecycle;
+   MetaPlugin *lifecycle_plugin;
++  AnimationCompletion lifecycle_completion;
+   float base_x, base_y, base_z;
+   double base_sx, base_sy, base_rotation;
+   guint8 base_opacity;
+@@ -1034,6 +1042,25 @@ static void emit_animation_event(AnimationPreview *preview, gboolean started,
+                   completion_event_free);
+ }
+ 
++static void complete_lifecycle(MetaPlugin *plugin, MetaWindowActor *actor,
++                               AnimationCompletion completion) {
++  switch (completion) {
++  case ANIMATION_COMPLETION_NONE:
++    break;
++  case ANIMATION_COMPLETION_DESTROY:
++    meta_plugin_destroy_completed(plugin, actor);
++    break;
++  case ANIMATION_COMPLETION_MINIMIZE:
++    meta_plugin_minimize_completed(plugin, actor);
++    break;
++  case ANIMATION_COMPLETION_UNMINIMIZE:
++    meta_plugin_unminimize_completed(plugin, actor);
++    break;
++  default:
++    g_assert_not_reached();
++  }
++}
++
+ static void preview_stop(AnimationPreview *preview, gboolean restore,
+                          gboolean report) {
+   if (preview->finished)
+@@ -1041,6 +1068,8 @@ static void preview_stop(AnimationPreview *preview, gboolean restore,
+   preview->finished = TRUE;
+   MetaPlugin *lifecycle_plugin =
+       g_steal_pointer(&preview->lifecycle_plugin);
++  AnimationCompletion lifecycle_completion = preview->lifecycle_completion;
++  preview->lifecycle_completion = ANIMATION_COMPLETION_NONE;
+   MetaWindowActor *lifecycle_actor =
+       lifecycle_plugin ? g_object_ref(META_WINDOW_ACTOR(preview->actor)) : NULL;
+   if (preview->timeline)
+@@ -1069,7 +1098,8 @@ static void preview_stop(AnimationPreview *preview, gboolean restore,
+       stop_lock_watch(state);
+   }
+   if (lifecycle_plugin)
+-    meta_plugin_destroy_completed(lifecycle_plugin, lifecycle_actor);
++    complete_lifecycle(lifecycle_plugin, lifecycle_actor,
++                       lifecycle_completion);
+   g_clear_object(&lifecycle_actor);
+   g_clear_object(&lifecycle_plugin);
+ }
+@@ -1761,9 +1791,9 @@ static void apply_rule_overrides(AnimationSpec *spec, GVariant *overrides) {
+   }
+ }
+ 
+-static gboolean start_window_lifecycle_animation(MetaPlugin *plugin,
+-                                                MetaWindowActor *window_actor,
+-                                                const char *event) {
++static gboolean start_window_lifecycle_animation(
++    MetaPlugin *plugin, AnimationCompletion completion,
++    MetaWindowActor *window_actor, const char *event) {
+   MetaWindow *window = meta_window_actor_get_meta_window(window_actor);
+   if (!window)
+     return FALSE;
+@@ -1834,6 +1864,9 @@ static gboolean start_window_lifecycle_animation(MetaPlugin *plugin,
+   preview->spec = spec;
+   preview->lifecycle = TRUE;
+   preview->lifecycle_plugin = plugin ? g_object_ref(plugin) : NULL;
++  preview->lifecycle_completion = completion;
++  if (completion == ANIMATION_COMPLETION_UNMINIMIZE)
++    clutter_actor_show(preview->actor);
+   save_actor_state(preview);
+   set_origin(preview);
+   render_preview(preview, 0);
+@@ -1857,7 +1890,8 @@ static gboolean start_window_lifecycle_animation(MetaPlugin *plugin,
+ }
+ 
+ static void start_window_open_animation(MetaWindowActor *window_actor) {
+-  start_window_lifecycle_animation(NULL, window_actor, "open");
++  start_window_lifecycle_animation(NULL, ANIMATION_COMPLETION_NONE,
++                                   window_actor, "open");
+ }
+ 
+ void meta_gnoblin_animation_window_mapped(MetaWindowActor *window_actor) {
+@@ -1869,7 +1903,27 @@ gboolean meta_gnoblin_animation_window_destroying(MetaPlugin *plugin,
+                                                  MetaWindowActor *window_actor) {
+   g_return_val_if_fail(META_IS_PLUGIN(plugin), FALSE);
+   g_return_val_if_fail(META_IS_WINDOW_ACTOR(window_actor), FALSE);
+-  return start_window_lifecycle_animation(plugin, window_actor, "close");
++  return start_window_lifecycle_animation(plugin,
++                                          ANIMATION_COMPLETION_DESTROY,
++                                          window_actor, "close");
++}
++
++gboolean meta_gnoblin_animation_window_minimizing(
++    MetaPlugin *plugin, MetaWindowActor *window_actor) {
++  g_return_val_if_fail(META_IS_PLUGIN(plugin), FALSE);
++  g_return_val_if_fail(META_IS_WINDOW_ACTOR(window_actor), FALSE);
++  return start_window_lifecycle_animation(plugin,
++                                          ANIMATION_COMPLETION_MINIMIZE,
++                                          window_actor, "minimize");
++}
++
++gboolean meta_gnoblin_animation_window_restoring(
++    MetaPlugin *plugin, MetaWindowActor *window_actor) {
++  g_return_val_if_fail(META_IS_PLUGIN(plugin), FALSE);
++  g_return_val_if_fail(META_IS_WINDOW_ACTOR(window_actor), FALSE);
++  return start_window_lifecycle_animation(plugin,
++                                          ANIMATION_COMPLETION_UNMINIMIZE,
++                                          window_actor, "restore");
+ }
+ 
+ void meta_gnoblin_animation_cancel_window_effects(MetaPlugin *plugin,
+diff --git a/src/core/gnoblin-animation.h b/src/core/gnoblin-animation.h
+index cf91750d6..d6f6dbaf5 100644
+--- a/src/core/gnoblin-animation.h
++++ b/src/core/gnoblin-animation.h
+@@ -11,6 +11,12 @@ META_EXPORT
+ gboolean meta_gnoblin_animation_window_destroying (MetaPlugin *plugin,
+                                                    MetaWindowActor *window_actor);
+ META_EXPORT
++gboolean meta_gnoblin_animation_window_minimizing (MetaPlugin *plugin,
++                                                    MetaWindowActor *window_actor);
++META_EXPORT
++gboolean meta_gnoblin_animation_window_restoring (MetaPlugin *plugin,
++                                                   MetaWindowActor *window_actor);
++META_EXPORT
+ void meta_gnoblin_animation_cancel_window_effects (MetaPlugin       *plugin,
+                                                    MetaWindowActor *window_actor);
+ GVariant * meta_gnoblin_animation_dispatch (MetaDisplay *display,

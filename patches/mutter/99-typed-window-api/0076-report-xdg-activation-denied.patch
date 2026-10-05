@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] mutter: report strict XDG activation denials
+
+---
+diff --git a/src/wayland/meta-wayland-activation.c b/src/wayland/meta-wayland-activation.c
+index 91d715f2..454b3820 100644
+--- a/src/wayland/meta-wayland-activation.c
++++ b/src/wayland/meta-wayland-activation.c
+@@ -22,6 +22,7 @@
+ #include "wayland/meta-wayland-activation.h"
+ #include "core/util-private.h"
+ #include "meta/prefs.h"
++#include "meta/util.h"
+ #include "wayland/meta-wayland-session-lock.h"
+ 
+ #include <glib.h>
+@@ -372,6 +373,31 @@ startup_sequence_is_recent (MetaDisplay         *display,
+   return seq_timestamp_ms >= last_user_time_ms;
+ }
+ 
++static void
++dispatch_activation_denied (MetaDisplay *display,
++                             MetaWindow  *window,
++                             const char  *reason)
++{
++  g_autofree char *window_id = NULL;
++  GVariantBuilder payload;
++  g_autoptr (GVariant) value = NULL;
++
++  if (!meta_is_gnoblin_session () ||
++      meta_prefs_get_focus_new_windows () != G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT)
++    return;
++
++  window_id = g_strdup_printf ("%u", meta_window_get_stable_sequence (window));
++  g_variant_builder_init (&payload, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_add (&payload, "{sv}", "window_id",
++                         g_variant_new_string (window_id));
++  g_variant_builder_add (&payload, "{sv}", "reason", g_variant_new_string (reason));
++  value = g_variant_ref_sink (g_variant_builder_end (&payload));
++
++  meta_display_dispatch_gnoblin_native_event (display,
++                                              "gnoblin.window.activation-denied",
++                                              value);
++}
++
+ static gboolean
+ maybe_activate (MetaWaylandActivation *activation,
+                 MetaWindow            *window,
+@@ -401,7 +427,10 @@ maybe_activate (MetaWaylandActivation *activation,
+   if (!sequence &&
+       !(meta_is_gnoblin_session () &&
+         meta_prefs_get_focus_new_windows () == G_DESKTOP_FOCUS_NEW_WINDOWS_SMART))
+-    return TRUE;
++    {
++      dispatch_activation_denied (display, window, "missing_context");
++      return TRUE;
++    }
+ 
+   if ((meta_is_gnoblin_session () &&
+        meta_prefs_get_focus_new_windows () == G_DESKTOP_FOCUS_NEW_WINDOWS_SMART) ||
+@@ -422,6 +451,8 @@ maybe_activate (MetaWaylandActivation *activation,
+     }
+   else
+     {
++      dispatch_activation_denied (display, window,
++                                  token ? "invalid_context" : "stale_context");
+       meta_window_set_demands_attention (window);
+     }
+ 

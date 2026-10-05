@@ -1,0 +1,262 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 29 Sep 2026 07:52:22 +0100
+Subject: [PATCH] mutter: manage numeric workspaces in native compositor
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 2772f130c..82949541b 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -717,11 +717,13 @@ gnoblin_native_workspace_record (MetaWorkspaceManager *manager,
+ {
+   int index = meta_workspace_index (workspace);
+   g_autoptr (GList) windows = meta_workspace_list_windows (workspace);
++  const char *name = g_object_get_data (G_OBJECT (workspace), "gnoblin-native-name");
++  if (!name)
++    name = meta_prefs_get_workspace_name (index);
+   GVariantBuilder record;
+   g_variant_builder_init (&record, G_VARIANT_TYPE_VARDICT);
+   g_variant_builder_add (&record, "{sv}", "number", g_variant_new_int32 (index + 1));
+-  g_variant_builder_add (&record, "{sv}", "name",
+-                         g_variant_new_string (meta_prefs_get_workspace_name (index)));
++  g_variant_builder_add (&record, "{sv}", "name", g_variant_new_string (name));
+   g_variant_builder_add (&record, "{sv}", "active",
+                          g_variant_new_boolean (index == meta_workspace_manager_get_active_workspace_index (manager)));
+   g_variant_builder_add (&record, "{sv}", "windows",
+@@ -729,6 +731,35 @@ gnoblin_native_workspace_record (MetaWorkspaceManager *manager,
+   return g_variant_ref_sink (g_variant_builder_end (&record));
+ }
+ 
++static MetaWorkspace *
++gnoblin_native_workspace_resolve (MetaWorkspaceManager *manager,
++                                  GVariant             *selector,
++                                  GError              **error)
++{
++  if (!selector || !g_variant_is_of_type (selector, G_VARIANT_TYPE_VARDICT))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "workspace selector must specify a number");
++      return NULL;
++    }
++  g_autoptr (GVariant) id = g_variant_lookup_value (selector, "id", NULL);
++  if (id)
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++                           "workspace IDs still require Gnoblin Shell; select by number");
++      return NULL;
++    }
++  gint64 number;
++  if (!g_variant_lookup (selector, "number", "x", &number) ||
++      number < 1 || number > meta_workspace_manager_get_n_workspaces (manager))
++    {
++      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
++                           "workspace not found; list workspaces first");
++      return NULL;
++    }
++  return meta_workspace_manager_get_workspace_by_index (manager, number - 1);
++}
++
+ static GVariant *
+ gnoblin_native_workspace_api (MetaDisplay *display,
+                               const char  *method,
+@@ -761,33 +792,170 @@ gnoblin_native_workspace_api (MetaDisplay *display,
+                            "workspace switching is unavailable while the session is locked");
+       return NULL;
+     }
++  if (g_str_equal (method, "workspace.create"))
++    {
++      g_autoptr (GVariant) id = g_variant_lookup_value (arguments, "id", NULL);
++      if (id)
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
++                               "workspace IDs still require Gnoblin Shell");
++          return NULL;
++        }
++      const char *name = NULL;
++      if (!g_variant_lookup (arguments, "name", "&s", &name) ||
++          !name || !*name || !g_utf8_validate (name, -1, NULL))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                               "workspace name must be a nonempty string");
++          return NULL;
++        }
++      gboolean activate = FALSE;
++      g_variant_lookup (arguments, "activate", "b", &activate);
++      MetaWorkspace *workspace = meta_workspace_manager_append_new_workspace (
++        manager, FALSE, meta_display_get_current_time (display));
++      if (!workspace)
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "could not create workspace");
++          return NULL;
++        }
++      meta_prefs_change_workspace_name (meta_workspace_index (workspace), name);
++      g_object_set_data_full (G_OBJECT (workspace), "gnoblin-native-name",
++                              g_strdup (name), g_free);
++      if (activate)
++        meta_workspace_activate (workspace, meta_display_get_current_time (display));
++      return gnoblin_native_workspace_record (manager, workspace);
++    }
+   if (count < 1)
+     {
+       g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+                            "no workspaces are available");
+       return NULL;
+     }
+-  int index = meta_workspace_manager_get_active_workspace_index (manager);
+-  if (g_str_equal (method, "workspace.switch"))
++  if (g_str_equal (method, "workspace.rename") ||
++      g_str_equal (method, "workspace.remove") ||
++      g_str_equal (method, "workspace.switch"))
+     {
+-      g_autoptr (GVariant) id = g_variant_lookup_value (arguments, "id", NULL);
+-      if (id)
++      MetaWorkspace *workspace = gnoblin_native_workspace_resolve (manager,
++                                                                   arguments, error);
++      if (!workspace)
++        return NULL;
++      if (g_str_equal (method, "workspace.rename"))
+         {
+-          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+-                               "workspace IDs still require Gnoblin Shell; select by number");
+-          return NULL;
++          const char *name = NULL;
++          if (!g_variant_lookup (arguments, "name", "&s", &name) ||
++              !name || !*name || !g_utf8_validate (name, -1, NULL))
++            {
++              g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                                   "workspace name must be a nonempty string");
++              return NULL;
++            }
++          meta_prefs_change_workspace_name (meta_workspace_index (workspace), name);
++          g_object_set_data_full (G_OBJECT (workspace), "gnoblin-native-name",
++                                  g_strdup (name), g_free);
++          return gnoblin_native_workspace_record (manager, workspace);
+         }
+-      gint64 number;
+-      if (!g_variant_lookup (arguments, "number", "x", &number) ||
+-          number < 1 || number > count)
++      if (g_str_equal (method, "workspace.remove"))
++        {
++          g_autoptr (GList) windows = meta_workspace_list_windows (workspace);
++          if (workspace == meta_workspace_manager_get_active_workspace (manager) ||
++              windows || count <= 1)
++            {
++              g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                                   "cannot remove the active, occupied, or only workspace");
++              return NULL;
++            }
++          g_autoptr (GVariant) record = gnoblin_native_workspace_record (manager, workspace);
++          g_autoptr (GSettings) settings =
++            g_settings_new ("org.gnome.desktop.wm.preferences");
++          g_auto (GStrv) stored_names =
++            g_settings_get_strv (settings, "workspace-names");
++          g_auto (GStrv) remaining_names = g_new0 (char *, count);
++          int removed_index = meta_workspace_index (workspace);
++          for (int old_index = 0, new_index = 0; old_index < count; old_index++)
++            {
++              if (old_index == removed_index)
++                continue;
++              MetaWorkspace *remaining =
++                meta_workspace_manager_get_workspace_by_index (manager, old_index);
++              const char *name =
++                g_object_get_data (G_OBJECT (remaining), "gnoblin-native-name");
++              if (!name && old_index < g_strv_length (stored_names))
++                name = stored_names[old_index];
++              remaining_names[new_index++] = g_strdup (name ? name : "");
++            }
++          if (!g_settings_set_strv (settings, "workspace-names",
++                                    (const char * const *) remaining_names))
++            {
++              g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                                   "could not update workspace names");
++              return NULL;
++            }
++          meta_workspace_manager_remove_workspace (manager, workspace,
++                                                   meta_display_get_current_time (display));
++          return g_steal_pointer (&record);
++        }
++      meta_workspace_activate (workspace, meta_display_get_current_time (display));
++      return gnoblin_native_workspace_record (manager, workspace);
++    }
++  if (g_str_equal (method, "workspace.move_active") ||
++      g_str_equal (method, "workspace.move_window"))
++    {
++      g_autoptr (GVariant) selector =
++        g_variant_lookup_value (arguments, "workspace", G_VARIANT_TYPE_VARDICT);
++      MetaWorkspace *workspace = gnoblin_native_workspace_resolve (manager,
++                                                                   selector, error);
++      if (!workspace)
++        return NULL;
++      MetaWindow *window = meta_display_get_focus_window (display);
++      if (g_str_equal (method, "workspace.move_window"))
++        {
++          const char *window_id = NULL;
++          if (!g_variant_lookup (arguments, "window", "&s", &window_id))
++            window = NULL;
++          else if (!g_str_equal (window_id, "active"))
++            {
++              window = NULL;
++              g_autoptr (GList) windows = meta_display_list_all_windows (display);
++              for (GList *item = windows; item; item = item->next)
++                {
++                  MetaWindow *candidate = item->data;
++                  g_autofree char *id =
++                    g_strdup_printf ("%u", meta_window_get_stable_sequence (candidate));
++                  if (g_str_equal (window_id, id))
++                    {
++                      window = candidate;
++                      break;
++                    }
++                }
++            }
++        }
++      if (!window || meta_window_is_skip_taskbar (window) ||
++          meta_window_is_override_redirect (window))
+         {
+           g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
+-                               "workspace not found; list workspaces first");
++                               "window no longer available; list windows first");
+           return NULL;
+         }
+-      index = number - 1;
++      gboolean follow = FALSE;
++      g_variant_lookup (arguments, "follow", "b", &follow);
++      g_autofree char *window_id =
++        g_strdup_printf ("%u", meta_window_get_stable_sequence (window));
++      meta_window_change_workspace (window, workspace);
++      if (follow)
++        meta_workspace_activate (workspace, meta_display_get_current_time (display));
++      GVariantBuilder result;
++      g_variant_builder_init (&result, G_VARIANT_TYPE_VARDICT);
++      g_autoptr (GVariant) workspace_record =
++        gnoblin_native_workspace_record (manager, workspace);
++      g_variant_builder_add (&result, "{sv}", "workspace",
++                             workspace_record);
++      g_variant_builder_add (&result, "{sv}", "window", g_variant_new_string (window_id));
++      g_variant_builder_add (&result, "{sv}", "follow", g_variant_new_boolean (follow));
++      return g_variant_ref_sink (g_variant_builder_end (&result));
+     }
+-  else if (g_str_equal (method, "workspace.next"))
++  int index = meta_workspace_manager_get_active_workspace_index (manager);
++  if (g_str_equal (method, "workspace.next"))
+     index = (index + 1) % count;
+   else
+     index = (index + count - 1) % count;
+@@ -1054,9 +1222,14 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+   g_return_val_if_fail (META_IS_DISPLAY (display), NULL);
+ 
+   if (g_strcmp0 (method, "workspace.list") == 0 ||
++      g_strcmp0 (method, "workspace.create") == 0 ||
++      g_strcmp0 (method, "workspace.rename") == 0 ||
++      g_strcmp0 (method, "workspace.remove") == 0 ||
+       g_strcmp0 (method, "workspace.switch") == 0 ||
+       g_strcmp0 (method, "workspace.next") == 0 ||
+-      g_strcmp0 (method, "workspace.previous") == 0)
++      g_strcmp0 (method, "workspace.previous") == 0 ||
++      g_strcmp0 (method, "workspace.move_active") == 0 ||
++      g_strcmp0 (method, "workspace.move_window") == 0)
+     return gnoblin_native_workspace_api (display, method, arguments, error);
+   if (g_strcmp0 (method, "window.action") == 0)
+     return gnoblin_native_window_action (display, arguments, error);

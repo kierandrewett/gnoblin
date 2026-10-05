@@ -1,0 +1,19 @@
+{
+  "format": 2,
+  "groups": {
+    "wm": {
+      "close": {
+        "key": "close",
+        "description": "Close the window",
+        "default_bindings": ["<Alt>F4"]
+      },
+      "lower": {
+        "key": "lower",
+        "description": "Lower the window below other windows",
+        "default_bindings": []
+      }
+    },
+    "mutter": {},
+    "wayland": {}
+  }
+}

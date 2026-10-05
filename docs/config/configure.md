@@ -1,14 +1,18 @@
 # gnoblin.configure
 
-Set Gnoblin's compositor, input, session, and window-management options with a
-Lua table:
+Set Gnoblin's compositor, input, session, and window-management options with
+`gnoblin.configure`:
 
 ```lua
-gnoblin.configure {shell = {minimize_duration = 150}}
+gnoblin.configure {
+    compositor = {enable_animations = true},
+    window_management = {focus_mode = "click"},
+}
 ```
 
-Defaults apply before your config loads. Files supplied by your desktop shell
-can change them. Map values merge, lists replace, and later values win.
+Defaults apply before your config loads. Included files merge maps, replace
+lists, and later values win. Shell clients keep their own presentation
+settings; Gnoblin config controls compositor and session behavior.
 
 Sizes use logical pixels. Window rules distinguish application windows
 (`type = "window"`) from layer surfaces such as bars and docks
@@ -18,18 +22,21 @@ Sizes use logical pixels. Window rules distinguish application windows
 
 Each entry below is a real top-level key accepted by `gnoblin.configure`.
 
-- [`gnoblin.configure.shell`](/config/configure/shell)
 - [`gnoblin.configure.keybindings`](/config/configure/keybindings)
 - [`gnoblin.configure.window_management`](/config/configure/window_management)
 - [`gnoblin.configure.compositor`](/config/configure/compositor)
 - [`gnoblin.configure.input`](/config/configure/input)
 - [`gnoblin.configure.input_sources`](/config/configure/input_sources)
+- [`gnoblin.configure.monitors`](/config/configure/monitors)
 - [`gnoblin.configure.touchpad_gestures`](/config/configure/touchpad_gestures)
 - [`gnoblin.configure.permissions`](/config/configure/permissions)
+- [`gnoblin.configure.location`](/config/configure/location)
+- [`gnoblin.configure.portals`](/config/configure/portals)
 - [`gnoblin.configure.layer_shell`](/config/configure/layer_shell)
 - [`gnoblin.configure.protocols`](/config/configure/protocols)
 - [`gnoblin.configure.frame_renderers`](/config/configure/frame_renderers)
 - [`gnoblin.configure.cursor`](/config/configure/cursor)
+- [`gnoblin.configure.xwayland`](/config/configure/xwayland)
 - [`gnoblin.configure.shortcuts`](/config/configure/shortcuts)
 - [`gnoblin.configure.autostart`](/config/configure/autostart)
 
@@ -53,18 +60,21 @@ nested fields and accepted values.
 
 ```lua
 gnoblin.configure {
-    shell = {...}?,
     keybindings = {...}?,
     window_management = {...}?,
     compositor = {...}?,
     input = {...}?,
     input_sources = {...}?,
+    monitors = {...}?,
     touchpad_gestures = {...}?,
     permissions = {...}?,
+    location = {...}?,
+    portals = {...}?,
     layer_shell = {...}?,
     protocols = {...}?,
     frame_renderers = {...}?,
     cursor = {...}?,
+    xwayland = {...}?,
     shortcuts = {...}?,
     autostart = {...}?,
 }

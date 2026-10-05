@@ -1,0 +1,268 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: animate configured normal-window closes
+
+---
+diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
+index a0df990c..99f710d6 100644
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -6,6 +6,7 @@
+ #include "core/gnoblin-native-control.h"
+ #include "meta/meta-backend.h"
+ #include "meta/meta-context.h"
++#include "meta/meta-plugin.h"
+ #include "meta/meta-window-actor.h"
+ #include "meta/prefs.h"
+ #include "meta/util.h"
+@@ -44,6 +45,7 @@ typedef struct {
+   double progress;
+   gboolean finished;
+   gboolean lifecycle;
++  MetaPlugin *lifecycle_plugin;
+   float base_x, base_y, base_z;
+   double base_sx, base_sy, base_rotation;
+   guint8 base_opacity;
+@@ -116,6 +118,7 @@ static void preview_free(gpointer data) {
+   animation_spec_clear(&preview->spec);
+   g_clear_object(&preview->timeline);
+   g_clear_object(&preview->window);
++  g_clear_object(&preview->lifecycle_plugin);
+   g_free(preview->id);
+   g_free(preview->target_type);
+   g_free(preview);
+@@ -1038,6 +1041,10 @@ static void preview_stop(AnimationPreview *preview, gboolean restore,
+   if (preview->finished)
+     return;
+   preview->finished = TRUE;
++  MetaPlugin *lifecycle_plugin =
++      g_steal_pointer(&preview->lifecycle_plugin);
++  MetaWindowActor *lifecycle_actor =
++      lifecycle_plugin ? g_object_ref(META_WINDOW_ACTOR(preview->actor)) : NULL;
+   if (preview->timeline)
+     clutter_timeline_stop(preview->timeline);
+   if (restore && CLUTTER_IS_ACTOR(preview->actor)) {
+@@ -1063,6 +1070,10 @@ static void preview_stop(AnimationPreview *preview, gboolean restore,
+     if (g_hash_table_size(state->previews) == 0)
+       stop_lock_watch(state);
+   }
++  if (lifecycle_plugin)
++    meta_plugin_destroy_completed(lifecycle_plugin, lifecycle_actor);
++  g_clear_object(&lifecycle_actor);
++  g_clear_object(&lifecycle_plugin);
+ }
+ 
+ static void preview_completed(ClutterTimeline *timeline, gpointer user_data) {
+@@ -1642,25 +1653,29 @@ static gboolean window_rule_matches(GVariant *match, MetaWindow *window,
+   return TRUE;
+ }
+ 
+-static gboolean animation_supports_open(const char *name) {
++static gboolean animation_supports_lifecycle_event(const char *name,
++                                                    const char *event) {
+   g_autoptr(GVariant) custom = find_custom_animation(name, NULL);
+   if (custom) {
+     gboolean enabled = TRUE;
+-    const char *event = NULL;
++    const char *configured_event = NULL;
+     g_variant_lookup(custom, "enable", "b", &enabled);
+-    g_variant_lookup(custom, "event", "&s", &event);
+-    return enabled && g_strcmp0(event, "open") == 0;
++    g_variant_lookup(custom, "event", "&s", &configured_event);
++    return enabled && g_strcmp0(configured_event, event) == 0;
+   }
+ 
+-  return g_str_equal(name, "fade") || g_str_equal(name, "gnome") ||
+-         g_str_equal(name, "gnome-open") || g_str_equal(name, "none");
++  if (g_str_equal(event, "open"))
++    return g_str_equal(name, "fade") || g_str_equal(name, "gnome") ||
++           g_str_equal(name, "gnome-open") || g_str_equal(name, "none");
++  if (g_str_equal(event, "close"))
++    return g_str_equal(name, "fade") || g_str_equal(name, "gnome") ||
++           g_str_equal(name, "gnome-close") || g_str_equal(name, "none");
++  return FALSE;
+ }
+ 
+-static gboolean select_window_open_animation(MetaWindow *window,
+-                                             const char *layer_namespace,
+-                                             char **selected_name,
+-                                             GVariant **selected_overrides,
+-                                             GError **error) {
++static gboolean select_window_lifecycle_animation(
++    MetaWindow *window, const char *layer_namespace, const char *event,
++    char **selected_name, GVariant **selected_overrides, GError **error) {
+   g_autoptr(GVariant) document = gnoblin_native_control_get_config_document(NULL);
+   g_autoptr(GVariant) rules =
+       document ? g_variant_lookup_value(document, "window-rules", NULL) : NULL;
+@@ -1702,7 +1717,8 @@ static gboolean select_window_open_animation(MetaWindow *window,
+ 
+     if (g_variant_is_of_type(animation, G_VARIANT_TYPE_STRING)) {
+       name = g_variant_get_string(animation, NULL);
+-      if (!animation_supports_open(name))
++      if (!g_str_equal(event, "open") ||
++          !animation_supports_lifecycle_event(name, event))
+         continue;
+       g_free(*selected_name);
+       *selected_name = g_strdup(name);
+@@ -1711,11 +1727,11 @@ static gboolean select_window_open_animation(MetaWindow *window,
+     }
+ 
+     if (g_variant_is_of_type(animation, G_VARIANT_TYPE_VARDICT)) {
+-      g_autoptr(GVariant) open = lookup_field(animation, "open");
+-      if (!open || !g_variant_is_of_type(open, G_VARIANT_TYPE_STRING))
++      g_autoptr(GVariant) selected = lookup_field(animation, event);
++      if (!selected || !g_variant_is_of_type(selected, G_VARIANT_TYPE_STRING))
+         continue;
+-      name = g_variant_get_string(open, NULL);
+-      if (!animation_supports_open(name))
++      name = g_variant_get_string(selected, NULL);
++      if (!animation_supports_lifecycle_event(name, event))
+         continue;
+       g_free(*selected_name);
+       *selected_name = g_strdup(name);
+@@ -1746,8 +1762,12 @@ static void apply_rule_overrides(AnimationSpec *spec, GVariant *overrides) {
+   }
+ }
+ 
+-static void start_window_open_animation(MetaWindowActor *window_actor) {
++static gboolean start_window_lifecycle_animation(MetaPlugin *plugin,
++                                                MetaWindowActor *window_actor,
++                                                const char *event) {
+   MetaWindow *window = meta_window_actor_get_meta_window(window_actor);
++  if (!window)
++    return FALSE;
+   MetaDisplay *display = meta_window_get_display(window);
+   const char *layer_namespace = meta_gnoblin_layer_namespace(window);
+   g_autofree char *name = NULL;
+@@ -1756,11 +1776,14 @@ static void start_window_open_animation(MetaWindowActor *window_actor) {
+   g_autoptr(GError) error = NULL;
+ 
+   /* This actor can map again after its window is hidden and shown. */
+-  if (g_object_get_data(G_OBJECT(window),
+-                        "gnoblin-window-open-animation-handled"))
+-    return;
+-  g_object_set_data(G_OBJECT(window), "gnoblin-window-open-animation-handled",
+-                    GINT_TO_POINTER(1));
++  if (g_str_equal(event, "open")) {
++    if (g_object_get_data(G_OBJECT(window),
++                          "gnoblin-window-open-animation-handled"))
++      return FALSE;
++    g_object_set_data(G_OBJECT(window),
++                      "gnoblin-window-open-animation-handled",
++                      GINT_TO_POINTER(1));
++  }
+ 
+   /* Keep the first native lifecycle slice to normal windows, not layer
+    * surfaces. */
+@@ -1768,22 +1791,22 @@ static void start_window_open_animation(MetaWindowActor *window_actor) {
+       meta_window_is_override_redirect(window) || layer_namespace ||
+       meta_gnoblin_layer_anchor(window) >= 0 || is_locked(display) ||
+       !meta_prefs_get_gnome_animations())
+-    return;
++    return FALSE;
+ 
+-  if (!select_window_open_animation(window, layer_namespace, &name,
+-                                    &overrides, &error)) {
++  if (!select_window_lifecycle_animation(window, layer_namespace, event,
++                                         &name, &overrides, &error)) {
+     g_warning("failed to match Gnoblin window animation rules: %s",
+               error ? error->message : "unknown Lua pattern error");
+-    return;
++    return FALSE;
+   }
+   if (!name || g_str_equal(name, "none"))
+-    return;
+-  if (!parse_spec(&spec, name, "open", window, &error))
+-    return;
++    return FALSE;
++  if (!parse_spec(&spec, name, event, window, &error))
++    return FALSE;
+   apply_rule_overrides(&spec, overrides);
+   if (!validate_previewable(&spec, &error) || spec.duration == 0) {
+     animation_spec_clear(&spec);
+-    return;
++    return FALSE;
+   }
+ 
+   AnimationState *state = get_state(display);
+@@ -1811,6 +1834,7 @@ static void start_window_open_animation(MetaWindowActor *window_actor) {
+   preview->actor = CLUTTER_ACTOR(window_actor);
+   preview->spec = spec;
+   preview->lifecycle = TRUE;
++  preview->lifecycle_plugin = plugin ? g_object_ref(plugin) : NULL;
+   save_actor_state(preview);
+   set_origin(preview);
+   render_preview(preview, 0);
+@@ -1830,6 +1854,11 @@ static void start_window_open_animation(MetaWindowActor *window_actor) {
+ 
+   emit_animation_event(preview, TRUE, FALSE);
+   clutter_timeline_start(preview->timeline);
++  return TRUE;
++}
++
++static void start_window_open_animation(MetaWindowActor *window_actor) {
++  start_window_lifecycle_animation(NULL, window_actor, "open");
+ }
+ 
+ void meta_gnoblin_animation_window_mapped(MetaWindowActor *window_actor) {
+@@ -1837,6 +1866,39 @@ void meta_gnoblin_animation_window_mapped(MetaWindowActor *window_actor) {
+   start_window_open_animation(window_actor);
+ }
+ 
++gboolean meta_gnoblin_animation_window_destroying(MetaPlugin *plugin,
++                                                 MetaWindowActor *window_actor) {
++  g_return_val_if_fail(META_IS_PLUGIN(plugin), FALSE);
++  g_return_val_if_fail(META_IS_WINDOW_ACTOR(window_actor), FALSE);
++  return start_window_lifecycle_animation(plugin, window_actor, "close");
++}
++
++void meta_gnoblin_animation_cancel_window_effects(MetaPlugin *plugin,
++                                                 MetaWindowActor *window_actor) {
++  g_return_if_fail(META_IS_PLUGIN(plugin));
++  g_return_if_fail(META_IS_WINDOW_ACTOR(window_actor));
++  MetaDisplay *display = meta_plugin_get_display(plugin);
++  AnimationState *state =
++      g_object_get_data(G_OBJECT(display), ANIMATION_ID_KEY);
++  if (!state)
++    return;
++  while (TRUE) {
++    AnimationPreview *preview = NULL;
++    GHashTableIter iter;
++    gpointer value;
++
++    g_hash_table_iter_init(&iter, state->previews);
++    while (g_hash_table_iter_next(&iter, NULL, &value))
++      if (((AnimationPreview *)value)->actor == CLUTTER_ACTOR(window_actor)) {
++        preview = value;
++        break;
++      }
++    if (!preview)
++      break;
++    preview_stop(preview, TRUE, TRUE);
++  }
++}
++
+ GVariant *meta_gnoblin_animation_dispatch(MetaDisplay *display,
+                                           const char *method,
+                                           GVariant *arguments, GError **error) {
+diff --git a/src/core/gnoblin-animation.h b/src/core/gnoblin-animation.h
+index 3e369360..2a8af7cd 100644
+--- a/src/core/gnoblin-animation.h
++++ b/src/core/gnoblin-animation.h
+@@ -2,10 +2,15 @@
+ #pragma once
+ 
+ #include "meta/meta-window-actor.h"
++#include "meta/meta-plugin.h"
+ #include "core/gnoblin-native-control.h"
+ #include "meta/util.h"
+ 
+ void meta_gnoblin_animation_window_mapped (MetaWindowActor *window_actor);
++gboolean meta_gnoblin_animation_window_destroying (MetaPlugin *plugin,
++                                                   MetaWindowActor *window_actor);
++void meta_gnoblin_animation_cancel_window_effects (MetaPlugin       *plugin,
++                                                   MetaWindowActor *window_actor);
+ GVariant * meta_gnoblin_animation_dispatch (MetaDisplay *display,
+                                              const char  *method,
+                                              GVariant    *arguments,

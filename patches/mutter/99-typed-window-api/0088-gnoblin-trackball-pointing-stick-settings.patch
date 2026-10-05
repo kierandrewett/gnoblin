@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] Read trackball and pointing-stick preferences from Lua
+
+---
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+index 8622ee243..d05589f4a 100644
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -299,2 +299,6 @@ gnoblin_setting (MetaInputSettings *input_settings,
+     group = "touchpad";
++  else if (settings == priv->trackball_settings)
++    group = "trackball";
++  else if (settings == priv->pointing_stick_settings)
++    group = "pointing-stick";
+   else if (settings == priv->keyboard_settings)
+@@ -462,2 +466,5 @@ input_get_enum (MetaInputSettings *input_settings,
+           static const char * const accel[] = { "default", "flat", "adaptive", "custom", NULL };
++          static const char * const pointing_stick_scroll[] = {
++            "default", "none", "on-button-down", NULL
++          };
+           static const char * const handed[] = { "right", "left", "mouse", NULL };
+@@ -476,2 +483,5 @@ input_get_enum (MetaInputSettings *input_settings,
+             nicks = accel;
++          else if (settings == priv->pointing_stick_settings &&
++                   g_str_equal (key, "scroll-method"))
++            nicks = pointing_stick_scroll;
+           else if (g_str_equal (key, "left-handed"))
+@@ -500,3 +510,5 @@ input_get_enum (MetaInputSettings *input_settings,
+           if (!selector && settings != priv->mouse_settings &&
+-              settings != priv->touchpad_settings)
++              settings != priv->touchpad_settings &&
++              settings != priv->trackball_settings &&
++              settings != priv->pointing_stick_settings)
+             result = input_settings_has_key (input_settings, settings, key)

@@ -1,20 +1,60 @@
 # Fedora
 
-Fedora 43, 44 and 45 have COPR package candidates. The shell, session, Mutter
-and schema packages pass clean installation, stock GNOME coexistence and
-removal checks on all three versions. A graphical Gnoblin login has not yet
-been verified. Keep GNOME or another session available. See
-[platform support](platform-support.md) for the release status.
+The COPR build targets Fedora 45. Check the latest release and COPR results
+before installing: the GNOME library requirements changed with the pinned
+upstream source. Keep GNOME or another session available.
+See [platform support](platform-support.md) for the current status.
 
 ## 1. Install Gnoblin
 
 ```sh
 sudo dnf install dnf-plugins-core
 sudo dnf copr enable kierandrewett/gnoblin
-sudo dnf install --refresh gnoblin-session
+sudo dnf --setopt=install_weak_deps=False install --refresh gnoblin
 ```
 
-`gnoblin-session` pulls in Gnoblin's Mutter and Shell packages.
+`gnoblin` installs the Lua-supervised session, its private Mutter runtime, and
+the portal route for Gnoblin sessions. It does not install GNOME Shell, GJS, or
+a portal backend. Install `gnoblin-portal` to add Gnoblin's GTK-based backend.
+The route uses it when installed and otherwise selects another installed
+backend.
+
+To route individual interfaces to other backends, use the Lua config. Install
+the backend with `sudo dnf install gnoblin-portal`; this command skips packages
+recommended by dependencies. Install optional services you need using the
+commands below.
+
+Gnoblin uses the portal backend selected for its session. If GNOME is also
+installed, that session keeps using its own portal configuration and backend.
+Gnoblin does not install `xdg-desktop-portal-gtk` or require
+`gnome-desktop4`. Package dependencies may still bring GTK3 onto a system;
+inspect the transaction before installing if that matters to you.
+
+For GNOME apps on a minimal Fedora install, add the optional
+[`gnoblin-gnome-integration` package](gnome-apps.md). It supplies common
+desktop services; install the apps you want separately.
+
+If your Thunderbolt devices need authorization, install `bolt` separately with
+`sudo dnf install bolt`. Gnoblin does not provide GNOME's Thunderbolt menu.
+For a shell that needs UPower battery data, install it with
+`sudo dnf install upower`. Gnoblin's lean login does not use GNOME's power menu.
+
+To let Gnoblin handle GeoClue location authorization, install the optional
+`gnoblin-geoclue-integration` package and restart GeoClue:
+
+```sh
+sudo dnf install gnoblin-geoclue-integration
+sudo systemctl restart geoclue.service
+```
+
+The package keeps GeoClue's standard agent IDs and adds Gnoblin. If you have
+custom GeoClue agent IDs, include them in the effective whitelist too.
+Run `gnoblinctl privacy` after restarting GeoClue. The location source should
+report `inactive` when no application is using it.
+
+For IBus input methods, install `ibus` separately with `sudo dnf install ibus`.
+The basic session needs only `ibus-libs` and does not start the daemon until
+an IBus input source is configured.
 
 ## 2. Install a shell
 
@@ -32,7 +72,13 @@ Continue with [configuration](/config).
 ## Update
 
 ```sh
-sudo dnf upgrade --refresh gnoblin-session gnoblin-shell gnoblin-mutter
+sudo dnf upgrade --refresh gnoblin gnoblin-mutter
+```
+
+If you installed `gnoblin-portal`, update it separately:
+
+```sh
+sudo dnf upgrade --refresh gnoblin-portal
 ```
 
 Log out and back in to load the updated compositor.
@@ -41,9 +87,15 @@ Log out and back in to load the updated compositor.
 
 Log into GNOME or another session first, then run:
 
+If you installed the optional integration package, remove it with
+`sudo dnf remove gnoblin-gnome-integration` before removing the session.
+
 ```sh
-sudo dnf remove gnoblin-session gnoblin-shell gnoblin-mutter gnoblin-gsettings-desktop-schemas
+sudo dnf remove gnoblin gnoblin-mutter
 ```
+
+If you installed `gnoblin-portal`, remove it with
+`sudo dnf remove gnoblin-portal`.
 
 Your shell and personal configuration are separate. Remove your desktop shell separately if you no longer want it.
 

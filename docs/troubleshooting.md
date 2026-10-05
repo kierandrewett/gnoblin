@@ -8,22 +8,35 @@ when reporting a problem.
 For Fedora, check the session package:
 
 ```sh
-rpm -q gnoblin-session
+rpm -q gnoblin
 ```
 
-For source builds, complete [session registration](install-source.md#login-session),
-including the printed root commands. Building alone does not add a login entry.
+For source builds, run `./build.sh --register-session` after building.
+It asks for sudo to add the login entry. See [session registration](install-source.md#login-session).
+
+## The source build returns to the login screen
+
+Log into another session and read the session journal:
+
+```sh
+journalctl --user -b --no-pager
+```
+
+If it reports a missing Gnoblin or Mutter library, rebuild from the current
+source tarball and register that build again. The session launcher uses the
+private runtime installed in the build prefix.
+
+Keep the extracted source directory after registration; the login entry runs
+its private binaries from that directory.
 
 ## No bar, dock or launcher
 
 Gnoblin does not include a desktop shell.
 [Install one](bring-your-own-shell.md) if you have not already.
 
-Right-click the desktop to open a terminal. With no visible layer surface,
-the recovery panel appears after eight seconds. It cannot detect a frozen
-shell that still has a visible surface.
-
-For Bingux:
+Gnoblin does not provide a desktop menu, terminal launcher, or recovery panel.
+If the shell fails to start, switch to another session or a text console and
+inspect the shell's service and logs. For Bingux:
 
 ```sh
 systemctl --user status bingux.service
@@ -32,6 +45,17 @@ journalctl --user -b -u bingux.service
 
 A Qt/Quickshell version mismatch requires rebuilding or installing a matching
 Quickshell package. Restarting repeatedly will not fix that mismatch.
+
+## A network needs a browser sign-in
+
+Open the network's sign-in page in a browser. Gnoblin does not install GNOME
+Shell's captive-network helper. Its NetworkManager secret agent still handles
+Wi-Fi and VPN credential prompts.
+
+## Calendar events are not in the shell
+
+Gnoblin has no GNOME Shell date menu or calendar event server. Open a
+calendar application to view events.
 
 ## A config edit does nothing
 
@@ -54,8 +78,9 @@ or edit its entries after the component loads.
 
 ## A window rule does not match
 
-Every matcher must match. Text matchers use JavaScript regex, not Lua patterns.
-Check anchors, escaping and the raw app ID. See [window rules](/guides/window_rules).
+Every matcher must match. Text matchers use case-sensitive Lua patterns, not
+JavaScript or PCRE regex. Check anchors, escaping (`%.` matches a literal
+dot), and the raw app ID. See [window rules](/guides/window_rules).
 
 ## A shortcut fails
 

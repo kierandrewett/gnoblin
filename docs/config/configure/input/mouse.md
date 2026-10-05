@@ -4,14 +4,16 @@ Set only the mouse options you want to change. Gnoblin leaves omitted options
 at their current GNOME/Mutter values, so a small override keeps the rest of
 your pointer preferences intact.
 
-For example, this sets a left-handed button layout and a custom acceleration
-curve:
+For example, this sets a left-handed button layout, a custom acceleration
+curve, and a double-click time of 350 milliseconds:
 
 ```lua
 gnoblin.configure {
     input = {
         mouse = {
             speed = -0.2,
+            double_click_time = 350,
+            middle_click_emulation = true,
             left_handed = true,
             accel_profile = "custom",
             accel_curve = {step = 1.0, points = {0.0, 1.0, 2.0, 4.0}},
@@ -20,13 +22,16 @@ gnoblin.configure {
 }
 ```
 
-| Field            | Accepted values                                    | Default when omitted      | What it changes                                                                        |
-| ---------------- | -------------------------------------------------- | ------------------------- | -------------------------------------------------------------------------------------- |
-| `speed`          | Number from `-1` to `1`                            | Current device preference | `-1` is unaccelerated, `1` is fast, and `0` asks the system for its default speed.     |
-| `left_handed`    | Boolean                                            | Current device preference | Swaps the primary mouse buttons.                                                       |
-| `natural_scroll` | Boolean                                            | Current device preference | Reverses the scroll direction.                                                         |
-| `accel_profile`  | `"default"`, `"flat"`, `"adaptive"`, or `"custom"` | Current profile           | Selects the system curve or a custom profile.                                          |
-| `accel_curve`    | `{step = number, points = number[]}`               | Current system curve      | Sets pointer speed at evenly spaced input speeds. Requires `accel_profile = "custom"`. |
+| Field                    | Accepted values                                    | Default when omitted                       | What it changes                                                                        |
+| ------------------------ | -------------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------- |
+| `speed`                  | Number from `-1` to `1`                            | Current device preference                  | `-1` is unaccelerated, `1` is fast, and `0` asks the system for its default speed.     |
+| `double_click_time`      | Integer from `0` to `2147483647` milliseconds      | Current system preference (normally `400`) | Time between presses for Mutter to count them as a double-click.                       |
+| `drag_threshold`         | Integer from `1` to `2147483647`                   | Current system preference (normally `8`)   | Pointer distance in pixels before Mutter treats movement as a drag.                    |
+| `middle_click_emulation` | Boolean                                            | Current device preference (normally off)   | Enables middle-click when the left and right buttons are pressed together.             |
+| `left_handed`            | Boolean                                            | Current device preference                  | Swaps the primary mouse buttons.                                                       |
+| `natural_scroll`         | Boolean                                            | Current device preference                  | Reverses the scroll direction.                                                         |
+| `accel_profile`          | `"default"`, `"flat"`, `"adaptive"`, or `"custom"` | Current profile                            | Selects the system curve or a custom profile.                                          |
+| `accel_curve`            | `{step = number, points = number[]}`               | Current system curve                       | Sets pointer speed at evenly spaced input speeds. Requires `accel_profile = "custom"`. |
 
 If a device does not support the selected acceleration profile, it uses its
 default profile.
@@ -44,6 +49,13 @@ The curve changes pointer motion; it does not define a separate scroll curve.
 When a custom curve is active, libinput ignores `speed` for pointer behavior.
 
 Omitted values keep the current GNOME/Mutter preference for that device.
+Every field also accepts `"inherit"` to restore that preference when an
+earlier config file supplied a value.
+
+While `double_click_time` is set, Gnoblin applies it to Mutter's click handling.
+Removing the field or setting it to `"inherit"` restores the current system
+preference. `drag_threshold` follows the same inheritance rule for drag
+handling. `middle_click_emulation` follows it for middle-click emulation.
 GNOME's [pointer-speed guide](https://help.gnome.org/gnome-help/mouse-sensitivity.html)
 explains the user-facing speed setting. The [libinput guide](https://wayland.freedesktop.org/libinput/doc/latest/pointer-acceleration.html)
 explains the units and interpolation used by custom curves.
@@ -58,6 +70,9 @@ gnoblin.configure {
     input = {
         mouse = {
             speed = number?, -- -1 to 1
+            double_click_time = integer?, -- 0 to 2147483647 milliseconds
+            drag_threshold = integer?, -- 1 to 2147483647 pixels
+            middle_click_emulation = boolean?,
             left_handed = boolean?,
             natural_scroll = boolean?,
             accel_profile = "default" | "flat" | "adaptive" | "custom"?,

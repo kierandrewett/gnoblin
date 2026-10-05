@@ -1,0 +1,92 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 27 Sep 2026 07:28:02 +0100
+Subject: [PATCH] shell: look up input sources through the XKB registry
+
+---
+diff --git a/js/misc/keyboardManager.js b/js/misc/keyboardManager.js
+index 45a45fdcc..bc1defd58 100644
+--- a/js/misc/keyboardManager.js
++++ b/js/misc/keyboardManager.js
+@@ -1,5 +1,5 @@
+ import GLib from 'gi://GLib';
+-import GnomeDesktop from 'gi://GnomeDesktop';
++import Shell from 'gi://Shell';
+ import Meta from 'gi://Meta';
+ 
+ import * as Signals from './signals.js';
+@@ -8,14 +8,15 @@ export const DEFAULT_LOCALE = 'en_US';
+ export const DEFAULT_LAYOUT = 'us';
+ export const DEFAULT_VARIANT = '';
+ 
+-let _xkbInfo = null;
++const _xkbInfo = {
++    get_layout_info: id => Shell.util_xkb_layout_info(id),
++    get_languages_for_layout: id => Shell.util_xkb_languages_for_layout(id),
++};
+ 
+ /**
+- * @returns {GnomeDesktop.XkbInfo}
++ * @returns {object}
+  */
+ export function getXkbInfo() {
+-    if (_xkbInfo == null)
+-        _xkbInfo = new GnomeDesktop.XkbInfo();
+     return _xkbInfo;
+ }
+ 
+@@ -221,12 +222,9 @@ class KeyboardManager extends Signals.EventEmitter {
+         if (!locale.includes('_'))
+             locale = DEFAULT_LOCALE;
+ 
+-        let [found, , id] = GnomeDesktop.get_input_source_from_locale(locale);
+-        if (!found)
+-            [, , id] = GnomeDesktop.get_input_source_from_locale(DEFAULT_LOCALE);
++        const id = Shell.util_xkb_layout_for_locale(locale);
+ 
+-        let layout, variant;
+-        [found, , , layout, variant] = this._xkbInfo.get_layout_info(id);
++        const [found, , , layout, variant] = this._xkbInfo.get_layout_info(id);
+         if (found)
+             return {layout, variant};
+         else
+diff --git a/src/meson.build b/src/meson.build
+index bbee94a0e..f978da200 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -186,6 +186,7 @@ libshell_sources = [
+   'shell-square-bin.c',
+   'shell-stack.c',
+   'shell-time-change-source.c',
++  'shell-gnoblin-xkb.c',
+   'shell-util.c',
+   'shell-window-preview.c',
+   'shell-window-preview-layout.c',
+@@ -244,7 +245,7 @@ endif
+ 
+ libshell = library('shell-' + mutter_api_version,
+   sources: libshell_gir_sources + libshell_no_gir_sources,
+-  dependencies: gnome_shell_deps + [dependency('epoxy'), libshell_menu_dep, libst_dep, mutter_dep, m_dep, cairo_dep],
++  dependencies: gnome_shell_deps + [dependency('epoxy'), dependency('xkbregistry'), libshell_menu_dep, libst_dep, mutter_dep, m_dep, cairo_dep],
+   include_directories: [conf_inc, include_directories('tray')],
+   c_args: gnome_shell_cflags,
+   link_with: libshell_link_with,
+diff --git a/src/shell-util.h b/src/shell-util.h
+index 0e043ebc5..580ff2a03 100644
+--- a/src/shell-util.h
++++ b/src/shell-util.h
+@@ -77,6 +77,14 @@ void shell_util_sd_notify (void);
+ void shell_util_start_systemd_scope (const char *name,
+                                      int         pid);
+ 
++gboolean shell_util_xkb_layout_info (const char  *id,
++                                      char       **display_name,
++                                      char       **short_name,
++                                      char       **layout,
++                                      char       **variant);
++GStrv shell_util_xkb_languages_for_layout (const char *id);
++char *shell_util_xkb_layout_for_locale (const char *locale);
++
+ gboolean shell_util_has_x11_display_extension (MetaDisplay *display,
+                                                const char  *extension);
+ 

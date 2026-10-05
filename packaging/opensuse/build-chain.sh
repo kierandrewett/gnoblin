@@ -4,14 +4,51 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-source "$ROOT/scripts/retry-command.sh"
-TOPDIR="${1:?usage: $0 <rpmbuild-topdir>}"
+TOPDIR="${1:?usage: $0 <rpmbuild-topdir> [prepared-source-directory]}"
 TOPDIR="$(realpath -m "$TOPDIR")"
 SOURCES="$TOPDIR/SOURCES"
 BUILDROOT="$TOPDIR/BUILDROOT"
-compatibility_runtime=${GNOBLIN_COMPAT_RUNTIME:-0}
+PREPARED_SOURCES="${2:-}"
 
 mkdir -p "$SOURCES" "$BUILDROOT"
+gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
+
+# The source archiver needs the host tools from the first build stage too.
+"$ROOT/packaging/opensuse/check-buildrequires.sh" mutter --install
+
+if [[ -n "$PREPARED_SOURCES" ]]; then
+    gnoblin_source="$PREPARED_SOURCES/gnoblin-$gnoblin_version-source.tar.xz"
+    [[ -f "$gnoblin_source" ]] || {
+        echo "Missing complete Gnoblin source bundle: $gnoblin_source" >&2
+        exit 1
+    }
+    for project in mutter xdg-desktop-portal-gnome; do
+        version="$($ROOT/scripts/gnome-versions.py get "$project" version)"
+        source="$PREPARED_SOURCES/$project-$version.tar.xz"
+        [[ -f "$source" ]] || {
+            echo "Missing prepared source: $source" >&2
+            exit 1
+        }
+        install -m 0644 -- "$source" "$SOURCES/"
+    done
+    install -m 0644 -- "$gnoblin_source" "$SOURCES/"
+else
+    git -C "$ROOT" submodule foreach --recursive 'git fetch --force --tags origin'
+    for project in mutter xdg-desktop-portal-gnome; do
+        "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
+    done
+    "$ROOT/scripts/make-gsettings-desktop-schemas-tarball.sh" "$SOURCES"
+    mutter_version="$("$ROOT/scripts/gnome-versions.py" get mutter version)"
+    portal_version="$("$ROOT/scripts/gnome-versions.py" get xdg-desktop-portal-gnome version)"
+    schemas_version="$("$ROOT/scripts/gnome-versions.py" get gsettings-desktop-schemas version)"
+    "$ROOT/scripts/build-source-bundle.sh" \
+        "$SOURCES/gnoblin-$gnoblin_version-source.tar.xz" \
+        "$gnoblin_version" \
+        "$SOURCES/mutter-$mutter_version.tar.xz" \
+        "$SOURCES/xdg-desktop-portal-gnome-$portal_version.tar.xz" \
+        "$SOURCES/gsettings-desktop-schemas-$schemas_version.tar.xz"
+fi
+"$ROOT/scripts/stage-rpm-sources.sh" mutter "$SOURCES"
 
 build() {
     local spec="$1"
@@ -30,56 +67,14 @@ install_output() {
     done
 }
 
-build_compatibility_runtime() {
-    [[ $compatibility_runtime == 1 ]] || return 0
-    "$ROOT/packaging/rpm/provision-compat-container.sh"
-    install -d -o gnoblin-build -g gnoblin-build /usr/lib/gnoblin
-    mkdir -p "$ROOT/build"
-    chown -R gnoblin-build:gnoblin-build "$ROOT/build"
-    runuser -u gnoblin-build -- \
-        env GNOBLIN_BUILD_JOBS="${GNOBLIN_BUILD_JOBS:-2}" \
-        "$ROOT/packaging/rpm/build-compat-runtime.sh"
-    tar -C /usr/lib/gnoblin -cJf "$SOURCES/gnoblin-compat-runtime-51.0.tar.xz" deps
-    build compat-runtime.spec
-    mapfile -t compat_rpms < <(find "$TOPDIR/RPMS" -type f -name 'gnoblin-compat-runtime-[0-9]*.rpm' | sort)
-    ((${#compat_rpms[@]} == 1))
-    install_output "${compat_rpms[@]}"
-}
-
-if [[ $compatibility_runtime == 1 ]]; then
-    # Legacy targets need the private Python and hyprcursor utility while
-    # staging source archives, before the RPM specs can consume that runtime.
-    build_compatibility_runtime
-    if [[ -x /opt/gnoblin-rpm-compat-tools/bin/python ]]; then
-        PATH="/opt/gnoblin-rpm-compat-tools/bin:$PATH"
-    fi
-    PATH="/usr/lib/gnoblin/deps/bin:$PATH"
-    export PATH
-    command -v hyprcursor-util >/dev/null
-    "$ROOT/packaging/opensuse/check-buildrequires.sh" --install --compat-runtime
-else
-    "$ROOT/packaging/opensuse/check-buildrequires.sh" --install
-fi
-
-gnoblin_retry_command git -C "$ROOT" submodule foreach --recursive 'git fetch --force --tags origin'
-for project in gsettings-desktop-schemas mutter gnome-shell; do
-    "$ROOT/scripts/make-tarball.sh" "$project" "$SOURCES"
-done
-compat_args=()
-if [[ $compatibility_runtime == 1 ]]; then
-    compat_args=(--with gnoblin_compat_runtime)
-fi
-build gsettings-desktop-schemas.spec
-mapfile -t schema_rpms < <(find "$TOPDIR/RPMS" -type f -name 'gnoblin-gsettings-desktop-schemas-*.rpm' | sort)
-((${#schema_rpms[@]} == 1))
-install_output "${schema_rpms[@]}"
-
-build mutter.spec --with gnoblin_stack "${compat_args[@]}"
+build mutter.spec
 mapfile -t mutter_rpms < <(find "$TOPDIR/RPMS" -type f \( -name 'gnoblin-mutter-[0-9]*.rpm' -o -name 'gnoblin-mutter-devel-[0-9]*.rpm' \) | sort)
 ((${#mutter_rpms[@]} == 2))
 install_output "${mutter_rpms[@]}"
 
-build gnome-shell.spec --with gnoblin_stack "${compat_args[@]}"
-build gnoblin.spec
+"$ROOT/packaging/opensuse/check-buildrequires.sh" gnoblin-portal --install
+build gnoblin-portal.spec
+"$ROOT/packaging/opensuse/check-buildrequires.sh" gnoblin --install
+build gnoblin.spec --define "gnoblin_version $gnoblin_version"
 
 find "$TOPDIR/RPMS" -type f -name '*.rpm' -print | LC_ALL=C sort

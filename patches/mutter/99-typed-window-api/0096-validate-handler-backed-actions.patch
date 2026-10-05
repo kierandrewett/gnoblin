@@ -1,0 +1,68 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 4 Oct 2026 16:03:49 +0100
+Subject: [PATCH] mutter: expose executable Gnoblin keybinding actions
+
+---
+diff --git a/src/core/keybindings-private.h b/src/core/keybindings-private.h
+index 560c47eee..7d8766246 100644
+--- a/src/core/keybindings-private.h
++++ b/src/core/keybindings-private.h
+@@ -143,6 +143,8 @@ gboolean meta_prefs_add_keybinding          (const char           *name,
+                                              MetaKeyBindingFlags   flags);
+ 
+ gboolean meta_prefs_remove_keybinding       (const char    *name);
++gboolean meta_keybindings_gnoblin_action_supported (const char *group,
++                                                    const char *name);
+ 
+ GList * meta_prefs_get_keybindings (void);
+ void meta_prefs_get_overlay_bindings (MetaKeyCombo combos[2]);
+diff --git a/src/core/keybindings.c b/src/core/keybindings.c
+index c74074dde..64b7c7c5d 100644
+--- a/src/core/keybindings.c
++++ b/src/core/keybindings.c
+@@ -2745,6 +2745,44 @@ static BuiltinKeybinding NATIVE_KEYBINDINGS[] = {
+   { "switch-to-session-12", META_KEY_BINDING_NON_MASKABLE, META_KEYBINDING_ACTION_NONE, handle_switch_vt, 12 },
+ };
+ 
++static gboolean
++builtin_keybinding_has_handler (BuiltinKeybinding *keybindings,
++                                gsize              n_keybindings,
++                                const char        *name)
++{
++  for (gsize i = 0; i < n_keybindings; i++)
++    {
++      if (g_str_equal (keybindings[i].name, name) && keybindings[i].handler)
++        return TRUE;
++    }
++
++  return FALSE;
++}
++
++gboolean
++meta_keybindings_gnoblin_action_supported (const char *group,
++                                           const char *name)
++{
++  if (!group || !name)
++    return FALSE;
++
++  if (g_str_equal (group, "wm"))
++    return builtin_keybinding_has_handler (COMMON_KEYBINDINGS,
++                                           G_N_ELEMENTS (COMMON_KEYBINDINGS), name);
++
++  if (g_str_equal (group, "mutter"))
++    return builtin_keybinding_has_handler (MUTTER_KEYBINDINGS,
++                                           G_N_ELEMENTS (MUTTER_KEYBINDINGS), name);
++
++  if (g_str_equal (group, "wayland"))
++    return builtin_keybinding_has_handler (WAYLAND_KEYBINDINGS,
++                                           G_N_ELEMENTS (WAYLAND_KEYBINDINGS), name) ||
++           builtin_keybinding_has_handler (NATIVE_KEYBINDINGS,
++                                           G_N_ELEMENTS (NATIVE_KEYBINDINGS), name);
++
++  return FALSE;
++}
++
+ static void
+ init_builtin_key_bindings (MetaDisplay *display)
+ {

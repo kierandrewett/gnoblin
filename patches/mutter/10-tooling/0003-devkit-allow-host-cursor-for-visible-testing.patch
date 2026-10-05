@@ -1,5 +1,5 @@
 From b8bf3075c67fc2f76153a6c93312ec572bbede8c Mon Sep 17 00:00:00 2001
-From: Gnoblin Developers <gnoblin@example.invalid>
+From: kierandrewett <kieran@drewett.dev>
 Date: Wed, 17 Jun 2026 23:20:00 +0100
 Subject: [PATCH] devkit: allow host cursor for visible testing
 

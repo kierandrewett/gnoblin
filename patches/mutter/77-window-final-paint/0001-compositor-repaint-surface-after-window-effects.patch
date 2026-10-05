@@ -1,5 +1,5 @@
 From 6f40890e54d60b3ab24eb37b4ab5a9b7c3615eb2 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 14:10:00 +0100
 Subject: [PATCH] compositor: repaint client surface after window effects
 

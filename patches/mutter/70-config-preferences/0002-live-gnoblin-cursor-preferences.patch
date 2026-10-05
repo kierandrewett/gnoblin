@@ -1,5 +1,5 @@
 From 67b59bc52790a5bc4418ce16f49e44d85956bcbf Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 00:30:00 +0000
 Subject: [PATCH] core: expose live Gnoblin cursor preferences
 

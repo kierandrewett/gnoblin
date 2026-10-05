@@ -1,5 +1,5 @@
 From edd74cec8b19413c1d53f8250c93542541d8ead6 Mon Sep 17 00:00:00 2001
-From: Kieran Drewett <kieran@drewett.dev>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:02:02 +0100
 Subject: [PATCH] compositor: expose authoritative texture opacity to shell
  effects

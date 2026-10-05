@@ -1,0 +1,71 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: complete native window records
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 123d3f632..79f3caa57 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -1348,6 +1348,7 @@ gnoblin_native_window_list (MetaDisplay *display,
+       const char *gtk_id = meta_window_get_gtk_application_id (window);
+       const char *wm_class = meta_window_get_wm_class (window);
+       const char *app_id = gtk_id && *gtk_id ? gtk_id : wm_class;
++      const int monitor_index = meta_window_get_monitor (window);
+       if (app_filter && g_strcmp0 (app_filter, app_id) != 0)
+         continue;
+       if (focused_only && window != focused)
+@@ -1360,9 +1361,12 @@ gnoblin_native_window_list (MetaDisplay *display,
+         }
+ 
+       g_autofree char *id = g_strdup_printf ("%u", meta_window_get_stable_sequence (window));
++      MetaWindow *parent = meta_window_get_transient_for (window);
+       MetaWorkspace *workspace = meta_window_get_workspace (window);
+       MtkRectangle frame;
++      gboolean minimized = FALSE;
+       meta_window_get_frame_rect (window, &frame);
++      g_object_get (window, "minimized", &minimized, NULL);
+       GVariantBuilder geometry;
+       GVariantBuilder entry;
+       g_variant_builder_init (&geometry, G_VARIANT_TYPE_VARDICT);
+@@ -1378,6 +1382,16 @@ gnoblin_native_window_list (MetaDisplay *display,
+       g_variant_builder_add (&entry, "{sv}", "wmClass", g_variant_new_string (wm_class ? wm_class : ""));
+       g_variant_builder_add (&entry, "{sv}", "ruleAppId", g_variant_new_string (app_id ? app_id : ""));
+       g_variant_builder_add (&entry, "{sv}", "focused", g_variant_new_boolean (window == focused));
++      g_variant_builder_add (&entry, "{sv}", "minimized", g_variant_new_boolean (minimized));
++      g_variant_builder_add (&entry, "{sv}", "lastUserTime",
++                             g_variant_new_uint32 (meta_window_get_user_time (window)));
++      if (parent)
++        {
++          g_autofree char *parent_id =
++            g_strdup_printf ("%u", meta_window_get_stable_sequence (parent));
++          g_variant_builder_add (&entry, "{sv}", "parent",
++                                 g_variant_new_string (parent_id));
++        }
+       if (workspace)
+         {
+           int number = meta_workspace_index (workspace) + 1;
+@@ -1386,7 +1400,21 @@ gnoblin_native_window_list (MetaDisplay *display,
+           g_variant_builder_add (&entry, "{sv}", "workspaceId",
+                                  g_variant_new_string (gnoblin_native_workspace_id (workspace)));
+         }
+-      g_variant_builder_add (&entry, "{sv}", "monitorIndex", g_variant_new_int32 (meta_window_get_monitor (window)));
++      g_variant_builder_add (&entry, "{sv}", "monitorIndex", g_variant_new_int32 (monitor_index));
++      if (monitor_index >= 0 && monitor_index < meta_display_get_n_monitors (display))
++        {
++          MtkRectangle monitor_geometry;
++          GVariantBuilder monitor;
++          meta_display_get_monitor_geometry (display, monitor_index,
++                                             &monitor_geometry);
++          g_variant_builder_init (&monitor, G_VARIANT_TYPE_VARDICT);
++          g_variant_builder_add (&monitor, "{sv}", "x",
++                                 g_variant_new_int32 (monitor_geometry.x));
++          g_variant_builder_add (&monitor, "{sv}", "y",
++                                 g_variant_new_int32 (monitor_geometry.y));
++          g_variant_builder_add (&entry, "{sv}", "monitor",
++                                 g_variant_builder_end (&monitor));
++        }
+       g_variant_builder_add (&entry, "{sv}", "maximized", g_variant_new_boolean (meta_window_is_maximized (window)));
+       g_variant_builder_add (&entry, "{sv}", "fullscreen", g_variant_new_boolean (meta_window_is_fullscreen (window)));
+       g_variant_builder_add (&entry, "{sv}", "geometry", g_variant_builder_end (&geometry));

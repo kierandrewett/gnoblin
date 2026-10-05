@@ -1,0 +1,402 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] test: cover Lua trackball and pointing-stick preferences
+
+---
+diff --git a/src/backends/meta-backend-private.h b/src/backends/meta-backend-private.h
+index 3512df64e1..b61846f17f 100644
+--- a/src/backends/meta-backend-private.h
++++ b/src/backends/meta-backend-private.h
+@@ -182,6 +182,7 @@ void meta_backend_monitors_changed (MetaBackend *backend);
+ gboolean meta_backend_is_stage_views_scaled (MetaBackend *backend);
+ 
+ MetaInputMapper *meta_backend_get_input_mapper (MetaBackend *backend);
++META_EXPORT_TEST
+ MetaInputSettings *meta_backend_get_input_settings (MetaBackend *backend);
+ 
+ void meta_backend_notify_keymap_changed (MetaBackend *backend);
+diff --git a/src/backends/meta-input-settings-private.h b/src/backends/meta-input-settings-private.h
+index 0773b14ad4..738be65f2f 100644
+--- a/src/backends/meta-input-settings-private.h
++++ b/src/backends/meta-input-settings-private.h
+@@ -28,6 +28,7 @@
+ #endif
+ 
+ #include "backends/meta-backend-types.h"
++#include "core/util-private.h"
+ #include "clutter/clutter.h"
+ #include "meta/display.h"
+ 
+@@ -207,8 +208,10 @@ void meta_input_settings_set_device_aspect_ratio (MetaInputSettings  *input_sett
+ void meta_input_settings_get_kbd_a11y_settings (MetaInputSettings   *input_settings,
+                                                 MetaKbdA11ySettings *a11y_settings);
+ 
++META_EXPORT_TEST
+ void meta_input_settings_add_device (MetaInputSettings  *input_settings,
+                                      ClutterInputDevice *device);
++META_EXPORT_TEST
+ void meta_input_settings_remove_device (MetaInputSettings  *input_settings,
+                                         ClutterInputDevice *device);
+ void meta_input_settings_notify_tool_change (MetaInputSettings      *input_settings,
+diff --git a/src/tests/meson.build b/src/tests/meson.build
+index 48cf77fd27..f10aecf7a2 100644
+--- a/src/tests/meson.build
++++ b/src/tests/meson.build
+@@ -1277,6 +1277,13 @@ endif
+ 
+ # Miscellaneous tests
+ test_cases += [
++  {
++    'name': 'trackball-gnoblin-settings',
++    'suite': 'input',
++    'sources': [
++      'trackball-gnoblin-settings-test.c',
++    ],
++  },
+   {
+     'name': 'a11y-gnoblin-settings',
+     'suite': 'a11y',
+diff --git a/src/tests/trackball-gnoblin-settings-test.c b/src/tests/trackball-gnoblin-settings-test.c
+new file mode 100644
+index 0000000000..9be2a58d5e
+--- /dev/null
++++ b/src/tests/trackball-gnoblin-settings-test.c
+@@ -0,0 +1,337 @@
++/*
++ * Copyright (C) 2026 Gnoblin contributors
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ */
++
++#include "config.h"
++
++#include <gio/gio.h>
++
++#include "backends/meta-backend-private.h"
++#include "backends/meta-input-settings-private.h"
++#include "clutter/clutter.h"
++#include "meta/display.h"
++#include "meta/meta-context.h"
++#include "meta-test/meta-context-test.h"
++
++static MetaContext *test_context;
++static MetaInputSettingsClass *input_settings_class;
++static void (*original_set_speed) (MetaInputSettings  *settings,
++                                   ClutterInputDevice *device,
++                                   gdouble             speed);
++static void (*original_set_left_handed) (MetaInputSettings  *settings,
++                                       ClutterInputDevice *device,
++                                       gboolean            enabled);
++static void (*original_set_invert_scroll) (MetaInputSettings  *settings,
++                                           ClutterInputDevice *device,
++                                           gboolean            inverted);
++static void (*original_set_scroll_button) (MetaInputSettings  *settings,
++                                           ClutterInputDevice *device,
++                                           guint               button,
++                                           gboolean            button_lock);
++static void (*original_set_trackball_accel_profile) (MetaInputSettings           *settings,
++                                                      ClutterInputDevice          *device,
++                                                      GDesktopPointerAccelProfile  profile,
++                                                      MetaCustomAccelConfig       *accel_config);
++static void (*original_set_pointing_stick_accel_profile) (MetaInputSettings           *settings,
++                                                           ClutterInputDevice          *device,
++                                                           GDesktopPointerAccelProfile  profile,
++                                                           MetaCustomAccelConfig       *accel_config);
++static void (*original_set_pointing_stick_scroll_method) (MetaInputSettings                 *settings,
++                                                           ClutterInputDevice                *device,
++                                                           GDesktopPointingStickScrollMethod  method);
++static void (*original_set_trackball_middle_click_emulation) (MetaInputSettings  *settings,
++                                                               ClutterInputDevice *device,
++                                                               gboolean            enabled);
++
++typedef struct
++{
++  double pointing_stick_speed;
++  guint trackball_scroll_button;
++  gboolean trackball_scroll_button_lock;
++  GDesktopPointerAccelProfile trackball_accel_profile;
++  GDesktopPointerAccelProfile pointing_stick_accel_profile;
++  GDesktopPointingStickScrollMethod pointing_stick_scroll_method;
++  gboolean trackball_middle_click_emulation;
++} RecordedSettings;
++
++static RecordedSettings recorded;
++
++static ClutterInputCapabilities
++get_capabilities (ClutterInputDevice *device)
++{
++  g_assert_nonnull (device);
++  return clutter_input_device_get_capabilities (device);
++}
++
++static void
++record_speed (MetaInputSettings  *settings,
++              ClutterInputDevice *device,
++              gdouble             speed)
++{
++  if (get_capabilities (device) & CLUTTER_INPUT_CAPABILITY_TRACKPOINT)
++    recorded.pointing_stick_speed = speed;
++}
++
++static void
++ignore_device_boolean_setting (MetaInputSettings  *settings,
++                               ClutterInputDevice *device,
++                               gboolean            value)
++{
++}
++
++static void
++record_scroll_button (MetaInputSettings  *settings,
++                      ClutterInputDevice *device,
++                      guint               button,
++                      gboolean            button_lock)
++{
++  if (get_capabilities (device) & CLUTTER_INPUT_CAPABILITY_TRACKBALL)
++    {
++      recorded.trackball_scroll_button = button;
++      recorded.trackball_scroll_button_lock = button_lock;
++    }
++}
++
++static void
++record_trackball_accel_profile (MetaInputSettings           *settings,
++                                ClutterInputDevice          *device,
++                                GDesktopPointerAccelProfile  profile,
++                                MetaCustomAccelConfig       *accel_config)
++{
++  if (get_capabilities (device) & CLUTTER_INPUT_CAPABILITY_TRACKBALL)
++    recorded.trackball_accel_profile = profile;
++}
++
++static void
++record_pointing_stick_accel_profile (MetaInputSettings           *settings,
++                                     ClutterInputDevice          *device,
++                                     GDesktopPointerAccelProfile  profile,
++                                     MetaCustomAccelConfig       *accel_config)
++{
++  if (get_capabilities (device) & CLUTTER_INPUT_CAPABILITY_TRACKPOINT)
++    recorded.pointing_stick_accel_profile = profile;
++}
++
++static void
++record_pointing_stick_scroll_method (MetaInputSettings                 *settings,
++                                     ClutterInputDevice                *device,
++                                     GDesktopPointingStickScrollMethod  method)
++{
++  if (get_capabilities (device) & CLUTTER_INPUT_CAPABILITY_TRACKPOINT)
++    recorded.pointing_stick_scroll_method = method;
++}
++
++static void
++record_trackball_middle_click_emulation (MetaInputSettings  *settings,
++                                         ClutterInputDevice *device,
++                                         gboolean            enabled)
++{
++  if (get_capabilities (device) & CLUTTER_INPUT_CAPABILITY_TRACKBALL)
++    recorded.trackball_middle_click_emulation = enabled;
++}
++
++static void
++install_recorders (MetaInputSettings *settings)
++{
++  input_settings_class = META_INPUT_SETTINGS_GET_CLASS (settings);
++  original_set_speed = input_settings_class->set_speed;
++  original_set_left_handed = input_settings_class->set_left_handed;
++  original_set_invert_scroll = input_settings_class->set_invert_scroll;
++  original_set_scroll_button = input_settings_class->set_scroll_button;
++  original_set_trackball_accel_profile = input_settings_class->set_trackball_accel_profile;
++  original_set_pointing_stick_accel_profile = input_settings_class->set_pointing_stick_accel_profile;
++  original_set_pointing_stick_scroll_method = input_settings_class->set_pointing_stick_scroll_method;
++  original_set_trackball_middle_click_emulation = input_settings_class->set_trackball_middle_click_emulation;
++
++  input_settings_class->set_speed = record_speed;
++  input_settings_class->set_left_handed = ignore_device_boolean_setting;
++  input_settings_class->set_invert_scroll = ignore_device_boolean_setting;
++  input_settings_class->set_scroll_button = record_scroll_button;
++  input_settings_class->set_trackball_accel_profile = record_trackball_accel_profile;
++  input_settings_class->set_pointing_stick_accel_profile = record_pointing_stick_accel_profile;
++  input_settings_class->set_pointing_stick_scroll_method = record_pointing_stick_scroll_method;
++  input_settings_class->set_trackball_middle_click_emulation = record_trackball_middle_click_emulation;
++}
++
++static void
++restore_vfuncs (void)
++{
++  input_settings_class->set_speed = original_set_speed;
++  input_settings_class->set_left_handed = original_set_left_handed;
++  input_settings_class->set_invert_scroll = original_set_invert_scroll;
++  input_settings_class->set_scroll_button = original_set_scroll_button;
++  input_settings_class->set_trackball_accel_profile = original_set_trackball_accel_profile;
++  input_settings_class->set_pointing_stick_accel_profile = original_set_pointing_stick_accel_profile;
++  input_settings_class->set_pointing_stick_scroll_method = original_set_pointing_stick_scroll_method;
++  input_settings_class->set_trackball_middle_click_emulation = original_set_trackball_middle_click_emulation;
++}
++
++static void
++set_system_fallbacks (GSettings *trackball_settings,
++                      GSettings *pointing_stick_settings)
++{
++  g_settings_set_enum (trackball_settings, "accel-profile",
++                       G_DESKTOP_POINTER_ACCEL_PROFILE_FLAT);
++  g_settings_set_int (trackball_settings, "scroll-wheel-emulation-button", 4);
++  g_settings_set_boolean (trackball_settings, "scroll-wheel-emulation-button-lock", FALSE);
++  g_settings_set_boolean (trackball_settings, "middle-click-emulation", FALSE);
++
++  g_settings_set_double (pointing_stick_settings, "speed", -0.25);
++  g_settings_set_enum (pointing_stick_settings, "accel-profile",
++                       G_DESKTOP_POINTER_ACCEL_PROFILE_ADAPTIVE);
++  g_settings_set_enum (pointing_stick_settings, "scroll-method",
++                       G_DESKTOP_POINTING_STICK_SCROLL_METHOD_NONE);
++}
++
++static GVariant *
++create_input_config (const char *trackball_profile,
++                     gint        trackball_button,
++                     gboolean    trackball_button_lock,
++                     gboolean    trackball_middle_click,
++                     double      pointing_stick_speed,
++                     const char *pointing_stick_profile,
++                     const char *pointing_stick_scroll_method)
++{
++  GVariantBuilder input;
++  GVariantBuilder trackball;
++  GVariantBuilder pointing_stick;
++
++  g_variant_builder_init (&input, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_init (&trackball, G_VARIANT_TYPE_VARDICT);
++  g_variant_builder_init (&pointing_stick, G_VARIANT_TYPE_VARDICT);
++
++  g_variant_builder_add (&trackball, "{sv}", "accel-profile",
++                         g_variant_new_string (trackball_profile));
++  g_variant_builder_add (&trackball, "{sv}", "scroll-wheel-emulation-button",
++                         g_variant_new_int32 (trackball_button));
++  g_variant_builder_add (&trackball, "{sv}", "scroll-wheel-emulation-button-lock",
++                         g_variant_new_boolean (trackball_button_lock));
++  g_variant_builder_add (&trackball, "{sv}", "middle-click-emulation",
++                         g_variant_new_boolean (trackball_middle_click));
++  g_variant_builder_add (&input, "{sv}", "trackball",
++                         g_variant_builder_end (&trackball));
++
++  g_variant_builder_add (&pointing_stick, "{sv}", "speed",
++                         g_variant_new_double (pointing_stick_speed));
++  g_variant_builder_add (&pointing_stick, "{sv}", "accel-profile",
++                         g_variant_new_string (pointing_stick_profile));
++  g_variant_builder_add (&pointing_stick, "{sv}", "scroll-method",
++                         g_variant_new_string (pointing_stick_scroll_method));
++  g_variant_builder_add (&input, "{sv}", "pointing-stick",
++                         g_variant_builder_end (&pointing_stick));
++
++  return g_variant_ref_sink (g_variant_builder_end (&input));
++}
++
++static GVariant *
++create_empty_input_config (void)
++{
++  GVariantBuilder input;
++
++  g_variant_builder_init (&input, G_VARIANT_TYPE_VARDICT);
++  return g_variant_ref_sink (g_variant_builder_end (&input));
++}
++
++static ClutterInputDevice *
++create_pointer_device (ClutterInputCapabilities capabilities)
++{
++  return g_object_new (CLUTTER_TYPE_INPUT_DEVICE,
++                       "device-type", CLUTTER_POINTER_DEVICE,
++                       "capabilities", capabilities,
++                       NULL);
++}
++
++static void
++assert_fallback_settings (void)
++{
++  g_assert_cmpfloat_with_epsilon (recorded.pointing_stick_speed, -0.25, 0.001);
++  g_assert_cmpuint (recorded.trackball_scroll_button, ==, 4);
++  g_assert_false (recorded.trackball_scroll_button_lock);
++  g_assert_cmpint (recorded.trackball_accel_profile, ==,
++                   G_DESKTOP_POINTER_ACCEL_PROFILE_FLAT);
++  g_assert_cmpint (recorded.pointing_stick_accel_profile, ==,
++                   G_DESKTOP_POINTER_ACCEL_PROFILE_ADAPTIVE);
++  g_assert_cmpint (recorded.pointing_stick_scroll_method, ==,
++                   G_DESKTOP_POINTING_STICK_SCROLL_METHOD_NONE);
++  g_assert_false (recorded.trackball_middle_click_emulation);
++}
++
++static void
++meta_test_gnoblin_trackball_pointing_stick_settings (void)
++{
++  MetaBackend *backend = meta_context_get_backend (test_context);
++  MetaInputSettings *input_settings = meta_backend_get_input_settings (backend);
++  MetaDisplay *display = meta_context_get_display (test_context);
++  g_autoptr (GSettings) trackball_settings =
++    g_settings_new ("org.gnome.desktop.peripherals.trackball");
++  g_autoptr (GSettings) pointing_stick_settings =
++    g_settings_new ("org.gnome.desktop.peripherals.pointingstick");
++  g_autoptr (ClutterInputDevice) trackball = NULL;
++  g_autoptr (ClutterInputDevice) pointing_stick = NULL;
++  g_autoptr (GVariant) gnoblin_config = NULL;
++  g_autoptr (GVariant) empty_config = NULL;
++
++  g_assert_nonnull (input_settings);
++  set_system_fallbacks (trackball_settings, pointing_stick_settings);
++  install_recorders (input_settings);
++
++  trackball = create_pointer_device (CLUTTER_INPUT_CAPABILITY_POINTER |
++                                     CLUTTER_INPUT_CAPABILITY_TRACKBALL);
++  pointing_stick = create_pointer_device (CLUTTER_INPUT_CAPABILITY_POINTER |
++                                          CLUTTER_INPUT_CAPABILITY_TRACKPOINT);
++  meta_input_settings_add_device (input_settings, trackball);
++  meta_input_settings_add_device (input_settings, pointing_stick);
++  assert_fallback_settings ();
++
++  gnoblin_config = create_input_config ("adaptive", 8, TRUE, TRUE,
++                                        -0.5, "flat", "on-button-down");
++  meta_display_apply_gnoblin_input_config (display, gnoblin_config);
++  g_assert_cmpfloat_with_epsilon (recorded.pointing_stick_speed, -0.5, 0.001);
++  g_assert_cmpuint (recorded.trackball_scroll_button, ==, 8);
++  g_assert_true (recorded.trackball_scroll_button_lock);
++  g_assert_cmpint (recorded.trackball_accel_profile, ==,
++                   G_DESKTOP_POINTER_ACCEL_PROFILE_ADAPTIVE);
++  g_assert_cmpint (recorded.pointing_stick_accel_profile, ==,
++                   G_DESKTOP_POINTER_ACCEL_PROFILE_FLAT);
++  g_assert_cmpint (recorded.pointing_stick_scroll_method, ==,
++                   G_DESKTOP_POINTING_STICK_SCROLL_METHOD_ON_BUTTON_DOWN);
++  g_assert_true (recorded.trackball_middle_click_emulation);
++
++  empty_config = create_empty_input_config ();
++  meta_display_apply_gnoblin_input_config (display, empty_config);
++  assert_fallback_settings ();
++
++  meta_display_apply_gnoblin_input_config (display, NULL);
++  assert_fallback_settings ();
++
++  meta_input_settings_remove_device (input_settings, pointing_stick);
++  meta_input_settings_remove_device (input_settings, trackball);
++  restore_vfuncs ();
++}
++
++int
++main (int    argc,
++      char **argv)
++{
++  g_autoptr (MetaContext) context = NULL;
++  g_autoptr (GError) error = NULL;
++  int ret;
++
++  g_setenv ("GSETTINGS_BACKEND", "memory", TRUE);
++  context = meta_create_test_context (META_CONTEXT_TEST_TYPE_TEST,
++                                      META_CONTEXT_TEST_FLAG_NO_X11);
++  g_assert_true (meta_context_configure (context, &argc, &argv, &error));
++
++  test_context = context;
++  g_test_add_func ("/input/gnoblin-trackball-pointing-stick-settings",
++                   meta_test_gnoblin_trackball_pointing_stick_settings);
++
++  ret = meta_context_test_run_tests (META_CONTEXT_TEST (context),
++                                     META_TEST_RUN_FLAG_CAN_SKIP);
++
++  return ret;
++}

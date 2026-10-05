@@ -1,0 +1,106 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] compositor: expose shadow geometry and preserve scanout
+
+---
+diff --git a/src/compositor/meta-window-actor-wayland.c b/src/compositor/meta-window-actor-wayland.c
+index 813bc8bfa..21e30a1f8 100644
+--- a/src/compositor/meta-window-actor-wayland.c
++++ b/src/compositor/meta-window-actor-wayland.c
+@@ -359,6 +359,13 @@ meta_window_actor_wayland_get_scanout_candidate (MetaWindowActor *actor)
+   ClutterActorBox window_box;
+   ClutterActorBox surface_box;
+ 
++  if (meta_gnoblin_window_effects_has_window_shadow (CLUTTER_ACTOR (actor)))
++    {
++      meta_topic (META_DEBUG_RENDER,
++                  "Window has a Gnoblin replacement shadow");
++      return NULL;
++    }
++
+   if (clutter_actor_get_last_child (CLUTTER_ACTOR (self)) != surface_container)
+     {
+       meta_topic (META_DEBUG_RENDER,
+@@ -691,6 +698,39 @@ meta_window_actor_wayland_set_csd_reconstruction (MetaWindowActor *actor,
+     CLUTTER_ACTOR (self->surface_container), enabled, insets);
+ }
+ 
++gboolean
++meta_window_actor_wayland_get_surface_container_bounds (MetaWindowActor *actor,
++                                                        double           bounds[4])
++{
++  MetaWindowActorWayland *self;
++  ClutterActorBox box;
++
++  g_return_val_if_fail (META_IS_WINDOW_ACTOR_WAYLAND (actor), FALSE);
++  g_return_val_if_fail (bounds != NULL, FALSE);
++
++  self = META_WINDOW_ACTOR_WAYLAND (actor);
++  if (!clutter_actor_has_allocation (CLUTTER_ACTOR (self->surface_container)))
++    return FALSE;
++
++  clutter_actor_get_allocation_box (CLUTTER_ACTOR (self->surface_container), &box);
++  bounds[0] = box.x1;
++  bounds[1] = box.y1;
++  bounds[2] = box.x2;
++  bounds[3] = box.y2;
++  return TRUE;
++}
++
++guint
++meta_window_actor_wayland_get_shadow_child_index (MetaWindowActor *actor)
++{
++  MetaWindowActorWayland *self;
++
++  g_return_val_if_fail (META_IS_WINDOW_ACTOR_WAYLAND (actor), 0);
++
++  self = META_WINDOW_ACTOR_WAYLAND (actor);
++  return self->background ? 1 : 0;
++}
++
+ static void
+ meta_window_actor_wayland_map (ClutterActor *actor)
+ {
+diff --git a/src/compositor/meta-window-actor-wayland.h b/src/compositor/meta-window-actor-wayland.h
+index 06bb1ca87..8b4b0a019 100644
+--- a/src/compositor/meta-window-actor-wayland.h
++++ b/src/compositor/meta-window-actor-wayland.h
+@@ -45,3 +45,8 @@ void meta_window_actor_wayland_set_rounded_clip (MetaWindowActor *actor,
+ void meta_window_actor_wayland_set_csd_reconstruction (MetaWindowActor *actor,
+                                                        gboolean         enabled,
+                                                        const double     insets[4]);
++
++gboolean meta_window_actor_wayland_get_surface_container_bounds (MetaWindowActor *actor,
++                                                                 double           bounds[4]);
++
++guint meta_window_actor_wayland_get_shadow_child_index (MetaWindowActor *actor);
+diff --git a/src/compositor/meta-window-actor-x11.c b/src/compositor/meta-window-actor-x11.c
+index 90c975748..5f207ce4c 100644
+--- a/src/compositor/meta-window-actor-x11.c
++++ b/src/compositor/meta-window-actor-x11.c
+@@ -253,6 +253,13 @@ meta_window_actor_x11_get_scanout_candidate (MetaWindowActor *actor)
+       return NULL;
+     }
+ 
++  if (meta_gnoblin_window_effects_has_window_shadow (CLUTTER_ACTOR (actor)))
++    {
++      meta_topic (META_DEBUG_RENDER,
++                  "Window has a Gnoblin replacement shadow");
++      return NULL;
++    }
++
+   if (CLUTTER_ACTOR (surface_actor) !=
+       clutter_actor_get_last_child (CLUTTER_ACTOR (actor)))
+     {
+@@ -380,6 +387,10 @@ has_shadow (MetaWindowActorX11 *actor_x11)
+   MetaWindowX11Private *priv =
+     meta_window_x11_get_private (x11_window);
+ 
++  if (meta_gnoblin_window_effects_has_window_shadow (
++        CLUTTER_ACTOR (actor_x11)))
++    return FALSE;
++
+   /* Leaving out shadows for maximized and fullscreen windows is an efficiency
+    * win and also prevents the unsightly effect of the shadow of maximized
+    * window appearing on an adjacent window */

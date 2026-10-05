@@ -1,12 +1,24 @@
 #!/usr/bin/env bash
-# Build the reproducible source archives and source RPMs for one Gnoblin release.
+# Build the reproducible Gnoblin source tarball before optional package assets.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+if ! git -C "$ROOT" diff --ignore-submodules=all --quiet HEAD -- ||
+    [ -n "$(git -C "$ROOT" ls-files --others --exclude-standard)" ]; then
+    echo "Commit Gnoblin source changes before creating release assets; the bundle archives HEAD." >&2
+    exit 2
+fi
 OUTPUT="$(realpath -m "${1:-$ROOT/dist/release}")"
 RELEASE_TAG="${2:-}"
+SOURCE_ONLY="${3:-}"
+if [ -n "$SOURCE_ONLY" ] && [ "$SOURCE_ONLY" != --source-only ]; then
+    echo "Unknown option: $SOURCE_ONLY" >&2
+    exit 2
+fi
 GNOME_VERSION="$($ROOT/scripts/gnome-versions.py get mutter version)"
+SCHEMAS_VERSION="$($ROOT/scripts/gnome-versions.py get gsettings-desktop-schemas version)"
 GNOBLIN_VERSION="$($ROOT/scripts/gnoblin-version.py get version)"
+PUBLIC_RELEASE_TAG="${4:-gnoblin-v$GNOBLIN_VERSION}"
 EXPECTED_TAG="gnoblin-v$GNOBLIN_VERSION"
 
 if [[ -n "$RELEASE_TAG" ]]; then
@@ -29,30 +41,40 @@ SRPMS="$WORK/srpms"
 mkdir -p "$OUTPUT" "$SOURCES" "$SRPMS"
 
 "$ROOT/scripts/make-tarball.sh" mutter "$SOURCES"
-"$ROOT/scripts/make-tarball.sh" gnome-shell "$SOURCES"
-"$ROOT/scripts/make-tarball.sh" gsettings-desktop-schemas "$SOURCES"
-"$ROOT/scripts/build-srpm.sh" gsettings-desktop-schemas "$SOURCES" "$SRPMS"
-"$ROOT/scripts/build-srpm.sh" mutter "$SOURCES" "$SRPMS"
-"$ROOT/scripts/build-srpm.sh" gnome-shell "$SOURCES" "$SRPMS"
-"$ROOT/scripts/build-srpm.sh" gnoblin "$SOURCES" "$SRPMS"
-
+"$ROOT/scripts/make-tarball.sh" xdg-desktop-portal-gnome "$SOURCES"
+"$ROOT/scripts/make-gsettings-desktop-schemas-tarball.sh" "$SOURCES"
 install -m 0644 -- "$SOURCES/mutter-$GNOME_VERSION.tar.xz" "$OUTPUT/"
-install -m 0644 -- "$SOURCES/gnome-shell-$GNOME_VERSION.tar.xz" "$OUTPUT/"
-install -m 0644 -- "$SOURCES/gsettings-desktop-schemas-$GNOME_VERSION.tar.xz" "$OUTPUT/"
-find "$SRPMS" -maxdepth 1 -type f -name '*.src.rpm' -exec install -m 0644 -t "$OUTPUT" -- {} +
-ARCH_SOURCE="$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-arch-source.tar.xz"
-"$ROOT/packaging/arch/build-source-bundle.sh" \
-    "$ARCH_SOURCE" \
+install -m 0644 -- "$SOURCES/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" "$OUTPUT/"
+SOURCE_BUNDLE="$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-source.tar.xz"
+"$ROOT/scripts/build-source-bundle.sh" \
+    "$SOURCE_BUNDLE" \
     "$GNOBLIN_VERSION" \
-    "$SOURCES/gsettings-desktop-schemas-$GNOME_VERSION.tar.xz" \
     "$SOURCES/mutter-$GNOME_VERSION.tar.xz" \
-    "$SOURCES/gnome-shell-$GNOME_VERSION.tar.xz" \
-    "$SOURCES/Adwaita-Hyprcursor.tar.xz"
-ARCH_SOURCE_SHA256="$(sha256sum "$ARCH_SOURCE" | awk '{print $1}')"
+    "$SOURCES/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" \
+    "$SOURCES/gsettings-desktop-schemas-$SCHEMAS_VERSION.tar.xz"
+# The main source RPM consumes the same complete bundle under its Source0
+# filename. Keep this alias in the private staging directory; the public
+# release still publishes one versioned source bundle.
+install -m 0644 -- "$SOURCE_BUNDLE" "$SOURCES/gnoblin-$GNOBLIN_VERSION-source.tar.xz"
+SOURCE_BUNDLE_SHA256="$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')"
 python3 "$ROOT/scripts/sync-package-manifest.py" arch-release \
     --output "$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION.PKGBUILD" \
-    --source-sha256 "$ARCH_SOURCE_SHA256"
-git -C "$ROOT" archive --format=tar HEAD | xz >"$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-debian.tar.xz"
+    --source-sha256 "$SOURCE_BUNDLE_SHA256" \
+    --release-tag "$PUBLIC_RELEASE_TAG"
+PORTAL_SOURCE_SHA256="$(sha256sum "$OUTPUT/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" | awk '{print $1}')"
+python3 "$ROOT/scripts/sync-package-manifest.py" arch-portal-release \
+    --output "$OUTPUT/gnoblin-portal-$GNOME_VERSION.PKGBUILD" \
+    --source-sha256 "$PORTAL_SOURCE_SHA256" \
+    --release-tag "$PUBLIC_RELEASE_TAG"
+install -m 0644 -- "$ROOT/packaging/arch/gnome-integration/PKGBUILD" \
+    "$OUTPUT/gnoblin-gnome-integration-$GNOBLIN_VERSION.PKGBUILD"
+
+if [ "$SOURCE_ONLY" != --source-only ]; then
+    "$ROOT/scripts/build-srpm.sh" mutter "$SOURCES" "$SRPMS"
+    "$ROOT/scripts/build-srpm.sh" gnoblin-portal "$SOURCES" "$SRPMS"
+    "$ROOT/scripts/build-srpm.sh" gnoblin "$SOURCES" "$SRPMS"
+    find "$SRPMS" -maxdepth 1 -type f -name '*.src.rpm' -exec install -m 0644 -t "$OUTPUT" -- {} +
+fi
 
 (
     cd "$OUTPUT"

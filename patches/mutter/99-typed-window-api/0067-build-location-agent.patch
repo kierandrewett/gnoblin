@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] mutter: build native GeoClue location agent
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index 8cab802..fc38bbb 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1189,6 +1189,7 @@ libmutter = library(libmutter_name,
+   mutter_sources,
+   mutter_built_sources,
+   files('core/gnoblin-native-control.c'),
++  files('core/gnoblin-location-agent.c'),
+   files('core/gnoblin-touchpad-router.c'),
+   version: '0.0.0',
+   soversion: 0,

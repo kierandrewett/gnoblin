@@ -1,88 +1,98 @@
 #!/usr/bin/env bash
-# Prove the GJS user-scripting layer: drop a script in ~/.config/gnoblin/scripts/,
-# confirm it loads and runs, then edit it and reload through org.gnoblin.Shell
-# and confirm the NEW code ran — no compositor restart.
-set -uo pipefail
+# Verify Lua user scripts load, reload, and survive a rejected config reload.
+set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export ROOT
-source "$ROOT/scripts/gnoblin-state.sh"
-GNOBLIN_STATE_DIR="$(gnoblin_state_dir)" || exit 1
-export GNOBLIN_STATE_DIR
-LAST_LOG="$GNOBLIN_STATE_DIR/scripting-last.log"
-PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
-SHELL_BIN="$PREFIX/bin/gnome-shell"
-[ -x "$SHELL_BIN" ] || {
-    echo "no gnome-shell in $PREFIX — build first" >&2
+mkdir -p "$ROOT/build/tmp"
+fixture_root="$(mktemp -d "$ROOT/build/tmp/lua-scripting.XXXXXX")"
+state_dir="$fixture_root/state"
+config_dir="$fixture_root/config/gnoblin"
+mkdir -p "$config_dir/scripts"
+trap 'rm -rf -- "$fixture_root"' EXIT
+
+cat >"$config_dir/init.lua" <<'LUA'
+gnoblin.load("scripts/**/*.lua")
+LUA
+
+cat >"$config_dir/scripts/hello.lua" <<'LUA'
+gnoblin.events.on("gnoblin.config.reloaded", function()
+    print("LUA_SCRIPT A:reloaded")
+end)
+gnoblin.events.on("gnoblin.config.reload-failed", function()
+    print("LUA_SCRIPT A:reload-failed")
+end)
+LUA
+
+devkit_exec=$(
+    cat <<'SCRIPT'
+set -euo pipefail
+wait_for_runtime_log() {
+    local marker="$1"
+    for _ in $(seq 1 100); do
+        grep -Fq -- "$marker" "$GNOBLIN_DEVKIT_RUNTIME_LOG" && return 0
+        sleep 0.05
+    done
+    tail -n 80 "$GNOBLIN_DEVKIT_RUNTIME_LOG" >&2
+    echo "FAIL: timed out waiting for Lua event $marker" >&2
+    return 1
+}
+
+gnoblinctl config reload >/dev/null
+wait_for_runtime_log 'LUA_SCRIPT A:reloaded'
+gnoblinctl ping | grep -qx pong
+
+cat >"$XDG_CONFIG_HOME/gnoblin/scripts/hello.lua" <<'LUA'
+gnoblin.events.on("gnoblin.config.reloaded", function()
+    print("LUA_SCRIPT B:reloaded")
+end)
+gnoblin.events.on("gnoblin.config.reload-failed", function()
+    print("LUA_SCRIPT B:reload-failed")
+end)
+LUA
+gnoblinctl config reload >/dev/null
+wait_for_runtime_log 'LUA_SCRIPT B:reloaded'
+
+cat >"$XDG_CONFIG_HOME/gnoblin/scripts/hello.lua" <<'LUA'
+this is not valid Lua
+LUA
+if gnoblinctl config reload >"$XDG_RUNTIME_DIR/reload-error.txt" 2>&1; then
+    echo 'FAIL: invalid Lua config reload succeeded' >&2
+    exit 1
+fi
+grep -Eiq 'lua|syntax|unexpected|load' "$XDG_RUNTIME_DIR/reload-error.txt" || {
+    cat "$XDG_RUNTIME_DIR/reload-error.txt" >&2
+    echo 'FAIL: rejected reload did not report a Lua load error' >&2
+    exit 1
+}
+wait_for_runtime_log 'LUA_SCRIPT B:reload-failed'
+gnoblinctl ping | grep -qx pong
+SCRIPT
+)
+
+output="$(GNOBLIN_STATE_DIR="$state_dir" \
+    GNOBLIN_DEVKIT_CONFIG_SOURCE="$fixture_root/config" \
+    GNOBLIN_DEVKIT_EXEC="$devkit_exec" \
+    timeout 180 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1)" || {
+    printf '%s\n' "$output" >&2
+    [[ ! -f "$state_dir/devkit-last.log" ]] || tail -n 80 "$state_dir/devkit-last.log" >&2
     exit 1
 }
 
-source "$ROOT/src/tools/gnoblin-env.sh"
-gnoblin_env_apply "$PREFIX"
-export GDK_BACKEND=wayland
+grep -q 'Gnoblin is ready on nested Wayland display' <<<"$output"
+log="$state_dir/devkit-last.log"
+if [[ -f "$log" ]]; then
+    a_count="$(grep -c 'LUA_SCRIPT A:reloaded' "$log" || true)"
+    b_count="$(grep -c 'LUA_SCRIPT B:reloaded' "$log" || true)"
+    failed_count="$(grep -c 'LUA_SCRIPT B:reload-failed' "$log" || true)"
+else
+    a_count=0
+    b_count=0
+    failed_count=0
+fi
+if [[ "$a_count" -ne 1 || "$b_count" -ne 1 || "$failed_count" -ne 1 ]]; then
+    [[ ! -f "$log" ]] || tail -n 80 "$log" >&2
+    echo 'FAIL: Lua script reload or rollback did not preserve the expected handlers' >&2
+    exit 1
+fi
 
-DK="$(mktemp -d /tmp/gnoblin-scr.XXXXXX)"
-mkdir -p "$DK"/{data,config,cache,home}
-export HOME="$DK/home" XDG_DATA_HOME="$DK/data" XDG_CONFIG_HOME="$DK/config" XDG_CACHE_HOME="$DK/cache"
-export GIO_USE_VFS=local GVFS_DISABLE_FUSE=1 GSETTINGS_BACKEND=memory GTK_A11Y=none NO_AT_BRIDGE=1
-export DISP="gnoblin-scr-$$" SHELL_LOG="$DK/shell.log"
-
-# Drop a user script (version A) into the config dir the ScriptHost watches.
-SCRIPTDIR="$DK/config/gnoblin/scripts"
-mkdir -p "$SCRIPTDIR"
-printf 'export default (api) => { api.log("SCRIPT version=A"); };\n' >"$SCRIPTDIR/hello.js"
-export SCRIPTDIR
-
-cleanup() {
-    for proc in /proc/[0-9]*; do
-        e="$({ tr '\0' '\n' <"$proc/environ"; } 2>/dev/null || true)"
-        case "$e" in *"WAYLAND_DISPLAY=$DISP"*) kill -KILL "${proc##*/}" 2>/dev/null || true ;; esac
-    done
-    [ -f "$SHELL_LOG" ] && gnoblin_publish_log "$SHELL_LOG" scripting-last.log 2>/dev/null || true
-    rm -rf "$DK"
-}
-trap cleanup EXIT INT TERM HUP
-
-CONF="$(python3 "$ROOT/scripts/devkit_dbus.py" "$DK" "$ROOT")" || exit 1
-
-dbus-run-session --config-file="$CONF" -- bash -uo pipefail -c '
-  source "$ROOT/tests/gnoblin-test-lib.sh"
-  "'"$SHELL_BIN"'" --headless --wayland --no-x11 --mode=gnoblin \
-    --virtual-monitor 1280x800 --wayland-display "$DISP" >"$SHELL_LOG" 2>&1 &
-  SHELL_PID=$!
-  gdbus wait --session --timeout 30 org.gnoblin.Shell || { echo "FAIL: shell never up"; tail -20 "$SHELL_LOG"; exit 1; }
-  gnoblin_wait_for_log "$SHELL_LOG" "SCRIPT version=A" 10 || true
-
-  gnoblin() { gdbus call --session --dest org.gnoblin.Shell --object-path /org/gnoblin/Shell \
-               --method "org.gnoblin.Shell.$@" 2>&1; }
-
-  rc=0
-  if grep -q "SCRIPT version=A" "$SHELL_LOG"; then echo "  ok: script loaded (version=A)"; else echo "  FAIL: script did not load"; grep -i script "$SHELL_LOG" | tail; rc=1; fi
-  echo "ListScripts -> $(gnoblin ListScripts)"
-  case "$(gnoblin ListScripts)" in *hello.js*) echo "  ok: ListScripts shows hello.js";; *) echo "  FAIL: not listed"; rc=1;; esac
-
-  printf "export default (api) => { api.log(\"SCRIPT version=B\"); };\n" > "$SCRIPTDIR/hello.js"
-  reload="$(gnoblin Reload)"
-  echo "Reload -> $reload"
-  if grep -q "SCRIPT version=B" "$SHELL_LOG"; then
-    echo "  ok: Reload waited for version=B to load"
-  else
-    echo "  FAIL: Reload replied before script load completed"; grep "SCRIPT version" "$SHELL_LOG"; rc=1
-  fi
-
-  printf "this is not valid JavaScript\n" > "$SCRIPTDIR/hello.js"
-  if reload_error="$(gnoblin Reload)"; then
-    echo "  FAIL: invalid script reload reported success"; rc=1
-  else
-    case "$reload_error" in
-      *ReloadFailed*) echo "  ok: invalid script reload returned a D-Bus error" ;;
-      *) echo "  FAIL: invalid script reload returned wrong error: $reload_error"; rc=1 ;;
-    esac
-  fi
-
-  kill $SHELL_PID 2>/dev/null || true
-  exit $rc
-'
-rc=$?
-[ "$rc" = 0 ] && echo ">> RESULT: PASS (user scripting + hot-reload)" || echo ">> RESULT: FAIL (rc=$rc). log -> $LAST_LOG"
-exit "$rc"
+printf '%s\n' 'PASS: Lua user scripts reload and remain active after invalid config is rejected'

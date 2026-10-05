@@ -11,18 +11,20 @@ session available for recovery.
 
 ## Current status
 
-| Distribution        | Releases                      | Status            | Available path                                                  |
-| ------------------- | ----------------------------- | ----------------- | --------------------------------------------------------------- |
-| Fedora              | 43, 44, 45                    | Package candidate | [COPR](install-fedora.md)                                       |
-| Enterprise Linux    | 8, 9, 10                      | Unsupported       | No release package claim                                        |
-| Debian              | 11, 12                        | Unsupported       | No release package claim                                        |
-| Debian              | 13                            | Package candidate | [APT package](install-debian.md)                                |
-| Ubuntu              | 22.04                         | Unsupported       | No release package claim                                        |
-| Ubuntu              | 24.04, 26.04                  | Package candidate | [APT package](install-debian.md)                                |
-| Arch                | Current                       | Package candidate | [Release package](install-arch.md)                              |
-| openSUSE Leap       | 15.5, 15.6, 16.0              | Unsupported       | No release package claim                                        |
-| openSUSE Tumbleweed | Current                       | Package candidate | [Release RPMs](install-opensuse.md) (available on new releases) |
-| NixOS               | 25.05, 25.11, 26.05, unstable | Package candidate | [Flake package and module](install-nixos.md)                    |
+| Distribution        | Releases            | Status      | Available path                                                               |
+| ------------------- | ------------------- | ----------- | ---------------------------------------------------------------------------- |
+| Fedora              | 43, 44              | Unsupported | No release package claim                                                     |
+| Fedora              | 45                  | Unsupported | [COPR build](install-fedora.md) pending package and session verification     |
+| Enterprise Linux    | 8, 9, 10            | Unsupported | No release package claim                                                     |
+| Debian              | 11, 12              | Unsupported | No release package claim                                                     |
+| Debian              | 13                  | Unsupported | [Source build](install-source.md) if library versions meet requirements      |
+| Ubuntu              | 22.04               | Unsupported | No release package claim                                                     |
+| Ubuntu              | 24.04, 26.04        | Unsupported | [Source build](install-source.md) if library versions meet requirements      |
+| Arch                | Current             | Unsupported | [PKGBUILD](install-arch.md) pending verification                             |
+| openSUSE Leap       | 15.5, 15.6, 16.0    | Unsupported | No release package claim                                                     |
+| openSUSE Tumbleweed | Current             | Unsupported | [Release RPMs](install-opensuse.md) pending verification                     |
+| NixOS               | 25.05, 25.11, 26.05 | Unsupported | [Channel requirements](install-nixos.md)                                     |
+| NixOS               | unstable            | Unsupported | [Experimental flake package](install-nixos.md), pending session verification |
 
 The status comes from the release target matrix in the source tree. It changes
 only when the target's required gates pass. A successful build or package

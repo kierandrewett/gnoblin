@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] mutter: allow typed unminimize through id validation
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index be1a47489..97a0f08b8 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -2085,6 +2085,7 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+   if (g_str_equal (method, "window.close") ||
+       g_str_equal (method, "window.minimize") ||
+       g_str_equal (method, "window.toggle_minimize") ||
++      g_str_equal (method, "window.unminimize") ||
+       g_str_equal (method, "window.restore"))
+     allowed = id_keys;
+   else if (g_str_equal (method, "window.set_maximized") ||

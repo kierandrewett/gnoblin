@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 25 Sep 2026 14:00:00 +0100
+Subject: [PATCH] mutter: lower Wayland library minimum to 1.25
+
+---
+diff --git a/meson.build b/meson.build
+index b926c9b39..2a7e802d8 100644
+--- a/meson.build
++++ b/meson.build
+@@ -46,7 +46,7 @@ gudev_req = '>= 238'
+ umockdev_req = '>= 0.3.0'
+ 
+ # wayland version requirements
+-wayland_server_req = '>= 1.26'
++wayland_server_req = '>= 1.25'
+ wayland_protocols_req = '>= 1.48'
+ 
+ # native backend version requirements

@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] core: animate typed window resize operations
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 6176aeb1a..3fd1eb240 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -24,6 +24,7 @@
+ #include "core/display-private.h"
+ #include "core/meta-workspace-manager-private.h"
+ #include "core/util-private.h"
++#include "compositor/compositor-private.h"
+ #include "core/gnoblin-native-control.h"
+ #include "core/gnoblin-animation.h"
+ #include "wayland/gnoblin-lua-pattern.h"
+@@ -2309,8 +2310,17 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+           return NULL;
+         }
+       meta_window_get_frame_rect (window, &frame);
+-      meta_window_move_resize_frame (window, TRUE, frame.x, frame.y,
+-                                     (int) width, (int) height);
++      if (frame.width != width || frame.height != height)
++        {
++          MtkRectangle old_buffer_rect;
++
++          meta_window_get_buffer_rect (window, &old_buffer_rect);
++          meta_compositor_size_change_window (display->compositor, window,
++                                              META_SIZE_CHANGE_RESIZE, &frame,
++                                              &old_buffer_rect);
++          meta_window_move_resize_frame (window, TRUE, frame.x, frame.y,
++                                         (int) width, (int) height);
++        }
+     }
+   else if (g_str_equal (method, "window.move_to_workspace"))
+     {
+diff --git a/src/meta/compositor.h b/src/meta/compositor.h
+index 98be9e152..685961670 100644
+--- a/src/meta/compositor.h
++++ b/src/meta/compositor.h
+@@ -64,6 +64,7 @@ typedef enum
+   META_SIZE_CHANGE_FULLSCREEN,
+   META_SIZE_CHANGE_UNFULLSCREEN,
+   META_SIZE_CHANGE_MONITOR_MOVE,
++  META_SIZE_CHANGE_RESIZE,
+ } MetaSizeChange;
+ 
+ META_EXPORT

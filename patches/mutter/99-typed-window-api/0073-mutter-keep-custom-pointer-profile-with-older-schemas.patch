@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] mutter: keep Gnoblin custom pointer profile with older schemas
+
+---
+diff --git a/src/backends/native/meta-input-settings-native.c b/src/backends/native/meta-input-settings-native.c
+index 09eb750c9..27645ec85 100644
+--- a/src/backends/native/meta-input-settings-native.c
++++ b/src/backends/native/meta-input-settings-native.c
+@@ -505,6 +505,12 @@ meta_input_settings_native_set_keyboard_repeat (MetaInputSettings *settings,
+                                               enabled, delay, interval);
+ }
+ 
++/* Keep Gnoblin's custom profile value available with pre-51 schema headers. */
++enum
++{
++  META_POINTER_ACCEL_PROFILE_CUSTOM = 3,
++};
++
+ static void
+ set_device_accel_profile (ClutterInputDevice          *device,
+                           GDesktopPointerAccelProfile  profile,
+@@ -524,7 +530,7 @@ set_device_accel_profile (ClutterInputDevice          *device,
+     case G_DESKTOP_POINTER_ACCEL_PROFILE_ADAPTIVE:
+       libinput_profile = LIBINPUT_CONFIG_ACCEL_PROFILE_ADAPTIVE;
+       break;
+-    case G_DESKTOP_POINTER_ACCEL_PROFILE_CUSTOM:
++    case META_POINTER_ACCEL_PROFILE_CUSTOM:
+       libinput_profile = LIBINPUT_CONFIG_ACCEL_PROFILE_CUSTOM;
+       break;
+     default:

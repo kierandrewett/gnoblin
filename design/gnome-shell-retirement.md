@@ -1,0 +1,198 @@
+# GNOME Shell patch retirement audit
+
+This is an internal migration record. It does not describe a supported
+GNOME Shell build or compatibility layer.
+
+## Build boundary
+
+The source build prepares and builds Mutter and `xdg-desktop-portal-gnome`.
+`scripts/prepare-build-sources.sh` and `scripts/apply-patches.sh` accept only
+those projects. The GNOME Shell patch tree is not applied, built, packaged, or
+included in the standalone session. Shell patches that remain in the checkout
+are migration history, not active runtime behavior.
+
+Package-isolation checks that install stock GNOME are intentional: they prove
+that installing Gnoblin does not replace a user's GNOME packages. The old
+Shell files removed by `scripts/install-session.sh` are upgrade cleanup for a
+private prefix and should remain until that cleanup is no longer needed.
+
+The old app-shard harness in `tests/e2e/run-app-shard-container.sh` and
+`tests/e2e/run-app-shard-in-fedora.sh` is not used by the current workflow or
+CMake tests. Its Fedora runner installs GNOME Shell and requires the old
+`install/bin/gnome-shell` binary and Shell D-Bus resources, so it cannot run
+against the supported standalone build. The app driver also uses Shell Eval
+and Shell Screenshot methods. The standalone native-session workflow covers
+the public IBus source path in `tests/test-gnoblin-devkit.sh`: Lua config owns
+the source list, `gnoblinctl` selects XKB and IBus sources, the IBus source
+clears when its owner exits, selection works after the daemon returns, and
+config reload removes the source. This does not replace the old probe's
+inspection of GNOME Shell's private `InputSourceManager` during an in-flight
+activation; that Shell-only implementation is retired with the Shell runtime.
+Remaining application compatibility checks from the old multi-app matrix still
+need a coverage decision.
+
+The native-session workflow now installs GNOME Text Editor as a system Flatpak
+and runs it in the standalone devkit. The smoke observes the client through
+`gnoblinctl`, minimizes and restores its window, then closes it. This ports one
+Flatpak window-lifecycle path; it does not replace the old multi-app
+application-compatibility matrix.
+
+The unbuilt `src/gnome-shell-overlay/shell-gnoblin-shader.{c,h}` helper has
+been removed. It was only included by retired Shell shader patches. Shader
+file watching now belongs to Gnoblin's native control service, and Mutter
+compiles the effect; the old patch references remain historical artifacts.
+
+The unregistered `tests/test-native-chrome.py` probe has been removed. It
+started the retired GNOME Shell session and asserted details of `Main`, panel
+actors, and Shell D-Bus objects. Those are not part of the standalone session
+contract; compositor state is verified through the Lua-backed devkit tests,
+and shell presentation belongs to external shell clients.
+
+## Audited groups
+
+| Patch group                                                                                                                                                                                                                                                                              | Current disposition                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `10-tooling`                                                                                                                                                                                                                                                                             | Removed on 2026-10-02. Its patches only relaxed GNOME Shell extension version checks and added a Shell-only disable-extensions option. The standalone session has no GNOME Shell or extension loader.                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `30-portal-policy`                                                                                                                                                                                                                                                                       | Removed on 2026-10-02. Its only patch fixed the GJS `AccessDialog.CloseAsync` callback in GNOME Shell. The standalone portal backend handles Gnoblin permissions in native code and does not register that Shell dialog.                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `39-orientation-lock`                                                                                                                                                                                                                                                                    | Removed on 2026-10-02. Native control and the shared Lua API now expose orientation-lock availability, state, updates, and a setter; shell clients own toggle presentation. The standalone session has no GNOME Shell system-actions UI.                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `35-gnoblin-settings`                                                                                                                                                                                                                                                                    | Removed on 2026-10-02. No standalone component consumes the old Shell schema; current session configuration and compositor settings use the Lua-backed API.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `36-notifications-toggle`                                                                                                                                                                                                                                                                | Removed on 2026-10-02. The standalone session has no GNOME Shell notification daemon; notification presentation belongs to shell clients.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `37-pad-osd-toggle`                                                                                                                                                                                                                                                                      | Removed on 2026-10-02. Native-control API 1.73 emits `gnoblin.input.pad-help-requested`; shell clients own the visible overlay. Mutter no longer requires a Wacom layout file or tablet settings object before emitting this request.                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `38-input-source-switcher`                                                                                                                                                                                                                                                               | Removed on 2026-10-02. Input-source state and selection are available through the Lua-backed native input API; popup presentation belongs to shell clients.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `22-background-terminal`, `50-native-topbar`, `51-startup-animation`                                                                                                                                                                                                                     | Shell presentation and startup animation. The standalone session has no Shell panel, desktop menu, or startup actor; clients own desktop UI. The `22-background-terminal`, `50-native-topbar`, and `51-startup-animation` patches have been removed.                                                                                                                                                                                                                                                                                                                                                                                            |
+| `45-session-isolation`                                                                                                                                                                                                                                                                   | Shell's session-mode export is superseded by the standalone launcher and environment setup.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `53-layer-animation`, `56-layer-lifecycle`, `57-window-shaders`, `59-window-corners`, `60-permissions`, `66-external-chrome`, `71-window-frames`                                                                                                                                         | Their responsibilities now live in Mutter, Gnoblin's Lua/native APIs, the portal backend, or client-owned UI. Keep compositor patches narrow and validate the native path before deleting corresponding historical patches.                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `65-no-extensions`                                                                                                                                                                                                                                                                       | Removed on 2026-10-02. The standalone session does not launch GNOME Shell or provide its extension manager, so these Shell mode and build patches had no active target.                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `54-masked-background-blur`, `61-blur-shadow-mask`, `62-blur-corner-coverage`, `62-native-effect-geometry`, `63-buffer-fades`, `64-mask-uniform-cache`, `67-masked-blur-cache`, `70-blur-detail-coverage`, `72-background-effect`, `74-backdrop-kernel-padding`, `74z-blur-output-scale` | These modify the old Shell blur effect. The standalone renderer uses Mutter's background-effect path and the documented client-owned blur protocol. Exact visual parity still needs matched-scene evidence.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `75-input-sources`, `76-keyboard-options`                                                                                                                                                                                                                                                | Native input configuration and Lua snapshots cover source selection and XKB options. Verify keyboard initialization and IBus disconnect behavior before retiring the remaining input patches.                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `90-session-lock`                                                                                                                                                                                                                                                                        | Removed on 2026-10-02. The patch only integrates Gnoblin lock requests into GNOME Shell's GJS system actions and screenshot path. The standalone contract is `gnoblin.session.lock()` plus compositor lock-state events for external shell clients. Real-output lock, owner-death, takeover, and real-seat lifecycle verification remain open.                                                                                                                                                                                                                                                                                                  |
+| `91-notification-bridge`                                                                                                                                                                                                                                                                 | Removed on 2026-10-02. It only registered a GNOME Shell `MessageTray` bridge. Gnoblin has no notification UI or compositor notification API; independent shell clients own notification presentation through the standard desktop notification interface.                                                                                                                                                                                                                                                                                                                                                                                       |
+| `92-core-services`, `98-bridge-resources`                                                                                                                                                                                                                                                | Removed on 2026-10-02. These disabled patches only registered GJS bridge resources, and no current build consumed them.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `94-animation-engine`, `95-workspace-animation`                                                                                                                                                                                                                                          | Open/close and minimize/restore use Mutter plugin hooks. Workspace switches use Mutter's switch and interruption hooks with `workspace-switch` progress. Resize uses Mutter size-change hooks and `resize` progress to interpolate old-to-new buffer geometry. The DevKit E2E calls `Window:resize` through `gnoblinctl lua`, checks start and finish events, and captures distinct intermediate pixel areas. Dialog dimming and tile-preview actors were Shell presentation. Their event IDs have been removed from the Lua and Mutter animation registries; the old Shell patch is retained as migration history and is not built or applied. |
+| `99z-wallpaper-runtime` and wallpaper-host patches                                                                                                                                                                                                                                       | Wallpaper is owned by a shell client, as documented in `docs/guides/wallpapers.md`; it is outside the compositor Lua API.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+
+The `78-headless-testing` patch was removed on 2026-10-03. It only added a
+GNOME Shell test override for `loginManager.haveSystemd()`; the standalone
+session does not read `GNOBLIN_TEST_NO_LOGIND`.
+
+The `22-background-terminal` patch was removed on 2026-10-03. Gnoblin has no
+desktop context menu or terminal launcher; external shells own those surfaces.
+The `69-desktop-recovery` resource-registration patch was also removed because
+its referenced Shell resource is absent. Gnoblin's supervisor can restart a
+failed Lua worker, but Gnoblin does not provide a recovery panel.
+
+The `79-shutdown-order` patch was removed on 2026-10-03. It only ordered
+GNOME Shell's GJS-wrapper cleanup before compositor teardown. The standalone
+guardian shuts down its Mutter process directly and has no GJS context to
+release.
+
+The `79-session-lock-shutdown/0001-meta-context-prepare-compositor-shutdown`
+Mutter patch was removed on 2026-10-03. It added a public wrapper around the
+existing `prepare-compositor-shutdown` signal emission in `meta_context_dispose`,
+but no Gnoblin code called that wrapper. Mutter's existing dispose path already
+emits the signal, so the extra API was redundant. The adjacent null-safe signal
+disconnect patch remains active.
+
+The `79z-background-manager-shutdown` patch was removed on 2026-10-03. It
+ordered destruction of GNOME Shell background actors and popup menus during
+Shell shutdown; the standalone session has no Shell background managers.
+
+The `99zzzz-session-mode-startup` patch was removed on 2026-10-03. It only
+delayed GNOME Shell's `SessionMode` import until Shell initialization; the
+standalone session starts no Shell process or session mode.
+
+The `99zzzzz-no-session-presence` patch was removed on 2026-10-03. It only
+skipped GNOME Session presence tracking for GNOME Shell notification banners;
+Gnoblin has no MessageTray or notification-busy state.
+
+The `99zzzzzz-logind-actions` patch was removed on 2026-10-03. It only routed
+GNOME Shell's power actions through a Shell-side GJS session-manager adapter.
+The standalone runtime owns `session.logout`; shell clients own power-action UI.
+
+The `99zzzzzzz-session-ready` patch was removed on 2026-10-03. Its Shell
+callback started session services after GNOME Shell became ready; the Gnoblin
+guardian starts `graphical-session.target` and initial autostart after Mutter
+readiness.
+
+The `99zzzzzzzz-no-session-dialog` patch was removed on 2026-10-03. It only
+suppressed GNOME Shell's end-session dialog object; the standalone session has
+no Shell UI, and external shell clients own logout confirmation.
+
+The `99zzzzzzzzzz-standalone-idle` patch was removed on 2026-10-03. It only
+disabled GNOME Session presence tracking in GNOME Shell's ScreenShield for the
+old standalone mode. Gnoblin exposes idle state through its own service; shell
+clients choose if and when to request a lock.
+
+The `99zzzzzzzzzzz-native-scope` patch was removed on 2026-10-03. It only
+assigned applications spawned by GNOME Shell to transient systemd scopes.
+Shell-client launch policy belongs to the shell; Gnoblin's standalone session
+does not build or run Shell.
+
+The Shell-only wallpaper runtime, timezone watcher, slideshow parser, and
+host-default patches were removed on 2026-10-03. They changed GNOME Shell's
+wallpaper client, which is not part of the standalone session.
+
+The remaining input-specific patches are listed below.
+
+## Still needs a decision or stronger evidence
+
+- `58-menu-backdrop-redraw`: establish whether native damage handling covers
+  the same redraw lifecycle.
+- `60-blur-cache` and `74-0002-share-shell-layer-backdrops`: the native blur
+  path does not currently demonstrate cross-surface backdrop sharing. Compare
+  frame cost and output before claiming parity or removing the old design.
+- `68-dev-console`: the obsolete GJS entrypoint and console stylesheet patches
+  were removed on 2026-10-02. `gnoblinctl lua` evaluates Lua locally in the
+  terminal process and exposes the typed session API through
+  `gnoblin.<area>.<method>`. It accepts a Lua file or one-line interactive
+  input, prints table results as JSON, and never sends Lua source to the
+  compositor. Shell-owned graphical console presentation remains outside the
+  compositor contract.
+- `73-location-indicator`: the native GeoClue agent exposes availability,
+  in-use state, and authorization requests to Lua and shell clients. The
+  compositor provides data and policy; location-indicator UI belongs to shell
+  clients. The RPM build now has an optional `gnoblin-geoclue-integration`
+  package with Fedora's standard GeoClue agent IDs plus `gnoblin`. Fedora 43's
+  GeoClue 2.8.2 accepted `AddAgent("gnoblin")` in an isolated private-bus run
+  using the packaged drop-in; verify RPM installation before closing
+  `gnoblin-mc6`.
+- `77-keymap-initialization`, `78-ibus-disconnect-guard`,
+  `zzzzzzz-on-demand-ibus`, and shutdown-order patches: a nested-session E2E
+  with a synthetic GNOME source schema confirms Lua-only input-source listing,
+  configuration, startup selection of the first configured XKB layout, XKB
+  and IBus selection through `gnoblinctl`, current-source reporting, clearing
+  on IBus owner loss, re-selection after the daemon restarts, and removal on
+  reload. The startup check uses Mutter's virtual devkit output; real-seat
+  startup keymap initialization and full input-service teardown remain
+  unverified before retiring these historical patches.
+- `96-touchpad-gestures`: removed on 2026-10-02. The patch only connected
+  GNOME Shell swipe trackers for its Overview, app grid, emoji pager, and lock
+  screen to the old GJS configuration bridge. The standalone runtime exposes
+  `gnoblin.input.gesture` to Lua and routes configured gestures through native
+  control; shell clients own their own gesture-driven presentation.
+- `80-optional-gnome-qr`: removed on 2026-10-02. It only makes GNOME Shell's
+  login-dialog QR rendering optional; Gnoblin does not provide that dialog.
+  `81-brightness-follows-backlight` was removed on 2026-10-02. It synchronized
+  GNOME Shell's private brightness sliders after external backlight changes;
+  Gnoblin has no such UI state. Brightness shortcuts remain command bindings
+  such as `brightnessctl`, as described in the user guide.
+
+The `96-workspace-resource` patch was removed on 2026-10-02. It registered
+`gnoblinWorkspaces.js`, which no longer exists in the checkout; workspace
+operations are part of the native compositor API.
+
+The stock-mode test harness `tests/test-stock-protocol-isolation.sh`, its
+`tests/test-shell-security-policy.py` helper, and both extension fixtures were
+removed on 2026-10-02. They tested GNOME Shell Eval policy, extension
+registration and version checks, notification ownership, and cancellation of
+the Shell-owned Access dialog. Gnoblin does not expose GNOME Shell modes or
+extension APIs. External shell clients own notification presentation, while
+native portal tests retain Access allow, deny, and caller-identity coverage.
+The Shell-specific probes were dropped with the retired Shell integration.
+
+Stale JavaScript tests that import removed Shell modules are not a migration
+target. The unregistered `tests/gnome-shell-overlay-resources.test.py` was
+removed after confirming the standalone source no longer has a Shell resource
+manifest or build target. Remove other fixtures only after recording whether
+their behavior is implemented, delegated to a shell client, or deliberately
+dropped.

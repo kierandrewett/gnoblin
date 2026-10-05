@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] Restore the stage viewport before clipped framebuffer capture
+
+---
+diff --git a/clutter/clutter/clutter-stage-private.h b/clutter/clutter/clutter-stage-private.h
+index d4f62f033..81f7e0843 100644
+--- a/clutter/clutter/clutter-stage-private.h
++++ b/clutter/clutter/clutter-stage-private.h
+@@ -81,6 +81,10 @@ void                _clutter_stage_get_viewport          (ClutterStage
+                                                           float                 *y,
+                                                           float                 *width,
+                                                           float                 *height);
++CLUTTER_EXPORT
++void                _clutter_stage_set_viewport          (ClutterStage          *stage,
++                                                          float                  width,
++                                                          float                  height);
+ void                _clutter_stage_dirty_viewport        (ClutterStage          *stage);
+ CLUTTER_EXPORT
+ void                _clutter_stage_maybe_setup_viewport  (ClutterStage          *stage,
+diff --git a/clutter/clutter/clutter-stage.c b/clutter/clutter/clutter-stage.c
+index 055d02ef9..df926b11a 100644
+--- a/clutter/clutter/clutter-stage.c
++++ b/clutter/clutter/clutter-stage.c
+@@ -146,9 +146,6 @@ static guint stage_signals[LAST_SIGNAL] = { 0, };
+ static const CoglColor default_stage_color = { 255, 255, 255, 255 };
+ 
+ static void clutter_stage_update_view_perspective (ClutterStage *stage);
+-static void clutter_stage_set_viewport (ClutterStage *stage,
+-                                        float         width,
+-                                        float         height);
+ 
+ static void clutter_stage_pick_and_update_sprite (ClutterStage             *stage,
+                                                   ClutterSprite            *sprite,
+@@ -299,7 +296,7 @@ clutter_stage_allocate (ClutterActor           *self,
+   clutter_actor_get_allocation_box (self, &alloc);
+   clutter_actor_box_get_size (&alloc, &new_width, &new_height);
+ 
+-  clutter_stage_set_viewport (CLUTTER_STAGE (self), new_width, new_height);
++  _clutter_stage_set_viewport (CLUTTER_STAGE (self), new_width, new_height);
+ }
+ 
+ static void
+@@ -1243,7 +1240,7 @@ clutter_stage_constructed (GObject *gobject)
+ 
+   clutter_actor_set_reactive (CLUTTER_ACTOR (self), TRUE);
+   clutter_stage_set_key_focus (self, NULL);
+-  clutter_stage_set_viewport (self, geom.width, geom.height);
++  _clutter_stage_set_viewport (self, geom.width, geom.height);
+ 
+   seat = clutter_backend_get_default_seat (backend);
+   g_signal_connect_object (seat, "is-unfocus-inhibited-changed",
+@@ -1801,10 +1798,10 @@ _clutter_stage_dirty_projection (ClutterStage *stage)
+  * OpenGL 4.0 has introduced floating point viewports which we might
+  * want to expose via this API eventually.
+  */
+-static void
+-clutter_stage_set_viewport (ClutterStage *stage,
+-                            float         width,
+-                            float         height)
++void
++_clutter_stage_set_viewport (ClutterStage *stage,
++                             float         width,
++                             float         height)
+ {
+   ClutterStagePrivate *priv;
+   float x, y;
+@@ -2673,6 +2670,20 @@ clutter_stage_paint_to_framebuffer_clipped (ClutterStage       *stage,
+       cogl_framebuffer_clear (framebuffer, COGL_BUFFER_BIT_COLOR, &clear_color);
+     }
+ 
++  if (priv->viewport[2] <= 0 || priv->viewport[3] <= 0)
++    {
++      MtkRectangle geometry;
++
++      if (priv->impl == NULL)
++        return;
++
++      _clutter_stage_window_get_geometry (priv->impl, &geometry);
++      if (geometry.width <= 0 || geometry.height <= 0)
++        return;
++
++      _clutter_stage_set_viewport (stage, geometry.width, geometry.height);
++    }
++
+   intersection = mtk_region_create_rectangle (rect);
+ 
+   if (redraw_clip)
+diff --git a/src/tests/stage-view-tests.c b/src/tests/stage-view-tests.c
+index c734f8250..1b362f237 100644
+--- a/src/tests/stage-view-tests.c
++++ b/src/tests/stage-view-tests.c
+@@ -18,6 +18,7 @@
+ #include "config.h"
+ 
+ #include "clutter/clutter.h"
++#include "clutter/clutter-stage-private.h"
+ #include "clutter/clutter-stage-view-private.h"
+ #include "compositor/meta-window-actor-private.h"
+ #include "meta-test/meta-context-test.h"
+@@ -1474,6 +1475,8 @@ meta_test_stage_views_fractional_position (void)
+     g_assert_true (cogl_framebuffer_allocate (capture_fb, &error));
+     g_assert_no_error (error);
+ 
++    _clutter_stage_set_viewport (CLUTTER_STAGE (stage), 0, 0);
++
+     clutter_stage_paint_to_framebuffer_clipped (CLUTTER_STAGE (stage),
+                                                 capture_fb,
+                                                 &(MtkRectangle) { 0, 767, 800, 600 },

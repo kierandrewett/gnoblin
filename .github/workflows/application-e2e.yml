@@ -1,49 +1,31 @@
-name: Gnoblin application E2E
+name: Gnoblin native session E2E
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
     paths:
       - ".github/workflows/application-e2e.yml"
-      - ".github/workflows/compositor-fuzz.yml"
       - "build.sh"
-      - "patches/**"
       - "scripts/**"
       - "src/**"
       - "tests/**"
+      - "patches/mutter/**"
       - "subprojects/mutter"
-      - "subprojects/gnome-shell"
-      - "subprojects/gnome-control-center"
+      - "subprojects/xdg-desktop-portal-gnome"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/application-e2e.yml"
+      - "build.sh"
+      - "scripts/**"
+      - "src/**"
+      - "tests/**"
+      - "patches/mutter/**"
+      - "subprojects/mutter"
       - "subprojects/xdg-desktop-portal-gnome"
   schedule:
     - cron: "18 3 * * 0"
   workflow_dispatch:
-    inputs:
-      full_sweep:
-        description: Run all 40 shards (the complete 800-app catalog)
-        type: boolean
-        default: true
-        required: true
-      shard:
-        description: Shard number 0-39 when full_sweep is false
-        type: string
-        default: "0"
-        required: true
-      trace_crash:
-        description: Run the selected shard under GDB, record criticals and stop at fatal signals
-        type: boolean
-        default: false
-        required: true
-      app_ids:
-        description: Optional comma-separated app IDs to isolate within the selected shard
-        type: string
-        default: ""
-        required: false
-      extra_monitor:
-        description: Optional secondary monitor size, for example 1600x1000
-        type: string
-        default: ""
-        required: false
 
 permissions:
   contents: read
@@ -53,202 +35,128 @@ defaults:
     shell: bash
 
 jobs:
-  build-and-catalog:
+  native-session:
     runs-on: ubuntu-latest
-    container: fedora:44
-    timeout-minutes: 150
-    outputs:
-      shards: ${{ steps.matrix.outputs.shards }}
+    container:
+      image: fedora:45
+      options: --cap-add=SYS_ADMIN --cap-add=NET_ADMIN --security-opt seccomp=unconfined --security-opt apparmor=unconfined
+    timeout-minutes: 180
     steps:
-      - name: Install checkout tool
+      - name: Install checkout tools
         run: dnf -y install git
 
-      - name: Checkout Gnoblin and submodules
+      - name: Check out Gnoblin
         uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Set container checkout ownership
-        run: |
-          chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Mark the container checkout safe for Git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Fetch GNOME submodules with retry backoff
-        run: scripts/checkout-submodules-with-retry.sh
+      - name: Fetch pinned compositor and portal sources
+        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
 
-      - name: Build Gnoblin and fetch Fedora software-store metadata
+      - name: Prepare the Fedora build environment
         run: |
-          source scripts/build-deps.sh
-          source /etc/os-release
-          install_build_dependencies "$(build_distro_family "$ID" "${ID_LIKE:-}")" true false
-          dnf -y install appstream-data
+          dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
+            json-glib-devel desktop-file-utils gsettings-desktop-schemas \
+            python3 weston dbus-daemon dbus-tools ibus flatpak grim util-linux-user
+          dnf -y builddep --allowerasing packaging/rpm/mutter.spec packaging/rpm/gnoblin-portal.spec
           useradd --create-home builder
           builder_uid="$(id -u builder)"
           install -d -o builder -g builder -m 700 "/run/user/$builder_uid"
           chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Prepare nested Flatpak sandboxing
+        run: |
+          # Docker's masked procfs entries prevent Bubblewrap from creating
+          # the proc mount Flatpak needs inside its user namespace.
+          mount -t proc proc /proc
+          # GitHub's hosted kernel blocks UID-map writes from an unprivileged
+          # process inside this container. Check Flatpak's isolated namespaces
+          # as container root; only its client smoke test uses this identity.
+          bwrap --unshare-all \
+            --ro-bind / / --proc /proc --dev /dev true
+
+      - name: Install Flatpak client fixture
+        run: |
+          flatpak remote-add --system --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --system --noninteractive --assumeyes \
+            flathub org.gnome.TextEditor
+
+      - name: Build Gnoblin with the nested-session viewer
+        run: |
+          builder_uid="$(id -u builder)"
           runuser -u builder -- env \
             XDG_RUNTIME_DIR="/run/user/$builder_uid" \
-            ./build.sh
-          python3 tests/gnome-shell-overlay-resources.test.py
-          python3 tests/e2e/app-window-selection.test.py
-          python3 tests/e2e/app-failure-report.test.py
-          mkdir -p e2e-ci-artifacts
-          python3 tests/e2e/app-catalog.test.py
-          python3 tests/e2e/app-catalog.py --output e2e-ci-artifacts/app-catalog.json
-          # Keep executable modes and symlinks intact across artifact transfer.
-          # Each app shard restores this tar before launching gnome-shell.
-          tar -cf e2e-ci-artifacts/gnoblin-install-prefix.tar -C "$GITHUB_WORKSPACE" install
+            GNOBLIN_DEVKIT=enabled \
+            ./build.sh --jobs 2
 
-      - name: Select requested app shards
-        id: matrix
-        env:
-          FULL_SWEEP: ${{ inputs.full_sweep || contains(github.event.pull_request.labels.*.name, 'gnoblin-full-e2e') }}
-          REQUESTED_SHARD: ${{ inputs.shard }}
+      - name: Run native tests and a fresh nested session
         run: |
-          python3 - <<'PY' >> "$GITHUB_OUTPUT"
-          import json, os
-          full_sweep = os.environ.get("FULL_SWEEP", "").lower() == "true"
-          if os.environ["GITHUB_EVENT_NAME"] == "pull_request" and not full_sweep:
-              shards = [0]
-          elif os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" and os.environ["FULL_SWEEP"] != "true":
-              shard = int(os.environ["REQUESTED_SHARD"])
-              if not 0 <= shard < 40:
-                  raise SystemExit("shard must be in the range 0..39")
-              shards = [shard]
-          else:
-              shards = list(range(40))
-          print("shards=" + json.dumps(shards))
-          PY
+          set -euo pipefail
+          builder_uid="$(id -u builder)"
+          runtime_dir="/run/user/$builder_uid"
+          socket_name=gnoblin-ci-host
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY="$socket_name" \
+            weston --backend=headless --no-config --socket="$socket_name" --idle-time=0 \
+            > "$GITHUB_WORKSPACE/build/logs/weston-host.log" 2>&1 &
+          weston_pid=$!
+          cleanup() {
+            kill "$weston_pid" 2>/dev/null || true
+            wait "$weston_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
 
-      - name: Upload the build and live catalog
-        uses: actions/upload-artifact@v4
-        with:
-          name: gnoblin-e2e-inputs-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            e2e-ci-artifacts/gnoblin-install-prefix.tar
-            e2e-ci-artifacts/app-catalog.json
-          compression-level: 0
-          if-no-files-found: error
-          retention-days: 2
+          for _ in $(seq 1 300); do
+            [[ -S "$runtime_dir/$socket_name" ]] && break
+            kill -0 "$weston_pid" 2>/dev/null || {
+              cat "$GITHUB_WORKSPACE/build/logs/weston-host.log" >&2
+              exit 1
+            }
+            sleep 0.1
+          done
+          [[ -S "$runtime_dir/$socket_name" ]]
 
-  app-shard:
-    needs: build-and-catalog
-    runs-on: ubuntu-latest
-    timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      max-parallel: 8
-      matrix:
-        shard: ${{ fromJSON(needs.build-and-catalog.outputs.shards) }}
-    steps:
-      - name: Enable Flatpak user namespaces on the disposable runner
-        run: |
-          if [[ -e /proc/sys/kernel/apparmor_restrict_unprivileged_userns ]]; then
-            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          fi
+          runuser -u builder -- cmake --build "$GITHUB_WORKSPACE/build/ninja" \
+            --target native-touchpad-router-test runtime-protocol-test runtime-spawn-test \
+            autostart-protocol-test runtime-cache-test lua-pattern-test lua-config-test \
+            lua-api-test glob-config-test gnoblinctl --parallel 2
+          runuser -u builder -- ctest --test-dir "$GITHUB_WORKSPACE/build/ninja" --output-on-failure
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY="$socket_name" \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            bash tests/test-gnoblin-devkit.sh
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY="$socket_name" \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            GNOBLIN_ARTIFACT_DIR="$GITHUB_WORKSPACE/build/logs/flatpak-client" \
+            python3 tests/test-flatpak-client-devkit.py
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY="$socket_name" \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            GNOBLINCTL="$GITHUB_WORKSPACE/install/bin/gnoblinctl" \
+            python3 tests/window-lifecycle-fuzz.py \
+              --seed 314159265 --steps 250 --max-windows 6 --timeout 600 \
+              --artifact-dir "$GITHUB_WORKSPACE/build/logs/lifecycle-fuzz-seed-314159265"
+          runuser -u builder -- env \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            WAYLAND_DISPLAY="$socket_name" \
+            GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
+            GNOBLIN_RUNTIME_BIN="$GITHUB_WORKSPACE/build/ninja/gnoblin" \
+            bash tests/test-layer-latency.sh
 
-      - name: Checkout test drivers
-        uses: actions/checkout@v4
-
-      - name: Download Gnoblin build and app catalog
-        uses: actions/download-artifact@v4
-        with:
-          name: gnoblin-e2e-inputs-${{ github.run_id }}-${{ github.run_attempt }}
-          # The artifact's common root is e2e-ci-artifacts/; extract its files
-          # back into that directory so the catalog and prefix paths line up.
-          path: ${{ github.workspace }}/e2e-ci-artifacts
-
-      - name: Run the real Fedora app shard
-        env:
-          SHARD_INDEX: ${{ matrix.shard }}
-          TRACE_CRASH: ${{ inputs.trace_crash || false }}
-          APP_IDS: ${{ github.event_name == 'pull_request' && 'org.alacritty.Alacritty' || inputs.app_ids }}
-          GNOBLIN_E2E_EXTRA_MONITOR_OVERRIDE: ${{ inputs.extra_monitor }}
-          GNOBLIN_E2E_FAILURE_POLICY: ${{ github.event_name == 'pull_request' && 'required' || 'strict' }}
-          GNOBLIN_E2E_REQUIRED_APP_IDS: org.alacritty.Alacritty
-          GNOBLIN_E2E_TEST_IBUS_DISCONNECT: ${{ (github.event_name == 'pull_request' || github.event_name == 'schedule' || inputs.full_sweep || inputs.trace_crash) && '1' || '0' }}
-        run: |
-          ARTIFACT_DIR="$RUNNER_TEMP/e2e-shard-$SHARD_INDEX" \
-            bash tests/e2e/run-app-shard-container.sh
-
-      - name: Upload events, screenshots, install results and shell logs
+      - name: Upload build and session logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gnoblin-app-e2e-shard-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/e2e-shard-${{ matrix.shard }}/
+          name: gnoblin-native-session-${{ github.run_id }}-${{ github.run_attempt }}
+          path: build/logs/
           if-no-files-found: warn
           retention-days: 14
-
-  report-app-failures:
-    needs: [build-and-catalog, app-shard]
-    if: >-
-      always() && (needs.build-and-catalog.result == 'failure' || needs.app-shard.result == 'failure') &&
-      github.event_name != 'pull_request' &&
-      github.repository == 'kierandrewett/gnoblin'
-    concurrency:
-      group: gnoblin-app-e2e-issue-report-${{ github.repository }}
-      cancel-in-progress: false
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - name: Checkout the failure report builder
-        uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Download app shard reports
-        uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          pattern: gnoblin-app-e2e-shard-*-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/e2e-app-failures
-
-      - name: Install the pinned Beads CLI
-        run: |
-          install_root="$RUNNER_TEMP/beads-install"
-          install -d "$install_root"
-          curl -fsSL -o "$install_root/beads_1.2.2_linux_amd64.tar.gz" \
-            https://github.com/steveyegge/beads/releases/download/v1.2.2/beads_1.2.2_linux_amd64.tar.gz
-          curl -fsSL -o "$install_root/checksums.txt" \
-            https://github.com/steveyegge/beads/releases/download/v1.2.2/checksums.txt
-          grep '  beads_1.2.2_linux_amd64.tar.gz$' "$install_root/checksums.txt" > "$install_root/checksum.txt"
-          (cd "$install_root" && sha256sum --check checksum.txt)
-          tar -xzf "$install_root/beads_1.2.2_linux_amd64.tar.gz" -C "$install_root" bd
-          install -m 0755 "$install_root/bd" "$RUNNER_TEMP/bd"
-
-      - name: Create or update the Beads compatibility issue
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-        run: |
-          export PATH="$RUNNER_TEMP:$PATH"
-          export BEADS_DIR="$RUNNER_TEMP/gnoblin-beads/.beads"
-          mkdir -p "$RUNNER_TEMP/gnoblin-beads"
-          cd "$RUNNER_TEMP/gnoblin-beads" || exit
-          bd init --prefix gnoblin --non-interactive --skip-hooks --skip-agents
-
-          report="$RUNNER_TEMP/app-e2e-failure-report.md"
-          python3 "$GITHUB_WORKSPACE/scripts/report-app-e2e-failures.py" \
-            --artifact-root "$RUNNER_TEMP/e2e-app-failures" --output "$report"
-          issue_title="$(sed -n 's/^# //p' "$report" | head -n 1)"
-          existing_issue="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open \
-            --search "in:title \"$issue_title\"" --json number,url \
-            --jq '.[0] | if . then "\(.number)\t\(.url)" else "" end')"
-          existing_number="${existing_issue%%$'\t'*}"
-          existing_url="${existing_issue#*$'\t'}"
-
-          if [[ -n "$existing_number" ]]; then
-            gh issue comment "$existing_url" --body-file "$report"
-            gh issue edit "$existing_url" --body-file "$report"
-            "$GITHUB_WORKSPACE/scripts/gnoblin-issues" pull "$existing_number"
-            echo "Updated Beads/GitHub app compatibility issue: $existing_url"
-            exit 0
-          fi
-
-          bead_id="$(bd create --silent --title "$issue_title" --type task --priority P2 --body-file "$report")"
-          "$GITHUB_WORKSPACE/scripts/gnoblin-issues" push "$bead_id"
-          echo "Created Beads/GitHub app compatibility issue: $bead_id"

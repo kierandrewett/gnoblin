@@ -1,0 +1,188 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] mutter: expose native monitor snapshot records
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 5ffec8283..274c2b5f7 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -43,6 +43,7 @@
+ #include "meta/main.h"
+ #include "meta/meta-backend.h"
+ #include "meta/meta-context.h"
++#include "backends/meta-logical-monitor-private.h"
+ #include "meta/meta-logical-monitor.h"
+ #include "meta/meta-monitor-manager.h"
+ #include "meta/meta-monitor.h"
+@@ -1319,9 +1320,9 @@ static gboolean gnoblin_native_variant_has_only_keys (GVariant          *argumen
+                                                        const char * const *allowed,
+                                                        GError            **error);
+ 
+-static char *
+-gnoblin_native_monitor_id_for_index (MetaDisplay *display,
+-                                     int          monitor_index)
++static MetaLogicalMonitor *
++gnoblin_native_logical_monitor_for_index (MetaDisplay *display,
++                                          int          monitor_index)
+ {
+   MetaBackend *backend =
+     meta_context_get_backend (meta_display_get_context (display));
+@@ -1331,33 +1332,84 @@ gnoblin_native_monitor_id_for_index (MetaDisplay *display,
+   for (GList *item = logical_monitors; item; item = item->next)
+     {
+       MetaLogicalMonitor *logical_monitor = item->data;
+-      GList *monitors;
+-      const char *canonical_connector = NULL;
+ 
+-      if (meta_logical_monitor_get_number (logical_monitor) != monitor_index)
+-        continue;
++      if (meta_logical_monitor_get_number (logical_monitor) == monitor_index)
++        return logical_monitor;
++    }
+ 
+-      monitors = meta_logical_monitor_get_monitors (logical_monitor);
+-      for (GList *monitor_item = monitors;
+-           monitor_item;
+-           monitor_item = monitor_item->next)
+-        {
+-          MetaMonitor *monitor = monitor_item->data;
+-          const char *connector;
++  return NULL;
++}
+ 
+-          if (!meta_monitor_is_active (monitor))
+-            continue;
+-          connector = meta_monitor_get_connector (monitor);
+-          if (connector && *connector &&
+-              (!canonical_connector ||
+-               g_strcmp0 (connector, canonical_connector) < 0))
+-            canonical_connector = connector;
+-        }
++static MetaMonitor *
++gnoblin_native_monitor_for_index (MetaDisplay *display,
++                                  int          monitor_index)
++{
++  MetaLogicalMonitor *logical_monitor =
++    gnoblin_native_logical_monitor_for_index (display, monitor_index);
++  MetaMonitor *canonical_monitor = NULL;
++  GList *monitors;
++
++  if (!logical_monitor)
++    return NULL;
++
++  monitors = meta_logical_monitor_get_monitors (logical_monitor);
++  for (GList *item = monitors; item; item = item->next)
++    {
++      MetaMonitor *monitor = item->data;
++      const char *connector;
++      const char *canonical_connector;
+ 
+-      return canonical_connector ? g_strdup (canonical_connector) : NULL;
++      if (!meta_monitor_is_active (monitor))
++        continue;
++
++      connector = meta_monitor_get_connector (monitor);
++      canonical_connector = canonical_monitor
++        ? meta_monitor_get_connector (canonical_monitor)
++        : NULL;
++      if (connector && *connector &&
++          (!canonical_connector ||
++           g_strcmp0 (connector, canonical_connector) < 0))
++        canonical_monitor = monitor;
+     }
+ 
+-  return NULL;
++  return canonical_monitor;
++}
++
++static char *
++gnoblin_native_monitor_id_for_index (MetaDisplay *display,
++                                     int          monitor_index)
++{
++  MetaMonitor *monitor =
++    gnoblin_native_monitor_for_index (display, monitor_index);
++  const char *connector = monitor ? meta_monitor_get_connector (monitor) : NULL;
++
++  return connector && *connector ? g_strdup (connector) : NULL;
++}
++
++static const char *
++gnoblin_native_monitor_transform_name (MtkMonitorTransform transform)
++{
++  switch (transform)
++    {
++    case MTK_MONITOR_TRANSFORM_NORMAL:
++      return "normal";
++    case MTK_MONITOR_TRANSFORM_90:
++      return "90";
++    case MTK_MONITOR_TRANSFORM_180:
++      return "180";
++    case MTK_MONITOR_TRANSFORM_270:
++      return "270";
++    case MTK_MONITOR_TRANSFORM_FLIPPED:
++      return "flipped";
++    case MTK_MONITOR_TRANSFORM_FLIPPED_90:
++      return "flipped-90";
++    case MTK_MONITOR_TRANSFORM_FLIPPED_180:
++      return "flipped-180";
++    case MTK_MONITOR_TRANSFORM_FLIPPED_270:
++      return "flipped-270";
++    }
++
++  g_assert_not_reached ();
+ }
+ 
+ static int
+@@ -2162,6 +2214,10 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+     {
+       GVariantBuilder monitor;
+       MtkRectangle geometry;
++      MetaLogicalMonitor *logical_monitor =
++        gnoblin_native_logical_monitor_for_index (display, index);
++      MetaMonitor *physical_monitor =
++        gnoblin_native_monitor_for_index (display, index);
+       g_autofree char *monitor_id =
+         gnoblin_native_monitor_id_for_index (display, index);
+ 
+@@ -2184,6 +2240,39 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+       g_variant_builder_add (&monitor, "{sv}", "primary", g_variant_new_boolean (index == primary));
+       g_variant_builder_add (&monitor, "{sv}", "scale",
+                              g_variant_new_double (meta_display_get_monitor_scale (display, index)));
++      g_variant_builder_add (&monitor, "{sv}", "enabled",
++                             g_variant_new_boolean (TRUE));
++      if (physical_monitor)
++        {
++          const char *name = meta_monitor_get_display_name (physical_monitor);
++          const char *vendor = meta_monitor_get_vendor (physical_monitor);
++          const char *product = meta_monitor_get_product (physical_monitor);
++          const char *serial = meta_monitor_get_serial (physical_monitor);
++          MetaMonitorMode *current_mode =
++            meta_monitor_get_current_mode (physical_monitor);
++
++          if (name && *name)
++            g_variant_builder_add (&monitor, "{sv}", "name",
++                                   g_variant_new_string (name));
++          if (vendor && *vendor)
++            g_variant_builder_add (&monitor, "{sv}", "make",
++                                   g_variant_new_string (vendor));
++          if (product && *product)
++            g_variant_builder_add (&monitor, "{sv}", "model",
++                                   g_variant_new_string (product));
++          if (serial && *serial)
++            g_variant_builder_add (&monitor, "{sv}", "serial",
++                                   g_variant_new_string (serial));
++          if (current_mode)
++            g_variant_builder_add (&monitor, "{sv}", "refresh_rate",
++                                   g_variant_new_double (
++                                     meta_monitor_mode_get_refresh_rate (current_mode)));
++        }
++      if (logical_monitor)
++        g_variant_builder_add (&monitor, "{sv}", "transform",
++                               g_variant_new_string (
++                                 gnoblin_native_monitor_transform_name (
++                                   meta_logical_monitor_get_transform (logical_monitor))));
+       g_variant_builder_add_value (&monitors, g_variant_builder_end (&monitor));
+     }
+ 

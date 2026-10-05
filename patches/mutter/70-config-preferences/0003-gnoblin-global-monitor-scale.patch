@@ -1,0 +1,191 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] Apply Lua global monitor scale preference
+
+---
+diff --git a/src/backends/meta-settings-private.h b/src/backends/meta-settings-private.h
+index 2ba4443a0..08f3ce6fb 100644
+--- a/src/backends/meta-settings-private.h
++++ b/src/backends/meta-settings-private.h
+@@ -51,2 +51,3 @@ void meta_settings_update_ui_scaling_factor (MetaSettings *settings);
+ 
++META_EXPORT_TEST
+ gboolean meta_settings_get_global_scaling_factor (MetaSettings *settings,
+@@ -54,2 +55,6 @@ gboolean meta_settings_get_global_scaling_factor (MetaSettings *settings,
+ 
++META_EXPORT_TEST
++void meta_settings_apply_gnoblin_monitor_preferences (MetaSettings *settings,
++                                                       GVariant     *preferences);
++
+ META_EXPORT_TEST
+diff --git a/src/backends/meta-settings.c b/src/backends/meta-settings.c
+index e5b49ba57..842da4a66 100644
+--- a/src/backends/meta-settings.c
++++ b/src/backends/meta-settings.c
+@@ -67,2 +67,4 @@ struct _MetaSettings
+   int global_scaling_factor;
++  gboolean gnoblin_global_scaling_factor_overridden;
++  int gnoblin_global_scaling_factor;
+ 
+@@ -147,4 +149,6 @@ update_global_scaling_factor (MetaSettings *settings)
+   global_scaling_factor =
+-    (int) g_settings_get_uint (settings->interface_settings,
+-                               "scaling-factor");
++    settings->gnoblin_global_scaling_factor_overridden
++      ? settings->gnoblin_global_scaling_factor
++      : (int) g_settings_get_uint (settings->interface_settings,
++                                   "scaling-factor");
+ 
+@@ -172,2 +176,42 @@ meta_settings_get_global_scaling_factor (MetaSettings *settings,
+ 
++void
++meta_settings_apply_gnoblin_monitor_preferences (MetaSettings *settings,
++                                                 GVariant     *preferences)
++{
++  g_autoptr (GVariant) scale_value = NULL;
++
++  g_return_if_fail (META_IS_SETTINGS (settings));
++  g_return_if_fail (!preferences ||
++                    g_variant_is_of_type (preferences, G_VARIANT_TYPE_VARDICT));
++
++  settings->gnoblin_global_scaling_factor_overridden = FALSE;
++  if (preferences)
++    scale_value = g_variant_lookup_value (preferences, "global-scale", NULL);
++
++  if (scale_value &&
++      g_variant_is_of_type (scale_value, G_VARIANT_TYPE_INT64))
++    {
++      gint64 requested_scale = g_variant_get_int64 (scale_value);
++
++      if (requested_scale >= 0 && requested_scale <= 4)
++        {
++          settings->gnoblin_global_scaling_factor_overridden = TRUE;
++          settings->gnoblin_global_scaling_factor = (int) requested_scale;
++        }
++      else
++        {
++          g_warning ("Ignoring invalid Gnoblin global monitor scale");
++        }
++    }
++  else if (scale_value &&
++           !(g_variant_is_of_type (scale_value, G_VARIANT_TYPE_STRING) &&
++             g_str_equal (g_variant_get_string (scale_value, NULL), "inherit")))
++    {
++      g_warning ("Ignoring invalid Gnoblin global monitor scale");
++    }
++
++  if (update_global_scaling_factor (settings))
++    g_signal_emit (settings, signals[GLOBAL_SCALING_FACTOR_CHANGED], 0);
++}
++
+ static gboolean
+diff --git a/src/tests/gnoblin-monitor-settings-test.c b/src/tests/gnoblin-monitor-settings-test.c
+new file mode 100644
+index 000000000..97aef1071
+--- /dev/null
++++ b/src/tests/gnoblin-monitor-settings-test.c
+@@ -0,0 +1,89 @@
++/*
++ * Copyright (C) 2026 Gnoblin contributors
++ * This program is free software; you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation; either version 2 of the License, or
++ * (at your option) any later version.
++ */
++
++#include "config.h"
++
++#include <gio/gio.h>
++
++#include "backends/meta-backend-private.h"
++#include "backends/meta-settings-private.h"
++#include "meta/meta-context.h"
++#include "meta-test/meta-context-test.h"
++
++static MetaContext* test_context;
++
++static GVariant* create_global_scale_preferences(GVariant* global_scale) {
++    GVariantBuilder preferences;
++
++    g_variant_builder_init(&preferences, G_VARIANT_TYPE_VARDICT);
++    g_variant_builder_add(&preferences, "{sv}", "global-scale", global_scale);
++
++    return g_variant_ref_sink(g_variant_builder_end(&preferences));
++}
++
++static void drain_main_context(void) {
++    while (g_main_context_iteration(NULL, FALSE))
++        ;
++}
++
++static void meta_test_gnoblin_global_monitor_scale(void) {
++    MetaBackend* backend = meta_context_get_backend(test_context);
++    MetaSettings* meta_settings = meta_backend_get_settings(backend);
++    g_autoptr(GSettings) interface_settings = g_settings_new("org.gnome.desktop.interface");
++    g_autoptr(GVariant) forced_scale = create_global_scale_preferences(g_variant_new_int64(3));
++    g_autoptr(GVariant) automatic_scale = create_global_scale_preferences(g_variant_new_int64(0));
++    g_autoptr(GVariant) inherit_scale =
++        create_global_scale_preferences(g_variant_new_string("inherit"));
++    int scale;
++
++    g_settings_set_uint(interface_settings, "scaling-factor", 2);
++    drain_main_context();
++    g_assert_true(meta_settings_get_global_scaling_factor(meta_settings, &scale));
++    g_assert_cmpint(scale, ==, 2);
++
++    meta_settings_apply_gnoblin_monitor_preferences(meta_settings, forced_scale);
++    g_assert_true(meta_settings_get_global_scaling_factor(meta_settings, &scale));
++    g_assert_cmpint(scale, ==, 3);
++    g_assert_cmpuint(g_settings_get_uint(interface_settings, "scaling-factor"), ==, 2);
++
++    g_settings_set_uint(interface_settings, "scaling-factor", 1);
++    drain_main_context();
++    g_assert_true(meta_settings_get_global_scaling_factor(meta_settings, &scale));
++    g_assert_cmpint(scale, ==, 3);
++
++    meta_settings_apply_gnoblin_monitor_preferences(meta_settings, inherit_scale);
++    g_assert_true(meta_settings_get_global_scaling_factor(meta_settings, &scale));
++    g_assert_cmpint(scale, ==, 1);
++
++    g_settings_set_uint(interface_settings, "scaling-factor", 4);
++    drain_main_context();
++    g_assert_true(meta_settings_get_global_scaling_factor(meta_settings, &scale));
++    g_assert_cmpint(scale, ==, 4);
++
++    meta_settings_apply_gnoblin_monitor_preferences(meta_settings, automatic_scale);
++    g_assert_false(meta_settings_get_global_scaling_factor(meta_settings, &scale));
++}
++
++int main(int argc, char** argv) {
++    g_autoptr(MetaContext) context = NULL;
++    g_autoptr(GError) error = NULL;
++    int ret;
++
++    g_setenv("GSETTINGS_BACKEND", "memory", TRUE);
++
++    context = meta_create_test_context(META_CONTEXT_TEST_TYPE_TEST, META_CONTEXT_TEST_FLAG_NO_X11);
++    g_assert_true(meta_context_configure(context, &argc, &argv, &error));
++
++    test_context = context;
++    g_test_add_func("/settings/gnoblin-global-monitor-scale",
++                    meta_test_gnoblin_global_monitor_scale);
++
++    ret = meta_context_test_run_tests(META_CONTEXT_TEST(context), META_TEST_RUN_FLAG_CAN_SKIP);
++
++    return ret;
++}
+diff --git a/src/tests/meson.build b/src/tests/meson.build
+index a58ddacf5..cb556fcb9 100644
+--- a/src/tests/meson.build
++++ b/src/tests/meson.build
+@@ -1291,2 +1291,9 @@ test_cases += [
+   },
++  {
++    'name': 'gnoblin-monitor-settings',
++    'suite': 'backend',
++    'sources': [
++      'gnoblin-monitor-settings-test.c',
++    ],
++  },
+ ]

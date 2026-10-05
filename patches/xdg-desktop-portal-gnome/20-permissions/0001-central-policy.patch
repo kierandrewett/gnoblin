@@ -1,5 +1,5 @@
 From 5ff1a6a8e01af1d0581ee7d97075044316e8c560 Mon Sep 17 00:00:00 2001
-From: Gnoblin <gnoblin@localhost>
+From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 21:51:04 +0100
 Subject: [PATCH] portal: apply central permission policy
 
@@ -1340,4 +1340,3 @@ index c711904..3783d6f 100644
            external_parent = gxdp_external_window_new_from_handle (arg_parent_window);
 -- 
 2.55.0
-

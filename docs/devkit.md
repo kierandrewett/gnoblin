@@ -2,19 +2,45 @@
 
 The devkit runs a nested Gnoblin session inside your Wayland desktop.
 Use it to test a build without logging out.
+The normal source build omits the viewer; the first preview builds it for you.
 
 First complete the [source build](install-source.md).
 
 ## Start
 
-From the checkout:
+From the extracted source tarball or a checkout:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just preview
+./build.sh --preview
 ```
 
 A desktop viewer and terminal open. Programs started from that terminal connect
-to the nested compositor.
+to the nested compositor. The devkit provides a 1280×720 output inside the
+viewer.
+
+When Waybar is installed, the preview starts a small panel that shows the time,
+CPU use, and memory use with a devkit-owned config.
+
+Waybar is an optional shell client; Gnoblin provides the compositor and runtime
+APIs, not a built-in panel or launcher. Without Waybar, the output stays empty
+until you start a shell or layer-shell client.
+
+The terminal is a separate window on your host desktop. The preview uses a
+disposable config directory; it does not load your normal Gnoblin config or
+start shell services from your host login.
+
+If your Gnoblin config autostarts a shell, copy it into the preview with:
+
+```sh
+GNOBLIN_DEVKIT_CONFIG_SOURCE="${XDG_CONFIG_HOME:-$HOME/.config}/gnoblin" \
+./build.sh --preview
+```
+
+If Waybar is installed, start it automatically with the preview:
+
+```sh
+GNOBLIN_DEVKIT_EXEC='waybar' ./build.sh --preview
+```
 
 ![GNOME Settings in a Gnoblin devkit desktop with Waybar](images/gnoblin-waybar-settings.png)
 
@@ -23,47 +49,46 @@ _The nested session can run a separate bar and stock desktop applications._
 To choose a terminal explicitly:
 
 ```sh
-GNOBLIN_PREFIX="$PWD/install" just preview kitty
+./build.sh --preview --terminal kitty
 ```
 
 ## Try your shell
 
-From the devkit terminal, launch an installed layer-shell client:
+From the host terminal opened by the devkit, launch an installed shell or
+layer-shell client. The terminal uses a temporary home directory, so use an
+absolute path to a shell checkout:
 
 ```sh
-waybar
+qs -p /path/to/my-shell
 ```
 
-The bar should appear inside the viewer. Try its menus and launcher.
+The shell should appear inside the viewer. To try only a panel, run `waybar`.
 Close the terminal to stop the devkit.
 
 ## Options
 
-| Variable                   | Accepted values          | Default    | Purpose                                                           |
-| -------------------------- | ------------------------ | ---------- | ----------------------------------------------------------------- |
-| `MONITOR`                  | `WIDTHxHEIGHT` in pixels | `1600x900` | Sets the nested display size.                                     |
-| `GNOME_DEVKIT_HEADLESS`    | `0` or `1`               | `0`        | `1` starts without a viewer; `0` requires a host Wayland display. |
-| `GNOME_DEVKIT_EXEC`        | Shell command string     | Unset      | Runs the string with `bash -c` instead of opening a terminal.     |
-| `GNOME_DEVKIT_UNSAFE_MODE` | `0` or `1`               | `0`        | `1` enables privileged shell D-Bus APIs for tests.                |
+| Variable                       | Accepted values      | Default | Purpose                                                                                            |
+| ------------------------------ | -------------------- | ------- | -------------------------------------------------------------------------------------------------- |
+| `GNOBLIN_DEVKIT_EXEC`          | Shell command string | Unset   | Runs the command with `bash -c` instead of opening a terminal or starting the sample Waybar panel. |
+| `GNOBLIN_DEVKIT_CONFIG_SOURCE` | Directory path       | Unset   | Copies this config tree into the devkit's disposable config directory.                             |
 
-## Headless / scripting mode
+## Run a command
 
 ```sh
-GNOME_DEVKIT_HEADLESS=1 \
-GNOME_DEVKIT_EXEC='gnoblinctl feature list --json' \
-GNOBLIN_PREFIX="$PWD/install" just preview
+GNOBLIN_DEVKIT_EXEC='gnoblinctl version' \
+./build.sh --preview
 ```
 
-This runs without a host Wayland display and exits after the command.
-`just test-preview` checks this environment.
+The command runs inside the nested Gnoblin session. A host Wayland display is
+required to show the viewer; close the viewer to stop the session.
 
 ## Isolation
 
-The nested display and D-Bus bus are separate. Host X11, accessibility and gvfs
-connections are not passed through.
+The nested display and D-Bus bus are separate. The devkit uses disposable home
+and XDG directories, and exposes the host PipeWire socket when available.
 
-**Your HOME and runtime directory remain real.** Applications can still read
-or change your files and configuration. This is not a security sandbox.
+Applications launched inside the devkit can still access host services and
+files available to your user. This is not a security sandbox.
 
 For a fresh profile, including screenshots and demos, run:
 
@@ -114,8 +139,8 @@ A devkit capture shows the nested session, not an installed login session.
 
 | Problem                    | Next step                                                |
 | -------------------------- | -------------------------------------------------------- |
-| No host `WAYLAND_DISPLAY`  | Use a Wayland desktop or headless mode                   |
-| No Shell in `./install`    | Finish the source build                                  |
+| No host `WAYLAND_DISPLAY`  | Start the preview from a Wayland desktop                 |
+| No Gnoblin in `./install`  | Finish the source build                                  |
 | No terminal found          | Install one or pass its command explicitly               |
 | Quickshell/Qt mismatch     | Install or rebuild a matching Quickshell                 |
 | `EBUSY` taking the session | Use this devkit launcher, not a direct native/KMS launch |

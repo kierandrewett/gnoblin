@@ -2,7 +2,7 @@
 # List the tracked and Gnoblin-owned files required by a release source archive.
 set -euo pipefail
 
-PROJECT="${1:?usage: list-tarball-sources.sh <mutter|gnome-shell> [--prepare]}"
+PROJECT="${1:?usage: list-tarball-sources.sh <mutter|xdg-desktop-portal-gnome> [--prepare]}"
 PREPARE=false
 if [ "${2:-}" = "--prepare" ]; then
     PREPARE=true
@@ -17,8 +17,8 @@ case "$PROJECT" in
     mutter)
         REQUIRED_SUBPROJECTS=(gvdb)
         ;;
-    gnome-shell)
-        REQUIRED_SUBPROJECTS=(gvc libshew jasmine-gjs)
+    xdg-desktop-portal-gnome)
+        REQUIRED_SUBPROJECTS=(libgxdp)
         ;;
     *)
         echo "unknown subproject: $PROJECT" >&2

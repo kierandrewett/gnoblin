@@ -1,0 +1,270 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 2 Oct 2026 04:59:28 +0100
+Subject: [PATCH] Configure Xwayland preferences from Lua
+
+---
+diff --git a/src/backends/meta-settings-private.h b/src/backends/meta-settings-private.h
+index 2ba4443a0..0c96daff2 100644
+--- a/src/backends/meta-settings-private.h
++++ b/src/backends/meta-settings-private.h
+@@ -19,6 +19,7 @@
+ 
+ #pragma once
+ 
++#include <gio/gio.h>
+ #include <glib-object.h>
+ 
+ #include "backends/meta-backend-types.h"
+@@ -45,6 +46,9 @@ G_DECLARE_FINAL_TYPE (MetaSettings, meta_settings,
+ 
+ MetaSettings * meta_settings_new (MetaBackend *backend);
+ 
++void meta_settings_apply_gnoblin_xwayland_preferences (MetaSettings *settings,
++                                                        GVariant    *preferences);
++
+ void meta_settings_post_init (MetaSettings *settings);
+ 
+ void meta_settings_update_ui_scaling_factor (MetaSettings *settings);
+diff --git a/src/backends/meta-settings.c b/src/backends/meta-settings.c
+index e5b49ba57..759f91469 100644
+--- a/src/backends/meta-settings.c
++++ b/src/backends/meta-settings.c
+@@ -23,11 +23,16 @@
+ 
+ #include <gio/gio.h>
+ #include <gio/gsettingsschema.h>
++#include <math.h>
+ 
+ #include "backends/meta-backend-private.h"
+ #include "backends/meta-logical-monitor-private.h"
+ #include "backends/meta-monitor-manager-private.h"
+ 
++#ifdef HAVE_WAYLAND
++#include "core/gnoblin-native-control.h"
++#endif
++
+ #ifndef XWAYLAND_GRAB_DEFAULT_ACCESS_RULES
+ # warning "XWAYLAND_GRAB_DEFAULT_ACCESS_RULES is not set"
+ # define  XWAYLAND_GRAB_DEFAULT_ACCESS_RULES ""
+@@ -338,6 +343,43 @@ xwayland_grab_list_add_item (MetaSettings *settings,
+                      g_pattern_spec_new (&item[1]));
+ }
+ 
++static void
++reset_xwayland_grab_access_rules (MetaSettings *settings)
++{
++  g_auto (GStrv) system_defaults = NULL;
++  int i;
++
++  g_clear_pointer (&settings->xwayland_grab_allow_list_patterns,
++                   g_ptr_array_unref);
++  settings->xwayland_grab_allow_list_patterns =
++    g_ptr_array_new_with_free_func ((GDestroyNotify) g_pattern_spec_free);
++
++  g_clear_pointer (&settings->xwayland_grab_deny_list_patterns,
++                   g_ptr_array_unref);
++  settings->xwayland_grab_deny_list_patterns =
++    g_ptr_array_new_with_free_func ((GDestroyNotify) g_pattern_spec_free);
++
++  system_defaults = g_strsplit (XWAYLAND_GRAB_DEFAULT_ACCESS_RULES, ",", -1);
++  for (i = 0; system_defaults[i]; i++)
++    xwayland_grab_list_add_item (settings, system_defaults[i]);
++}
++
++static GVariant *
++xwayland_array_item (GVariant *array,
++                     gsize     index)
++{
++  GVariant *item = g_variant_get_child_value (array, index);
++
++  if (g_variant_is_of_type (item, G_VARIANT_TYPE_VARIANT))
++    {
++      GVariant *unboxed = g_variant_get_variant (item);
++      g_variant_unref (item);
++      return unboxed;
++    }
++
++  return item;
++}
++
+ static gboolean
+ xwayland_grab_access_rules_handler (GVariant *variant,
+                                     gpointer *result,
+@@ -360,25 +402,7 @@ xwayland_grab_access_rules_handler (GVariant *variant,
+ static void
+ update_xwayland_grab_access_rules (MetaSettings *settings)
+ {
+-  gchar **system_defaults;
+-  int i;
+-
+-  /* Free previous patterns and create new arrays */
+-  g_clear_pointer (&settings->xwayland_grab_allow_list_patterns,
+-                   g_ptr_array_unref);
+-  settings->xwayland_grab_allow_list_patterns =
+-    g_ptr_array_new_with_free_func ((GDestroyNotify) g_pattern_spec_free);
+-
+-  g_clear_pointer (&settings->xwayland_grab_deny_list_patterns,
+-                   g_ptr_array_unref);
+-  settings->xwayland_grab_deny_list_patterns =
+-    g_ptr_array_new_with_free_func ((GDestroyNotify) g_pattern_spec_free);
+-
+-  /* Add system defaults values */
+-  system_defaults = g_strsplit (XWAYLAND_GRAB_DEFAULT_ACCESS_RULES, ",", -1);
+-  for (i = 0; system_defaults[i]; i++)
+-    xwayland_grab_list_add_item (settings, system_defaults[i]);
+-  g_strfreev (system_defaults);
++  reset_xwayland_grab_access_rules (settings);
+ 
+   /* Then add gsettings values */
+   g_settings_get_mapped (settings->wayland_settings,
+@@ -427,11 +451,129 @@ update_xwayland_scaling_factor (MetaSettings *settings)
+                                    "xwayland-scaling-factor");
+ }
+ 
++#ifdef HAVE_WAYLAND
++static gboolean
++is_gnoblin_session (void)
++{
++  return gnoblin_native_control_is_session (NULL);
++}
++#else
++static gboolean
++is_gnoblin_session (void)
++{
++  return FALSE;
++}
++#endif
++
++static gboolean
++gnoblin_owns_xwayland_preference (const char *key)
++{
++  return g_str_equal (key, "xwayland-allow-grabs") ||
++         g_str_equal (key, "xwayland-grab-access-rules") ||
++         g_str_equal (key, "xwayland-disable-extension") ||
++         g_str_equal (key, "xwayland-allow-byte-swapped-clients") ||
++         g_str_equal (key, "xwayland-scaling-factor");
++}
++
++static gboolean
++variant_get_number (GVariant *value,
++                    double   *number)
++{
++  if (g_variant_is_of_type (value, G_VARIANT_TYPE_DOUBLE))
++    *number = g_variant_get_double (value);
++  else if (g_variant_is_of_type (value, G_VARIANT_TYPE_INT64))
++    *number = (double) g_variant_get_int64 (value);
++  else if (g_variant_is_of_type (value, G_VARIANT_TYPE_INT32))
++    *number = (double) g_variant_get_int32 (value);
++  else
++    return FALSE;
++
++  return isfinite (*number);
++}
++
++void
++meta_settings_apply_gnoblin_xwayland_preferences (MetaSettings *settings,
++                                                  GVariant     *preferences)
++{
++  g_autoptr (GVariant) rules = NULL;
++  g_autoptr (GVariant) extensions = NULL;
++  g_autoptr (GVariant) scale_value = NULL;
++  gboolean allow_grabs = FALSE;
++  gboolean allow_byte_swapped_clients = FALSE;
++  gboolean scaling_factor_changed;
++  double scaling_factor = 0.0;
++  int disable_extensions = 0;
++
++  g_return_if_fail (META_IS_SETTINGS (settings));
++  g_return_if_fail (!preferences ||
++                    g_variant_is_of_type (preferences, G_VARIANT_TYPE_VARDICT));
++  g_return_if_fail (is_gnoblin_session ());
++
++  if (preferences)
++    {
++      g_variant_lookup (preferences, "allow-grabs", "b", &allow_grabs);
++      g_variant_lookup (preferences, "allow-byte-swapped-clients", "b",
++                        &allow_byte_swapped_clients);
++      rules = g_variant_lookup_value (preferences, "grab-access-rules", NULL);
++      extensions = g_variant_lookup_value (preferences, "disable-extensions", NULL);
++      scale_value = g_variant_lookup_value (preferences, "scaling-factor", NULL);
++      if (scale_value && !variant_get_number (scale_value, &scaling_factor))
++        g_warning ("Ignoring invalid Gnoblin Xwayland scaling factor");
++    }
++
++  settings->xwayland_allow_grabs = allow_grabs;
++  settings->xwayland_allow_byte_swapped_clients = allow_byte_swapped_clients;
++
++  reset_xwayland_grab_access_rules (settings);
++  if (rules &&
++      (g_variant_is_of_type (rules, G_VARIANT_TYPE ("av")) ||
++       g_variant_is_of_type (rules, G_VARIANT_TYPE_STRING_ARRAY)))
++    {
++      for (gsize i = 0; i < g_variant_n_children (rules); i++)
++        {
++          g_autoptr (GVariant) item = xwayland_array_item (rules, i);
++
++          if (g_variant_is_of_type (item, G_VARIANT_TYPE_STRING))
++            xwayland_grab_list_add_item (
++              settings, (char *) g_variant_get_string (item, NULL));
++        }
++    }
++
++  if (extensions &&
++      (g_variant_is_of_type (extensions, G_VARIANT_TYPE ("av")) ||
++       g_variant_is_of_type (extensions, G_VARIANT_TYPE_STRING_ARRAY)))
++    {
++      for (gsize i = 0; i < g_variant_n_children (extensions); i++)
++        {
++          g_autoptr (GVariant) item = xwayland_array_item (extensions, i);
++          const char *name;
++
++          if (!g_variant_is_of_type (item, G_VARIANT_TYPE_STRING))
++            continue;
++
++          name = g_variant_get_string (item, NULL);
++          if (g_str_equal (name, "security"))
++            disable_extensions |= META_XWAYLAND_EXTENSION_SECURITY;
++          else if (g_str_equal (name, "xtest"))
++            disable_extensions |= META_XWAYLAND_EXTENSION_XTEST;
++        }
++    }
++  settings->xwayland_disable_extensions = disable_extensions;
++
++  scaling_factor_changed =
++    settings->xwayland_scaling_factor != (float) scaling_factor;
++  settings->xwayland_scaling_factor = (float) scaling_factor;
++  if (scaling_factor_changed)
++    g_signal_emit (settings, signals[XWAYLAND_SCALING_FACTOR_CHANGED], 0);
++}
++
+ static void
+ wayland_settings_changed (GSettings    *wayland_settings,
+                           gchar        *key,
+                           MetaSettings *settings)
+ {
++  if (is_gnoblin_session () && gnoblin_owns_xwayland_preference (key))
++    return;
+ 
+   if (g_str_equal (key, "xwayland-allow-grabs"))
+     {
+@@ -524,6 +666,19 @@ meta_settings_new (MetaBackend *backend)
+   settings = g_object_new (META_TYPE_SETTINGS, NULL);
+   settings->backend = backend;
+ 
++  if (is_gnoblin_session ())
++    {
++#ifdef HAVE_WAYLAND
++      g_autoptr (GVariant) document =
++        gnoblin_native_control_get_config_document (NULL);
++      g_autoptr (GVariant) preferences = document
++        ? g_variant_lookup_value (document, "xwayland", G_VARIANT_TYPE_VARDICT)
++        : NULL;
++
++      meta_settings_apply_gnoblin_xwayland_preferences (settings, preferences);
++#endif
++    }
++
+   return settings;
+ }
+ 
