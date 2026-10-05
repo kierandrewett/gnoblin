@@ -135,8 +135,17 @@ Omitted values inherit shell settings. `in` needs brackets because it is a Lua k
 | `inactive_background` | `"#303030"`                         | Unfocused background colour                          |
 | `button_layout`       | `{"minimize", "maximize", "close"}` | Ordered buttons, without duplicates; `{}` hides them |
 
+The generic default mode is `off`. GTK Wayland windows that create a KDE
+server-decoration object use `auto` behavior by default and receive Gnoblin's
+native frame. A matching rule's `frame.mode` overrides that behavior.
+
 `auto` supplies SSD only for explicit client requests. `replace` crops client
 pixels and adds a frame.
+
+With `prefer-server`, Gnoblin clips CSD buffer margins to the app's declared
+visible bounds and applies Gnoblin's configured border and shadow there. It
+does not estimate margin sizes. An app that omits visible bounds uses its full
+surface.
 
 `frame.button_layout` sets the buttons drawn by that window's frame renderer.
 For Mutter's global server-side button order, see

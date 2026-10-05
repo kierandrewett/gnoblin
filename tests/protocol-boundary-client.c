@@ -2,6 +2,7 @@
 
 /* Black-box client harness for Gnoblin-owned Wayland protocol boundaries. */
 #include "xdg-shell-client-protocol.h"
+#include "kde-server-decoration-client-protocol.h"
 #include "wlr-foreign-toplevel-management-unstable-v1-client-protocol.h"
 #include "wlr-layer-shell-unstable-v1-client-protocol.h"
 #include "wlr-screencopy-unstable-v1-client-protocol.h"
@@ -27,6 +28,9 @@ struct protocols {
     struct wl_shm* shm;
     struct wl_compositor* compositor;
     struct xdg_wm_base* xdg_wm_base;
+    struct org_kde_kwin_server_decoration_manager* kde_decoration_manager;
+    bool kde_default_received;
+    uint32_t kde_default_mode;
 };
 
 static uint32_t supported_version(uint32_t advertised, uint32_t supported) {
@@ -138,6 +142,38 @@ static void xdg_wm_base_ping(void* data, struct xdg_wm_base* xdg_wm_base, uint32
 
 static const struct xdg_wm_base_listener xdg_wm_base_listener = {
     .ping = xdg_wm_base_ping,
+};
+
+struct kde_decoration_state {
+    unsigned int mode_events;
+    uint32_t mode;
+};
+
+static void kde_manager_default_mode(void* data,
+                                     struct org_kde_kwin_server_decoration_manager* manager,
+                                     uint32_t mode) {
+    struct protocols* protocols = data;
+
+    (void)manager;
+    protocols->kde_default_received = true;
+    protocols->kde_default_mode = mode;
+}
+
+static const struct org_kde_kwin_server_decoration_manager_listener kde_manager_listener = {
+    .default_mode = kde_manager_default_mode,
+};
+
+static void kde_decoration_mode(void* data, struct org_kde_kwin_server_decoration* decoration,
+                                uint32_t mode) {
+    struct kde_decoration_state* state = data;
+
+    (void)decoration;
+    state->mode_events++;
+    state->mode = mode;
+}
+
+static const struct org_kde_kwin_server_decoration_listener kde_decoration_listener = {
+    .mode = kde_decoration_mode,
 };
 
 static void xdg_surface_configure(void* data, struct xdg_surface* xdg_surface, uint32_t serial) {
@@ -359,6 +395,13 @@ static void registry_global(void* data, struct wl_registry* registry, uint32_t n
     else if (strcmp(interface, xdg_wm_base_interface.name) == 0)
         protocols->xdg_wm_base =
             wl_registry_bind(registry, name, &xdg_wm_base_interface, supported_version(version, 1));
+    else if (strcmp(interface, org_kde_kwin_server_decoration_manager_interface.name) == 0) {
+        protocols->kde_decoration_manager =
+            wl_registry_bind(registry, name, &org_kde_kwin_server_decoration_manager_interface,
+                             supported_version(version, 1));
+        org_kde_kwin_server_decoration_manager_add_listener(protocols->kde_decoration_manager,
+                                                            &kde_manager_listener, protocols);
+    }
 }
 
 static void registry_global_remove(void* data, struct wl_registry* registry, uint32_t name) {
@@ -921,6 +964,67 @@ static bool test_screencopy_boundaries(struct wl_display* display, struct protoc
     return true;
 }
 
+static bool test_kde_server_decoration(struct wl_display* display, struct protocols* protocols) {
+    struct kde_decoration_state decoration_state = {0};
+    struct xdg_surface_state xdg_state = {0};
+    struct wl_surface* surface;
+    struct xdg_surface* xdg_surface;
+    struct xdg_toplevel* xdg_toplevel;
+    struct org_kde_kwin_server_decoration* decoration;
+
+    if (!protocols->kde_default_received ||
+        protocols->kde_default_mode != ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
+        fprintf(stderr, "FAIL: KDE server-decoration default mode is not server-side\n");
+        return false;
+    }
+
+    surface = wl_compositor_create_surface(protocols->compositor);
+    xdg_surface = xdg_wm_base_get_xdg_surface(protocols->xdg_wm_base, surface);
+    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, &xdg_state);
+    xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
+    xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.KdeDecorationProtocolTest");
+    decoration =
+        org_kde_kwin_server_decoration_manager_create(protocols->kde_decoration_manager, surface);
+    org_kde_kwin_server_decoration_add_listener(decoration, &kde_decoration_listener,
+                                                &decoration_state);
+
+    if (wl_display_roundtrip(display) < 0 || decoration_state.mode_events != 1 ||
+        decoration_state.mode != ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
+        fprintf(stderr, "FAIL: KDE server-decoration object did not start in server mode\n");
+        return false;
+    }
+
+    org_kde_kwin_server_decoration_request_mode(decoration,
+                                                ORG_KDE_KWIN_SERVER_DECORATION_MODE_CLIENT);
+    if (wl_display_roundtrip(display) < 0 || decoration_state.mode_events != 2 ||
+        decoration_state.mode != ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
+        fprintf(stderr, "FAIL: Gnoblin accepted a client-side decoration request\n");
+        return false;
+    }
+
+    wl_surface_commit(surface);
+    if (wl_display_roundtrip(display) < 0 || !xdg_state.configured) {
+        fprintf(stderr, "FAIL: KDE-decorated surface did not complete xdg initial configure\n");
+        return false;
+    }
+    xdg_surface_ack_configure(xdg_surface, xdg_state.serial);
+    wl_surface_commit(surface);
+    if (wl_display_roundtrip(display) < 0) {
+        fprintf(stderr, "FAIL: KDE-decorated surface failed to acknowledge configure\n");
+        return false;
+    }
+
+    org_kde_kwin_server_decoration_release(decoration);
+    xdg_toplevel_destroy(xdg_toplevel);
+    xdg_surface_destroy(xdg_surface);
+    wl_surface_destroy(surface);
+    if (wl_display_roundtrip(display) < 0) {
+        fprintf(stderr, "FAIL: KDE server-decoration resources did not clean up\n");
+        return false;
+    }
+    return true;
+}
+
 int main(void) {
     struct protocols protocols = {0};
     struct wl_display* display = wl_display_connect(NULL);
@@ -954,6 +1058,9 @@ int main(void) {
         return 1;
     }
 
+    if (!protocols.kde_decoration_manager || !test_kde_server_decoration(display, &protocols))
+        return 1;
+
     if (!test_layer_surface_boundaries())
         return 1;
 
@@ -981,6 +1088,6 @@ int main(void) {
         return 1;
 
     wl_display_disconnect(display);
-    printf("PASS: protocol manager lifecycle and geometry boundaries hold\n");
+    printf("PASS: protocol manager lifecycle, decoration mode, and geometry boundaries hold\n");
     return 0;
 }

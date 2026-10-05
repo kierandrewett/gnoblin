@@ -21,5 +21,6 @@ void meta_gnoblin_window_frame_rect_to_client(MetaWindow* window,
                                               const MetaWaylandWindowConfiguration* configuration,
                                               MtkRectangle* rect);
 void meta_gnoblin_window_frame_sync_actor(MetaWindow* window, ClutterActor* surface);
+gboolean meta_gnoblin_window_frame_get_visible_geometry(MetaWindow* window, MtkRectangle* geometry);
 void meta_gnoblin_window_frame_emit_changed(MetaWindow* window);
 gboolean meta_gnoblin_window_frame_is_active(MetaWindow* window);

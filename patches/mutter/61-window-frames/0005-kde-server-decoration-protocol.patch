@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 4 Oct 2026 20:08:52 +0100
+Subject: [PATCH] mutter: include GTK server-decoration protocol
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index 1dae97460..3fc274ded 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1067,6 +1067,7 @@ wayland_protocols = [
+   # gnoblin: vendored wlr-layer-shell protocol
+   ['wlr-layer-shell-unstable-v1', 'private', ],
+   ['gnoblin-window-frame-v1', 'private', ],
++  ['kde-server-decoration', 'private', ],
+   ['idle-inhibit', 'unstable', 1, ],
+   ['keyboard-shortcuts-inhibit', 'unstable', 1, ],
+   ['linux-dmabuf', 'stable', 1, ],

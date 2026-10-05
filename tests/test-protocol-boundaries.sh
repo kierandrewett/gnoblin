@@ -9,6 +9,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 protocols=(
     foreign-toplevel-management/wlr-foreign-toplevel-management-unstable-v1.xml
+    window-frame/kde-server-decoration.xml
     layer-shell/wlr-layer-shell-unstable-v1.xml
     screencopy/wlr-screencopy-unstable-v1.xml
 )

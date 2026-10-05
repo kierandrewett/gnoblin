@@ -40,9 +40,24 @@ them through its config. Use `mode` to decide which windows get a frame and
 | `prefer-server` | Prefer a Gnoblin frame for apps that support decoration negotiation |
 | `replace`       | Hide the configured app margins and draw a Gnoblin frame            |
 
-Apps negotiate decorations through the Wayland `xdg-decoration` protocol.
-Not every app supports it, and an app that gives no preference may still draw
-a titlebar. `auto` uses explicit requests instead of guessing from appearance.
+Apps negotiate decorations through Wayland decoration protocols. GTK on Wayland
+uses KDE's server-decoration protocol; other clients commonly use
+`xdg-decoration`. Gnoblin advertises server decorations to both. GTK windows
+that create the KDE decoration object use `auto` behavior by default, so
+Gnoblin's native renderer supplies their frame. A matching Lua window rule can
+select another mode. `auto` uses client requests instead of guessing from
+appearance.
+
+GTK apps with a custom titlebar can still draw titlebar controls inside their
+surface. Gnoblin applies its frame and clips declared client shadow margins,
+but it cannot identify arbitrary pixels inside an app surface as a border
+without risking removal of app content. `corners.remove_csd` reconstructs
+detected client-rounded corners before applying Gnoblin's shape.
+
+With `prefer-server`, Gnoblin uses the app's declared visible bounds when the
+app keeps CSD. It clips buffer margins outside those bounds and draws Gnoblin's
+configured border and shadow around them. Apps that omit visible bounds use the
+full surface.
 
 ## Let apps request a Gnoblin titlebar {#enable-negotiated-ssd}
 
@@ -88,13 +103,15 @@ Renderer and style names accept 1–64 letters, digits, `_` or `-`.
 
 ## Cropping client decorations
 
-Cropping hides a strip of the app and makes that strip unclickable. It cannot
-distinguish a titlebar from tabs, search boxes or other controls. Use it only
-when you know exactly which margins you want to hide.
+The `crop` option hides a strip of the app and makes that strip unclickable. It
+cannot distinguish a titlebar from tabs, search boxes or other controls. Use
+it only when you know exactly which margins you want to hide.
 
-With `prefer-server`, explicit crop provides a fallback for CSD-only clients;
-negotiated SSD clients are not cropped. With `replace`, zero extents give a
-crop-only window. Fullscreen temporarily removes crop and frame extents.
+With `prefer-server`, the declared visible bounds are cropped automatically
+when an app keeps CSD; `crop` adds extra margins in that case. Negotiated SSD
+clients use their own declared bounds and ignore `crop`. With `replace`, zero
+extents give a crop-only window. Fullscreen temporarily removes explicit crop
+and frame extents.
 
 ## Custom renderers
 
