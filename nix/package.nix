@@ -62,8 +62,8 @@ let
     pname = "gnoblin-mutter";
     version = mutterVersion;
     src = mutterSrc;
-    patches = patchesFor "mutter";
-    prePatch = (old.prePatch or "") + copyOverlay "mutter" + addSubproject gvdbSrc "gvdb";
+    patches = [ ];
+    prePatch = (old.prePatch or "") + addSubproject gvdbSrc "gvdb";
     postPatch = (old.postPatch or "") + ''
       python3 ${gnoblinSrc}/scripts/generate-mutter-keybinding-catalog.py \
         "$PWD" \

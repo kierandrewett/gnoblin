@@ -39,8 +39,19 @@ worktree_status() {
 }
 
 is_pristine() {
-    [ "$(git -C "$SUBPROJECT" rev-parse HEAD)" = "$(git -C "$SUBPROJECT" rev-parse "$TAG^{commit}")" ] &&
-        [ -z "$(worktree_status)" ]
+    [ -z "$(worktree_status)" ] || return 1
+    if [ "$(git -C "$SUBPROJECT" rev-parse HEAD)" = "$(git -C "$SUBPROJECT" rev-parse "$TAG^{commit}")" ]; then
+        return 0
+    fi
+    [ "$PROJECT" = mutter ] || return 1
+
+    expected_url="$("$ROOT/scripts/gnome-versions.py" get mutter source-url)"
+    configured_url="$(git -C "$ROOT" config -f "$ROOT/.gitmodules" --get submodule.subprojects/mutter.url)"
+    origin_url="$(git -C "$SUBPROJECT" remote get-url origin)"
+    expected_commit="$(git -C "$ROOT" rev-parse "HEAD:subprojects/mutter")"
+    [ "$configured_url" = "$expected_url" ] &&
+        [ "$origin_url" = "$expected_url" ] &&
+        [ "$(git -C "$SUBPROJECT" rev-parse HEAD)" = "$expected_commit" ]
 }
 
 case "$ACTION" in

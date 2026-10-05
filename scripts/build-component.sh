@@ -18,7 +18,11 @@ mutter_api="${mutter_version%%.*}"
 source_dir="$root/subprojects/$name"
 build_dir="$build_root/$name"
 
-if [ "$mode" = checkout ]; then
+if [ "$mode" = checkout ] && [ "$name" = mutter ]; then
+    # The pinned Gnoblin fork already contains Mutter's overlays and patch series.
+    # Validate its superproject pin and build it without reapplying upstream patches.
+    "$root/scripts/ensure-release-subprojects.sh" mutter
+elif [ "$mode" = checkout ]; then
     inputs=("$root/gnome-versions.json")
     while IFS= read -r -d '' patch; do inputs+=("$patch"); done < <(
         find "$root/patches/$name" -type f -name '*.patch' -print0 | sort -z

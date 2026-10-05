@@ -146,7 +146,7 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command")
     get_parser = subparsers.add_parser("get")
     get_parser.add_argument("project", choices=RELEASE_PROJECTS)
-    get_parser.add_argument("field", choices=("version", "api", "commit"))
+    get_parser.add_argument("field", choices=("version", "api", "commit", "source-url"))
     check_parser = subparsers.add_parser("check")
     check_parser.add_argument("--upstream", action="store_true")
     update_parser = subparsers.add_parser("update")
@@ -157,7 +157,9 @@ def main() -> int:
 
     data = load()
     if args.command == "get":
-        value = data["components"][args.project].get(args.field)
+        value = MUTTER_FORK if args.project == "mutter" and args.field == "source-url" else None
+        if value is None and args.field != "source-url":
+            value = data["components"][args.project].get(args.field)
         if value is None:
             parser.error(f"{args.project} has no {args.field}")
         print(value)

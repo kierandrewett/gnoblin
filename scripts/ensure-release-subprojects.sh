@@ -35,7 +35,25 @@ for project in "${projects[@]}"; do
         continue
     fi
 
+    if [ "$project" = mutter ]; then
+        expected_url="$("$ROOT/scripts/gnome-versions.py" get mutter source-url)"
+        configured_url="$(git -C "$ROOT" config -f "$ROOT/.gitmodules" --get submodule.subprojects/mutter.url)"
+        origin_url="$(git -C "$subproject" remote get-url origin)"
+        checkout="$(git -C "$subproject" rev-parse HEAD)"
+        status="$(git -C "$subproject" status --porcelain --untracked-files=all -- \
+            . ':(exclude)subprojects/.wraplock')"
+        if [ "$configured_url" = "$expected_url" ] &&
+            [ "$origin_url" = "$expected_url" ] &&
+            [ "$checkout" = "$actual" ] && [ -z "$status" ]; then
+            continue
+        fi
+    fi
+
     echo "subproject $project is pinned at $actual, but release $tag names $expected" >&2
-    echo "The superproject pin and release tag must agree; no checkout was overwritten." >&2
+    if [ "$project" = mutter ]; then
+        echo "Mutter must use either the GNOME release tag or the clean Gnoblin fork revision pinned by this checkout." >&2
+    else
+        echo "The superproject pin and release tag must agree; no checkout was overwritten." >&2
+    fi
     exit 1
 done
