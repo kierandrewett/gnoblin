@@ -111,11 +111,23 @@ For one-off reads and actions, prefer `gnoblinctl`; it handles API negotiation
 and socket requests. A long-running shell component should keep one connection
 open for its subscriptions and connection-owned capabilities.
 
+Bingux handles Alt+Tab and Super+Tab in its own window switcher. Its installed
+Gnoblin configuration fragment clears Mutter's default bindings for those
+accelerators so `shortcut.bind` can register them. Keep the fragment loaded
+from your `init.lua`; existing configs can load the packaged defaults with:
+
+```lua
+gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
+```
+
 ## Keep shell presentation in Bingux
 
 The compatibility bridge also exposes `ui-state` and `ui-command` callbacks.
-Those are shell-specific state and presentation, so Bingux should own them in
-its QML state rather than replace them with new Gnoblin APIs.
+The `ui-sessions` socket capability carries those messages between Bingux
+processes. Each process keeps its presentation and reactions in QML. Check the
+capability in the socket greeting before sending `ui-session` messages; see the
+[compositor bridge reference](compositor-bridge.md#api-version-175-shell-ui-sessions)
+for state ownership, message shapes, and limits.
 
 The `org.gnoblin.LaunchFeedback` D-Bus service is available in the standalone
 session. Bingux can keep using it to show the busy cursor while an app starts.

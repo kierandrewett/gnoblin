@@ -384,6 +384,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.72            | `gnoblin.runtime.status-changed`                                                                       |
 | 1.73            | `gnoblin.input.pad-help-requested`                                                                     |
 | 1.74            | `monitors.privacy_screen`, `monitors.set_privacy_screen`, and `gnoblin.monitor.privacy-screen-changed` |
+| 1.75            | Adds the `ui-sessions` capability for state and command messages between shell processes               |
 
 ### API 1.27: shell presentation requests
 
@@ -1686,6 +1687,33 @@ updated privacy-screen snapshot. Subscribe to
 `gnoblin.monitor.privacy-screen-changed` at API 1.74 to receive the same
 snapshot fields with `sequence` and `time` when the effective request, source,
 or per-monitor state changes.
+
+### API version 1.75: shell UI sessions
+
+The `ui-sessions` capability lets separate shell processes share small state
+snapshots and send commands. It carries data only; the shell decides how to
+present it and how to respond. The socket greeting advertises the capability
+when this transport is available.
+
+Send `watch` once per connection. A new watcher receives the current state for
+each published name. Publish and command messages use names made of 1-128
+ASCII letters, digits, periods, underscores, or hyphens, and object payloads:
+
+```json
+{"op":"ui-session","action":"watch"}
+{"op":"ui-session","action":"state","name":"bingux.search","state":{"open":true,"query":"terminal"}}
+{"op":"ui-session","action":"command","name":"bingux.search","command":{"action":"close"}}
+```
+
+Gnoblin sends `ui-state` events when state changes and `ui-command` events for
+commands. A published name has one owning connection; another connection
+cannot replace its state. Commands are not stored and may target a name before
+it has published state. If the owner disconnects, Gnoblin releases the name
+and sends its watchers a `ui-state` event with `state: null`.
+
+Gnoblin allows at most 64 active names. Each state or command payload is
+limited to 8 KiB. Connections that publish state or commands must watch first.
+Requests may include an optional string `id` to receive a reply or error.
 
 ## Limits and disconnects
 
