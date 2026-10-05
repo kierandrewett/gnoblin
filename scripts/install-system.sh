@@ -92,9 +92,20 @@ else
     META_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin.spec")"
     MUTTER_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/mutter.spec")"
     PORTAL_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin-portal.spec")"
-    packages=("gnoblin:$META_VERSION" "gnoblin-mutter:$MUTTER_VERSION" "gnoblin-portal:$PORTAL_VERSION")
+    packages=("gnoblin:$META_VERSION" "gnoblin-mutter:$MUTTER_VERSION")
     if rpm -q gnoblin-mutter-devel >/dev/null 2>&1; then
         packages+=("gnoblin-mutter-devel:$MUTTER_VERSION")
+    fi
+    portal_release="$(rpmspec -q --srpm --qf '%{RELEASE}' "$ROOT/packaging/rpm/gnoblin-portal.spec")"
+    mapfile -t portal_matches < <(find "$RPM_DIR" -type f \
+        -name "gnoblin-portal-$PORTAL_VERSION-$portal_release.*.rpm" | sort)
+    if [ "${#portal_matches[@]}" -gt 1 ]; then
+        echo "Expected at most one gnoblin-portal-$PORTAL_VERSION-$portal_release RPM under $RPM_DIR; found ${#portal_matches[@]}." >&2
+        exit 1
+    elif [ "${#portal_matches[@]}" -eq 1 ]; then
+        packages+=("gnoblin-portal:$PORTAL_VERSION")
+    else
+        echo "No matching Gnoblin portal RPM found; installing the core session without it."
     fi
     rpms=()
     for package in "${packages[@]}"; do
@@ -139,6 +150,10 @@ elif [ -f "$LEGACY_GNOME_SESSION_DROPIN_PATH" ] &&
     echo 'Removed the obsolete managed GNOME session drop-in.'
 fi
 systemctl --user daemon-reload
-rpm -q gnoblin gnoblin-mutter gnoblin-portal
+rpm -q gnoblin gnoblin-mutter
+if rpm -q gnoblin-portal >/dev/null 2>&1; then
+    rpm -q gnoblin-portal
+fi
 printf '%s\n' 'Installed. Select Gnoblin at login; GNOME remains available.' \
-    'Remove with: sudo dnf remove gnoblin gnoblin-portal gnoblin-mutter'
+    'Remove with: sudo dnf remove gnoblin gnoblin-mutter' \
+    'Remove the optional portal separately: sudo dnf remove gnoblin-portal'
