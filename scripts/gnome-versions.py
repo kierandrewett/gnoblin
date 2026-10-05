@@ -18,6 +18,14 @@ PATCH_PROJECTS = (
 )
 RELEASE_PROJECTS = PATCH_PROJECTS + ("gsettings-desktop-schemas",)
 UPSTREAM = {project: f"https://gitlab.gnome.org/GNOME/{project}.git" for project in RELEASE_PROJECTS}
+MUTTER_FORK = "https://github.com/kierandrewett/gnoblin-mutter.git"
+
+
+def mutter_source_commit() -> str:
+    return subprocess.check_output(
+        ["git", "-C", str(ROOT / "subprojects/mutter"), "rev-parse", "HEAD"],
+        text=True,
+    ).strip()
 
 
 def load() -> dict:
@@ -64,7 +72,21 @@ def generated_values(data: dict) -> Tuple[Tuple[Path, str, str], ...]:
         (ROOT / "packaging/rpm/mutter.spec", r"(?m)^Version:\s+(\S+)$", mutter["version"]),
         (ROOT / "packaging/rpm/mutter.spec", r"(?m)^%global mutter_api_version\s+(\S+)$", mutter["api"]),
         (ROOT / "packaging/rpm/gnoblin-portal.spec", r"(?m)^Version:\s+(\S+)$", portal["version"]),
-        (ROOT / "flake.nix", r"mutter\.git\?rev=([0-9a-f]{40})", mutter["commit"]),
+        (
+            ROOT / "flake.nix",
+            r"gnoblin-mutter\.git\?ref=gnoblin-51&rev=([0-9a-f]{40})",
+            mutter_source_commit(),
+        ),
+        (
+            ROOT / ".gitmodules",
+            r'(?ms)\[submodule "subprojects/mutter"\].*?\n\turl = (\S+)',
+            MUTTER_FORK,
+        ),
+        (
+            ROOT / ".gitmodules",
+            r'(?ms)\[submodule "subprojects/mutter"\].*?\n\tbranch = (\S+)',
+            "gnoblin-51",
+        ),
         (ROOT / "flake.nix", r"xdg-desktop-portal-gnome\.git\?rev=([0-9a-f]{40})", portal["commit"]),
         (
             ROOT / "flake.nix",
