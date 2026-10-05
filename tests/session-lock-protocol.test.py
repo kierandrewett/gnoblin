@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Guard the fail-closed boundary around ext-session-lock-v1.
+"""Guard source-level invariants around ext-session-lock-v1.
 
-This is deliberately a source-level test.  A real compositor session is still
-required before the protocol can be advertised; see the session-lock design
-document for that acceptance suite.
+These assertions do not establish runtime lock security. See the session-lock
+design document for the outstanding installed-session acceptance checks.
 """
 
 from pathlib import Path
@@ -62,12 +61,15 @@ class SessionLockProtocolTests(unittest.TestCase):
         self.assertIn("meta_wayland_session_lock_is_active", source)
         self.assertIn("meta_wayland_session_lock_is_presentation_confirmed", source)
         self.assertIn("META_WAYLAND_SESSION_LOCK_FAILSAFE", source)
-        self.assertIn("reset_presentation_barrier (controller)", source)
+        self.assertRegex(source, r"reset_presentation_barrier\s*\(controller\)")
         self.assertIn("global_frame_counter", source)
         self.assertIn("frame_info->global_frame_counter <= *minimum_frame", source)
         self.assertIn("Submit another covered", source)
-        self.assertIn("clutter_actor_queue_redraw (CLUTTER_ACTOR (controller->stage))", source)
-        self.assertIn("disconnect_scene_signals (controller)", source)
+        self.assertRegex(
+            source,
+            r"clutter_actor_queue_redraw\s*\(\s*CLUTTER_ACTOR\s*\(controller->stage\)\s*\)",
+        )
+        self.assertRegex(source, r"disconnect_scene_signals\s*\(controller\)")
         self.assertIn("controller->presentation_confirmed = FALSE", source)
         self.assertIn("controller->presentation_confirmed = TRUE", source)
         self.assertIn("before-paint", source)
@@ -104,7 +106,7 @@ class SessionLockProtocolTests(unittest.TestCase):
         self.assertIn("a finished session lock cannot unlock", source)
         self.assertIn("META_WAYLAND_SESSION_LOCK_FAILSAFE", source)
         self.assertIn("close_lock_surfaces", source)
-        self.assertIn("g_hash_table_remove_all (controller->surfaces)", source)
+        self.assertRegex(source, r"g_hash_table_remove_all\s*\(controller->surfaces\)")
         self.assertIn("owner was already notified", source)
 
     def test_surface_role_is_installed_and_built(self):

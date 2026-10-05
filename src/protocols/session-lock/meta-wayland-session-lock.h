@@ -75,11 +75,11 @@ void meta_wayland_session_lock_remove_state_changed_callback(MetaWaylandComposit
 ClutterActor* meta_wayland_session_lock_get_scene(MetaWaylandCompositor* compositor);
 
 /*
- * Register the session-lock implementation boundary.
+ * Initialize the session-lock controller and conditionally register its global.
  *
- * This currently never creates ext_session_lock_manager_v1.  Advertising a
- * session lock manager before the compositor has a fail-closed scene and
- * input controller would falsely claim a security guarantee.
+ * The global is created only when Gnoblin's configuration enables
+ * ext-session-lock in a supervised Gnoblin session. The manager owns the
+ * fail-closed scene, input embargo, and presentation barrier.
  */
 void meta_wayland_init_session_lock(MetaWaylandCompositor* compositor);
 
