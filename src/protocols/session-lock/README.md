@@ -7,13 +7,14 @@ default locker, or expose a separate lock protocol.
 
 ## Current status
 
-The manager is advertised only when
-`GNOME_SHELL_SESSION_MODE=gnoblin`, through the existing
-`gnoblin_config_protocol_enabled("ext-session-lock")` predicate. It defaults
-on in that session and can be disabled in Gnoblin's `[protocols]` settings. A
-regular GNOME session never receives this global, so GNOME ScreenShield remains
-its lock implementation. The native capability returns one only after the
-global is created, allowing GNOME Shell to cut over to the compositor lock.
+The manager is advertised only in the supervised standalone Gnoblin session,
+through `gnoblin_config_protocol_enabled("ext-session-lock")`. It defaults on
+there and can be disabled in Lua config with
+`gnoblin.configure {protocols = {ext_session_lock = false}}`. Set this before
+the session starts because protocol globals are registered at compositor
+startup. A regular GNOME session never receives this global, so GNOME
+ScreenShield remains its lock implementation. The native capability reports
+the global only after it is created.
 
 The isolated Mutter lifecycle and real hyprlock protocol paths pass. A fresh
 installed session remains necessary to verify Bingux, portal capture and
