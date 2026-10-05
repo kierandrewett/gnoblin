@@ -74,6 +74,9 @@
 
 #define MAX_REQUEST_BYTES (64 * 1024)
 #define MAX_PENDING_BYTES (1024 * 1024)
+#define MAX_UI_SESSIONS 64
+#define MAX_UI_SESSION_NAME_LENGTH 128
+#define MAX_UI_SESSION_PAYLOAD_BYTES (8 * 1024)
 #define NATIVE_CONTROL_OBJECT_DATA_KEY "gnoblin-native-control"
 #define OVERLAY_MODIFIER_HOOK_AVAILABLE_DATA_KEY "gnoblin-overlay-modifier-hook-available"
 #define MAX_LAUNCHES 64
@@ -148,6 +151,7 @@ struct _GnoblinNativeControl {
     GSocketService* service;
     GDBusConnection* session_bus;
     GHashTable* clients;
+    GHashTable* ui_sessions;
     GHashTable* windows;
     GHashTable* window_state;
     GHashTable* layer_state;
@@ -535,7 +539,13 @@ typedef struct {
     guint pending_thumbnails;
     GHashTable* pending_grant_operations;
     guint pending_deferred_requests;
+    gboolean watch_ui_sessions;
 } Client;
+
+typedef struct {
+    guint64 owner_client_id;
+    JsonNode* state;
+} NativeUiSession;
 
 typedef struct {
     Client* client;
@@ -661,6 +671,10 @@ static gboolean native_mutter_event_is_subscribable(GnoblinNativeControl* contro
                                                     const char* name);
 static void native_refresh_all_mutter_signal_watches(GnoblinNativeControl* control);
 static void native_socket_revoke_client_tokens(Client* client);
+static void native_ui_sessions_client_disconnected(GnoblinNativeControl* control,
+                                                   guint64 client_id);
+static void native_ui_session_free(gpointer data);
+static char* handle_ui_session_request(Client* client, JsonObject* request);
 static GVariant* native_socket_snap_rect(JsonNode* node);
 static void prune_focus_contexts(GnoblinNativeControl* control, gint64 now);
 static gboolean focus_context_expiry_tick(gpointer user_data);
@@ -952,6 +966,7 @@ static const NativeCapability native_capabilities[] = {
     {"microphone-monitor", "Monitor microphone activity through PipeWire."},
     {"camera-monitor", "Monitor camera activity through PipeWire."},
     {"location-agent", "Monitor GeoClue activity and broker location authorization to Lua."},
+    {"ui-sessions", "Exchange bounded state and commands between shell UI processes."},
 };
 
 static const char* native_socket_events[] = {
@@ -4361,6 +4376,7 @@ static void client_close(Client* client) {
             GnoblinNativeControl* control = client->control;
             gboolean refresh_mutter_watches = native_client_has_mutter_event_subscriptions(client);
             native_socket_revoke_client_tokens(client);
+            native_ui_sessions_client_disconnected(control, client->client_id);
             native_window_drag_client_disconnected(client->control, client->client_id);
             g_hash_table_remove(client->control->clients, client);
             if (refresh_mutter_watches)
@@ -12670,6 +12686,192 @@ static void native_socket_consume_rejected_menu_context(Client* client, JsonObje
         g_hash_table_remove(client->control->menu_contexts, &handle);
 }
 
+static void native_ui_session_free(gpointer data) {
+    NativeUiSession* session = data;
+    if (!session)
+        return;
+    g_clear_pointer(&session->state, json_node_unref);
+    g_free(session);
+}
+
+static gboolean native_ui_session_name_is_valid(const char* name) {
+    if (!name || !*name || strlen(name) > MAX_UI_SESSION_NAME_LENGTH)
+        return FALSE;
+    for (const char* cursor = name; *cursor; cursor++) {
+        if (!g_ascii_isalnum(*cursor) && *cursor != '.' && *cursor != '_' && *cursor != '-')
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static char* native_ui_session_encode_event(const char* event, const char* name, const char* member,
+                                            JsonNode* payload) {
+    g_autoptr(JsonNode) root = json_node_new(JSON_NODE_OBJECT);
+    JsonObject* object = json_object_new();
+    json_node_take_object(root, object);
+    json_object_set_string_member(object, "event", event);
+    json_object_set_string_member(object, "name", name);
+    json_object_set_member(object, member, json_node_copy(payload));
+    g_autofree char* encoded = json_to_string(root, FALSE);
+    return g_strconcat(encoded, "\n", NULL);
+}
+
+static void native_ui_session_send_state(Client* client, const char* name, JsonNode* state) {
+    if (!client || client->closing || !client->watch_ui_sessions)
+        return;
+    send_response(client, native_ui_session_encode_event("ui-state", name, "state", state));
+}
+
+static void native_ui_session_broadcast_state(GnoblinNativeControl* control, const char* name,
+                                              JsonNode* state) {
+    if (!control || control->stopping || !control->clients)
+        return;
+    GList* clients = g_hash_table_get_values(control->clients);
+    for (GList* item = clients; item; item = item->next)
+        native_ui_session_send_state(item->data, name, state);
+    g_list_free(clients);
+}
+
+static void native_ui_sessions_client_disconnected(GnoblinNativeControl* control,
+                                                   guint64 client_id) {
+    if (!control || !control->ui_sessions || !client_id)
+        return;
+    GPtrArray* owned_names = g_ptr_array_new_with_free_func(g_free);
+    GHashTableIter iter;
+    gpointer key, value;
+    g_hash_table_iter_init(&iter, control->ui_sessions);
+    while (g_hash_table_iter_next(&iter, &key, &value)) {
+        NativeUiSession* session = value;
+        if (session->owner_client_id == client_id)
+            g_ptr_array_add(owned_names, g_strdup(key));
+    }
+    g_autoptr(JsonNode) cleared_state = json_node_new(JSON_NODE_NULL);
+    for (guint i = 0; i < owned_names->len; i++) {
+        const char* name = g_ptr_array_index(owned_names, i);
+        g_hash_table_remove(control->ui_sessions, name);
+        native_ui_session_broadcast_state(control, name, cleared_state);
+    }
+    g_ptr_array_unref(owned_names);
+}
+
+static gboolean native_ui_session_request_id(JsonObject* request, const char** id) {
+    JsonNode* id_node = json_object_get_member(request, "id");
+    if (!id_node) {
+        *id = "";
+        return TRUE;
+    }
+    if (!JSON_NODE_HOLDS_VALUE(id_node) || json_node_get_value_type(id_node) != G_TYPE_STRING)
+        return FALSE;
+    *id = json_node_get_string(id_node);
+    return **id != '\0' && strlen(*id) <= 64;
+}
+
+static char* native_ui_session_reply(const char* id) {
+    JsonObject* result_object = json_object_new();
+    json_object_set_boolean_member(result_object, "accepted", TRUE);
+    g_autoptr(JsonNode) result = json_node_new(JSON_NODE_OBJECT);
+    json_node_take_object(result, result_object);
+    return encode_response(id, result, NULL);
+}
+
+static char* handle_ui_session_request(Client* client, JsonObject* request) {
+    const char* id = "";
+    if (!client || client->closing || !client->control || !client->control->ui_sessions)
+        return encode_response("", NULL, "UI session transport is unavailable");
+    JsonNode* op_node = json_object_get_member(request, "op");
+    JsonNode* action_node = json_object_get_member(request, "action");
+    if (!op_node || !JSON_NODE_HOLDS_VALUE(op_node) ||
+        json_node_get_value_type(op_node) != G_TYPE_STRING ||
+        !g_str_equal(json_node_get_string(op_node), "ui-session") || !action_node ||
+        !JSON_NODE_HOLDS_VALUE(action_node) ||
+        json_node_get_value_type(action_node) != G_TYPE_STRING ||
+        !native_ui_session_request_id(request, &id))
+        return encode_response("", NULL, "invalid UI session request");
+
+    const char* action = json_node_get_string(action_node);
+    gboolean has_id = json_object_has_member(request, "id");
+    if (g_str_equal(action, "watch")) {
+        if (json_object_get_size(request) != (has_id ? 3 : 2))
+            return encode_response(id, NULL,
+                                   "ui-session watch accepts only op, action, and optional id");
+        gboolean first_watch = !client->watch_ui_sessions;
+        client->watch_ui_sessions = TRUE;
+        if (first_watch) {
+            GPtrArray* snapshots = g_ptr_array_new_with_free_func(g_free);
+            GHashTableIter iter;
+            gpointer key, value;
+            g_hash_table_iter_init(&iter, client->control->ui_sessions);
+            while (g_hash_table_iter_next(&iter, &key, &value)) {
+                NativeUiSession* session = value;
+                g_ptr_array_add(snapshots, native_ui_session_encode_event("ui-state", key, "state",
+                                                                          session->state));
+            }
+            for (guint i = 0; i < snapshots->len && !client->closing; i++)
+                send_response(client, g_strdup(g_ptr_array_index(snapshots, i)));
+            g_ptr_array_unref(snapshots);
+        }
+        return native_ui_session_reply(id);
+    }
+
+    gboolean is_state = g_str_equal(action, "state");
+    gboolean is_command = g_str_equal(action, "command");
+    if (!is_state && !is_command)
+        return encode_response(id, NULL, "ui-session action must be watch, state, or command");
+    const char* payload_member = is_state ? "state" : "command";
+    if (json_object_get_size(request) != (has_id ? 5 : 4) ||
+        !json_object_has_member(request, "name") ||
+        !json_object_has_member(request, payload_member))
+        return encode_response(id, NULL,
+                               "ui-session state and command accept only op, action, name, their "
+                               "payload, and optional id");
+
+    JsonNode* name_node = json_object_get_member(request, "name");
+    JsonNode* payload = json_object_get_member(request, payload_member);
+    if (!name_node || !JSON_NODE_HOLDS_VALUE(name_node) ||
+        json_node_get_value_type(name_node) != G_TYPE_STRING ||
+        !native_ui_session_name_is_valid(json_node_get_string(name_node)))
+        return encode_response(
+            id, NULL, "ui-session name must be 1-128 ASCII letters, digits, '.', '_' or '-'");
+    if (!payload || !JSON_NODE_HOLDS_OBJECT(payload))
+        return encode_response(id, NULL, "ui-session state and command payloads must be objects");
+    g_autofree char* encoded_payload = json_to_string(payload, FALSE);
+    if (!encoded_payload || strlen(encoded_payload) > MAX_UI_SESSION_PAYLOAD_BYTES)
+        return encode_response(id, NULL, "ui-session payload exceeds the 8 KiB limit");
+    if (!client->watch_ui_sessions)
+        return encode_response(id, NULL, "send ui-session watch before state or command messages");
+
+    const char* name = json_node_get_string(name_node);
+    if (is_state) {
+        NativeUiSession* session = g_hash_table_lookup(client->control->ui_sessions, name);
+        if (session && session->owner_client_id != client->client_id)
+            return encode_response(id, NULL,
+                                   "ui-session state name is already owned by another connection");
+        if (!session && g_hash_table_size(client->control->ui_sessions) >= MAX_UI_SESSIONS)
+            return encode_response(id, NULL, "UI session limit reached (64 active names)");
+        if (!session) {
+            session = g_new0(NativeUiSession, 1);
+            session->owner_client_id = client->client_id;
+            g_hash_table_insert(client->control->ui_sessions, g_strdup(name), session);
+        }
+        g_clear_pointer(&session->state, json_node_unref);
+        session->state = json_node_copy(payload);
+        native_ui_session_broadcast_state(client->control, name, session->state);
+        return native_ui_session_reply(id);
+    }
+
+    GList* clients = g_hash_table_get_values(client->control->clients);
+    for (GList* item = clients; item; item = item->next) {
+        Client* recipient = item->data;
+        if (recipient->watch_ui_sessions && !recipient->closing) {
+            g_autofree char* event =
+                native_ui_session_encode_event("ui-command", name, "command", payload);
+            send_response(recipient, g_strdup(event));
+        }
+    }
+    g_list_free(clients);
+    return native_ui_session_reply(id);
+}
+
 static char* handle_request(Client* client, const char* data, gsize length) {
     g_autoptr(JsonParser) parser = json_parser_new();
     g_autoptr(GError) error = NULL;
@@ -12705,6 +12907,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
                                      : "";
         return encode_response(request_id, NULL, "Gnoblin compositor control is stopping");
     }
+    if (g_str_equal(op, "ui-session"))
+        return handle_ui_session_request(client, request);
     if (json_object_has_member(request, "api_version") ||
         json_object_has_member(request, "api_major") ||
         json_object_has_member(request, "api_minor")) {
@@ -16010,6 +16214,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         return NULL;
     }
     control->clients = g_hash_table_new(g_direct_hash, g_direct_equal);
+    control->ui_sessions =
+        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_ui_session_free);
     control->window_shader_files =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_window_shader_file_free);
     control->pending_runtime_requests =
@@ -16502,6 +16708,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         g_hash_table_unref(control->clients);
         control->clients = NULL;
     }
+    g_clear_pointer(&control->ui_sessions, g_hash_table_unref);
     struct stat current;
     if (control->path && control->inode && lstat(control->path, &current) == 0 &&
         current.st_dev == control->device && current.st_ino == control->inode)
