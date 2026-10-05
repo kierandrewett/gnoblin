@@ -6,7 +6,7 @@
 G_BEGIN_DECLS
 
 #define GNOBLIN_RUNTIME_PROTOCOL_MAJOR 2
-#define GNOBLIN_RUNTIME_PROTOCOL_MINOR 5
+#define GNOBLIN_RUNTIME_PROTOCOL_MINOR 6
 #define GNOBLIN_RUNTIME_PROTOCOL_MAX_PAYLOAD (16u * 1024u * 1024u)
 
 typedef enum {
@@ -29,6 +29,8 @@ typedef enum {
     GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART = 15,
     /* Guardian reports that no runtime worker will be restarted. */
     GNOBLIN_RUNTIME_PACKET_RECOVERY_FAILED = 16,
+    /* Guardian-owned session lifecycle snapshot and transition. */
+    GNOBLIN_RUNTIME_PACKET_SESSION_STATE_CHANGED = 17,
 } GnoblinRuntimePacketType;
 
 typedef struct {
