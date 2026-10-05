@@ -104,6 +104,10 @@ wait_for_preview_child() {
     fi
 
     if [[ $completed_pid == "$RUNTIME_PID" ]]; then
+        if [[ ${GNOBLIN_DEVKIT_EXPECT_RUNTIME_EXIT:-0} == 1 ]]; then
+            wait "$child_pid"
+            return $?
+        fi
         echo "Gnoblin stopped while the devkit $child_name was still open. Recent output:" >&2
         tail -n 30 "$DK/runtime.log" >&2
         return 1
