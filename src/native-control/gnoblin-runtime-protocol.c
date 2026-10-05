@@ -58,7 +58,8 @@ static void write_u64(guint8* d, guint64 v) {
     write_u32(d + 4, v);
 }
 static gboolean packet_type_valid(guint16 type) {
-    return type >= GNOBLIN_RUNTIME_PACKET_HELLO && type <= GNOBLIN_RUNTIME_PACKET_RECOVERY_FAILED;
+    return type >= GNOBLIN_RUNTIME_PACKET_HELLO &&
+           type <= GNOBLIN_RUNTIME_PACKET_SESSION_STATE_CHANGED;
 }
 static void out_message_free(OutMessage* message) {
     if (!message)
