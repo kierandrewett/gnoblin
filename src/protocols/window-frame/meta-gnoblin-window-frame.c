@@ -44,9 +44,12 @@ typedef struct {
     int preference;
     int sent_mode;
     gboolean is_toplevel;
+    gboolean role_assigned;
     gboolean has_toplevel_listener;
     gboolean has_surface_listener;
 } Decoration;
+
+static void toplevel_destroyed(struct wl_listener* listener, void* data);
 
 static FrameState* frame_state(MetaWindow* window) {
     FrameState* state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
@@ -105,6 +108,57 @@ static void request_configuration(MetaWindow* window) {
         window, rect, 0, 0, meta_window_wayland_get_geometry_scale(window),
         META_MOVE_RESIZE_STATE_CHANGED, META_GRAVITY_NORTH_WEST);
     meta_window_wayland_configure(META_WINDOW_WAYLAND(window), configuration);
+}
+
+static void kde_decoration_set_mode(Decoration* decoration, uint32_t mode) {
+    decoration->preference = mode;
+    if (decoration->sent_mode == (int)mode)
+        return;
+    org_kde_kwin_server_decoration_send_mode(decoration->resource, mode);
+    decoration->sent_mode = mode;
+}
+
+static void kde_decoration_attach_toplevel(Decoration* decoration,
+                                           MetaWaylandXdgToplevel* toplevel) {
+    struct wl_resource* toplevel_resource;
+    MetaWaylandSurface* surface;
+
+    if (!decoration || decoration->protocol != DECORATION_KDE ||
+        !META_IS_WAYLAND_XDG_TOPLEVEL(toplevel))
+        return;
+
+    surface = meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(toplevel));
+    decoration->role_assigned = TRUE;
+    decoration->is_toplevel = TRUE;
+    decoration->preference = ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER;
+    g_object_set_data(G_OBJECT(surface), "gnoblin-decoration", NULL);
+    g_object_set_data(G_OBJECT(toplevel), "gnoblin-decoration", decoration);
+
+    toplevel_resource = meta_wayland_xdg_toplevel_get_resource(toplevel);
+    if (toplevel_resource && !decoration->has_toplevel_listener) {
+        decoration->toplevel_destroy.notify = toplevel_destroyed;
+        wl_resource_add_destroy_listener(toplevel_resource, &decoration->toplevel_destroy);
+        decoration->has_toplevel_listener = TRUE;
+    }
+
+    kde_decoration_set_mode(decoration, ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER);
+}
+
+void meta_gnoblin_window_frame_surface_role_assigned(MetaWaylandSurface* surface,
+                                                     gboolean is_toplevel) {
+    Decoration* decoration = g_object_get_data(G_OBJECT(surface), "gnoblin-decoration");
+
+    if (!decoration || decoration->protocol != DECORATION_KDE)
+        return;
+
+    decoration->role_assigned = TRUE;
+    if (is_toplevel) {
+        kde_decoration_attach_toplevel(decoration, META_WAYLAND_XDG_TOPLEVEL(surface->role));
+        return;
+    }
+
+    decoration->is_toplevel = FALSE;
+    kde_decoration_set_mode(decoration, ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_NONE);
 }
 
 /**
@@ -189,6 +243,8 @@ void meta_gnoblin_window_frame_configure(MetaWindow* window,
         return;
     state = frame_state(window);
     decoration = g_object_get_data(G_OBJECT(surface->role), "gnoblin-decoration");
+    if (decoration && decoration->protocol == DECORATION_KDE)
+        kde_decoration_attach_toplevel(decoration, META_WAYLAND_XDG_TOPLEVEL(surface->role));
     fullscreen =
         configuration->config && meta_window_config_get_is_fullscreen(configuration->config);
     /* An unset preference means the client has not opted into SSD. Treat it
@@ -372,6 +428,8 @@ static void decoration_free(struct wl_resource* resource) {
     if (d->surface && d->surface->role &&
         g_object_get_data(G_OBJECT(d->surface->role), "gnoblin-decoration") == d)
         g_object_set_data(G_OBJECT(d->surface->role), "gnoblin-decoration", NULL);
+    if (d->surface && g_object_get_data(G_OBJECT(d->surface), "gnoblin-decoration") == d)
+        g_object_set_data(G_OBJECT(d->surface), "gnoblin-decoration", NULL);
     if (d->has_toplevel_listener)
         wl_list_remove(&d->toplevel_destroy.link);
     if (d->has_surface_listener)
@@ -474,8 +532,9 @@ static void bind_manager(struct wl_client* client, void* data, uint32_t version,
 static void kde_request_mode(struct wl_client* client, struct wl_resource* resource,
                              uint32_t mode) {
     Decoration* d = wl_resource_get_user_data(resource);
-    const int applied_mode = d->is_toplevel ? ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER
-                                            : ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_NONE;
+    const int applied_mode = !d->role_assigned || d->is_toplevel
+                                 ? ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER
+                                 : ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_NONE;
 
     if (mode > ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
         wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
@@ -529,27 +588,19 @@ static void kde_manager_create(struct wl_client* client, struct wl_resource* man
     d->surface_destroy.notify = surface_destroyed;
     wl_resource_add_destroy_listener(surface_resource, &d->surface_destroy);
     d->has_surface_listener = TRUE;
+    d->preference = ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER;
+    d->sent_mode = -1;
+    wl_resource_set_implementation(d->resource, &kde_decoration_impl, d, decoration_free);
 
-    if (surface->role && META_IS_WAYLAND_XDG_TOPLEVEL(surface->role)) {
-        MetaWaylandXdgToplevel* toplevel = META_WAYLAND_XDG_TOPLEVEL(surface->role);
-        struct wl_resource* toplevel_resource = meta_wayland_xdg_toplevel_get_resource(toplevel);
-
-        d->preference = ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER;
-        d->sent_mode = d->preference;
-        d->is_toplevel = TRUE;
-        d->toplevel_destroy.notify = toplevel_destroyed;
-        wl_resource_add_destroy_listener(toplevel_resource, &d->toplevel_destroy);
-        d->has_toplevel_listener = TRUE;
-        g_object_set_data(G_OBJECT(toplevel), "gnoblin-decoration", d);
-        wl_resource_set_implementation(d->resource, &kde_decoration_impl, d, decoration_free);
-        org_kde_kwin_server_decoration_send_mode(
-            d->resource, ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER);
+    if (surface->role) {
+        d->role_assigned = TRUE;
+        if (META_IS_WAYLAND_XDG_TOPLEVEL(surface->role))
+            kde_decoration_attach_toplevel(d, META_WAYLAND_XDG_TOPLEVEL(surface->role));
+        else
+            kde_decoration_set_mode(d, ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_NONE);
     } else {
-        d->preference = ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_NONE;
-        d->sent_mode = d->preference;
-        wl_resource_set_implementation(d->resource, &kde_decoration_impl, d, decoration_free);
-        org_kde_kwin_server_decoration_send_mode(d->resource,
-                                                 ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_NONE);
+        g_object_set_data(G_OBJECT(surface), "gnoblin-decoration", d);
+        kde_decoration_set_mode(d, ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER);
     }
 }
 

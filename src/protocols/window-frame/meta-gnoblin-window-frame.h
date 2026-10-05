@@ -12,6 +12,8 @@ typedef struct {
 } MetaGnoblinFrameLayout;
 
 void meta_gnoblin_window_frame_init(MetaWaylandCompositor* compositor);
+void meta_gnoblin_window_frame_surface_role_assigned(MetaWaylandSurface* surface,
+                                                     gboolean is_toplevel);
 void meta_gnoblin_window_frame_configure(MetaWindow* window,
                                          MetaWaylandWindowConfiguration* configuration);
 void meta_gnoblin_window_frame_commit(MetaWindow* window,

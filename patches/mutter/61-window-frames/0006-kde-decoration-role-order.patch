@@ -1,0 +1,22 @@
+From 3c8ed142a6256d7347ba78175bd6620fcbb2acd9 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 5 Oct 2026 19:16:22 +0100
+Subject: [PATCH] mutter: bind GTK decorations after role assignment
+
+---
+ src/wayland/meta-wayland-surface.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/wayland/meta-wayland-surface.c b/src/wayland/meta-wayland-surface.c
+index a47ed4af0..ab23de542 100644
+--- a/src/wayland/meta-wayland-surface.c
++++ b/src/wayland/meta-wayland-surface.c
+@@ -22,0 +23 @@
++#include "wayland/meta-gnoblin-window-frame.h"
+@@ -2303,0 +2305,3 @@ meta_wayland_surface_role_assigned (MetaWaylandSurfaceRole *surface_role)
++  MetaWaylandSurface *surface =
++    meta_wayland_surface_role_get_surface (surface_role);
++
+@@ -2304,0 +2309,2 @@ meta_wayland_surface_role_assigned (MetaWaylandSurfaceRole *surface_role)
++  meta_gnoblin_window_frame_surface_role_assigned (
++    surface, META_IS_WAYLAND_XDG_TOPLEVEL (surface_role));

@@ -979,26 +979,27 @@ static bool test_kde_server_decoration(struct wl_display* display, struct protoc
     }
 
     surface = wl_compositor_create_surface(protocols->compositor);
-    xdg_surface = xdg_wm_base_get_xdg_surface(protocols->xdg_wm_base, surface);
-    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, &xdg_state);
-    xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
-    xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.KdeDecorationProtocolTest");
     decoration =
         org_kde_kwin_server_decoration_manager_create(protocols->kde_decoration_manager, surface);
     org_kde_kwin_server_decoration_add_listener(decoration, &kde_decoration_listener,
                                                 &decoration_state);
 
-    if (wl_display_roundtrip(display) < 0 || decoration_state.mode_events != 1 ||
-        decoration_state.mode != ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
-        fprintf(stderr, "FAIL: KDE server-decoration object did not start in server mode\n");
-        return false;
-    }
-
+    /* GTK creates the KDE decoration before assigning the xdg_toplevel role. */
     org_kde_kwin_server_decoration_request_mode(decoration,
                                                 ORG_KDE_KWIN_SERVER_DECORATION_MODE_CLIENT);
     if (wl_display_roundtrip(display) < 0 || decoration_state.mode_events != 2 ||
         decoration_state.mode != ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
-        fprintf(stderr, "FAIL: Gnoblin accepted a client-side decoration request\n");
+        fprintf(stderr, "FAIL: pre-role GTK decoration request was not kept server-side\n");
+        return false;
+    }
+
+    xdg_surface = xdg_wm_base_get_xdg_surface(protocols->xdg_wm_base, surface);
+    xdg_surface_add_listener(xdg_surface, &xdg_surface_listener, &xdg_state);
+    xdg_toplevel = xdg_surface_get_toplevel(xdg_surface);
+    xdg_toplevel_set_app_id(xdg_toplevel, "org.gnoblin.KdeDecorationProtocolTest");
+    if (wl_display_roundtrip(display) < 0 || !xdg_state.configured ||
+        decoration_state.mode != ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
+        fprintf(stderr, "FAIL: GTK-order KDE decoration did not configure as server-side\n");
         return false;
     }
 
@@ -1011,6 +1012,14 @@ static bool test_kde_server_decoration(struct wl_display* display, struct protoc
     wl_surface_commit(surface);
     if (wl_display_roundtrip(display) < 0) {
         fprintf(stderr, "FAIL: KDE-decorated surface failed to acknowledge configure\n");
+        return false;
+    }
+
+    org_kde_kwin_server_decoration_request_mode(decoration,
+                                                ORG_KDE_KWIN_SERVER_DECORATION_MODE_CLIENT);
+    if (wl_display_roundtrip(display) < 0 || decoration_state.mode_events < 3 ||
+        decoration_state.mode != ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
+        fprintf(stderr, "FAIL: Gnoblin accepted a client-side decoration request\n");
         return false;
     }
 
