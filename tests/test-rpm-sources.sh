@@ -29,6 +29,15 @@ assert_local_sources mutter "$TMP/mutter"
 "$ROOT/scripts/list-tarball-sources.sh" mutter >"$TMP/mutter.sources"
 "$ROOT/scripts/list-tarball-sources.sh" xdg-desktop-portal-gnome >"$TMP/xdg-desktop-portal-gnome.sources"
 
+mkdir -p "$TMP/mutter-tarball"
+mutter_version="$("$ROOT/scripts/gnome-versions.py" get mutter version)"
+"$ROOT/scripts/make-tarball.sh" mutter "$TMP/mutter-tarball" >/dev/null
+tar -tf "$TMP/mutter-tarball/mutter-$mutter_version.tar.xz" >"$TMP/mutter-tarball.contents"
+grep -Fx "mutter-$mutter_version/src/wayland/protocol/wlr-layer-shell-unstable-v1.xml" \
+    "$TMP/mutter-tarball.contents" >/dev/null
+grep -Fx "mutter-$mutter_version/src/wayland/meta-wayland-layer-shell.c" \
+    "$TMP/mutter-tarball.contents" >/dev/null
+
 assert_archive_source() {
     local project="${1:?project required}"
     local expected="${2:?expected source path required}"

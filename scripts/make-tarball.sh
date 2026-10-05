@@ -32,6 +32,7 @@ esac
 if [ "$PROJ" = mutter ]; then
     "$ROOT/scripts/ensure-release-subprojects.sh" mutter
     "$ROOT/scripts/subproject-state.sh" check mutter "$VER"
+    "$ROOT/scripts/copy-overlay.sh" mutter "$SM"
 else
     "$ROOT/scripts/apply-patches.sh" "$PROJ" >&2
 fi

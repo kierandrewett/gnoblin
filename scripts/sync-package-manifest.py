@@ -110,6 +110,7 @@ def render_rpm(manifest: dict) -> str:
         "@VERSION@": version,
         "@EPOCH@": str(epoch),
         "@GNOBLIN_RELEASE@": str(gnoblin_release),
+        "@GNOME_MAJOR@": str(manifest["release"]["gnomeMajor"]),
         "@MUTTER_VERSION@": mutter_version,
         "@MUTTER_RELEASE@": mutter_release,
         "@RUNTIME_REQUIRES@": "\n".join(runtime_requirements),

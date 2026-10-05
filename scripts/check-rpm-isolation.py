@@ -2,7 +2,8 @@
 """Reject Gnoblin RPMs that could replace system GNOME files or providers."""
 
 import argparse
-from pathlib import PurePosixPath
+import json
+from pathlib import Path, PurePosixPath
 import re
 import subprocess
 
@@ -13,9 +14,11 @@ PACKAGES = {
     "gnoblin-mutter-devel",
     "gnoblin-portal",
 }
+MANIFEST = json.loads((Path(__file__).resolve().parents[1] / "packaging/native-packages.json").read_text())
+GNOME_MAJOR = MANIFEST["release"]["gnomeMajor"]
 ALLOWED_OBSOLETES = {
-    "gnoblin-session < 51",
-    "gnoblin-shell < 51",
+    f"gnoblin-session < {GNOME_MAJOR}",
+    f"gnoblin-shell < {GNOME_MAJOR}",
 }
 PUBLIC_FILES = {
     "/usr/bin/gnoblin",

@@ -248,9 +248,10 @@ class IsolationTests(unittest.TestCase):
                 version = subprocess.check_output(
                     [str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True
                 ).strip()
+                gnome_major = json.loads((ROOT / "packaging/native-packages.json").read_text())["release"]["gnomeMajor"]
                 self.assertIn(f"Provides:       gnoblin-session = {version}", expanded)
-                self.assertIn("Obsoletes:      gnoblin-session < 51", expanded)
-                self.assertIn("Obsoletes:      gnoblin-shell < 51", expanded)
+                self.assertIn(f"Obsoletes:      gnoblin-session < {gnome_major}", expanded)
+                self.assertIn(f"Obsoletes:      gnoblin-shell < {gnome_major}", expanded)
                 self.assertNotIn("BuildRequires:  gnoblin-mutter-devel", expanded)
                 self.assertNotIn("Requires:       gnoblin-session", expanded)
                 self.assertNotIn("Requires:       gnoblin-shell", expanded)
