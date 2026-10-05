@@ -31,6 +31,8 @@ typedef enum {
     GNOBLIN_RUNTIME_PACKET_RECOVERY_FAILED = 16,
     /* Guardian-owned session lifecycle snapshot and transition. */
     GNOBLIN_RUNTIME_PACKET_SESSION_STATE_CHANGED = 17,
+    /* Mutter handled the requested session lifecycle transition. */
+    GNOBLIN_RUNTIME_PACKET_SESSION_STATE_PUBLISHED = 18,
 } GnoblinRuntimePacketType;
 
 typedef struct {
