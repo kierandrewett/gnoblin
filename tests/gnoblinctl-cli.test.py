@@ -954,12 +954,12 @@ def main() -> int:
         binary,
         build_directory,
         'gnoblin.events.once("gnoblin.test.once", function(event) '
-        'print("ONCE:" .. event.event .. ":" .. event.value) end)\n',
+        'print("ONCE:" .. event.name .. ":" .. event.event .. ":" .. event.value) end)\n',
         "gnoblin.test.once",
         [42],
     )
     assert once_result.returncode == 0, once_result.stderr
-    assert "ONCE:gnoblin.test.once:42" in once_result.stdout, once_result.stdout
+    assert "ONCE:gnoblin.test.once:gnoblin.test.once:42" in once_result.stdout, once_result.stdout
 
     unsubscribe_result = run_event_subscription(
         binary,
