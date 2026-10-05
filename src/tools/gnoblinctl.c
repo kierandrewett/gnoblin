@@ -453,8 +453,9 @@ static guint api_minor_for_method(const char* method) {
     return 8;
 }
 
-static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
-                                 JsonObject* arguments, GError** error) {
+static JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* method,
+                                                JsonObject* arguments, guint api_minor,
+                                                GError** error) {
     const char* method_name = method ? method : "";
     const char* operation_method = method_name;
     g_autofree char* id = g_uuid_string_random();
@@ -508,7 +509,7 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         json_builder_set_member_name(builder, "major");
         json_builder_add_int_value(builder, 1);
         json_builder_set_member_name(builder, "minor");
-        json_builder_add_int_value(builder, api_minor_for_method(method_name));
+        json_builder_add_int_value(builder, api_minor);
         json_builder_end_object(builder);
     }
     if (method) {
@@ -687,6 +688,12 @@ static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
         error, G_IO_ERROR, G_IO_ERROR_TIMED_OUT,
         "Request timed out; it was not retried. Check current state before repeating an action.");
     return NULL;
+}
+
+static JsonNode* call_compositor(Cli* cli, const char* op, const char* method,
+                                 JsonObject* arguments, GError** error) {
+    return call_compositor_with_api_minor(cli, op, method, arguments,
+                                          api_minor_for_method(method ? method : ""), error);
 }
 
 static JsonNode*
@@ -4679,6 +4686,23 @@ static gboolean lua_cli_session_status_valid(JsonObject* object) {
                       json_node_get_value_type(revision) != G_TYPE_INT) ||
                      json_node_get_int(revision) < 0))
         return FALSE;
+    JsonNode* lifecycle_state = json_object_get_member(object, "session_state");
+    JsonNode* lifecycle_revision = json_object_get_member(object, "session_revision");
+    if (!!lifecycle_state != !!lifecycle_revision)
+        return FALSE;
+    if (lifecycle_state) {
+        if (!JSON_NODE_HOLDS_VALUE(lifecycle_state) ||
+            json_node_get_value_type(lifecycle_state) != G_TYPE_STRING ||
+            !JSON_NODE_HOLDS_VALUE(lifecycle_revision) ||
+            (json_node_get_value_type(lifecycle_revision) != G_TYPE_INT64 &&
+             json_node_get_value_type(lifecycle_revision) != G_TYPE_INT) ||
+            json_node_get_int(lifecycle_revision) < 1)
+            return FALSE;
+        const char* lifecycle = json_node_get_string(lifecycle_state);
+        if (!g_str_equal(lifecycle, "starting") && !g_str_equal(lifecycle, "running") &&
+            !g_str_equal(lifecycle, "stopping"))
+            return FALSE;
+    }
     JsonNode* lock_state_node = json_object_get_member(object, "lock_state");
     if (!json_node_get_boolean(lock_available))
         return lock_state_node == NULL;
@@ -4718,7 +4742,13 @@ static int lua_cli_session_status(lua_State* state) {
     JsonObject* arguments = json_object_new();
     g_autoptr(GError) call_error = NULL;
     g_autoptr(JsonNode) result =
-        call_compositor(cli, "api", "session.status", arguments, &call_error);
+        call_compositor_with_api_minor(cli, "api", "session.status", arguments, 76, &call_error);
+    if (!result && call_error &&
+        g_str_equal(call_error->message, "requested compositor API version is unsupported")) {
+        g_clear_error(&call_error);
+        result = call_compositor_with_api_minor(cli, "api", "session.status", arguments, 29,
+                                                &call_error);
+    }
     json_object_unref(arguments);
     if (!result)
         return luaL_error(state, "gnoblin.session.status failed: %s", call_error->message);

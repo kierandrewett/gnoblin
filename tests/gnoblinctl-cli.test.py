@@ -1062,6 +1062,9 @@ def main() -> int:
                                     "lock_available": False,
                                     "revision": status_request_count,
                                 }
+                                if request["api_version"]["minor"] >= 76:
+                                    result["session_state"] = "running"
+                                    result["session_revision"] = status_request_count
                                 if status_request_count > 2:
                                     result["lock_available"] = True
                                     result["lock_state"] = "covering"
@@ -2389,11 +2392,13 @@ def main() -> int:
             "local unavailable = gnoblin.session.status()\n"
             'assert(tostring(unavailable) == "SessionStatus" and unavailable.state == "running")\n'
             "assert(unavailable.revision == 2)\n"
+            'assert(unavailable.session_state == "running" and unavailable.session_revision == 2)\n'
             "assert(not unavailable.lock_available and unavailable.lock_state == nil)\n"
             'assert(not pcall(function() unavailable.lock_state = "unlocked" end))\n'
             'assert(not pcall(function() rawset(unavailable, "lock_state", "unlocked") end))\n'
             "local available = gnoblin.session.status()\n"
             "assert(available.revision == 3)\n"
+            'assert(available.session_state == "running" and available.session_revision == 3)\n'
             'assert(available.lock_available and available.lock_state == "covering")\n'
             'assert(not pcall(function() available.lock_state = "unlocked" end))\n'
             "assert(not pcall(function() gnoblin.session.status(true) end))\n",
@@ -2733,6 +2738,7 @@ def main() -> int:
         assert received[-2]["method"] == "runtime.status"
         assert received[-2]["api_version"] == {"major": 1, "minor": 67}
         assert received[-1]["method"] == "session.status"
+        assert received[-1]["api_version"] == {"major": 1, "minor": 76}
         for subscription in subscriptions:
             assert subscription["op"] == "events"
             assert subscription["api_version"] == {"major": 1, "minor": 11}
@@ -2922,10 +2928,10 @@ def main() -> int:
         assert received[70]["api_version"] == {"major": 1, "minor": 44}
         assert received[70]["arguments"] == {}
         assert received[71]["method"] == "session.status"
-        assert received[71]["api_version"] == {"major": 1, "minor": 29}
+        assert received[71]["api_version"] == {"major": 1, "minor": 76}
         assert received[71]["arguments"] == {}
         assert received[72]["method"] == "session.status"
-        assert received[72]["api_version"] == {"major": 1, "minor": 29}
+        assert received[72]["api_version"] == {"major": 1, "minor": 76}
         assert received[72]["arguments"] == {}
         assert received[73]["method"] == "session.activity"
         assert received[73]["api_version"] == {"major": 1, "minor": 24}
