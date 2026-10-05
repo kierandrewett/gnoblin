@@ -295,7 +295,8 @@ gboolean gnoblin_runtime_reader_receive(GnoblinRuntimeReader* reader, int fd,
         return TRUE;
 
     GBytes* bytes = g_bytes_new(reader->message->data, reader->message->len);
-    GVariant* payload = g_variant_new_from_bytes(G_VARIANT_TYPE_VARDICT, bytes, FALSE);
+    GVariant* payload =
+        g_variant_ref_sink(g_variant_new_from_bytes(G_VARIANT_TYPE_VARDICT, bytes, FALSE));
     g_bytes_unref(bytes);
     if (!g_variant_is_normal_form(payload)) {
         g_variant_unref(payload);

@@ -123,6 +123,7 @@ static void test_session_state_changed_packet_round_trip(void) {
     g_assert_no_error(error);
     g_assert_cmpint(received.type, ==, GNOBLIN_RUNTIME_PACKET_SESSION_STATE_CHANGED);
     g_assert_cmpuint(received.request_id, ==, 0);
+    g_assert_false(g_variant_is_floating(received.payload));
     g_assert_true(g_variant_equal(payload, received.payload));
     gnoblin_runtime_packet_clear(&received);
     close(sockets[0]);
