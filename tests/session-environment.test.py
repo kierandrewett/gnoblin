@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class SessionEnvironmentTests(unittest.TestCase):
-    def test_desktop_installs_the_c_supervisor_as_the_login_command(self):
+    def test_desktop_installs_the_c_guardian_as_the_login_command(self):
         cmake = (ROOT / "CMakeLists.txt").read_text()
         installer = (ROOT / "scripts/install-session.sh").read_text()
         desktop = (ROOT / "src/data/session/gnoblin.desktop").read_text()
@@ -42,18 +42,19 @@ class SessionEnvironmentTests(unittest.TestCase):
         self.assertIn("spawn_compositor(compositor_path", runtime)
         self.assertIn("return ok;", runtime)
         self.assertNotIn("return ok || !required;", runtime)
-        host = runtime[runtime.index("static int session_host_main(") : runtime.index("\nint main(")]
-        self.assertIn("g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR, NULL)", host)
+        guardian = runtime[runtime.index("static int session_guardian_main(") : runtime.index("\nint main(")]
+        self.assertIn("g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR, NULL)", guardian)
         self.assertLess(
-            host.index("g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR"),
-            host.index("g_file_test(compositor_path, G_FILE_TEST_IS_EXECUTABLE)"),
+            guardian.index("g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR"),
+            guardian.index("g_file_test(compositor_path, G_FILE_TEST_IS_EXECUTABLE)"),
         )
         self.assertLess(
-            host.index("g_file_test(compositor_path, G_FILE_TEST_IS_EXECUTABLE)"),
-            host.index("if (!devkit && !activate_session())"),
+            guardian.index("g_file_test(compositor_path, G_FILE_TEST_IS_EXECUTABLE)"),
+            guardian.index("if (!devkit && !activate_session())"),
         )
         self.assertLess(
-            host.index("if (!devkit && !activate_session())"), host.index("spawn_compositor(compositor_path")
+            guardian.index("if (!devkit && !activate_session())"),
+            guardian.index("spawn_compositor(compositor_path"),
         )
         worker = runtime[
             runtime.index("static int runtime_worker_main(") : runtime.index("static GPid spawn_runtime_worker(")
