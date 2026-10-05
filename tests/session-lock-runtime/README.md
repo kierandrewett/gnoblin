@@ -7,15 +7,17 @@ never be installed as a locker.
 
 `run-nested.sh` builds it from Gnoblin's vendored protocol XML and starts an
 isolated, supervised Gnoblin devkit session. It checks the security-relevant
-protocol sequence:
+Lua and protocol path:
 
-1. a lock surface is configured, acknowledged, and committed, and the
+1. a shell client calls `gnoblin.session.lock()` through `gnoblinctl lua`, and
+   another Lua client receives `gnoblin.session.lock-requested`;
+2. a lock surface is configured, acknowledged, and committed, and the
    compositor eventually reports `locked` after a protected presentation;
-2. under Gnoblin's frame-deferred policy, destroying an unconfirmed lock
+3. under Gnoblin's frame-deferred policy, destroying an unconfirmed lock
    object leaves no stuck lock and a new owner can acquire the protocol;
-3. a concurrent second lock receives `finished`;
-4. an owner may unlock only after `locked` and the server processes the request;
-5. killing the owner does not unlock the compositor, and a policy-supported
+4. a concurrent second lock receives `finished`;
+5. an owner may unlock only after `locked` and the server processes the request;
+6. killing the owner does not unlock the compositor, and a policy-supported
    replacement can take over.
 
 Set `GNOBLIN_SESSION_LOCK_PREFIX` to use a prepared private install prefix;

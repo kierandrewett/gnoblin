@@ -72,6 +72,10 @@ dbus-run-session --config-file="$DBUS_CONF" -- bash -euo pipefail -c '
       kill "$SUPERVISOR_PID" 2>/dev/null || true
       wait "$SUPERVISOR_PID" 2>/dev/null || true
     fi
+    if [[ -n "${REQUEST_LISTENER_PID:-}" ]]; then
+      kill "$REQUEST_LISTENER_PID" 2>/dev/null || true
+      wait "$REQUEST_LISTENER_PID" 2>/dev/null || true
+    fi
     if [[ -n "${OWNER_PID:-}" ]]; then
       kill -KILL "$OWNER_PID" 2>/dev/null || true
       wait "$OWNER_PID" 2>/dev/null || true
@@ -93,6 +97,67 @@ dbus-run-session --config-file="$DBUS_CONF" -- bash -euo pipefail -c '
   done
   [[ -S "$XDG_RUNTIME_DIR/$WAYLAND_DISPLAY" ]] || { cat "$BUILD/runtime.log" >&2; exit 1; }
   "$BUILD/session-lock-smoke" probe
+
+  cat >"$BUILD/lock-request-listener.lua" <<'LUA'
+gnoblin.events.once("gnoblin.session.lock-requested", function(event)
+  assert(event.name == "gnoblin.session.lock-requested")
+  assert(event.sequence > 0)
+  print("LOCK_REQUESTED_EVENT")
+  io.stdout:flush()
+end)
+print("LOCK_REQUEST_LISTENER_READY")
+io.stdout:flush()
+LUA
+  "$PREFIX/bin/gnoblinctl" lua "$BUILD/lock-request-listener.lua" \
+    >"$BUILD/lock-request-listener.log" 2>&1 &
+  REQUEST_LISTENER_PID=$!
+  for _ in $(seq 1 100); do
+    grep -q "^LOCK_REQUEST_LISTENER_READY$" "$BUILD/lock-request-listener.log" && break
+    if ! kill -0 "$REQUEST_LISTENER_PID" 2>/dev/null; then
+      cat "$BUILD/lock-request-listener.log" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  grep -q "^LOCK_REQUEST_LISTENER_READY$" "$BUILD/lock-request-listener.log" || {
+    cat "$BUILD/lock-request-listener.log" >&2
+    echo "Lua lock-request listener did not become ready" >&2
+    exit 1
+  }
+
+  cat >"$BUILD/request-lock.lua" <<'LUA'
+local request = gnoblin.session.lock()
+assert(request.dispatched == true)
+assert(request.subscribers >= 1)
+print("LOCK_API_DISPATCHED")
+LUA
+  "$PREFIX/bin/gnoblinctl" lua "$BUILD/request-lock.lua" >"$BUILD/lock-api.log" 2>&1 || {
+    cat "$BUILD/lock-api.log" >&2
+    exit 1
+  }
+  grep -q "LOCK_API_DISPATCHED" "$BUILD/lock-api.log" || {
+    cat "$BUILD/lock-api.log" >&2
+    echo "Lua session.lock() did not confirm dispatch" >&2
+    exit 1
+  }
+  for _ in $(seq 1 100); do
+    grep -q "^LOCK_REQUESTED_EVENT$" "$BUILD/lock-request-listener.log" && break
+    if ! kill -0 "$REQUEST_LISTENER_PID" 2>/dev/null; then
+      cat "$BUILD/lock-request-listener.log" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  wait "$REQUEST_LISTENER_PID" || {
+    cat "$BUILD/lock-request-listener.log" >&2
+    exit 1
+  }
+  REQUEST_LISTENER_PID=""
+  grep -q "^LOCK_REQUESTED_EVENT$" "$BUILD/lock-request-listener.log" || {
+    cat "$BUILD/lock-request-listener.log" >&2
+    echo "Lua shell-client listener missed the lock request" >&2
+    exit 1
+  }
   if ! "$BUILD/session-lock-smoke" lock-unlock; then
     if devkit_capture_refused_during_lock; then
       echo "SKIP: the nested devkit cannot confirm lock presentation after screen capture is refused"
@@ -117,7 +182,7 @@ dbus-run-session --config-file="$DBUS_CONF" -- bash -euo pipefail -c '
   wait "$OWNER_PID" 2>/dev/null || true
   OWNER_PID=""
   "$BUILD/session-lock-smoke" takeover
-  echo "PASS: ext-session-lock-v1 presentation, contention, death, and takeover"
+  echo "PASS: Lua lock request, ext-session-lock-v1 presentation, contention, death, and takeover"
 ' >"$BUILD/session.log" 2>"$BUILD/dbus.log"
 status=$?
 set -e
@@ -133,4 +198,4 @@ if ((status != 0)); then
 fi
 grep -E '^(PROBE|CANCELLED|LOCKED|UNLOCKED|SECOND|TAKEOVER|PASS):' <<<"$output"
 grep -q 'PROBE: ext_session_lock_manager_v1 available' <<<"$output"
-grep -q 'PASS: ext-session-lock-v1 presentation, contention, death, and takeover' <<<"$output"
+grep -q 'PASS: Lua lock request, ext-session-lock-v1 presentation, contention, death, and takeover' <<<"$output"

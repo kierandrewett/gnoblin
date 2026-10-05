@@ -6015,6 +6015,11 @@ static gboolean cli_lua_event_dispatch(CliLuaEventSubscription* subscription, Js
     json_to_lua(state, event);
     if (JSON_NODE_HOLDS_OBJECT(event)) {
         JsonObject* object = json_node_get_object(event);
+        const char* event_name = member_string(object, "event", NULL);
+        if (event_name) {
+            lua_pushstring(state, event_name);
+            lua_setfield(state, -2, "name");
+        }
         const char* token = member_string(object, "focus_context", NULL);
         if (token && *token) {
             lua_cli_push_focus_context(state, subscription, token);
