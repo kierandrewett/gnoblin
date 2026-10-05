@@ -14903,9 +14903,11 @@ static gboolean native_runtime_write_ready(gint fd, GIOCondition condition, gpoi
 static gboolean native_runtime_send(GnoblinNativeControl* control, GnoblinRuntimePacketType type,
                                     guint64 request_id, GVariant* payload, GError** error) {
     if (control->runtime_worker_suspended && type != GNOBLIN_RUNTIME_PACKET_WORKER_SUSPENDED &&
-        type != GNOBLIN_RUNTIME_PACKET_ERROR) {
+        type != GNOBLIN_RUNTIME_PACKET_ERROR &&
+        type != GNOBLIN_RUNTIME_PACKET_SESSION_STATE_PUBLISHED) {
         /* Runtime output is intentionally discarded while no Lua worker owns
-         * the session. Resume publishes fresh snapshots after HELLO. */
+         * the session. Resume publishes fresh snapshots after HELLO. The
+         * lifecycle acknowledgement goes to the guardian, not the worker. */
         return TRUE;
     }
     if (!control->supervised_runtime || control->runtime_fd < 0 || control->stopping) {

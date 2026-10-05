@@ -332,7 +332,6 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static gboolean native_runtime_fd_ready(",
             "gboolean gnoblin_native_control_dispatch_runtime_event(",
         )
-
         self.assertGreaterEqual(api_minor(header), 72)
         self.assertIn('"gnoblin.runtime.status-changed"', events)
         self.assertIn('"gnoblin.runtime.status-changed"', status)
@@ -345,6 +344,52 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("native_runtime_republish_full_state(control, &error)", runtime_handler)
         self.assertIn("runtime_generation_changed", runtime_handler)
         self.assertIn("native_runtime_publish_status(control)", runtime_handler)
+
+    def test_session_lifecycle_api_is_negotiated_cached_and_versioned(self):
+        source = CONTROL.read_text()
+        header = HEADER.read_text()
+        events = function_body(
+            source,
+            "static const char* native_socket_events[] = {",
+            "static const char native_policy_introspection[]",
+        )
+        publish = function_body(
+            source,
+            "static gboolean native_runtime_handle_session_lifecycle_state(",
+            "static GVariant* native_set_orientation_lock(",
+        )
+        subscription = function_body(
+            source,
+            'if (g_str_equal(op, "events"))',
+            'if (g_str_equal(op, "windows"))',
+        )
+        runtime_handler = function_body(
+            source,
+            "static gboolean native_runtime_fd_ready(",
+            "gboolean gnoblin_native_control_dispatch_runtime_event(",
+        )
+        runtime_send = function_body(
+            source,
+            "static gboolean native_runtime_send(GnoblinNativeControl* control, GnoblinRuntimePacketType type,\n"
+            "                                    guint64 request_id, GVariant* payload, GError** error) {",
+            "static gboolean native_runtime_send_event_packet(",
+        )
+
+        self.assertGreaterEqual(api_minor(header), 76)
+        self.assertIn('"gnoblin.session.state-changed"', events)
+        self.assertIn("client->api_minor < 76", subscription)
+        self.assertIn("session_lifecycle_supported", subscription)
+        self.assertIn("client->event_api_minor < 76", source)
+        self.assertIn("GNOBLIN_RUNTIME_PACKET_SESSION_STATE_CHANGED", runtime_handler)
+        self.assertIn('g_str_equal(state, "starting")', publish)
+        self.assertIn('g_str_equal(state, "running")', publish)
+        self.assertIn('g_str_equal(state, "stopping")', publish)
+        self.assertIn('native_publish_runtime_snapshot(control, "session-lifecycle"', publish)
+        self.assertIn('"gnoblin.session.state-changed"', publish)
+        self.assertIn("GNOBLIN_RUNTIME_PACKET_SESSION_STATE_PUBLISHED", publish)
+        self.assertIn("type != GNOBLIN_RUNTIME_PACKET_SESSION_STATE_PUBLISHED", runtime_send)
+        self.assertIn('"session_state"', source)
+        self.assertIn('"session_revision"', source)
 
     def test_tablet_pad_help_event_is_available_to_lua_and_socket_clients(self):
         source = CONTROL.read_text()
