@@ -46,9 +46,9 @@ Gnoblin leaves the window in place and logs a warning.
 
 | Field                 | Values                                                                     |
 | --------------------- | -------------------------------------------------------------------------- |
-| `blur`                | Integer 0–100; 0 disables blur                                             |
+| `blur`                | Number 0–100; blur radius in pixels; 0 disables blur                       |
 | `opacity`             | Number 0–1; affects content and text                                       |
-| `blur_ignore_shadows` | Boolean; default `false`                                                   |
+| `blur_ignore_shadows` | Boolean; default `false`; limits blur to the window frame                  |
 | `corners`             | Corner fields below                                                        |
 | `shader`              | GLSL file path; `""` clears it                                             |
 | `shader_uniforms`     | Up to 64 uniform names mapped to finite numeric values                     |
@@ -215,7 +215,7 @@ gnoblin.window_rule {
         layer_open = string?, layer_close = string?,
         minimize = string?, restore = string?, workspace_switch = string?,
         shadow_change = string?,
-        layer_companion_close = string?, resize = string?,
+        resize = string?,
         duration = integer?, -- 0–5000 ms
         easing = string?,
         ease = string?, -- alias for easing

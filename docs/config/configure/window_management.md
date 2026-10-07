@@ -18,13 +18,6 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | `auto_raise_delay`             | 0–10000 ms                       | `500`      | Delay before automatically raising the focused window.    |
 | `focus_change_on_pointer_rest` | Boolean                          | `false`    | Change focus after the pointer rests over another window. |
 
-### Modified window clicks
-
-| Key                        | Values                     | Default     | Effect                                                        |
-| -------------------------- | -------------------------- | ----------- | ------------------------------------------------------------- |
-| `mouse_button_modifier`    | Mutter modifier expression | `"<Super>"` | Modifier for moving, resizing, and opening menus.             |
-| `resize_with_right_button` | Boolean                    | `false`     | Use modified right click to resize instead of opening a menu. |
-
 ### Placement and responsiveness
 
 | Key                           | Values          | Default | Effect                                                                  |
@@ -40,6 +33,11 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 
 Leave `disable_workarounds` set to `false` unless you are debugging an X11
 application. Enabling it can make some applications behave incorrectly.
+
+The table shows the compositor default when a key is missing. The starter
+config from `gnoblinctl init` sets `attach_modal_dialogs = true`, as GNOME
+Shell does, so a modal dialog opens centered over its parent window and moves
+with it. Set it to `false` to let dialogs open freely.
 
 ### Titlebar buttons and actions
 
@@ -64,24 +62,13 @@ application. Enabling it can make some applications behave incorrectly.
 Set `focus_change_on_pointer_rest = true` to change focus only after the
 pointer rests briefly.
 
-## Modified window clicks
+## Pointer bindings
 
-Hold `mouse_button_modifier` while clicking a window to move it with the left
-button, resize it with the middle button, or open its menu with the right
-button. Set `resize_with_right_button = true` to swap the middle and right
-button actions.
-
-The modifier uses Mutter's accelerator modifier syntax. Combine tokens without
-spaces, such as `"<Super><Shift>"`. Tokens are case-insensitive. Mutter accepts
-`<Alt>`, `<Super>`, `<Meta>`, `<Hyper>`, `<Mod1>` through `<Mod5>`, and these
-Control and Shift aliases:
-
-- Control: `<Control>`, `<Ctrl>`, `<Ctl>`, or `<Primary>`.
-- Shift: `<Shift>` or `<Shft>`.
-
-Set the modifier to `"disabled"` or `""` to disable modified window clicks.
-These settings apply to the Gnoblin session; other desktop sessions keep their
-own settings.
+Configure modified dragging and window menus with
+[`keybindings.pointer`](/config/configure/keybindings#pointer-bindings).
+The default Lua callbacks bind Super + left-drag to move and Super + right-drag
+to resize from the nearest corner. These gestures work on application windows
+with client or server decorations.
 
 ## Titlebar button placement
 
@@ -203,8 +190,6 @@ gnoblin.configure {
     window_management = {
         focus_mode = "click" | "sloppy" | "mouse"?,
         focus_new_windows = "smart" | "strict"?,
-        mouse_button_modifier = string?, -- Mutter modifier expression, "disabled", or ""
-        resize_with_right_button = boolean?,
         auto_maximize = boolean?,
         raise_on_click = boolean?,
         auto_raise = boolean?,

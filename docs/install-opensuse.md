@@ -6,7 +6,7 @@ repositories provide those versions, including the required desktop-schema
 major version. Check [source build prerequisites](install-source.md) before
 choosing a release asset.
 
-The core RPM set contains `gnoblin` and `gnoblin-mutter`. The
+The `gnoblin` RPM contains the compositor and session. The
 `gnoblin-portal` RPM is optional.
 Gnoblin runs as a standalone Lua session and does not install GNOME Shell or
 GJS. Keep a working session available while installing. See
@@ -23,8 +23,7 @@ together. With GitHub CLI:
 mkdir -p gnoblin-rpms
 gh release download --repo kierandrewett/gnoblin --pattern 'opensuse-*.rpm' --dir gnoblin-rpms
 sudo zypper install --allow-unsigned-rpm \
-  ./gnoblin-rpms/opensuse-gnoblin-[0-9]*.rpm \
-  ./gnoblin-rpms/opensuse-gnoblin-mutter-[0-9]*.rpm
+  ./gnoblin-rpms/opensuse-gnoblin-[0-9]*.rpm
 ```
 
 To use Gnoblin's GTK-based portal backend, install its RPM too:
@@ -55,7 +54,7 @@ Then remove the Gnoblin packages you installed:
 
 ```sh
 sudo zypper remove \
-  gnoblin gnoblin-portal gnoblin-mutter
+  gnoblin gnoblin-portal
 ```
 
 Your existing GNOME packages remain installed.

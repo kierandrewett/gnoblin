@@ -5,7 +5,6 @@ Set Gnoblin's compositor, input, session, and window-management options with
 
 ```lua
 gnoblin.configure {
-    compositor = {enable_animations = true},
     window_management = {focus_mode = "click"},
 }
 ```
@@ -31,6 +30,8 @@ Each entry below is a real top-level key accepted by `gnoblin.configure`.
 - [`gnoblin.configure.touchpad_gestures`](/config/configure/touchpad_gestures)
 - [`gnoblin.configure.permissions`](/config/configure/permissions)
 - [`gnoblin.configure.location`](/config/configure/location)
+- [`gnoblin.configure.prompts`](/config/configure/prompts)
+- [`gnoblin.configure.auth`](/config/configure/auth)
 - [`gnoblin.configure.portals`](/config/configure/portals)
 - [`gnoblin.configure.layer_shell`](/config/configure/layer_shell)
 - [`gnoblin.configure.protocols`](/config/configure/protocols)
@@ -69,6 +70,8 @@ gnoblin.configure {
     touchpad_gestures = {...}?,
     permissions = {...}?,
     location = {...}?,
+    prompts = {...}?,
+    auth = {...}?,
     portals = {...}?,
     layer_shell = {...}?,
     protocols = {...}?,

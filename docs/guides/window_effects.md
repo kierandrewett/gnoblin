@@ -9,6 +9,11 @@ you can combine them because later rules change only the fields they specify.
 These examples affect application windows. Configure a bar or launcher's
 background in that application's own settings.
 
+The starter config from `gnoblinctl init` already includes a rule with a
+12-pixel radius and a soft shadow, keeps maximised windows square, and centres
+new windows. Edit or delete that rule in `config/10-windows.lua` to change the
+look.
+
 ## Rounded window corners
 
 ```lua
@@ -20,7 +25,9 @@ gnoblin.window_rule {
 
 This gives windows a 14-pixel corner radius. Sizes use logical pixels, so the
 rounding scales with your display. `smoothing` ranges from 0 (circular corners)
-to 1 (a squarer curve).
+to 1 (a squarer curve). The shadow uses the same curve, so a high value gives a
+visible square halo behind apps that draw circular corners, such as libadwaita
+apps. Keep `smoothing` at 0 for those apps.
 
 ![Firefox with rounded corners and a Gnoblin shadow beneath Waybar](../images/gnoblin-window-effects.png)
 
@@ -62,9 +69,13 @@ gnoblin.window_rule {
 }
 ```
 
-Blur ranges from 0 to 100; 0 turns it off. It is visible only where the app's
-background is translucent. For a terminal, enable background transparency in
-the terminal's settings first. An opaque app will look unchanged.
+Blur ranges from 0 to 100 and sets the blur radius in pixels; 0 turns it off.
+It covers the whole window and is visible only where the app's background is
+translucent. If the app requests its own blur region, that region is used
+instead.
+
+For a terminal, enable background transparency in the terminal's settings
+first. An opaque app will look unchanged.
 
 To fade the entire window, including text and buttons, use `opacity` instead:
 
@@ -78,9 +89,9 @@ gnoblin.window_rule {
 Here unfocused windows are 95% opaque. Keep opacity at 1 if you only want a
 transparent background with readable text.
 
-If blur appears behind an app's shadow, `blur_ignore_shadows = true` excludes
-translucent black pixels. It also excludes translucent black backgrounds.
-Shell developers can avoid that guesswork by [specifying a blur region](/background-effects).
+If blur appears behind an app's shadow, `blur_ignore_shadows = true` limits
+blur to the window frame, which excludes the area the app draws its shadow in.
+Shell developers can [specify a blur region](/background-effects) instead.
 
 ## Window outlines
 

@@ -3,11 +3,11 @@
 Return a copy of the configuration assembled so far. Changing the copy does
 not change Gnoblin's config. Snapshot section and field names use the internal
 hyphenated form, and named shortcuts and autostart entries are lists. For
-example, inspect whether compositor animations are enabled:
+example, inspect the pointer-location setting:
 
 ```lua
 local settings = gnoblin.snapshot()
-print(settings.compositor["enable-animations"])
+print(settings.compositor["locate-pointer"])
 ```
 
 Use this to inspect earlier settings while a config is loading. For runtime

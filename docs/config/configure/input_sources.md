@@ -122,6 +122,54 @@ This setting selects layouts or input methods; it does not set XKB options.
 Configure those separately with
 [`input.keyboard.xkb_options`](/config/configure/input/keyboard).
 
+## Type with an input method {#type-with-an-input-method}
+
+An IBus source selects an engine, but Gnoblin does not provide an input-method
+bridge. It offers `text-input-v3` without `input-method-v2`. An app that relies
+on Wayland text input alone gets no composition and types the plain keys. GNOME
+Shell supplies that bridge; Gnoblin does not.
+
+GTK apps can use the toolkit's own IBus module instead. It talks to the IBus
+daemon directly and does not need the compositor:
+
+1. Install `ibus`, an engine and the GTK modules. On Fedora, for the Russian
+   transliteration engine used here:
+
+   ```sh
+   sudo dnf install ibus ibus-m17n ibus-gtk3 ibus-gtk4
+   ```
+
+2. Start the daemon in your session before you type:
+
+   ```sh
+   ibus-daemon -drx --panel disable
+   ```
+
+3. Configure the source with the engine ID from `ibus list-engine --name-only`:
+
+   ```lua
+   gnoblin.configure {
+       input_sources = {
+           sources = {
+               {type = "xkb", id = "us"},
+               {type = "ibus", id = "m17n:ru:translit"},
+           },
+       },
+   }
+   ```
+
+4. Start the app with the IBus module selected:
+
+   ```sh
+   GTK_IM_MODULE=ibus gnome-text-editor
+   ```
+
+Type `privet`. With the engine above, the text becomes `привет`. Without
+`GTK_IM_MODULE=ibus` the same keys give `privet`.
+
+This section covers GTK apps. Qt and X11 apps use their own IBus settings, which
+are not described here.
+
 ## Type definition
 
 The IDs are installation-dependent strings. `?` marks an optional field.

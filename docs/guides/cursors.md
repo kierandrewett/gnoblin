@@ -7,7 +7,8 @@ Gnoblin uses an installed Xcursor theme by default. Source builds made with
 `./build.sh --with-vector-cursors` also read Hyprcursor themes.
 
 - `cursor.theme` accepts an installed Xcursor or Hyprcursor theme name. Its
-  default is `default`, the system cursor theme.
+  default is `default`, the system cursor theme. If the named theme is not
+  installed, Gnoblin shows the default cursor instead.
 - `cursor.size` accepts an integer from `1` to `256` logical pixels. Its
   default is `24`.
 

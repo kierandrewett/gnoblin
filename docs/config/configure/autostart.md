@@ -1,7 +1,8 @@
 # gnoblin.configure.autostart
 
 `autostart` maps each entry name to a command Gnoblin starts in the user
-session. Put these settings in `~/.config/gnoblin/init.lua`.
+session after Mutter publishes its Wayland display. Put these settings in
+`~/.config/gnoblin/init.lua`.
 
 | Field     | Accepted values                   | Default and effect                                   |
 | --------- | --------------------------------- | ---------------------------------------------------- |
@@ -11,8 +12,8 @@ session. Put these settings in `~/.config/gnoblin/init.lua`.
 | `enable`  | Boolean                           | `true`; set to `false` to disable an imported entry. |
 
 Use the same name to override an imported command. Omitted fields keep their
-earlier values. Disabling an entry prevents future launches but does not stop
-a process that is already running.
+earlier values. Removing or disabling an entry stops its Gnoblin-owned process
+group on config reload, including descendants that remain in that group.
 
 ```lua
 gnoblin.configure {

@@ -53,10 +53,14 @@ compatibility path.
 `org.gnoblin.Shell`. Keep it inside the GNOME compatibility session.
 
 Bingux's OSD surface reads its records from a separate
-`$XDG_RUNTIME_DIR/bingux/osd-v2.sock` socket. In a standalone Gnoblin session,
-`bingux-statusd` subscribes to `gnoblin.osd.requested` and forwards each request
-to that socket. It routes requests by monitor and shows the compositor's icon
-and label.
+`$XDG_RUNTIME_DIR/bingux/osd-v2.sock` socket.
+
+In a standalone Gnoblin session, `bingux-statusd` subscribes to
+`gnoblin.osd.requested` and forwards each request to that socket. It routes
+requests by monitor and shows the compositor's icon and label. Current builds
+also include `output_names`, the sorted, unique physical connector names for
+that monitor. Use them when targeting a shell surface across cloned displays;
+older API 1.27 builds may omit the field.
 
 Gnoblin supplies no numeric level or maximum, so this path displays no level
 meter. A compositor without the API 1.27 event keeps the compatibility OSD

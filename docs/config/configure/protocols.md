@@ -1,7 +1,9 @@
 # gnoblin.configure.protocols
 
 Enable or disable a Wayland protocol that Gnoblin exposes to clients. Changes
-apply at the next login because the compositor registers protocols at startup.
+apply after `gnoblinctl config reload`. Disabling a protocol stops new clients
+from discovering it; clients already bound to it keep their existing object
+until they disconnect.
 
 | Setting          | Values  | Default                       | Effect                                                                  |
 | ---------------- | ------- | ----------------------------- | ----------------------------------------------------------------------- |

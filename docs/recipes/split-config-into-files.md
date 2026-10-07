@@ -12,7 +12,7 @@ In `appearance.lua`:
 
 ```lua
 gnoblin.configure {
-    compositor = {enable_animations = false},
+    window_management = {focus_mode = "click"},
 }
 ```
 

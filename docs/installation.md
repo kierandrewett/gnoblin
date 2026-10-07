@@ -25,7 +25,9 @@ packages also expose this command as `gnoblin --version`.
 Add `--json` after `--version` for a machine-readable build identity.
 
 `gnoblin` is both the login command and the package to install. Its
-`gnoblin-session` systemd target groups services used during the session.
+Gnoblin runs as the login session and does not require a systemd user manager.
+When one is available, the optional `gnoblin-session` target starts additional
+session helpers.
 
 ## Distribution packages
 

@@ -39,7 +39,9 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl workspace list`                    | Show workspace IDs, names, positions and windows           |
 | `gnoblinctl config path`                       | Find the config file your session uses                     |
 | `gnoblinctl config default`                    | Print the bundled default `init.lua`                       |
-| `gnoblinctl config reload`                     | Apply supported edits and report restart-only changes      |
+| `gnoblinctl init`                              | Create an editable default config tree from the binary  |
+| `gnoblinctl config restore-default`             | Back up and replace the config folder with embedded defaults |
+| `gnoblinctl config reload`                     | Validate and apply the complete configuration live         |
 | `gnoblinctl shortcut list`                     | List shortcuts registered by the native compositor         |
 | `gnoblinctl shortcut actions [GROUP]`          | List built-in shortcut actions, optionally by group        |
 | `gnoblinctl shortcut capture`                  | Capture a key combination as a shortcut binding            |
@@ -507,6 +509,48 @@ value to use the one-time authority for the window that raised the menu. The
 console keeps its token private and sends the operation over the event's
 connection. Application-menu requests have no `MenuContext`.
 
+## Graphical console
+
+With the built-in configuration, Alt+F2 opens the compositor’s Lua console.
+Escape closes it. The input box sits below the output; Enter runs a command
+and Shift+Enter inserts a newline. The console appears above application and
+shell layers.
+
+`gnoblin.console.toggle()` (Native API 1.77+) takes no arguments and queues a
+visibility toggle.
+It is unavailable while the session is locked. Bind it in a loaded Lua config:
+
+```lua
+gnoblin.configure {
+    keybindings = {
+        keyboard = {
+            console = {
+                binding = "<Alt>F2",
+                callback = function() gnoblin.console.toggle() end,
+            },
+        },
+    },
+}
+```
+
+Run `gnoblinctl reload` after saving. The console evaluates Lua against the
+active configuration runtime and sends reload requests through compositor
+control.
+
+Press Tab or choose **Complete** to list matching names from the active Lua
+environment. Completion supports globals and dotted member names, such as
+`gnoblin.windows.`. It does not evaluate the input or call Lua getters.
+
+Returned tables and window records have expandable property previews. Previews
+are read-only and bounded; cycles and omitted properties are marked. Expanding
+a preview does not execute Lua code.
+
+It keeps the last 200 submitted commands in
+`$XDG_STATE_HOME/gnoblin/console-history.ini`, or
+`~/.local/state/gnoblin/console-history.ini` when `XDG_STATE_HOME` is unset.
+The history is diagnostic state, separate from the Lua configuration. Its file
+is written asynchronously after a submitted command.
+
 ## Windows
 
 ```sh
@@ -678,9 +722,8 @@ print(inspection.event, inspection.duration)
 `animation get NAME` prints the configured record for an exact name. It returns
 `null` when no animation matches. Use `--json` in scripts.
 
-Workspace, shadow, and layer-companion animations run on internal compositor
-actors or effects, so the current CLI cannot preview them against a window or
-layer surface.
+Workspace and shadow animations run on internal compositor actors or effects,
+so the current CLI cannot preview them against a window or layer surface.
 
 See the [animation guide](/guides/animations) for custom curves, events and
 GNOME-style presets.
@@ -879,19 +922,14 @@ The privacy stop commands ask Mutter to stop matching tracked sessions. Their
 `requested` count reports how many stop calls were issued; it does not confirm
 that the sessions have closed. They do not revoke saved portal grants.
 
-In a standalone native session, `gnoblinctl config reload` applies changes to:
+In a standalone native session, `gnoblinctl config reload` validates and
+applies the complete configuration while the session is running. Native
+settings, policies, autostart entries, and Lua callbacks are updated as one
+reload transaction. If loading or applying the candidate fails, Gnoblin keeps
+the previous configuration active. The native open-animation matcher uses
+updated rules for windows mapped after reload.
 
-- `animations`
-- `input`
-- `permissions`
-- `touchpad-gestures`
-- `window-rules`
-- `workspaces`
-
-Other setting changes are rejected without replacing the active runtime; start
-a new session to apply them. The native open-animation matcher uses updated
-rules for windows mapped after reload. Reload does not replay open animations
-for windows already mapped.
+Reload does not replay open animations for windows already mapped.
 
 For example, to inspect a portal decision and change keyboard source:
 

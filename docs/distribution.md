@@ -11,11 +11,12 @@ as supported until its graphical-session gate has passed.
 
 Gnoblin installs as its own session and can coexist with GNOME.
 
-- RPM names: `gnoblin`, `gnoblin-mutter`, the optional `gnoblin-portal`, and the optional
+- RPM names: `gnoblin`, the optional `gnoblin-portal`, and the optional
   `gnoblin-gnome-integration` subpackage.
-- The RPM and Arch `gnoblin` packages own the supervisor, login entry, Lua
-  runtime, session services, and Gnoblin-specific portal route. They do not
-  require a portal backend.
+- The RPM and Arch `gnoblin` packages contain the single `gnoblin` compositor
+  executable, login entry, Lua runtime, session services, and Gnoblin-specific
+  portal route. They do not require a portal backend or a separate Mutter
+  runtime package.
 - Private runtime: `/usr/lib/gnoblin`.
 - Public files: login entry, control tool, service units and named policy files.
 - Private libraries must not satisfy stock GNOME dependencies.
@@ -77,9 +78,10 @@ build the optional Adwaita vector cursor theme.
 ./scripts/build-release-assets.sh ./dist/rpm-assets
 ```
 
-The command writes the source tarball before building the source RPMs.
-Archives include Gnoblin's overlays and patches. They must not be replaced
-with unpatched upstream archives.
+The command writes the source tarball before building source RPMs for the
+unified `gnoblin` runtime and optional portal backend. Archives include
+Gnoblin's overlays and patches. They must not be replaced with unpatched
+upstream archives.
 
 ## Publish to COPR
 
@@ -87,12 +89,11 @@ Configure a Fedora account using the [COPR API page](https://copr.fedorainfraclo
 Keep credentials outside the repository.
 
 ```sh
-scripts/publish-copr.sh OWNER/gnoblin PATH_TO_MUTTER_SRPM PATH_TO_PORTAL_SRPM PATH_TO_GNOBLIN_SRPM
+scripts/publish-copr.sh OWNER/gnoblin PATH_TO_PORTAL_SRPM PATH_TO_GNOBLIN_SRPM
 ```
 
-Replace the owner and paths. The script publishes the standalone Mutter,
-portal, and Gnoblin packages in dependency order. It does not build or publish
-GNOME Shell.
+Replace the owner and paths. The script publishes the unified `gnoblin`
+runtime and portal extension. It does not build or publish GNOME Shell.
 
 Use a currently available chroot supplying the required dependencies.
 After all builds succeed, test package resolution, login and removal on a clean

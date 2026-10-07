@@ -32,8 +32,10 @@ XTEST extension, which lets clients synthesize input events. Mutter ignores a
 request to disable an extension when Xwayland was built without that extension.
 
 Changing `disable_extensions` or `allow_byte_swapped_clients` requires
-restarting Xwayland; restart the Gnoblin session for those changes to affect
-the running X server. The other settings can be reloaded during the session.
+restarting Xwayland; changes to those settings restart the Xwayland child after
+a successful config reload. This disconnects running X11 apps; they may need to
+be started again. The other settings apply during the session without
+restarting Xwayland.
 
 Gnoblin exposes the effective scale to X11 clients through XSettings and the
 `Xft.dpi` resource. A config reload updates these values live. If another

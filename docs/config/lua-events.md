@@ -1,5 +1,8 @@
 # Lua events
 
+Use the [shell runtime API overview](/config/runtime-api) to find methods by
+task. This page describes callback registration and event payloads.
+
 Register repeating callbacks with `gnoblin.events.on`; use
 `gnoblin.events.once` for one-time callbacks. Each returns a `Subscription`.
 
@@ -108,10 +111,9 @@ session. `time` uses monotonic-clock microseconds. Device names and input tokens
 are omitted.
 
 Compositor socket clients can subscribe to stable `gnoblin.*` events and raw
-`mutter.*` signals with API 1.9 and `op: "events"`. Frames use `event` instead
-of Lua's `name` and include socket-stream sequence and time. Raw Mutter signal
-names and payloads can change with the pinned Mutter version. See the
-[compositor bridge](/compositor-bridge).
+`mutter.*` signals. Their request format and event framing are documented in
+the [compositor bridge](/compositor-bridge). Raw Mutter signal names and
+payloads can change with the pinned Mutter version.
 
 ```lua
 gnoblin.events.on("gnoblin.input.gesture", function(event)
@@ -175,32 +177,39 @@ event revision.
 | `gnoblin.portal.grant-removed`             | `grant_id`, `kind`, `revision`, `sequence`, `time`                                 | A persistent portal grant is revoked.                                                                         |
 | `gnoblin.privacy.changed`                  | `state`, `revision`, `sequence`, `time`                                            | A monitored privacy activity changes; `state` is a `PrivacyState` snapshot.                                   |
 | `gnoblin.location.authorization-requested` | `request_id`, `app_id`, `requested_accuracy`, `expires_at_us`, `sequence`, `time`  | GeoClue asks Gnoblin to authorize an application's location request.                                          |
+| `gnoblin.auth.requested`                   | `request_id`, `action_id`, `message`, `icon_name`, `details`, `identities`, `sequence`, `time` | A program asks the session's polkit agent for authentication. |
+| `gnoblin.auth.prompt`                      | `request_id`, `prompt`, `echo`, `sequence`, `time`                       | The authentication check needs input from the user.                   |
+| `gnoblin.auth.message`                     | `request_id`, `text`, `error`, `sequence`, `time`                        | The authentication check has a line of text for the user.             |
+| `gnoblin.auth.finished`                    | `request_id`, `result`, `sequence`, `time`                               | An authentication request ends.                                       |
+| `gnoblin.prompt.requested`                 | `request_id`, `kind`, `title`, `message`, `description`, `warning`, `password_new`, `choice_label`, `caller_window`, `continue_label`, `cancel_label`, `sequence`, `time` | A keyring or GPG prompt asks for a password or a confirmation. |
+| `gnoblin.prompt.finished`                  | `request_id`, `result`, `sequence`, `time`                               | A keyring or GPG prompt ends.                                         |
 | `gnoblin.capability.changed`               | `capability`, `revision`, `sequence`, `time`                                       | A native capability changes; `capability` is the updated `Capability` record.                                 |
-| `gnoblin.appearance.color-scheme-changed`  | `color_scheme` (`default`, `prefer-dark`, `prefer-light`), `sequence`, `time`      | The desktop color-scheme preference changes; socket clients need API 1.34.                                    |
+| `gnoblin.appearance.color-scheme-changed`  | `color_scheme` (`default`, `prefer-dark`, `prefer-light`), `sequence`, `time`      | The desktop color-scheme preference changes.                                                                    |
 | `gnoblin.window.created`                   | `window`                                                                           | The native compositor runtime observes a new managed window.                                                  |
 | `gnoblin.window.changed`                   | `window_id`, `changed`, `window`                                                   | A mapped window property changes in the native compositor runtime.                                            |
 | `gnoblin.window.focused`                   | `window_id`, `window`                                                              | A window gains keyboard focus in the native compositor runtime.                                               |
 | `gnoblin.window.unfocused`                 | `window_id`, `window`                                                              | A window loses keyboard focus in the native compositor runtime.                                               |
 | `gnoblin.window.attention-changed`         | `window_id`, `window`, `demands_attention`                                         | Mutter's attention state changes.                                                                             |
-| `gnoblin.window.activation-denied`         | `window_id`, `reason`                                                              | Strict focus policy denies an application's activation request; socket clients need API 1.69.                 |
+| `gnoblin.window.activation-denied`         | `window_id`, `reason`                                                              | Strict focus policy denies an application's activation request.                                                |
 | `gnoblin.window.closed`                    | `window_id`, `last`                                                                | The native compositor runtime removes a managed window.                                                       |
 | `gnoblin.focus.policy-changed`             | `policy`, `revision`, `sequence`, `time`                                           | The effective focus policy changes after a successful config commit.                                          |
 | `gnoblin.permission.changed`               | `policy`, `revision`, `sequence`, `time`                                           | The committed portal permission policy changes after a successful config commit.                              |
 | `gnoblin.shortcut.activated`               | `shortcut`, `trigger`, `focus_context`                                             | A configured native command shortcut is activated by a trusted key press in the native runtime.               |
 | `gnoblin.shortcut.binding-activated`       | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `focus_context`      | A Lua-registered dynamic shortcut activates. Only the first activation can carry focus authority.             |
 | `gnoblin.shortcut.binding-deactivated`     | `id`, `accelerator`, `input_time`                                                  | A press-triggered dynamic shortcut is physically released.                                                    |
-| `gnoblin.shortcut.session.activated`       | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                        | API 1.22. A held dynamic shortcut starts or repeats its modal session.                                        |
-| `gnoblin.shortcut.session.key`             | `id`, `session_id`, key fields, optional `focus_context`                           | API 1.22. A modal key event; real, non-repeat input may carry one-use focus authority.                        |
-| `gnoblin.shortcut.session.ended`           | `id`, `session_id`, `reason`, `time`                                               | API 1.22. A held shortcut session ends or is cancelled.                                                       |
-| `gnoblin.osd.requested`                    | `monitor_id`, `output_names?`, `icon?`, `label?`, `sequence`, `time`               | API 1.27. Mutter requests an OSD; a shell decides whether and how to display it.                              |
-| `gnoblin.animation.started`                | `animation`, `target`, `event`, `cancelled`                                        | A configured window or layer animation, workspace transition, or preview starts; socket API 1.18.             |
-| `gnoblin.animation.finished`               | `animation`, `target`, `event`, `cancelled`                                        | A configured window or layer animation, workspace transition, or preview completes or stops; socket API 1.18. |
-| `gnoblin.operation.completed`              | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | Native API 1.11 completion event; `error` is an `Error` record.                                               |
+| `gnoblin.shortcut.session.activated`       | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                        | A held dynamic shortcut starts or repeats its modal session.                                                  |
+| `gnoblin.shortcut.session.key`             | `id`, `session_id`, key fields, optional `focus_context`                           | A modal key event; real, non-repeat input may carry one-use focus authority.                                  |
+| `gnoblin.shortcut.session.ended`           | `id`, `session_id`, `reason`, `time`                                               | A held shortcut session ends or is cancelled.                                                                |
+| `gnoblin.osd.requested`                    | `monitor_id`, `output_names?`, `icon?`, `label?`, `sequence`, `time`               | Mutter requests an OSD; a shell decides whether and how to display it.                                       |
+| `gnoblin.pointer.locate-requested`         | `x`, `y`, `monitor_id?`, `output_names?`, `sequence`, `time`                       | The user pressed the locate-pointer key; a listener shows the pointer.                                       |
+| `gnoblin.animation.started`                | `animation`, `target`, `event`, `cancelled`                                        | A configured window or layer animation, workspace transition, or preview starts.                              |
+| `gnoblin.animation.finished`               | `animation`, `target`, `event`, `cancelled`                                        | A configured window or layer animation, workspace transition, or preview completes or stops.                  |
+| `gnoblin.operation.completed`              | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | An asynchronous operation completes; `error` is an `Error` record.                                            |
 
 ### Tablet-pad help
 
-API 1.73 adds `gnoblin.input.pad-help-requested`. A configured tablet-pad
-`help` action sends it to Lua listeners and subscribed socket clients.
+When a configured tablet-pad `help` action runs, Gnoblin sends
+`gnoblin.input.pad-help-requested` to Lua listeners.
 
 The event includes:
 
@@ -281,7 +290,7 @@ and location activity in `state`. Activity appears only for available sources.
 The native runtime monitors screen sharing, PipeWire microphone and camera
 activity, and GeoClue location activity. GeoClue authorization requests arrive
 through `gnoblin.location.authorization-requested`; answer them with
-`gnoblin.location.authorize_app`. See the [runtime API reference](runtime-api.md#privacy-and-permissions)
+`gnoblin.location.authorize_app`. See [Permissions and privacy](/shell-api/permissions-privacy)
 for accuracy levels, deadlines, and the authorization rules.
 
 `gnoblin.capability.changed` fires when a monitored native capability becomes
@@ -296,12 +305,6 @@ that event. Lua cannot inspect or create the protected value.
 
 ### Shortcuts and operations
 
-Socket clients can subscribe to `gnoblin.shortcut.activated`. Each connection
-receives a separate, single-use token for `window.focus`. The token expires
-five seconds after the shortcut press. It is revoked when its connection closes,
-its event subscription changes, the session locks, or the config reloads. Tokens
-never appear in Lua payloads or reach other connections.
-
 Lua listeners may receive `event.focus_context` on real, non-repeated
 `gnoblin.shortcut.session.key` events. Repeated events do not carry authority.
 Synthetic and input-method events are excluded from modal key events.
@@ -311,23 +314,19 @@ compositor operation. The event fields are `keyval`, `keycode`, `modifiers`,
 `phase`, and `time`. Gnoblin still delivers a captured key event if it cannot
 issue a context.
 
-Socket clients receive `focus_context` as a connection-bound token starting
-with API 1.68. Only the binding owner receives it.
-
-In Lua animation events, `event` identifies the animation definition. Socket
-frames use `event` for the protocol event name and `animation_event` for the
-definition.
+In Lua animation events, `event` identifies the animation definition. The
+compositor bridge documents how socket frames carry that value.
 
 Event order depends on the binding's `trigger`:
 
 - `"press"` activates on key-down and deactivates on key-up.
 - `"release"` activates on key-up and has no later deactivation event.
 
-Lua callbacks and socket clients can subscribe to both events. Socket clients
-can also bind dynamic shortcuts and request held or modal shortcut sessions.
+Lua callbacks can subscribe to both events and register dynamic shortcuts.
 
-See the [shortcut session reference](/compositor-bridge#api-version-122-held-and-modal-shortcut-sessions)
-for accepted options and event fields.
+See [Keyboard shortcuts](/shell-api/keyboard-shortcuts) for accepted Lua
+options. The [compositor bridge](/compositor-bridge) documents socket binding
+and subscription details.
 
 Use `gnoblin.operation.completed` to observe asynchronous operations:
 
@@ -410,8 +409,8 @@ rejects an application's activation request. The event's `reason` is one of:
 - `invalid_context`: its token is not valid.
 - `stale_context`: its startup context is too old.
 
-Socket clients need native-control API 1.69 to subscribe to this event. It
-contains no activation token or input serial.
+The event contains no activation token or input serial. Socket subscription is
+documented in the [compositor bridge](/compositor-bridge).
 
 ### Window records
 
@@ -515,8 +514,9 @@ separate from Mutter's compositor main thread. Keep them short, especially
 handlers for high-frequency `*.input.*` events. Operations requested from a
 callback are dispatched after it returns.
 
-`gnoblin.configure` changes follow the usual live-setting rules. Startup-only
-settings still need a new session. If any listener fails, Gnoblin logs the
+`gnoblin.configure` changes use the same live-apply transaction as
+`gnoblinctl config reload`. Xwayland startup options restart the Xwayland child
+and disconnect running X11 apps. If any listener fails, Gnoblin logs the
 error and continues with the remaining listeners. It rolls back configuration
 changes from that event, but still dispatches operations queued by its
 callbacks.

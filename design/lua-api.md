@@ -1218,14 +1218,14 @@ candidate while keeping the active Lua runtime in place. The supervisor waits
 asynchronously for active-runtime operations and their deferred Lua completion
 callbacks to finish, including operations those callbacks enqueue. It dispatches
 those callbacks on the supervisor main loop, then sends a correlated
-configuration transaction to Mutter. Mutter validates
-and applies the supported changes, and replies with the same transaction ID,
+configuration transaction to Mutter. Mutter validates and applies the
+candidate's compositor settings, and replies with the same transaction ID,
 revision, and generation. Only an accepted reply commits the staged Lua
 runtime and completes the API operation. A rejected reply discards the
 candidate and returns an error; the active runtime remains in place. Events, state snapshots, and API requests received during the transaction
 are queued and dispatched after the result, against whichever runtime remains
-active. Settings that require a
-new session remain unchanged by reload. If the session stops before the
+active. Xwayland options that only take effect at server startup restart the
+Xwayland child after commit, disconnecting its existing clients. If the session stops before the
 transaction finishes, the candidate is discarded. On shutdown, the server
 queues an error for outstanding requests but may close the connection before
 it flushes, so clients can receive EOF.
@@ -1971,9 +1971,10 @@ surface and input serial, and locked sessions reject the focus request.
 
 Native-control API 1.20 implements `runtime.reload_config`. It stages and
 validates the selected Lua config, waits asynchronously for active-runtime
-operations to complete, and applies supported live changes as a correlated
-Mutter transaction. The API operation completes only after Mutter confirms
-application. Settings that require a new session remain unchanged by reload.
+operations to complete, and applies compositor changes as a correlated Mutter
+transaction. The API operation completes only after Mutter confirms
+application. Xwayland server-start options restart the Xwayland child after
+commit and disconnect its existing clients.
 Native-control API 1.67 adds `runtime.status()`. It returns `state` and
 `generation`; the states are `starting`, `running`, `restarting`, and
 `unavailable`. `generation` identifies the runtime configuration Mutter has

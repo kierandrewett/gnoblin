@@ -18,11 +18,14 @@ gnoblin.configure {
 }
 ```
 
-Lua underscores become hyphens in the native setting name. Protocol globals
-are registered at compositor startup, so **log out and back in** after changing
-these gates. `gnoblinctl config reload` cannot add or remove an advertised
-global. GNOME's separate login session does not advertise Gnoblin-owned
-globals.
+Lua underscores become hyphens in the native setting name. Apply changes with
+`gnoblinctl config reload`; this adds or removes the global for new clients.
+Clients that already bound an interface keep their existing connection until
+they disconnect. GNOME's separate login session does not advertise Gnoblin-
+owned globals.
+
+Gnoblin rejects a reload that disables `ext_session_lock` while the session is
+locked. Unlock first, then reload the configuration.
 
 ## Available interfaces
 

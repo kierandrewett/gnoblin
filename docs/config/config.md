@@ -7,13 +7,13 @@ files.
 
 Use `gnoblin.configure` to write settings with public `snake_case` keys. Direct
 table access uses normalized section and field names. For example, configure
-compositor animations and inspect the compatibility table:
+pointer location and inspect the compatibility table:
 
 ```lua
-gnoblin.configure {compositor = {enable_animations = false}}
+gnoblin.configure {compositor = {locate_pointer = false}}
 
-local enabled = gnoblin.config.compositor["enable-animations"]
-gnoblin.config.compositor["enable-animations"] = true
+local locate_pointer = gnoblin.config.compositor["locate-pointer"]
+gnoblin.config.compositor["locate-pointer"] = true
 ```
 
 For reads, prefer the detached, read-only [`gnoblin.settings`](/config/runtime-api)

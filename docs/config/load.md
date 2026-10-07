@@ -19,6 +19,66 @@ gnoblin.configure(appearance)
 
 Module names cannot contain `..`; use `gnoblin.load("parts/motion.lua")` for explicit subdirectories.
 
+## Recover from a configuration error
+
+### Create or restore defaults
+
+If no user config exists, Gnoblin loads its built-in configuration tree
+directly from the session binary. Run `gnoblinctl init` to create an editable
+copy in `~/.config/gnoblin/`. The entry point loads focused files in `config/`. The command leaves an existing configuration unchanged.
+
+To replace the whole configuration folder with the embedded defaults, run
+`gnoblinctl config restore-default`. It moves the previous folder to a sibling
+`gnoblin.recovery-UUID` backup, then installs the full default tree. Files in
+the previous folder are preserved in that backup. In a running session, restore
+also reloads the config, stopping Gnoblin-owned autostart groups that are absent
+from the defaults.
+
+### Login fallback
+
+Gnoblin starts the compositor with its embedded Lua configuration, then applies
+the user configuration through a reload transaction. If Lua loading fails or
+the compositor rejects the settings, it tries the last accepted settings for
+that config path through another transaction. Embedded defaults stay active if
+those settings are unavailable or rejected.
+
+Config-owned clients start only after their configuration is accepted.
+
+Recovery resolves imports from the embedded tree, so broken user files cannot
+prevent the built-in configuration from loading. It writes no default files
+to the user config folder.
+
+Startup validation also checks native keybinding groups and action names
+against the Mutter build. An unsupported or misspelled action leaves the
+recovery configuration active and shows the error in the recovery panel.
+
+Gnoblin leaves failed files unchanged and logs the error and fallback choice.
+It also shows the failure in a top-left ImGui panel at login or after a rejected
+reload. Saved settings cannot restore Lua callbacks: recovery uses the default
+input callbacks, and callbacks from failed files do not run.
+
+### Worker recovery
+
+If the Lua worker exits unexpectedly, Gnoblin reconnects it from the settings
+accepted by the compositor, then applies embedded defaults. It does not
+evaluate the user files again.
+
+Input callbacks wait until the default configuration is accepted. The recovery
+panel reports that the worker restarted.
+
+Recovery needs a running compositor. A native compositor crash or a library
+loading failure ends the session before the panel can display. See
+[login troubleshooting](/troubleshooting#the-source-build-returns-to-the-login-screen)
+for the logs to inspect.
+
+### Fix and reload
+
+When the recovery panel appears, open the configuration and fix the error.
+**Check and reload configuration** evaluates the root file and every included
+file before applying anything. If any file still fails, Gnoblin rejects the
+reload and keeps the active settings. The panel shows the failure reason. A
+successful reload clears the notice.
+
 ## Type definition
 
 ```lua
