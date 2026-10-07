@@ -35,6 +35,7 @@
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-session-lock.h"
 #include "core/gnoblin-native-control.h"
+#include "wayland/meta-gnoblin-live-protocols.h"
 
 #include "ext-data-control-v1-server-protocol.h"
 
@@ -520,11 +521,6 @@ static void bind_data_control_manager(struct wl_client* client, void* data, uint
 void meta_wayland_init_data_control(MetaWaylandCompositor* compositor) {
     MetaWaylandDataControl* data_control;
 
-    if (!gnoblin_native_control_protocol_enabled("ext-data-control")) {
-        g_message("Gnoblin ext-data-control protocol disabled by settings");
-        return;
-    }
-
     data_control = g_new0(MetaWaylandDataControl, 1);
     /* The display/selection is resolved lazily (see data_control_selection);
      * it does not exist yet at shell-init time. */
@@ -533,7 +529,9 @@ void meta_wayland_init_data_control(MetaWaylandCompositor* compositor) {
         meta_wayland_session_lock_add_state_changed_callback(
             compositor, on_session_lock_state_changed, data_control, NULL);
 
-    if (!wl_global_create(compositor->wayland_display, &ext_data_control_manager_v1_interface,
-                          META_EXT_DATA_CONTROL_VERSION, data_control, bind_data_control_manager))
-        g_error("Failed to register ext-data-control global");
+    g_autoptr(GError) error = NULL;
+    if (!meta_gnoblin_register_protocol_global(
+            compositor, "ext-data-control", &ext_data_control_manager_v1_interface,
+            META_EXT_DATA_CONTROL_VERSION, data_control, bind_data_control_manager, &error))
+        g_error("Failed to register ext-data-control global: %s", error->message);
 }

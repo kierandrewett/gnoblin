@@ -9,6 +9,7 @@
 #include <sys/types.h>
 
 #include "clutter/clutter.h"
+#include "meta/meta-base.h"
 #include "wayland/meta-wayland-types.h"
 
 typedef enum {
@@ -34,6 +35,13 @@ typedef void (*MetaWaylandSessionLockStateChangedFunc)(MetaWaylandCompositor* co
  */
 void meta_wayland_session_lock_enter_failsafe(MetaWaylandCompositor* compositor);
 
+/* Update registry visibility for ext-session-lock-v1 during a config reload.
+ * Disabling is rejected while a lock is active; an existing lock must not be
+ * made ownerless by withdrawing its manager. */
+gboolean meta_wayland_session_lock_configure_protocol(MetaWaylandCompositor* compositor,
+                                                       gboolean enabled,
+                                                       GError** error);
+
 MetaWaylandSessionLockState meta_wayland_session_lock_get_state(MetaWaylandCompositor* compositor);
 
 /* Zero until the standard manager global is actually registered after all
@@ -42,6 +50,7 @@ guint meta_wayland_session_lock_get_capability(MetaWaylandCompositor* compositor
 
 /* Policy consumers (capture, clipboard, remote input) must deny access from
  * COVERING onward.  This stays true after a locker crash in FAILSAFE. */
+META_EXPORT
 gboolean meta_wayland_session_lock_is_active(MetaWaylandCompositor* compositor);
 
 /*
@@ -63,12 +72,14 @@ gboolean meta_wayland_session_lock_is_presentation_confirmed(MetaWaylandComposit
 
 /* Callbacks run synchronously on Mutter's main context after every state
  * transition. Consumers must treat every state other than UNLOCKED as denied. */
+META_EXPORT
 gulong meta_wayland_session_lock_add_state_changed_callback(
     MetaWaylandCompositor* compositor, MetaWaylandSessionLockStateChangedFunc callback,
     gpointer user_data, GDestroyNotify destroy_notify);
 
+META_EXPORT
 void meta_wayland_session_lock_remove_state_changed_callback(MetaWaylandCompositor* compositor,
-                                                             gulong id);
+                                                              gulong id);
 
 /* Internal scene parent for lock-surface actors. It is NULL until the
  * fail-safe cover has been installed. Normal clients must never use it. */

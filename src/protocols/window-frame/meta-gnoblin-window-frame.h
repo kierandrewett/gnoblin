@@ -24,5 +24,8 @@ void meta_gnoblin_window_frame_rect_to_client(MetaWindow* window,
                                               MtkRectangle* rect);
 void meta_gnoblin_window_frame_sync_actor(MetaWindow* window, ClutterActor* surface);
 gboolean meta_gnoblin_window_frame_get_visible_geometry(MetaWindow* window, MtkRectangle* geometry);
+/* Geometry for compositor-owned frame effects. CSD uses the client's declared
+ * visible bounds; negotiated SSD expands those bounds by the server frame. */
+gboolean meta_gnoblin_window_frame_get_effect_geometry(MetaWindow* window, MtkRectangle* geometry);
 void meta_gnoblin_window_frame_emit_changed(MetaWindow* window);
 gboolean meta_gnoblin_window_frame_is_active(MetaWindow* window);

@@ -82,10 +82,12 @@ diff --git a/src/meson.build b/src/meson.build
 index d1985c21..d3040817 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -597,6 +597,8 @@ mutter_sources += [
+@@ -597,8 +597,10 @@ mutter_sources += [
    # at build time; registered via meta_gnoblin_init_protocols)
    'wayland/meta-gnoblin-protocols.c',
    'wayland/meta-gnoblin-protocols.h',
+   'wayland/meta-gnoblin-live-protocols.c',
+   'wayland/meta-gnoblin-live-protocols.h',
 +  'wayland/meta-gnoblin-window-frame.c',
 +  'wayland/meta-gnoblin-window-frame.h',
    'wayland/meta-wayland-blur-fade.c',

@@ -1,3 +1,5 @@
 # project source destination
 mutter meta-gnoblin-protocols.c src/wayland/meta-gnoblin-protocols.c
 mutter meta-gnoblin-protocols.h src/wayland/meta-gnoblin-protocols.h
+mutter meta-gnoblin-live-protocols.c src/wayland/meta-gnoblin-live-protocols.c
+mutter meta-gnoblin-live-protocols.h src/wayland/meta-gnoblin-live-protocols.h

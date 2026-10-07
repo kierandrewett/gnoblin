@@ -35,6 +35,7 @@
 #include "meta/window.h"
 #include "wayland/meta-wayland-private.h"
 #include "core/gnoblin-native-control.h"
+#include "wayland/meta-gnoblin-live-protocols.h"
 
 #include "wlr-foreign-toplevel-management-unstable-v1-server-protocol.h"
 
@@ -533,13 +534,11 @@ static void bind_foreign_toplevel_manager(struct wl_client* client, void* data, 
 }
 
 void meta_wayland_init_foreign_toplevel_management(MetaWaylandCompositor* compositor) {
-    if (!gnoblin_native_control_protocol_enabled("wlr-foreign-toplevel-management")) {
-        g_message("Gnoblin wlr-foreign-toplevel-management protocol disabled by settings");
-        return;
-    }
-
-    if (!wl_global_create(compositor->wayland_display, &zwlr_foreign_toplevel_manager_v1_interface,
-                          META_WLR_FOREIGN_TOPLEVEL_MANAGEMENT_VERSION, compositor,
-                          bind_foreign_toplevel_manager))
+    g_autoptr(GError) error = NULL;
+    if (!meta_gnoblin_register_protocol_global(
+            compositor, "wlr-foreign-toplevel-management",
+            &zwlr_foreign_toplevel_manager_v1_interface,
+            META_WLR_FOREIGN_TOPLEVEL_MANAGEMENT_VERSION, compositor,
+            bind_foreign_toplevel_manager, &error))
         g_error("Failed to register wlr-foreign-toplevel-management global");
 }

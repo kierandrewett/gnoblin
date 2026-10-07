@@ -11,6 +11,7 @@
 #include <wayland-server.h>
 #include "core/window-private.h"
 #include "core/gnoblin-native-control.h"
+#include "wayland/meta-gnoblin-live-protocols.h"
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-surface-private.h"
 #include "wayland/meta-wayland-shell-surface.h"
@@ -130,7 +131,6 @@ static void kde_decoration_attach_toplevel(Decoration* decoration,
     surface = meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(toplevel));
     decoration->role_assigned = TRUE;
     decoration->is_toplevel = TRUE;
-    decoration->preference = ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER;
     g_object_set_data(G_OBJECT(surface), "gnoblin-decoration", NULL);
     g_object_set_data(G_OBJECT(toplevel), "gnoblin-decoration", decoration);
 
@@ -141,7 +141,7 @@ static void kde_decoration_attach_toplevel(Decoration* decoration,
         decoration->has_toplevel_listener = TRUE;
     }
 
-    kde_decoration_set_mode(decoration, ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER);
+    kde_decoration_set_mode(decoration, decoration->preference);
 }
 
 void meta_gnoblin_window_frame_surface_role_assigned(MetaWaylandSurface* surface,
@@ -263,7 +263,7 @@ void meta_gnoblin_window_frame_configure(MetaWindow* window,
     }
     configuration->gnoblin_frame = layout;
     if (decoration) {
-        const int decoration_mode = decoration->protocol == DECORATION_KDE ? 2 : layout.mode;
+        const int decoration_mode = layout.mode;
         if (decoration->sent_mode != decoration_mode) {
             if (decoration->protocol == DECORATION_KDE)
                 org_kde_kwin_server_decoration_send_mode(decoration->resource, decoration_mode);
@@ -314,16 +314,22 @@ void meta_gnoblin_window_frame_rect_to_client(MetaWindow* window,
         return;
 
     layout = configuration ? configuration->gnoblin_frame : state->committed;
-    rect->x += layout.border[3] - layout.crop[3];
-    rect->y += layout.border[0] - layout.crop[0];
-    rect->width += layout.crop[1] + layout.crop[3] - layout.border[1] - layout.border[3];
-    rect->height += layout.crop[0] + layout.crop[2] - layout.border[0] - layout.border[2];
+    const int scale = configuration ? configuration->scale
+                                    : meta_window_wayland_get_geometry_scale(window);
+    rect->x += (layout.border[3] - layout.crop[3]) * scale;
+    rect->y += (layout.border[0] - layout.crop[0]) * scale;
+    rect->width += (layout.crop[1] + layout.crop[3] - layout.border[1] - layout.border[3]) * scale;
+    rect->height += (layout.crop[0] + layout.crop[2] - layout.border[0] - layout.border[2]) * scale;
 }
 
 void meta_gnoblin_window_frame_sync_actor(MetaWindow* window, ClutterActor* surface) {
     FrameState* state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
     if (!state)
         return;
+    /* Negotiated SSD owns one outer shape through the frame renderer. The
+     * window rule extends the client-surface clip by the frame extents and
+     * forces it, so square client content takes that same outer rounded shape
+     * and cannot poke out past the frame's corners. */
     /* xdg_surface.set_window_geometry describes the visible window bounds;
      * clients use it to exclude invisible CSD shadows from the buffer. A
      * prefer-server policy must apply those bounds even when a client ignores
@@ -348,11 +354,14 @@ void meta_gnoblin_window_frame_sync_actor(MetaWindow* window, ClutterActor* surf
         clutter_actor_remove_clip(surface);
     }
 
-    double visible_bounds[4] = {visible_geometry.x, visible_geometry.y,
-                                visible_geometry.x + visible_geometry.width,
-                                visible_geometry.y + visible_geometry.height};
+    MtkRectangle effect_geometry = {0};
+    const gboolean has_effect_geometry =
+        meta_gnoblin_window_frame_get_effect_geometry(window, &effect_geometry);
+    double effect_bounds[4] = {effect_geometry.x, effect_geometry.y,
+                               effect_geometry.x + effect_geometry.width,
+                               effect_geometry.y + effect_geometry.height};
     meta_gnoblin_window_effects_set_rounded_clip_geometry(
-        surface, has_visible_geometry ? visible_bounds : NULL,
+        surface, has_effect_geometry ? effect_bounds : NULL,
         meta_window_wayland_get_geometry_scale(window));
     meta_gnoblin_frame_renderer_sync(window, &state->committed);
 }
@@ -364,7 +373,11 @@ gboolean meta_gnoblin_window_frame_get_visible_geometry(MetaWindow* window,
     g_return_val_if_fail(geometry != NULL, FALSE);
 
     state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
-    if (!state || effective_policy(window, state) != 2)
+    /* Effects need the client-declared visible bounds independently of
+     * decoration policy. In auto mode, an app can retain CSD while its
+     * transparent buffer margins must still stay outside the clip, border,
+     * and shadow. */
+    if (!state || state->client_geometry.width <= 0 || state->client_geometry.height <= 0)
         return FALSE;
 
     *geometry = state->client_geometry;
@@ -375,6 +388,29 @@ gboolean meta_gnoblin_window_frame_get_visible_geometry(MetaWindow* window,
         geometry->y += state->committed.crop[0];
         geometry->width -= state->committed.crop[1] + state->committed.crop[3];
         geometry->height -= state->committed.crop[0] + state->committed.crop[2];
+    }
+    return geometry->width > 0 && geometry->height > 0;
+}
+
+gboolean meta_gnoblin_window_frame_get_effect_geometry(MetaWindow* window,
+                                                        MtkRectangle* geometry) {
+    FrameState* state;
+
+    g_return_val_if_fail(META_IS_WINDOW(window), FALSE);
+    g_return_val_if_fail(geometry != NULL, FALSE);
+
+    if (!meta_gnoblin_window_frame_get_visible_geometry(window, geometry))
+        return FALSE;
+
+    state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
+    /* xdg_surface.window_geometry describes client content. A negotiated SSD
+     * sits around it, but transparent buffer margins outside the declared
+     * client area remain excluded. */
+    if (state->committed.mode == 2) {
+        geometry->x -= state->committed.border[3];
+        geometry->y -= state->committed.border[0];
+        geometry->width += state->committed.border[1] + state->committed.border[3];
+        geometry->height += state->committed.border[0] + state->committed.border[2];
     }
     return geometry->width > 0 && geometry->height > 0;
 }
@@ -442,15 +478,37 @@ static void decoration_free(struct wl_resource* resource) {
 static void toplevel_destroyed(struct wl_listener* listener, void* data) {
     Decoration* d = wl_container_of(listener, d, toplevel_destroy);
 
-    if (d->protocol == DECORATION_XDG)
-        wl_resource_post_error(d->resource, ZXDG_TOPLEVEL_DECORATION_V1_ERROR_ORPHANED,
-                               "Destroy the decoration before its toplevel");
+    if (d->protocol == DECORATION_KDE) {
+        /* The KDE object belongs to the wl_surface and the client releases it
+         * itself, usually right after destroying the toplevel. Destroying the
+         * resource here makes that release a fatal "invalid object" error for
+         * the client. Keep the resource inert until the client releases it. */
+        wl_list_remove(&d->toplevel_destroy.link);
+        d->has_toplevel_listener = FALSE;
+        d->is_toplevel = FALSE;
+        return;
+    }
+    wl_resource_post_error(d->resource, ZXDG_TOPLEVEL_DECORATION_V1_ERROR_ORPHANED,
+                           "Destroy the decoration before its toplevel");
     wl_resource_destroy(d->resource);
 }
 
 static void surface_destroyed(struct wl_listener* listener, void* data) {
     Decoration* d = wl_container_of(listener, d, surface_destroy);
 
+    if (d->protocol == DECORATION_KDE) {
+        /* Same lifetime rule as toplevel_destroyed: leave the resource for the
+         * client to release, but drop every reference to the dead surface. */
+        wl_list_remove(&d->surface_destroy.link);
+        d->has_surface_listener = FALSE;
+        if (d->has_toplevel_listener) {
+            wl_list_remove(&d->toplevel_destroy.link);
+            d->has_toplevel_listener = FALSE;
+        }
+        d->is_toplevel = FALSE;
+        g_clear_object(&d->surface);
+        return;
+    }
     wl_resource_destroy(d->resource);
 }
 
@@ -532,9 +590,6 @@ static void bind_manager(struct wl_client* client, void* data, uint32_t version,
 static void kde_request_mode(struct wl_client* client, struct wl_resource* resource,
                              uint32_t mode) {
     Decoration* d = wl_resource_get_user_data(resource);
-    const int applied_mode = !d->role_assigned || d->is_toplevel
-                                 ? ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER
-                                 : ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_NONE;
 
     if (mode > ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER) {
         wl_resource_post_error(resource, WL_DISPLAY_ERROR_INVALID_OBJECT,
@@ -542,9 +597,20 @@ static void kde_request_mode(struct wl_client* client, struct wl_resource* resou
         return;
     }
 
-    /* The KDE protocol reports the applied mode. Gnoblin keeps its compositor
-     * frame authoritative even when a client asks to switch back to CSD. */
-    d->preference = applied_mode;
+    /* The surface is gone; the object only waits for the client's release. */
+    if (!d->surface)
+        return;
+
+    /* Auto policy preserves client decoration requests. Only prefer-server
+     * policy overrides CSD; non-toplevel surfaces remain undecorated. */
+    MetaWindow* window = meta_wayland_surface_get_window(d->surface);
+    const int policy = window ? effective_policy(window, frame_state(window)) : 1;
+    const int applied_mode = d->role_assigned && !d->is_toplevel
+                                 ? ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_NONE
+                                 : policy == 2
+                                       ? ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER
+                                       : mode;
+    d->preference = mode;
     org_kde_kwin_server_decoration_send_mode(resource, applied_mode);
     d->sent_mode = applied_mode;
     if (d->is_toplevel)
@@ -624,11 +690,14 @@ void meta_gnoblin_window_frame_init(MetaWaylandCompositor* compositor) {
     meta_gnoblin_frame_renderer_init(compositor);
     g_signal_new("gnoblin-frame-changed", META_TYPE_WINDOW, G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                  G_TYPE_NONE, 0);
-    if (gnoblin_native_control_protocol_enabled("xdg-decoration"))
-        wl_global_create(compositor->wayland_display, &zxdg_decoration_manager_v1_interface, 1,
-                         NULL, bind_manager);
-    if (gnoblin_native_control_protocol_enabled("kde-server-decoration"))
-        wl_global_create(compositor->wayland_display,
-                         &org_kde_kwin_server_decoration_manager_interface, 1, NULL,
-                         bind_kde_manager);
+    g_autoptr(GError) error = NULL;
+    if (!meta_gnoblin_register_protocol_global(
+            compositor, "xdg-decoration", &zxdg_decoration_manager_v1_interface, 1, NULL,
+            bind_manager, &error))
+        g_error("Failed to register xdg-decoration: %s", error->message);
+    if (!meta_gnoblin_register_protocol_global(
+            compositor, "kde-server-decoration",
+            &org_kde_kwin_server_decoration_manager_interface, 1, NULL, bind_kde_manager,
+            &error))
+        g_error("Failed to register kde-server-decoration: %s", error->message);
 }

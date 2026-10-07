@@ -39,6 +39,7 @@
 #include "wayland/meta-wayland-outputs.h"
 #include "wayland/meta-wayland-private.h"
 #include "core/gnoblin-native-control.h"
+#include "wayland/meta-gnoblin-live-protocols.h"
 
 #include "wlr-gamma-control-unstable-v1-server-protocol.h"
 
@@ -305,18 +306,15 @@ void meta_wayland_init_gamma_control(MetaWaylandCompositor* compositor) {
     MetaBackend* backend = meta_context_get_backend(context);
     MetaWaylandGammaContext* ctx;
 
-    if (!gnoblin_native_control_protocol_enabled("wlr-gamma-control")) {
-        g_message("Gnoblin wlr-gamma-control protocol disabled by settings");
-        return;
-    }
-
     ctx = g_new0(MetaWaylandGammaContext, 1);
     ctx->monitor_manager = meta_backend_get_monitor_manager(backend);
     ctx->controls = g_hash_table_new(NULL, NULL);
     ctx->monitors_changed_id = g_signal_connect(ctx->monitor_manager, "monitors-changed",
                                                 G_CALLBACK(on_monitors_changed), ctx);
 
-    if (!wl_global_create(compositor->wayland_display, &zwlr_gamma_control_manager_v1_interface,
-                          META_WLR_GAMMA_CONTROL_VERSION, ctx, bind_gamma_control_manager))
-        g_error("Failed to register wlr-gamma-control global");
+    g_autoptr(GError) error = NULL;
+    if (!meta_gnoblin_register_protocol_global(
+            compositor, "wlr-gamma-control", &zwlr_gamma_control_manager_v1_interface,
+            META_WLR_GAMMA_CONTROL_VERSION, ctx, bind_gamma_control_manager, &error))
+        g_error("Failed to register wlr-gamma-control global: %s", error->message);
 }

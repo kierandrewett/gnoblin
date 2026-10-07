@@ -27,6 +27,7 @@
 #include "meta/window.h"
 #include "wayland/meta-wayland-private.h"
 #include "core/gnoblin-native-control.h"
+#include "wayland/meta-gnoblin-live-protocols.h"
 
 #include "ext-foreign-toplevel-list-v1-server-protocol.h"
 
@@ -272,13 +273,10 @@ static void bind_foreign_toplevel_list(struct wl_client* client, void* data, uin
 }
 
 void meta_wayland_init_foreign_toplevel_list(MetaWaylandCompositor* compositor) {
-    if (!gnoblin_native_control_protocol_enabled("ext-foreign-toplevel-list")) {
-        g_message("Gnoblin ext-foreign-toplevel-list protocol disabled by settings");
-        return;
-    }
-
-    if (!wl_global_create(compositor->wayland_display, &ext_foreign_toplevel_list_v1_interface,
-                          META_EXT_FOREIGN_TOPLEVEL_LIST_VERSION, compositor,
-                          bind_foreign_toplevel_list))
+    g_autoptr(GError) error = NULL;
+    if (!meta_gnoblin_register_protocol_global(
+            compositor, "ext-foreign-toplevel-list", &ext_foreign_toplevel_list_v1_interface,
+            META_EXT_FOREIGN_TOPLEVEL_LIST_VERSION, compositor, bind_foreign_toplevel_list,
+            &error))
         g_error("Failed to register ext-foreign-toplevel-list global");
 }

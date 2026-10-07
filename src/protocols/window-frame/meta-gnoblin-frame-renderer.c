@@ -4,6 +4,7 @@
 #include "backends/meta-backend-private.h"
 #include "clutter/clutter-pango.h"
 #include "compositor/meta-surface-actor.h"
+#include "compositor/meta-gnoblin-window-effects.h"
 #include "config.h"
 #include "core/window-private.h"
 #include "gnoblin-window-frame-v1-server-protocol.h"
@@ -12,6 +13,7 @@
 #include "meta/meta-window-actor.h"
 #include "meta/prefs.h"
 #include "core/gnoblin-native-control.h"
+#include "wayland/meta-gnoblin-live-protocols.h"
 #include "wayland/meta-wayland-actor-surface.h"
 #include "wayland/meta-wayland-client-private.h"
 #include "wayland/meta-wayland-filter-manager.h"
@@ -138,7 +140,12 @@ static void button_paint(ClutterActor* actor, ClutterPaintNode* node,
         CoglColor translucent;
         cogl_color_init_from_4f(&translucent, 1, 1, 1, .5f);
         cogl_pipeline_set_color(button->pipeline, &translucent);
-        CoglSnippet* snippet =
+/* Cogl identifies a snippet by pointer, not by source text. A new snippet per
+ * window makes a new GPU program per window even when the text is identical.
+ * Keep one snippet per shader kind for the life of the process. */
+        static CoglSnippet* snippet;
+        if (!snippet)
+            snippet =
             cogl_snippet_new(COGL_SNIPPET_HOOK_FRAGMENT,
                              "uniform vec4 icon_color; uniform float button_size; uniform float "
                              "button_action; uniform float button_hover; uniform float "
@@ -162,7 +169,6 @@ static void button_paint(ClutterActor* actor, ClutterPaintNode* node,
                              "alpha=(ink+hover*(1.-ink))*icon_color.a;cogl_color_out=vec4(icon_"
                              "color.rgb*alpha,alpha);");
         cogl_pipeline_add_snippet(button->pipeline, snippet);
-        g_object_unref(snippet);
     }
     CoglPipeline* p = button->pipeline;
     guint action = frame->actions[button->index];
@@ -216,7 +222,12 @@ G_DEFINE_TYPE(FrameMask, frame_mask, CLUTTER_TYPE_OFFSCREEN_EFFECT)
 static CoglPipeline* mask_pipeline(ClutterOffscreenEffect* effect, CoglTexture* texture) {
     CoglPipeline* pipeline =
         CLUTTER_OFFSCREEN_EFFECT_CLASS(frame_mask_parent_class)->create_pipeline(effect, texture);
-    CoglSnippet* snippet =
+/* Cogl identifies a snippet by pointer, not by source text. A new snippet per
+ * window makes a new GPU program per window even when the text is identical.
+ * Keep one snippet per shader kind for the life of the process. */
+    static CoglSnippet* snippet;
+    if (!snippet)
+        snippet =
         cogl_snippet_new(COGL_SNIPPET_HOOK_FRAGMENT,
                          "uniform vec2 frame_size; uniform vec4 frame_content; uniform float "
                          "frame_radius; uniform float frame_exponent; uniform vec4 "
@@ -253,7 +264,6 @@ static CoglPipeline* mask_pipeline(ClutterOffscreenEffect* effect, CoglTexture* 
                          "float mask = frame_radius < 0.5 ? 1.0 : 1.0-smoothstep(r-0.5,r+0.5,d);"
                          "cogl_color_out *= (1.0-inside)*mask;");
     cogl_pipeline_add_snippet(pipeline, snippet);
-    g_object_unref(snippet);
     return pipeline;
 }
 
@@ -551,6 +561,12 @@ static void detach_frame(Frame* frame) {
 
 static void frame_destroyed(ClutterActor* actor, gpointer data) {
     Frame* frame = data;
+    ClutterActor* parent = clutter_actor_get_parent(actor);
+    /* The outline is a sibling of the server frame so it can surround both
+     * frame and client without clipping the shadow. Remove it with the frame.
+     */
+    if (parent)
+        meta_gnoblin_window_effects_set_window_outline(parent, NULL, 0, 2, 0, NULL);
     frames = g_list_remove(frames, frame);
     if (frame->grab_op_end_handler)
         g_signal_handler_disconnect(frame->window->display, frame->grab_op_end_handler);
@@ -652,6 +668,10 @@ static void update_frame(Frame* frame) {
     Renderer* renderer;
     int scale = meta_window_wayland_get_geometry_scale(frame->window);
     int* b = frame->layout.border;
+    double outline_width = 0;
+    double outline_radius = 0;
+    double outline_exponent = 2;
+    double outline_color[4] = {128. / 255., 128. / 255., 128. / 255., 1.};
     if (options) {
         g_variant_lookup(options, "renderer", "&s", &name);
         g_variant_lookup(options, "style", "&s", &style);
@@ -659,6 +679,14 @@ static void update_frame(Frame* frame) {
             options, meta_window_has_focus(frame->window) ? "background" : "inactive-background",
             "&s", &bg);
         g_variant_lookup(options, "foreground", "&s", &fg);
+        g_variant_lookup(options, "border-width", "d", &outline_width);
+        g_variant_lookup(options, "radius", "d", &outline_radius);
+        g_variant_lookup(options, "exponent", "d", &outline_exponent);
+        g_autoptr(GVariant) outline_color_value =
+            g_variant_lookup_value(options, "border-color", G_VARIANT_TYPE("(dddd)"));
+        if (outline_color_value)
+            g_variant_get(outline_color_value, "(dddd)", &outline_color[0], &outline_color[1],
+                          &outline_color[2], &outline_color[3]);
     }
     renderer = renderers ? g_hash_table_lookup(renderers, name) : NULL;
     if (renderer != frame->renderer) {
@@ -669,8 +697,12 @@ static void update_frame(Frame* frame) {
     meta_window_get_buffer_rect(frame->window, &buffer);
     frame->width = rect.width / scale;
     frame->height = rect.height / scale;
-    if (frame->width <= 0 || frame->height <= 0)
+    if (frame->width <= 0 || frame->height <= 0) {
+        meta_gnoblin_window_effects_set_window_outline(
+            CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), NULL, 0, 2, 0,
+            NULL);
         return;
+    }
     clutter_actor_set_position(frame->root, (rect.x - buffer.x) / (float)scale,
                                (rect.y - buffer.y) / (float)scale);
     clutter_actor_set_size(frame->root, frame->width, frame->height);
@@ -678,10 +710,22 @@ static void update_frame(Frame* frame) {
                            frame->width + 2 * RESIZE_OUTSET, frame->height + 2 * RESIZE_OUTSET);
     gboolean visible = b[0] || b[1] || b[2] || b[3];
     if (!visible) {
+        meta_gnoblin_window_effects_set_window_outline(
+            CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), NULL, 0, 2, 0,
+            outline_color);
         clutter_actor_hide(frame->root);
         return;
     }
     clutter_actor_show(frame->root);
+    const double outline_bounds[4] = {
+        (rect.x - buffer.x) / (double)scale,
+        (rect.y - buffer.y) / (double)scale,
+        (rect.x - buffer.x) / (double)scale + frame->width,
+        (rect.y - buffer.y) / (double)scale + frame->height,
+    };
+    meta_gnoblin_window_effects_set_window_outline(
+        CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), outline_bounds,
+        outline_radius, outline_exponent, outline_width, outline_color);
     CoglColor background, foreground;
     if (!cogl_color_from_string(&background, bg))
         cogl_color_from_string(&background, "#242424");
@@ -1003,6 +1047,15 @@ static MetaWaylandAccess filter(const struct wl_client* client, const struct wl_
                                 gpointer data) {
     return renderer_for_client(client) ? META_WAYLAND_ACCESS_ALLOWED : META_WAYLAND_ACCESS_DENIED;
 }
+static void frame_renderer_global_changed(MetaWaylandCompositor* compositor,
+                                          struct wl_global* global, gboolean enabled,
+                                          gpointer data) {
+    MetaWaylandFilterManager* filters = meta_wayland_compositor_get_filter_manager(compositor);
+    if (enabled)
+        meta_wayland_filter_manager_add_global(filters, global, filter, NULL);
+    else
+        meta_wayland_filter_manager_remove_global(filters, global);
+}
 static void bind_manager(struct wl_client* client, void* data, uint32_t version, uint32_t id) {
     Renderer* renderer = renderer_for_client(client);
     if (!renderer) {
@@ -1136,6 +1189,8 @@ gboolean meta_gnoblin_frame_renderers_configure(GVariant* services, gboolean res
         g_hash_table_new_full(g_str_hash, g_str_equal, NULL, renderer_unref);
     if (!renderers || stopping)
         return TRUE;
+    if (!gnoblin_native_control_protocol_enabled("window-frame-renderer"))
+        services = NULL;
     if (services && !g_variant_is_of_type(services, G_VARIANT_TYPE_VARDICT)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "frame-renderers must be a dictionary");
@@ -1208,18 +1263,15 @@ void meta_gnoblin_frame_renderer_init(MetaWaylandCompositor* compositor) {
     frame_compositor = compositor;
     stopping = FALSE;
     g_signal_connect(compositor, "prepare-shutdown", G_CALLBACK(prepare_shutdown), NULL);
-    if (!gnoblin_native_control_protocol_enabled("window-frame-renderer"))
-        return;
     renderers = g_hash_table_new_full(g_str_hash, g_str_equal, NULL, renderer_unref);
     g_autoptr(GVariant) document = gnoblin_native_control_get_config_document(NULL);
     g_autoptr(GVariant) services =
         document ? g_variant_lookup_value(document, "frame-renderers", G_VARIANT_TYPE_VARDICT)
                  : NULL;
     meta_gnoblin_frame_renderers_configure(services, FALSE, NULL);
-    struct wl_global* global =
-        wl_global_create(compositor->wayland_display, &gnoblin_window_frame_manager_v1_interface, 1,
-                         NULL, bind_manager);
-    if (global)
-        meta_wayland_filter_manager_add_global(
-            meta_wayland_compositor_get_filter_manager(compositor), global, filter, NULL);
+    g_autoptr(GError) error = NULL;
+    if (!meta_gnoblin_register_protocol_global_full(
+            compositor, "window-frame-renderer", &gnoblin_window_frame_manager_v1_interface, 1,
+            NULL, bind_manager, frame_renderer_global_changed, NULL, &error))
+        g_error("Failed to register window-frame-renderer: %s", error->message);
 }
