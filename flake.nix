@@ -3,8 +3,7 @@
 
   inputs = {
     # Track the release train that carries the current GNOME major. Upstream
-    # release versions remain pinned by gnome-versions.json; the Mutter fork
-    # revision follows the Gnoblin source pin and is recorded in flake.lock.
+    # component versions and source commits are pinned by gnome-versions.json.
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
     # Keep each release input independent.  The compatibility evaluations below
@@ -15,7 +14,12 @@
     nixpkgs_26_05.url = "github:NixOS/nixpkgs/nixos-26.05";
 
     mutter-src = {
-      url = "git+https://github.com/kierandrewett/gnoblin-mutter.git?ref=gnoblin-51&rev=15761641006132ab027e86b997fa22be06e7e8e9";
+      url = "git+https://gitlab.gnome.org/GNOME/mutter.git?rev=138a14fbeef09d49ebf5be8a0cb83b042dd5c841";
+      flake = false;
+    };
+
+    imgui-src = {
+      url = "git+https://github.com/ocornut/imgui.git?rev=f1cc2ae15e53a861a874c3034aae6798fde194ab";
       flake = false;
     };
 
@@ -84,6 +88,7 @@
             gnoblinSourceModified = self ? dirtyRev;
             gnoblinRemote = if self ? original && self.original ? url then self.original.url else null;
             mutterSrc = inputs.mutter-src.outPath;
+            imguiSrc = inputs.imgui-src.outPath;
             gsettingsDesktopSchemasSrc = inputs.gsettings-desktop-schemas-src.outPath;
             portalSrc = inputs.portal-src.outPath;
             gxdpSrc = inputs.gxdp-src.outPath;
@@ -235,7 +240,7 @@
               test ! -e "${gnoblin}/bin/gnoblin-shell-service"
               test -x "${gnoblin}/bin/gnoblinctl"
               test -x "${gnoblin}/bin/gnoblin"
-              test -x "${gnoblin}/bin/gnoblin-mutter"
+              test ! -e "${gnoblin}/bin/gnoblin-mutter"
               test -f "${gnoblin}/share/wayland-sessions/gnoblin.desktop"
               test -f "${gnoblin}/lib/systemd/user/gnoblin-session.target"
               test -f "${gnoblin}/lib/systemd/user/gnoblin-idle.service"

@@ -97,8 +97,6 @@ jobs:
         run: |
           mapfile -t rpms < <(
             find "$RUNNER_TEMP/rpmbuild/RPMS" -type f \( \
-              -name 'gnoblin-mutter-[0-9]*.rpm' -o \
-              -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \
               -name 'gnoblin-[0-9]*.rpm' \
             \) | sort
           )
@@ -138,24 +136,21 @@ jobs:
         run: |
           mapfile -t component_rpms < <(
             find rpms -type f \( \
-              -name 'gnoblin-mutter-[0-9]*.rpm' -o \
-              -name 'gnoblin-mutter-devel-[0-9]*.rpm' -o \
               -name 'gnoblin-portal-[0-9]*.rpm' -o \
               -name 'gnoblin-[0-9]*.rpm' \
             \) | sort
           )
           mapfile -t runtime_rpms < <(
             find rpms -type f \( \
-              -name 'gnoblin-[0-9]*.rpm' -o \
-              -name 'gnoblin-mutter-[0-9]*.rpm' \
+              -name 'gnoblin-[0-9]*.rpm' \
             \) | sort
           )
-          test "${#runtime_rpms[@]}" -eq 2
+          test "${#runtime_rpms[@]}" -eq 1
           integration_rpm="$(find rpms -type f -name 'gnoblin-gnome-integration-*.rpm' -print -quit)"
           test -n "$integration_rpm"
           python3 scripts/check-rpm-isolation.py "${component_rpms[@]}"
           zypper --non-interactive install --no-recommends --allow-unsigned-rpm "${runtime_rpms[@]}"
-          rpm -q gnoblin gnoblin-mutter
+          rpm -q gnoblin
           ! rpm -q gnoblin-portal
           ! rpm -q gnoblin-gnome-integration
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
@@ -192,7 +187,7 @@ jobs:
       - name: Remove Gnoblin and reverify stock GNOME
         run: |
           zypper --non-interactive remove \
-            gnoblin-gnome-integration gnoblin gnoblin-portal gnoblin-mutter
+            gnoblin-gnome-integration gnoblin gnoblin-portal
           ! test -e /usr/share/wayland-sessions/gnoblin.desktop
           ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           ! test -e /usr/lib/systemd/user/gnoblin-session.target

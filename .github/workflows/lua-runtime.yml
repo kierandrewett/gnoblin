@@ -80,7 +80,8 @@ jobs:
         run: |
           test -x "$GITHUB_WORKSPACE/install/bin/gnoblin"
           test -x "$GITHUB_WORKSPACE/install/bin/gnoblinctl"
-          test -x "$GITHUB_WORKSPACE/install/bin/gnoblin-mutter"
+          test -x "$GITHUB_WORKSPACE/install/bin/gnoblin"
+          test ! -e "$GITHUB_WORKSPACE/install/bin/gnoblin-mutter"
           test ! -e "$GITHUB_WORKSPACE/install/bin/gnome-shell"
 
       - name: Run native runtime and Lua API tests

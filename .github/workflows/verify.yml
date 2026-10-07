@@ -49,7 +49,7 @@ jobs:
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
             json-glib-devel desktop-file-utils python3 rpm-build util-linux-user
-          dnf -y builddep packaging/rpm/mutter.spec
+          dnf -y builddep packaging/rpm/gnoblin.spec
           git -C subprojects/mutter fetch --force --tags origin
           git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin
           source_dir="$RUNNER_TEMP/gnoblin-source-assets"
@@ -114,7 +114,7 @@ jobs:
           dnf -y install dnf-plugins-core
           dnf -y copr enable kierandrewett/gnoblin
           dnf -y --setopt=install_weak_deps=False install --refresh gnoblin
-          rpm -q gnoblin gnoblin-mutter
+          rpm -q gnoblin
           ! rpm -q gnoblin-portal
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf

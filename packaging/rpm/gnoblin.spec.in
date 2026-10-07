@@ -2,6 +2,25 @@
 %global _prefix /usr/lib/gnoblin
 %global _libdir %{_prefix}/%{_lib}
 %global _datadir %{_prefix}/share
+# Private libraries must never satisfy stock GNOME package dependencies.
+%global __provides_exclude_from ^%{_prefix}/.*$
+%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
+%global glib_version 2.81.1
+%global gobject_introspection_version 1.41.4
+%global gtk4_version 4.14.0
+%global glycin_version 2.0.beta.2
+%global gsettings_desktop_schemas_version 49.1
+%global libdrm_version 2.4.118
+%global libdisplay_info_version 0.2
+%global libinput_version 1.30.0
+%global pixman_version 0.42
+%global pipewire_version 1.4.11
+%global lcms2_version 2.6
+%global colord_version 1.4.5
+%global libei_version 1.3.901
+%global mutter_api_version 51
+%global wayland_protocols_version 1.48
+%global wayland_server_version 1.25
 
 Name:           gnoblin
 Version:        @VERSION@
@@ -14,26 +33,92 @@ Source0:        gnoblin-%{version}-source.tar.xz
 Provides:       gnoblin-session = %{version}
 Obsoletes:      gnoblin-session < @GNOME_MAJOR@
 Obsoletes:      gnoblin-shell < @GNOME_MAJOR@
+@OBSOLETES@
 
 @RUNTIME_REQUIRES@
-Requires:       gnoblin-mutter = @MUTTER_VERSION@-@MUTTER_RELEASE@%{?dist}
 
 BuildRequires:  cmake
+BuildRequires: cvt
+BuildRequires: desktop-file-utils
+BuildRequires: mesa-libEGL-devel
+BuildRequires: mesa-libGLES-devel
+BuildRequires: mesa-libGL-devel
+BuildRequires: mesa-libgbm-devel
+BuildRequires: pam-devel
+BuildRequires: pkgconfig(colord) >= %{colord_version}
+BuildRequires: gnome-desktop4-devel
+BuildRequires: pkgconfig(gcr-4)
+BuildRequires: pkgconfig(glib-2.0) >= %{glib_version}
+BuildRequires: pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
+BuildRequires: pkgconfig(sm)
+BuildRequires: pkgconfig(lcms2) >= %{lcms2_version}
+BuildRequires: pkgconfig(libwacom)
+BuildRequires: xkeyboard-config-devel
+BuildRequires: pkgconfig(xkbcommon)
+BuildRequires: pkgconfig(glesv2)
+BuildRequires: pkgconfig(graphene-gobject-1.0)
+BuildRequires: pkgconfig(libdisplay-info) >= %{libdisplay_info_version}
+BuildRequires: pkgconfig(libpipewire-0.3) >= %{pipewire_version}
+BuildRequires: pkgconfig(libsystemd)
+BuildRequires: python3-docutils
+BuildRequires: gettext-devel git-core
+BuildRequires: gcc-c++
+BuildRequires: pkgconfig(libcanberra)
+BuildRequires: pkgconfig(json-glib-1.0)
+BuildRequires: pkgconfig(gsettings-desktop-schemas) >= %{gsettings_desktop_schemas_version}
+BuildRequires: pkgconfig(gtk4) >= %{gtk4_version}
+BuildRequires: meson
+BuildRequires: pkgconfig(gbm)
+BuildRequires: pkgconfig(glycin-2) >= %{glycin_version}
+BuildRequires: pkgconfig(gudev-1.0)
+BuildRequires: pkgconfig(libdrm) >= %{libdrm_version}
+BuildRequires: pkgconfig(libei-1.0) >= %{libei_version}
+BuildRequires: pkgconfig(libeis-1.0) >= %{libei_version}
+BuildRequires: pkgconfig(libstartup-notification-1.0)
+BuildRequires: pkgconfig(wayland-protocols) >= %{wayland_protocols_version}
+BuildRequires: pkgconfig(wayland-server) >= %{wayland_server_version}
+BuildRequires: pkgconfig(libinput) >= %{libinput_version}
+BuildRequires: pkgconfig(pixman-1) >= %{pixman_version}
+BuildRequires: pkgconfig(xwayland)
 BuildRequires:  desktop-file-utils
 BuildRequires:  gcc
+BuildRequires:  gettext-devel
+BuildRequires:  gcc-c++
 BuildRequires:  glib2-devel >= 2.86
+BuildRequires:  gobject-introspection-devel
+BuildRequires:  gnome-desktop4-devel
+BuildRequires:  libcanberra-devel
+BuildRequires:  libdisplay-info-devel
+BuildRequires:  libei-devel
+BuildRequires:  libeis-devel
+BuildRequires:  libdrm-devel
+BuildRequires:  libgbm-devel
+BuildRequires:  libwacom-devel
+BuildRequires:  lcms2-devel
+BuildRequires:  mesa-libEGL-devel
+BuildRequires:  mesa-libGLES-devel
+BuildRequires:  mesa-libGL-devel
+BuildRequires:  mesa-libgbm-devel
+BuildRequires:  pam-devel
+BuildRequires:  pipewire-devel >= 1.4.11
+BuildRequires:  startup-notification-devel
+BuildRequires:  wayland-protocols-devel >= 1.48
+BuildRequires:  wayland-devel >= 1.25
+BuildRequires:  xkeyboard-config-devel
+BuildRequires:  xorg-x11-proto-devel
 BuildRequires:  json-glib-devel
 BuildRequires:  ninja-build
 BuildRequires:  pkgconfig(gio-2.0)
 BuildRequires:  pkgconfig(gio-unix-2.0)
 BuildRequires:  pkgconfig(json-glib-1.0)
+BuildRequires:  pkgconfig(xkbcommon)
 BuildRequires:  pkgconfig(lua) >= 5.4
 BuildRequires:  python3
 
 %description
 Installs the Lua-supervised Gnoblin session, private runtime tools, and login
-entry. The package uses the separately packaged Gnoblin Mutter and does not
-require GNOME Shell or GJS. The GTK-based Gnoblin portal backend is optional.
+entry and the patched Mutter runtime in one package. It does not require GNOME
+Shell or GJS. The GTK-based Gnoblin portal backend is optional.
 It replaces the earlier
 gnoblin-session payload package on upgrade.
 
@@ -43,30 +128,34 @@ gnoblin-session payload package on upgrade.
 %build
 cmake -S . -B build/session -G Ninja \
   -DGNOBLIN_PREFIX=%{_prefix} -DGNOBLIN_LIBDIR=%{_lib} \
+  -DGNOBLIN_STAGE_ROOT=%{_builddir}/gnoblin-stage \
   -DGNOBLIN_BUILD_TYPE=release -DGNOBLIN_SOURCE_MODE=release-archive \
   -DGNOBLIN_JOBS=%{?_smp_build_ncpus}
-cmake --build build/session --target gnoblin gnoblin-idle gnoblinctl \
+cmake --build build/session --target mutter gnoblin-idle gnoblinctl \
   --parallel %{?_smp_build_ncpus}
 
 %install
-mkdir -p %{buildroot}%{_datadir}/glib-2.0/schemas
-cp -a %{_datadir}/glib-2.0/schemas/*.xml %{buildroot}%{_datadir}/glib-2.0/schemas/
+if [ -d %{_builddir}/gnoblin-stage ]; then
+  cp -a %{_builddir}/gnoblin-stage/. %{buildroot}/
+fi
 GNOBLIN_LIBDIR=%{_lib} \
 GNOBLIN_STAGE_ROOT=%{buildroot} \
 GNOBLIN_IDLE_BINARY="$PWD/build/session/gnoblin-idle" \
 GNOBLINCTL_BINARY="$PWD/build/session/gnoblinctl" \
 GNOBLIN_IDENTITY_FILE="$PWD/build/session/gnoblinctl-identity.json" \
 GNOBLIN_VERSION_METADATA_FILE="$PWD/build/session/gnoblin-version.ini" \
-GNOBLIN_BINARY="$PWD/build/session/gnoblin" \
   scripts/install-session.sh %{_prefix}
 install -Dm0644 %{buildroot}%{_prefix}/share/xdg-desktop-portal/gnoblin-portals.conf \
   %{buildroot}/usr/share/xdg-desktop-portal/gnoblin-portals.conf
 install -Dm0644 packaging/geoclue/50-gnoblin.conf \
   %{buildroot}/etc/geoclue/conf.d/50-gnoblin.conf
-# The Mutter schemas are available while the aggregate schema is compiled but
-# belong to gnoblin-mutter. Keep only the session-owned override in this RPM.
-find %{buildroot}%{_datadir}/glib-2.0/schemas -maxdepth 1 -type f -name '*.xml' \
-  ! -name '00_org.gnoblin.mutter.gschema.override' -delete
+rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
+if [ -f %{buildroot}%{_datadir}/polkit-1/actions/org.gnome.mutter.backlight-helper.policy ]; then
+  install -d %{buildroot}/usr/share/polkit-1/actions
+  sed 's/org.gnome.mutter.backlight-helper/org.gnoblin.mutter.backlight-helper/g' \
+    %{buildroot}%{_datadir}/polkit-1/actions/org.gnome.mutter.backlight-helper.policy \
+    > %{buildroot}/usr/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy
+fi
 install -d %{buildroot}/usr/bin %{buildroot}/usr/share/wayland-sessions
 ln -s %{_prefix}/bin/gnoblin %{buildroot}/usr/bin/gnoblin
 ln -s %{_prefix}/bin/gnoblinctl %{buildroot}/usr/bin/gnoblinctl
@@ -102,6 +191,7 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/share/xdg-desktop-portal/gnoblin-portals.conf
 /usr/lib/systemd/user/gnoblin-session.target
 /usr/lib/systemd/user/gnoblin-idle.service
+/usr/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy
 
 %package -n gnoblin-gnome-integration
 Summary:        Optional GNOME application services for Gnoblin
