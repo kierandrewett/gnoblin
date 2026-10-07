@@ -26,7 +26,7 @@ class RpmTargetProbeTests(unittest.TestCase):
             {"gtk4", "girepository", "glycin", "libei", "libeis", "libdisplay-info"},
         )
         self.assertEqual(probe.REQUIREMENTS["wayland-protocols"]["declaredScope"], "development-package-contract")
-        self.assertEqual(probe.REQUIREMENTS["wayland-protocols"]["declaredPackage"], "gnoblin-mutter-devel")
+        self.assertEqual(probe.REQUIREMENTS["wayland-protocols"]["declaredPackage"], "gnoblin")
         self.assertEqual(
             probe.REQUIREMENTS["wayland-protocols"]["floorSource"],
             "subprojects/mutter/meson.build:50,217-218",

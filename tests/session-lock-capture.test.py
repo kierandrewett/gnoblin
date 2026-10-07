@@ -45,8 +45,8 @@ class SessionLockCaptureTests(unittest.TestCase):
         self.assertIn("MetaWaylandSessionLockStateChangedFunc", self.session_lock_header)
         self.assertIn("meta_wayland_session_lock_add_state_changed_callback", self.session_lock_header)
         self.assertIn("meta_wayland_session_lock_remove_state_changed_callback", self.session_lock_header)
-        self.assertIn("set_state (controller, META_WAYLAND_SESSION_LOCK_COVERING)", self.session_lock_source)
-        self.assertIn("set_state (controller, META_WAYLAND_SESSION_LOCK_FAILSAFE)", self.session_lock_source)
+        self.assertIn("set_state(controller, META_WAYLAND_SESSION_LOCK_COVERING)", self.session_lock_source)
+        self.assertIn("set_state(controller, META_WAYLAND_SESSION_LOCK_FAILSAFE)", self.session_lock_source)
 
     def test_only_presented_monitor_lock_scene_and_its_input_are_allowed(self):
         self.assertIn("src/backends/meta-screen-cast-session.c", self.patch)

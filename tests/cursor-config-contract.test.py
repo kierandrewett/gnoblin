@@ -3,10 +3,14 @@
 
 import unittest
 from pathlib import Path
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _sources import control_source  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROL = (ROOT / "src/native-control/gnoblin-native-control.c").read_text()
+CONTROL = control_source()
 MUTTER_PATCH = (
     ROOT / "patches/mutter/70-config-preferences/0009-configure-cursor-theme-and-size-from-lua.patch"
 ).read_text()

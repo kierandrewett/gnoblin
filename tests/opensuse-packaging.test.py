@@ -11,33 +11,38 @@ SPECS = ROOT / "packaging" / "opensuse"
 
 class OpenSUSEPackagingTests(unittest.TestCase):
     def test_private_runtime_and_tumbleweed_capabilities(self):
-        content = (SPECS / "mutter.spec").read_text()
+        content = (SPECS / "gnoblin.spec").read_text()
         self.assertIn("%global _prefix /usr/lib/gnoblin", content)
         self.assertIn("%global __provides_exclude_from ^%{_prefix}/.*$", content)
         self.assertIn("pkgconfig(", content)
         self.assertNotIn("mesa-libEGL-devel", content)
         self.assertIn(
             "BuildRequires:  pkgconfig(udev)",
-            (SPECS / "mutter.spec").read_text(),
+            (SPECS / "gnoblin.spec").read_text(),
         )
         self.assertNotIn("python3dist(argcomplete)", content)
         self.assertIn(
             "BuildRequires:  pkgconfig(glycin-2) >= 2.0.beta.2",
-            (SPECS / "mutter.spec").read_text(),
+            (SPECS / "gnoblin.spec").read_text(),
         )
         self.assertIn(
             "BuildRequires:  pkgconfig(libdisplay-info) >= 0.2",
-            (SPECS / "mutter.spec").read_text(),
+            (SPECS / "gnoblin.spec").read_text(),
         )
 
-    def test_no_private_prefix_is_used_for_the_meson_build_tool(self):
-        for spec_name in ("mutter.spec", "gnoblin-portal.spec"):
-            with self.subTest(spec=spec_name):
-                content = (SPECS / spec_name).read_text()
-                self.assertNotIn("%{_bindir}/meson", content)
-                self.assertIn("/usr/bin/meson setup build .", content)
-                self.assertIn("/usr/bin/meson compile -C build", content)
-                self.assertIn("/usr/bin/meson install -C build", content)
+    def test_gnoblin_uses_the_unified_cmake_build(self):
+        content = (SPECS / "gnoblin.spec").read_text()
+        self.assertNotIn("%{_bindir}/meson", content)
+        self.assertIn("cmake -S . -B build/session -G Ninja", content)
+        self.assertIn("--target mutter gnoblin-idle gnoblinctl", content)
+        self.assertIn("scripts/install-session.sh %{_prefix}", content)
+
+    def test_portal_uses_the_system_meson_build_tool(self):
+        content = (SPECS / "gnoblin-portal.spec").read_text()
+        self.assertNotIn("%{_bindir}/meson", content)
+        self.assertIn("/usr/bin/meson setup build .", content)
+        self.assertIn("/usr/bin/meson compile -C build", content)
+        self.assertIn("/usr/bin/meson install -C build", content)
 
     def test_session_is_standalone_and_uses_gnoblin_names(self):
         content = (SPECS / "gnoblin.spec").read_text()
@@ -45,6 +50,8 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         self.assertIn("/usr/share/wayland-sessions/gnoblin.desktop", content)
         self.assertIn("/usr/lib/systemd/user/gnoblin-session.target", content)
         self.assertIn("/usr/lib/systemd/user/gnoblin-idle.service", content)
+        self.assertNotIn("gnoblin-recovery", content)
+        self.assertIn("BuildRequires:  pkgconfig(xkbcommon)", content)
         self.assertIn("scripts/install-session.sh %{_prefix}", content)
         install = (ROOT / "scripts/install-session.sh").read_text()
         self.assertIn("systemd-user/gnoblin-session.target", install)
@@ -59,7 +66,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
 
     def test_check_script_keeps_the_probe_non_installing(self):
         check = (SPECS / "check-buildrequires.sh").read_text()
-        self.assertIn("mutter|gnoblin-portal|gnoblin", check)
+        self.assertIn("gnoblin-portal|gnoblin", check)
         self.assertIn(
             'rpmspec -q --buildrequires --define "gnoblin_version $gnoblin_version" "$spec"',
             check,
@@ -79,12 +86,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             chain.index("git fetch --force --tags origin"),
             chain.index('"$ROOT/scripts/make-tarball.sh"'),
         )
-        self.assertLess(chain.index("build mutter.spec"), chain.index("build gnoblin-portal.spec"))
         self.assertLess(chain.index("build gnoblin-portal.spec"), chain.index("build gnoblin.spec"))
-        self.assertLess(
-            chain.index('check-buildrequires.sh" mutter --install'),
-            chain.index('if [[ -n "$PREPARED_SOURCES" ]]'),
-        )
         self.assertLess(
             chain.index('check-buildrequires.sh" gnoblin-portal --install'),
             chain.index("build gnoblin-portal.spec"),

@@ -2,11 +2,13 @@
 
 from pathlib import Path
 import unittest
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _sources import control_header, control_source  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROL = ROOT / "src/native-control/gnoblin-native-control.c"
-API_HEADER = ROOT / "src/native-control/gnoblin-native-control.h"
 BUILD = ROOT / "CMakeLists.txt"
 LUA = ROOT / "src/config/gnoblin-lua.c"
 CONFIG = ROOT / "src/config/gnoblin-config.c"
@@ -17,7 +19,7 @@ class LocationAgentContractTests(unittest.TestCase):
     def setUpClass(cls):
         cls.source = (ROOT / "src/native-control/gnoblin-location-agent.c").read_text()
         cls.header = (ROOT / "src/native-control/gnoblin-location-agent.h").read_text()
-        cls.control = CONTROL.read_text()
+        cls.control = control_source()
         cls.lua = LUA.read_text()
         cls.config = CONFIG.read_text()
 
@@ -72,7 +74,7 @@ class LocationAgentContractTests(unittest.TestCase):
     def test_authorization_is_brokered_to_lua_with_bounded_one_use_requests(self):
         api_minor = next(
             int(line.rsplit(" ", 1)[1])
-            for line in API_HEADER.read_text().splitlines()
+            for line in control_header().splitlines()
             if line.startswith("#define GNOBLIN_NATIVE_CONTROL_API_MINOR ")
         )
         self.assertGreaterEqual(api_minor, 65)

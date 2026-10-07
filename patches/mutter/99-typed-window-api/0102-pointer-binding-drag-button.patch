@@ -1,0 +1,79 @@
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 6 Oct 2026 21:15:00 +0100
+Subject: [PATCH] Preserve initiating pointer button for Gnoblin drags
+
+---
+diff --git a/src/compositor/meta-window-drag.c b/src/compositor/meta-window-drag.c
+index b417a14b..d7680d9d 100644
+--- a/src/compositor/meta-window-drag.c
++++ b/src/compositor/meta-window-drag.c
+@@ -88,6 +88,7 @@ struct _MetaWindowDrag {
+   guint tile_preview_timeout_id;
+   MetaTileMode preview_tile_mode;
+   gboolean pos_hint_set;
++  guint initiating_button;
+   guint64 gnoblin_snap_drag_id;
+ };
+ 
+@@ -296,6 +297,15 @@ meta_window_drag_new (MetaWindow *window,
+                        NULL);
+ }
+ 
++void
++meta_window_drag_set_initiating_button (MetaWindowDrag *drag,
++                                        guint           button)
++{
++  g_return_if_fail (META_IS_WINDOW_DRAG (drag));
++
++  drag->initiating_button = button;
++}
++
+ static void
+ clear_move_resize_later (MetaWindowDrag *window_drag)
+ {
+@@ -1963,8 +1973,11 @@ process_pointer_event (MetaWindowDrag     *window_drag,
+     case CLUTTER_BUTTON_RELEASE:
+       button = clutter_event_get_button (event);
+ 
+-      if (button == 1 ||
+-          button == (unsigned int) meta_prefs_get_mouse_button_resize ())
++      if ((window_drag->initiating_button &&
++           button == (int) window_drag->initiating_button) ||
++          (!window_drag->initiating_button &&
++           (button == 1 ||
++            button == (unsigned int) meta_prefs_get_mouse_button_resize ())))
+         end_grab_op (window_drag, event);
+ 
+       break;
+diff --git a/src/compositor/meta-window-drag.h b/src/compositor/meta-window-drag.h
+index e0a39bb0..800d2991 100644
+--- a/src/compositor/meta-window-drag.h
++++ b/src/compositor/meta-window-drag.h
+@@ -38,6 +38,9 @@ G_DECLARE_FINAL_TYPE (MetaWindowDrag, meta_window_drag,
+ MetaWindowDrag * meta_window_drag_new (MetaWindow *window,
+                                        MetaGrabOp  grab_op);
+ 
++void meta_window_drag_set_initiating_button (MetaWindowDrag *drag,
++                                             guint           button);
++
+ gboolean meta_window_drag_begin (MetaWindowDrag      *drag,
+                                  ClutterSprite       *sprite,
+                                  uint32_t             timestamp,
+diff --git a/src/meta/window.h b/src/meta/window.h
+index 9482a67e..12fe6cf1 100644
+--- a/src/meta/window.h
++++ b/src/meta/window.h
+@@ -394,6 +394,13 @@ gboolean meta_window_begin_grab_op (MetaWindow       *window,
+                                     guint32           timestamp,
+                                     graphene_point_t *pos_hint);
+ 
++gboolean meta_window_begin_pointer_grab_op (MetaWindow       *window,
++                                            MetaGrabOp        op,
++                                            ClutterSprite    *sprite,
++                                            guint32           timestamp,
++                                            graphene_point_t *pos_hint,
++                                            guint             button);
++
+ META_EXPORT
+ gboolean meta_window_can_maximize (MetaWindow *window);
+ 

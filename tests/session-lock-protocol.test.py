@@ -8,11 +8,14 @@ design document for the outstanding installed-session acceptance checks.
 from pathlib import Path
 import unittest
 import xml.etree.ElementTree as ET
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _sources import control_source  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "src/protocols/session-lock/meta-wayland-session-lock.c"
-NATIVE_CONTROL_SOURCE = ROOT / "src/native-control/gnoblin-native-control.c"
 SURFACE_SOURCE = ROOT / "src/protocols/session-lock/meta-wayland-session-lock-surface.c"
 XML = ROOT / "src/protocols/session-lock/ext-session-lock-v1.xml"
 MANIFEST = ROOT / "src/protocols/session-lock/manifest"
@@ -35,7 +38,7 @@ class SessionLockProtocolTests(unittest.TestCase):
 
     def test_manager_requires_supervised_gnoblin_session_and_owns_its_global(self):
         source = SOURCE.read_text()
-        native_control = NATIVE_CONTROL_SOURCE.read_text()
+        native_control = control_source()
         self.assertIn('gnoblin_native_control_protocol_enabled("ext-session-lock")', source)
         self.assertIn("gboolean gnoblin_native_control_protocol_enabled", native_control)
         self.assertIn("gnoblin_native_control_is_session(NULL)", native_control)

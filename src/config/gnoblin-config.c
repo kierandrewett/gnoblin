@@ -2,12 +2,15 @@
 #include "gnoblin-config.h"
 #include "gnoblin-portal-policy.h"
 #include "gnoblin-input-config.h"
+#include "gnoblin-keybinding-catalog.h"
 
 #include <errno.h>
 #include <gio/gio.h>
 #include <glib/gstdio.h>
 #include <math.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <xkbcommon/xkbcommon.h>
 
 static gboolean input_number(GVariant* value, double* number) {
@@ -609,6 +612,63 @@ static gboolean validate_location(GVariant* location, GError** error) {
     return TRUE;
 }
 
+static gboolean validate_auth(GVariant* auth, GError** error) {
+    if (!g_variant_is_of_type(auth, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "auth must be a table");
+        return FALSE;
+    }
+
+    GVariantIter iter;
+    const char* name;
+    GVariant* value;
+    g_variant_iter_init(&iter, auth);
+    while (g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+        gboolean valid = FALSE;
+        /* The Lua loader stores snake_case keys in kebab-case. */
+        if (g_str_equal(name, "polkit-agent") || g_str_equal(name, "polkit_agent")) {
+            valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
+            if (!valid)
+                g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                    "auth.polkit_agent must be a boolean");
+        } else {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "auth.%s is an unsupported setting", name);
+        }
+        g_variant_unref(value);
+        if (!valid)
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static gboolean validate_prompts(GVariant* prompts, GError** error) {
+    if (!g_variant_is_of_type(prompts, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "prompts must be a table");
+        return FALSE;
+    }
+
+    GVariantIter iter;
+    const char* name;
+    GVariant* value;
+    g_variant_iter_init(&iter, prompts);
+    while (g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+        gboolean valid = FALSE;
+        if (g_str_equal(name, "enabled")) {
+            valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
+            if (!valid)
+                g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                    "prompts.enabled must be a boolean");
+        } else {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "prompts.%s is an unsupported setting", name);
+        }
+        g_variant_unref(value);
+        if (!valid)
+            return FALSE;
+    }
+    return TRUE;
+}
+
 static gboolean validate_input(GVariant* input, GError** error) {
     if (!g_variant_is_of_type(input, G_VARIANT_TYPE_VARDICT))
         goto invalid_table;
@@ -1028,6 +1088,96 @@ static gboolean validate_window_rule_padding(GVariant* section, gsize rule_index
     return TRUE;
 }
 
+static gboolean validate_window_rule_blur(GVariant* rule, gsize rule_index, GError** error) {
+    g_autoptr(GVariant) blur = g_variant_lookup_value(rule, "blur", NULL);
+    if (blur) {
+        double number = 0;
+        if (g_variant_is_of_type(blur, G_VARIANT_TYPE_DOUBLE))
+            number = g_variant_get_double(blur);
+        else if (g_variant_is_of_type(blur, G_VARIANT_TYPE_INT64))
+            number = (double)g_variant_get_int64(blur);
+        else if (g_variant_is_of_type(blur, G_VARIANT_TYPE_INT32))
+            number = (double)g_variant_get_int32(blur);
+        else
+            number = -1;
+        if (!(number >= 0 && number <= 100)) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "window-rules[%zu].blur must be a number from 0 to 100", rule_index);
+            return FALSE;
+        }
+    }
+
+    /* The Lua loader stores snake_case keys in kebab-case. */
+    g_autoptr(GVariant) ignore = g_variant_lookup_value(rule, "blur-ignore-shadows", NULL);
+    if (!ignore)
+        ignore = g_variant_lookup_value(rule, "blur_ignore_shadows", NULL);
+    if (ignore && !g_variant_is_of_type(ignore, G_VARIANT_TYPE_BOOLEAN)) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "window-rules[%zu].blur_ignore_shadows must be a boolean", rule_index);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+static gboolean validate_window_rule_workspace(GVariant* rule, gsize rule_index, GError** error) {
+    g_autoptr(GVariant) workspace = g_variant_lookup_value(rule, "workspace", NULL);
+    if (!workspace)
+        return TRUE;
+    if (!g_variant_is_of_type(workspace, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "window-rules[%zu].workspace must be a table with id or number", rule_index);
+        return FALSE;
+    }
+
+    gboolean has_id = FALSE;
+    gboolean has_number = FALSE;
+    GVariantIter iter;
+    const char* key;
+    GVariant* value;
+    g_variant_iter_init(&iter, workspace);
+    while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
+        g_autoptr(GVariant) field = value;
+        if (g_str_equal(key, "id")) {
+            has_id = TRUE;
+            if (!g_variant_is_of_type(field, G_VARIANT_TYPE_STRING) ||
+                !*g_variant_get_string(field, NULL) || strlen(g_variant_get_string(field, NULL)) > 128) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "window-rules[%zu].workspace.id must be a nonempty string of at most "
+                            "128 bytes",
+                            rule_index);
+                return FALSE;
+            }
+        } else if (g_str_equal(key, "number")) {
+            has_number = TRUE;
+            gint64 number = 0;
+            gboolean integer = TRUE;
+            if (g_variant_is_of_type(field, G_VARIANT_TYPE_INT64))
+                number = g_variant_get_int64(field);
+            else if (g_variant_is_of_type(field, G_VARIANT_TYPE_INT32))
+                number = g_variant_get_int32(field);
+            else
+                integer = FALSE;
+            if (!integer || number < 1 || number > 1024) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "window-rules[%zu].workspace.number must be an integer from 1 to 1024",
+                            rule_index);
+                return FALSE;
+            }
+        } else {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "window-rules[%zu].workspace.%s is not supported; use id or number",
+                        rule_index, key);
+            return FALSE;
+        }
+    }
+    if (has_id == has_number) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "window-rules[%zu].workspace must set exactly one of id or number", rule_index);
+        return FALSE;
+    }
+    return TRUE;
+}
+
 static gboolean validate_window_rule_patterns(GVariant* document, GError** error) {
     g_autoptr(GVariant) rules = g_variant_lookup_value(document, "window-rules", NULL);
     if (!rules)
@@ -1053,6 +1203,10 @@ static gboolean validate_window_rule_patterns(GVariant* document, GError** error
                         i + 1);
             return FALSE;
         }
+        if (!validate_window_rule_workspace(rule, i + 1, error))
+            return FALSE;
+        if (!validate_window_rule_blur(rule, i + 1, error))
+            return FALSE;
         g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
         if (!match || !g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT))
             continue;
@@ -1437,6 +1591,237 @@ invalid:
     return FALSE;
 }
 
+/* Pointer gestures share the keybinding table but use button accelerators. */
+static gboolean validate_pointer_keybindings(GVariant* actions, GError** error) {
+    if (!g_variant_is_of_type(actions, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "keybindings.pointer must be an action table");
+        return FALSE;
+    }
+    GVariantIter iter;
+    const char* action;
+    GVariant* value;
+    g_variant_iter_init(&iter, actions);
+    while (g_variant_iter_next(&iter, "{&sv}", &action, &value)) {
+        g_autoptr(GVariant) bindings = value;
+        if (!g_regex_match_simple("^[a-z0-9]+(?:_[a-z0-9]+)*$", action, 0, 0) ||
+            !g_variant_is_of_type(bindings, G_VARIANT_TYPE("av"))) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "keybindings.pointer needs named arrays of button accelerators");
+            return FALSE;
+        }
+        for (gsize i = 0; i < g_variant_n_children(bindings); i++) {
+            g_autoptr(GVariant) boxed = g_variant_get_child_value(bindings, i);
+            g_autoptr(GVariant) binding = g_variant_get_variant(boxed);
+            const char* text = g_variant_is_of_type(binding, G_VARIANT_TYPE_STRING)
+                                   ? g_variant_get_string(binding, NULL) : NULL;
+            const char* button = text ? strstr(text, "Button") : NULL;
+            g_autofree char* modifiers = button ? g_strndup(text, button - text) : NULL;
+            if (!text || strlen(text) > 160 || !button || !modifiers[0] ||
+                !window_modifier_valid(modifiers) ||
+                (!g_str_equal(button, "Button1") && !g_str_equal(button, "Button2") &&
+                 !g_str_equal(button, "Button3"))) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "keybindings.pointer.%s needs modifier tokens followed by Button1, "
+                            "Button2 or Button3", action);
+                return FALSE;
+            }
+        }
+    }
+    return TRUE;
+}
+
+/* Input policy publishes selectors, never Lua functions, to the compositor. */
+static gboolean validate_input_handlers(GVariant* document, GError** error) {
+    g_autoptr(GHashTable) ids = NULL;
+    g_autoptr(GVariant) handlers = g_variant_lookup_value(document, "input-handlers", NULL);
+    if (!handlers)
+        return TRUE;
+    if (!g_variant_is_of_type(handlers, G_VARIANT_TYPE("av")) ||
+        g_variant_n_children(handlers) > 256)
+        goto invalid;
+    ids = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    for (gsize i = 0; i < g_variant_n_children(handlers); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(handlers, i);
+        g_autoptr(GVariant) item = g_variant_get_variant(boxed);
+        const char* id = NULL;
+        if (!g_variant_is_of_type(item, G_VARIANT_TYPE_VARDICT) ||
+            g_variant_n_children(item) != 2 ||
+            !g_variant_lookup(item, "id", "&s", &id) || !*id || strlen(id) > 128 ||
+            !g_utf8_validate(id, -1, NULL) || g_hash_table_contains(ids, id))
+            goto invalid;
+        /* IDs must remain alive after the item is released. */
+        g_hash_table_add(ids, g_strdup(id));
+        g_autoptr(GVariant) match = g_variant_lookup_value(item, "match", G_VARIANT_TYPE_VARDICT);
+        const char* type = NULL;
+        static const char* const types[] = {"key", "button", "motion", "scroll", "touch", "tablet", "gesture", NULL};
+        if (!match || !g_variant_lookup(match, "type", "&s", &type))
+            goto invalid;
+        gboolean known = FALSE;
+        for (guint j = 0; types[j]; j++)
+            known |= g_str_equal(type, types[j]);
+        if (!known)
+            goto invalid;
+        GVariantIter fields;
+        const char* name;
+        GVariant* value;
+        g_variant_iter_init(&fields, match);
+        while (g_variant_iter_next(&fields, "{&sv}", &name, &value)) {
+            g_autoptr(GVariant) field = value;
+            gboolean valid = FALSE;
+            if (g_str_equal(name, "type"))
+                valid = TRUE;
+            else if (g_str_equal(name, "device-id") || g_str_equal(name, "accelerator")) {
+                if (g_variant_is_of_type(field, G_VARIANT_TYPE_STRING)) {
+                    const char* text = g_variant_get_string(field, NULL);
+                    valid = *text && strlen(text) <= 160 && g_utf8_validate(text, -1, NULL);
+                }
+                if (g_str_equal(name, "accelerator") &&
+                    !g_str_equal(type, "key") && !g_str_equal(type, "button"))
+                    valid = FALSE;
+            } else if (g_str_equal(name, "phase")) {
+                static const char* const discrete[] = {"press", "release", NULL};
+                static const char* const stream[] = {"begin", "update", "end", "cancel", NULL};
+                static const char* const tablet[] = {"press", "release", "update", NULL};
+                static const char* const update[] = {"update", NULL};
+                const char* const* phases = (g_str_equal(type, "key") || g_str_equal(type, "button"))
+                    ? discrete : (g_str_equal(type, "touch") || g_str_equal(type, "gesture"))
+                    ? stream : g_str_equal(type, "tablet") ? tablet : update;
+                valid = input_string_is(field, phases);
+            } else if (g_str_equal(name, "keycode") || g_str_equal(name, "button") ||
+                       g_str_equal(name, "modifiers")) {
+                double number;
+                valid = (g_variant_is_of_type(field, G_VARIANT_TYPE_INT64) ||
+                         g_variant_is_of_type(field, G_VARIANT_TYPE_UINT32)) &&
+                        input_number(field, &number) && number >= 0 &&
+                        number <= G_MAXUINT32 && number == floor(number);
+                if (g_str_equal(name, "button"))
+                    valid = valid && number >= 1 && number <= 32 &&
+                            (g_str_equal(type, "button") || g_str_equal(type, "tablet"));
+                if (g_str_equal(name, "keycode"))
+                    valid = valid && g_str_equal(type, "key");
+            } else if (g_str_equal(name, "allow-when-shortcuts-inhibited"))
+                valid = g_variant_is_of_type(field, G_VARIANT_TYPE_BOOLEAN);
+            if (!valid)
+                goto invalid;
+        }
+    }
+    return TRUE;
+invalid:
+    g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "input handlers require unique string IDs and valid type/device/phase/key/button/modifier selectors");
+    return FALSE;
+}
+
+static gboolean validate_keyboard_callbacks(GVariant* actions, GError** error) {
+    if (!g_variant_is_of_type(actions, G_VARIANT_TYPE_VARDICT))
+        goto invalid;
+    GVariantIter iter;
+    const char* name;
+    GVariant* value;
+    g_variant_iter_init(&iter, actions);
+    while (g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+        g_autoptr(GVariant) bindings = value;
+        if (!*name || strlen(name) > 128 ||
+            !g_variant_is_of_type(bindings, G_VARIANT_TYPE("av")))
+            goto invalid;
+        for (gsize i = 0; i < g_variant_n_children(bindings); i++) {
+            g_autoptr(GVariant) boxed = g_variant_get_child_value(bindings, i);
+            g_autoptr(GVariant) binding = g_variant_get_variant(boxed);
+            if (!g_variant_is_of_type(binding, G_VARIANT_TYPE_STRING))
+                goto invalid;
+            const char* text = g_variant_get_string(binding, NULL);
+            if (!*text || strlen(text) > 160 || !g_utf8_validate(text, -1, NULL))
+                goto invalid;
+        }
+    }
+    return TRUE;
+invalid:
+    g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "keybindings.keyboard requires named arrays of keyboard accelerators");
+    return FALSE;
+}
+
+static gboolean validate_keybindings(GVariant* document, GError** error) {
+    g_autoptr(GVariant) configured = g_variant_lookup_value(document, "keybindings", NULL);
+    if (!configured)
+        return TRUE;
+    if (!g_variant_is_of_type(configured, G_VARIANT_TYPE_VARDICT)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "keybindings must be a table");
+        return FALSE;
+    }
+
+    g_autoptr(GnoblinKeybindingCatalog) catalog = gnoblin_keybinding_catalog_load(error);
+    if (!catalog)
+        return FALSE;
+
+    GVariantIter groups;
+    const char* group;
+    GVariant* group_value;
+    g_variant_iter_init(&groups, configured);
+    while (g_variant_iter_next(&groups, "{&sv}", &group, &group_value)) {
+        g_autoptr(GVariant) actions = group_value;
+        if (g_str_equal(group, "keyboard")) {
+            if (!validate_keyboard_callbacks(actions, error))
+                return FALSE;
+            continue;
+        }
+        if (g_str_equal(group, "pointer")) {
+            if (!validate_pointer_keybindings(actions, error))
+                return FALSE;
+            continue;
+        }
+        if (!gnoblin_keybinding_catalog_get_group(catalog, group) ||
+            !g_variant_is_of_type(actions, G_VARIANT_TYPE_VARDICT)) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "keybindings.%s must be a supported group table", group);
+            return FALSE;
+        }
+
+        GVariantIter action_iter;
+        const char* name;
+        GVariant* bindings;
+        g_variant_iter_init(&action_iter, actions);
+        while (g_variant_iter_next(&action_iter, "{&sv}", &name, &bindings)) {
+            g_autoptr(GVariant) values = bindings;
+            if (!g_regex_match_simple("^[a-z0-9]+(?:_[a-z0-9]+)*$", name, 0, 0)) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "invalid keybinding name: %s.%s (use snake_case)", group, name);
+                return FALSE;
+            }
+
+            g_autofree char* native_name = g_strdup(name);
+            g_strdelimit(native_name, "_", '-');
+            if (!gnoblin_keybinding_catalog_lookup(catalog, group, native_name)) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "keybinding has no action in this Mutter build: %s.%s", group, name);
+                return FALSE;
+            }
+            if (!g_variant_is_of_type(values, G_VARIANT_TYPE("av"))) {
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "keybindings.%s.%s must be an array of accelerators", group, name);
+                return FALSE;
+            }
+            for (gsize i = 0; i < g_variant_n_children(values); i++) {
+                g_autoptr(GVariant) boxed = g_variant_get_child_value(values, i);
+                g_autoptr(GVariant) binding = g_variant_get_variant(boxed);
+                const char* accelerator = g_variant_is_of_type(binding, G_VARIANT_TYPE_STRING)
+                                              ? g_variant_get_string(binding, NULL)
+                                              : NULL;
+                if (!accelerator || !*accelerator || strlen(accelerator) > 160 ||
+                    !g_utf8_validate(accelerator, -1, NULL)) {
+                    g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "keybindings.%s.%s contains an invalid accelerator", group,
+                                name);
+                    return FALSE;
+                }
+            }
+        }
+    }
+    return TRUE;
+}
+
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     g_autoptr(GVariant) shell = g_variant_lookup_value(document, "shell", NULL);
     if (shell) {
@@ -1446,10 +1831,18 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
                             "compositor animations");
         return FALSE;
     }
+    if (!validate_input_handlers(document, error) || !validate_keybindings(document, error))
+        return FALSE;
     if (!gnoblin_permission_policy_validate(document, error))
         return FALSE;
     g_autoptr(GVariant) location = g_variant_lookup_value(document, "location", NULL);
     if (location && !validate_location(location, error))
+        return FALSE;
+    g_autoptr(GVariant) prompts = g_variant_lookup_value(document, "prompts", NULL);
+    if (prompts && !validate_prompts(prompts, error))
+        return FALSE;
+    g_autoptr(GVariant) auth = g_variant_lookup_value(document, "auth", NULL);
+    if (auth && !validate_auth(auth, error))
         return FALSE;
     g_autoptr(GVariant) portals = g_variant_lookup_value(document, "portals", NULL);
     if (portals && !validate_portal_selection(portals, error))
@@ -1556,7 +1949,6 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
         static const char* booleans[] = {
             "constrain-drag-to-work-area",
             "auto-maximize",
-            "resize-with-right-button",
             "raise-on-click",
             "auto-raise",
             "focus-change-on-pointer-rest",
@@ -1617,8 +2009,6 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
                     valid = FALSE;
                     for (guint i = 0; titlebar[i]; i++)
                         valid |= g_str_equal(string, titlebar[i]);
-                } else if (g_str_equal(name, "mouse-button-modifier")) {
-                    valid = window_modifier_valid(string);
                 } else
                     valid = FALSE;
             } else
@@ -1634,7 +2024,7 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     g_autoptr(GVariant) compositor = g_variant_lookup_value(document, "compositor", NULL);
     if (compositor) {
         static const char* booleans[] = {
-            "enable-animations", "locate-pointer", "visual-bell", "audible-bell", NULL,
+            "locate-pointer", "visual-bell", "audible-bell", NULL,
         };
         gboolean valid = g_variant_is_of_type(compositor, G_VARIANT_TYPE_VARDICT);
         GVariantIter iter;
@@ -1721,9 +2111,7 @@ GVariant* gnoblin_config_load_document(const char* path, GPtrArray** paths, GPtr
                     "give it a .lua filename.",
                     canonical);
     } else if (!g_file_test(canonical, G_FILE_TEST_EXISTS)) {
-        GVariantBuilder empty;
-        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-        document = g_variant_ref_sink(g_variant_builder_end(&empty));
+        document = gnoblin_config_default_document();
     } else {
         document = gnoblin_config_evaluate_file(canonical, loaded_paths, watched_dirs, error);
         if (document)
@@ -1741,6 +2129,106 @@ GVariant* gnoblin_config_load_document(const char* path, GPtrArray** paths, GPtr
     if (directories)
         *directories = g_steal_pointer(&watched_dirs);
     return document;
+}
+
+#define LAST_GOOD_DOCUMENT_MAX_BYTES (16u * 1024u * 1024u)
+
+static char* last_good_document_path(void) {
+    return g_build_filename(g_get_user_state_dir(), "gnoblin", "last-good-config.gv", NULL);
+}
+
+GVariant* gnoblin_config_load_last_good_document(const char* config_path, GError** error) {
+    g_autofree char* cache_path = last_good_document_path();
+    g_autofree char* directory = g_path_get_dirname(cache_path);
+    g_autofree char* canonical = g_canonicalize_filename(config_path, NULL);
+    g_autofree char* contents = NULL;
+    gsize length = 0;
+
+    struct stat directory_stat;
+    if (g_lstat(directory, &directory_stat) != 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not inspect Gnoblin state directory: %s", g_strerror(errno));
+        return NULL;
+    }
+    if (!S_ISDIR(directory_stat.st_mode) || directory_stat.st_uid != getuid() ||
+        (directory_stat.st_mode & 0077) != 0) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_ACCES,
+                            "Gnoblin state directory is not private to this user");
+        return NULL;
+    }
+
+    struct stat cache_stat;
+    if (g_lstat(cache_path, &cache_stat) != 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not inspect saved Gnoblin configuration: %s", g_strerror(errno));
+        return NULL;
+    }
+    if (!S_ISREG(cache_stat.st_mode) || cache_stat.st_uid != getuid() ||
+        (cache_stat.st_mode & 0077) != 0) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_ACCES,
+                            "saved Gnoblin configuration is not a private regular file");
+        return NULL;
+    }
+    if (!g_file_get_contents(cache_path, &contents, &length, error))
+        return NULL;
+    if (length == 0 || length > LAST_GOOD_DOCUMENT_MAX_BYTES) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "saved Gnoblin configuration has an invalid size");
+        return NULL;
+    }
+
+    g_autoptr(GBytes) bytes = g_bytes_new_take(g_steal_pointer(&contents), length);
+    g_autoptr(GVariant) envelope = g_variant_ref_sink(
+        g_variant_new_from_bytes(G_VARIANT_TYPE_VARDICT, bytes, FALSE));
+    if (!g_variant_is_normal_form(envelope)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "saved Gnoblin configuration is malformed");
+        return NULL;
+    }
+    guint32 version = 0;
+    const char* saved_path = NULL;
+    g_autoptr(GVariant) document =
+        g_variant_lookup_value(envelope, "document", G_VARIANT_TYPE_VARDICT);
+    if (!g_variant_lookup(envelope, "version", "u", &version) || version != 1 ||
+        !g_variant_lookup(envelope, "source", "&s", &saved_path) ||
+        !g_str_equal(saved_path, canonical) || !document) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "saved Gnoblin configuration does not match this config path");
+        return NULL;
+    }
+    if (!gnoblin_config_validate_document(document, error))
+        return NULL;
+    return g_steal_pointer(&document);
+}
+
+gboolean gnoblin_config_save_last_good_document(const char* config_path, GVariant* document,
+                                                GError** error) {
+    if (!config_path || !document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT) ||
+        !gnoblin_config_validate_document(document, error))
+        return FALSE;
+
+    GVariantBuilder envelope_builder;
+    g_variant_builder_init(&envelope_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&envelope_builder, "{sv}", "version", g_variant_new_uint32(1));
+    g_autofree char* canonical = g_canonicalize_filename(config_path, NULL);
+    g_variant_builder_add(&envelope_builder, "{sv}", "source",
+                          g_variant_new_string(canonical));
+    g_variant_builder_add(&envelope_builder, "{sv}", "document", document);
+    g_autoptr(GVariant) envelope = g_variant_ref_sink(g_variant_builder_end(&envelope_builder));
+    g_autoptr(GBytes) bytes = g_variant_get_data_as_bytes(envelope);
+    gsize length = 0;
+    gconstpointer data = g_bytes_get_data(bytes, &length);
+
+    g_autofree char* cache_path = last_good_document_path();
+    g_autofree char* directory = g_path_get_dirname(cache_path);
+    if (g_mkdir_with_parents(directory, 0700) != 0 || g_chmod(directory, 0700) != 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not secure Gnoblin state directory %s: %s", directory,
+                    g_strerror(errno));
+        return FALSE;
+    }
+    return g_file_set_contents_full(cache_path, data, (gssize)length,
+                                    G_FILE_SET_CONTENTS_CONSISTENT, 0600, error);
 }
 
 char* gnoblin_config_path(void) {

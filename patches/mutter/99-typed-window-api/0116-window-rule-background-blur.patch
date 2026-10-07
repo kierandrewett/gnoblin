@@ -1,0 +1,213 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 22:05:00 +0100
+Subject: [PATCH] mutter: apply window rule background blur
+
+---
+diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
+index 14f9a7a8a1..9481559ec2 100644
+--- a/src/compositor/meta-surface-actor.c
++++ b/src/compositor/meta-surface-actor.c
+@@ -52,6 +52,8 @@ typedef struct _MetaSurfaceActorPrivate
+   MtkRegion *input_region;
+   MtkRegion *background_blur_region;
+   MtkRegion *background_blur_sample_region;
++  MtkRegion *rule_blur_region;
++  float rule_blur_radius;
+   MetaBackgroundBlur *background_blur;
+ 
+   /* MetaCullable regions, see that documentation for more details */
+@@ -354,6 +356,7 @@ meta_surface_actor_dispose (GObject *object)
+                    meta_background_blur_destroy);
+   g_clear_pointer (&priv->background_blur_region, mtk_region_unref);
+   g_clear_pointer (&priv->background_blur_sample_region, mtk_region_unref);
++  g_clear_pointer (&priv->rule_blur_region, mtk_region_unref);
+   clutter_actor_set_content (CLUTTER_ACTOR (self), NULL);
+   g_clear_object (&priv->content);
+ 
+@@ -483,32 +486,57 @@ cullable_iface_init (MetaCullableInterface *iface)
+   iface->cull_unobscured = meta_surface_actor_cull_unobscured;
+ }
+ 
++/* A client region from ext-background-effect always wins. Otherwise the
++ * window rule region, if any, blurs with the rule radius. Saturation and
++ * noise stay global. */
++static MtkRegion *
++get_effective_blur (MetaSurfaceActor *surface_actor,
++                    float            *radius)
++{
++  MetaSurfaceActorPrivate *priv =
++    meta_surface_actor_get_instance_private (surface_actor);
++
++  if (priv->background_blur_region)
++    {
++      meta_compositor_get_background_blur_params (priv->compositor,
++                                                  radius, NULL, NULL);
++      return priv->background_blur_region;
++    }
++
++  if (priv->rule_blur_region)
++    {
++      *radius = priv->rule_blur_radius;
++      return priv->rule_blur_region;
++    }
++
++  return NULL;
++}
++
+ static void
+ sync_background_blur (MetaSurfaceActor *surface_actor)
+ {
+   MetaSurfaceActorPrivate *priv =
+     meta_surface_actor_get_instance_private (surface_actor);
+   ClutterActor *actor = CLUTTER_ACTOR (surface_actor);
++  MtkRegion *blur_region;
+   float blur_radius;
+ 
+   g_clear_pointer (&priv->background_blur,
+                    meta_background_blur_destroy);
+ 
+-  if (!priv->background_blur_region)
++  if (!priv->compositor)
++    return;
++
++  blur_region = get_effective_blur (surface_actor, &blur_radius);
++  if (!blur_region)
+     return;
+ 
+   if (!clutter_actor_is_mapped (actor) &&
+       !clutter_actor_has_mapped_clones (actor))
+     return;
+ 
+-  meta_compositor_get_background_blur_params (priv->compositor,
+-                                              &blur_radius,
+-                                              NULL,
+-                                              NULL);
+   priv->background_blur =
+-    meta_background_blur_new (actor,
+-                              priv->background_blur_region,
+-                              blur_radius);
++    meta_background_blur_new (actor, blur_region, blur_radius);
+ }
+ 
+ static void
+@@ -516,20 +544,20 @@ update_background_blur_sample_region (MetaSurfaceActor *surface_actor)
+ {
+   MetaSurfaceActorPrivate *priv =
+     meta_surface_actor_get_instance_private (surface_actor);
++  MtkRegion *blur_region;
+   float blur_radius;
+ 
+   g_clear_pointer (&priv->background_blur_sample_region, mtk_region_unref);
+-  if (!priv->background_blur_region || !priv->compositor)
++  if (!priv->compositor)
++    return;
++
++  blur_region = get_effective_blur (surface_actor, &blur_radius);
++  if (!blur_region)
+     return;
+ 
+-  meta_compositor_get_background_blur_params (priv->compositor,
+-                                              &blur_radius,
+-                                              NULL,
+-                                              NULL);
+   priv->background_blur_sample_region =
+-    meta_background_effect_create_blur_sample_region (
+-      priv->background_blur_region,
+-      blur_radius);
++    meta_background_effect_create_blur_sample_region (blur_region,
++                                                      blur_radius);
+ }
+ 
+ static void
+@@ -797,6 +825,43 @@ meta_surface_actor_set_background_blur_region (MetaSurfaceActor *surface_actor,
+   queue_redraw_for_region (surface_actor, priv->background_blur_sample_region);
+ }
+ 
++void
++meta_surface_actor_set_rule_background_blur (MetaSurfaceActor *surface_actor,
++                                             gboolean          enabled,
++                                             float             radius,
++                                             const MtkRegion  *region)
++{
++  MetaSurfaceActorPrivate *priv =
++    meta_surface_actor_get_instance_private (surface_actor);
++
++  if (!enabled || radius <= 0.0f || !region || mtk_region_is_empty (region))
++    {
++      if (!priv->rule_blur_region)
++        return;
++      region = NULL;
++    }
++  else if (priv->rule_blur_region &&
++           priv->rule_blur_radius == radius &&
++           mtk_region_equal (priv->rule_blur_region, region))
++    return;
++
++  queue_redraw_for_region (surface_actor, priv->background_blur_sample_region);
++  g_clear_pointer (&priv->background_blur,
++                   meta_background_blur_destroy);
++
++  g_clear_pointer (&priv->rule_blur_region, mtk_region_unref);
++  if (region)
++    {
++      priv->rule_blur_region = mtk_region_copy (region);
++      priv->rule_blur_radius = radius;
++    }
++  update_background_blur_sample_region (surface_actor);
++  sync_background_blur (surface_actor);
++
++  clutter_actor_invalidate_paint_volume (CLUTTER_ACTOR (surface_actor));
++  queue_redraw_for_region (surface_actor, priv->background_blur_sample_region);
++}
++
+ void
+ meta_surface_actor_invalidate_background_blur (MetaSurfaceActor *surface_actor)
+ {
+@@ -825,15 +890,20 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+ {
+   MetaSurfaceActorPrivate *priv =
+     meta_surface_actor_get_instance_private (surface_actor);
++  MtkRegion *blur_region;
+   float blur_radius;
+   float saturation;
+   float noise;
+ 
+-  if (!priv->background_blur_region || !priv->compositor)
++  if (!priv->compositor)
++    return;
++
++  blur_region = get_effective_blur (surface_actor, &blur_radius);
++  if (!blur_region)
+     return;
+ 
+   meta_compositor_get_background_blur_params (priv->compositor,
+-                                              &blur_radius,
++                                              NULL,
+                                               &saturation,
+                                               &noise);
+   meta_background_effect_paint_blur_region (root_node,
+@@ -842,7 +912,7 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+                                             content_box,
+                                             content_width,
+                                             content_height,
+-                                            priv->background_blur_region,
++                                            blur_region,
+                                             clip_region,
+                                             blur_radius,
+                                             saturation,
+diff --git a/src/compositor/meta-surface-actor.h b/src/compositor/meta-surface-actor.h
+index 9dce861587..6f4bdcf11d 100644
+--- a/src/compositor/meta-surface-actor.h
++++ b/src/compositor/meta-surface-actor.h
+@@ -44,6 +44,10 @@ void meta_surface_actor_set_opaque_region (MetaSurfaceActor *self,
+ 
+ void meta_surface_actor_set_background_blur_region (MetaSurfaceActor *surface_actor,
+                                                     MtkRegion        *region);
++void meta_surface_actor_set_rule_background_blur (MetaSurfaceActor *surface_actor,
++                                                  gboolean          enabled,
++                                                  float             radius,
++                                                  const MtkRegion  *region);
+ void meta_surface_actor_invalidate_background_blur (MetaSurfaceActor *surface_actor);
+ void meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+                                                   ClutterPaintNode    *root_node,

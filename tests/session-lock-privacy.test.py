@@ -47,7 +47,7 @@ class SessionLockPrivacyTests(unittest.TestCase):
     def test_lock_transition_ends_an_in_progress_drag(self):
         source = MANAGER.read_text()
 
-        self.assertIn("meta_wayland_data_device_end_drag (&seat->data_device)", source)
+        self.assertIn("meta_wayland_data_device_end_drag(&seat->data_device)", source)
 
 
 if __name__ == "__main__":

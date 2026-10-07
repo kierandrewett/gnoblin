@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 22:05:00 +0100
+Subject: [PATCH] mutter: build the runtime protocol control domain
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index 85d5d334f0..2dcb32f0c9 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1208,6 +1208,7 @@ libmutter = library(libmutter_name,
+   files('core/gnoblin-control-shortcuts.c'),
+   files('core/gnoblin-control-window-rules.c'),
+   files('core/gnoblin-control-window-drag.c'),
++  files('core/gnoblin-control-runtime.c'),
+   files('core/gnoblin-touchpad-router.c'),
+   files('core/gnoblin-keybinding-catalog.c'),
+   version: '0.0.0',

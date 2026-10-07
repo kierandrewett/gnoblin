@@ -29,20 +29,21 @@ class SessionEnvironmentTests(unittest.TestCase):
         self.assertLess(runtime.index("run_activation_update(sync)"), runtime.index("reset_online_accounts_services()"))
         self.assertIn('"dbus-*-org.gnome.OnlineAccounts@*.service"', runtime)
         self.assertIn('"dbus-*-org.gnome.Identity@*.service"', runtime)
-        self.assertIn("add_executable(gnoblin\n", cmake)
+        # Meson builds the compositor and the guardian as one executable through the
+        # monolithic patch, so CMake defines no gnoblin target and the installer
+        # only removes the old separate runtime helper.
+        self.assertNotIn("add_executable(gnoblin\n", cmake)
         self.assertNotIn("add_custom_target(gnoblin-runtime ", cmake)
-        self.assertIn("gnoblinctl gnoblin", cmake)
-        self.assertIn('install -Dm755 "$GNOBLIN_BINARY" "$INSTALL_PREFIX/bin/gnoblin"', installer)
-        self.assertIn('"$INSTALL_PREFIX/libexec/gnoblin-runtime"', installer)
-        self.assertIn('"share/gnoblin/init.lua.example"', runtime)
-        self.assertIn('"libexec/gnoblin-seed-config"', runtime)
-        self.assertIn('"gnoblin-seed-config"', runtime)
+        monolithic = (ROOT / "patches/mutter/zz-monolithic-compositor/0001-build-monolithic-gnoblin.patch").read_text()
+        self.assertIn("gnoblin_root / 'src/session/gnoblin-runtime.c'", monolithic)
+        self.assertIn("gnoblin = executable('gnoblin',", monolithic)
+        self.assertIn('rm -f \\\n    "$INSTALL_PREFIX/libexec/gnoblin-runtime"', installer)
         self.assertIn("Exec=gnoblin", desktop)
         self.assertIn("gnoblin: runtime supervisor:", runtime)
         self.assertIn("spawn_compositor(compositor_path", runtime)
         self.assertIn("return ok;", runtime)
         self.assertNotIn("return ok || !required;", runtime)
-        guardian = runtime[runtime.index("static int session_guardian_main(") : runtime.index("\nint main(")]
+        guardian = runtime[runtime.index("static int session_guardian_main(") : runtime.index("\nint gnoblin_runtime_main(")]
         self.assertIn("g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR, NULL)", guardian)
         self.assertLess(
             guardian.index("g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR"),

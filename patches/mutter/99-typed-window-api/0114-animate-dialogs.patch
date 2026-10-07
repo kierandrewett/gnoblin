@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 22:05:00 +0100
+Subject: [PATCH] mutter: run dialog lifecycle animations
+
+---
+diff --git a/src/core/gnoblin-animation.c b/src/core/gnoblin-animation.c
+index e74879f56b..534282c801 100644
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -2370,22 +2370,37 @@ static gboolean start_window_lifecycle_animation(
+                       GINT_TO_POINTER(1));
+   }
+ 
+-  /* Keep the first native lifecycle slice to normal windows, not layer
+-   * surfaces. */
+-  if (meta_window_get_window_type(window) != META_WINDOW_NORMAL ||
+-      meta_window_is_override_redirect(window) || layer_namespace ||
++  /* Normal windows use the lifecycle events as they are. Dialogs only open and
++   * close, and use the dialog events so that dialog-open and dialog-close
++   * registrations apply to them. Other window types and layer surfaces never
++   * start a window lifecycle animation here. */
++  const char *selected_event = event;
++  MetaWindowType window_type = meta_window_get_window_type(window);
++  if (window_type == META_WINDOW_DIALOG ||
++      window_type == META_WINDOW_MODAL_DIALOG) {
++    if (g_str_equal(event, "open"))
++      selected_event = "dialog-open";
++    else if (g_str_equal(event, "close"))
++      selected_event = "dialog-close";
++    else
++      return FALSE;
++  } else if (window_type != META_WINDOW_NORMAL) {
++    return FALSE;
++  }
++  if (meta_window_is_override_redirect(window) || layer_namespace ||
+       meta_gnoblin_layer_anchor(window) >= 0 || is_locked(display))
+     return FALSE;
+ 
+-  if (!select_window_lifecycle_animation(window, layer_namespace, event,
+-                                         &name, &overrides, &error)) {
++  if (!select_window_lifecycle_animation(window, layer_namespace,
++                                         selected_event, &name, &overrides,
++                                         &error)) {
+     g_warning("failed to match Gnoblin window animation rules: %s",
+               error ? error->message : "unknown Lua pattern error");
+     return FALSE;
+   }
+   if (!name || g_str_equal(name, "none"))
+     return FALSE;
+-  if (!parse_spec(&spec, name, event, window, &error))
++  if (!parse_spec(&spec, name, selected_event, window, &error))
+     return FALSE;
+   apply_rule_overrides(&spec, overrides);
+   gboolean resize_geometry = g_str_equal(event, "resize");

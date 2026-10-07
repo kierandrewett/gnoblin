@@ -2,7 +2,7 @@
 # gnoblin-env.sh -- shared runtime lookup-path setup for a gnoblin prefix.
 #
 # Source this and call `gnoblin_env_apply "$PREFIX"` from development,
-# installation, and capture scripts that need gnoblin-mutter and related tools
+# installation, and capture scripts that need the gnoblin compositor and related tools
 # to resolve against a Gnoblin build prefix. These callers share one setup for
 # the Mutter ABI and library directory.
 #

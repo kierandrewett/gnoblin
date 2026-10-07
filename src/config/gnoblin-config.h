@@ -22,14 +22,43 @@
 
 G_BEGIN_DECLS
 
+/* Immutable shipped default-config tree, embedded in the executable. */
+typedef struct {
+    const char* path; /* relative to the default-config root */
+    const char* contents;
+    gsize length;
+} GnoblinConfigDefaultFile;
+
+const GnoblinConfigDefaultFile* gnoblin_config_default_files(gsize* count);
+const GnoblinConfigDefaultFile* gnoblin_config_default_file(const char* path);
+/* Compatibility accessor for the embedded init.lua entry point. */
+const char* gnoblin_config_default_lua(gsize* length);
 /* Current root filename. Free the result with g_free(). */
 char* gnoblin_config_path(void);
+/* A validated declarative configuration snapshot for startup recovery. */
+GVariant* gnoblin_config_default_document(void);
+GVariant* gnoblin_config_load_last_good_document(const char* config_path, GError** error);
+gboolean gnoblin_config_save_last_good_document(const char* config_path, GVariant* document,
+                                                GError** error);
 /* Evaluate one .lua config with a fresh Lua state and record every dependency. */
 GVariant* gnoblin_config_evaluate_file(const char* path, GPtrArray* paths, GPtrArray* directories,
                                        GError** error);
 /* Persistent Lua runtime owned by the supervisor for config and runtime events. */
 GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrArray** directories,
                                       GError** error);
+/* Start an empty Lua callback state with a previously validated document. */
+GVariant* gnoblin_config_load_runtime_fallback(const char* path, GVariant* document,
+                                               GPtrArray** paths, GPtrArray** directories,
+                                               GError** error);
+/* Restore an exact native-accepted document using embedded callbacks. Only use
+ * while recovery gates event dispatch until a fresh transactional CONFIG commits. */
+GVariant* gnoblin_config_load_runtime_recovery_snapshot(const char* path, GVariant* document,
+                                                        GPtrArray** paths, GPtrArray** directories,
+                                                        GError** error);
+/* Start a live Lua runtime from the embedded default-config tree. Unlike a
+ * serialized document fallback, this retains default shortcut callbacks. */
+GVariant* gnoblin_config_load_runtime_defaults(GPtrArray** paths, GPtrArray** directories,
+                                               GError** error);
 void gnoblin_config_finish_load(gboolean commit);
 /* Temporarily detach a validated candidate so operations can complete on the
  * current runtime before the candidate replaces it. */
@@ -90,6 +119,15 @@ typedef void (*GnoblinConfigSettingsChangedFunc)(guint64 revision, gpointer user
 void gnoblin_config_set_settings_changed_callback(GnoblinConfigSettingsChangedFunc callback,
                                                   gpointer user_data);
 GVariant* gnoblin_config_dispatch_event(const char* event, GVariant* payload, GError** error);
+
+/* Returns and clears the latest contained Lua callback failure. Event-time
+ * callbacks are isolated from the session: their subscription is disabled and
+ * the supervisor publishes this diagnostic to the recovery UI. */
+char* gnoblin_config_take_runtime_callback_error(void);
+/* Evaluate a compositor-matched input policy callback. The returned decision
+ * is independent of configuration commits; callers drain queued operations
+ * only after delivering the decision. */
+GVariant* gnoblin_config_dispatch_input(GVariant* payload, GError** error);
 /* Dispatch a trusted native shortcut event with a private, userdata-only
  * focus context. The context is never added to the public event payload. */
 GVariant* gnoblin_config_dispatch_shortcut_event(const char* event, GVariant* payload,
@@ -115,6 +153,14 @@ GVariant* gnoblin_config_drain_runtime_operations(void); /* aa{sv} */
 /* Operations and deferred completions that still belong to the active runtime. */
 guint gnoblin_config_runtime_pending_operations(void);
 GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GError** error);
+/* Run one bounded Lua console chunk against the active configuration runtime.
+ * The result is a vardict containing a display-safe value, its Lua type, and
+ * the number of native operations the chunk queued. Console chunks may use
+ * the public Gnoblin Lua API, but may not replace the declarative
+ * gnoblin.config document. */
+GVariant* gnoblin_config_eval_console(const char* source, GError** error);
+/* Complete a raw Lua identifier or dot chain without evaluating source. */
+GVariant* gnoblin_config_complete_console(const char* source, GError** error);
 /* Evaluate one allowlisted read-only Lua snapshot API method. */
 GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GError** error);
 char** gnoblin_config_runtime_events(void);

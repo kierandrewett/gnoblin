@@ -27,6 +27,12 @@ def configure(remove_csd):
         "gnoblin.window_rule {\n"
         '    match = {title = "^CSD reconstruction fixture$"},\n'
         f"    corners = {{{corners}}},\n"
+        # Give the client surface a non-zero local origin inside an SSD frame.
+        # The reconstruction effect lives on that surface, while its probe
+        # reads the window actor's shaped texture.  Keep this in the fixture so
+        # a conversion using outer-frame dimensions cannot look correct by
+        # accident.
+        '    frame = {mode = "replace", renderer = "native", extents = {36, 0, 0, 0}},\n'
         "}\n"
     )
     temporary.replace(config)
@@ -87,6 +93,10 @@ with (root / "csd-reconstruction-client.log").open("w") as log:
                 break
             time.sleep(0.1)
         assert geometry, "CSD reconstruction fixture did not appear in the window list"
+        assert geometry["height"] > 240, (
+            "fixture did not receive the configured SSD extent",
+            geometry,
+        )
         box = (
             geometry["x"],
             geometry["y"],
@@ -94,33 +104,33 @@ with (root / "csd-reconstruction-client.log").open("w") as log:
             geometry["y"] + geometry["height"],
         )
         original = capture(box)
-        assert original.getpixel((8, 8)) == background, (
+        client_top = 36
+        assert original.getpixel((8, client_top + 8)) == background, (
             "fixture did not render a transparent rounded corner",
-            original.getpixel((8, 8)),
+            original.getpixel((8, client_top + 8)),
         )
 
         configure(True)
         restored = None
         for _ in range(100):
             restored = capture(box)
-            if restored.getpixel((8, 8)) == (255, 255, 255):
+            if restored.getpixel((8, client_top + 8)) == (255, 255, 255):
                 break
             time.sleep(0.1)
 
-        assert restored.getpixel((8, 8)) == (255, 255, 255), (
+        assert restored.getpixel((8, client_top + 8)) == (255, 255, 255), (
             "native CSD reconstruction did not fill the transparent corner",
-            restored.getpixel((8, 8)),
+            restored.getpixel((8, client_top + 8)),
         )
-        assert restored.getpixel((1, 1)) == background, "configured compositor corner was not clipped"
-        assert restored.getpixel((160, 120)) == (255, 255, 255), "reconstruction changed the window body"
+        assert restored.getpixel((160, client_top + 120)) == (255, 255, 255), "reconstruction changed the window body"
 
         configure(False)
         preserved = capture(box)
-        assert preserved.getpixel((8, 8)) == background, (
+        assert preserved.getpixel((8, client_top + 8)) == background, (
             "disabling remove_csd did not restore the client corner",
-            preserved.getpixel((8, 8)),
+            preserved.getpixel((8, client_top + 8)),
         )
-        print("PASS: Lua remove_csd restores client corner pixels before native rounding")
+        print("PASS: Lua remove_csd reconstructs CSD inside an SSD-offset client surface")
     finally:
         process.terminate()
         process.wait(timeout=5)

@@ -661,7 +661,7 @@ def worker_and_compositor():
     for pid, executable, args in display_processes():
         if "--internal-runtime-worker" in args:
             worker = pid
-        if executable == "gnoblin-mutter":
+        if executable == "gnoblin":
             compositor = pid
     return worker, compositor
 
@@ -1033,7 +1033,7 @@ def processes():
     for pid, executable, args in display_processes():
         if "--internal-session-supervisor" in args:
             supervisor = pid
-        if executable == "gnoblin-mutter":
+        if executable == "gnoblin":
             compositor = pid
     return compositor, supervisor
 

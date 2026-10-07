@@ -7,3 +7,6 @@
 	path = subprojects/xdg-desktop-portal-gnome
 	url = https://gitlab.gnome.org/GNOME/xdg-desktop-portal-gnome.git
 	shallow = true
+[submodule "subprojects/imgui"]
+	path = subprojects/imgui
+	url = https://github.com/ocornut/imgui.git

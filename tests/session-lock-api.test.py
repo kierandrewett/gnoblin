@@ -4,20 +4,22 @@
 from pathlib import Path
 import re
 import unittest
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _sources import control_header, control_source  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 LUA = ROOT / "src/config/gnoblin-lua.c"
-CONTROL = ROOT / "src/native-control/gnoblin-native-control.c"
-CONTROL_HEADER = ROOT / "src/native-control/gnoblin-native-control.h"
 DISPATCH_PATCH = ROOT / "patches/mutter/99-typed-window-api/0032-dispatch-shell-session-lock-request.patch"
 
 
 class SessionLockApiTests(unittest.TestCase):
     def test_lua_operation_and_socket_version_are_registered(self):
         lua = LUA.read_text()
-        control = CONTROL.read_text()
-        header = CONTROL_HEADER.read_text()
+        control = control_source()
+        header = control_header()
 
         self.assertIn('"session.lock",', lua)
         api_minor = re.search(r"GNOBLIN_NATIVE_CONTROL_API_MINOR (\d+)", header)
@@ -27,7 +29,7 @@ class SessionLockApiTests(unittest.TestCase):
         self.assertIn('g_str_equal(method, "session.lock") && client->api_minor < 21', control)
 
     def test_request_requires_available_compositor_and_subscribed_client(self):
-        source = CONTROL.read_text()
+        source = control_source()
         body = source.split("GVariant* gnoblin_native_control_request_session_lock(", 1)[1]
         body = body.split("static void input_source_keymap_set_done", 1)[0]
 
@@ -41,7 +43,7 @@ class SessionLockApiTests(unittest.TestCase):
         self.assertIn('"subscribers", g_variant_new_uint32(listeners)', body)
 
     def test_lock_state_event_comes_from_mutter_state_callback(self):
-        source = CONTROL.read_text()
+        source = control_source()
         state_names = source.split("static const char* native_session_lock_state_name(", 1)[1]
         state_names = state_names.split("static GVariant* native_session_lock_snapshot", 1)[0]
         body = source.split("static void native_session_lock_changed(", 1)[1]
@@ -81,7 +83,7 @@ class SessionLockApiTests(unittest.TestCase):
 
     def test_docs_separate_delivery_from_compositor_confirmation(self):
         bridge = (ROOT / "docs/compositor-bridge.md").read_text()
-        runtime = (ROOT / "docs/config/runtime-api.md").read_text()
+        runtime = (ROOT / "docs/shell-api/session-runtime.md").read_text()
         events = (ROOT / "docs/config/lua-events.md").read_text()
         design = (ROOT / "design/lua-api.md").read_text()
 

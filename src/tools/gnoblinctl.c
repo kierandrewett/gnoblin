@@ -2,11 +2,14 @@
 #include <gio/gio.h>
 #include <gio/gunixsocketaddress.h>
 #include <glib-unix.h>
+#include "gnoblin-config.h"
 #include <json-glib/json-glib.h>
 #include <glib/gstdio.h>
 #include <lauxlib.h>
 #include <lua.h>
 #include <lualib.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <math.h>
 #include <signal.h>
 #include <stdio.h>
@@ -127,7 +130,8 @@ static const CommandSpec commands[] = {
     {"layer", "list"},
     {"completion", NULL},
     {"shortcut", "actions list capture"},
-    {"config", "path default show reload"},
+    {"config", "path default show reload restore-default"},
+    {"init", NULL},
     {"workspace", "list create rename remove switch next previous move-active"},
     {"monitor", "list"},
     {"input", "list current select devices orientation-lock"},
@@ -252,44 +256,38 @@ static void print_version(const char* format) {
         return;
     }
     JsonObject* object = json_node_get_object(identity);
-    g_print("Gnoblin %s (GNOME %s)\n", member_string(object, "version", "unknown"),
-            member_string(object, "gnomeVersion", "unknown"));
-    g_print("Mutter: %s\n",
-            member_string(member_object(object, "components"), "mutter", "unknown"));
-    g_print("Lua: %s\n", member_string(object, "luaVersion", "unknown"));
-    g_print("Native API: %s\n", member_string(object, "apiVersion", "unknown"));
-    g_print("Build ID: %s\n", member_string(object, "buildId", "unknown"));
-    const char* mutter_api = member_string(object, "mutterApi", NULL);
-    if (mutter_api)
-        g_print("Mutter API: %s\n", mutter_api);
-
     JsonObject* versions = member_object(object, "components");
     JsonObject* commits = member_object(object, "componentCommits");
-    if (versions) {
-        const struct {
-            const char* name;
-            const char* label;
-        } components[] = {
-            {"mutter", "Mutter"},
-            {"xdg-desktop-portal-gnome", "Gnoblin portal backend"},
-        };
-        for (guint i = 0; i < G_N_ELEMENTS(components); i++) {
-            const char* version = member_string(versions, components[i].name, NULL);
-            if (!version)
-                continue;
-            const char* commit = member_string(commits, components[i].name, NULL);
-            g_print("%s: %s", components[i].label, version);
-            if (commit)
-                g_print(" (upstream %.12s)", commit);
-            g_print("\n");
-        }
-    }
-    g_print("Git remote: %s\n", member_string(object, "gitRemote", "unknown"));
-    g_print("Git commit: %s", member_string(object, "gitSha", "unknown"));
+    const char* mutter_version = member_string(versions, "mutter", "unknown");
+    const char* mutter_api = member_string(object, "mutterApi", NULL);
+    g_print("Gnoblin %s\n", member_string(object, "version", "unknown"));
+    g_print("Mutter %s", mutter_version);
+    if (mutter_api)
+        g_print(" (API %s)", mutter_api);
+    g_print(" · Lua %s · Native API %s\n", member_string(object, "luaVersion", "unknown"),
+            member_string(object, "apiVersion", "unknown"));
+
+    g_print("Source: %s @ %s", member_string(object, "gitRemote", "unknown"),
+            member_string(object, "gitSha", "unknown"));
     if (json_object_has_member(object, "sourceModified") &&
         json_object_get_boolean_member(object, "sourceModified"))
         g_print(" (modified source tree)");
     g_print("\n");
+    g_print("Build ID: %s\n", member_string(object, "buildId", "unknown"));
+
+    const char* mutter_commit = member_string(commits, "mutter", NULL);
+    const char* portal_version = member_string(versions, "xdg-desktop-portal-gnome", NULL);
+    const char* portal_commit = member_string(commits, "xdg-desktop-portal-gnome", NULL);
+    if (mutter_commit || portal_version) {
+        g_print("Upstream:");
+        if (mutter_commit)
+            g_print(" Mutter %.12s", mutter_commit);
+        if (portal_version)
+            g_print("%sPortal %s", mutter_commit ? "; " : " ", portal_version);
+        if (portal_commit)
+            g_print(" (%.12s)", portal_commit);
+        g_print("\n");
+    }
 }
 
 static gboolean parse_cli(Cli* cli, int argc, char** argv, GError** error) {
@@ -389,6 +387,11 @@ static guint api_minor_for_method(const char* method) {
         {"privacy.stop_sharing", 31},
         {"privacy.stop_recording", 31},
         {"location.authorize_app", 65},
+        {"auth.begin", 78},
+        {"auth.respond", 78},
+        {"auth.cancel", 78},
+        {"prompt.respond", 79},
+        {"prompt.cancel", 79},
         {"window.thumbnail", 23},
         {"shortcut.actions", 5},
         {"shortcut.capture", 8},
@@ -1136,25 +1139,137 @@ static char* config_path(void) {
 }
 
 static char* default_config(GError** error) {
-    g_autofree char* installed = installed_file("share/gnoblin/init.lua.example");
-    const char* directories = g_getenv("XDG_DATA_DIRS");
-    g_auto(GStrv) parts = g_strsplit(
-        directories && *directories ? directories : "/usr/local/share:/usr/share", ":", -1);
-    g_autoptr(GPtrArray) paths = g_ptr_array_new_with_free_func(g_free);
-    if (installed)
-        g_ptr_array_add(paths, g_strdup(installed));
-    g_ptr_array_add(paths, g_strdup("src/data/init.lua.example"));
-    for (guint i = 0; parts[i]; i++)
-        if (*parts[i])
-            g_ptr_array_add(paths, g_build_filename(parts[i], "gnoblin/init.lua.example", NULL));
-    for (guint i = 0; i < paths->len; i++) {
-        char* contents = NULL;
-        if (g_file_get_contents(g_ptr_array_index(paths, i), &contents, NULL, NULL))
-            return contents;
+    (void)error;
+    gsize length = 0;
+    const char* source = gnoblin_config_default_lua(&length);
+    return g_strndup(source, length);
+}
+
+/* A bundled default is a directory tree.  Keep whole-tree operations confined
+ * to the standard XDG Gnoblin directory; GNOBLIN_CONFIG may name one Lua file
+ * and must never make restore-default replace an arbitrary parent directory. */
+static char* default_config_directory(GError** error) {
+    g_autofree char* path = config_path();
+    const char* config_home = g_getenv("XDG_CONFIG_HOME");
+    g_autofree char* expected =
+        config_home && *config_home ? g_build_filename(config_home, "gnoblin", "init.lua", NULL)
+                             : g_build_filename(g_get_home_dir(), ".config", "gnoblin", "init.lua", NULL);
+    g_autofree char* canonical_path = g_canonicalize_filename(path, NULL);
+    g_autofree char* canonical_expected = g_canonicalize_filename(expected, NULL);
+    if (!g_str_equal(canonical_path, canonical_expected)) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "gnoblinctl init and config restore-default require %s; GNOBLIN_CONFIG "
+                    "selects a single file and cannot safely replace its parent directory",
+                    canonical_expected);
+        return NULL;
     }
-    g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
-                        "Default Lua config not found; install the Gnoblin session config package");
-    return NULL;
+    return g_path_get_dirname(canonical_path);
+}
+
+static gboolean write_default_config_tree(const char* directory, GError** error) {
+    gsize count = 0;
+    const GnoblinConfigDefaultFile* files = gnoblin_config_default_files(&count);
+    for (gsize i = 0; i < count; i++) {
+        if (!files[i].path || !*files[i].path || g_path_is_absolute(files[i].path) ||
+            strstr(files[i].path, "..")) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "embedded default config has an unsafe path");
+            return FALSE;
+        }
+        g_autofree char* target = g_build_filename(directory, files[i].path, NULL);
+        g_autofree char* parent = g_path_get_dirname(target);
+        if (g_mkdir_with_parents(parent, 0700) != 0) {
+            g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                        "could not create default config directory %s: %s", parent,
+                        g_strerror(errno));
+            return FALSE;
+        }
+        if (!g_file_set_contents_full(target, files[i].contents, (gssize)files[i].length,
+                                      G_FILE_SET_CONTENTS_CONSISTENT |
+                                          G_FILE_SET_CONTENTS_DURABLE,
+                                      0600, error))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static char* stage_default_config_tree(const char* config_directory, GError** error) {
+    g_autofree char* parent = g_path_get_dirname(config_directory);
+    if (g_mkdir_with_parents(parent, 0700) != 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not create config parent directory %s: %s", parent,
+                    g_strerror(errno));
+        return NULL;
+    }
+    g_autofree char* template = g_build_filename(parent, ".gnoblin.default.XXXXXX", NULL);
+    char* staged = g_mkdtemp(template);
+    if (!staged) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not stage embedded default config: %s", g_strerror(errno));
+        return NULL;
+    }
+    if (!write_default_config_tree(staged, error)) {
+        g_autoptr(GFile) staged_file = g_file_new_for_path(staged);
+        g_file_delete(staged_file, NULL, NULL);
+        return NULL;
+    }
+    return g_steal_pointer(&template);
+}
+
+static gboolean initialize_config(GError** error) {
+    g_autofree char* directory = default_config_directory(error);
+    if (!directory)
+        return FALSE;
+    if (g_file_test(directory, G_FILE_TEST_EXISTS)) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_EXIST,
+                    "configuration directory already exists at %s; it was left unchanged", directory);
+        return FALSE;
+    }
+    g_autofree char* staged = stage_default_config_tree(directory, error);
+    if (!staged)
+        return FALSE;
+    if (g_rename(staged, directory) != 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not initialize config at %s: %s", directory, g_strerror(errno));
+        return FALSE;
+    }
+    g_print("Initialized Gnoblin config at %s\n", directory);
+    return TRUE;
+}
+
+static gboolean restore_default_config(GError** error) {
+    g_autofree char* directory = default_config_directory(error);
+    if (!directory)
+        return FALSE;
+    if (!g_file_test(directory, G_FILE_TEST_EXISTS))
+        return initialize_config(error);
+    if (!g_file_test(directory, G_FILE_TEST_IS_DIR)) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "configuration path %s is not a directory", directory);
+        return FALSE;
+    }
+    g_autofree char* staged = stage_default_config_tree(directory, error);
+    if (!staged)
+        return FALSE;
+    g_autofree char* uuid = g_uuid_string_random();
+    g_autofree char* backup = g_strdup_printf("%s.recovery-%s", directory, uuid);
+    if (g_rename(directory, backup) != 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not back up config directory %s: %s", directory, g_strerror(errno));
+        return FALSE;
+    }
+    if (g_rename(staged, directory) != 0) {
+        int saved_errno = errno;
+        if (g_rename(backup, directory) != 0)
+            g_warning("gnoblinctl: could not restore original config from %s", backup);
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(saved_errno),
+                    "could not restore embedded default config at %s: %s", directory,
+                    g_strerror(saved_errno));
+        return FALSE;
+    }
+    g_print("Restored the embedded default config at %s\n", directory);
+    g_print("Previous config saved to %s\n", backup);
+    return TRUE;
 }
 
 static JsonNode* dispatch(Cli* cli, GError** error) {
@@ -7696,6 +7811,41 @@ int main(int argc, char** argv) {
             goto failure;
         }
         print_completion(arg(&cli, 0));
+        return 0;
+    }
+    if (g_str_equal(cli.command, "init")) {
+        if (arg_count(&cli) != 0) {
+            g_printerr("gnoblinctl init accepts no arguments\n");
+            return 1;
+        }
+        if (!initialize_config(&error)) {
+            g_printerr("gnoblinctl: %s\n", error->message);
+            return 1;
+        }
+        return 0;
+    }
+    if (g_str_equal(cli.command, "config") &&
+        g_str_equal(cli.action, "restore-default")) {
+        if (arg_count(&cli) != 0) {
+            g_printerr("gnoblinctl config restore-default accepts no arguments\n");
+            return 1;
+        }
+        if (!restore_default_config(&error)) {
+            g_printerr("gnoblinctl: %s\n", error->message);
+            return 1;
+        }
+        g_clear_error(&error);
+        g_autoptr(JsonNode) reload =
+            call_compositor(&cli, "api", "runtime.reload_config", new_object(), &error);
+        if (reload)
+            g_print("Reloaded the restored configuration.\n");
+        else if (error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CONNECTION_REFUSED))
+            g_print("No running Gnoblin session; the restored configuration will load at login.\n");
+        else {
+            g_printerr("gnoblinctl: config files were restored, but live reload was not applied: %s\n",
+                       error ? error->message : "unknown compositor error");
+            return 1;
+        }
         return 0;
     }
     if (g_str_equal(cli.command, "lua")) {

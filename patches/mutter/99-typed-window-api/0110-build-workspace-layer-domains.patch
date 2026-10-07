@@ -1,0 +1,19 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 22:05:00 +0100
+Subject: [PATCH] mutter: build workspace and layer control domains
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index a299e0e751..ea17276dd1 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1203,6 +1203,8 @@ libmutter = library(libmutter_name,
+   files('core/gnoblin-control-prompts.c'),
+   files('core/gnoblin-control-input-sources.c'),
+   files('core/gnoblin-control-command.c'),
++  files('core/gnoblin-control-workspaces.c'),
++  files('core/gnoblin-control-layers.c'),
+   files('core/gnoblin-touchpad-router.c'),
+   files('core/gnoblin-keybinding-catalog.c'),
+   version: '0.0.0',

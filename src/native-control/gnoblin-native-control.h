@@ -10,14 +10,36 @@
 #include "meta/meta-enums.h"
 #include "core/gnoblin-runtime-cache.h"
 
+G_BEGIN_DECLS
+
 #define GNOBLIN_NATIVE_CONTROL_API_MAJOR 1
-#define GNOBLIN_NATIVE_CONTROL_API_MINOR 76
+#define GNOBLIN_NATIVE_CONTROL_API_MINOR 80
 
 typedef struct _GnoblinNativeControl GnoblinNativeControl;
+typedef gboolean (*GnoblinNativeConsoleToggleFunc)(MetaDisplay* display, gpointer user_data);
 
+/* A compositor-owned caller can use this private bridge to ask the supervised
+ * Lua runtime to evaluate console input or perform a validated runtime
+ * control request. `result` is borrowed and is only valid for the duration
+ * of the callback. The callback and destroy notify run on Mutter's main loop.
+ * They must not stop or destroy the native control or its MetaDisplay. */
+typedef void (*GnoblinNativeRuntimeResponseFunc)(gboolean success, GVariant* result,
+                                                 const char* error, gpointer user_data);
+
+/* The user pressed the locate-pointer key. Gnoblin draws nothing: it reports the pointer
+ * position as gnoblin.pointer.locate-requested and a shell or script shows the effect. */
+META_EXPORT
+void gnoblin_native_control_locate_pointer(MetaDisplay* display);
 META_EXPORT
 void gnoblin_native_control_window_menu_requested(MetaDisplay* display, MetaWindow* window,
                                                   MetaWindowMenuType menu, int x, int y);
+/* Deliver a compositor-matched pointer binding to the supervised Lua runtime.
+ * The event creates a short-lived, target-bound authority for pointer window
+ * operations; callers must only pass a real unsynthesised button press. */
+META_EXPORT
+void gnoblin_native_control_pointer_binding_activated(MetaDisplay* display, MetaWindow* window,
+                                                      const ClutterEvent* event,
+                                                      const char* binding);
 META_EXPORT
 void gnoblin_native_control_track_layer_window(MetaDisplay* display, MetaWindow* window);
 META_EXPORT
@@ -33,6 +55,19 @@ GVariant* gnoblin_native_control_receive_runtime_config(int runtime_fd, guint64*
 gboolean gnoblin_native_control_dispatch_runtime_event(MetaDisplay* display, const char* event,
                                                        GVariant* payload, gboolean* claimed,
                                                        GError** error);
+META_EXPORT
+const char* gnoblin_native_control_input_policy_error(MetaDisplay* display);
+/* The compositor plugin owns the ImGui panel and registers this narrow
+ * bridge. Lua operations use it without a Mutter builtin keybinding. */
+META_EXPORT
+void gnoblin_native_control_set_console_toggle_handler(
+    MetaDisplay* display, GnoblinNativeConsoleToggleFunc handler, gpointer user_data);
+META_EXPORT
+gboolean gnoblin_native_control_toggle_console(MetaDisplay* display, GError** error);
+META_EXPORT
+gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display,
+                                                   const ClutterEvent* event,
+                                                   ClutterActor* event_actor);
 META_EXPORT
 gboolean gnoblin_native_control_overlay_modifier_pressed(MetaDisplay* display,
                                                          const ClutterEvent* event);
@@ -58,6 +93,34 @@ META_EXPORT
 gboolean gnoblin_native_control_protocol_enabled(const char* protocol);
 META_EXPORT
 void gnoblin_native_control_stop(GnoblinNativeControl* control);
+
+/* Queue `code` for the current Lua runtime. A nonzero request ID means the
+ * bridge owns user_data and will release it after callback, cancellation, or
+ * worker failure. A zero return leaves user_data owned by the caller. The ID
+ * can be cancelled before its callback runs. */
+META_EXPORT
+guint64 gnoblin_native_control_console_eval(MetaDisplay* display, const char* code,
+                                            GnoblinNativeRuntimeResponseFunc callback,
+                                            gpointer user_data, GDestroyNotify destroy,
+                                            GError** error);
+/* Complete a bounded UTF-8 Lua console source prefix in the active runtime. */
+META_EXPORT
+guint64 gnoblin_native_control_console_complete(MetaDisplay* display, const char* source,
+                                                GnoblinNativeRuntimeResponseFunc callback,
+                                                gpointer user_data, GDestroyNotify destroy,
+                                                GError** error);
+/* Request the same validated configuration reload used by gnoblinctl reload. */
+META_EXPORT
+guint64 gnoblin_native_control_reload_runtime_config(MetaDisplay* display,
+                                                      GnoblinNativeRuntimeResponseFunc callback,
+                                                      gpointer user_data, GDestroyNotify destroy,
+                                                      GError** error);
+/* Cancelling owns no callback delivery, but releases its user data on the
+ * compositor main loop. Safe to call from a panel's teardown path. */
+META_EXPORT
+gboolean gnoblin_native_control_cancel_runtime_request(MetaDisplay* display, guint64 request_id);
+
+G_END_DECLS
 
 /* Dispatch a queued Lua input-source selection through native input control. */
 gboolean gnoblin_native_control_select_input_source(MetaDisplay* display, GVariant* arguments,

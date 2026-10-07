@@ -112,7 +112,7 @@ bundled_dep = dependency('bundled-lib')
     def test_pinned_portal_wrap_includes_gtk4_minimum(self):
         self.assertEqual(
             checker.WRAPPED_PROJECT_REQUIREMENTS["xdg-desktop-portal-gnome"],
-            (("gtk4", ">= 4.22.0"),),
+            (("gtk4", ">= 4.20.0"),),
         )
 
     def test_current_build_dry_run_reports_options_without_provisioning(self):
@@ -141,20 +141,21 @@ bundled_dep = dependency('bundled-lib')
             for obsolete in ("sudo", "dnf", "pacman", "apt-get", "zypper", "--yes", "--no-deps"):
                 self.assertNotIn(obsolete, result.stdout)
             core_result = subprocess.run(
-                [str(ROOT / "build.sh"), "--dry-run"],
+                [str(ROOT / "build.sh"), "--dry-run", "--without-portal"],
                 capture_output=True,
                 text=True,
             )
             self.assertEqual(core_result.returncode, 0, core_result.stderr)
             self.assertIn("Ninja target: gnoblin-session", core_result.stdout)
-            self.assertIn("Gnoblin portal backend: false", core_result.stdout)
+            self.assertIn("Gnoblin portal backend: omitted", core_result.stdout)
             portal_result = subprocess.run(
-                [str(ROOT / "build.sh"), "--dry-run", "--with-portal"],
+                [str(ROOT / "build.sh"), "--dry-run"],
                 capture_output=True,
                 text=True,
             )
             self.assertEqual(portal_result.returncode, 0, portal_result.stderr)
             self.assertIn("Ninja target: standalone-session", portal_result.stdout)
+            self.assertIn("Gnoblin portal backend: included by default", portal_result.stdout)
 
     def test_build_cli_rejects_invalid_or_misplaced_options(self):
         for args in (

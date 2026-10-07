@@ -6,7 +6,7 @@
 G_BEGIN_DECLS
 
 #define GNOBLIN_RUNTIME_PROTOCOL_MAJOR 2
-#define GNOBLIN_RUNTIME_PROTOCOL_MINOR 5
+#define GNOBLIN_RUNTIME_PROTOCOL_MINOR 6
 #define GNOBLIN_RUNTIME_PROTOCOL_MAX_PAYLOAD (16u * 1024u * 1024u)
 
 typedef enum {
@@ -33,6 +33,10 @@ typedef enum {
     GNOBLIN_RUNTIME_PACKET_SESSION_STATE_CHANGED = 17,
     /* Mutter handled the requested session lifecycle transition. */
     GNOBLIN_RUNTIME_PACKET_SESSION_STATE_PUBLISHED = 18,
+    /* A trusted native input event awaiting the Lua runtime's decision. */
+    GNOBLIN_RUNTIME_PACKET_INPUT = 19,
+    /* Correlated Lua decision for GNOBLIN_RUNTIME_PACKET_INPUT. */
+    GNOBLIN_RUNTIME_PACKET_INPUT_DECISION = 20,
 } GnoblinRuntimePacketType;
 
 typedef struct {

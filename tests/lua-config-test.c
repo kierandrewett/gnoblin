@@ -322,7 +322,21 @@ int main(void) {
     g_autoptr(GVariant) defaults = load(missing_root, NULL, &error);
     g_assert_no_error(error);
     g_assert_nonnull(defaults);
-    g_assert_cmpuint(g_variant_n_children(defaults), ==, 0);
+    /* Missing user configuration runs the shipped, embedded Lua tree. */
+    g_assert_cmpuint(g_variant_n_children(defaults), >, 0);
+    g_autoptr(GVariant) default_window_management =
+        g_variant_lookup_value(defaults, "window-management", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(default_window_management);
+    g_autoptr(GVariant) default_pointer_bindings =
+        g_variant_lookup_value(defaults, "keybindings", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(default_pointer_bindings);
+    g_autoptr(GVariant) default_pointer_group =
+        g_variant_lookup_value(default_pointer_bindings, "pointer", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(default_pointer_group);
+    g_autoptr(GVariant) default_input_handlers =
+        g_variant_lookup_value(defaults, "input-handlers", G_VARIANT_TYPE("av"));
+    g_assert_nonnull(default_input_handlers);
+    g_assert_cmpuint(g_variant_n_children(default_input_handlers), >, 0);
     g_clear_pointer(&defaults, g_variant_unref);
     const char* legacy_roots[] = {missing_legacy_root, missing_legacy_conf, NULL};
     for (guint i = 0; legacy_roots[i]; i++) {
@@ -353,7 +367,7 @@ int main(void) {
     g_assert_true(g_file_set_contents(module, "return { name = 'module' }\n", -1, &error));
     g_assert_true(g_file_set_contents(
         nested,
-        "local g=require('gnoblin'); g.configure {compositor={['enable-animations']=true}}\n", -1,
+        "local g=require('gnoblin'); g.configure {compositor={locate_pointer=true}}\n", -1,
         &error));
     g_autofree char* fragment = g_build_filename(conf, "10-bingux.lua", NULL);
     g_assert_true(g_file_set_contents(
@@ -368,7 +382,7 @@ int main(void) {
         "    'seek','step','play','pause','stop'}) do\n"
         "  assert(type(g.animations[name])=='function', 'missing gnoblin.animations.'..name)\n"
         "end\n"
-        "g.configure { compositor={['enable-animations']=false}, shortcuts={} }; "
+        "g.configure {shortcuts={}}; "
         "g.config.autostart={}\n"
         "g.animation { name='test-open', event='open', duration=240, from={scale_x=0.8}, "
         "to={scale_x=1} }\n"
@@ -386,9 +400,9 @@ int main(void) {
     g_assert_false(g_variant_is_floating(document));
     g_autoptr(GVariant) compositor =
         g_variant_lookup_value(document, "compositor", G_VARIANT_TYPE_VARDICT);
-    g_autoptr(GVariant) animations_enabled =
-        g_variant_lookup_value(compositor, "enable-animations", G_VARIANT_TYPE_BOOLEAN);
-    g_assert_true(g_variant_get_boolean(animations_enabled));
+    g_autoptr(GVariant) locate_pointer =
+        g_variant_lookup_value(compositor, "locate-pointer", G_VARIANT_TYPE_BOOLEAN);
+    g_assert_true(g_variant_get_boolean(locate_pointer));
     g_autoptr(GVariant) shortcuts =
         g_variant_lookup_value(document, "shortcuts", G_VARIANT_TYPE("av"));
     g_assert_cmpuint(g_variant_n_children(shortcuts), ==, 1);
@@ -455,24 +469,70 @@ int main(void) {
     g_assert_nonnull(strstr(error->message, "corners.border_width"));
     g_clear_error(&error);
 
+    static const char* const valid_workspaces[] = {"{id = 'code'}", "{number = 2}"};
+    for (guint k = 0; k < G_N_ELEMENTS(valid_workspaces); k++) {
+        g_autofree char* contents = g_strdup_printf(
+            "local g=require('gnoblin')\n"
+            "g.window_rule {match={type='window'}, workspace=%s}\n",
+            valid_workspaces[k]);
+        g_assert_true(g_file_set_contents(padding_config, contents, -1, &error));
+        g_autoptr(GVariant) valid_workspace = load(padding_config, NULL, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(valid_workspace);
+    }
+    static const char* const invalid_workspaces[] = {
+        "{number = 0}", "{number = 1025}", "{id = ''}", "{id = 'a', number = 1}", "{foo = 1}", "'x'"};
+    for (guint k = 0; k < G_N_ELEMENTS(invalid_workspaces); k++) {
+        g_autofree char* contents = g_strdup_printf(
+            "local g=require('gnoblin')\n"
+            "g.window_rule {match={type='window'}, workspace=%s}\n",
+            invalid_workspaces[k]);
+        g_assert_true(g_file_set_contents(padding_config, contents, -1, &error));
+        g_autoptr(GVariant) invalid_workspace = load(padding_config, NULL, &error);
+        g_assert_null(invalid_workspace);
+        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+        g_assert_nonnull(strstr(error->message, "window-rules[1].workspace"));
+        g_clear_error(&error);
+    }
+
+    g_assert_true(g_file_set_contents(
+        padding_config,
+        "local g=require('gnoblin')\n"
+        "g.window_rule {match={type='window'}, blur=24, blur_ignore_shadows=true}\n",
+        -1, &error));
+    g_autoptr(GVariant) valid_blur = load(padding_config, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(valid_blur);
+    static const char* const invalid_blurs[] = {"blur=101", "blur=-1", "blur='x'",
+                                                "blur_ignore_shadows=1"};
+    for (guint k = 0; k < G_N_ELEMENTS(invalid_blurs); k++) {
+        g_autofree char* contents = g_strdup_printf(
+            "local g=require('gnoblin')\n"
+            "g.window_rule {match={type='window'}, %s}\n",
+            invalid_blurs[k]);
+        g_assert_true(g_file_set_contents(padding_config, contents, -1, &error));
+        g_autoptr(GVariant) invalid_blur = load(padding_config, NULL, &error);
+        g_assert_null(invalid_blur);
+        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+        g_assert_nonnull(strstr(error->message, "window-rules[1].blur"));
+        g_clear_error(&error);
+    }
+
     const char* source_root = g_getenv("GNOBLIN_TEST_SOURCE_ROOT");
     if (source_root) {
-        g_autofree char* example =
-            g_build_filename(source_root, "src", "data", "init.lua.example", NULL);
-        g_autofree char* example_source = NULL;
-        g_assert_true(g_file_get_contents(example, &example_source, NULL, &error));
-        g_assert_no_error(error);
-        g_assert_true(g_file_set_contents(example_root, example_source, -1, &error));
-        g_assert_no_error(error);
         g_clear_pointer(&document, g_variant_unref);
-        document = load(example_root, NULL, &error);
+        document = gnoblin_config_default_document();
         g_assert_no_error(error);
         g_assert_nonnull(document);
-        g_autoptr(GVariant) example_shortcuts =
-            g_variant_lookup_value(document, "shortcuts", G_VARIANT_TYPE("av"));
-        g_assert_nonnull(example_shortcuts);
-        /* The seed includes eight command shortcuts and one compositor action. */
-        g_assert_cmpuint(g_variant_n_children(example_shortcuts), ==, 9);
+        /* The starter declares its keys as Lua callbacks under
+         * keybindings.keyboard: the console key plus eight command keys. */
+        g_autoptr(GVariant) example_keybindings =
+            g_variant_lookup_value(document, "keybindings", G_VARIANT_TYPE_VARDICT);
+        g_assert_nonnull(example_keybindings);
+        g_autoptr(GVariant) example_keyboard =
+            g_variant_lookup_value(example_keybindings, "keyboard", G_VARIANT_TYPE_VARDICT);
+        g_assert_nonnull(example_keyboard);
+        g_assert_cmpuint(g_variant_n_children(example_keyboard), ==, 9);
         g_autoptr(GVariant) example_window_management =
             g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
         g_assert_nonnull(example_window_management);
@@ -596,6 +656,7 @@ int main(void) {
     }
 
     const char* invalid_locate_pointer_configs[] = {
+        "gnoblin.configure {compositor = {enable_animations = false}}\n",
         "gnoblin.configure {compositor = {locate_pointer_key = 'NoSuchKeyName'}}\n",
         "gnoblin.configure {compositor = {locate_pointer_key = '<Control>F12'}}\n",
         "gnoblin.configure {compositor = {locate_pointer_key = 'Control_L Shift_L'}}\n",
@@ -711,6 +772,69 @@ int main(void) {
         g_clear_error(&error);
     }
 
+    g_assert_true(g_file_set_contents(explicit_root, "gnoblin.configure {prompts = {enabled = true}}\n", -1, &error));
+    g_clear_pointer(&document, g_variant_unref);
+    document = load(explicit_root, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(document);
+    g_autoptr(GVariant) prompts_config =
+        g_variant_lookup_value(document, "prompts", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(prompts_config);
+    gboolean prompts_enabled = FALSE;
+    g_assert_true(g_variant_lookup(prompts_config, "enabled", "b", &prompts_enabled));
+    g_assert_true(prompts_enabled);
+
+    const char* invalid_prompts_configs[] = {
+        "gnoblin.configure {prompts = true}\n",
+        "gnoblin.configure {prompts = {enabled = 'yes'}}\n",
+        "gnoblin.configure {prompts = {enabled = 1}}\n",
+        "gnoblin.configure {prompts = {timeout = 5}}\n",
+        NULL,
+    };
+    for (guint i = 0; invalid_prompts_configs[i]; i++) {
+        g_assert_true(g_file_set_contents(explicit_root, invalid_prompts_configs[i], -1, &error));
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(explicit_root, NULL, &error);
+        g_assert_null(document);
+        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+        g_clear_error(&error);
+    }
+
+    const char* valid_auth_configs[] = {
+        "gnoblin.configure {auth = {polkit_agent = true}}\n",
+        "gnoblin.configure {auth = {polkit_agent = false}}\n",
+        NULL,
+    };
+    for (guint i = 0; valid_auth_configs[i]; i++) {
+        g_assert_true(g_file_set_contents(explicit_root, valid_auth_configs[i], -1, &error));
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(explicit_root, NULL, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(document);
+        g_autoptr(GVariant) auth_config =
+            g_variant_lookup_value(document, "auth", G_VARIANT_TYPE_VARDICT);
+        g_assert_nonnull(auth_config);
+        gboolean polkit_agent = FALSE;
+        g_assert_true(g_variant_lookup(auth_config, "polkit-agent", "b", &polkit_agent));
+        g_assert_cmpint(polkit_agent, ==, i == 0);
+    }
+
+    const char* invalid_auth_configs[] = {
+        "gnoblin.configure {auth = 'x'}\n",
+        "gnoblin.configure {auth = {polkit_agent = 'yes'}}\n",
+        "gnoblin.configure {auth = {polkit_agent = 1}}\n",
+        "gnoblin.configure {auth = {unknown = true}}\n",
+        NULL,
+    };
+    for (guint i = 0; invalid_auth_configs[i]; i++) {
+        g_assert_true(g_file_set_contents(explicit_root, invalid_auth_configs[i], -1, &error));
+        g_clear_pointer(&document, g_variant_unref);
+        document = load(explicit_root, NULL, &error);
+        g_assert_null(document);
+        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+        g_clear_error(&error);
+    }
+
     const char* invalid_xwayland_configs[] = {
         "gnoblin.configure {xwayland = true}\n",
         "gnoblin.configure {xwayland = {unknown = true}}\n",
@@ -742,20 +866,9 @@ int main(void) {
         -1, &error));
     g_clear_pointer(&document, g_variant_unref);
     document = load(explicit_root, NULL, &error);
-    g_assert_no_error(error);
-    g_assert_nonnull(document);
-    g_clear_pointer(&window_management, g_variant_unref);
-    window_management =
-        g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
-    g_assert_nonnull(window_management);
-    const char* mouse_button_modifier = NULL;
-    g_assert_true(
-        g_variant_lookup(window_management, "mouse-button-modifier", "&s", &mouse_button_modifier));
-    g_assert_cmpstr(mouse_button_modifier, ==, "<Super><Shift>");
-    gboolean resize_with_right_button = FALSE;
-    g_assert_true(g_variant_lookup(window_management, "resize-with-right-button", "b",
-                                   &resize_with_right_button));
-    g_assert_true(resize_with_right_button);
+    g_assert_null(document);
+    g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+    g_clear_error(&error);
 
     g_assert_true(
         g_file_set_contents(explicit_root,
@@ -1333,6 +1446,12 @@ int main(void) {
         "end)\n"
         "g.on('test.shortcut.end', function()\n"
         "  g.shortcuts.end_session {id='test-switcher', session_id=9}\n"
+        "end)\n"
+        "g.on('test.callback.failure', function()\n"
+        "  error('intentional callback failure')\n"
+        "end)\n"
+        "g.input.on({type='key', accelerator='F12'}, function()\n"
+        "  error('intentional input callback failure')\n"
         "end)\n";
     g_assert_true(g_file_set_contents(explicit_root, event_config_source, -1, &error));
     g_autoptr(GVariant) runtime_document =
@@ -1344,6 +1463,53 @@ int main(void) {
     g_assert_cmpint(expected_permission.level, ==, GNOBLIN_PERMISSION_ALLOW);
     g_assert_cmpstr(expected_permission.rule, ==, "remote-test");
     gnoblin_config_finish_load(TRUE);
+
+    /* A callback failure must be contained. It is reported once and that
+     * subscription is disabled, leaving later events and the active document
+     * usable. */
+    GVariantBuilder callback_failure_builder;
+    g_variant_builder_init(&callback_failure_builder, G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) callback_failure_payload =
+        g_variant_ref_sink(g_variant_builder_end(&callback_failure_builder));
+    g_autoptr(GVariant) callback_failure_result =
+        gnoblin_config_dispatch_event("test.callback.failure", callback_failure_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(callback_failure_result);
+    g_autofree char* callback_failure = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(callback_failure);
+    g_assert_nonnull(strstr(callback_failure, "intentional callback failure"));
+    gnoblin_config_finish_event(TRUE);
+    g_clear_pointer(&callback_failure_result, g_variant_unref);
+    callback_failure_result =
+        gnoblin_config_dispatch_event("test.callback.failure", callback_failure_payload, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(callback_failure_result);
+    g_assert_null(gnoblin_config_take_runtime_callback_error());
+    gnoblin_config_finish_event(TRUE);
+
+    const char* failing_handler_ids[] = {"input-1", NULL};
+    GVariantBuilder failing_input_builder;
+    g_variant_builder_init(&failing_input_builder, G_VARIANT_TYPE_VARDICT);
+    GVariantBuilder failing_input_event_builder;
+    g_variant_builder_init(&failing_input_event_builder, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&failing_input_builder, "{sv}", "event",
+                          g_variant_builder_end(&failing_input_event_builder));
+    g_variant_builder_add(&failing_input_builder, "{sv}", "handler_ids",
+                          g_variant_new_strv(failing_handler_ids, -1));
+    g_autoptr(GVariant) failing_input =
+        g_variant_ref_sink(g_variant_builder_end(&failing_input_builder));
+    g_autoptr(GVariant) failing_input_result =
+        gnoblin_config_dispatch_input(failing_input, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(failing_input_result);
+    g_autofree char* input_callback_failure = gnoblin_config_take_runtime_callback_error();
+    g_assert_nonnull(input_callback_failure);
+    g_assert_nonnull(strstr(input_callback_failure, "intentional input callback failure"));
+    g_clear_pointer(&failing_input_result, g_variant_unref);
+    failing_input_result = gnoblin_config_dispatch_input(failing_input, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(failing_input_result);
+    g_assert_null(gnoblin_config_take_runtime_callback_error());
 
     GVariantBuilder empty_bind_event;
     g_variant_builder_init(&empty_bind_event, G_VARIANT_TYPE_VARDICT);
