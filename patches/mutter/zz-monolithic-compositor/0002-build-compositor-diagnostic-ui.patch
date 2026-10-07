@@ -1,0 +1,42 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 5 Oct 2026 23:55:00 +0100
+Subject: [PATCH] Build compositor-owned diagnostic panels
+
+---
+diff --git a/meson.build b/meson.build
+index 0207c7f45..9b8e15566 100644
+--- a/meson.build
++++ b/meson.build
+@@ -70,6 +70,8 @@ gnome = import('gnome')
+ i18n  = import('i18n')
+ fs = import('fs')
+ python = import('python')
++add_languages('cpp', required: true)
++add_project_arguments('-std=c++20', language: 'cpp')
+ cc = meson.get_compiler('c')
+ 
+ add_project_link_arguments(
+@@ -119,7 +121,5 @@ graphene_dep = dependency('graphene-gobject-1.0', version: graphene_req)
+ hyprcursor_dep = dependency('hyprcursor', version: '>= 0.1.11', required: get_option('hyprcursor'))
+ have_hyprcursor = hyprcursor_dep.found()
+ if have_hyprcursor
+-  add_languages('cpp')
+-  add_project_arguments('-std=c++20', language: 'cpp')
+ endif
+ pixman_dep = dependency('pixman-1', version: pixman_req)
+diff --git a/src/compositor/plugins/meson.build b/src/compositor/plugins/meson.build
+index 1fdfd9b21..a1d5e8bc0 100644
+--- a/src/compositor/plugins/meson.build
++++ b/src/compositor/plugins/meson.build
+@@ -27,5 +27,8 @@ gnoblin_imgui_sources = files(
+   gnoblin_imgui_root / 'imgui_draw.cpp',
+   gnoblin_imgui_root / 'imgui_tables.cpp',
+   gnoblin_imgui_root / 'imgui_widgets.cpp',
++  'gnoblin-plugin-ui.cpp',
++  'gnoblin-recovery-panel.cpp',
++  'gnoblin-console-panel.cpp',
+   'gnoblin-imgui-overlay.cpp',
+ )
+-- 
+2.51.0

@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 01:05:00 +0100
+Subject: [PATCH] clutter: declare paint context API with C linkage
+
+The ImGui renderer is C++, while Clutter exports this API as C. Keep the
+public declarations usable from both languages.
+---
+ clutter/clutter/clutter-paint-context.h | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/clutter/clutter/clutter-paint-context.h b/clutter/clutter/clutter-paint-context.h
+--- a/clutter/clutter/clutter-paint-context.h
++++ b/clutter/clutter/clutter-paint-context.h
+@@ -26,4 +26,6 @@
+ #include "clutter/clutter-macros.h"
+ #include "clutter/clutter-stage-view.h"
+ 
++G_BEGIN_DECLS
++
+ typedef struct _ClutterPaintContext ClutterPaintContext;
+@@ -98,1 +100,3 @@
+ G_DEFINE_AUTOPTR_CLEANUP_FUNC (ClutterPaintContext, clutter_paint_context_unref)
++
++G_END_DECLS
+-- 
+2.51.0

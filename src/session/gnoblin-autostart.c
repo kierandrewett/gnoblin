@@ -7,13 +7,14 @@ gboolean gnoblin_autostart_receive_packet(int fd, GnoblinRuntimeReader* reader,
                                           GVariant** environment, GError** error) {
     g_return_val_if_fail(reader && received_packet && entries && environment, FALSE);
     g_return_val_if_fail(error == NULL || *error == NULL, FALSE);
+    *received_packet = FALSE;
 
     for (;;) {
         GnoblinRuntimePacket packet = {0};
         gboolean available = FALSE;
         g_autoptr(GError) receive_error = NULL;
         if (!gnoblin_runtime_reader_receive(reader, fd, &packet, &available, &receive_error)) {
-            if (*received_packet && g_error_matches(receive_error, G_IO_ERROR, G_IO_ERROR_CLOSED))
+            if (g_error_matches(receive_error, G_IO_ERROR, G_IO_ERROR_CLOSED))
                 return TRUE;
             g_propagate_error(error, g_steal_pointer(&receive_error));
             return FALSE;
@@ -23,7 +24,7 @@ gboolean gnoblin_autostart_receive_packet(int fd, GnoblinRuntimeReader* reader,
 
         g_autoptr(GVariant) payload = g_variant_ref(packet.payload);
         gboolean valid = packet.type == GNOBLIN_RUNTIME_PACKET_HOST_AUTOSTART &&
-                         packet.request_id == 0 && !*received_packet;
+                         packet.request_id == 0;
         guint entries_fields = 0;
         guint environment_fields = 0;
         GVariantIter payload_iter;
@@ -48,9 +49,11 @@ gboolean gnoblin_autostart_receive_packet(int fd, GnoblinRuntimeReader* reader,
         gnoblin_runtime_packet_clear(&packet);
         if (!valid) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                                "Lua runtime sent an invalid initial autostart packet");
+                                "Lua runtime sent an invalid autostart packet");
             return FALSE;
         }
+        g_clear_pointer(entries, g_variant_unref);
+        g_clear_pointer(environment, g_variant_unref);
         *entries = g_steal_pointer(&packet_entries);
         *environment = g_steal_pointer(&packet_environment);
         *received_packet = TRUE;

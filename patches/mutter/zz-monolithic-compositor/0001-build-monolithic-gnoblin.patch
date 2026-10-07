@@ -1,0 +1,173 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 5 Oct 2026 23:35:00 +0100
+Subject: [PATCH] Build the Gnoblin supervisor and Mutter entry point together
+
+---
+diff --git a/src/core/mutter.c b/src/core/mutter.c
+index 0d081560b..38fb3e5bc 100644
+--- a/src/core/mutter.c
++++ b/src/core/mutter.c
+@@ -159,7 +159,7 @@ maybe_spawn_child_command (MetaMonitorManager *monitor_manager,
+ }
+ 
+ int
+-main (int argc, char **argv)
++gnoblin_compositor_main (int argc, char **argv)
+ {
+   g_autoptr (MetaContext) context = NULL;
+   g_autoptr (GError) error = NULL;
+diff --git a/src/meson.build b/src/meson.build
+index 3fc274ded..c7c57b7bb 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1224,30 +1224,92 @@ libmutter_dep = declare_dependency(
+   ],
+ )
+ 
+-mutter = executable('mutter',
+-  sources: [
+-    files('core/mutter.c'),
+-  ],
+-  include_directories: mutter_includes,
+-  c_args: [
+-    mutter_c_args,
+-    '-DG_LOG_DOMAIN="mutter"',
+-  ],
+-  dependencies: [libmutter_dep],
+-  install_dir: bindir,
+-  install: true,
++gnoblin_python = find_program('python3')
++gnoblin_root = run_command(
++  gnoblin_python, '-c', 'import os; print(os.environ["GNOBLIN_SOURCE_ROOT"])',
++  check: true).stdout().strip()
++gnoblin_prefix = run_command(
++  gnoblin_python, '-c', 'import os; print(os.environ["GNOBLIN_PREFIX"])',
++  check: true).stdout().strip()
++gnoblin_fs = import('fs')
++gnoblin_lua_dep = dependency('lua5.4', required: false)
++if not gnoblin_lua_dep.found()
++  gnoblin_lua_dep = dependency('lua-5.4', required: false)
++endif
++if not gnoblin_lua_dep.found()
++  gnoblin_lua_dep = dependency('lua54', required: false)
++endif
++if not gnoblin_lua_dep.found()
++  gnoblin_lua_dep = dependency('lua', required: false)
++endif
++if not gnoblin_lua_dep.found()
++  error('Gnoblin requires Lua 5.4 development files')
++endif
++gnoblin_json_dep = dependency('json-glib-1.0')
++
++gnoblin_api_header = gnoblin_fs.read(gnoblin_root / 'src/native-control/gnoblin-native-control.h')
++gnoblin_api_major = ''
++gnoblin_api_minor = ''
++foreach api_line : gnoblin_api_header.split('\n')
++  if api_line.startswith('#define GNOBLIN_NATIVE_CONTROL_API_MAJOR ')
++    gnoblin_api_major = api_line.split().get(2)
++  elif api_line.startswith('#define GNOBLIN_NATIVE_CONTROL_API_MINOR ')
++    gnoblin_api_minor = api_line.split().get(2)
++  endif
++endforeach
++if gnoblin_api_major == '' or gnoblin_api_minor == ''
++  error('Could not read the Gnoblin native control API version')
++endif
++
++gnoblin_default_config = custom_target('gnoblin-default-config',
++  input: files(
++    gnoblin_root / 'src/data/default-config/init.lua',
++    gnoblin_root / 'src/data/default-config/config/10-windows.lua',
++    gnoblin_root / 'src/data/default-config/config/20-input.lua',
++    gnoblin_root / 'src/data/default-config/config/30-session.lua',
++    gnoblin_root / 'src/data/default-config/config/40-shortcuts.lua',
++    gnoblin_root / 'src/data/default-config/config/50-pointer.lua',
++  ),
++  output: 'gnoblin-default-config.c',
++  command: [gnoblin_python, gnoblin_root / 'scripts/embed-config.py',
++            gnoblin_root / 'src/data/default-config', '@OUTPUT@'],
+ )
+ 
+-gnoblin_mutter = executable('gnoblin-mutter',
+-  sources: [
+-    files('core/mutter.c'),
+-  ],
+-  include_directories: mutter_includes,
+-  c_args: [
+-    mutter_c_args,
+-    '-DG_LOG_DOMAIN="gnoblin-mutter"',
++gnoblin_config_sources = files(
++  gnoblin_root / 'src/config/gnoblin-config.c',
++  gnoblin_root / 'src/native-control/gnoblin-input-config.c',
++  gnoblin_root / 'src/config/gnoblin-lua.c',
++  gnoblin_root / 'src/config/gnoblin-lua-pattern.c',
++  gnoblin_root / 'src/config/gnoblin-glob.c',
++  gnoblin_root / 'src/native-control/gnoblin-keybinding-catalog.c',
++  gnoblin_root / 'src/permissions/gnoblin-portal-identity.c',
++  gnoblin_root / 'src/permissions/gnoblin-portal-policy.c',
++)
++gnoblin_session_sources = files(
++  gnoblin_root / 'src/session/gnoblin-entrypoint.c',
++  gnoblin_root / 'src/session/gnoblin-runtime.c',
++  gnoblin_root / 'src/session/gnoblin-autostart.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-spawn.c',
++  gnoblin_root / 'src/session/gnoblin-priority.c',
++  gnoblin_root / 'src/native-control/gnoblin-runtime-protocol.c',
++)
++gnoblin_include_dirs = include_directories(
++  gnoblin_root / 'src/config',
++  gnoblin_root / 'src/permissions',
++  gnoblin_root / 'src/native-control',
++)
++gnoblin = executable('gnoblin',
++  sources: [files('core/mutter.c'), gnoblin_default_config] +
++    gnoblin_config_sources + gnoblin_session_sources,
++  include_directories: [mutter_includes, gnoblin_include_dirs],
++  c_args: mutter_c_args + [
++    '-DG_LOG_DOMAIN="gnoblin"',
++    '-DGNOBLIN_NATIVE_CONTROL_API_MAJOR=' + gnoblin_api_major,
++    '-DGNOBLIN_NATIVE_CONTROL_API_MINOR=' + gnoblin_api_minor,
++    '-DGNOBLIN_DEFAULT_COMPOSITOR="' + gnoblin_prefix / 'bin/gnoblin' + '"',
+   ],
+-  dependencies: [libmutter_dep],
++  dependencies: [libmutter_dep, mutter_deps, gnoblin_lua_dep, gnoblin_json_dep],
++  install_rpath: libdir,
+   install_dir: bindir,
+   install: true,
+ )
+diff --git a/src/compositor/plugins/meson.build b/src/compositor/plugins/meson.build
+index 0b68a3a48..1fdfd9b21 100644
+--- a/src/compositor/plugins/meson.build
++++ b/src/compositor/plugins/meson.build
+@@ -17,8 +17,27 @@ default_plugin = shared_module('default',
+ )
+ 
++gnoblin_python = find_program('python3')
++gnoblin_root = run_command(
++  gnoblin_python, '-c', 'import os; print(os.environ["GNOBLIN_SOURCE_ROOT"])',
++  check: true).stdout().strip()
++gnoblin_imgui_root = run_command(
++  gnoblin_python, '-c', 'import os; print(os.environ["GNOBLIN_IMGUI_SOURCE"])',
++  check: true).stdout().strip()
++gnoblin_imgui_sources = files(
++  gnoblin_imgui_root / 'imgui.cpp',
++  gnoblin_imgui_root / 'imgui_draw.cpp',
++  gnoblin_imgui_root / 'imgui_tables.cpp',
++  gnoblin_imgui_root / 'imgui_widgets.cpp',
++  'gnoblin-imgui-overlay.cpp',
++)
++gnoblin_imgui_includes = include_directories(
++  gnoblin_imgui_root,
++  gnoblin_root / 'src/native-control',
++)
++
+ gnoblin_plugin = shared_module('gnoblin',
+-  sources: ['gnoblin-plugin.c'],
+-  include_directories: mutter_includes,
++  sources: ['gnoblin-plugin.c', gnoblin_imgui_sources],
++  include_directories: [mutter_includes, gnoblin_imgui_includes],
+   c_args: default_plugin_c_args,
+   dependencies: [
+     glib_dep,
+-- 
+2.51.0

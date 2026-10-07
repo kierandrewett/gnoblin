@@ -1,0 +1,21 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 22:05:00 +0100
+Subject: [PATCH] mutter: write the XSETTINGS byte order as LSBFirst or MSBFirst
+
+---
+diff --git a/src/x11/meta-x11-display.c b/src/x11/meta-x11-display.c
+index a8b93d6765..e99d6498fe 100644
+--- a/src/x11/meta-x11-display.c
++++ b/src/x11/meta-x11-display.c
+@@ -489,7 +489,9 @@ publish_gnoblin_xsettings (MetaX11Display *x11_display,
+   little_endian = ImageByteOrder (x11_display->xdisplay) == LSBFirst;
+   settings = g_byte_array_new ();
+ 
+-  header[0] = little_endian ? 'l' : 'B';
++  /* The XSETTINGS byte order is the X11 constant LSBFirst (0) or MSBFirst (1).
++   * 'l' and 'B' are the connection-setup letters, and toolkits reject them. */
++  header[0] = little_endian ? LSBFirst : MSBFirst;
+   g_byte_array_append (settings, header, sizeof (header));
+   append_xsettings_uint32 (settings, little_endian, serial);
+   append_xsettings_uint32 (settings, little_endian, 3);

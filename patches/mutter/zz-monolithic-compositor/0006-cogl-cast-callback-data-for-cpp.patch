@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] cogl: cast trace callback data for C++ consumers
+
+---
+diff --git a/cogl/cogl/cogl-trace.h b/cogl/cogl/cogl-trace.h
+index bfc992efa1..5aea7549ea 100644
+--- a/cogl/cogl/cogl-trace.h
++++ b/cogl/cogl/cogl-trace.h
+@@ -127,7 +127,7 @@ unsigned int cogl_trace_define_counter_double (const char *name,
+ static inline gpointer
+ cogl_trace_counter_data_int (gpointer user_data)
+ {
+-  CoglTraceCounterData *counter_data = user_data;
++  CoglTraceCounterData *counter_data = (CoglTraceCounterData *) user_data;
+   int counter;
+ 
+   counter = cogl_trace_define_counter_int (counter_data->name,
+@@ -139,7 +139,7 @@ cogl_trace_counter_data_int (gpointer user_data)
+ static inline gpointer
+ cogl_trace_counter_data_double (gpointer user_data)
+ {
+-  CoglTraceCounterData *counter_data = user_data;
++  CoglTraceCounterData *counter_data = (CoglTraceCounterData *) user_data;
+   int counter;
+ 
+   counter = cogl_trace_define_counter_double (counter_data->name,

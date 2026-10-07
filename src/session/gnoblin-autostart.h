@@ -4,8 +4,9 @@
 
 G_BEGIN_DECLS
 
-/* Receives the one-shot host autostart packet. The packet contains exactly
- * `entries` (av) and `environment` (a{ss}); EOF is valid only after receipt. */
+/* Receives one or more host autostart snapshots. Each packet contains exactly
+ * `entries` (av) and `environment` (a{ss}). A later packet supersedes the
+ * previous snapshot and is used to reconcile Gnoblin-owned autostart children. */
 gboolean gnoblin_autostart_receive_packet(int fd, GnoblinRuntimeReader* reader,
                                           gboolean* received_packet, GVariant** entries,
                                           GVariant** environment, GError** error);

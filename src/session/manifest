@@ -1,0 +1,4 @@
+# Scheduling-priority recovery shared by the guardian and the compositor.
+# project  source                destination
+mutter gnoblin-priority.c src/core/gnoblin-priority.c
+mutter gnoblin-priority.h src/core/gnoblin-priority.h

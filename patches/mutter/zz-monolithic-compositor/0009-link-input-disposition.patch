@@ -1,0 +1,15 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 22:05:00 +0100
+Subject: [PATCH] input: link native disposition lifecycle helper
+
+---
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1191,3 +1191,5 @@
++mutter_sources += ['core/gnoblin-input-disposition.c', 'core/gnoblin-priority.c']
++
+ libmutter = library(libmutter_name,
+   mutter_sources,
+   mutter_built_sources,

@@ -27,17 +27,17 @@ REQUIREMENTS = {
         "capability": "pkgconfig(wayland-protocols)",
         "minimum": "1.48",
         "declaredScope": "development-package-contract",
-        "declaredPackage": "gnoblin-mutter-devel",
+        "declaredPackage": "gnoblin",
         "floorSource": "subprojects/mutter/meson.build:50,217-218",
         "rpmSpecDeclarations": [
             {
-                "location": "packaging/opensuse/mutter.spec:20,74",
+                "location": "packaging/opensuse/gnoblin.spec:20,74",
                 "kind": "BuildRequires",
                 "minimum": "1.48",
                 "note": "matches-source-floor",
             },
             {
-                "location": "packaging/rpm/mutter.spec:27,96",
+                "location": "packaging/rpm/gnoblin.spec:68,96",
                 "kind": "BuildRequires",
                 "minimum": "1.48",
                 "note": "matches-source-floor",
@@ -69,13 +69,13 @@ REQUIREMENTS = {
         "floorSource": "subprojects/mutter/meson.build:18,299",
         "rpmSpecDeclarations": [
             {
-                "location": "packaging/opensuse/mutter.spec:13,43",
+                "location": "packaging/opensuse/gnoblin.spec:5,42",
                 "kind": "BuildRequires",
                 "minimum": "1.41.4",
                 "note": "matches-source-floor",
             },
             {
-                "location": "packaging/rpm/mutter.spec:12,58",
+                "location": "packaging/rpm/gnoblin.spec:5,70",
                 "kind": "BuildRequires",
                 "minimum": "1.41.4",
                 "note": "matches-source-floor",
@@ -89,13 +89,13 @@ REQUIREMENTS = {
         "floorSource": "subprojects/mutter/meson.build:24,121",
         "rpmSpecDeclarations": [
             {
-                "location": "packaging/opensuse/mutter.spec:47",
+                "location": "packaging/opensuse/gnoblin.spec:57",
                 "kind": "BuildRequires",
                 "minimum": "2.0.beta.2",
                 "note": "matches-source-floor",
             },
             {
-                "location": "packaging/rpm/mutter.spec:15,89",
+                "location": "packaging/rpm/gnoblin.spec:78",
                 "kind": "BuildRequires",
                 "minimum": "2.0.beta.2",
                 "note": "matches-source-floor",
@@ -121,13 +121,13 @@ REQUIREMENTS = {
         "floorSource": "subprojects/mutter/meson.build:42,148",
         "rpmSpecDeclarations": [
             {
-                "location": "packaging/opensuse/mutter.spec:58",
+                "location": "packaging/opensuse/gnoblin.spec:67",
                 "kind": "BuildRequires",
                 "minimum": "0.2",
                 "note": "matches-source-floor",
             },
             {
-                "location": "packaging/rpm/mutter.spec:19,73",
+                "location": "packaging/rpm/gnoblin.spec:82",
                 "kind": "BuildRequires",
                 "minimum": "0.2",
                 "note": "matches-source-floor",

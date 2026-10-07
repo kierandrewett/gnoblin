@@ -18,16 +18,19 @@ mutter_api="${mutter_version%%.*}"
 source_dir="$root/subprojects/$name"
 build_dir="$build_root/$name"
 
-if [ "$mode" = checkout ] && [ "$name" = mutter ]; then
-    # The pinned fork carries Mutter's patch series. Gnoblin-owned source files
-    # remain in this repository and are copied in as overlays for each build.
-    "$root/scripts/ensure-release-subprojects.sh" mutter
-    "$root/scripts/copy-overlay.sh" mutter "$source_dir"
-elif [ "$mode" = checkout ]; then
+if [ "$mode" = checkout ]; then
+    if [ "$name" = mutter ]; then
+        # Validate the pinned fork before the patch pipeline resets it, copies
+        # Gnoblin overlays, and applies the complete ordered series.
+        "$root/scripts/ensure-release-subprojects.sh" mutter
+    fi
     inputs=("$root/gnome-versions.json")
     while IFS= read -r -d '' patch; do inputs+=("$patch"); done < <(
         find "$root/patches/$name" -type f -name '*.patch' -print0 | sort -z
     )
+    if [ "$name" = xdg-desktop-portal-gnome ]; then
+        inputs+=("$root/patches/portal-dependencies/libgxdp/0001-gtk-4.20-compat.patch")
+    fi
     while IFS= read -r -d '' manifest; do
         inputs+=("$manifest")
         while read -r project source _destination _rest; do
@@ -76,6 +79,9 @@ if [ -n "$stage_root" ]; then
 else
     export PKG_CONFIG_PATH="$prefix/$libdir/pkgconfig:$prefix/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 fi
+export GNOBLIN_SOURCE_ROOT="$root"
+export GNOBLIN_IMGUI_SOURCE="$root/subprojects/imgui"
+export GNOBLIN_PREFIX="$prefix"
 export GI_GIR_PATH="$installed_prefix/share/gir-1.0${GI_GIR_PATH:+:$GI_GIR_PATH}"
 export GI_TYPELIB_PATH="$installed_prefix/$libdir/girepository-1.0:$installed_prefix/$libdir/mutter-$mutter_api${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
 export LD_LIBRARY_PATH="$installed_prefix/$libdir:$installed_prefix/$libdir/mutter-$mutter_api${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"

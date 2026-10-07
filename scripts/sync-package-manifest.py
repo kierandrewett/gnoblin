@@ -79,8 +79,6 @@ def render_rpm(manifest: dict) -> str:
     epoch = manifest["release"]["rpmEpoch"]
     gnoblin_release = manifest["release"]["gnoblinRpmRelease"]
     next_major = manifest["release"]["gnomeMajor"] + 1
-    mutter_version = manifest["packages"]["gnoblin-mutter"]["version"]
-    mutter_release = manifest["release"]["mutterRpmRelease"]
     same_major_packages, exact_packages, requirements = dependency_closure(manifest, "gnoblin")
     runtime_requirements = [
         *(f"Requires:       {name} >= {manifest['release']['gnomeMajor']}" for name in same_major_packages),
@@ -91,6 +89,10 @@ def render_rpm(manifest: dict) -> str:
             for name in requirements
             for package_name, minimum in [native_requirement(manifest, name, "rpm")]
         ),
+    ]
+    obsolete_packages = [
+        f"Obsoletes:      {name} < {next_major}"
+        for name in gnoblin.get("replaces", [])
     ]
     integration = manifest["packages"]["gnoblin-gnome-integration"]
     integration_same_major, integration_exact, integration_native = dependency_closure(
@@ -111,8 +113,7 @@ def render_rpm(manifest: dict) -> str:
         "@EPOCH@": str(epoch),
         "@GNOBLIN_RELEASE@": str(gnoblin_release),
         "@GNOME_MAJOR@": str(manifest["release"]["gnomeMajor"]),
-        "@MUTTER_VERSION@": mutter_version,
-        "@MUTTER_RELEASE@": mutter_release,
+        "@OBSOLETES@": "\n".join(obsolete_packages),
         "@RUNTIME_REQUIRES@": "\n".join(runtime_requirements),
         "@INTEGRATION_REQUIRES@": "\n".join(integration_requires),
     }
@@ -148,6 +149,7 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP", release_tag: str = 
             "startup-notification",
         )
     ]
+    replaced_packages = manifest["packages"]["gnoblin"].get("replaces", [])
     return f"""# Generated from packaging/native-packages.json; do not edit.
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=gnoblin
@@ -157,8 +159,10 @@ pkgdesc='Standalone Gnoblin desktop session'
 arch=('x86_64')
 url='{PROJECT_URL}'
 license=('GPL-2.0-or-later')
-makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4>=4.14.0' 'json-glib' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' '{lua_build_requirement}' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
+makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gcr-4' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4>=4.14.0' 'json-glib' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' '{lua_build_requirement}' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
 depends=({" ".join(dependencies)})
+conflicts=({" ".join(f"'{name}'" for name in replaced_packages)})
+replaces=({" ".join(f"'{name}'" for name in replaced_packages)})
 
 source=("$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz")
 sha256sums=('{source_sha256}')
@@ -225,7 +229,7 @@ pkgdesc='Optional GTK-based portal backend for Gnoblin sessions'
 arch=('x86_64')
 url='{PROJECT_URL}'
 license=('LGPL-2.1-or-later')
-makedepends=('base-devel' 'gettext' 'glib2-devel' 'glycin' 'gsettings-desktop-schemas' 'gtk4>=4.22.0' 'libadwaita' 'meson' 'ninja' 'pkgconf' 'xdg-desktop-portal>=1.21.1')
+makedepends=('base-devel' 'gettext' 'glib2-devel' 'glycin' 'gsettings-desktop-schemas' 'gtk4>=4.20.0' 'libadwaita' 'meson' 'ninja' 'pkgconf' 'xdg-desktop-portal>=1.20.0')
 depends=({" ".join(requirements)} 'glycin' 'libadwaita' 'libsecret')
 
 source=("xdg-desktop-portal-gnome-$pkgver.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/xdg-desktop-portal-gnome-$pkgver.tar.xz")

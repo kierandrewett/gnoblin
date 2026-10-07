@@ -59,8 +59,8 @@ def native_api_version():
 release = json.loads((root / "gnoblin-version.json").read_text())
 gnome = json.loads((root / "gnome-versions.json").read_text())
 components = gnome["components"]
-# Only list components installed by the default Gnoblin session build.
-shipped_components = {name: components[name] for name in ("mutter", "xdg-desktop-portal-gnome") if name in components}
+# Only list components included in this build's installed session.
+shipped_components = {"mutter": components["mutter"]}
 embedded = root / "source-provenance.json"
 provenance = json.loads(embedded.read_text()) if embedded.exists() else {}
 sha = provenance.get("gitSha") or os.environ.get("GNOBLIN_SOURCE_GIT_SHA") or git("rev-parse", "HEAD")
@@ -107,8 +107,14 @@ def key_file_value(value):
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("output", help="write the existing JSON build identity here")
 parser.add_argument("--lua-version", help="Lua version resolved by the build system")
+parser.add_argument("--without-portal", action="store_true", help="omit the optional portal backend")
 parser.add_argument("--ini-output", help="also write GLib KeyFile runtime metadata here")
 arguments = parser.parse_args()
+if not arguments.without_portal and "xdg-desktop-portal-gnome" in components:
+    shipped_components["xdg-desktop-portal-gnome"] = components["xdg-desktop-portal-gnome"]
+    # The identity was built before the portal decision, so refresh the two component maps.
+    identity["components"] = {name: value["version"] for name, value in shipped_components.items()}
+    identity["componentCommits"] = {name: value["commit"] for name, value in shipped_components.items()}
 identity["luaVersion"] = arguments.lua_version or package_version("lua5.4", "lua-5.4", "lua54", "lua")
 Path(arguments.output).write_text(json.dumps(identity, indent=2, sort_keys=True) + "\n")
 

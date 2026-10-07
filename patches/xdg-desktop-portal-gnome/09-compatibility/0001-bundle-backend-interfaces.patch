@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 21:20:00 +0100
+Subject: [PATCH] build: bundle backend interfaces for portal 1.20
+
+xdg-desktop-portal-gnome 51 uses the 1.21 interface XML only to generate
+backend D-Bus bindings. The added methods are additive and the portal frontend
+continues to negotiate which methods it calls at runtime. Use Gnoblin's exact
+1.21.1 XML copies instead of making a 1.21 frontend mandatory.
+
+---
+ src/meson.build | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/src/meson.build b/src/meson.build
+index 8103dc5..bf55bea 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1,7 +1,7 @@
+ gnome = import('gnome')
+ pkg = import('pkgconfig')
+ 
+-xdg_desktop_portal_dep = dependency('xdg-desktop-portal', version: '>= 1.21.1')
++xdg_desktop_portal_dep = dependency('xdg-desktop-portal', version: '>= 1.20.0')
+ 
+ # Desktop Portal D-Bus interfaces
+ desktop_portal_dbus_interfaces = gnome_portal_interfaces + [
+@@ -9,8 +9,8 @@ desktop_portal_dbus_interfaces = gnome_portal_interfaces + [
+   'org.freedesktop.impl.portal.Session',
+ ]
+ 
+-desktop_portal_interfaces_dir = xdg_desktop_portal_dep.get_variable(
+-  pkgconfig: 'interfaces_dir')
++# xdg-desktop-portal 1.21.1 XML bundled by Gnoblin for backend code generation.
++desktop_portal_interfaces_dir = meson.project_source_root() / 'data' / 'interfaces'
+ 
+ desktop_portal_dbus_interfaces_files = []
+ foreach intf: desktop_portal_dbus_interfaces
+-- 
+2.51.0

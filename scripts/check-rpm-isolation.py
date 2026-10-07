@@ -10,8 +10,6 @@ import subprocess
 
 PACKAGES = {
     "gnoblin",
-    "gnoblin-mutter",
-    "gnoblin-mutter-devel",
     "gnoblin-portal",
 }
 MANIFEST = json.loads((Path(__file__).resolve().parents[1] / "packaging/native-packages.json").read_text())

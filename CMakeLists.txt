@@ -41,6 +41,11 @@ add_executable(native-touchpad-router-test
   src/native-control/gnoblin-touchpad-router.c)
 target_link_libraries(native-touchpad-router-test PRIVATE PkgConfig::GNOBLIN_GIO m)
 add_test(NAME native-touchpad-router COMMAND native-touchpad-router-test)
+add_executable(native-input-disposition-test
+  tests/native-input-disposition-test.c
+  src/native-control/gnoblin-input-disposition.c)
+target_link_libraries(native-input-disposition-test PRIVATE PkgConfig::GNOBLIN_GIO)
+add_test(NAME native-input-disposition COMMAND native-input-disposition-test)
 add_executable(runtime-protocol-test
   tests/runtime-protocol-test.c
   src/native-control/gnoblin-runtime-protocol.c)
@@ -70,8 +75,25 @@ target_include_directories(lua-pattern-test PRIVATE src/config)
 target_link_libraries(lua-pattern-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME lua-pattern COMMAND lua-pattern-test)
 if(GNOBLIN_LUA_FOUND)
+  set(GNOBLIN_DEFAULT_CONFIG_SOURCE
+    "${PROJECT_SOURCE_DIR}/src/data/default-config")
+  file(GLOB_RECURSE GNOBLIN_DEFAULT_CONFIG_FILES CONFIGURE_DEPENDS
+    "${GNOBLIN_DEFAULT_CONFIG_SOURCE}/*")
+  set(GNOBLIN_DEFAULT_CONFIG_C
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/gnoblin-default-config.c")
+  add_custom_command(
+    OUTPUT "${GNOBLIN_DEFAULT_CONFIG_C}"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory
+      "${CMAKE_CURRENT_BINARY_DIR}/generated"
+    COMMAND "${Python3_EXECUTABLE}"
+      "${PROJECT_SOURCE_DIR}/scripts/embed-config.py"
+      "${GNOBLIN_DEFAULT_CONFIG_SOURCE}" "${GNOBLIN_DEFAULT_CONFIG_C}"
+    DEPENDS ${GNOBLIN_DEFAULT_CONFIG_FILES}
+      "${PROJECT_SOURCE_DIR}/scripts/embed-config.py"
+    VERBATIM)
   set(GNOBLIN_CONFIG_SOURCES
     src/config/gnoblin-config.c
+    "${GNOBLIN_DEFAULT_CONFIG_C}"
     src/native-control/gnoblin-input-config.c
     src/config/gnoblin-lua.c
     src/config/gnoblin-lua-pattern.c
@@ -106,20 +128,12 @@ configure_file(
   "${GNOBLIN_CONFIG_TEST_CATALOG_DIR}/native-keybindings.json"
   COPYONLY)
 
-  add_executable(gnoblin
-    src/session/gnoblin-runtime.c
-    src/session/gnoblin-autostart.c
-    src/native-control/gnoblin-runtime-protocol.c
-    src/session/gnoblin-runtime-spawn.c)
-  target_include_directories(gnoblin PRIVATE src/config src/permissions src/native-control)
-  target_link_libraries(gnoblin PRIVATE
-    gnoblin-config-core PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL)
-  set(GNOBLIN_BINARY "$<TARGET_FILE:gnoblin>")
 endif()
 add_executable(gnoblin-idle src/session/gnoblin-idle.c)
 target_link_libraries(gnoblin-idle PRIVATE PkgConfig::GNOBLIN_GIO)
 add_executable(gnoblinctl src/tools/gnoblinctl.c)
-target_link_libraries(gnoblinctl PRIVATE PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_LUA)
+target_link_libraries(gnoblinctl PRIVATE
+  gnoblin-config-core PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_LUA)
 add_test(NAME gnoblinctl-cli
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/gnoblinctl-cli.test.py"
     "$<TARGET_FILE:gnoblinctl>" "${CMAKE_BINARY_DIR}")
@@ -130,10 +144,12 @@ add_test(NAME cursor-config-contract
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/cursor-config-contract.test.py")
 add_test(NAME window-button-layout-contract
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/window-button-layout-contract.test.py")
+option(GNOBLIN_WITH_PORTAL "Build and report the GTK-based portal backend" ON)
 add_custom_target(gnoblinctl-identity
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/scripts/build-identity.py"
     "${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
     --lua-version "${GNOBLIN_LUA_VERSION}"
+    $<$<NOT:$<BOOL:${GNOBLIN_WITH_PORTAL}>>:--without-portal>
     --ini-output "${CMAKE_BINARY_DIR}/gnoblin-version.ini"
   BYPRODUCTS "${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
     "${CMAKE_BINARY_DIR}/gnoblin-version.ini")
@@ -153,8 +169,6 @@ set_property(CACHE GNOBLIN_SOURCE_MODE PROPERTY STRINGS checkout release-archive
 set(GNOBLIN_JOBS "4" CACHE STRING "Parallel jobs inside each Meson build")
 
 get_filename_component(GNOBLIN_PREFIX "${GNOBLIN_PREFIX}" ABSOLUTE)
-target_compile_definitions(gnoblin PRIVATE
-  "GNOBLIN_DEFAULT_COMPOSITOR=\"${GNOBLIN_PREFIX}/bin/gnoblin-mutter\"")
 if(GNOBLIN_PREFIX MATCHES "^(/|/usr|/usr/local|/bin|/sbin|/lib|/lib64)$")
   message(FATAL_ERROR "Use a private install prefix, such as ./install")
 endif()
@@ -222,7 +236,7 @@ endfunction()
 
 gnoblin_component(mutter prepare-gsettings-desktop-schemas-source)
 
-add_custom_target(gnoblin-session ALL
+add_custom_target(gnoblin-session
   COMMAND "${CMAKE_COMMAND}" -E env "GNOBLIN_LIBDIR=${GNOBLIN_LIBDIR}"
     "GNOBLIN_STAGE_ROOT=${GNOBLIN_STAGE_ROOT}"
     "GNOBLIN_VECTOR_CURSORS=${GNOBLIN_VECTOR_CURSORS}"
@@ -230,14 +244,12 @@ add_custom_target(gnoblin-session ALL
     "GNOBLINCTL_BINARY=$<TARGET_FILE:gnoblinctl>"
     "GNOBLIN_IDENTITY_FILE=${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
     "GNOBLIN_VERSION_METADATA_FILE=${CMAKE_BINARY_DIR}/gnoblin-version.ini"
-    "GNOBLIN_BINARY=${GNOBLIN_BINARY}"
     "${PROJECT_SOURCE_DIR}/scripts/install-session.sh" "${GNOBLIN_PREFIX}"
-  DEPENDS mutter gnoblin-idle gnoblinctl gnoblin
+  DEPENDS mutter gnoblin-idle gnoblinctl
   USES_TERMINAL
   COMMENT "Install the standalone Gnoblin session")
 
-# The GTK-based portal backend is a separate component. Keep a full-session
-# target for package builds and users who explicitly want Gnoblin's backend,
-# while the default source build remains usable with any installed backend.
+# The GTK-based portal backend is a separate component, but is part of the
+# default full-session build. Use gnoblin-session for the core without it.
 gnoblin_component(xdg-desktop-portal-gnome EXCLUDE_FROM_ALL gnoblin-session)
-add_custom_target(standalone-session DEPENDS gnoblin-session xdg-desktop-portal-gnome)
+add_custom_target(standalone-session ALL DEPENDS gnoblin-session xdg-desktop-portal-gnome)
