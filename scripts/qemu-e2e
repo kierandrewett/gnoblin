@@ -1,0 +1,257 @@
+#!/usr/bin/env bash
+# Run Gnoblin's graphical E2E guest from a disposable qcow2 overlay.
+#
+# This script never writes to the base disk. Guest installation and validation
+# use SSH agent/key authentication only; it does not accept or store passwords.
+set -euo pipefail
+
+readonly ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+readonly DEFAULT_BASE="${HOME}/.local/share/gnoblin-qemu-tests/2026-09-13/guest.qcow2"
+readonly ARTIFACT_ROOT="${GNOBLIN_QEMU_ARTIFACT_ROOT:-${HOME}/.local/state/gnoblin-qemu-e2e}"
+readonly GUEST_USER="${GNOBLIN_QEMU_GUEST_USER:-luna}"
+readonly MEMORY_MIB="${GNOBLIN_QEMU_MEMORY_MIB:-8192}"
+readonly VCPUS="${GNOBLIN_QEMU_VCPUS:-4}"
+# Number of virtual display heads the guest sees (virtio-gpu max_outputs).
+# Use 2 or more to test multi-monitor layouts and per-monitor scale.
+
+die() {
+    printf 'qemu-e2e: %s\n' "$*" >&2
+    exit 1
+}
+
+usage() {
+    cat <<'EOF'
+Usage:
+  scripts/qemu-e2e prepare [BASE.qcow2]
+  scripts/qemu-e2e start RUN_DIRECTORY
+  scripts/qemu-e2e sync-prefix RUN_DIRECTORY PREFIX
+  scripts/qemu-e2e guest RUN_DIRECTORY -- COMMAND [ARG...]
+  scripts/qemu-e2e collect RUN_DIRECTORY
+  scripts/qemu-e2e stop RUN_DIRECTORY
+
+prepare creates a dated artifact directory and a qcow2 overlay. The base disk
+is read-only and is never changed. start boots the overlay with KVM, a local
+VNC server, local SSH forwarding, and a read-only 9p source tree.
+
+guest and collect require an SSH key accepted by the guest. Password prompts
+are disabled deliberately. The guest must mount the source share before it can
+build the current tree, for example:
+  sudo mount -t 9p -o trans=virtio,version=9p2000.L gnoblin-src /mnt/gnoblin-src
+
+sync-prefix copies an already-built host prefix to the same absolute path in
+the guest. This matters because the generated session files and helpers embed
+the prefix. It does not register a login session; use the guest's isolated
+test root access to do that after verifying the copied binary.
+EOF
+}
+
+require_command() {
+    command -v "$1" >/dev/null || die "required command is unavailable: $1"
+}
+
+run_file() {
+    local run="$1"
+    local name="$2"
+    printf '%s/%s' "$run" "$name"
+}
+
+read_value() {
+    local path
+    path="$(run_file "$1" "$2")"
+    [[ -r "$path" ]] || die "missing run metadata: $path"
+    cat "$path"
+}
+
+port_available() {
+    ! ss -H -ltn "sport = :$1" | grep -q .
+}
+
+allocate_port() {
+    local port
+    for port in $(seq "$1" "$2"); do
+        if port_available "$port"; then
+            printf '%s\n' "$port"
+            return
+        fi
+    done
+    die "no free TCP port in $1-$2"
+}
+
+prepare() {
+    require_command qemu-img
+    require_command sha256sum
+    local base="${1:-$DEFAULT_BASE}"
+    [[ -f "$base" ]] || die "base disk does not exist: $base"
+    qemu-img info --output=json "$base" >/dev/null || die "base disk is not a readable qcow2 image"
+
+    local stamp run
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    run="$ARTIFACT_ROOT/$stamp"
+    mkdir -p "$run"
+    qemu-img create -f qcow2 -F qcow2 -b "$base" "$run/guest-overlay.qcow2" >/dev/null
+    chmod 600 "$run/guest-overlay.qcow2"
+    realpath "$base" >"$run/base-image"
+    sha256sum "$base" >"$run/base-image.sha256"
+    qemu-img info --output=json "$run/guest-overlay.qcow2" >"$run/overlay-info.json"
+    printf '%s\n' "$(allocate_port 22290 22389)" >"$run/ssh-port"
+    printf '%s\n' "$(allocate_port 59090 59189)" >"$run/vnc-port"
+    printf '%s\n' "$ROOT" >"$run/source-root"
+    printf '%s\n' "$run"
+}
+
+start() {
+    require_command qemu-system-x86_64
+    local run="$1"
+    [[ -f "$(run_file "$run" guest-overlay.qcow2)" ]] || die "not a prepared run: $run"
+    [[ -e /dev/kvm && -r /dev/kvm && -w /dev/kvm ]] || die "/dev/kvm is unavailable"
+    if [[ -r "$(run_file "$run" qemu.pid)" ]] && kill -0 "$(cat "$(run_file "$run" qemu.pid)")" 2>/dev/null; then
+        die "guest is already running"
+    fi
+
+    local ssh_port vnc_port source_root
+    ssh_port="$(read_value "$run" ssh-port)"
+    vnc_port="$(read_value "$run" vnc-port)"
+    source_root="$(read_value "$run" source-root)"
+    [[ -d "$source_root" ]] || die "source root no longer exists: $source_root"
+    port_available "$ssh_port" || die "SSH forwarding port is already in use: $ssh_port"
+    port_available "$vnc_port" || die "VNC port is already in use: $vnc_port"
+
+    # virgl is required for the shader paths exercised by blur, shadows, and
+    # window effects.  egl-headless is available on current QEMU builds but
+    # some hosts lack a compatible EGL renderer; retain a recorded plain VGA
+    # fallback so a run remains usable and its evidence says what was tested.
+    local -a video=( -device virtio-vga-gl -display egl-headless )
+    # GNOBLIN_QEMU_VIDEO=plain boots a software virtio GPU. Use it to tell a guest GPU fault
+    # (for example virgl after a suspend) from a compositor fault.
+    if [[ "${GNOBLIN_QEMU_VIDEO:-gl}" == plain ]]; then
+        video=( -device virtio-vga -display none )
+    fi
+    # A virtio-gpu head beyond the first stays disconnected until a VNC client
+    # attaches and negotiates a size, so add one extra (non-GL: QEMU allows only one GL GPU) virtio GPU per extra
+    # monitor instead. Its single head is enabled at once, and the guest sees
+    # it as a second DRM card. Each extra GPU gets its own VNC console.
+    local -a extra_display=()
+    local outputs="${GNOBLIN_QEMU_OUTPUTS:-1}" extra
+    if (( outputs > 1 )); then
+        video=( -device virtio-vga-gl,id=gpu0 -display egl-headless )
+        for extra in $(seq 1 $((outputs - 1))); do
+            extra_display+=( -device "virtio-gpu-pci,id=gpu${extra}"
+                             -vnc "127.0.0.1:$((vnc_port - 5900 + extra)),display=gpu${extra}" )
+        done
+    fi
+    local renderer="virtio-vga-gl/egl-headless"
+    [[ "${GNOBLIN_QEMU_VIDEO:-gl}" == plain ]] && renderer="virtio-vga/plain"
+    printf '%s\n' "$renderer" >"$(run_file "$run" renderer)"
+
+    if ! qemu-system-x86_64 \
+        -name "gnoblin-e2e" \
+        -machine q35,accel=kvm \
+        -cpu host \
+        -smp "$VCPUS" \
+        -m "$MEMORY_MIB" \
+        -drive "file=$(run_file "$run" guest-overlay.qcow2),if=virtio,format=qcow2,cache=writeback,discard=unmap" \
+        "${video[@]}" \
+        -vnc "127.0.0.1:$((vnc_port - 5900))" \
+        "${extra_display[@]}" \
+        -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${ssh_port}-:22" \
+        -device virtio-net-pci,netdev=net0 \
+        -virtfs "local,path=${source_root},mount_tag=gnoblin-src,security_model=none,readonly=on" \
+        -qmp "unix:$(run_file "$run" qmp.sock),server=on,wait=off" \
+        -serial "file:$(run_file "$run" serial.log)" \
+        -daemonize \
+        -pidfile "$(run_file "$run" qemu.pid)"; then
+        if [[ "$renderer" != "virtio-vga-gl/egl-headless" ]]; then
+            die "QEMU could not start with plain virtio-vga"
+        fi
+        rm -f "$(run_file "$run" qmp.sock)" "$(run_file "$run" qemu.pid)"
+        renderer="virtio-vga/plain"
+        printf '%s\n' "$renderer" >"$(run_file "$run" renderer)"
+        qemu-system-x86_64 \
+            -name "gnoblin-e2e" -machine q35,accel=kvm -cpu host -smp "$VCPUS" -m "$MEMORY_MIB" \
+            -drive "file=$(run_file "$run" guest-overlay.qcow2),if=virtio,format=qcow2,cache=writeback,discard=unmap" \
+            -device virtio-vga -display none -vnc "127.0.0.1:$((vnc_port - 5900))" \
+            -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${ssh_port}-:22" -device virtio-net-pci,netdev=net0 \
+            -virtfs "local,path=${source_root},mount_tag=gnoblin-src,security_model=none,readonly=on" \
+            -qmp "unix:$(run_file "$run" qmp.sock),server=on,wait=off" -serial "file:$(run_file "$run" serial.log)" \
+            -daemonize -pidfile "$(run_file "$run" qemu.pid)"
+    fi
+    printf 'qemu started: pid=%s ssh=127.0.0.1:%s vnc=127.0.0.1:%s\n' \
+        "$(cat "$(run_file "$run" qemu.pid)")" "$ssh_port" "$vnc_port"
+}
+
+guest() {
+    require_command ssh
+    local run="$1"
+    shift
+    [[ "${1:-}" == "--" ]] || die "guest requires -- before the command"
+    shift
+    (($#)) || die "guest requires a command"
+    local port command
+    port="$(read_value "$run" ssh-port)"
+    printf -v command '%q ' "$@"
+    ssh -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new \
+        -o UserKnownHostsFile="$(run_file "$run" known_hosts)" -p "$port" \
+        "$GUEST_USER@127.0.0.1" "$command"
+}
+
+sync_prefix() {
+    require_command ssh
+    require_command tar
+    local run="$1"
+    local prefix="$2"
+    [[ -d "$prefix" ]] || die "prefix does not exist: $prefix"
+    [[ -x "$prefix/bin/gnoblin" ]] || die "prefix has no Gnoblin compositor: $prefix"
+    local port
+    port="$(read_value "$run" ssh-port)"
+
+    # The test session runs this exact path.  Do not use a private guest
+    # prefix: Gnoblin's installed session files deliberately bake its prefix.
+    tar -C "$prefix" --numeric-owner -cf - . | ssh -o BatchMode=yes -o ConnectTimeout=10 \
+        -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$(run_file "$run" known_hosts)" \
+        -p "$port" "$GUEST_USER@127.0.0.1" \
+        "set -eu; destination=$(printf '%q' "$prefix"); stage=\"\${destination}.new\"; sudo mkdir -p \"\$(dirname \"\$destination\")\"; sudo rm -rf \"\$stage\"; sudo mkdir -p \"\$stage\"; sudo chown \"\$(id -u):\$(id -g)\" \"\$stage\"; tar -xf - -C \"\$stage\"; sudo rm -rf \"\$destination\"; sudo mv \"\$stage\" \"\$destination\""
+    printf '%s\n' "$prefix" >"$(run_file "$run" synced-prefix)"
+}
+
+collect() {
+    local run="$1"
+    local output
+    output="$(run_file "$run" guest-summary.txt)"
+    guest "$run" -- sh -lc '
+        printf "== session ==\\n"; loginctl list-sessions --no-legend || true
+        printf "== gnoblin ==\\n"; gnoblinctl status || true
+        printf "== bingux ==\\n"; binguxctl status || true
+        printf "== processes ==\\n"; pgrep -af "gnoblin|bingux|quickshell" || true
+        printf "== journal ==\\n"; journalctl --user -b --no-pager -u gnoblin-session.target -u bingux.target -n 300 || true
+    ' >"$output"
+    printf '%s\n' "$output"
+}
+
+stop() {
+    require_command socat
+    local run="$1"
+    local qmp="$(run_file "$run" qmp.sock)"
+    if [[ -S "$qmp" ]]; then
+        printf '{"execute":"qmp_capabilities"}\n{"execute":"system_powerdown"}\n' | \
+            socat - UNIX-CONNECT:"$qmp" >/dev/null 2>&1 || true
+    fi
+    if [[ -r "$(run_file "$run" qemu.pid)" ]]; then
+        local pid
+        pid="$(cat "$(run_file "$run" qemu.pid)")"
+        for _ in $(seq 1 20); do
+            kill -0 "$pid" 2>/dev/null || return 0
+            sleep 1
+        done
+        kill "$pid" 2>/dev/null || true
+    fi
+}
+
+case "${1:-}" in
+    prepare) shift; prepare "$@" ;;
+    start) shift; (($# == 1)) || { usage >&2; exit 2; }; start "$1" ;;
+    sync-prefix) shift; (($# == 2)) || { usage >&2; exit 2; }; sync_prefix "$1" "$2" ;;
+    guest) shift; (($# >= 3)) || { usage >&2; exit 2; }; guest "$@" ;;
+    collect) shift; (($# == 1)) || { usage >&2; exit 2; }; collect "$1" ;;
+    stop) shift; (($# == 1)) || { usage >&2; exit 2; }; stop "$1" ;;
+    *) usage >&2; exit 2 ;;
+esac

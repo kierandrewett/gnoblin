@@ -1,0 +1,128 @@
+#!/usr/bin/env bash
+# Exercise a disposable Gnoblin QEMU guest with QMP input and collect evidence.
+# The guest overlay is the only writable target; the host session is untouched.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+runner="$root/scripts/qemu-e2e"
+prefix="${2:-}"
+run="${1:-}"
+duration="${GNOBLIN_QEMU_SOAK_SECONDS:-1200}"
+[[ -n "$run" && -n "$prefix" ]] || { echo "usage: $0 RUN_DIRECTORY PREFIX" >&2; exit 2; }
+[[ -d "$run" && -x "$prefix/bin/gnoblin" ]] || { echo "run directory or prefix is invalid" >&2; exit 2; }
+artifact="$run/soak-$(date -u +%Y%m%dT%H%M%SZ)"
+mkdir -p "$artifact"
+
+qmp() {
+    python3 - "$run/qmp.sock" "$@" <<'PY'
+import json, socket, sys
+sock = socket.socket(socket.AF_UNIX); sock.settimeout(10); sock.connect(sys.argv[1])
+sock.recv(65536)
+sock.sendall(b'{"execute":"qmp_capabilities"}\n'); sock.recv(65536)
+command = json.loads(sys.argv[2])
+sock.sendall((json.dumps(command) + '\n').encode())
+print(sock.recv(65536).decode(), end='')
+PY
+}
+qmp_json() { qmp "$1" >>"$artifact/qmp.jsonl"; }
+screen() { qmp_json "{\"execute\":\"screendump\",\"arguments\":{\"filename\":$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1")}}"; convert "$1" "${1%.ppm}.png" 2>/dev/null || true; }
+key() {
+    local keys="$1" py='import json,sys; ks=sys.argv[1].split(","); press=lambda k:{"type":"key","data":{"down":True,"key":{"type":"qcode","data":k}}}; release=lambda k:{"type":"key","data":{"down":False,"key":{"type":"qcode","data":k}}}; e=[press(k) for k in ks]+[release(k) for k in reversed(ks)]; print(json.dumps({"execute":"input-send-event","arguments":{"events":e}}))'
+    qmp_json "$(python3 -c "$py" "$keys")"
+}
+click() {
+    qmp_json '{"execute":"input-send-event","arguments":{"events":[{"type":"abs","data":{"axis":"x","value":16384}},{"type":"abs","data":{"axis":"y","value":16384}},{"type":"btn","data":{"down":true,"button":"left"}},{"type":"btn","data":{"down":false,"button":"left"}}]}}'
+}
+guest() { "$runner" guest "$run" -- "$@"; }
+failures=()
+check() { "$@" || failures+=("$*"); }
+
+printf 'run=%s\nprefix=%s\nduration_seconds=%s\n' "$run" "$prefix" "$duration" >"$artifact/metadata"
+check "$runner" sync-prefix "$run" "$prefix"
+# Registration is scoped to this throwaway overlay.  The caller must already
+# have guest elevation configured; BatchMode keeps this from prompting.
+check guest sh -lc "sudo install -Dm644 '$prefix/share/wayland-sessions/gnoblin.desktop' /usr/share/wayland-sessions/gnoblin.desktop && sudo install -d /etc/gdm && sudo sed -i '/^AutomaticLogin/d;/^AutomaticLoginEnable/d' /etc/gdm/custom.conf && printf '[daemon]\\nAutomaticLoginEnable=True\\nAutomaticLogin=luna\\n' | sudo tee -a /etc/gdm/custom.conf >/dev/null"
+
+# User config only: filters exclude common credential stores and browser data.
+tar -C "$HOME" --exclude='.config/gnoblin/.env' --exclude='.config/gnoblin/**/.env' --exclude='.config/bingux/.env' --exclude='.config/bingux/**/.env' --exclude='.config/**/keyring*' --exclude='.config/**/browser*' -cf - .config/gnoblin .config/bingux 2>/dev/null | guest sh -lc 'mkdir -p ~/.config; tar -xf - -C ~'
+guest sh -lc "cp '$HOME/.local/state/gnoblin/init-before-freeze-isolation-20261006T215752.lua' ~/.config/gnoblin/init.lua" || failures+=("restore original effects config")
+
+# Use the already-built Bingux payload.  Its source installer is copied to the
+# guest so its wrapper paths are generated for the guest's user prefix.
+tar -C /home/kieran/dev/bingux -cf - scripts/install-shell.py shell packages packaging subprojects/adwaita-icon-theme build | guest sh -lc 'rm -rf ~/bingux-e2e; mkdir ~/bingux-e2e; tar -xf - -C ~/bingux-e2e'
+check guest sh -lc 'cd ~/bingux-e2e && python3 scripts/install-shell.py --user --prefix ~/.local/share/bingux --build-dir build --no-systemd'
+check guest sh -lc "sudo systemctl restart gdm"
+
+for _ in $(seq 1 60); do
+    if guest sh -lc "pgrep -af '$prefix/bin/gnoblin' >/dev/null && '$prefix/bin/gnoblin' --version" >"$artifact/version.txt" 2>&1; then break; fi
+    sleep 2
+done
+if ! guest sh -lc "pgrep -af '$prefix/bin/gnoblin' >/dev/null" >>"$artifact/version.txt" 2>&1; then failures+=("Gnoblin graphical session did not start"); fi
+screen "$artifact/autologin.ppm"
+"$runner" collect "$run" >"$artifact/guest-summary.txt" 2>&1 || failures+=("collect")
+
+# Windows use the real guest Wayland seat. QMP drives focus/click/media paths.
+guest sh -lc 'command -v gnome-text-editor >/dev/null && gnome-text-editor >/tmp/e2e-text.log 2>&1 & command -v foot >/dev/null && foot >/tmp/e2e-foot.log 2>&1 & command -v firefox >/dev/null && firefox about:blank >/tmp/e2e-firefox.log 2>&1 & true' || true
+modifier_client="${GNOBLIN_QEMU_MODIFIER_CLIENT:-$prefix/bin/wayland-modifier-click-client}"
+if guest sh -lc "test -x '$modifier_client' && '$modifier_client' --log /tmp/modifier-click.log >/tmp/modifier-click.stderr 2>&1 &"; then
+    # QMP remains the normal keyboard/pointer source.  ydotool goes through
+    # the guest uinput device, which models Solaar's independent virtual
+    # keyboard for the stale-Ctrl regression.
+    if guest sh -lc 'command -v ydotool >/dev/null && test -e /dev/uinput'; then
+        guest sh -lc 'ydotool key 29:1 15:1 15:0 29:0' >>"$artifact/uinput.log" 2>&1 || failures+=("uinput Ctrl+Tab")
+        click
+    else
+        failures+=("separate uinput keyboard unavailable")
+    fi
+else
+    failures+=("modifier click client unavailable")
+fi
+end=$((SECONDS + duration)); next_reload=$((SECONDS + 180)); next_sample=$SECONDS
+while (( SECONDS < end )); do
+    key 'alt,tab'; click; key 'ctrl,tab'; click; key 'xf86audionext'
+    if (( SECONDS >= next_reload )); then guest sh -lc 'gnoblinctl reload' >>"$artifact/reload.log" 2>&1 || failures+=("reload"); next_reload=$((SECONDS + 180)); fi
+    if (( SECONDS >= next_sample )); then
+        printf '%s ' "$(date -u +%s)" >>"$artifact/memory.log"; guest sh -lc "pid=\$(pgrep -f '$prefix/bin/gnoblin' | head -1); test -n \"\$pid\" && grep -E 'VmRSS|VmHWM' /proc/\$pid/status && (smem -P gnoblin -c 'pid pss' 2>/dev/null || true)" >>"$artifact/memory.log" 2>&1 || failures+=("RSS/PSS sample")
+        start=$(date +%s%3N); guest sh -lc 'gnoblinctl ping' >>"$artifact/ping.log" 2>&1 || failures+=("ping"); now=$(date +%s%3N); printf '%s %s\n' "$now" "$((now-start))" >>"$artifact/ping-ms.log"
+        next_sample=$((SECONDS + 10))
+    fi
+    sleep 1
+done
+screen "$artifact/after-soak.ppm"
+guest sh -lc 'journalctl --user -b --no-pager -o short-precise >~/gnoblin-e2e-journal.txt; cp ~/gnoblin-e2e-journal.txt /tmp/gnoblin-e2e-journal.txt' || true
+guest sh -lc 'journalctl --user -b --no-pager -o short-precise' >"$artifact/journal.txt" 2>&1 || true
+guest sh -lc 'cat /tmp/modifier-click.log /tmp/modifier-click.stderr 2>/dev/null || true' >"$artifact/modifier-click.log" || true
+grep -q 'depressed=0.*button' "$artifact/modifier-click.log" || failures+=("click after uinput Ctrl+Tab had no depressed=0 assertion")
+grep -Eic 'gnoblin.*(crash|restart|segfault)' "$artifact/journal.txt" >"$artifact/guardian-crash-restart-count.txt" || true
+grep -Ei 'media|playerctl|spawn' "$artifact/journal.txt" >"$artifact/media-key-launch.log" || true
+python3 - "$artifact/memory.log" >"$artifact/memory-plateau.txt" <<'PY' || failures+=("RSS does not plateau")
+import re, sys
+values = [int(x) for x in re.findall(r'VmRSS:\s+(\d+)', open(sys.argv[1]).read())]
+if len(values) < 3:
+    raise SystemExit('insufficient RSS samples')
+tail = values[len(values)//2:]
+spread = max(tail) - min(tail)
+print(f'samples={len(values)} tail_spread_kib={spread} tail_max_kib={max(tail)}')
+raise SystemExit(0 if spread <= max(32768, max(tail)//10) else 1)
+PY
+
+# Deliberately exercise the login-time recovery path.  A screendump is kept
+# even when the build cannot draw the expected recovery panel, which makes a
+# failed fallback directly reviewable instead of inferred from a process list.
+guest sh -lc 'cp ~/.config/gnoblin/init.lua ~/.config/gnoblin/init.lua.e2e-good; printf "this is deliberately invalid lua (\n" >~/.config/gnoblin/init.lua; loginctl terminate-user "$USER"; sudo systemctl restart gdm' || failures+=("start broken-config login")
+for _ in $(seq 1 45); do sleep 2; guest sh -lc "pgrep -af '$prefix/bin/gnoblin' >/dev/null" && break; done
+screen "$artifact/broken-config-recovery.ppm"
+guest sh -lc 'journalctl --user -b --no-pager | grep -Ei "recovery|embedded default|config.*error"' >"$artifact/recovery-log.txt" 2>&1 || failures+=("visible broken-config recovery evidence")
+guest sh -lc 'mv ~/.config/gnoblin/init.lua.e2e-good ~/.config/gnoblin/init.lua; loginctl terminate-user "$USER"; sudo systemctl restart gdm' || failures+=("restore valid config")
+
+# Five full manager/user-session transitions catch leaked GDM or guardian
+# state. The final login is left running for subsequent manual inspection.
+for n in $(seq 1 5); do
+    guest sh -lc 'loginctl terminate-user "$USER"; sudo systemctl restart gdm' >>"$artifact/login-logout.log" 2>&1 || { failures+=("login/logout cycle $n"); continue; }
+    for _ in $(seq 1 30); do sleep 2; guest sh -lc "pgrep -af '$prefix/bin/gnoblin' >/dev/null" && break; done
+    guest sh -lc "pgrep -af '$prefix/bin/gnoblin' >/dev/null" || failures+=("login/logout cycle $n did not return")
+done
+screen "$artifact/after-login-cycles.ppm"
+awk '$2 > 250 {bad=1} END {exit bad}' "$artifact/ping-ms.log" || failures+=("main-loop ping over 250ms")
+if ((${#failures[@]})); then printf 'FAIL\n%s\n' "${failures[*]}" >"$artifact/summary.txt"; exit 1; fi
+printf 'PASS\nrenderer=%s\n' "$(cat "$run/renderer" 2>/dev/null || echo unknown)" >"$artifact/summary.txt"

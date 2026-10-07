@@ -411,6 +411,14 @@ def run_inside() -> int:
             run_ctl("window", "move", state["id"], str(action["x"]), str(action["y"]), "--json")
             run_ctl("window", "resize", state["id"], str(action["width"]), str(action["height"]), "--json")
             return
+        if op == "maximize" and state.get("fullscreen"):
+            # Mutter does not allow maximizing a fullscreen window, so a random plan can
+            # reach this state. Leave fullscreen first, as the resize action does.
+            call_window("unfullscreen", window_id)
+            wait_for(
+                lambda: (current if (current := window_state(window_id)) and not current.get("fullscreen") else None),
+                f"window {window_id} to leave fullscreen before maximize",
+            )
         call_window(op, window_id)
         property_name, expected = {
             "minimize": ("minimized", True),

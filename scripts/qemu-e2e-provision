@@ -51,6 +51,7 @@ packages:
   - mesa-dri-drivers
   - mesa-libEGL
   - ibus
+  - dbus-tools
   - xdg-desktop-portal-gnome
   - gnome-control-center
   - pipewire
