@@ -1972,7 +1972,7 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
         };
         gboolean valid = g_variant_is_of_type(window, G_VARIANT_TYPE_VARDICT);
         GVariantIter iter;
-        const char* name;
+        const char* name = NULL;
         GVariant* value;
         if (valid)
             g_variant_iter_init(&iter, window);
@@ -2016,8 +2016,9 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
             g_variant_unref(value);
         }
         if (!valid) {
-            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                "window-management contains an unsupported name or value");
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "window-management %s%s%s has an unsupported name or value", name ? "\"" : "",
+                        name ? name : "(not a table)", name ? "\"" : "");
             return FALSE;
         }
     }
@@ -2028,7 +2029,7 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
         };
         gboolean valid = g_variant_is_of_type(compositor, G_VARIANT_TYPE_VARDICT);
         GVariantIter iter;
-        const char* name;
+        const char* name = NULL;
         GVariant* value;
         if (valid)
             g_variant_iter_init(&iter, compositor);
@@ -2050,8 +2051,9 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
             g_variant_unref(value);
         }
         if (!valid) {
-            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                "compositor contains an unsupported name or value");
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "compositor %s%s%s has an unsupported name or value", name ? "\"" : "",
+                        name ? name : "(not a table)", name ? "\"" : "");
             return FALSE;
         }
     }

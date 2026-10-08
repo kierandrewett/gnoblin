@@ -282,6 +282,20 @@ check "a GTK X11 app sees scale factor 2 at xwayland.scaling_factor 2" "$(x11_sc
 disable_config 99-test-xwayland.lua
 sleep 3
 
+echo "-- failed reload"
+active_cursor_size() { "$G" config show 2>&1 | grep -o '"size":[0-9]*' | head -1; }
+printf 'gnoblin.configure {cursor = {size = 48}}\n' > "$CONFIG_DIR/99-test-badreload.lua"
+"$G" config reload >/dev/null
+check "a valid reload applies cursor.size" "$(active_cursor_size)" '"size":48'
+printf 'gnoblin.configure {cursor = {size = 48}, window_management = {focus_mode = "bogus"}}\n' > "$CONFIG_DIR/99-test-badreload.lua"
+bad_output="$("$G" config reload 2>&1)"
+bad_status=$?
+check "an invalid reload exits with an error" "status=$bad_status" "status=1"
+check "the error names the failing setting" "$bad_output" 'window-management "focus-mode"'
+check "the previous config stays active after a failed reload" "$(active_cursor_size)" '"size":48'
+check "the compositor keeps running after a failed reload" "$("$G" status 2>&1)" '"state":"running"'
+disable_config 99-test-badreload.lua
+
 echo "-- stability"
 check "compositor alive" "$(pgrep -x gnoblin | wc -l)" "4"
 coredump_after="$(coredumpctl list --no-pager 2>/dev/null | tail -1)"
