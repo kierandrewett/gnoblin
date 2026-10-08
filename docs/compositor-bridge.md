@@ -1530,8 +1530,9 @@ Read worker health directly from Mutter with `runtime.status`:
 - `unavailable` means the supervisor is disconnected or stopping.
 
 `generation` identifies the runtime configuration accepted by Mutter. It
-stays the same across worker recovery and changes when Mutter accepts a new
-configuration.
+changes when Mutter accepts a new configuration. Worker recovery applies the
+built-in defaults (see [worker recovery](/config/load#worker-recovery)), so the
+generation rises by one after a worker restarts.
 
 ### API version 1.69: focus denial events
 

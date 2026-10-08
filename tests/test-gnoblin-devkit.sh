@@ -751,18 +751,22 @@ while time.monotonic() < deadline:
         worker_after
         and worker_after != worker_before
         and compositor_after == compositor_before
-        and status == f"running:{generation_before}"
+        and status == f"running:{generation_before + 1}"
     ):
         os.kill(compositor_before, 0)
+        # The replacement worker first reports the restored generation, then the generation of the defaults.
         expect_status_event("running", generation_before)
+        expect_status_event("running", generation_before + 1)
         print("WORKER:recovered-with-compositor-alive")
         break
     time.sleep(0.1)
 else:
+    # Worker recovery applies the built-in defaults (docs/config/load.md), and Mutter accepts them as a new
+    # configuration, so the generation rises by one for each recovery.
     raise AssertionError(
         "Lua worker did not recover with the compositor alive: "
         f"worker {worker_before} -> {worker_after}, compositor {compositor_before} -> {compositor_after}, "
-        f"status {status!r}, expected 'running:{generation_before}'"
+        f"status {status!r}, expected 'running:{generation_before + 1}'"
     )
 
 config_path = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin" / "init.lua"
@@ -781,7 +785,7 @@ while time.monotonic() < deadline:
     status = runtime_status()
     if status and status.startswith("running:"):
         generation = int(status.split(":", 1)[1])
-        if generation > generation_before:
+        if generation > generation_before + 1:
             generation_after_reload = generation
             break
     time.sleep(0.05)
@@ -819,14 +823,20 @@ for retry in range(5):
                 worker_after
                 and worker_after != worker_current
                 and compositor_after == compositor_current
-                and status == f"running:{generation_after_reload}"
+                and status == f"running:{generation_after_reload + 1}"
             ):
                 worker_current = worker_after
+                expect_status_event("running", generation_after_reload)
+                generation_after_reload += 1
                 expect_status_event("running", generation_after_reload)
                 break
             time.sleep(0.1)
         else:
-            raise AssertionError(f"runtime recovery {retry + 2} did not restart the worker")
+            raise AssertionError(
+                f"runtime recovery {retry + 2} did not restart the worker: "
+                f"worker {worker_current} -> {worker_after}, compositor {compositor_current} -> {compositor_after}, "
+                f"status {status!r}, expected 'running:{generation_after_reload + 1}'"
+            )
     else:
         if not terminal_state_observed:
             deadline = time.monotonic() + 20
