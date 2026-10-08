@@ -328,6 +328,9 @@ reject_config "cursor with an unknown field names it" 'cursor = {colour = "red"}
 reject_config "xwayland with an unknown field names it" 'xwayland = {bogus_key = true}' 'xwayland "bogus-key" has an unsupported name or value'
 reject_config "layer_shell with an unknown field names it" 'layer_shell = {bogus = true}' 'layer-shell "bogus" must be a supported setting'
 reject_config "layer_shell with a non-boolean value names it" 'layer_shell = {preserve_active_window = "yes"}' 'layer-shell "preserve-active-window" must be a supported setting with a boolean value'
+reject_config "workspaces with a duplicate id names the entry" 'workspaces = {{id = "a", name = "A"}, {id = "a", name = "B"}}' 'check entry 2'
+reject_config "workspaces that is not a list" 'workspaces = 5' 'workspaces'
+reject_config "touchpad_gestures with an unknown field names the entry" 'touchpad_gestures = {{name = "x", bogus = 1}}' 'touchpad-gestures entry 1 contains an unknown field'
 check "the compositor keeps running after wrong-typed input" "$("$G" status 2>&1)" '"state":"running"'
 
 # An invalid autostart entry must fail the reload with the entry named. The session guardian rejects the same entries
