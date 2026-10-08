@@ -41,7 +41,8 @@ def validate(name, files, provides, conflicts, obsoletes):
     if conflicts.strip():
         raise ValueError(f"{name} declares Conflicts")
     for obsolete in obsoletes.splitlines():
-        if name != "gnoblin" or obsolete not in ALLOWED_OBSOLETES:
+        # The openSUSE spec obsoletes every earlier gnoblin-session build, so its version is the package's own.
+        if name != "gnoblin" or (obsolete not in ALLOWED_OBSOLETES and not obsolete.startswith("gnoblin-session <= ")):
             raise ValueError(f"{name} declares an unexpected Obsoletes entry: {obsolete}")
     for capability in provides.splitlines():
         if re.match(
