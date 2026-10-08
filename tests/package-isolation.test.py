@@ -260,9 +260,9 @@ class IsolationTests(unittest.TestCase):
                 self.assertIn("--prefix=/usr/lib/gnoblin", expanded)
                 self.assertIn("--libdir=/usr/lib/gnoblin/lib64", expanded)
             elif project == "gnoblin":
-                self.assertIn("-DGNOBLIN_PREFIX=/usr/lib/gnoblin", expanded)
-
-                self.assertIn("-DGNOBLIN_LIBDIR=lib64", expanded)
+                self.assertIn("./build.sh --layout system", expanded)
+                self.assertIn("--prefix /usr/lib/gnoblin", expanded)
+                self.assertIn("GNOBLIN_LIBDIR=lib64", expanded)
             if project != "gnoblin":
                 self.assertNotRegex(expanded, r"(?m)^(?:Conflicts|Obsoletes):")
             self.assertNotRegex(expanded, r"(?m)^Name:\s+(?:mutter|gnome-shell)$")
@@ -287,12 +287,8 @@ class IsolationTests(unittest.TestCase):
                 self.assertNotIn("GNOBLIN_INSTALL_GNOME_COMPAT", expanded)
                 for build_requirement in ("BuildRequires:  pkgconfig(xkbcommon)",):
                     self.assertIn(build_requirement, expanded)
-                self.assertIn(
-                    "cmake --build build/session --target mutter gnoblin-idle gnoblinctl",
-                    expanded,
-                )
                 self.assertNotIn("gnoblin-recovery", expanded)
-                self.assertIn("Exec=/usr/lib/gnoblin/bin/gnoblin", expanded)
+                # The session file's Exec line comes from the build's system layout step, which the layout test checks.
                 arch = (ROOT / "packaging/arch/PKGBUILD").read_text()
                 self.assertNotIn("gnoblin-recovery", arch)
 
