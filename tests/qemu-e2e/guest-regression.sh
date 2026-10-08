@@ -370,6 +370,21 @@ done
 disable_config 99-test-recovery.lua
 sleep 2
 
+echo "-- permissions default"
+# permissions.default is the fallback when no rule decides a portal request. A reload must change the level that
+# `permissions check` reports for an application with no rule, and `permissions policy` must report the same default.
+permission_level() {
+    "$G" permissions check screen-cast app-id:org.example.Recorder 2>&1 | python3 -c 'import sys,json; print(json.load(sys.stdin).get("level"))' 2>&1
+}
+for mode in ask deny default; do
+    printf 'gnoblin.configure {permissions = {default = "%s"}}\n' "$mode" > "$CONFIG_DIR/99-test-permissions.lua"
+    "$G" config reload >/dev/null 2>&1
+    sleep 2
+    check "permissions.default $mode: the decision level" "$(permission_level)" "$mode"
+    check "permissions.default $mode: the committed policy" "$("$G" permissions policy 2>&1)" "\"default\":\"$mode\""
+done
+disable_config 99-test-permissions.lua
+
 echo "-- stability"
 check "compositor alive" "$(pgrep -x gnoblin | wc -l)" "4"
 coredump_after="$(coredumpctl list --no-pager 2>/dev/null | tail -1)"
