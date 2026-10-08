@@ -25,7 +25,11 @@ mkdir -p "$fixture_root/gnoblin"
 # An empty system config directory keeps the host's /etc/xdg/autostart entries (Bluetooth, mouse tools, groupware
 # alarms, VM agents) out of every nested session this test starts.
 mkdir -p "$fixture_root/xdg"
-# GSettings uses the in-memory backend for every nested session, so no setting can reach the user's dconf database.
+# Exported once so that every nested session in this script gets them, including the sections that do not set them
+# themselves. The system autostart entries stay out, and GSettings uses the in-memory backend, so no setting can reach
+# the user's dconf database.
+export XDG_CONFIG_DIRS="$fixture_root/xdg"
+export GSETTINGS_BACKEND=memory
 # Set GNOBLIN_TEST_KEEP=1 to keep the fixture (config, state and devkit-last.log) for inspecting a failure.
 if [[ -z ${GNOBLIN_TEST_KEEP:-} ]]; then
     trap 'rm -rf -- "$fixture_root"' EXIT
@@ -1286,7 +1290,8 @@ cat >"$fixture_root/check-startup-input.lua" <<'LUA'
 local sources = gnoblin.input.sources()
 assert(#sources == 2 and sources[1].id == "gb" and sources[2].id == "us")
 local current = gnoblin.input.current_source()
-assert(current and current.type == "xkb" and current.id == "gb")
+assert(current and current.type == "xkb" and current.id == "gb",
+    "current source: " .. (current and (tostring(current.type) .. ":" .. tostring(current.id)) or "nil"))
 print("INPUT_SOURCE:startup-keymap-gb")
 LUA
 startup_exec=$(
