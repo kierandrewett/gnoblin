@@ -16,7 +16,7 @@ export DISPLAY=:0 XAUTHORITY
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
 DRAG="${GNOBLIN_TITLEBAR_DRAG:-/tmp/guest-titlebar-drag.py}"
 fail=0
-trap 'pkill -f dnd-app.py 2>/dev/null; rm -f /tmp/dnd-result.txt' EXIT
+trap 'pkill -f dnd-app.py 2>/dev/null; rm -f /tmp/dnd-result.txt /tmp/dnd-source.txt' EXIT
 
 check() {
     # check NAME ACTUAL EXPECTED
@@ -29,6 +29,7 @@ check() {
 }
 
 cat >/tmp/dnd-app.py <<'PY'
+import os
 import sys
 
 import gi
@@ -38,6 +39,7 @@ gi.require_version("Gdk", "4.0")
 from gi.repository import Gdk, GLib, GObject, Gtk
 
 role = sys.argv[1]
+action = Gdk.DragAction.MOVE if os.environ.get("DND_ACTION") == "move" else Gdk.DragAction.COPY
 Gtk.init()
 loop = GLib.MainLoop()
 window = Gtk.Window(title="dnd-" + role)
@@ -47,11 +49,12 @@ window.set_child(label)
 window.present()
 if role == "source":
     source = Gtk.DragSource()
-    source.set_actions(Gdk.DragAction.COPY)
+    source.set_actions(action)
     source.connect("prepare", lambda s, x, y: Gdk.ContentProvider.new_for_value("dropped-text-123"))
+    source.connect("drag-end", lambda s, drag, delete: open("/tmp/dnd-source.txt", "w").write("END delete=%s" % delete))
     label.add_controller(source)
 else:
-    target = Gtk.DropTarget.new(GObject.TYPE_STRING, Gdk.DragAction.COPY)
+    target = Gtk.DropTarget.new(GObject.TYPE_STRING, action)
 
     def on_drop(t, value, x, y):
         open("/tmp/dnd-result.txt", "w").write("DROP " + str(value))
@@ -79,7 +82,7 @@ for w in json.load(sys.stdin)["windows"]:
 
 drag_case() {
     # drag_case NAME SOURCE_BACKEND TARGET_BACKEND [KNOWN_GAP_ISSUE]
-    rm -f /tmp/dnd-result.txt
+    rm -f /tmp/dnd-result.txt /tmp/dnd-source.txt
     nohup env GDK_BACKEND="$2" python3 /tmp/dnd-app.py source >/dev/null 2>&1 </dev/null &
     nohup env GDK_BACKEND="$3" python3 /tmp/dnd-app.py target >/dev/null 2>&1 </dev/null &
     sleep 5
@@ -100,6 +103,9 @@ drag_case() {
     else
         check "$1" "$got" "DROP dropped-text-123"
     fi
+    if [ "${DND_ACTION:-copy}" = move ]; then
+        check "$1 (the source learns the data was moved)" "$(cat /tmp/dnd-source.txt 2>/dev/null)" "END delete=True"
+    fi
     pkill -f dnd-app.py
     sleep 2
 }
@@ -107,6 +113,9 @@ drag_case() {
 drag_case "text dragged from a Wayland app to a Wayland app arrives intact" wayland wayland
 drag_case "text dragged from a Wayland app to an X11 app arrives intact" wayland x11
 drag_case "text dragged from an X11 app to a Wayland app arrives intact" x11 wayland
+DND_ACTION=move drag_case "text moved from a Wayland app to a Wayland app arrives intact" wayland wayland
+DND_ACTION=move drag_case "text moved from a Wayland app to an X11 app arrives intact" wayland x11
+DND_ACTION=move drag_case "text moved from an X11 app to a Wayland app arrives intact" x11 wayland
 check "the compositor keeps running" "$("$G" status 2>&1 | head -1 | grep -o '"state":"[a-z]*"')" '"state":"running"'
 
 echo "failures: $fail"
