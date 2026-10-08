@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Host: one invalid setting at login must not cost the valid ones. The valid cursor size stays active, the invalid
-# keybinding is ignored and named in the session log and the notice, and the session does not fall back.
+# Host: one invalid setting, or one included file with a Lua error, at login must not cost the valid ones. The valid
+# cursor size stays active, the invalid keybinding and the broken file are ignored and named in the session log and the
+# notice, and the session does not fall back.
 # Restarts the guest session twice (once with the bad config, once to restore). Saves the output in the run directory.
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -38,6 +39,8 @@ check() {
     check "the valid setting stays active" "$result" "cursor=\"size\":55"
     check "the log names the ignored keybinding" "$result" "log=ignored keybindings"
     check "the log gives the reason" "$result" "has no action in this Mutter build"
+    check "the log names the skipped file" "$result" "file_log=ignored file"
+    check "the skipped file is the syntax error one" "$result" "98-test-partial-recovery-syntax.lua"
     check "the notice lists what was ignored" "$result" "Some settings were ignored"
     check "the notice is not a fallback" "$result" "marker=notice"
     check "nothing fell back" "$result" "fellback=0"

@@ -145,6 +145,9 @@ typedef struct {
     gboolean input_dispatching;
     gboolean api_calling;
     gboolean ignore_config_loads;
+    /* Login: an included file that fails is skipped and reported instead of ending the whole load. */
+    gboolean skip_failed_files;
+    GPtrArray* skipped_files;
     gboolean embedded_defaults;
     gboolean rejecting_operations;
     gboolean deferred_callbacks_scheduled;
@@ -4259,9 +4262,16 @@ static int lua_config_load(lua_State* state) {
         gnoblin_config_expand_paths(config->current_path, pattern, config->directories, &error);
     if (!paths)
         return luaL_error(state, "%s", error->message);
-    for (guint i = 0; i < paths->len; i++)
-        if (!evaluate_path(state, config, g_ptr_array_index(paths, i), FALSE, &error))
+    for (guint i = 0; i < paths->len; i++) {
+        if (evaluate_path(state, config, g_ptr_array_index(paths, i), FALSE, &error))
+            continue;
+        if (!config->skip_failed_files)
             return luaL_error(state, "%s", error->message);
+        if (!config->skipped_files)
+            config->skipped_files = g_ptr_array_new_with_free_func(g_free);
+        g_ptr_array_add(config->skipped_files, g_strdup_printf("ignored file %s", error->message));
+        g_clear_error(&error);
+    }
     lua_pushboolean(state, TRUE);
     return 1;
 }
@@ -6154,6 +6164,7 @@ static void lua_runtime_free(LuaRuntime* runtime) {
     if (runtime->state)
         lua_close(runtime->state);
     g_clear_pointer(&runtime->config.active, g_hash_table_unref);
+    g_clear_pointer(&runtime->config.skipped_files, g_ptr_array_unref);
     g_clear_pointer(&runtime->config.modules, g_hash_table_unref);
     g_clear_pointer(&runtime->config.window_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.workspace_snapshot, g_variant_unref);
@@ -6786,6 +6797,7 @@ static GVariant* load_runtime_impl(const char* path, GPtrArray** paths, GPtrArra
     LuaRuntime* runtime = lua_runtime_new(path, error);
     if (!runtime)
         return NULL;
+    runtime->config.skip_failed_files = salvage;
     EvalRun run = {.config = &runtime->config, .path = path};
     lua_pushlightuserdata(runtime->state, &run);
     lua_pushcclosure(runtime->state, protected_eval, 1);
@@ -6795,6 +6807,7 @@ static GVariant* load_runtime_impl(const char* path, GPtrArray** paths, GPtrArra
     } else if (run.error) {
         g_propagate_error(error, g_steal_pointer(&run.error));
     }
+    runtime->config.skip_failed_files = FALSE;
     // The builder returns a floating variant. Own it before exposing another
     // reference to the supervisor; otherwise a later event can unref a stale value.
     runtime->document = run.result ? g_variant_ref_sink(g_steal_pointer(&run.result)) : NULL;
@@ -6823,6 +6836,14 @@ static GVariant* load_runtime_impl(const char* path, GPtrArray** paths, GPtrArra
     if (!runtime->document || !gnoblin_config_validate_document(runtime->document, error)) {
         lua_runtime_free(runtime);
         return NULL;
+    }
+    if (salvage && ignored && runtime->config.skipped_files) {
+        /* Skipped files come first: they were dropped before any setting was checked. */
+        if (!*ignored)
+            *ignored = g_ptr_array_new_with_free_func(g_free);
+        for (guint i = 0; i < runtime->config.skipped_files->len; i++)
+            g_ptr_array_insert(*ignored, (gint)i,
+                               g_strdup(g_ptr_array_index(runtime->config.skipped_files, i)));
     }
     lua_runtime_free(pending_runtime);
     pending_runtime = runtime;

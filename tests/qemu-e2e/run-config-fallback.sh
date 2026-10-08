@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Host: a config that cannot be loaded at all (a Lua syntax error) falls back, keeps the session running, and says why
+# Host: a config whose root file cannot be loaded (a Lua syntax error) falls back, keeps the session running, and says why
 # in the marker and the log. A config with one invalid setting is covered by run-partial-recovery.sh.
 # Restarts the guest session twice (once with the bad config, once to restore). Saves the output in the run directory.
 set -euo pipefail
@@ -33,7 +33,7 @@ check() {
     check "the session keeps running with an invalid config" "$result" "status=\"state\":\"running\""
     check "the compositor stays up" "$result" "compositors=4"
     check "the marker names the fallback" "$result" "marker=last-good"
-    check "the marker keeps the error" "$result" "99-test-config-fallback.lua"
+    check "the marker keeps the error" "$result" "init.lua"
     check "the session log names the choice and the file" "$result" "log=configuration fell back to the last good configuration:"
     echo "failures: $fail"
 } 2>&1 | tee "$out"

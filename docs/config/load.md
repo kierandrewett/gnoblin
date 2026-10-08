@@ -40,17 +40,19 @@ Gnoblin starts the compositor with its embedded Lua configuration, then applies
 the user configuration through a reload transaction. At login it recovers in
 this order:
 
-1. **Ignore the broken item.** If a setting or list entry is invalid, Gnoblin
-   ignores only that item and applies everything else.
+1. **Ignore the broken item.** If a setting or list entry is invalid, or an
+   included file fails to load, Gnoblin ignores only that item or file and
+   applies everything else.
 2. **Use the last accepted settings.** If the configuration cannot be used at
-   all, for example a Lua file has a syntax error, Gnoblin uses the last
-   accepted settings for that config path.
+   all, for example the root `init.lua` has a syntax error, Gnoblin uses the
+   last accepted settings for that config path.
 3. **Use the embedded defaults.** They stay active if no accepted settings
    exist or the compositor rejects them.
 
 For example, one misspelled keybinding action does not stop your cursor,
 window, or input settings from loading. Each ignored item is written to the
 session log as `ignored <setting>: <reason>` and added to the recovery notice.
+A skipped file is logged as `ignored file <path>: <error>`.
 
 Config-owned clients start only after their configuration is accepted.
 
