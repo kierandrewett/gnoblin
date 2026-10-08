@@ -285,9 +285,7 @@ class IsolationTests(unittest.TestCase):
                 self.assertNotIn("Requires:       gnoblin-shell", expanded)
                 self.assertNotIn("Requires:       gjs", expanded)
                 self.assertNotIn("GNOBLIN_INSTALL_GNOME_COMPAT", expanded)
-                for build_requirement in (
-                    "BuildRequires:  pkgconfig(xkbcommon)",
-                ):
+                for build_requirement in ("BuildRequires:  pkgconfig(xkbcommon)",):
                     self.assertIn(build_requirement, expanded)
                 self.assertIn(
                     "cmake --build build/session --target mutter gnoblin-idle gnoblinctl",
@@ -346,8 +344,7 @@ class IsolationTests(unittest.TestCase):
         runtime_env = (ROOT / "src/tools/gnoblin-env.sh").read_text()
         self.assertNotIn("GI_TYPELIB_PATH", runtime_env)
         build_order = [
-            publisher.index(f'build_in_supported_fedora_chroots "${name}"')
-            for name in ("portal_srpm", "meta_srpm")
+            publisher.index(f'build_in_supported_fedora_chroots "${name}"') for name in ("portal_srpm", "meta_srpm")
         ]
         self.assertEqual(build_order, sorted(build_order))
 
