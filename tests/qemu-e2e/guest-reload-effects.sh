@@ -5,6 +5,8 @@
 #            and removing the config stops it.
 # window_management.focus_mode: "click" keeps focus when the pointer moves onto another window, "sloppy"
 #            focuses the window under the pointer.
+# window_management.center_new_windows: true opens a new window centred on the monitor, false uses Mutter's
+#            default placement.
 set -u
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
@@ -117,9 +119,53 @@ for mode in click sloppy; do
     fi
 done
 
-apply '-- disabled'
-rm -f "$F"
 pkill -f "foot -T focus-"
 pkill -x swaybg
+sleep 1
+
+# window_management.center_new_windows: a new window opens centred on the first monitor, or at Mutter's default spot.
+monitor_center="$("$G" monitor list | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+monitors = data.get("monitors", data) if isinstance(data, dict) else data
+m = monitors[0]
+box = m.get("rect") or m.get("geometry") or m
+x, y = m.get("x", box.get("x", 0)), m.get("y", box.get("y", 0))
+w, h = m.get("width", box.get("width")), m.get("height", box.get("height"))
+print(x + w // 2, y + h // 2)')"
+new_window_center() {
+    nohup foot -T center-test >/dev/null 2>&1 < /dev/null &
+    sleep 4
+    "$G" window list | python3 -c '
+import json, sys
+for w in json.load(sys.stdin)["windows"]:
+    if w["title"] == "center-test":
+        f = w["frame"]
+        print(f["x"] + f["width"] // 2, f["y"] + f["height"] // 2)'
+    pkill -f "foot -T center-test"
+    sleep 1
+}
+distance() {
+    python3 -c 'import sys; a = list(map(int, sys.argv[1:5])); print(max(abs(a[0] - a[2]), abs(a[1] - a[3])))' $1 $2
+}
+apply 'gnoblin.configure {window_management = {center_new_windows = true}}'
+centered="$(distance "$(new_window_center)" "$monitor_center")"
+apply 'gnoblin.configure {window_management = {center_new_windows = false}}'
+default_spot="$(distance "$(new_window_center)" "$monitor_center")"
+if [ "$centered" -le 2 ]; then
+    echo "PASS center_new_windows true centres the new window (off by $centered px)"
+else
+    echo "FAIL center_new_windows true is off by $centered px"
+    fail=$((fail + 1))
+fi
+if [ "$default_spot" -gt 10 ]; then
+    echo "PASS center_new_windows false uses the default placement (off centre by $default_spot px)"
+else
+    echo "FAIL center_new_windows false still centres the window (off by $default_spot px)"
+    fail=$((fail + 1))
+fi
+
+apply '-- disabled'
+rm -f "$F"
 echo "failures: $fail"
 exit "$fail"
