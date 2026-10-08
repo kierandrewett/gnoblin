@@ -54,7 +54,7 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Fetch pinned compositor and portal sources
-        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
+        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
 
       - name: Prepare the Fedora build environment
         run: |

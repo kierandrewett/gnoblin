@@ -31,7 +31,7 @@ jobs:
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Fetch compositor and portal source trees
-        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
+        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
       - name: Check native package definitions
         run: |
           python3 scripts/sync-package-manifest.py check
@@ -189,7 +189,7 @@ jobs:
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Fetch compositor and portal source trees
-        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
+        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
       - name: Build a source bundle from this checked-out revision
         env:
           GIT_COMMITTER_NAME: Gnoblin Package Builder
