@@ -15,7 +15,7 @@ copied into it.
 | `tests/qemu-e2e/run-shortcut.sh`    | A Lua dynamic shortcut fires when its key combination reaches the guest.       |
 | `tests/qemu-e2e/run-config-shortcut.sh` | A shortcut declared in `gnoblin.configure {shortcuts = ...}` runs its command, moves when the binding changes on reload, and stops when disabled. |
 | `tests/qemu-e2e/run-config-fallback.sh` | A config that fails at login keeps the session running, and the fallback choice and error reach the marker file and the session log. Restarts the guest session twice. |
-| `tests/qemu-e2e/run-titlebar-actions.sh` | `window_management.action_double_click_titlebar` changes what a double click on a titlebar does: `toggle-maximize` maximises, `minimize` minimises, `none` leaves the window alone. |
+| `tests/qemu-e2e/run-titlebar-actions.sh` | Titlebar actions change what a click does: `action_double_click_titlebar` as `toggle-maximize`, `minimize` or `none`, and `action_middle_click_titlebar` as `lower` or `none` (the window behind or on top, read from the pixel where two windows overlap). The right-click `menu` action is not covered. |
 | `tests/qemu-e2e/run-unfocused.sh`   | The documented rule that dims unfocused windows follows focus when you click.  |
 | `tests/qemu-e2e/run-animations.sh`  | A registered `open` animation fades a normal window in, and `dialog-open` fades a GTK modal dialog in. |
 | `tests/qemu-e2e/run-blur.sh`        | A `blur` rule smooths a striped wallpaper behind a translucent terminal.       |
