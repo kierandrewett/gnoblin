@@ -701,6 +701,15 @@ static void input_source_keymap_set_done(GObject* source_object, GAsyncResult* r
         ok && selected &&
         meta_backend_get_keymap_description(control->backend) == pending->description &&
         meta_backend_get_keymap_layout_group(control->backend) == pending->group;
+    if (!confirmed)
+        g_message("gnoblin-native-control: input source %s was not confirmed: keymap set %s%s%s, "
+                  "selected source %s, backend description %s, layout group %u (wanted %u)",
+                  pending->selected_id ? pending->selected_id : "(none)", ok ? "ok" : "failed",
+                  error ? ": " : "", error ? error->message : "", selected ? "found" : "missing",
+                  meta_backend_get_keymap_description(control->backend) == pending->description
+                      ? "matches"
+                      : "differs",
+                  (guint)meta_backend_get_keymap_layout_group(control->backend), (guint)pending->group);
     if (confirmed) {
         g_clear_pointer(&control->input_keymap_description, meta_keymap_description_unref);
         control->input_keymap_description = meta_keymap_description_ref(pending->description);

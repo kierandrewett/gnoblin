@@ -12258,6 +12258,19 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                     if (input_sources_changed) {
                         gnoblin_control_publish_input_source_changes(control, control->state_revision);
                         gnoblin_control_input_source_restore_focused(control);
+                        /* The startup selection runs against the bootstrap config, which has no input sources, so
+                         * the list from the first accepted config arrives with nothing current. The same happens
+                         * when a reload drops the current source. Make the first configured source current. */
+                        if (control->input_sources && control->input_sources->len > 0 &&
+                            !gnoblin_control_current_input_source(control) &&
+                            control->pending_input_source_ops == 0) {
+                            NativeInputSource* first = g_ptr_array_index(control->input_sources, 0);
+                            g_autoptr(GError) select_error = NULL;
+                            if (!gnoblin_control_select_xkb_source(control, first->id, 0, "config.input_sources",
+                                                                   FALSE, &select_error))
+                                g_warning("gnoblin-native-control: could not select the first input source %s: %s",
+                                          first->id, select_error ? select_error->message : "unknown error");
+                        }
                         schedule_windows(control);
                     }
                 }
