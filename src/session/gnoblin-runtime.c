@@ -173,8 +173,8 @@ static void session_diagnostic_wait_status(Runtime* runtime, const char* role, G
         session_diagnostic_event(runtime, "%s pid=%d killed signal=%d", role, (int)pid,
                                  WTERMSIG(status));
     else
-        session_diagnostic_event(runtime, "%s pid=%d exited unrecognised-status=%d", role,
-                                 (int)pid, status);
+        session_diagnostic_event(runtime, "%s pid=%d exited unrecognised-status=%d", role, (int)pid,
+                                 status);
 }
 
 static void drain_compositor_stderr(Runtime* runtime, int log_fd) {
@@ -225,7 +225,8 @@ static void set_config_notice(const char* state, const char* diagnostic) {
         /* A crash notice describes the previous session, not this configuration,
          * so a clean configuration load must not clear it. */
         g_autofree char* existing = NULL;
-        if (g_file_get_contents(path, &existing, NULL, NULL) && g_str_has_prefix(existing, "crash\n"))
+        if (g_file_get_contents(path, &existing, NULL, NULL) &&
+            g_str_has_prefix(existing, "crash\n"))
             return;
         if (g_unlink(path) != 0 && errno != ENOENT)
             g_warning("gnoblin: could not clear the configuration recovery notice: %s",
@@ -233,11 +234,10 @@ static void set_config_notice(const char* state, const char* diagnostic) {
         return;
     }
     g_autofree char* directory = g_path_get_dirname(path);
-    g_autofree char* contents = g_strdup_printf("%s\n%s\n", state,
-                                                diagnostic ? diagnostic : "Configuration failed");
+    g_autofree char* contents =
+        g_strdup_printf("%s\n%s\n", state, diagnostic ? diagnostic : "Configuration failed");
     if (g_mkdir_with_parents(directory, 0700) != 0 ||
-        !g_file_set_contents_full(path, contents, -1,
-                                  G_FILE_SET_CONTENTS_CONSISTENT, 0600, NULL))
+        !g_file_set_contents_full(path, contents, -1, G_FILE_SET_CONTENTS_CONSISTENT, 0600, NULL))
         g_warning("gnoblin: could not publish the configuration recovery notice");
 }
 
@@ -266,16 +266,16 @@ static void append_config_notice(const char* diagnostic) {
 }
 
 static void set_config_fallback_marker(gboolean enabled, gboolean last_good,
-                                      const char* diagnostic) {
+                                       const char* diagnostic) {
     if (enabled && diagnostic && *diagnostic) {
-        /* The panel reads the marker file. Also write the error and the choice to the session log, as the
-         * documentation says, so that someone without the panel can find them. Every fallback path comes through
-         * here and a reload sets the same marker again, so write each distinct message once. */
+        /* The panel reads the marker file. Also write the error and the choice to the session log,
+         * as the documentation says, so that someone without the panel can find them. Every
+         * fallback path comes through here and a reload sets the same marker again, so write each
+         * distinct message once. */
         static char* last_logged = NULL;
-        g_autofree char* line = g_strdup_printf("gnoblin: configuration fell back to %s: %s",
-                                                last_good ? "the last good configuration"
-                                                          : "the built-in defaults",
-                                                diagnostic);
+        g_autofree char* line = g_strdup_printf(
+            "gnoblin: configuration fell back to %s: %s",
+            last_good ? "the last good configuration" : "the built-in defaults", diagnostic);
         if (g_strcmp0(line, last_logged)) {
             g_printerr("%s\n", line);
             g_free(last_logged);
@@ -304,8 +304,8 @@ static void record_compositor_crash(int signal_number, int exit_status) {
     g_autofree char* directory = g_path_get_dirname(path);
     const gint64 uptime =
         guardian_started_us ? (g_get_monotonic_time() - guardian_started_us) / G_USEC_PER_SEC : 0;
-    g_autofree char* contents = g_strdup_printf("signal=%d\nstatus=%d\nuptime=%" G_GINT64_FORMAT "\n",
-                                                signal_number, exit_status, uptime);
+    g_autofree char* contents = g_strdup_printf(
+        "signal=%d\nstatus=%d\nuptime=%" G_GINT64_FORMAT "\n", signal_number, exit_status, uptime);
     if (g_mkdir_with_parents(directory, 0700) != 0 ||
         !g_file_set_contents_full(path, contents, -1, G_FILE_SET_CONTENTS_CONSISTENT, 0600, NULL))
         g_warning("gnoblin: could not record the compositor crash");
@@ -349,10 +349,10 @@ static void report_previous_crash(void) {
         signal_number ? g_strdup_printf("was stopped by signal %d (%s)", (int)signal_number,
                                         g_strsignal((int)signal_number))
                       : g_strdup_printf("exited with status %d", (int)exit_status);
-    g_autofree char* message = g_strdup_printf(
-        "Gnoblin ended unexpectedly in the previous session. The compositor %s after %" G_GINT64_FORMAT
-        " seconds. Its log is at %s.",
-        what, uptime, log);
+    g_autofree char* message =
+        g_strdup_printf("Gnoblin ended unexpectedly in the previous session. The compositor %s "
+                        "after %" G_GINT64_FORMAT " seconds. Its log is at %s.",
+                        what, uptime, log);
     g_autofree char* existing = config_recovery_notice();
     if (existing)
         append_config_notice(message);
@@ -383,7 +383,8 @@ typedef struct _RuntimeReload {
     gboolean sent;
     gboolean startup;
     gboolean saved_fallback;
-    /* Messages for settings that were ignored because they are invalid. NULL when nothing was ignored. */
+    /* Messages for settings that were ignored because they are invalid. NULL when nothing was
+     * ignored. */
     GPtrArray* ignored;
 } RuntimeReload;
 
@@ -428,7 +429,7 @@ static gboolean restart_active_portal_service(GError** error) {
 }
 
 static GVariant* startup_fallback_document(const char* path, const char* failure,
-                                          gboolean* used_last_good) {
+                                           gboolean* used_last_good) {
     if (used_last_good)
         *used_last_good = FALSE;
     g_warning("gnoblin: could not load %s: %s", path,
@@ -527,7 +528,8 @@ static gboolean run_activation_update(const char* const extra[]) {
         argv[n++] = extra[i];
     argv[n] = NULL;
     if (!run_command(argv, FALSE))
-        g_warning("gnoblin: D-Bus activation environment could not be updated; continuing session startup");
+        g_warning("gnoblin: D-Bus activation environment could not be updated; continuing session "
+                  "startup");
     return TRUE;
 }
 
@@ -538,8 +540,8 @@ static gboolean user_systemd_available(void) {
         return FALSE;
     g_autoptr(GVariant) owner = g_dbus_connection_call_sync(
         bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
-        "GetNameOwner", g_variant_new("(s)", "org.freedesktop.systemd1"),
-        G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 1000, NULL, NULL);
+        "GetNameOwner", g_variant_new("(s)", "org.freedesktop.systemd1"), G_VARIANT_TYPE("(s)"),
+        G_DBUS_CALL_FLAGS_NONE, 1000, NULL, NULL);
     return owner != NULL;
 }
 
@@ -607,7 +609,8 @@ static void save_identity_environment(void) {
                 continue;
             const char* value = lines[i] + length + 1;
             /* Keep simple values only, and never our own from a crashed session. */
-            if (!*value || strpbrk(value, "'\"\\$` \t") || g_ascii_strcasecmp(value, "gnoblin") == 0)
+            if (!*value || strpbrk(value, "'\"\\$` \t") ||
+                g_ascii_strcasecmp(value, "gnoblin") == 0)
                 continue;
             g_free(saved_identity[j]);
             saved_identity[j] = g_strdup(lines[i]);
@@ -780,9 +783,9 @@ static gboolean activate_session(void) {
         const char* stop_old[] = {"systemctl", "--user", "stop",
                                   "org.gnome.SettingsDaemon.ScreensaverProxy.service", NULL};
         run_command(stop_old, FALSE);
-        const char* clear_private[] = {
-            "systemctl", "--user", "unset-environment", "GNOBLIN_PREFIX", "GNOBLIN_LIBDIR",
-            "GSETTINGS_SCHEMA_DIR", "LD_LIBRARY_PATH", "GI_TYPELIB_PATH", NULL};
+        const char* clear_private[] = {"systemctl",       "--user",          "unset-environment",
+                                       "GNOBLIN_PREFIX",  "GNOBLIN_LIBDIR",  "GSETTINGS_SCHEMA_DIR",
+                                       "LD_LIBRARY_PATH", "GI_TYPELIB_PATH", NULL};
         run_command(clear_private, FALSE);
         const char* reload[] = {"systemctl", "--user", "daemon-reload", NULL};
         /* Integrate with graphical-session.target when systemd is available;
@@ -831,9 +834,9 @@ static GVariant* resume_packet_payload(GVariant* document, guint64 revision, gui
     g_variant_builder_add(&builder, "{sv}", "runtime_generation", g_variant_new_uint64(generation));
     g_variant_builder_add(&builder, "{sv}", "operation_id_watermark",
                           g_variant_new_uint64(operation_id_watermark));
-    g_variant_builder_add(&builder, "{sv}", "runtime_events",
-                          saved_events ? saved_events :
-                          g_variant_new_strv((const char* const*)runtime_events, -1));
+    g_variant_builder_add(
+        &builder, "{sv}", "runtime_events",
+        saved_events ? saved_events : g_variant_new_strv((const char* const*)runtime_events, -1));
     return g_variant_ref_sink(g_variant_builder_end(&builder));
 }
 
@@ -955,8 +958,8 @@ static void runtime_reload_finish(Runtime* runtime, gboolean commit, const char*
         set_config_fallback_marker(runtime->config_fallback, reload->saved_fallback,
                                    runtime->startup_failure);
         if (reload->ignored && reload->ignored->len > 0) {
-            /* The rest of the configuration is active. Say plainly what was left out, in the session log and in
-             * the notice the panel reads. */
+            /* The rest of the configuration is active. Say plainly what was left out, in the
+             * session log and in the notice the panel reads. */
             g_autoptr(GString) notice =
                 g_string_new("Some settings were ignored because they are invalid:");
             for (guint i = 0; i < reload->ignored->len; i++) {
@@ -968,8 +971,7 @@ static void runtime_reload_finish(Runtime* runtime, gboolean commit, const char*
         }
         g_autoptr(GError) save_error = NULL;
         if (!recovered_snapshot &&
-            !gnoblin_config_save_last_good_document(reload->path, reload->document,
-                                                    &save_error))
+            !gnoblin_config_save_last_good_document(reload->path, reload->document, &save_error))
             g_warning("gnoblin: could not save last accepted configuration: %s",
                       save_error ? save_error->message : "unknown error");
         g_autoptr(GError) portal_error = NULL;
@@ -1008,15 +1010,19 @@ static void runtime_reload_finish(Runtime* runtime, gboolean commit, const char*
             runtime_fail(runtime, error ? error->message : "could not reply to config reload");
     } else {
         if (reload->startup && runtime->recovery_snapshot) {
-            runtime_fail(runtime, message ? message : "built-in recovery configuration was rejected");
+            runtime_fail(runtime,
+                         message ? message : "built-in recovery configuration was rejected");
         } else if (reload->startup && !reload->saved_fallback) {
             g_free(runtime->startup_failure);
-            runtime->startup_failure = g_strdup(message ? message : "Startup configuration rejected");
+            runtime->startup_failure =
+                g_strdup(message ? message : "Startup configuration rejected");
             runtime->startup_saved_pending = TRUE;
         } else if (reload->saved_fallback) {
-            g_autofree char* combined = g_strdup_printf("%s\nSaved configuration also failed: %s",
-                runtime->startup_failure ? runtime->startup_failure : "Startup configuration failed",
-                message ? message : "native settings were rejected");
+            g_autofree char* combined =
+                g_strdup_printf("%s\nSaved configuration also failed: %s",
+                                runtime->startup_failure ? runtime->startup_failure
+                                                         : "Startup configuration failed",
+                                message ? message : "native settings were rejected");
             g_free(runtime->startup_failure);
             runtime->startup_failure = g_steal_pointer(&combined);
         }
@@ -1256,8 +1262,7 @@ static gboolean send_pending_operations(Runtime* runtime, GError** error) {
             g_variant_builder_add(&operation_builder, "{sv}", "client_id",
                                   g_variant_new_uint64(runtime->current_client_id));
             packet = g_variant_ref_sink(g_variant_builder_end(&operation_builder));
-        } else if (g_str_equal(method, "window.snap.offer") ||
-                   g_str_equal(method, "command.run") ||
+        } else if (g_str_equal(method, "window.snap.offer") || g_str_equal(method, "command.run") ||
                    g_str_equal(method, "command.capture")) {
             GVariantBuilder operation_builder;
             GVariantIter fields;
@@ -1421,8 +1426,7 @@ static gboolean handle_input(Runtime* runtime, guint64 request_id, GVariant* pay
     guint64 config_generation = 0;
     g_autoptr(GVariant) handler_ids =
         g_variant_lookup_value(payload, "handler_ids", G_VARIANT_TYPE("as"));
-    g_autoptr(GVariant) event =
-        g_variant_lookup_value(payload, "event", G_VARIANT_TYPE_VARDICT);
+    g_autoptr(GVariant) event = g_variant_lookup_value(payload, "event", G_VARIANT_TYPE_VARDICT);
     if (!request_id || !handler_ids || !event ||
         !g_variant_lookup(payload, "config_generation", "t", &config_generation) ||
         !config_generation) {
@@ -1449,10 +1453,9 @@ static gboolean handle_input(Runtime* runtime, guint64 request_id, GVariant* pay
     if (!decision) {
         g_warning("gnoblin: Lua input handler failed: %s",
                   dispatch_error ? dispatch_error->message : "invalid decision");
-        return send_input_default_decision(runtime, request_id, config_generation,
-                                           dispatch_error ? dispatch_error->message
-                                                          : "invalid input decision",
-                                           error);
+        return send_input_default_decision(
+            runtime, request_id, config_generation,
+            dispatch_error ? dispatch_error->message : "invalid input decision", error);
     }
     if (!g_variant_is_of_type(decision, G_VARIANT_TYPE_VARDICT) ||
         !g_variant_is_normal_form(decision)) {
@@ -1474,8 +1477,7 @@ static gboolean handle_input(Runtime* runtime, guint64 request_id, GVariant* pay
     g_variant_builder_add(&response_builder, "{sv}", "config_generation",
                           g_variant_new_uint64(config_generation));
     g_autoptr(GVariant) response = g_variant_ref_sink(g_variant_builder_end(&response_builder));
-    if (!queue_packet(runtime, GNOBLIN_RUNTIME_PACKET_INPUT_DECISION, request_id, response,
-                      error))
+    if (!queue_packet(runtime, GNOBLIN_RUNTIME_PACKET_INPUT_DECISION, request_id, response, error))
         return FALSE;
     runtime->active_input_request_id = request_id;
     gboolean sent = send_pending_operations(runtime, error);
@@ -1759,8 +1761,8 @@ static gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVarian
     guint64 client_id = 0;
     if (request_id == 0 || !g_variant_lookup(payload, "kind", "&s", &kind) ||
         !g_variant_lookup(payload, "method", "&s", &method) || !*method || !arguments ||
-        (!g_str_equal(kind, "read") && !g_str_equal(kind, "call") &&
-         !g_str_equal(kind, "reload") && !g_str_equal(kind, "console"))) {
+        (!g_str_equal(kind, "read") && !g_str_equal(kind, "call") && !g_str_equal(kind, "reload") &&
+         !g_str_equal(kind, "console"))) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
                             "compositor sent an invalid runtime API request");
         return FALSE;
@@ -1780,8 +1782,7 @@ static gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVarian
         result = gnoblin_config_call_api(method, arguments, &api_error);
     } else if (g_str_equal(kind, "console")) {
         const char* source = NULL;
-        if (( !g_str_equal(method, "console.eval") &&
-              !g_str_equal(method, "console.complete")) ||
+        if ((!g_str_equal(method, "console.eval") && !g_str_equal(method, "console.complete")) ||
             g_variant_n_children(arguments) != 1 ||
             !g_variant_lookup(arguments, "code", "&s", &source)) {
             g_set_error_literal(&api_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -1807,15 +1808,16 @@ static gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVarian
             if (startup_request && runtime->recovery_snapshot) {
                 candidate = gnoblin_config_load_runtime_defaults(NULL, NULL, &api_error);
             } else if (startup_request && runtime->startup_saved_pending) {
-                g_autoptr(GVariant) saved = gnoblin_config_load_last_good_document(path, &api_error);
+                g_autoptr(GVariant) saved =
+                    gnoblin_config_load_last_good_document(path, &api_error);
                 if (saved)
-                    candidate = gnoblin_config_load_runtime_fallback(path, saved, NULL, NULL,
-                                                                    &api_error);
+                    candidate =
+                        gnoblin_config_load_runtime_fallback(path, saved, NULL, NULL, &api_error);
             } else if (startup_request) {
-                /* At login keep every valid setting and ignore only the broken ones. A reload stays strict for now:
-                 * a failed reload keeps the active config and reports the error. */
-                candidate = gnoblin_config_load_runtime_salvaged(path, NULL, NULL, &ignored_settings,
-                                                                 &api_error);
+                /* At login keep every valid setting and ignore only the broken ones. A reload stays
+                 * strict for now: a failed reload keeps the active config and reports the error. */
+                candidate = gnoblin_config_load_runtime_salvaged(path, NULL, NULL,
+                                                                 &ignored_settings, &api_error);
             } else {
                 candidate = gnoblin_config_load_runtime(path, NULL, NULL, &api_error);
             }
@@ -1838,9 +1840,8 @@ static gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVarian
                     reload->document = g_variant_ref(candidate);
                     g_autoptr(GVariant) current_document = gnoblin_config_current_document();
                     g_autoptr(GVariant) previous_portals =
-                        current_document
-                            ? g_variant_lookup_value(current_document, "portals", NULL)
-                            : NULL;
+                        current_document ? g_variant_lookup_value(current_document, "portals", NULL)
+                                         : NULL;
                     g_autoptr(GVariant) candidate_portals =
                         g_variant_lookup_value(candidate, "portals", NULL);
                     reload->portal_routes_changed =
@@ -1859,11 +1860,13 @@ static gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVarian
                                       api_error ? api_error->message : NULL);
                 if (startup_request && runtime->startup_config_pending) {
                     g_free(runtime->startup_failure);
-                    runtime->startup_failure = g_strdup(api_error ? api_error->message : "Startup config failed");
+                    runtime->startup_failure =
+                        g_strdup(api_error ? api_error->message : "Startup config failed");
                 }
-                set_reload_failure_notice(runtime,
-                    startup_request && runtime->startup_saved_pending ? runtime->startup_failure :
-                    api_error ? api_error->message : NULL);
+                set_reload_failure_notice(runtime, startup_request && runtime->startup_saved_pending
+                                                       ? runtime->startup_failure
+                                                   : api_error ? api_error->message
+                                                               : NULL);
             }
         }
     }
@@ -1872,10 +1875,11 @@ static gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVarian
             runtime_fail(runtime, api_error->message);
         } else if (runtime->startup_saved_pending) {
             if (!g_error_matches(api_error, G_FILE_ERROR, G_FILE_ERROR_NOENT)) {
-                g_autofree char* combined = g_strdup_printf(
-                    "%s\nSaved configuration also failed: %s",
-                    runtime->startup_failure ? runtime->startup_failure : "Startup configuration failed",
-                    api_error->message);
+                g_autofree char* combined =
+                    g_strdup_printf("%s\nSaved configuration also failed: %s",
+                                    runtime->startup_failure ? runtime->startup_failure
+                                                             : "Startup configuration failed",
+                                    api_error->message);
                 g_free(runtime->startup_failure);
                 runtime->startup_failure = g_steal_pointer(&combined);
             }
@@ -1885,9 +1889,8 @@ static gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVarian
         }
         set_reload_failure_notice(runtime, runtime->startup_failure);
     }
-    if (!startup_request &&
-        !send_api_response(runtime, request_id, result, api_error ? api_error->message : NULL,
-                           error)) {
+    if (!startup_request && !send_api_response(runtime, request_id, result,
+                                               api_error ? api_error->message : NULL, error)) {
         runtime->current_client_id = 0;
         return FALSE;
     }
@@ -1956,7 +1959,8 @@ static gboolean handle_runtime_packet(Runtime* runtime, GnoblinRuntimePacket* pa
         g_variant_lookup(packet->payload, "resume_rejected", "b", &resume_rejected);
         runtime->resume_rejected = runtime->resume_worker && resume_rejected;
         g_set_error(error, G_IO_ERROR, G_IO_ERROR_FAILED, "compositor rejected runtime: %s",
-                    message ? message : "unspecified error");    } else if (!runtime->ready) {
+                    message ? message : "unspecified error");
+    } else if (!runtime->ready) {
         const char* role = NULL;
         guint32 document_version = 0;
         handled = packet->type == GNOBLIN_RUNTIME_PACKET_HELLO && packet->request_id == 0 &&
@@ -1995,16 +1999,16 @@ static gboolean handle_runtime_packet(Runtime* runtime, GnoblinRuntimePacket* pa
             g_autofree char* config_path = gnoblin_config_path();
             g_autoptr(GVariant) accepted_document = gnoblin_config_current_document();
             g_autoptr(GError) save_error = NULL;
-            if (!runtime->startup_config_pending && !runtime->config_fallback && accepted_document &&
+            if (!runtime->startup_config_pending && !runtime->config_fallback &&
+                accepted_document &&
                 !gnoblin_config_save_last_good_document(config_path, accepted_document,
                                                         &save_error))
                 g_warning("gnoblin: could not save last accepted configuration: %s",
                           save_error ? save_error->message : "unknown error");
             if (!runtime->startup_config_pending)
-                set_config_fallback_marker(runtime->config_fallback &&
-                                            runtime->config_fallback_error != NULL,
-                                           runtime->config_fallback_last_good,
-                                           runtime->config_fallback_error);
+                set_config_fallback_marker(
+                    runtime->config_fallback && runtime->config_fallback_error != NULL,
+                    runtime->config_fallback_last_good, runtime->config_fallback_error);
             if (runtime->guardian_status_fd >= 0)
                 (void)guardian_send_status(runtime->guardian_status_fd, GUARDIAN_STATUS_READY);
             /* Recovery keeps the host waiting for the first default CONFIG and
@@ -2313,15 +2317,16 @@ static GVariant* read_recovery_snapshot(int fd, GError** error) {
             continue;
         if (count <= 0) {
             g_free(data);
-            g_set_error(error, G_IO_ERROR, count < 0 ? g_io_error_from_errno(errno) : G_IO_ERROR_INVALID_DATA,
+            g_set_error(error, G_IO_ERROR,
+                        count < 0 ? g_io_error_from_errno(errno) : G_IO_ERROR_INVALID_DATA,
                         "could not read inherited recovery snapshot");
             return NULL;
         }
         offset += count;
     }
     g_autoptr(GBytes) bytes = g_bytes_new_take(data, size);
-    GVariant* snapshot = g_variant_ref_sink(
-        g_variant_new_from_bytes(G_VARIANT_TYPE_VARDICT, bytes, FALSE));
+    GVariant* snapshot =
+        g_variant_ref_sink(g_variant_new_from_bytes(G_VARIANT_TYPE_VARDICT, bytes, FALSE));
     if (!g_variant_is_normal_form(snapshot)) {
         g_variant_unref(snapshot);
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
@@ -2434,8 +2439,7 @@ static int runtime_worker_main(int argc, char** argv) {
     g_autofree char* config_fallback_error = NULL;
     /* Only the supervisor sets this on a replacement child. Do not retry a
      * crashing user configuration in the process that must recover it. */
-    g_autofree char* startup_recovery =
-        g_strdup(g_getenv("GNOBLIN_INTERNAL_STARTUP_RECOVERY"));
+    g_autofree char* startup_recovery = g_strdup(g_getenv("GNOBLIN_INTERNAL_STARTUP_RECOVERY"));
     g_unsetenv("GNOBLIN_INTERNAL_STARTUP_RECOVERY");
     g_autoptr(GVariant) recovery_snapshot = NULL;
     g_autoptr(GVariant) recovery_document = NULL;
@@ -2444,8 +2448,10 @@ static int runtime_worker_main(int argc, char** argv) {
         recovery_snapshot = read_recovery_snapshot(WORKER_RECOVERY_SNAPSHOT_FD, &error);
         close(WORKER_RECOVERY_SNAPSHOT_FD);
         if (!recovery_snapshot || !resume_worker ||
-            !(recovery_document = g_variant_lookup_value(recovery_snapshot, "document", G_VARIANT_TYPE_VARDICT)) ||
-            !(recovery_events = g_variant_lookup_value(recovery_snapshot, "runtime_events", G_VARIANT_TYPE("as")))) {
+            !(recovery_document =
+                  g_variant_lookup_value(recovery_snapshot, "document", G_VARIANT_TYPE_VARDICT)) ||
+            !(recovery_events = g_variant_lookup_value(recovery_snapshot, "runtime_events",
+                                                       G_VARIANT_TYPE("as")))) {
             g_printerr("gnoblin: invalid recovery snapshot\n");
             return EXIT_FAILURE;
         }
@@ -2455,13 +2461,14 @@ static int runtime_worker_main(int argc, char** argv) {
     if (recovery_snapshot) {
         config_fallback = TRUE;
         g_autofree char* previous_notice = config_recovery_notice();
-        const char* restart_notice = startup_recovery ? startup_recovery :
-            "The Lua runtime restarted; built-in defaults are being applied";
+        const char* restart_notice =
+            startup_recovery ? startup_recovery
+                             : "The Lua runtime restarted; built-in defaults are being applied";
         config_fallback_error = previous_notice && *previous_notice
-            ? g_strdup_printf("%s\n%s", previous_notice, restart_notice)
-            : g_strdup(restart_notice);
+                                    ? g_strdup_printf("%s\n%s", previous_notice, restart_notice)
+                                    : g_strdup(restart_notice);
         document = gnoblin_config_load_runtime_recovery_snapshot(config_path, recovery_document,
-                                                                  &paths, &directories, &error);
+                                                                 &paths, &directories, &error);
     } else if (startup_recovery) {
         config_fallback = TRUE;
         config_fallback_error = g_strdup(startup_recovery);
@@ -2470,7 +2477,8 @@ static int runtime_worker_main(int argc, char** argv) {
         /* Native bootstrap never receives unaccepted user settings. */
         document = gnoblin_config_load_runtime_defaults(&paths, &directories, &error);
     } else {
-        /* Keep every valid setting. Only a broken key or list entry is ignored and reported below. */
+        /* Keep every valid setting. Only a broken key or list entry is ignored and reported below.
+         */
         document = gnoblin_config_load_runtime_salvaged(config_path, &paths, &directories,
                                                         &ignored_settings, &error);
     }
@@ -2487,9 +2495,9 @@ static int runtime_worker_main(int argc, char** argv) {
                                                               &directories, &error)
                        : gnoblin_config_load_runtime_defaults(&paths, &directories, &error);
         if (!document && config_fallback_last_good) {
-            g_autofree char* combined = g_strdup_printf(
-                "%s\nSaved configuration also failed: %s", config_fallback_error,
-                error ? error->message : "runtime initialization failed");
+            g_autofree char* combined =
+                g_strdup_printf("%s\nSaved configuration also failed: %s", config_fallback_error,
+                                error ? error->message : "runtime initialization failed");
             g_free(config_fallback_error);
             config_fallback_error = g_steal_pointer(&combined);
             gnoblin_config_finish_load(FALSE);
@@ -2510,9 +2518,10 @@ static int runtime_worker_main(int argc, char** argv) {
     if (config_fallback)
         set_config_fallback_marker(TRUE, config_fallback_last_good, config_fallback_error);
     if (ignored_settings && ignored_settings->len > 0) {
-        /* The rest of the configuration is active. Say plainly what was left out, in the session log and in the
-         * notice the panel reads. */
-        g_autoptr(GString) notice = g_string_new("Some settings were ignored because they are invalid:");
+        /* The rest of the configuration is active. Say plainly what was left out, in the session
+         * log and in the notice the panel reads. */
+        g_autoptr(GString) notice =
+            g_string_new("Some settings were ignored because they are invalid:");
         for (guint i = 0; i < ignored_settings->len; i++) {
             const char* line = g_ptr_array_index(ignored_settings, i);
             g_printerr("gnoblin: %s\n", line);
@@ -2549,8 +2558,10 @@ static int runtime_worker_main(int argc, char** argv) {
         .pending_logout_ids = g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, NULL),
         .pending_operation_ids = g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, NULL)};
     if (recovery_snapshot)
-        runtime.startup_failure = g_strdup(config_fallback_error ? config_fallback_error :
-                                           "The Lua runtime restarted; built-in defaults are being applied");
+        runtime.startup_failure =
+            g_strdup(config_fallback_error
+                         ? config_fallback_error
+                         : "The Lua runtime restarted; built-in defaults are being applied");
     g_queue_init(&runtime.policy_events);
     g_queue_init(&runtime.deferred_packets);
     gnoblin_config_set_focus_policy_changed_callback(focus_policy_committed, &runtime);
@@ -2591,8 +2602,7 @@ static int runtime_worker_main(int argc, char** argv) {
     g_autoptr(GVariant) resume_payload =
         resume_worker ? resume_packet_payload(normalized_document, revision,
                                               gnoblin_config_runtime_generation(),
-                                              seed_operation_id_watermark,
-                                              recovery_events)
+                                              seed_operation_id_watermark, recovery_events)
                       : NULL;
     gboolean sent_startup_packet =
         resume_worker ? queue_packet(&runtime, GNOBLIN_RUNTIME_PACKET_WORKER_RESUME, 0,
@@ -2793,11 +2803,11 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
          gnoblin_runtime_spawn_add_channel_actions(&actions, host_parent_alias, host_child_alias,
                                                    WORKER_HOST_FD, &host_temporary_fd, error));
     if (actions_ready && recovery_snapshot_alias >= 0) {
-        recovery_action_result = posix_spawn_file_actions_adddup2(
-            &actions, recovery_snapshot_alias, WORKER_RECOVERY_SNAPSHOT_FD);
+        recovery_action_result = posix_spawn_file_actions_adddup2(&actions, recovery_snapshot_alias,
+                                                                  WORKER_RECOVERY_SNAPSHOT_FD);
         if (recovery_action_result == 0)
-            recovery_action_result = posix_spawn_file_actions_addclose(
-                &actions, recovery_snapshot_alias);
+            recovery_action_result =
+                posix_spawn_file_actions_addclose(&actions, recovery_snapshot_alias);
         if (recovery_action_result != 0) {
             g_set_error(error, G_IO_ERROR, g_io_error_from_errno(recovery_action_result),
                         "could not prepare worker recovery descriptor: %s",
@@ -2835,8 +2845,7 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
     ready_arg = g_strdup_printf("%d", WORKER_READY_FD);
     revision_arg = g_strdup_printf("%" G_GUINT64_FORMAT, settings_revision);
     generation_arg = g_strdup_printf("%" G_GUINT64_FORMAT, runtime_generation);
-    operation_id_watermark_arg =
-        g_strdup_printf("%" G_GUINT64_FORMAT, operation_id_watermark);
+    operation_id_watermark_arg = g_strdup_printf("%" G_GUINT64_FORMAT, operation_id_watermark);
     host_control_arg = g_strdup_printf("%d", WORKER_HOST_FD);
     argv = g_ptr_array_new_with_free_func(g_free);
     g_ptr_array_add(argv, g_strdup(executable));
@@ -2868,14 +2877,12 @@ static GPid spawn_runtime_worker(const char* executable, const char* config_path
     g_ptr_array_add(argv, NULL);
     pid_t pid = 0;
     worker_environment = g_get_environ();
-    worker_environment = g_environ_unsetenv(worker_environment,
-                                            "GNOBLIN_INTERNAL_STARTUP_RECOVERY");
+    worker_environment =
+        g_environ_unsetenv(worker_environment, "GNOBLIN_INTERNAL_STARTUP_RECOVERY");
     if (startup_recovery)
-        worker_environment = g_environ_setenv(worker_environment,
-                                              "GNOBLIN_INTERNAL_STARTUP_RECOVERY",
-                                              startup_recovery, TRUE);
-    result = posix_spawn(&pid, executable, &actions, NULL, (char**)argv->pdata,
-                         worker_environment);
+        worker_environment = g_environ_setenv(
+            worker_environment, "GNOBLIN_INTERNAL_STARTUP_RECOVERY", startup_recovery, TRUE);
+    result = posix_spawn(&pid, executable, &actions, NULL, (char**)argv->pdata, worker_environment);
     posix_spawn_file_actions_destroy(&actions);
     if (channel_temporary_fd >= 0)
         close(channel_temporary_fd);
@@ -3134,8 +3141,8 @@ static gboolean wait_for_worker_suspended(int channel_fd, Runtime* host, guint64
                     g_variant_lookup(packet.payload, "runtime_generation", "t",
                                      runtime_generation) &&
                     g_variant_lookup(packet.payload, "operation_id_watermark", "t",
-                                     operation_id_watermark) && document && events &&
-                    *settings_revision > 0 && *runtime_generation > 0 &&
+                                     operation_id_watermark) &&
+                    document && events && *settings_revision > 0 && *runtime_generation > 0 &&
                     *operation_id_watermark <= G_MAXINT64;
                 if (valid && snapshot) {
                     g_clear_pointer(snapshot, g_variant_unref);
@@ -3278,7 +3285,7 @@ static HostAutostartEntry* autostart_entry_find(GPtrArray* entries, const char* 
 }
 
 static HostAutostartChild* autostart_child_find(GPtrArray* children, const char* name,
-                                                 guint* index_out) {
+                                                guint* index_out) {
     for (guint index = 0; children && index < children->len; index++) {
         HostAutostartChild* child = g_ptr_array_index(children, index);
         if (g_str_equal(child->name, name)) {
@@ -3326,15 +3333,13 @@ static void stop_autostart_child(HostAutostartChild* child) {
             (has_process_group && !autostart_process_group_exists(child->process_group)))
             return;
         if (result < 0 && errno != EINTR) {
-            g_warning("gnoblin-autostart: could not reap %s: %s", child->name,
-                      g_strerror(errno));
+            g_warning("gnoblin-autostart: could not reap %s: %s", child->name, g_strerror(errno));
             return;
         }
         g_usleep(20 * 1000);
     }
     if (kill(target, SIGKILL) != 0 && errno != ESRCH)
-        g_warning("gnoblin-autostart: could not force-stop %s: %s", child->name,
-                  g_strerror(errno));
+        g_warning("gnoblin-autostart: could not force-stop %s: %s", child->name, g_strerror(errno));
     if (!child->leader_reaped) {
         while (waitpid(child->pid, &status, 0) < 0 && errno == EINTR)
             ;
@@ -3342,9 +3347,8 @@ static void stop_autostart_child(HostAutostartChild* child) {
     }
 }
 
-static gboolean reconcile_autostart(GVariant* entries, GVariant* environment,
-                                    GPtrArray* children, GPtrArray** active_entries,
-                                    GError** error) {
+static gboolean reconcile_autostart(GVariant* entries, GVariant* environment, GPtrArray* children,
+                                    GPtrArray** active_entries, GError** error) {
     g_autoptr(GPtrArray) next = parse_autostart_entries(entries, error);
     if (!next)
         return FALSE;
@@ -3372,13 +3376,12 @@ static gboolean reconcile_autostart(GVariant* entries, GVariant* environment,
         GPid child_pid = 0;
         g_autoptr(GError) spawn_error = NULL;
         if (!g_spawn_async(NULL, entry->argv, child_environment,
-                           G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD,
-                           autostart_child_setup, NULL,
-                           &child_pid, &spawn_error)) {
+                           G_SPAWN_SEARCH_PATH | G_SPAWN_DO_NOT_REAP_CHILD, autostart_child_setup,
+                           NULL, &child_pid, &spawn_error)) {
             g_warning("gnoblin-autostart: could not start %s: %s", entry->name,
                       spawn_error->message);
-            g_autofree char* diagnostic = g_strdup_printf("Could not start %s: %s",
-                                                         entry->name, spawn_error->message);
+            g_autofree char* diagnostic =
+                g_strdup_printf("Could not start %s: %s", entry->name, spawn_error->message);
             append_config_notice(diagnostic);
             continue;
         }
@@ -3417,7 +3420,8 @@ static void start_xdg_autostart(GVariant* environment) {
             xauthority = value;
     }
     if (!wayland_display) {
-        g_warning("gnoblin-autostart: Mutter did not provide WAYLAND_DISPLAY; skipping XDG autostart");
+        g_warning(
+            "gnoblin-autostart: Mutter did not provide WAYLAND_DISPLAY; skipping XDG autostart");
         return;
     }
 
@@ -3433,9 +3437,9 @@ static void start_xdg_autostart(GVariant* environment) {
             g_variant_builder_add(&activation_environment, "{ss}", "XAUTHORITY", xauthority);
         g_autoptr(GVariant) reply = g_dbus_connection_call_sync(
             bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
-            "UpdateActivationEnvironment", g_variant_new("(@a{ss})",
-                g_variant_builder_end(&activation_environment)), G_VARIANT_TYPE("()"),
-            G_DBUS_CALL_FLAGS_NONE, 2000, NULL, &bus_error);
+            "UpdateActivationEnvironment",
+            g_variant_new("(@a{ss})", g_variant_builder_end(&activation_environment)),
+            G_VARIANT_TYPE("()"), G_DBUS_CALL_FLAGS_NONE, 2000, NULL, &bus_error);
         if (!reply)
             g_warning("gnoblin-autostart: could not update D-Bus activation environment: %s",
                       bus_error->message);
@@ -3446,8 +3450,7 @@ static void start_xdg_autostart(GVariant* environment) {
     /* XDG autostart belongs to the session manager. Read the standard config
      * directories here after Mutter publishes its display, without requiring
      * a particular process manager or unit system. */
-    g_autoptr(GHashTable) files =
-        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+    g_autoptr(GHashTable) files = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     const gchar* const* system_config_dirs = g_get_system_config_dirs();
     gsize system_count = g_strv_length((gchar**)system_config_dirs);
     for (gssize index = (gssize)system_count - 1; index >= 0; index--) {
@@ -3458,17 +3461,18 @@ static void start_xdg_autostart(GVariant* environment) {
         const char* name;
         while ((name = g_dir_read_name(dir))) {
             if (g_str_has_suffix(name, ".desktop"))
-                g_hash_table_replace(files, g_strdup(name), g_build_filename(directory, name, NULL));
+                g_hash_table_replace(files, g_strdup(name),
+                                     g_build_filename(directory, name, NULL));
         }
     }
-    g_autofree char* user_autostart =
-        g_build_filename(g_get_user_config_dir(), "autostart", NULL);
+    g_autofree char* user_autostart = g_build_filename(g_get_user_config_dir(), "autostart", NULL);
     g_autoptr(GDir) user_dir = g_dir_open(user_autostart, 0, NULL);
     if (user_dir) {
         const char* name;
         while ((name = g_dir_read_name(user_dir))) {
             if (g_str_has_suffix(name, ".desktop"))
-                g_hash_table_replace(files, g_strdup(name), g_build_filename(user_autostart, name, NULL));
+                g_hash_table_replace(files, g_strdup(name),
+                                     g_build_filename(user_autostart, name, NULL));
         }
     }
 
@@ -3552,8 +3556,8 @@ static void reap_autostart_children(GPtrArray* children) {
                 diagnostic = g_strdup_printf("Could not monitor %s: %s", child->name,
                                              g_strerror(wait_error));
             else if (WIFSIGNALED(status))
-                diagnostic = g_strdup_printf("%s crashed (signal %d)", child->name,
-                                             WTERMSIG(status));
+                diagnostic =
+                    g_strdup_printf("%s crashed (signal %d)", child->name, WTERMSIG(status));
             else
                 diagnostic = g_strdup_printf("%s exited with status %d", child->name,
                                              WIFEXITED(status) ? WEXITSTATUS(status) : -1);
@@ -3611,11 +3615,10 @@ static GPid spawn_session_supervisor(const char* executable, const char* config_
         runtime_result = posix_spawn_file_actions_addclose(&actions, runtime_alias);
     gboolean actions_ready = runtime_result == 0;
     if (actions_ready && recovery_snapshot_alias >= 0) {
-        int snapshot_result = posix_spawn_file_actions_adddup2(
-            &actions, recovery_snapshot_alias, WORKER_RECOVERY_SNAPSHOT_FD);
+        int snapshot_result = posix_spawn_file_actions_adddup2(&actions, recovery_snapshot_alias,
+                                                               WORKER_RECOVERY_SNAPSHOT_FD);
         if (snapshot_result == 0)
-            snapshot_result = posix_spawn_file_actions_addclose(&actions,
-                                                                 recovery_snapshot_alias);
+            snapshot_result = posix_spawn_file_actions_addclose(&actions, recovery_snapshot_alias);
         if (snapshot_result != 0) {
             g_set_error(error, G_IO_ERROR, g_io_error_from_errno(snapshot_result),
                         "could not prepare supervisor recovery descriptor: %s",
@@ -3623,7 +3626,8 @@ static GPid spawn_session_supervisor(const char* executable, const char* config_
             actions_ready = FALSE;
         }
     }
-    actions_ready = actions_ready &&
+    actions_ready =
+        actions_ready &&
         gnoblin_runtime_spawn_add_channel_actions(&actions, status_parent_alias, status_child_alias,
                                                   GUARDIAN_STATUS_FD, &(int){-1}, error) &&
         gnoblin_runtime_spawn_add_channel_actions(&actions, autostart_parent_alias,
@@ -3776,8 +3780,10 @@ static int session_supervisor_main(int argc, char** argv) {
     sigaction(SIGTERM, &action, NULL);
     sigaction(SIGINT, &action, NULL);
     g_autoptr(GError) error = NULL;
-    Runtime host = {.channel_fd = RUNTIME_FD, .session_log_fd = -1,
-                    .compositor_stderr_fd = -1, .exit_status = EXIT_FAILURE};
+    Runtime host = {.channel_fd = RUNTIME_FD,
+                    .session_log_fd = -1,
+                    .compositor_stderr_fd = -1,
+                    .exit_status = EXIT_FAILURE};
     g_autofree char* executable = g_file_read_link("/proc/self/exe", NULL);
     if (!executable) {
         g_printerr("gnoblin: could not locate installed executable\n");
@@ -3854,8 +3860,7 @@ static int session_supervisor_main(int argc, char** argv) {
                     break;
                 }
                 if (host_autostart_received && host_autostart_started &&
-                    !forward_autostart_to_guardian(GUARDIAN_AUTOSTART_FD,
-                                                   host_autostart_entries,
+                    !forward_autostart_to_guardian(GUARDIAN_AUTOSTART_FD, host_autostart_entries,
                                                    host_autostart_environment, &error)) {
                     g_printerr("gnoblin: could not update session autostart: %s\n",
                                error ? error->message : "could not forward snapshot");
@@ -3878,8 +3883,7 @@ static int session_supervisor_main(int argc, char** argv) {
             if (worker_ready && host_autostart_entries && host_autostart_environment &&
                 !host_autostart_started) {
                 if (!host_autostart_entries || !host_autostart_environment ||
-                    !forward_autostart_to_guardian(GUARDIAN_AUTOSTART_FD,
-                                                   host_autostart_entries,
+                    !forward_autostart_to_guardian(GUARDIAN_AUTOSTART_FD, host_autostart_entries,
                                                    host_autostart_environment, &error)) {
                     g_printerr("gnoblin: could not start login autostart: %s\n",
                                error ? error->message : "invalid autostart snapshot");
@@ -3933,10 +3937,11 @@ static int session_supervisor_main(int argc, char** argv) {
                     break;
                 }
                 gboolean bootstrap_retry = first_worker && !worker_start_packet_sent &&
-                                             !worker_ready && !resume_supervisor;
+                                           !worker_ready && !resume_supervisor;
                 if (bootstrap_retry) {
                     if (!startup_recovery)
-                        startup_recovery = "Lua runtime exited before producing a startup configuration";
+                        startup_recovery =
+                            "Lua runtime exited before producing a startup configuration";
                     set_config_fallback_marker(TRUE, FALSE, startup_recovery);
                     g_printerr("gnoblin: %s; retrying with embedded defaults\n", startup_recovery);
                 } else {
@@ -4002,8 +4007,8 @@ static int session_supervisor_main(int argc, char** argv) {
                 }
                 g_clear_error(&error);
                 worker_pid = spawn_runtime_worker(
-                    executable, config_path, devkit, wayland_display, !bootstrap_retry,
-                    TRUE, startup_recovery, resume_snapshot, resume_revision, resume_generation,
+                    executable, config_path, devkit, wayland_display, !bootstrap_retry, TRUE,
+                    startup_recovery, resume_snapshot, resume_revision, resume_generation,
                     resume_operation_id_watermark, host.channel_fd, host_control_sockets[1],
                     GUARDIAN_STATUS_FD, &ready_fd, &error);
                 worker_spawned_us = g_get_monotonic_time();
@@ -4112,8 +4117,7 @@ static gboolean guardian_drain_status(int fd, gboolean* native_channel_started,
 static gboolean guardian_receive_autostart(int fd, GnoblinRuntimeReader* reader, gboolean* received,
                                            gboolean* autostart_complete, GVariant** entries,
                                            GVariant** environment, GPtrArray* children,
-                                           GPtrArray** active_entries,
-                                           GError** error) {
+                                           GPtrArray** active_entries, GError** error) {
     if (!gnoblin_autostart_receive_packet(fd, reader, received, entries, environment, error)) {
         if (!*received && error && *error &&
             g_error_matches(*error, G_IO_ERROR, G_IO_ERROR_CLOSED)) {
@@ -4129,8 +4133,9 @@ static gboolean guardian_receive_autostart(int fd, GnoblinRuntimeReader* reader,
             *autostart_complete = TRUE;
             start_xdg_autostart(*environment);
         }
-        /* reconcile_autostart checks the whole list before it stops or starts a process, so a rejected list leaves
-         * the previous entries running. A bad entry in the config must not end the user's session. */
+        /* reconcile_autostart checks the whole list before it stops or starts a process, so a
+         * rejected list leaves the previous entries running. A bad entry in the config must not end
+         * the user's session. */
         if (!reconcile_autostart(*entries, *environment, children, active_entries, error)) {
             const char* reason = error && *error ? (*error)->message : "invalid autostart data";
             g_autofree char* diagnostic = g_strdup_printf("Autostart config ignored: %s", reason);
@@ -4175,7 +4180,9 @@ static int session_guardian_main(int argc, char** argv) {
     g_autofree char* xwayland_program = g_find_program_in_path("Xwayland");
     gboolean xwayland = xwayland_program != NULL;
     gboolean devkit = FALSE;
-    Runtime guardian = {.channel_fd = -1, .compositor_stderr_fd = -1, .session_log_fd = -1,
+    Runtime guardian = {.channel_fd = -1,
+                        .compositor_stderr_fd = -1,
+                        .session_log_fd = -1,
                         .exit_status = EXIT_FAILURE};
     for (int i = 1; i < argc; i++) {
         if (g_str_equal(argv[i], "--config") && i + 1 < argc)
@@ -4279,9 +4286,9 @@ static int session_guardian_main(int argc, char** argv) {
     g_autoptr(GError) error = NULL;
     guardian.channel_fd = sockets[0];
     guardian.compositor_stderr_fd = compositor_stderr[0];
-    guardian.compositor_pid = spawn_compositor(compositor_path, sockets[0], sockets[1],
-                                               compositor_stderr[1],
-                                               xwayland, devkit, wayland_display, &error);
+    guardian.compositor_pid =
+        spawn_compositor(compositor_path, sockets[0], sockets[1], compositor_stderr[1], xwayland,
+                         devkit, wayland_display, &error);
     close(sockets[1]);
     close(compositor_stderr[1]);
     if (!guardian.compositor_pid) {
