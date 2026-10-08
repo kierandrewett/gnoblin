@@ -109,12 +109,20 @@ check "focus policy" "$("$G" focus policy 2>&1)" "focus_mode"
 nohup swaybg -c "#223344" >/dev/null 2>&1 < /dev/null &
 nohup foot -T regression-window >/dev/null 2>&1 < /dev/null &
 sleep 4
-check "layer list sees a layer surface" "$("$G" layer list 2>&1)" '"namespace"'
+wallpaper_layers() {
+    # Report whether swaybg's wallpaper layer surfaces exist (one for each monitor). Other layer clients (a notification daemon, for example) may come and go.
+    "$G" layer list 2>&1 | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+layers = data.get("layers", data)
+print("wallpaper_layers=%s" % ("present" if any(layer.get("namespace") == "wallpaper" for layer in layers) else "none"))'
+}
+check "layer list sees the wallpaper layer surfaces" "$(wallpaper_layers)" "wallpaper_layers=present"
 check "window list sees a window" "$("$G" window list 2>&1)" "regression-window"
 pkill -x swaybg
 pkill -f "foot -T regression-window"
 sleep 2
-check "layer removed after exit" "$("$G" layer list 2>&1)" '"layers":[]'
+check "wallpaper layers removed after exit" "$(wallpaper_layers)" "wallpaper_layers=none"
 check "window removed after exit" "$("$G" window list 2>&1)" '"windows":[]'
 
 echo "-- window rules"
