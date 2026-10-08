@@ -41,6 +41,7 @@ The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled
 ## Reload and pointer checks
 
 - `run-resize-drag.sh`: Super + right-button drag resizes from the nearest corner, checked in all four quadrants.
+- `run-clipboard.sh`: copy and paste works between `wl-copy` and `wl-paste`, between a Wayland GTK4 app and `wl-clipboard` in both directions, between an X11 GTK4 app and `wl-clipboard` in both directions through Xwayland, and for the primary selection. Sets `focus_new_windows = "allow"`, which `wl-copy` needs.
 - `run-session-lock.sh`: with swaylock holding the lock, the compositor reports `locked`, refuses screen capture, and does not fire a desktop shortcut. A killed locker leaves the `failsafe` state and the lock stays. A new locker takes over and SIGUSR1 unlocks, after which capture and the shortcut work again.
 - `run-shortcut-latency.sh`: a single tap of a media key and of a plain shortcut each reach the command they start within 150 ms (measured 4 to 5 ms), five taps each.
 - `run-embedded-defaults.sh`: a login with no user config loads the embedded default tree with the native window frame and no fallback, and `gnoblinctl config restore-default` installs a fresh copy and keeps the old folder as a backup. Restarts the guest session twice.

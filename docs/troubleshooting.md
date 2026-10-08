@@ -321,6 +321,15 @@ gnoblin.configure {
 
 See [focus options](/config/configure/window_management#focus-and-raising).
 
+### `wl-copy` does not return
+
+With `focus_new_windows = "prevent"`, `wl-copy` from `wl-clipboard` 2.2.1 can
+block until you stop it. It opens a small window and waits for keyboard focus
+before it sets the clipboard, and `prevent` does not give that window focus. With
+`allow` it exits at once.
+
+To use `wl-copy`, set `focus_new_windows` to `allow`.
+
 ## The screen stays locked after the lock screen closes
 
 If the lock client crashes or is killed, Gnoblin keeps the session locked. This
