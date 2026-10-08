@@ -18,6 +18,7 @@ fi
 usage() {
     cat <<'HELP'
 Usage: ./build.sh [--prefix DIR] [--jobs N] [--without-xwayland] [--with-vector-cursors] [--without-portal] [--verbose] [--dry-run]
+       ./build.sh --layout system [--prefix DIR] [--system-prefix DIR] [--destdir DIR]
        ./build.sh [--prefix DIR] --register-session
        ./build.sh [--prefix DIR] --preview [--terminal NAME]
 
@@ -29,6 +30,11 @@ The build does not change system packages.
   --without-xwayland  Omit support for X11 applications
   --with-vector-cursors  Build the optional Adwaita vector cursor theme
   --without-portal    Omit Gnoblin's GTK-based XDG portal backend
+  --layout NAME       private (default): everything under --prefix.
+                      system: also write the public entries a package ships (/usr/bin
+                      links, session file, systemd units, portal and polkit files).
+  --system-prefix DIR Where --layout system puts public entries (default: /usr)
+  --destdir DIR       Install below DIR, as a package build root. Nothing outside DIR changes.
   --verbose           Stream every build command and its output
   --dry-run           Show stages without changing files
   --target NAME       Build a CMake target (default: gnoblin-session)
@@ -37,10 +43,14 @@ The build does not change system packages.
                       Waybar panel when Waybar is installed.
   --terminal NAME     Terminal to open with --preview (default: first available)
   --help              Show this help
+
+GNOBLIN_BUILD_DIR sets the CMake build directory (default: build/ninja). Use a separate one to keep a package
+build next to a development build.
 HELP
 }
 
 jobs="${GNOBLIN_BUILD_JOBS:-4}"
+build_dir="${GNOBLIN_BUILD_DIR:-build/ninja}"
 verbose=false dry_run=false register_session=false preview=false
 xwayland=true
 vector_cursors=false
@@ -49,6 +59,9 @@ portal_selected=false
 xwayland_selected=false
 target_selected=false
 prefix="$PWD/install"
+layout=private
+system_prefix=/usr
+destdir=''
 terminal=''
 target=standalone-session
 while [ "$#" -gt 0 ]; do
@@ -73,6 +86,18 @@ while [ "$#" -gt 0 ]; do
         --without-portal)
             with_portal=false
             portal_selected=true
+            ;;
+        --layout)
+            layout="${2:?--layout needs private or system}"
+            shift
+            ;;
+        --system-prefix)
+            system_prefix="${2:?--system-prefix needs a directory}"
+            shift
+            ;;
+        --destdir)
+            destdir="${2:?--destdir needs a directory}"
+            shift
             ;;
         --target)
             target="${2:?--target needs a CMake target}"
@@ -129,6 +154,32 @@ fi
 if ! "$with_portal" && ! "$target_selected"; then
     target=gnoblin-session
 fi
+case "$layout" in
+    private | system) ;;
+    *)
+        echo "--layout must be private or system, not $layout." >&2
+        exit 2
+        ;;
+esac
+if [ "$layout" = private ] && [ "$system_prefix" != /usr ]; then
+    echo '--system-prefix needs --layout system.' >&2
+    exit 2
+fi
+if [ "$layout" = system ] && { "$preview" || "$register_session"; }; then
+    echo '--layout system builds a package tree. --preview and --register-session use the private layout.' >&2
+    exit 2
+fi
+if [ -n "$destdir" ] && { "$preview" || "$register_session"; }; then
+    echo '--destdir is a build option.' >&2
+    exit 2
+fi
+# The system layout step follows the build, so it is the default target for that layout.
+if [ "$layout" = system ] && ! "$target_selected"; then
+    target=gnoblin-system-layout
+fi
+if [ -n "$destdir" ]; then
+    destdir="$(realpath -m -- "$destdir")"
+fi
 prefix="$(realpath -m -- "$prefix")"
 export GNOBLIN_PREFIX="$prefix"
 if [ -n "${GNOBLIN_SOURCE_MODE:-}" ]; then
@@ -163,6 +214,13 @@ fi
 if "$dry_run"; then
     printf 'Build Gnoblin from pinned sources.\n'
     printf '  Output: %s\n' "$prefix"
+    echo "  Layout: $layout"
+    if [ "$layout" = system ]; then
+        echo "  System prefix: $system_prefix"
+    fi
+    if [ -n "$destdir" ]; then
+        echo "  Install root: $destdir"
+    fi
     echo "  Ninja target: $target"
     if "$with_portal"; then
         echo '  Gnoblin portal backend: included by default'
@@ -268,7 +326,7 @@ fail_step() {
     exit "$2"
 }
 
-if run_step 'Configure build' cmake -S . -B build/ninja -G Ninja \
+if run_step 'Configure build' cmake -S . -B "$build_dir" -G Ninja \
     "-DGNOBLIN_PREFIX=$prefix" \
     "-DGNOBLIN_LIBDIR=${GNOBLIN_LIBDIR:-lib64}" \
     "-DGNOBLIN_BUILD_TYPE=${GNOBLIN_BUILD_TYPE:-debugoptimized}" \
@@ -276,20 +334,26 @@ if run_step 'Configure build' cmake -S . -B build/ninja -G Ninja \
     "-DGNOBLIN_XWAYLAND=$xwayland" \
     "-DGNOBLIN_VECTOR_CURSORS=$vector_cursors" \
     "-DGNOBLIN_WITH_PORTAL=$with_portal" \
+    "-DGNOBLIN_LAYOUT=$layout" \
+    "-DGNOBLIN_SYSTEM_PREFIX=$system_prefix" \
+    "-DGNOBLIN_STAGE_ROOT=$destdir" \
     "-DGNOBLIN_SOURCE_MODE=$source_mode" \
     "-DGNOBLIN_JOBS=$jobs"; then
     :
 else
     fail_step 'Configure build' "$?"
 fi
-if run_step 'Build Gnoblin' cmake --build build/ninja --parallel "$jobs" --target "$target"; then
+if run_step 'Build Gnoblin' cmake --build "$build_dir" --parallel "$jobs" --target "$target"; then
     :
 else
     fail_step 'Build Gnoblin' "$?"
 fi
 printf '\n%sBuild and install complete%s\n' "$green" "$reset"
 printf 'Prefix: %s\n' "$prefix"
-if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ]; then
+if [ -n "$destdir" ]; then
+    printf 'Install root: %s\n' "$destdir"
+fi
+if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ] || [ "$target" = gnoblin-system-layout ]; then
     printf 'Installed runtime:\n'
     artifacts=(
         bin/gnoblin
@@ -299,12 +363,12 @@ if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ]; then
         lib/systemd/user/gnoblin-session.target
         lib/systemd/user/gnoblin-idle.service
     )
-    if "$with_portal" && [ "$target" = standalone-session ]; then
+    if "$with_portal" && [ "$target" != gnoblin-session ]; then
         artifacts+=(libexec/xdg-desktop-portal-gnoblin)
     fi
     for artifact in "${artifacts[@]}"; do
-        if [ ! -e "$prefix/$artifact" ]; then
-            printf 'Missing expected install artifact: %s\n' "$prefix/$artifact" >&2
+        if [ ! -e "$destdir$prefix/$artifact" ]; then
+            printf 'Missing expected install artifact: %s\n' "$destdir$prefix/$artifact" >&2
             exit 1
         fi
         printf '  %s\n' "$artifact"
@@ -312,9 +376,30 @@ if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ]; then
     if ! "$with_portal"; then
         printf 'Portal backend: omitted\n'
     fi
-    printf 'Login registration: use ./build.sh --register-session\n'
+    if [ "$layout" = system ]; then
+        printf 'Public entries (system layout):\n'
+        public_entries=(
+            bin/gnoblin
+            bin/gnoblinctl
+            share/wayland-sessions/gnoblin.desktop
+            share/xdg-desktop-portal/gnoblin-portals.conf
+            lib/systemd/user/gnoblin-session.target
+            lib/systemd/user/gnoblin-idle.service
+        )
+        for entry in "${public_entries[@]}"; do
+            if [ ! -e "$destdir$system_prefix/$entry" ]; then
+                printf 'Missing expected public entry: %s\n' "$destdir$system_prefix/$entry" >&2
+                exit 1
+            fi
+            printf '  %s/%s\n' "$system_prefix" "$entry"
+        done
+    else
+        printf 'Login registration: use ./build.sh --register-session\n'
+    fi
 fi
-if [ "$prefix" = "$PWD/install" ]; then
+if [ "$layout" = system ]; then
+    :
+elif [ "$prefix" = "$PWD/install" ]; then
     printf 'Try it: ./build.sh --preview\n'
     printf 'Add it to your login screen: ./build.sh --register-session\n'
 else

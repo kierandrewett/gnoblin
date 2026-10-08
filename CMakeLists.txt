@@ -165,6 +165,10 @@ option(GNOBLIN_XWAYLAND "Support X11 applications through XWayland" ON)
 option(GNOBLIN_VECTOR_CURSORS "Build the optional Adwaita vector cursor theme" OFF)
 set(GNOBLIN_SOURCE_MODE "checkout" CACHE STRING "checkout or release-archive")
 set(GNOBLIN_STAGE_ROOT "" CACHE PATH "Optional package staging root")
+set(GNOBLIN_LAYOUT "private" CACHE STRING
+  "private: everything under GNOBLIN_PREFIX. system: also the public entries a package ships")
+set_property(CACHE GNOBLIN_LAYOUT PROPERTY STRINGS private system)
+set(GNOBLIN_SYSTEM_PREFIX "/usr" CACHE PATH "Where the system layout puts its public entries")
 set_property(CACHE GNOBLIN_SOURCE_MODE PROPERTY STRINGS checkout release-archive)
 set(GNOBLIN_JOBS "4" CACHE STRING "Parallel jobs inside each Meson build")
 
@@ -253,6 +257,21 @@ add_custom_target(gnoblin-session
 # default full-session build. Use gnoblin-session for the core without it.
 gnoblin_component(xdg-desktop-portal-gnome EXCLUDE_FROM_ALL gnoblin-session)
 add_custom_target(standalone-session ALL DEPENDS gnoblin-session xdg-desktop-portal-gnome)
+
+# The system layout adds what a package ships outside the private prefix: command links, the session file, systemd
+# units and the portal and polkit files. The step reads the finished private tree, so it runs after every component.
+if(NOT GNOBLIN_LAYOUT MATCHES "^(private|system)$")
+  message(FATAL_ERROR "GNOBLIN_LAYOUT must be private or system")
+endif()
+add_custom_target(gnoblin-system-layout
+  COMMAND "${CMAKE_COMMAND}" -E env "GNOBLIN_STAGE_ROOT=${GNOBLIN_STAGE_ROOT}"
+    "${PROJECT_SOURCE_DIR}/scripts/install-system-layout.sh" "${GNOBLIN_PREFIX}" "${GNOBLIN_SYSTEM_PREFIX}"
+  USES_TERMINAL
+  COMMENT "Install the system layout")
+add_dependencies(gnoblin-system-layout gnoblin-session)
+if(GNOBLIN_WITH_PORTAL)
+  add_dependencies(gnoblin-system-layout xdg-desktop-portal-gnome)
+endif()
 
 # One target that builds every test program, plus gnoblinctl, which the CLI tests run. It collects the targets whose names
 # end in -test, so a test added later is built without a change to any workflow. Run it, then ctest.
