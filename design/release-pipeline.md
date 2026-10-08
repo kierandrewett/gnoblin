@@ -150,6 +150,19 @@ longer has to carry the patched commits. Done in `81876e39`; two runs of
 
 Proposed: no. Build into a draft and publish when all required jobs pass.
 
+### D. How should the portal package come from the one build?
+
+The portal RPM and Arch package build from a separate portal source tarball with Meson, then
+copy three files to public paths. That repeats the layout step in two recipes.
+
+| Option                                                     | For                                                  | Against                                                       |
+| ---------------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------------- |
+| 1. Keep it. Share only the three-file list                 | No change to package names, versions or assets.      | The paths stay in two recipes and the script.                 |
+| 2. Build the portal in the gnoblin recipe, split the files | One build. One source asset. No portal-only tarball. | The portal version (51.0) and gnoblin version (0.1.10) merge. |
+| 3. Ship the layout script as a sidecar source              | Recipes call one script. Versions stay separate.     | Another release asset. The script must match the tarball.     |
+
+This changes release assets and package metadata, so it needs the owner's decision.
+
 ## Work order
 
 Each item lands as its own commit, and the tree stays working.
@@ -160,8 +173,10 @@ Each item lands as its own commit, and the tree stays working.
 - [x] Add the system layout to the build: `./build.sh --layout system --destdir DIR`,
       with a test against the recipes' own file lists.
 - [x] Make the Fedora, openSUSE and Arch recipes call `./build.sh` and copy the stage.
-- [ ] Watch the CI jobs that build those recipes, and fix what they show.
-- [ ] Move the portal recipes onto the layout step (ship the script as a sidecar source).
+- [x] Watch the CI jobs that build those recipes, and fix what they show. Five fixes landed:
+      the link check in `build.sh`, two stale packaging tests, the RPM isolation rules, and
+      the `systemd-libs` requirement on openSUSE.
+- [ ] Move the portal recipes onto the layout step. See decision D below.
 - [ ] Add `./build.sh package source|binary`: the source bundle and a relocatable binary
       tree from the same build, and make CI call it.
 - [ ] Decide B and C above.
