@@ -53,7 +53,7 @@ static gboolean xwayland_string_array_valid(GVariant* value, gboolean extensions
 static gboolean validate_xwayland(GVariant* xwayland, GError** error) {
     gboolean valid = g_variant_is_of_type(xwayland, G_VARIANT_TYPE_VARDICT);
     GVariantIter iter;
-    const char* name;
+    const char* name = NULL;
     GVariant* value;
     if (valid)
         g_variant_iter_init(&iter, xwayland);
@@ -77,10 +77,10 @@ static gboolean validate_xwayland(GVariant* xwayland, GError** error) {
     }
 
     if (!valid) {
-        g_set_error_literal(
-            error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-            "xwayland contains an unsupported name or value; scaling-factor must be 0 or a "
-            "finite value from 0.5 through the largest safe signed-integer scale");
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "xwayland%s%s%s has an unsupported name or value; scaling-factor must be 0 or a "
+                    "finite value from 0.5 through the largest safe signed-integer scale",
+                    name ? " \"" : "", name ? name : "", name ? "\"" : "");
         return FALSE;
     }
     return TRUE;
@@ -1904,7 +1904,7 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
             continue;
         gboolean valid = g_variant_is_of_type(section, G_VARIANT_TYPE_VARDICT);
         GVariantIter iter;
-        const char* name;
+        const char* name = NULL;
         GVariant* value;
         if (valid)
             g_variant_iter_init(&iter, section);
@@ -1914,8 +1914,13 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
             g_variant_unref(value);
         }
         if (!valid) {
-            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                        "%s must be a table of supported boolean settings", sections[i]);
+            if (name)
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "%s \"%s\" must be a supported setting with a boolean value", sections[i],
+                            name);
+            else
+                g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "%s must be a table of supported boolean settings", sections[i]);
             return FALSE;
         }
     }
@@ -2061,7 +2066,7 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     if (cursor) {
         gboolean valid = g_variant_is_of_type(cursor, G_VARIANT_TYPE_VARDICT);
         GVariantIter iter;
-        const char* name;
+        const char* name = NULL;
         GVariant* value;
         if (valid)
             g_variant_iter_init(&iter, cursor);
@@ -2087,9 +2092,9 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
             g_variant_unref(value);
         }
         if (!valid) {
-            g_set_error_literal(
-                error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                "cursor must contain only a nonempty theme and a size from 1 to 256");
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "cursor%s%s%s is not valid; cursor takes a nonempty theme and a size from 1 to 256",
+                        name ? " \"" : "", name ? name : "", name ? "\"" : "");
             return FALSE;
         }
     }

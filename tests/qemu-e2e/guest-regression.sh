@@ -307,6 +307,16 @@ reject_input "input.keyboard.xkb_options with non-string items" "{keyboard = {xk
 reject_input "input.mouse.accel_curve that is not a table" "{mouse = {accel_curve = 7}}" "input.mouse.accel-curve"
 reject_input "input.tablets that is not a table" "{tablets = 3}" "input.tablets must be a table"
 reject_input "an unknown input group" "{repeat_delay = -5}" "unknown input group: repeat-delay"
+reject_config() {
+    # reject_config NAME LUA EXPECTED_MESSAGE
+    printf 'gnoblin.configure {%s}\n' "$2" > "$CONFIG_DIR/99-test-badreload.lua"
+    check "$1" "$("$G" config reload 2>&1)" "$3"
+}
+reject_config "cursor.size out of range names the field" 'cursor = {size = 9999}' 'cursor "size" is not valid'
+reject_config "cursor with an unknown field names it" 'cursor = {colour = "red"}' 'cursor "colour" is not valid'
+reject_config "xwayland with an unknown field names it" 'xwayland = {bogus_key = true}' 'xwayland "bogus-key" has an unsupported name or value'
+reject_config "layer_shell with an unknown field names it" 'layer_shell = {bogus = true}' 'layer-shell "bogus" must be a supported setting'
+reject_config "layer_shell with a non-boolean value names it" 'layer_shell = {preserve_active_window = "yes"}' 'layer-shell "preserve-active-window" must be a supported setting with a boolean value'
 check "the compositor keeps running after wrong-typed input" "$("$G" status 2>&1)" '"state":"running"'
 
 # An invalid autostart entry must fail the reload with the entry named. The session guardian rejects the same entries
