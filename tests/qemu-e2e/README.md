@@ -38,6 +38,7 @@ The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled
 - `run-audible-bell.sh`: `compositor.audible_bell` plays the bell sound (counts new PipeWire streams) and stays silent when off.
 - `run-cursor-themes.sh`: cursor themes and sizes work with no hyprcursor installed (custom Xcursor theme, missing-theme fallback, size limits).
 - `run-window-switching.sh`: Alt+Tab, Alt+Shift+Tab, Super+Tab and Alt+Esc move focus between windows with no shell running.
+- `run-x11-fractional.sh`: a GTK X11 app keeps its logical size and gets scale factor 2 at a fractional monitor scale (1.25), and the layout is restored.
 - `run-layer-focus.sh`: `layer_shell.preserve_active_window` keeps or moves focus when a layer surface opens.
 - `run-logout-cycles.sh`: repeated `gnoblinctl logout` ends cleanly (no core dump, no compositor errors). Set `GNOBLIN_LOGOUT_CYCLES` to change the count.
 - `guest-regression.sh` also covers protocol reload timing and Xwayland option reloads.
