@@ -49,7 +49,7 @@ jobs:
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
             json-glib-devel desktop-file-utils python3 rpm-build util-linux-user
-          dnf -y builddep packaging/rpm/gnoblin.spec
+          dnf -y builddep packaging/rpm/gnoblin.spec packaging/rpm/gnoblin-portal.spec
           git -C subprojects/mutter fetch --force --tags origin
           git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin
           source_dir="$RUNNER_TEMP/gnoblin-source-assets"
@@ -76,7 +76,7 @@ jobs:
       - name: Verify the documented installation output
         run: |
           test -x "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin"
-          test ! -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
+          test -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
           "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version | grep -F "Git commit: $GITHUB_SHA"
           "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version --json |
             python3 -c 'import json, sys; v = json.load(sys.stdin); assert v["gitSha"] == sys.argv[1]; assert v["gitRemote"]; assert v["version"] == sys.argv[2]; assert v["gnomeVersion"] == sys.argv[3]; assert all(v["components"].get(name) for name in ("mutter", "xdg-desktop-portal-gnome")); assert "gnome-shell" not in v["components"]' \
@@ -85,10 +85,8 @@ jobs:
           test -f "$GNOBLIN_TARBALL_TREE/install/lib/systemd/user/gnoblin-session.target"
           test ! -e "$GNOBLIN_TARBALL_TREE/install/bin/gnome-shell"
           test ! -e "$GNOBLIN_TARBALL_TREE/install/libexec/gnoblin-runtime"
-      - name: Build Gnoblin's optional portal backend
+      - name: Check Gnoblin's portal backend, which the default build includes
         run: |
-          dnf -y builddep packaging/rpm/gnoblin-portal.spec
-          runuser -u builder -- "$GNOBLIN_TARBALL_TREE/build.sh" --with-portal
           test -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
           ! readelf -d "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin" | grep -Eq 'libgnome-(bg|desktop)'
       - name: Verify installer and package isolation
