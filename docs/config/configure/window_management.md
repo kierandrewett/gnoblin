@@ -89,10 +89,12 @@ with client or server decorations.
 
 ## Titlebar button placement
 
-`button_layout` places Mutter's server-side titlebar buttons. It also controls
-the built-in fallback SSD. It does not change client-side titlebars or custom
-frame renderers. The default leaves the left side empty and puts minimize,
-maximize, and close on the right.
+`button_layout` sets Mutter's global titlebar button order. Gnoblin's native
+frame does not use it. To change the buttons on a window that has the native
+frame, set `frame.button_layout` in a
+[window rule](/config/window_rule#frame-fields). `button_layout` does not change
+client-side titlebars or custom frame renderers. The default leaves the left side
+empty and puts minimize, maximize, and close on the right.
 
 Set either side to an ordered list of `"menu"`, `"minimize"`, `"maximize"`, or
 `"close"`. A `"spacer"` between two buttons adds a gap. A button can appear at
@@ -190,9 +192,9 @@ The three titlebar click fields accept these values:
 | `menu`                         | Open the window menu.                   |
 | `none`                         | Do nothing.                             |
 
-These settings control Mutter policy and Gnoblin's built-in fallback SSD.
-Applications that draw their own client-side titlebars handle those clicks
-themselves.
+These settings control what a click on a titlebar does, including a titlebar
+drawn by Gnoblin's native frame. Applications that draw their own client-side
+titlebars handle those clicks themselves.
 
 GTK applications usually draw their own titlebars and read GNOME's window
 manager settings directly. This Lua section does not change those apps' CSD
