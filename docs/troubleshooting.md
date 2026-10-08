@@ -330,6 +330,23 @@ before it sets the clipboard, and `prevent` does not give that window focus. Wit
 
 To use `wl-copy`, set `focus_new_windows` to `allow`.
 
+## An app cannot take a screenshot
+
+Apps that ask the desktop portal for a screenshot show an allow-or-deny dialog.
+After you choose Allow, the request fails with no file, because a Gnoblin session
+has no screenshot service for the portal to call. The portal log reports
+`Failed to get screenshot` and names `org.gnome.Shell.Screenshot`.
+
+Use a tool that captures through the Wayland protocols instead. `grim` writes a
+PNG of every output:
+
+```sh
+grim ~/screenshot.png
+```
+
+`gnome-screenshot` does not work in this session. Your shell can provide its own
+screenshot tool.
+
 ## The screen stays locked after the lock screen closes
 
 If the lock client crashes or is killed, Gnoblin keeps the session locked. This
