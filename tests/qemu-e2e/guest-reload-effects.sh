@@ -8,6 +8,7 @@
 # window_management.raise_on_click: a click raises the window above an overlapping one, or leaves the stacking.
 # window_management.edge_tiling: dragging a titlebar to the left screen edge tiles the window to the left half, or
 #            only moves it.
+# window_management.auto_maximize: a nearly monitor-sized new window opens maximized, or does not.
 # window_management.center_new_windows: true opens a new window centred on the monitor, false uses Mutter's
 #            default placement.
 set -u
@@ -233,6 +234,37 @@ for mode in true false; do
         check "edge_tiling false only moves the window (size unchanged)" "$nw $nh" "$ww $wh"
     fi
 done
+
+# window_management.auto_maximize: a new window that nearly fills the monitor opens maximized, or does not.
+cat > /tmp/big-window.py <<'PY'
+import gi
+
+gi.require_version("Gtk", "4.0")
+from gi.repository import GLib, Gtk
+
+Gtk.init()
+window = Gtk.Window(title="automax-test")
+window.set_default_size(1270, 700)
+window.set_child(Gtk.Label(label="big"))
+window.present()
+loop = GLib.MainLoop()
+GLib.timeout_add_seconds(9, lambda: (window.destroy(), loop.quit()) and False)
+loop.run()
+PY
+big_window_maximized() {
+    GDK_BACKEND=wayland timeout 12 python3 /tmp/big-window.py >/dev/null 2>&1 &
+    sleep 4
+    "$G" window list | python3 -c '
+import json, sys
+for w in json.load(sys.stdin)["windows"]:
+    if w["title"] == "automax-test":
+        print(w.get("maximized"))'
+    wait
+}
+apply 'gnoblin.configure {window_management = {auto_maximize = true}}'
+check "auto_maximize true maximizes a nearly full-size new window" "$(big_window_maximized)" "True"
+apply 'gnoblin.configure {window_management = {auto_maximize = false}}'
+check "auto_maximize false leaves it unmaximized" "$(big_window_maximized)" "False"
 
 apply '-- disabled'
 rm -f "$F"
