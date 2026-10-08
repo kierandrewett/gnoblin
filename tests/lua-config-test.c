@@ -540,7 +540,7 @@ int main(void) {
             example_window_management, "focus-new-windows", G_VARIANT_TYPE_STRING);
         g_assert_nonnull(example_focus_new_windows);
         /* A window started from a launcher, or a password dialog, must take focus. */
-        g_assert_cmpstr(g_variant_get_string(example_focus_new_windows, NULL), ==, "smart");
+        g_assert_cmpstr(g_variant_get_string(example_focus_new_windows, NULL), ==, "allow");
         gboolean edge_tiling = FALSE;
         g_assert_true(g_variant_lookup(example_window_management, "edge-tiling", "b", &edge_tiling));
         g_assert_true(edge_tiling);
@@ -2335,7 +2335,7 @@ int main(void) {
     g_assert_cmpstr(focus_mode, ==, "click");
     const char* focus_new_windows = NULL;
     g_assert_true(g_variant_lookup(focus_policy, "focus_new_windows", "&s", &focus_new_windows));
-    g_assert_cmpstr(focus_new_windows, ==, "strict");
+    g_assert_cmpstr(focus_new_windows, ==, "prevent");
 
     g_autoptr(GVariant) privacy_state =
         gnoblin_config_read_api("privacy.state", empty_read_arguments, &error);
@@ -2712,7 +2712,7 @@ int main(void) {
     focus_policy = gnoblin_config_read_api("focus.policy", empty_read_arguments, &error);
     g_assert_no_error(error);
     g_assert_true(g_variant_lookup(focus_policy, "focus_new_windows", "&s", &focus_new_windows));
-    g_assert_cmpstr(focus_new_windows, ==, "smart");
+    g_assert_cmpstr(focus_new_windows, ==, "allow");
 
     g_autoptr(GVariant) empty_workspaces = empty_array_snapshot("workspaces");
     g_autoptr(GVariant) empty_monitors = empty_array_snapshot("monitors");

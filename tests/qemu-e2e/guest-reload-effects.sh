@@ -111,7 +111,8 @@ sleep 3
 "$G" window move "$(window_id focus-B)" 760 100 >/dev/null 2>&1
 sleep 1
 
-for mode in click sloppy; do
+# "sloppy" is the deprecated name of "hover"; it must behave the same.
+for mode in click hover sloppy; do
     apply "gnoblin.configure {window_management = {focus_mode = \"$mode\"}}"
     python3 "$CLICK" $(center focus-A) >/dev/null 2>&1
     sleep 1
@@ -122,7 +123,7 @@ for mode in click sloppy; do
     if [ "$mode" = click ]; then
         check "focus_mode click keeps focus when the pointer enters another window" "$before -> $after" "focus-A -> focus-A"
     else
-        check "focus_mode sloppy focuses the window under the pointer" "$before -> $after" "focus-A -> focus-B"
+        check "focus_mode $mode focuses the window under the pointer" "$before -> $after" "focus-A -> focus-B"
     fi
 done
 
@@ -339,9 +340,10 @@ for mode in true false; do
     fi
 done
 
-# window_management.focus_new_windows: with strict a new window does not take focus from the window in use,
-# with smart it does. GNOME's default is smart, Gnoblin's is strict.
-for mode in strict smart; do
+# window_management.focus_new_windows: with prevent a new window does not take focus from the window in use,
+# with allow it does. GNOME's default is allow, Gnoblin's is prevent. "strict" and "smart" are the deprecated names
+# of "prevent" and "allow"; they must behave the same.
+for mode in prevent allow strict smart; do
     apply "gnoblin.configure {window_management = {focus_new_windows = \"$mode\"}}"
     nohup swaybg -c "#202020" >/dev/null 2>&1 < /dev/null &
     nohup foot -T fn-first >/dev/null 2>&1 < /dev/null &
@@ -354,10 +356,10 @@ for mode in strict smart; do
     pkill -f "foot -T fn-"
     pkill -x swaybg
     sleep 2
-    if [ "$mode" = strict ]; then
-        check "focus_new_windows strict keeps focus on the window in use" "$after" "fn-first"
+    if [ "$mode" = prevent ] || [ "$mode" = strict ]; then
+        check "focus_new_windows $mode keeps focus on the window in use" "$after" "fn-first"
     else
-        check "focus_new_windows smart gives focus to the new window" "$after" "fn-second"
+        check "focus_new_windows $mode gives focus to the new window" "$after" "fn-second"
     fi
 done
 

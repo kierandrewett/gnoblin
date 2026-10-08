@@ -1552,7 +1552,7 @@ static int lua_gnoblin_index(lua_State* state) {
             enum { FOCUS_STRING, FOCUS_BOOLEAN, FOCUS_INTEGER } kind;
         } fields[] = {
             {"focus_mode", "click", FALSE, 0, FOCUS_STRING},
-            {"focus_new_windows", "strict", FALSE, 0, FOCUS_STRING},
+            {"focus_new_windows", "prevent", FALSE, 0, FOCUS_STRING},
             {"raise_on_click", NULL, TRUE, 0, FOCUS_BOOLEAN},
             {"auto_raise", NULL, FALSE, 0, FOCUS_BOOLEAN},
             {"focus_change_on_pointer_rest", NULL, FALSE, 0, FOCUS_BOOLEAN},
@@ -3408,6 +3408,10 @@ static const char* deprecated_enum_replacement(const char* key, const char* valu
     } aliases[] = {
         {"when", "normal", "unlocked"},
         {"when", "unlock-screen", "locked"},
+        {"focus-mode", "sloppy", "hover"},
+        {"focus-mode", "mouse", "hover-strict"},
+        {"focus-new-windows", "smart", "allow"},
+        {"focus-new-windows", "strict", "prevent"},
         {"left-handed", "mouse", "follow-mouse"},
         {"tap-button-map", "lrm", "left-right-middle"},
         {"tap-button-map", "lmr", "left-middle-right"},
@@ -9228,7 +9232,7 @@ static GVariant* focus_policy_snapshot(GVariant* document, guint64 revision) {
         const char* default_value;
     } string_fields[] = {
         {"focus-mode", "click"},
-        {"focus-new-windows", "strict"},
+        {"focus-new-windows", "prevent"},
     };
     static const struct {
         const char* key;

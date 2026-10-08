@@ -11,8 +11,8 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 
 | Key                            | Values                           | Default    | Effect                                                    |
 | ------------------------------ | -------------------------------- | ---------- | --------------------------------------------------------- |
-| `focus_mode`                   | `"click"`, `"sloppy"`, `"mouse"` | `"click"`  | Selects when pointer movement changes focus.              |
-| `focus_new_windows`            | `"smart"`, `"strict"`            | `"strict"` | Selects Mutter's new-window focus policy.                 |
+| `focus_mode`                   | `"click"`, `"hover"`, `"hover-strict"` | `"click"`  | Selects when pointer movement changes focus.        |
+| `focus_new_windows`            | `"allow"`, `"prevent"`           | `"prevent"` | Selects Mutter's new-window focus policy.                |
 | `raise_on_click`               | Boolean                          | `true`     | Raise a window when clicked.                              |
 | `auto_raise`                   | Boolean                          | `false`    | Raise the focused window automatically.                   |
 | `auto_raise_delay`             | 0–10000 ms                       | `500`      | Delay before automatically raising the focused window.    |
@@ -35,11 +35,13 @@ Leave `disable_workarounds` set to `false` unless you are debugging an X11
 application. Enabling it can make some applications behave incorrectly.
 
 `constrain_drag_to_work_area` controls how far a dragged window can leave the
-work area, which is the monitor minus the space that panels reserve. With
-`true`, the whole window stays inside the work area. With `false`, Mutter's own
-rule applies: a window can move until only a strip of it stays on screen, at
-most 75 pixels tall. The setting is read when a drag starts, so a reload
-affects the next drag.
+work area, which is the monitor minus the space that panels reserve.
+
+- With `true`, the whole window stays inside the work area.
+- With `false`, Mutter's own rule applies: a window can move until only a strip
+  of it stays on screen, at most 75 pixels tall.
+
+The setting is read when a drag starts, so a reload affects the next drag.
 
 The table shows the compositor default when a key is missing. The starter
 config that Gnoblin loads first sets these values instead, so they are what you
@@ -50,7 +52,7 @@ get unless your own config changes them:
 | `attach_modal_dialogs`         | `true`               | A modal dialog opens centered over its parent and moves with it, as in GNOME.    |
 | `center_new_windows`           | `true`               | New windows open centered on the monitor.                                        |
 | `edge_tiling`                  | `true`               | Dragging a window to a screen edge tiles it, as in GNOME.                        |
-| `focus_new_windows`            | `"smart"`            | A window started from a launcher takes focus. `"strict"` leaves it behind.       |
+| `focus_new_windows`            | `"allow"`            | A window started from a launcher takes focus. `"prevent"` leaves it behind.      |
 | `workspaces_only_on_primary`   | `true`               | A window on another monitor follows the active workspace, as in GNOME.           |
 | `action_middle_click_titlebar` | `"none"`             | A stray middle click does not lower a window.                                    |
 
@@ -71,13 +73,17 @@ Set any of them in your own config to change it.
 
 - `"click"` focuses a window when you click it. Moving the pointer does not
   change focus.
-- `"sloppy"` focuses a window when the pointer enters it. If the pointer
+- `"hover"` focuses a window when the pointer enters it. If the pointer
   leaves all windows, focus returns to the most recently used eligible window.
-- `"mouse"` also focuses on pointer entry, but clears focus when the pointer
+- `"hover-strict"` also focuses on pointer entry, but clears focus when the pointer
   leaves all windows.
 
 Set `focus_change_on_pointer_rest = true` to change focus only after the
 pointer rests briefly.
+
+`"sloppy"` and `"mouse"` still load as the old names for `"hover"` and
+`"hover-strict"`. Gnoblin reports the new names. The old names will be removed in
+a later release.
 
 ## Pointer bindings
 
@@ -124,17 +130,20 @@ Mutter's standard policy has two choices. The [GNOME Shell team's
 focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/)
 explains why the modes differ.
 
-- `"strict"` enables Mutter's focus-stealing prevention. It is the compositor's value when the
+- `"prevent"` enables Mutter's focus-stealing prevention. It is the compositor's value when the
   key is missing. Activation requests need recent launch or user activity. A
   newly opened window must also be a transient descendant of the focused
   window, such as a dialog opened by that app. Requests without valid recent
   activity leave the window unfocused, including a window you start from a
   launcher and a password dialog.
-- `"smart"` is the starter config value. It allows applications to activate
+- `"allow"` is the starter config value. It allows applications to activate
   their windows after you have interacted with another window since they opened
   them.
 
-In a Gnoblin session, `"strict"` makes Mutter use its focus-stealing checks.
+`"smart"` and `"strict"` still load as the old names for `"allow"` and
+`"prevent"`. The old names will be removed in a later release.
+
+In a Gnoblin session, `"prevent"` makes Mutter use its focus-stealing checks.
 See [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/52-focus-transfer/0001-honour-app-activation.patch)
 for this session-specific behavior, or read
 [Mutter's focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/).
@@ -169,7 +178,7 @@ For example, use pointer-follow focus and declare two persistent workspaces:
 ```lua
 gnoblin.configure {
     window_management = {
-        focus_mode = "sloppy",
+        focus_mode = "hover",
     },
     workspaces = {
         {id = "main", name = "Main"},
@@ -210,8 +219,8 @@ This is schema pseudocode in Lua table form. `?` marks an optional field;
 ```lua
 gnoblin.configure {
     window_management = {
-        focus_mode = "click" | "sloppy" | "mouse"?,
-        focus_new_windows = "smart" | "strict"?,
+        focus_mode = "click" | "hover" | "hover-strict"?,
+        focus_new_windows = "allow" | "prevent"?,
         auto_maximize = boolean?,
         raise_on_click = boolean?,
         auto_raise = boolean?,

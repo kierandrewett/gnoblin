@@ -2013,10 +2013,12 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
             } else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
                 const char* string = g_variant_get_string(value, NULL);
                 if (g_str_equal(name, "focus-mode"))
-                    valid = g_str_equal(string, "click") || g_str_equal(string, "sloppy") ||
+                    valid = g_str_equal(string, "click") || g_str_equal(string, "hover") ||
+                            g_str_equal(string, "hover-strict") || g_str_equal(string, "sloppy") ||
                             g_str_equal(string, "mouse");
                 else if (g_str_equal(name, "focus-new-windows"))
-                    valid = g_str_equal(string, "smart") || g_str_equal(string, "strict");
+                    valid = g_str_equal(string, "allow") || g_str_equal(string, "prevent") ||
+                            g_str_equal(string, "smart") || g_str_equal(string, "strict");
                 else if (g_str_equal(name, "action-double-click-titlebar") ||
                          g_str_equal(name, "action-middle-click-titlebar") ||
                          g_str_equal(name, "action-right-click-titlebar")) {
@@ -2153,6 +2155,41 @@ static char* last_good_document_path(void) {
     return g_build_filename(g_get_user_state_dir(), "gnoblin", "last-good-config.gv", NULL);
 }
 
+/* Mutter reads some enum values by name and treats an unknown name as its fallback. A last-good document that an
+ * older Gnoblin saved can still hold the deprecated spellings, which would then be applied wrongly. Report them so the
+ * caller can refuse the document instead. */
+static gboolean document_has_deprecated_enum_values(GVariant* document) {
+    static const struct {
+        const char* section;
+        const char* group;
+        const char* key;
+        const char* old_values[3];
+    } checks[] = {
+        {"window-management", NULL, "focus-mode", {"sloppy", "mouse", NULL}},
+        {"window-management", NULL, "focus-new-windows", {"smart", "strict", NULL}},
+        {"input", "touchpad", "left-handed", {"mouse", NULL, NULL}},
+        {"input", "touchpad", "tap-button-map", {"lrm", "lmr", NULL}},
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(checks); i++) {
+        g_autoptr(GVariant) container =
+            g_variant_lookup_value(document, checks[i].section, G_VARIANT_TYPE_VARDICT);
+        if (container && checks[i].group) {
+            g_autoptr(GVariant) group =
+                g_variant_lookup_value(container, checks[i].group, G_VARIANT_TYPE_VARDICT);
+            g_variant_unref(container);
+            container = g_steal_pointer(&group);
+        }
+        const char* value = NULL;
+        if (!container || !g_variant_lookup(container, checks[i].key, "&s", &value))
+            continue;
+        for (guint j = 0; j < G_N_ELEMENTS(checks[i].old_values) && checks[i].old_values[j]; j++) {
+            if (g_str_equal(value, checks[i].old_values[j]))
+                return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 GVariant* gnoblin_config_load_last_good_document(const char* config_path, GError** error) {
     g_autofree char* cache_path = last_good_document_path();
     g_autofree char* directory = g_path_get_dirname(cache_path);
@@ -2214,6 +2251,12 @@ GVariant* gnoblin_config_load_last_good_document(const char* config_path, GError
     }
     if (!gnoblin_config_validate_document(document, error))
         return NULL;
+    if (document_has_deprecated_enum_values(document)) {
+        g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                            "saved Gnoblin configuration uses setting value names from an older "
+                            "Gnoblin and was not applied");
+        return NULL;
+    }
     return g_steal_pointer(&document);
 }
 

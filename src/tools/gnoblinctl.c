@@ -3835,10 +3835,13 @@ static void register_lua_cli_shortcut_record(lua_State* state, const char* metat
 static gboolean lua_cli_focus_policy_valid(JsonObject* object) {
     const char* focus_mode = member_string(object, "focus_mode", NULL);
     const char* focus_new_windows = member_string(object, "focus_new_windows", NULL);
-    if ((!focus_mode || (!g_str_equal(focus_mode, "click") && !g_str_equal(focus_mode, "sloppy") &&
-                         !g_str_equal(focus_mode, "mouse"))) ||
+    if ((!focus_mode ||
+         (!g_str_equal(focus_mode, "click") && !g_str_equal(focus_mode, "hover") &&
+          !g_str_equal(focus_mode, "hover-strict") && !g_str_equal(focus_mode, "sloppy") &&
+          !g_str_equal(focus_mode, "mouse"))) ||
         (!focus_new_windows ||
-         (!g_str_equal(focus_new_windows, "strict") && !g_str_equal(focus_new_windows, "smart"))))
+         (!g_str_equal(focus_new_windows, "prevent") && !g_str_equal(focus_new_windows, "allow") &&
+          !g_str_equal(focus_new_windows, "strict") && !g_str_equal(focus_new_windows, "smart"))))
         return FALSE;
 
     static const char* const boolean_fields[] = {"raise_on_click", "auto_raise",

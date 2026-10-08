@@ -285,7 +285,7 @@ Use `0` to return to the automatic value. The accepted values are listed in the
 A window from an app that is not the focused app can open behind the focused
 window.
 
-With `focus_new_windows = "strict"` set, the focused window stays in front
+With `focus_new_windows = "prevent"` set, the focused window stays in front
 and Mutter sets an attention flag on the new window. GNOME Shell turns that flag into a
 notification. Gnoblin has no shell, so nothing shows it.
 
@@ -304,18 +304,18 @@ end)
 Other windows from background apps stay behind the focused window. Check them
 with `gnoblinctl window list --json`; a hidden window has `"focused": false`.
 
-Password dialogs from the keyring or GPG are the common case. With `strict` they
+Password dialogs from the keyring or GPG are the common case. With `prevent` they
 open on top but without focus, so typing does nothing until you click the
-dialog. Remove the `strict` setting to use the default, `smart`, or show these
+dialog. Remove the `prevent` setting to use the default, `allow`, or show these
 prompts in your shell with the [prompt broker](/config/configure/prompts).
 
-The starter config uses `smart`, which lets an app take focus when it opens a
+The starter config uses `allow`, which lets an app take focus when it opens a
 window. A background app can then interrupt your typing. To keep focus where it
-is, set `strict`:
+is, set `prevent`:
 
 ```lua
 gnoblin.configure {
-    window_management = {focus_new_windows = "strict"},
+    window_management = {focus_new_windows = "prevent"},
 }
 ```
 

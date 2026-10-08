@@ -446,6 +446,28 @@ touchpad_enum_case "deprecated lmr" left lmr left left-middle-right
 touchpad_enum_case "new names" follow-mouse left-middle-right follow-mouse left-middle-right
 disable_config 99-test-touchpad-enums.lua
 
+echo "-- focus enum names"
+# sloppy, mouse, smart and strict are the deprecated spellings of hover, hover-strict, allow and prevent. They must
+# still load, and `focus policy` must report the new names.
+focus_enum_case() {
+    # focus_enum_case LABEL FOCUS_MODE FOCUS_NEW_WINDOWS EXPECTED_MODE EXPECTED_NEW_WINDOWS
+    printf 'gnoblin.configure {window_management = {focus_mode = "%s", focus_new_windows = "%s"}}\n' "$2" "$3" \
+        > "$CONFIG_DIR/99-test-focus-enums.lua"
+    if "$G" config reload >/dev/null 2>&1; then
+        echo "PASS focus enums $1 reload"
+    else
+        echo "FAIL focus enums $1 reload"
+        fail=$((fail + 1))
+    fi
+    policy=$("$G" focus policy 2>&1 | tr -d ' \n')
+    check "focus enums $1: focus_mode" "$policy" "\"focus_mode\":\"$4\""
+    check "focus enums $1: focus_new_windows" "$policy" "\"focus_new_windows\":\"$5\""
+}
+focus_enum_case "deprecated sloppy and smart" sloppy smart hover allow
+focus_enum_case "deprecated mouse and strict" mouse strict hover-strict prevent
+focus_enum_case "new names" hover-strict allow hover-strict allow
+disable_config 99-test-focus-enums.lua
+
 echo "-- stability"
 check "compositor alive" "$(pgrep -x gnoblin | wc -l)" "4"
 coredump_after="$(coredumpctl list --no-pager 2>/dev/null | tail -1)"

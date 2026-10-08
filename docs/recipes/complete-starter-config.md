@@ -24,7 +24,7 @@ gnoblin.window_rule {
 
 | Setting             | Accepted values                     | Default   | Effect                                                                                 |
 | ------------------- | ----------------------------------- | --------- | -------------------------------------------------------------------------------------- |
-| `focus_mode`        | `"click"`, `"sloppy"`, or `"mouse"` | `"click"` | Selects when pointer or click input changes focus.                                     |
+| `focus_mode`        | `"click"`, `"hover"`, or `"hover-strict"` | `"click"` | Selects when pointer or click input changes focus.                                     |
 | `binding`           | One GTK accelerator string          | Not set   | Runs the shortcut when pressed. See [accelerator syntax](/guides/shortcuts#key-names). |
 | `command`           | Nonempty array of strings           | Not set   | Executable followed by its arguments; Gnoblin does not expand shell syntax.            |
 | `focused`           | Boolean                             | Not set   | `false` matches application windows without focus.                                     |

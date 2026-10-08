@@ -36,7 +36,7 @@ The included file uses the same API:
 
 ```lua
 gnoblin.configure {
-    window_management = {focus_mode = "sloppy"},
+    window_management = {focus_mode = "hover"},
 }
 ```
 
@@ -65,7 +65,7 @@ are applied last.
 Repeated `gnoblin.configure` calls keep settings you have not changed:
 
 ```lua
-gnoblin.configure {window_management = {focus_mode = "sloppy"}}
+gnoblin.configure {window_management = {focus_mode = "hover"}}
 gnoblin.configure {window_management = {raise_on_click = true}}
 ```
 
@@ -105,7 +105,7 @@ For ordinary config files, `gnoblin.load` is enough.
 In `appearance.lua`:
 
 ```lua
-return {window_management = {focus_mode = "sloppy"}}
+return {window_management = {focus_mode = "hover"}}
 ```
 
 In `init.lua`:

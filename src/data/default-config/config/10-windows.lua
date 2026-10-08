@@ -1,8 +1,8 @@
 -- Window behavior, workspaces and the built-in native frame.
 gnoblin.configure {
     window_management = {
-        focus_mode = "click", -- "click", "sloppy", "mouse"
-        focus_new_windows = "smart", -- windows started from a launcher take focus; "strict" keeps focus where it is.
+        focus_mode = "click", -- "click", "hover", "hover-strict"
+        focus_new_windows = "allow", -- windows started from a launcher take focus; "prevent" keeps focus where it is.
         raise_on_click = true,
         auto_raise = false,
         auto_raise_delay = 500, -- milliseconds, 0..10000
