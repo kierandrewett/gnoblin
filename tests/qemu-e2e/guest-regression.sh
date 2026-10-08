@@ -510,6 +510,37 @@ else
 fi
 disable_config 99-test-typo.lua
 
+# A misspelled protocol name is logged. Every documented protocol name must pass without a warning.
+cat > "$CONFIG_DIR/99-test-protocol-typo.lua" <<'LUA'
+gnoblin.configure {
+    protocols = {
+        wlr_layer_shell = true, ext_foreign_toplevel_list = true, wlr_foreign_toplevel_management = true,
+        xdg_decoration = true, kde_server_decoration = true, window_frame_renderer = true, wlr_screencopy = true,
+        ext_background_effect_v1 = true, blur_fade = true, ext_data_control = true, ext_idle_notify = true,
+        wlr_gamma_control = true, wlr_output_power_management = true, ext_session_lock = true,
+        wlr_screencpy = false,
+    },
+}
+LUA
+protocol_lines_before=$(sudo journalctl -b --no-pager 2>/dev/null | grep -c 'gnoblin.configure: unknown protocol' || true)
+if "$G" config reload >/dev/null 2>&1; then
+    echo "PASS a reload with an unknown protocol still succeeds"
+else
+    echo "FAIL a reload with an unknown protocol still succeeds"
+    fail=$((fail + 1))
+fi
+sleep 1
+protocol_log=$(sudo journalctl -b --no-pager 2>/dev/null | grep 'gnoblin.configure: unknown protocol')
+protocol_lines_after=$(printf '%s\n' "$protocol_log" | grep -c 'unknown protocol' || true)
+check "the log names the unknown protocol" "$protocol_log" 'unknown protocol "wlr-screencpy"'
+if [ "$((protocol_lines_after - protocol_lines_before))" = 1 ]; then
+    echo "PASS no documented protocol name is reported as unknown"
+else
+    echo "FAIL the reload logged $((protocol_lines_after - protocol_lines_before)) unknown protocols, expected 1"
+    fail=$((fail + 1))
+fi
+disable_config 99-test-protocol-typo.lua
+
 echo "-- stability"
 check "compositor alive" "$(pgrep -x gnoblin | wc -l)" "4"
 coredump_after="$(coredumpctl list --no-pager 2>/dev/null | tail -1)"

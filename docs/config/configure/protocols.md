@@ -28,6 +28,10 @@ gnoblin.configure {protocols = {wlr_screencopy = false}}
 
 See the [protocol catalog](/wayland-protocols).
 
+A name that is not in the list above does nothing. The reload still succeeds, and
+Gnoblin writes `gnoblin.configure: unknown protocol "name" is ignored` to the
+session log.
+
 ## Type definition
 
 Protocol fields are optional; list only the protocols you want to override.

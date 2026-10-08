@@ -3771,13 +3771,31 @@ static void warn_unknown_configure_sections(lua_State* state, int table) {
         "protocols", "frame-renderers", "cursor", "xwayland", "shortcuts", "autostart", "workspaces",
         "window-rules", "animations", NULL,
     };
+    static const char* const known_protocols[] = {
+        "wlr-layer-shell", "ext-foreign-toplevel-list", "wlr-foreign-toplevel-management", "xdg-decoration",
+        "kde-server-decoration", "window-frame-renderer", "wlr-screencopy", "ext-background-effect-v1",
+        "blur-fade", "ext-data-control", "ext-idle-notify", "wlr-gamma-control",
+        "wlr-output-power-management", "ext-session-lock", NULL,
+    };
     table = lua_absindex(state, table);
     lua_pushnil(state);
     while (lua_next(state, table)) {
-        if (lua_type(state, -2) == LUA_TSTRING && !g_strv_contains(known, lua_tostring(state, -2)))
+        const char* section = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
+        if (section && !g_strv_contains(known, section))
             g_warning("gnoblin.configure: unknown section \"%s\" is ignored; check the spelling against "
                       "the documented sections",
-                      lua_tostring(state, -2));
+                      section);
+        if (section && !strcmp(section, "protocols") && lua_istable(state, -1)) {
+            lua_pushnil(state);
+            while (lua_next(state, -2)) {
+                if (lua_type(state, -2) == LUA_TSTRING &&
+                    !g_strv_contains(known_protocols, lua_tostring(state, -2)))
+                    g_warning("gnoblin.configure: unknown protocol \"%s\" is ignored; check the spelling "
+                              "against the documented protocol names",
+                              lua_tostring(state, -2));
+                lua_pop(state, 1);
+            }
+        }
         lua_pop(state, 1);
     }
 }
