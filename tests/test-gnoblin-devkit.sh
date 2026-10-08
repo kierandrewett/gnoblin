@@ -213,8 +213,8 @@ printf 'GSETTINGS:workspace-names-untouched\n'
 # The idle service is a systemd user unit in a real session. A nested devkit session has no systemd user manager and
 # its private bus cannot activate the unit, so nothing would report session activity. Run the service by hand on the
 # private bus; it claims org.freedesktop.ScreenSaver, and the session-activity snapshot and event follow.
-# Keep its output in the devkit log: when no activity event arrives, the reason is in these lines.
-"$GNOBLIN_PREFIX/libexec/gnoblin-idle" > >(sed -u 's/^/GNOBLIN_IDLE: /') 2>&1 &
+# Keep its output in a file; the test prints it when no activity event arrives.
+"$GNOBLIN_PREFIX/libexec/gnoblin-idle" > "$XDG_RUNTIME_DIR/gnoblin-idle.log" 2>&1 &
 idle_service_pid=$!
 trap 'kill "$idle_service_pid" 2>/dev/null || true' EXIT
 sleep 1
@@ -977,8 +977,10 @@ done
 printf '%s\n' 'PASS: Lua layer lifecycle callbacks see current layer snapshots'
 if ! grep -Fq 'LUA_API:activity-event-snapshot' "$fixture_root/state/devkit-last.log"; then
     echo 'Missing Lua session activity event proof in the devkit runtime log' >&2
-    echo '--- idle service and activity lines' >&2
-    grep -E 'GNOBLIN_IDLE|activity' "$fixture_root/state/devkit-last.log" >&2 || echo '(none)' >&2
+    echo '--- idle service output' >&2
+    cat "$XDG_RUNTIME_DIR/gnoblin-idle.log" >&2 || echo '(no idle service log)' >&2
+    echo '--- activity lines in the runtime log' >&2
+    grep -E 'activity' "$fixture_root/state/devkit-last.log" >&2 || echo '(none)' >&2
     echo '--- last lines of the log' >&2
     tail -n 80 "$fixture_root/state/devkit-last.log" >&2
     exit 1
