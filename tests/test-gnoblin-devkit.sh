@@ -1334,22 +1334,48 @@ gnoblin.configure {
     keybindings = {
         wm = {panel_run_dialog = {"<Super>r"}},
     },
+    cursor = {size = 55},
 }
 LUA
-if unsupported_action_output="$(
+# A config that fails at login does not stop the session: Gnoblin falls back to the last good configuration (docs/config/
+# load.md). The valid cursor size in the same file is lost with it, and a reload reports the rejected binding.
+unsupported_action_exec=$(
+    cat <<'SCRIPT'
+set -uo pipefail
+for _ in {1..100}; do
+    gnoblinctl status 2>/dev/null | grep -q '"state":"running"' && break
+    sleep 0.05
+done
+sleep 2
+printf 'RELOAD_OUTPUT:%s\n' "$(gnoblinctl config reload 2>&1 | head -2 | tr '\n' ' ')"
+printf 'CURSOR_AFTER:%s\n' "$(gnoblinctl --json config show 2>&1 | python3 -c 'import sys,json; print(json.load(sys.stdin).get("cursor"))' 2>&1)"
+SCRIPT
+)
+unsupported_action_output="$(
     GNOBLIN_STATE_DIR="$fixture_root/unsupported-action-state" \
         GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
         GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
         GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
         GNOBLIN_DEVKIT_CONFIG_SOURCE="$unsupported_action_fixture" \
-        timeout 45 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1
-)"; then
-    echo 'Keybinding action without a Mutter handler unexpectedly started the Gnoblin session' >&2
+        GNOBLIN_DEVKIT_EXEC="$unsupported_action_exec" \
+        timeout 60 bash "$ROOT/scripts/run-gnoblin-devkit.sh" 2>&1
+)" || {
+    printf '%s\n' "$unsupported_action_output" >&2
+    echo 'A config with a rejected keybinding stopped the session instead of falling back' >&2
     exit 1
-fi
-grep -q 'keybinding has no executable Mutter handler: wm.panel_run_dialog' \
-    <<<"$unsupported_action_output"
-printf '%s\n' 'PASS: startup rejects keybinding actions without a Mutter handler'
+}
+grep -q 'RELOAD_OUTPUT:.*keybinding has no action in this Mutter build: wm.panel_run_dialog' \
+    <<<"$unsupported_action_output" || {
+    printf '%s\n' "$unsupported_action_output" >&2
+    echo 'A reload did not report the rejected keybinding' >&2
+    exit 1
+}
+grep -q 'CURSOR_AFTER:{}' <<<"$unsupported_action_output" || {
+    printf '%s\n' "$unsupported_action_output" >&2
+    echo 'The valid setting from the failed config was applied; the fallback should have dropped it' >&2
+    exit 1
+}
+printf '%s\n' 'PASS: a config with a rejected keybinding falls back and keeps the session running'
 
 released_binding_fixture="$fixture_root/released-keybinding-config"
 mkdir -p "$released_binding_fixture/gnoblin"
