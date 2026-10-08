@@ -40,21 +40,22 @@ jobs:
             xorg-x11-server-Xwayland \
             'pkgconfig(atk)' 'pkgconfig(cairo)' 'pkgconfig(colord)' \
             'pkgconfig(egl)' 'pkgconfig(fontconfig)' 'pkgconfig(fribidi)' \
-            'pkgconfig(gbm)' 'pkgconfig(gio-unix-2.0)' 'pkgconfig(gl)' \
+            'pkgconfig(gbm)' 'pkgconfig(gcr-4)' 'pkgconfig(gio-unix-2.0)' 'pkgconfig(gl)' \
             'pkgconfig(glesv2)' 'pkgconfig(glib-2.0)' \
             'pkgconfig(gmodule-no-export-2.0)' 'pkgconfig(gobject-2.0)' \
             'pkgconfig(gobject-introspection-1.0)' \
             'pkgconfig(graphene-gobject-1.0)' \
             'pkgconfig(gsettings-desktop-schemas)' 'pkgconfig(gtk4)' \
             'pkgconfig(gtk4-unix-print)' 'pkgconfig(gudev-1.0)' \
-            'pkgconfig(harfbuzz)' 'pkgconfig(lcms2)' \
+            'pkgconfig(harfbuzz)' 'pkgconfig(ibus-1.0)' 'pkgconfig(lcms2)' \
             'pkgconfig(libadwaita-1)' 'pkgconfig(libcanberra)' \
             'pkgconfig(libdisplay-info)' 'pkgconfig(libdrm)' \
             'pkgconfig(libei-1.0)' 'pkgconfig(libeis-1.0)' \
             'pkgconfig(libinput)' 'pkgconfig(libpipewire-0.3)' \
             'pkgconfig(libstartup-notification-1.0)' 'pkgconfig(libudev)' \
             'pkgconfig(libwacom)' 'pkgconfig(pango)' 'pkgconfig(pangocairo)' \
-            'pkgconfig(pixman-1)' 'pkgconfig(udev)' \
+            'pkgconfig(pixman-1)' 'pkgconfig(polkit-agent-1)' \
+            'pkgconfig(polkit-gobject-1)' 'pkgconfig(udev)' \
             'pkgconfig(wayland-client)' 'pkgconfig(wayland-cursor)' \
             'pkgconfig(wayland-egl)' 'pkgconfig(wayland-protocols)' \
             'pkgconfig(wayland-server)' 'pkgconfig(x11)' 'pkgconfig(x11-xcb)' \
