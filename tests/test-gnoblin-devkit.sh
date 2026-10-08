@@ -1438,8 +1438,8 @@ vec4 gnoblin_effect(vec4 color, vec2 uv) {
 GLSL
 effect_ownership_output="$(
     GNOBLIN_DEVKIT_KEEP_SESSION=1 \
-    XDG_CONFIG_DIRS="$fixture_root/xdg" \
-    GSETTINGS_BACKEND=memory \
+        XDG_CONFIG_DIRS="$fixture_root/xdg" \
+        GSETTINGS_BACKEND=memory \
         GNOBLIN_STATE_DIR="$fixture_root/effect-ownership-state" \
         XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
         GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
