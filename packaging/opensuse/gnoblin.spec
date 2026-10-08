@@ -37,7 +37,7 @@ Requires:       gsettings-desktop-schemas >= 49.1
 Requires:       json-glib
 Requires:       libinput10 >= 1.30
 Requires:       pipewire >= 1.4.11
-Requires:       systemd-libs
+Requires:       systemd
 Requires:       libwayland-client0 >= 1.25
 Requires:       wireplumber
 
