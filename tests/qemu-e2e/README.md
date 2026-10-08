@@ -41,6 +41,7 @@ The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled
 ## Reload and pointer checks
 
 - `run-resize-drag.sh`: Super + right-button drag resizes from the nearest corner, checked in all four quadrants.
+- `run-layer-unplug.sh`: a waybar bar pinned to the second monitor is a top layer surface with an exclusive zone of 30. When that monitor is disabled its surface is closed and the compositor and waybar keep running. When the monitor returns waybar puts the bar back.
 - `run-monitor-unplug.sh`: a window on the second monitor is not lost when that monitor is disabled. It moves to the remaining monitor, lies fully inside it with its size kept, and stays reachable when the monitor returns. Where it ends up after the return is reported and not asserted.
 - `run-monitor-move.sh`: Super+Shift+Right and Super+Shift+Left move a window to the next and previous monitor with its size and position kept, and Super+Up maximizes it to the area of the monitor it is on.
 - `run-edge-tiling.sh`: dragging a titlebar to the right edge tiles the window to the right half, dragging to the top edge maximizes it, and dragging a tiled window away gives it back its earlier size. Runs on one monitor and restores both.
