@@ -545,22 +545,32 @@ static gboolean user_systemd_available(void) {
     return owner != NULL;
 }
 
-static void reset_online_accounts_services(void) {
+/* D-Bus-activated services of the user manager that outlive the session. dbus-broker starts each as
+ * a transient unit with no link to the session, and the service waits for a GNOME session manager
+ * to end it. Gnoblin has none, so without this each login would leave one more process running in a
+ * lingering user manager. */
+static const char* const stale_service_patterns[] = {
+    "dbus-*-org.gnome.OnlineAccounts@*.service",
+    "dbus-*-org.gnome.Identity@*.service",
+    "dbus-*-org.a11y.atspi.Registry@*.service",
+    NULL,
+};
+
+static void stop_stale_dbus_services(void) {
     if (!session_systemd_available)
         return;
-    const char* list[] = {"systemctl",
-                          "--user",
-                          "list-units",
-                          "--all",
-                          "--plain",
-                          "--no-legend",
-                          "dbus-*-org.gnome.OnlineAccounts@*.service",
-                          "dbus-*-org.gnome.Identity@*.service",
-                          NULL};
+    g_autoptr(GPtrArray) list = g_ptr_array_new();
+    const char* const list_head[] = {"systemctl", "--user",      "list-units", "--all",
+                                     "--plain",   "--no-legend", NULL};
+    for (guint i = 0; list_head[i]; i++)
+        g_ptr_array_add(list, (gpointer)list_head[i]);
+    for (guint i = 0; stale_service_patterns[i]; i++)
+        g_ptr_array_add(list, (gpointer)stale_service_patterns[i]);
+    g_ptr_array_add(list, NULL);
     gchar* output = NULL;
     gint status = 0;
-    if (!g_spawn_sync(NULL, (char**)list, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, &output, NULL,
-                      &status, NULL) ||
+    if (!g_spawn_sync(NULL, (char**)list->pdata, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, &output,
+                      NULL, &status, NULL) ||
         !WIFEXITED(status) || WEXITSTATUS(status) != 0) {
         g_free(output);
         return;
@@ -570,9 +580,12 @@ static void reset_online_accounts_services(void) {
     for (guint i = 0; lines[i]; i++) {
         g_auto(GStrv) fields = g_strsplit_set(lines[i], " \t", 0);
         const char* unit = fields[0];
-        if (!unit || !*unit ||
-            (!g_pattern_match_simple("dbus-*-org.gnome.OnlineAccounts@*.service", unit) &&
-             !g_pattern_match_simple("dbus-*-org.gnome.Identity@*.service", unit)))
+        if (!unit || !*unit)
+            continue;
+        gboolean stale = FALSE;
+        for (guint j = 0; stale_service_patterns[j]; j++)
+            stale = stale || g_pattern_match_simple(stale_service_patterns[j], unit);
+        if (!stale)
             continue;
         const char* stop[] = {"systemctl", "--user", "stop", unit, NULL};
         run_command(stop, TRUE);
@@ -658,6 +671,7 @@ static void session_cleanup(void) {
                            NULL};
     if (session_systemd_available)
         run_command(stop, FALSE);
+    stop_stale_dbus_services();
     run_activation_update(unset);
     if (session_systemd_available)
         run_command(clear, FALSE);
@@ -778,7 +792,7 @@ static gboolean activate_session(void) {
                                         "xdg-desktop-portal.service", NULL};
         run_command(restart_portal, FALSE);
     }
-    reset_online_accounts_services();
+    stop_stale_dbus_services();
     if (session_systemd_available) {
         const char* stop_old[] = {"systemctl", "--user", "stop",
                                   "org.gnome.SettingsDaemon.ScreensaverProxy.service", NULL};
