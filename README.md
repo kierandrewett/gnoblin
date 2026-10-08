@@ -40,6 +40,10 @@ Select Gnoblin at login; the regular GNOME session stays available.
   bridge expose supported runtime state and actions.
 - **External desktop controls.** A separate shell or desktop clients provide
   bars, docks, launchers, notifications and other visible controls.
+- **Input methods.** Gnoblin includes an IBus input method, so GTK4 and Qt apps on
+  Wayland get composed text from engines such as Russian transliteration or
+  Japanese. It needs a running `ibus-daemon` and an installed engine. See
+  [type with an input method](docs/config/configure/input_sources.md#type-with-an-input-method).
 - **Prompts for your shell.** Gnoblin can act as the polkit agent and can
   serve keyring and GPG passphrase prompts. Each request reaches Lua as an
   event, so your shell draws the dialog and sends the answer back. Both are

@@ -124,25 +124,29 @@ Configure those separately with
 
 ## Type with an input method {#type-with-an-input-method}
 
-An IBus source selects an engine, but Gnoblin does not provide an input-method
-bridge. It offers `text-input-v3` without `input-method-v2`. An app that relies
-on Wayland text input alone gets no composition and types the plain keys. GNOME
-Shell supplies that bridge; Gnoblin does not.
+Gnoblin includes an IBus input method. Apps that use Wayland `text-input-v3`,
+such as GTK4 and Qt on Wayland, get preedit and committed text from the IBus
+engine you select, with no toolkit module or `GTK_IM_MODULE` setting. Gnoblin
+does not start the IBus daemon. Without a running daemon, or without an active
+engine, every key goes to the app unchanged.
 
-GTK apps can use the toolkit's own IBus module instead. It talks to the IBus
-daemon directly and does not need the compositor:
-
-1. Install `ibus`, an engine and the GTK modules. On Fedora, for the Russian
-   transliteration engine used here:
+1. Install `ibus` and an engine. On Fedora, for the Russian transliteration
+   engine used here:
 
    ```sh
-   sudo dnf install ibus ibus-m17n ibus-gtk3 ibus-gtk4
+   sudo dnf install ibus ibus-m17n
    ```
 
-2. Start the daemon in your session before you type:
+2. Start the daemon in your session. This autostart entry starts it at login and
+   stops it when you remove the entry or log out. Leave out the `-d` flag, which
+   makes the daemon detach from the process group that Gnoblin stops:
 
-   ```sh
-   ibus-daemon -drx --panel disable
+   ```lua
+   gnoblin.configure {
+       autostart = {
+           ibus = {command = {"ibus-daemon", "-r", "-x"}},
+       },
+   }
    ```
 
 3. Configure the source with the engine ID from `ibus list-engine --name-only`:
@@ -158,17 +162,14 @@ daemon directly and does not need the compositor:
    }
    ```
 
-4. Start the app with the IBus module selected:
+4. Select the IBus source and type `privet` into a GTK4 text field. The text
+   becomes `привет`.
 
-   ```sh
-   GTK_IM_MODULE=ibus gnome-text-editor
-   ```
-
-Type `privet`. With the engine above, the text becomes `привет`. Without
-`GTK_IM_MODULE=ibus` the same keys give `privet`.
-
-This section covers GTK apps. Qt and X11 apps use their own IBus settings, which
-are not described here.
+Builds made without the IBus development files (`ibus-devel` on Fedora) leave
+this input method out. In that case a GTK app can use the toolkit's own IBus
+module instead. Install `ibus-gtk3` and `ibus-gtk4`, and start the app with
+`GTK_IM_MODULE=ibus`. Qt and X11 apps use their own IBus settings, which are not
+described here.
 
 ## Type definition
 

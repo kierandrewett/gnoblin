@@ -53,9 +53,9 @@ custom GeoClue agent IDs, include them in the effective whitelist too.
 Run `gnoblinctl privacy` after restarting GeoClue. The location source should
 report `inactive` when no application is using it.
 
-For IBus input methods, install `ibus`, an engine and the GTK modules with
-`sudo dnf install ibus ibus-gtk3 ibus-gtk4`. The basic session needs only
-`ibus-libs`. Gnoblin never starts the IBus daemon. See
+For IBus input methods, install `ibus` and an engine with
+`sudo dnf install ibus ibus-m17n`. The basic session needs only `ibus-libs`.
+Gnoblin includes the input method but never starts the IBus daemon. See
 [Type with an input method](/config/configure/input_sources#type-with-an-input-method).
 
 ## 2. Install a shell

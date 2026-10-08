@@ -9,6 +9,8 @@ session services in this tree. It does not launch GNOME Shell or require GJS.
 - `compositor/` — the Gnoblin Mutter plugin entry point.
 - `config/` — the Lua configuration loader, parser, shared schema, and pattern
   matching used by the runtime.
+- `input-method/` — the IBus input method that gives Wayland text-input clients
+  preedit and commit, built when `libibus` is available.
 - `native-control/` — the private runtime protocol, cached configuration
   snapshots, and native input routing shared with the compositor.
   - `gnoblin-control-internal.h` — shared state struct and helper declarations for the split files.

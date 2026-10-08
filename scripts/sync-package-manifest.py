@@ -159,7 +159,7 @@ pkgdesc='Standalone Gnoblin desktop session'
 arch=('x86_64')
 url='{PROJECT_URL}'
 license=('GPL-2.0-or-later')
-makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gcr-4' 'gettext' 'glib2-devel' 'gobject-introspection' 'gtk4>=4.14.0' 'json-glib' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' '{lua_build_requirement}' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
+makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gcr-4' 'gettext' 'ibus' 'glib2-devel' 'gobject-introspection' 'gtk4>=4.14.0' 'json-glib' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' '{lua_build_requirement}' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
 depends=({" ".join(dependencies)})
 conflicts=({" ".join(f"'{name}'" for name in replaced_packages)})
 replaces=({" ".join(f"'{name}'" for name in replaced_packages)})

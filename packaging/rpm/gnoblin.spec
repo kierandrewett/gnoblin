@@ -62,6 +62,7 @@ BuildRequires: pam-devel
 BuildRequires: pkgconfig(colord) >= %{colord_version}
 BuildRequires: gnome-desktop4-devel
 BuildRequires: pkgconfig(gcr-4)
+BuildRequires: pkgconfig(ibus-1.0) >= 1.5.33
 BuildRequires: pkgconfig(glib-2.0) >= %{glib_version}
 BuildRequires: pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
 BuildRequires: pkgconfig(sm)

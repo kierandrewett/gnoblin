@@ -27,6 +27,9 @@
 #include "core/gnoblin-animation.h"
 #include "core/gnoblin-native-control.h"
 #include "wayland/meta-wayland-session-lock.h"
+#ifdef HAVE_IBUS
+#include "backends/gnoblin-ibus-input-method.h"
+#endif
 
 #include "gnoblin-plugin-ui.h"
 
@@ -136,6 +139,12 @@ static void gnoblin_plugin_start(MetaPlugin* plugin) {
     MetaBackend* backend = meta_context_get_backend(context);
     MetaCompositor* compositor = meta_display_get_compositor(display);
     MetaMonitorManager* monitor_manager = meta_backend_get_monitor_manager(backend);
+
+#ifdef HAVE_IBUS
+    /* GNOME Shell supplies the IBus bridge for text-input-v3 clients. Gnoblin has no shell,
+     * so the compositor installs its own. Without ibus-daemon it passes every key through. */
+    gnoblin_ibus_input_method_install(backend);
+#endif
 
     self->background_group = meta_background_group_new();
     clutter_actor_insert_child_below(meta_compositor_get_window_group(compositor),

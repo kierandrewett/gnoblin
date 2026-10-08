@@ -51,6 +51,7 @@ BuildRequires:  pkgconfig(atk)
 BuildRequires:  pkgconfig(colord)
 BuildRequires:  pkgconfig(gbm)
 BuildRequires:  pkgconfig(gcr-4)
+BuildRequires:  pkgconfig(ibus-1.0) >= 1.5.33
 BuildRequires:  pkgconfig(glesv2)
 BuildRequires:  pkgconfig(glib-2.0) >= %{glib_version}
 BuildRequires:  pkgconfig(glycin-2) >= 2.0.beta.2
