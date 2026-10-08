@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Guest: helper for run-config-fallback.sh. Usage: guest-config-fallback.sh install | read | clean
 #
-# install writes a config with one invalid keybinding and one valid setting. read reports the session state after a
-# restart. clean removes the test file.
+# install writes a config with a Lua syntax error. Nothing in it can be salvaged, so the session must fall back to the
+# last good configuration. (A single invalid setting is ignored instead; see run-partial-recovery.sh.) read reports
+# the session state after a restart. clean removes the test file.
 set -u
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
@@ -11,7 +12,7 @@ F="$HOME/.config/gnoblin/config/99-test-config-fallback.lua"
 
 case "${1:-}" in
     install)
-        printf 'gnoblin.configure {keybindings = {wm = {panel_run_dialog = {"<Super>r"}}}, cursor = {size = 55}}\n' > "$F"
+        printf 'gnoblin.configure {cursor = {size = 55}\n' > "$F"
         ;;
     read)
         echo "compositors=$(pgrep -x gnoblin | wc -l)"

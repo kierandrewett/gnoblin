@@ -383,6 +383,8 @@ typedef struct _RuntimeReload {
     gboolean sent;
     gboolean startup;
     gboolean saved_fallback;
+    /* Messages for settings that were ignored because they are invalid. NULL when nothing was ignored. */
+    GPtrArray* ignored;
 } RuntimeReload;
 
 static gboolean restart_active_portal_service(GError** error) {
@@ -902,6 +904,7 @@ static void runtime_reload_free(RuntimeReload* reload) {
         g_source_remove(reload->timeout_id);
     g_free(reload->path);
     g_clear_pointer(&reload->document, g_variant_unref);
+    g_clear_pointer(&reload->ignored, g_ptr_array_unref);
     g_free(reload);
 }
 
@@ -951,6 +954,18 @@ static void runtime_reload_finish(Runtime* runtime, gboolean commit, const char*
             runtime->recovery_snapshot = FALSE;
         set_config_fallback_marker(runtime->config_fallback, reload->saved_fallback,
                                    runtime->startup_failure);
+        if (reload->ignored && reload->ignored->len > 0) {
+            /* The rest of the configuration is active. Say plainly what was left out, in the session log and in
+             * the notice the panel reads. */
+            g_autoptr(GString) notice =
+                g_string_new("Some settings were ignored because they are invalid:");
+            for (guint i = 0; i < reload->ignored->len; i++) {
+                const char* line = g_ptr_array_index(reload->ignored, i);
+                g_printerr("gnoblin: %s\n", line);
+                g_string_append_printf(notice, "\n%s", line);
+            }
+            append_config_notice(notice->str);
+        }
         g_autoptr(GError) save_error = NULL;
         if (!recovered_snapshot &&
             !gnoblin_config_save_last_good_document(reload->path, reload->document,
@@ -1788,6 +1803,7 @@ static gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVarian
         } else {
             g_autofree char* path = gnoblin_config_path();
             g_autoptr(GVariant) candidate = NULL;
+            g_autoptr(GPtrArray) ignored_settings = NULL;
             if (startup_request && runtime->recovery_snapshot) {
                 candidate = gnoblin_config_load_runtime_defaults(NULL, NULL, &api_error);
             } else if (startup_request && runtime->startup_saved_pending) {
@@ -1795,6 +1811,11 @@ static gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVarian
                 if (saved)
                     candidate = gnoblin_config_load_runtime_fallback(path, saved, NULL, NULL,
                                                                     &api_error);
+            } else if (startup_request) {
+                /* At login keep every valid setting and ignore only the broken ones. A reload stays strict for now:
+                 * a failed reload keeps the active config and reports the error. */
+                candidate = gnoblin_config_load_runtime_salvaged(path, NULL, NULL, &ignored_settings,
+                                                                 &api_error);
             } else {
                 candidate = gnoblin_config_load_runtime(path, NULL, NULL, &api_error);
             }
@@ -1811,6 +1832,7 @@ static gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVarian
                     reload->request_id = request_id;
                     reload->startup = startup_request;
                     reload->saved_fallback = startup_request && runtime->startup_saved_pending;
+                    reload->ignored = g_steal_pointer(&ignored_settings);
                     reload->generation = gnoblin_config_deferred_runtime_generation();
                     reload->path = g_strdup(path);
                     reload->document = g_variant_ref(candidate);
@@ -2429,6 +2451,7 @@ static int runtime_worker_main(int argc, char** argv) {
         }
     }
     g_autoptr(GVariant) document = NULL;
+    g_autoptr(GPtrArray) ignored_settings = NULL;
     if (recovery_snapshot) {
         config_fallback = TRUE;
         g_autofree char* previous_notice = config_recovery_notice();
@@ -2447,7 +2470,9 @@ static int runtime_worker_main(int argc, char** argv) {
         /* Native bootstrap never receives unaccepted user settings. */
         document = gnoblin_config_load_runtime_defaults(&paths, &directories, &error);
     } else {
-        document = gnoblin_config_load_runtime(config_path, &paths, &directories, &error);
+        /* Keep every valid setting. Only a broken key or list entry is ignored and reported below. */
+        document = gnoblin_config_load_runtime_salvaged(config_path, &paths, &directories,
+                                                        &ignored_settings, &error);
     }
     if (!document && !startup_recovery) {
         g_autofree char* failure = g_strdup(error ? error->message : "invalid configuration");
@@ -2484,6 +2509,17 @@ static int runtime_worker_main(int argc, char** argv) {
     /* Publish before native bootstrap, rather than only after HELLO. */
     if (config_fallback)
         set_config_fallback_marker(TRUE, config_fallback_last_good, config_fallback_error);
+    if (ignored_settings && ignored_settings->len > 0) {
+        /* The rest of the configuration is active. Say plainly what was left out, in the session log and in the
+         * notice the panel reads. */
+        g_autoptr(GString) notice = g_string_new("Some settings were ignored because they are invalid:");
+        for (guint i = 0; i < ignored_settings->len; i++) {
+            const char* line = g_ptr_array_index(ignored_settings, i);
+            g_printerr("gnoblin: %s\n", line);
+            g_string_append_printf(notice, "\n%s", line);
+        }
+        append_config_notice(notice->str);
+    }
     gnoblin_config_finish_load(TRUE);
     guint64 revision = gnoblin_config_settings_revision();
 

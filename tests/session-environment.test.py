@@ -60,7 +60,7 @@ class SessionEnvironmentTests(unittest.TestCase):
         worker = runtime[
             runtime.index("static int runtime_worker_main(") : runtime.index("static GPid spawn_runtime_worker(")
         ]
-        self.assertLess(worker.index("gnoblin_config_load_runtime("), worker.index("send_config(&runtime, document"))
+        self.assertLess(worker.index("gnoblin_config_load_runtime_salvaged("), worker.index("send_config(&runtime, document"))
         self.assertLess(worker.index("send_config(&runtime, document"), worker.index("const guint8 started = 2;"))
         self.assertNotIn('install -Dm755 "$GNOBLIN_RUNTIME_BINARY"', installer)
         verify = (ROOT / ".github/workflows/verify.yml").read_text()

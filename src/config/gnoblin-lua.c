@@ -6774,8 +6774,10 @@ static LuaRuntime* lua_runtime_new(const char* path, GError** error) {
     return runtime;
 }
 
-GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrArray** directories,
-                                      GError** error) {
+static GVariant* load_runtime_impl(const char* path, GPtrArray** paths, GPtrArray** directories,
+                                   gboolean salvage, GPtrArray** ignored, GError** error) {
+    if (ignored)
+        *ignored = NULL;
     GStatBuf config_stat;
     if (g_lstat(path, &config_stat) != 0 && errno == ENOENT)
         return gnoblin_config_load_runtime_defaults(paths, directories, error);
@@ -6796,6 +6798,28 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
     // The builder returns a floating variant. Own it before exposing another
     // reference to the supervisor; otherwise a later event can unref a stale value.
     runtime->document = run.result ? g_variant_ref_sink(g_steal_pointer(&run.result)) : NULL;
+    if (runtime->document && salvage) {
+        /* Keep every valid setting; only the broken keys and entries are ignored. */
+        g_autoptr(GError) validation_error = NULL;
+        if (!gnoblin_config_validate_document(runtime->document, &validation_error)) {
+            g_autoptr(GError) salvage_error = NULL;
+            g_autoptr(GVariant) repaired =
+                gnoblin_config_salvage_document(runtime->document, ignored, &salvage_error);
+            if (!repaired) {
+                g_propagate_error(error, g_steal_pointer(&salvage_error));
+                lua_runtime_free(runtime);
+                return NULL;
+            }
+            g_clear_pointer(&runtime->config.settings_document, g_variant_unref);
+            runtime->config.settings_document = g_variant_ref(repaired);
+            g_clear_pointer(&runtime->document, g_variant_unref);
+            runtime->document = g_variant_ref(repaired);
+            lua_getglobal(runtime->state, "gnoblin");
+            push_variant(runtime->state, repaired);
+            lua_setfield(runtime->state, -2, "config");
+            lua_pop(runtime->state, 1);
+        }
+    }
     if (!runtime->document || !gnoblin_config_validate_document(runtime->document, error)) {
         lua_runtime_free(runtime);
         return NULL;
@@ -6807,6 +6831,17 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
     if (directories)
         *directories = g_ptr_array_ref(runtime->config.directories);
     return g_variant_ref(runtime->document);
+}
+
+GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrArray** directories,
+                                      GError** error) {
+    return load_runtime_impl(path, paths, directories, FALSE, NULL, error);
+}
+
+GVariant* gnoblin_config_load_runtime_salvaged(const char* path, GPtrArray** paths,
+                                               GPtrArray** directories, GPtrArray** ignored,
+                                               GError** error) {
+    return load_runtime_impl(path, paths, directories, TRUE, ignored, error);
 }
 
 GVariant* gnoblin_config_load_runtime_defaults(GPtrArray** paths, GPtrArray** directories,

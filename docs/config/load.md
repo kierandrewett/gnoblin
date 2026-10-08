@@ -37,25 +37,39 @@ from the defaults.
 ### Login fallback
 
 Gnoblin starts the compositor with its embedded Lua configuration, then applies
-the user configuration through a reload transaction. If Lua loading fails or
-the compositor rejects the settings, it tries the last accepted settings for
-that config path through another transaction. Embedded defaults stay active if
-those settings are unavailable or rejected.
+the user configuration through a reload transaction. At login it recovers in
+this order:
+
+1. **Ignore the broken item.** If a setting or list entry is invalid, Gnoblin
+   ignores only that item and applies everything else.
+2. **Use the last accepted settings.** If the configuration cannot be used at
+   all, for example a Lua file has a syntax error, Gnoblin uses the last
+   accepted settings for that config path.
+3. **Use the embedded defaults.** They stay active if no accepted settings
+   exist or the compositor rejects them.
+
+For example, one misspelled keybinding action does not stop your cursor,
+window, or input settings from loading. Each ignored item is written to the
+session log as `ignored <setting>: <reason>` and added to the recovery notice.
 
 Config-owned clients start only after their configuration is accepted.
+
+A reload is stricter than login. A reload with an invalid setting is rejected
+and the active settings stay in place.
 
 Recovery resolves imports from the embedded tree, so broken user files cannot
 prevent the built-in configuration from loading. It writes no default files
 to the user config folder.
 
 Startup validation also checks native keybinding groups and action names
-against the Mutter build. An unsupported or misspelled action leaves the
-recovery configuration active and shows the error in the recovery panel.
+against the Mutter build. An unsupported or misspelled action is ignored.
 
 Gnoblin leaves failed files unchanged and logs the error and fallback choice.
 It also shows the failure in a top-left ImGui panel at login or after a rejected
-reload. Saved settings cannot restore Lua callbacks: recovery uses the default
-input callbacks, and callbacks from failed files do not run.
+reload.
+
+Saved settings cannot restore Lua callbacks. Recovery uses the default input
+callbacks, and callbacks from failed files do not run.
 
 ### Worker recovery
 

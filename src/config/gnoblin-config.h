@@ -47,6 +47,11 @@ GVariant* gnoblin_config_evaluate_file(const char* path, GPtrArray* paths, GPtrA
 GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrArray** directories,
                                       GError** error);
 /* Start an empty Lua callback state with a previously validated document. */
+/* Like gnoblin_config_load_runtime, but a document that fails validation is repaired with
+ * gnoblin_config_salvage_document instead of rejected. `ignored` is filled as there. */
+GVariant* gnoblin_config_load_runtime_salvaged(const char* path, GPtrArray** paths,
+                                               GPtrArray** directories, GPtrArray** ignored,
+                                               GError** error);
 GVariant* gnoblin_config_load_runtime_fallback(const char* path, GVariant* document,
                                                GPtrArray** paths, GPtrArray** directories,
                                                GError** error);
@@ -166,6 +171,10 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
 char** gnoblin_config_runtime_events(void);
 void gnoblin_config_finish_event(gboolean commit);
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error);
+/* Return `document` with every invalid key or list entry removed, so the valid settings still apply. `ignored`
+ * receives one message per removed item ("ignored window-management.focus-mode: <reason>") and is NULL when
+ * nothing was removed. Returns NULL with `error` set when the document cannot be repaired. */
+GVariant* gnoblin_config_salvage_document(GVariant* document, GPtrArray** ignored, GError** error);
 /* Project gnoblin.configure.portals into the generated XDG portal preferences.
  * `config_home` is NULL to use XDG_CONFIG_HOME. The document must be valid. */
 gboolean gnoblin_config_sync_portal_selection(GVariant* document, const char* config_home,
