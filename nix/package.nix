@@ -30,6 +30,7 @@
   ibus,
   gcr_4,
   polkit,
+  runCommand,
 }:
 let
   versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnome-versions.json");
@@ -44,6 +45,13 @@ let
         lib.filesystem.listFilesRecursive "${gnoblinSrc}/patches/${project}"
       )
     );
+  # Mutter's meson build compiles Dear ImGui from subprojects/imgui under the Gnoblin source root. The flake source has no
+  # submodules, so add the pinned ImGui checkout to a copy of it.
+  gnoblinSourceRoot = runCommand "gnoblin-source-root" { } ''
+    cp -r --no-preserve=mode "${gnoblinSrc}/." "$out"
+    mkdir -p "$out/subprojects/imgui"
+    cp -r --no-preserve=mode "${imguiSrc}/." "$out/subprojects/imgui"
+  '';
   copyOverlay = project: ''
     bash ${gnoblinSrc}/scripts/copy-overlay.sh ${project} "$PWD"
   '';
@@ -79,7 +87,7 @@ let
       python3
     ];
     preConfigure = ''
-      export GNOBLIN_SOURCE_ROOT="${gnoblinSrc}"
+      export GNOBLIN_SOURCE_ROOT="${gnoblinSourceRoot}"
       export GNOBLIN_IMGUI_SOURCE="${imguiSrc}"
       export GNOBLIN_PREFIX="$out"
       export PKG_CONFIG_PATH="${schemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
