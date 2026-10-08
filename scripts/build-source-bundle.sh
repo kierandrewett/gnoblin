@@ -35,6 +35,15 @@ done
 TOP="gnoblin-$VERSION"
 mkdir -p "$STAGING/$TOP/sources"
 git -C "$ROOT" archive --format=tar HEAD | tar -xf - -C "$STAGING/$TOP"
+# The superproject archive leaves out submodules. The compositor build compiles Dear ImGui from subprojects/imgui, so
+# add the pinned checkout.
+IMGUI="$ROOT/subprojects/imgui"
+[ -f "$IMGUI/imgui.cpp" ] || {
+    echo "missing Dear ImGui source: run git submodule update --init subprojects/imgui" >&2
+    exit 1
+}
+mkdir -p "$STAGING/$TOP/subprojects/imgui"
+git -C "$IMGUI" archive --format=tar HEAD | tar -xf - -C "$STAGING/$TOP/subprojects/imgui"
 python3 - "$ROOT" "$STAGING/$TOP/source-provenance.json" <<'PY'
 import json
 import subprocess
