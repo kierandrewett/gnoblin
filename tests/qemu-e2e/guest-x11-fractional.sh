@@ -9,16 +9,19 @@
 # 1.5, so GNOBLIN_TEST_MODE can select another monitor mode, for example 1920x1080@60.000 for 1.5. The baseline at
 # scale 1.0 uses the same mode, and the restore returns the monitors to their preferred mode.
 set -u
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export XDG_RUNTIME_DIR
+DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+export DBUS_SESSION_BUS_ADDRESS
 GD="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gdctl"
 G="${GNOBLIN_PREFIX}/bin/gnoblinctl"
-export XAUTHORITY="$(ls /run/user/"$(id -u)"/.mutter-Xwaylandauth.* 2>/dev/null | head -1)" DISPLAY=:0
+XAUTHORITY="$(ls /run/user/"$(id -u)"/.mutter-Xwaylandauth.* 2>/dev/null | head -1)"
+export XAUTHORITY DISPLAY=:0
 SCALE="${GNOBLIN_TEST_SCALE:-1.25}"
 MODE="${GNOBLIN_TEST_MODE:-}"
 fail=0
 
-cat > /tmp/x11-size.py <<'PY'
+cat >/tmp/x11-size.py <<'PY'
 import gi
 
 gi.require_version("Gdk", "4.0")
@@ -81,16 +84,22 @@ echo "scale $SCALE: $fractional"
 if [ "${base%% *}" = "${fractional%% *}" ] && [ -n "${base%% *}" ]; then
     echo "PASS the X11 window keeps its logical size (${base%% *}) at scale $SCALE"
 else
-    echo "FAIL the X11 window changed size at scale 1.25 (1.0: ${base%% *}, $SCALE: ${fractional%% *})"
+    echo "FAIL the X11 window changed size at scale $SCALE (1.0: ${base%% *}, $SCALE: ${fractional%% *})"
     fail=$((fail + 1))
 fi
 case "$fractional" in
     *"scale_factor=2"*) echo "PASS the X11 app sees scale factor 2 at monitor scale $SCALE" ;;
-    *) echo "FAIL the X11 app scale factor is wrong at monitor scale $SCALE ($fractional)"; fail=$((fail + 1)) ;;
+    *)
+        echo "FAIL the X11 app scale factor is wrong at monitor scale $SCALE ($fractional)"
+        fail=$((fail + 1))
+        ;;
 esac
 case "$restored" in
     *"Scale: 1.0"*) echo "PASS the monitor layout is back at scale 1.0" ;;
-    *) echo "FAIL the monitor layout was not restored ($restored)"; fail=$((fail + 1)) ;;
+    *)
+        echo "FAIL the monitor layout was not restored ($restored)"
+        fail=$((fail + 1))
+        ;;
 esac
 echo "failures: $fail"
 exit "$fail"
