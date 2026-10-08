@@ -1,0 +1,80 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 8 Oct 2026 20:00:00 +0100
+Subject: [PATCH] access: show the dialog without a parent window when GNOME Shell is absent
+
+A portal request from an app with no parent window, such as a command-line
+tool or a background app, asks the backend for an access dialog. The backend
+sent those requests to org.gnome.Shell. Without GNOME Shell the call failed
+with ServiceUnknown and the whole request, for example a screenshot, failed.
+
+Show the dialog itself when org.gnome.Shell has no owner. Keep the delegation
+when it does. An empty parent window handle no longer logs a warning.
+
+---
+diff --git a/src/access.c b/src/access.c
+index e28ea80..a56b036 100644
+--- a/src/access.c
++++ b/src/access.c
+@@ -251,7 +251,8 @@ create_access_dialog (GxdpExternalWindow  *parent,
+ 
+   gtk_widget_realize (dialog);
+ 
+-  gxdp_external_window_set_parent_of (parent, gtk_native_get_surface (GTK_NATIVE (dialog)));
++  if (parent != NULL)
++    gxdp_external_window_set_parent_of (parent, gtk_native_get_surface (GTK_NATIVE (dialog)));
+ 
+   gtk_window_present (GTK_WINDOW (dialog));
+ 
+@@ -277,6 +278,31 @@ shell_access_dialog_ready_cb (GObject      *source_object,
+     g_dbus_method_invocation_return_value (invocation, params);
+ }
+ 
++/* GNOME Shell shows the dialog for a request that has no parent window. A session
++ * without it, such as Gnoblin, shows the dialog itself rather than failing the request. */
++static gboolean
++gnome_shell_available (GDBusConnection *connection)
++{
++  g_autoptr(GVariant) reply = NULL;
++  gboolean has_owner = FALSE;
++
++  reply = g_dbus_connection_call_sync (connection,
++                                       "org.freedesktop.DBus",
++                                       "/org/freedesktop/DBus",
++                                       "org.freedesktop.DBus",
++                                       "NameHasOwner",
++                                       g_variant_new ("(s)", "org.gnome.Shell"),
++                                       G_VARIANT_TYPE ("(b)"),
++                                       G_DBUS_CALL_FLAGS_NONE,
++                                       1000,
++                                       NULL,
++                                       NULL);
++  if (reply != NULL)
++    g_variant_get (reply, "(b)", &has_owner);
++
++  return has_owner;
++}
++
+ static gboolean
+ handle_access_dialog (XdpImplAccess         *object,
+                       GDBusMethodInvocation *invocation,
+@@ -306,7 +332,7 @@ handle_access_dialog (XdpImplAccess         *object,
+     }
+   GxdpExternalWindow *external_parent = NULL;
+ 
+- if (arg_parent_window)
++ if (arg_parent_window && *arg_parent_window)
+     {
+       external_parent = gxdp_external_window_new_from_handle (arg_parent_window);
+       if (!external_parent)
+@@ -314,7 +340,9 @@ handle_access_dialog (XdpImplAccess         *object,
+                    arg_parent_window);
+     }
+ 
+-  if (external_parent != NULL) /* use window-modal dialog */
++  /* Use a window-modal dialog, or a plain one when no GNOME Shell can show it. */
++  if (external_parent != NULL ||
++      !gnome_shell_available (g_dbus_method_invocation_get_connection (invocation)))
+     {
+       g_autoptr(Request) request = NULL;
+       AccessDialogHandle *handle;
