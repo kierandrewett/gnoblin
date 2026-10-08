@@ -3408,6 +3408,7 @@ static const char* deprecated_enum_replacement(const char* key, const char* valu
     } aliases[] = {
         {"when", "normal", "unlocked"},
         {"when", "unlock-screen", "locked"},
+        {"level", "default", "inherit"},
         {"focus-mode", "sloppy", "hover"},
         {"focus-mode", "mouse", "hover-strict"},
         {"focus-new-windows", "smart", "allow"},

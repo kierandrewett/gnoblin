@@ -392,6 +392,26 @@ printf 'gnoblin.configure {permissions = {default = "default"}}\n' > "$CONFIG_DI
 sleep 2
 check "permissions.default default (deprecated): the decision level" "$(permission_level)" "inherit"
 check "permissions.default default (deprecated): the committed policy" "$("$G" permissions policy 2>&1)" '"default":"inherit"'
+# A rule that still says level = "default" must also be reported as "inherit".
+cat > "$CONFIG_DIR/99-test-permissions.lua" <<'LUA'
+gnoblin.configure {
+    permissions = {
+        default = "ask",
+        rules = {
+            {name = "regression-old-level", match = "^app%-id:org%.example%.Old$", capabilities = {"screen-cast"},
+             level = "default"},
+        },
+    },
+}
+LUA
+if "$G" config reload >/dev/null 2>&1; then
+    echo "PASS a rule with the deprecated default level reloads"
+else
+    echo "FAIL a rule with the deprecated default level reloads"
+    fail=$((fail + 1))
+fi
+policy_json=$("$G" permissions policy 2>&1 | tr -d ' \n')
+check "a rule with level default is reported as inherit" "$policy_json" '"level":"inherit"'
 disable_config 99-test-permissions.lua
 
 echo "-- touchpad gesture when"
