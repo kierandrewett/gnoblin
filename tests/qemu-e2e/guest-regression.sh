@@ -424,6 +424,28 @@ else
 fi
 disable_config 99-test-gestures.lua
 
+echo "-- touchpad enum names"
+# lrm, lmr and mouse are the deprecated spellings of left-right-middle, left-middle-right and follow-mouse. They must
+# still load, and the active config must report the new names. The new names must load as well.
+touchpad_enum_case() {
+    # touchpad_enum_case LABEL HANDED TAP_MAP EXPECTED_HANDED EXPECTED_TAP_MAP
+    printf 'gnoblin.configure {input = {touchpad = {left_handed = "%s", tap_button_map = "%s"}}}\n' "$2" "$3" \
+        > "$CONFIG_DIR/99-test-touchpad-enums.lua"
+    if "$G" config reload >/dev/null 2>&1; then
+        echo "PASS touchpad enums $1 reload"
+    else
+        echo "FAIL touchpad enums $1 reload"
+        fail=$((fail + 1))
+    fi
+    shown=$("$G" config show 2>&1)
+    check "touchpad enums $1: left_handed" "$shown" "\"left_handed\":\"$4\""
+    check "touchpad enums $1: tap_button_map" "$shown" "\"tap_button_map\":\"$5\""
+}
+touchpad_enum_case "deprecated names" mouse lrm follow-mouse left-right-middle
+touchpad_enum_case "deprecated lmr" left lmr left left-middle-right
+touchpad_enum_case "new names" follow-mouse left-middle-right follow-mouse left-middle-right
+disable_config 99-test-touchpad-enums.lua
+
 echo "-- stability"
 check "compositor alive" "$(pgrep -x gnoblin | wc -l)" "4"
 coredump_after="$(coredumpctl list --no-pager 2>/dev/null | tail -1)"

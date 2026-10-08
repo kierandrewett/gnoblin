@@ -236,8 +236,8 @@ static gboolean input_field_known(const char* group, const char* key) {
 
 static gboolean input_value_valid(const char* group, const char* key, GVariant* value) {
     static const char* accel_profiles[] = {"default", "flat", "adaptive", "custom", NULL};
-    static const char* handedness[] = {"right", "left", "mouse", NULL};
-    static const char* tap_button_maps[] = {"default", "lrm", "lmr", NULL};
+    static const char* handedness[] = {"right", "left", "follow-mouse", "mouse", NULL};
+    static const char* tap_button_maps[] = {"default", "left-right-middle", "left-middle-right", "lrm", "lmr", NULL};
     static const char* click_methods[] = {"default", "none", "areas", "fingers", NULL};
     static const char* trackball_accel_profiles[] = {"default", "flat", "adaptive", NULL};
     static const char* pointing_stick_scroll_methods[] = {"default", "none", "on-button-down",

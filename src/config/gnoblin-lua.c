@@ -3398,6 +3398,27 @@ static gboolean is_keybinding_action_name(const char* key) {
     return !previous_underscore;
 }
 
+/* Deprecated enum spellings and their current names. A key can appear in several sections, so only values that
+ * no other setting uses are listed. Old spellings stay valid for one release. */
+static const char* deprecated_enum_replacement(const char* key, const char* value) {
+    static const struct {
+        const char* key;
+        const char* old_value;
+        const char* new_value;
+    } aliases[] = {
+        {"when", "normal", "unlocked"},
+        {"when", "unlock-screen", "locked"},
+        {"left-handed", "mouse", "follow-mouse"},
+        {"tap-button-map", "lrm", "left-right-middle"},
+        {"tap-button-map", "lmr", "left-middle-right"},
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(aliases); i++) {
+        if (!strcmp(key, aliases[i].key) && !strcmp(value, aliases[i].old_value))
+            return aliases[i].new_value;
+    }
+    return NULL;
+}
+
 /* Public declarations use Lua identifiers. Keep keybinding action names in
  * snake_case until native control maps them to their GSettings keys. */
 static void push_settings(lua_State* state, int source, const char* parent, int depth,
@@ -3472,13 +3493,9 @@ static void push_settings(lua_State* state, int source, const char* parent, int 
                                      : key && !strcmp(key, "keybindings") ? 1
                                      : keybinding_depth == 1            ? 2
                                                                         : 0;
-        /* "normal" and "unlock-screen" are the deprecated spellings of the touchpad gesture "when" values
-         * "unlocked" and "locked". Store the new names so snapshots and events report them. */
-        if (key && !strcmp(key, "when") && lua_type(state, -2) == LUA_TSTRING) {
-            const char* value = lua_tostring(state, -2);
-            const char* replacement = !strcmp(value, "normal")         ? "unlocked"
-                                      : !strcmp(value, "unlock-screen") ? "locked"
-                                                                        : NULL;
+        /* Rewrite deprecated enum spellings to their current names so snapshots and events report the new ones. */
+        if (key && lua_type(state, -2) == LUA_TSTRING) {
+            const char* replacement = deprecated_enum_replacement(key, lua_tostring(state, -2));
             if (replacement) {
                 /* The stack holds the source key, the value, then the converted key. Swap the value. */
                 lua_pushstring(state, replacement);
