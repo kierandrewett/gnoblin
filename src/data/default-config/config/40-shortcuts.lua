@@ -9,6 +9,24 @@ local function command(binding, argv)
     }
 end
 
+-- Select the next or previous configured input source. With fewer than two sources there is nothing to switch.
+local function switch_input_source(step)
+    return function()
+        local sources = gnoblin.input.sources()
+        if #sources < 2 then
+            return
+        end
+        local index = 1
+        for position, source in ipairs(sources) do
+            if source.current then
+                index = position
+            end
+        end
+        local target = sources[(index - 1 + step) % #sources + 1]
+        gnoblin.input.select_source {type = target.type, id = target.id}
+    end
+end
+
 gnoblin.configure {
     keybindings = {
         keyboard = {
@@ -26,6 +44,8 @@ gnoblin.configure {
             media_next = command("XF86AudioNext", {"playerctl", "next"}),
             media_previous = command("XF86AudioPrev", {"playerctl", "previous"}),
             files = command("<Super>e", {"sh", "-c", 'gio open "$HOME"'}),
+            switch_input_source = {binding = "<Super>space", callback = switch_input_source(1)},
+            switch_input_source_backward = {binding = "<Shift><Super>space", callback = switch_input_source(-1)},
         },
     },
 }

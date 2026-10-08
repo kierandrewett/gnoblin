@@ -69,6 +69,24 @@ gnoblin.configure {
 }
 ```
 
+## Switch sources with the keyboard
+
+The starter config binds two keys, as a GNOME session does:
+
+- **Super+Space** selects the next source and wraps to the first after the last.
+- **Shift+Super+Space** selects the previous source.
+
+With fewer than two sources, the keys do nothing.
+
+These bindings live in `config/40-shortcuts.lua`. `gnoblinctl init` copies that
+file once, so a copy made earlier does not have them. Run
+`gnoblinctl config restore-default` to replace your folder with the current
+starter files. This moves your files to a backup, so copy back any changes you
+made. To keep your file instead, add the two `switch_input_source` bindings from
+the starter file to your own config.
+
+## Share or keep sources per window
+
 With `per_window = false` (or with `per_window` omitted), the selected layout is
 shared. If you switch from US to UK while typing in one window, a different
 window also uses UK when it gets focus.
