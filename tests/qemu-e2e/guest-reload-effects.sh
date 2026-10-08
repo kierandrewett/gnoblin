@@ -10,6 +10,7 @@
 #            only moves it.
 # window_management.auto_maximize: a nearly monitor-sized new window opens maximized, or does not.
 # window_management.workspaces_only_on_primary: a second-monitor window follows the active workspace, or not.
+# window_management.auto_raise: with sloppy focus a resting pointer raises the window under it, or not.
 # window_management.center_new_windows: true opens a new window centred on the monitor, false uses Mutter's
 #            default placement.
 set -u
@@ -309,6 +310,33 @@ if [ "$monitor_count" -ge 2 ]; then
 else
     echo "SKIP workspaces_only_on_primary needs two monitors (found $monitor_count)"
 fi
+
+# window_management.auto_raise: with sloppy focus, resting the pointer on a lower window raises it after
+# auto_raise_delay, or leaves the stacking alone. Reuses the overlap_pixel helper and pointer-move.py above.
+for mode in true false; do
+    apply "gnoblin.configure {window_management = {focus_mode = \"sloppy\", auto_raise = $mode, auto_raise_delay = 300}}"
+    nohup swaybg -c "#202020" >/dev/null 2>&1 < /dev/null &
+    nohup foot -T raise-A -o colors.background=ff0000 -o colors-dark.background=ff0000 -o colors-light.background=ff0000 >/dev/null 2>&1 < /dev/null &
+    sleep 3
+    nohup foot -T raise-B -o colors.background=0000ff -o colors-dark.background=0000ff -o colors-light.background=0000ff >/dev/null 2>&1 < /dev/null &
+    sleep 3
+    "$G" window move "$(window_id raise-A)" 40 100 >/dev/null 2>&1
+    "$G" window move "$(window_id raise-B)" 300 160 >/dev/null 2>&1
+    sleep 1
+    before="$(overlap_pixel)"
+    python3 /tmp/pointer-move.py 80 300
+    sleep 2
+    after="$(overlap_pixel)"
+    pkill -f "foot -T raise-"
+    pkill -x swaybg
+    sleep 2
+    check "auto_raise $mode: overlap before the pointer arrives is the newer window (blue)" "$before" "(0, 0, 255)"
+    if [ "$mode" = true ]; then
+        check "auto_raise true raises the window under the resting pointer (overlap turns red)" "$after" "(255, 0, 0)"
+    else
+        check "auto_raise false leaves the stacking alone (overlap stays blue)" "$after" "(0, 0, 255)"
+    fi
+done
 
 apply '-- disabled'
 rm -f "$F"
