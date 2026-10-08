@@ -977,6 +977,9 @@ done
 printf '%s\n' 'PASS: Lua layer lifecycle callbacks see current layer snapshots'
 if ! grep -Fq 'LUA_API:activity-event-snapshot' "$fixture_root/state/devkit-last.log"; then
     echo 'Missing Lua session activity event proof in the devkit runtime log' >&2
+    echo '--- idle service and activity lines' >&2
+    grep -E 'GNOBLIN_IDLE|activity' "$fixture_root/state/devkit-last.log" >&2 || echo '(none)' >&2
+    echo '--- last lines of the log' >&2
     tail -n 80 "$fixture_root/state/devkit-last.log" >&2
     exit 1
 fi
