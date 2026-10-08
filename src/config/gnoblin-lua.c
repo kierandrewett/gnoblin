@@ -3939,6 +3939,55 @@ static void install_named_view(lua_State* state, const char* key) {
     lua_setfield(state, -2, key);
 }
 
+/* Mirrors parse_autostart_entries in gnoblin-runtime.c. The session guardian rejects the same entries, so a bad entry
+ * fails the reload here with the entry named, and the previous config stays active. */
+static void validate_autostart_entries(lua_State* state, int list, lua_Integer count) {
+    for (lua_Integer i = 1; i <= count; i++) {
+        lua_rawgeti(state, list, i);
+        if (!lua_istable(state, -1))
+            luaL_error(state, "autostart entry %d must be a table", (int)i);
+        int entry = lua_gettop(state);
+        lua_getfield(state, entry, "name");
+        if (lua_type(state, -1) != LUA_TSTRING || !lua_rawlen(state, -1) ||
+            g_utf8_strlen(lua_tostring(state, -1), -1) > 80)
+            luaL_error(state, "autostart entry %d needs a name of 1 to 80 characters", (int)i);
+        const char* name = lua_tostring(state, -1);
+        for (lua_Integer j = 1; j < i; j++) {
+            lua_rawgeti(state, list, j);
+            lua_getfield(state, -1, "name");
+            if (lua_type(state, -1) == LUA_TSTRING && !strcmp(name, lua_tostring(state, -1)))
+                luaL_error(state, "autostart name \"%s\" is used twice", name);
+            lua_pop(state, 2);
+        }
+        lua_pushnil(state);
+        while (lua_next(state, entry)) {
+            if (lua_type(state, -2) != LUA_TSTRING)
+                luaL_error(state, "autostart \"%s\" has a field that is not named", name);
+            const char* field = lua_tostring(state, -2);
+            if (strcmp(field, "name") && strcmp(field, "command") && strcmp(field, "when"))
+                luaL_error(state, "autostart \"%s\" has an unsupported field \"%s\"; use name, command or when",
+                           name, field);
+            lua_pop(state, 1);
+        }
+        lua_getfield(state, entry, "when");
+        if (!lua_isnil(state, -1) &&
+            (lua_type(state, -1) != LUA_TSTRING || strcmp(lua_tostring(state, -1), "on_login")))
+            luaL_error(state, "autostart \"%s\" when must be \"on_login\"", name);
+        lua_pop(state, 1);
+        lua_getfield(state, entry, "command");
+        if (!lua_istable(state, -1) || lua_rawlen(state, -1) == 0)
+            luaL_error(state, "autostart \"%s\" needs a command list with at least one item", name);
+        for (lua_Integer arg = 1; arg <= (lua_Integer)lua_rawlen(state, -1); arg++) {
+            lua_rawgeti(state, -1, arg);
+            if (lua_type(state, -1) != LUA_TSTRING || (arg == 1 && !lua_rawlen(state, -1)))
+                luaL_error(state, "autostart \"%s\" command item %d must be a string%s", name, (int)arg,
+                           arg == 1 ? " that is not empty" : "");
+            lua_pop(state, 1);
+        }
+        lua_settop(state, entry - 1);
+    }
+}
+
 static void finish_named_entries(lua_State* state, int config, const char* key) {
     config = lua_absindex(state, config);
     lua_getfield(state, config, key);
@@ -3966,6 +4015,8 @@ static void finish_named_entries(lua_State* state, int config, const char* key) 
         lua_pushnil(state);
         lua_rawseti(state, list, i);
     }
+    if (!strcmp(key, "autostart"))
+        validate_autostart_entries(state, list, next - 1);
     lua_pop(state, 1);
 }
 

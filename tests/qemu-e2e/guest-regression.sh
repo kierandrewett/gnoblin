@@ -309,16 +309,25 @@ reject_input "input.tablets that is not a table" "{tablets = 3}" "input.tablets 
 reject_input "an unknown input group" "{repeat_delay = -5}" "unknown input group: repeat-delay"
 check "the compositor keeps running after wrong-typed input" "$("$G" status 2>&1)" '"state":"running"'
 
-# An autostart entry with an unsupported field reaches the session guardian, which rejects it. That used to end the
-# whole session ("login autostart data failed"). It must now be logged and ignored while the session keeps running.
-ignored_count() { sudo journalctl -b --no-pager 2>/dev/null | grep -c 'Autostart config ignored'; }
-ignored_before="$(ignored_count)"
-printf 'gnoblin.configure {autostart = {bad_entry = {unsupported_field = 1}}}\n' > "$CONFIG_DIR/99-test-badreload.lua"
+# An invalid autostart entry must fail the reload with the entry named. The session guardian rejects the same entries
+# and used to end the whole session when one reached it ("login autostart data failed"); it now logs and ignores them.
+reject_autostart() {
+    # reject_autostart NAME LUA EXPECTED_MESSAGE
+    printf 'gnoblin.configure {autostart = %s}\n' "$2" > "$CONFIG_DIR/99-test-badreload.lua"
+    check "$1" "$("$G" config reload 2>&1)" "$3"
+}
+reject_autostart "autostart entry with an unsupported field" "{bad_entry = {unsupported_field = 1}}" 'autostart "bad_entry" has an unsupported field'
+reject_autostart "autostart entry with an empty command list" "{a = {command = {}}}" 'autostart "a" needs a command list'
+reject_autostart "autostart command item that is not a string" '{a = {command = {"sleep", 5}}}' 'autostart "a" command item 2 must be a string'
+reject_autostart "autostart when value that is not on_login" '{a = {command = {"true"}, when = "later"}}' 'autostart "a" when must be "on_login"'
+check "the session keeps running after invalid autostart entries" "$("$G" status 2>&1)" '"state":"running"'
+printf 'gnoblin.configure {autostart = {regression_sleep = {command = {"sleep", "301"}}}}\n' > "$CONFIG_DIR/99-test-badreload.lua"
 "$G" config reload >/dev/null 2>&1
-sleep 4
-check "an invalid autostart entry is logged and ignored" "$([ "$(ignored_count)" -gt "$ignored_before" ] && echo yes || echo no)" "yes"
-check "the session keeps running after an invalid autostart entry" "$("$G" status 2>&1)" '"state":"running"'
+sleep 3
+check "a valid autostart entry starts its command" "sleeping=$(pgrep -fc 'sleep 301')" "sleeping=1"
 disable_config 99-test-badreload.lua
+sleep 2
+check "removing the entry stops its command" "sleeping=$(pgrep -fc 'sleep 301')" "sleeping=0"
 
 echo "-- stability"
 check "compositor alive" "$(pgrep -x gnoblin | wc -l)" "4"

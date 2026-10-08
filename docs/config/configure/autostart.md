@@ -52,10 +52,15 @@ redirection and other shell syntax require explicitly launching a shell. See
 An invalid command logs a warning and does not prevent other entries from
 starting. Gnoblin does not restart a command after it exits.
 
-If the whole autostart list has an invalid entry, such as an unsupported field
-or a missing name, Gnoblin ignores the new list, keeps the entries that already
-run, and logs `Autostart config ignored` with the reason. The session keeps
-running. Fix the entry and reload the configuration.
+An invalid entry makes `gnoblinctl config reload` fail and names the entry, for
+example `autostart "bar" has an unsupported field "cmd"; use name, command or
+when`. The previous configuration stays active and the session keeps running.
+An entry is invalid when:
+
+- it has no name, a name longer than 80 characters, or a name used twice
+- it has a field other than `name`, `command` or `when`
+- `when` is set to anything other than `"on_login"`
+- `command` is not a list, is empty, or has an item that is not a string
 
 ## Type definition
 
