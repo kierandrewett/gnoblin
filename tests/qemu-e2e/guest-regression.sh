@@ -294,6 +294,20 @@ check "an invalid reload exits with an error" "status=$bad_status" "status=1"
 check "the error names the failing setting" "$bad_output" 'window-management "focus-mode"'
 check "the previous config stays active after a failed reload" "$(active_cursor_size)" '"size":48'
 check "the compositor keeps running after a failed reload" "$("$G" status 2>&1)" '"state":"running"'
+# Wrong-typed input values used to abort the Lua worker (g_variant_iter_init on a non-container). Each one must be
+# rejected with a message that names the setting.
+reject_input() {
+    # reject_input NAME LUA EXPECTED_MESSAGE
+    printf 'gnoblin.configure {input = %s}\n' "$2" > "$CONFIG_DIR/99-test-badreload.lua"
+    check "$1" "$("$G" config reload 2>&1)" "$3"
+}
+reject_input "input with a number where a group table belongs" "{keyboard = 5}" "input.keyboard must be a table"
+reject_input "input.keyboard.xkb_options that is not a list" "{keyboard = {xkb_options = 5}}" "input.keyboard.xkb-options"
+reject_input "input.keyboard.xkb_options with non-string items" "{keyboard = {xkb_options = {1, 2}}}" "input.keyboard.xkb-options"
+reject_input "input.mouse.accel_curve that is not a table" "{mouse = {accel_curve = 7}}" "input.mouse.accel-curve"
+reject_input "input.tablets that is not a table" "{tablets = 3}" "input.tablets must be a table"
+reject_input "an unknown input group" "{repeat_delay = -5}" "unknown input group: repeat-delay"
+check "the compositor keeps running after wrong-typed input" "$("$G" status 2>&1)" '"state":"running"'
 disable_config 99-test-badreload.lua
 
 echo "-- stability"
