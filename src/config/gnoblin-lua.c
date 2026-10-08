@@ -3761,6 +3761,27 @@ static void register_pointer_binding_callbacks(lua_State* state, int config_inde
     lua_pop(state, 1); /* pointer bindings */
 }
 
+/* Warn about a top-level key that gnoblin.configure does not know. A typo such as window_managment otherwise does
+ * nothing and gives no feedback. This is a warning, not an error, so a config written for a newer Gnoblin still loads.
+ * The names are the documented sections, after push_settings has turned underscores into dashes. */
+static void warn_unknown_configure_sections(lua_State* state, int table) {
+    static const char* const known[] = {
+        "keybindings", "window-management", "compositor", "input", "input-sources", "monitors",
+        "touchpad-gestures", "permissions", "location", "prompts", "auth", "portals", "layer-shell",
+        "protocols", "frame-renderers", "cursor", "xwayland", "shortcuts", "autostart", "workspaces",
+        "window-rules", "animations", NULL,
+    };
+    table = lua_absindex(state, table);
+    lua_pushnil(state);
+    while (lua_next(state, table)) {
+        if (lua_type(state, -2) == LUA_TSTRING && !g_strv_contains(known, lua_tostring(state, -2)))
+            g_warning("gnoblin.configure: unknown section \"%s\" is ignored; check the spelling against "
+                      "the documented sections",
+                      lua_tostring(state, -2));
+        lua_pop(state, 1);
+    }
+}
+
 static int lua_configure(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     luaL_checktype(state, 1, LUA_TTABLE);
@@ -3770,6 +3791,7 @@ static int lua_configure(lua_State* state) {
     register_keyboard_binding_callbacks(state, 1, config);
     push_settings(state, 1, NULL, 0, 0);
     lua_replace(state, 1);
+    warn_unknown_configure_sections(state, 1);
     return lua_set(state);
 }
 

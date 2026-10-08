@@ -20,6 +20,10 @@ Sizes use logical pixels. Window rules distinguish application windows
 ## Settings
 
 Each entry below is a real top-level key accepted by `gnoblin.configure`.
+A top-level key that is not in this list does nothing. The reload still
+succeeds, and Gnoblin writes `gnoblin.configure: unknown section "name" is
+ignored` to the session log. Check the log when a setting seems to have no
+effect, for example after a spelling mistake in a section name.
 
 - [`gnoblin.configure.keybindings`](/config/configure/keybindings)
 - [`gnoblin.configure.window_management`](/config/configure/window_management)

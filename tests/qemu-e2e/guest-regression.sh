@@ -488,6 +488,28 @@ focus_enum_case "deprecated mouse and strict" mouse strict hover-strict prevent
 focus_enum_case "new names" hover-strict allow hover-strict allow
 disable_config 99-test-focus-enums.lua
 
+echo "-- unknown config section"
+# A misspelled top-level section does nothing. The reload still succeeds, so a config written for a newer Gnoblin
+# loads, and the session log names the unknown section.
+printf 'gnoblin.configure {window_managment = {focus_mode = "click"}, cursor = {size = 24}}\n' \
+    > "$CONFIG_DIR/99-test-typo.lua"
+if "$G" config reload >/dev/null 2>&1; then
+    echo "PASS a reload with an unknown section still succeeds"
+else
+    echo "FAIL a reload with an unknown section still succeeds"
+    fail=$((fail + 1))
+fi
+sleep 1
+typo_log=$(sudo journalctl -b --no-pager 2>/dev/null | grep 'gnoblin.configure: unknown section' | tail -5)
+check "the log names the unknown section" "$typo_log" 'unknown section "window-managment"'
+if printf '%s' "$typo_log" | grep -q 'unknown section "cursor"'; then
+    echo "FAIL a documented section was reported as unknown"
+    fail=$((fail + 1))
+else
+    echo "PASS a documented section is not reported as unknown"
+fi
+disable_config 99-test-typo.lua
+
 echo "-- stability"
 check "compositor alive" "$(pgrep -x gnoblin | wc -l)" "4"
 coredump_after="$(coredumpctl list --no-pager 2>/dev/null | tail -1)"
