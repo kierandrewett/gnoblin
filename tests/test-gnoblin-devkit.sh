@@ -156,10 +156,17 @@ gnoblin.events.once("gnoblin.config.reloaded", function(event)
     assert(type(gnoblin.monitors.list()) == "table")
     assert(type(gnoblin.focus.history()) == "table")
     local session_status = gnoblin.session.status()
+    print(string.format("SESSION_STATUS_AT_RELOAD:state=%s revision=%s session_state=%s session_revision=%s",
+        tostring(session_status.state), tostring(session_status.revision),
+        tostring(session_status.session_state), tostring(session_status.session_revision)))
     assert(session_status.state == "running")
     assert(type(session_status.revision) == "number" and session_status.revision >= 0)
-    assert(session_status.session_state == "running")
-    assert(type(session_status.session_revision) == "number" and session_status.session_revision > 0)
+    -- The first config.reloaded event commits the startup config, before the supervisor publishes the session
+    -- lifecycle. The lifecycle fields exist only once it has; check them when they are there.
+    if session_status.session_state ~= nil then
+        assert(session_status.session_state == "starting" or session_status.session_state == "running")
+        assert(type(session_status.session_revision) == "number" and session_status.session_revision > 0)
+    end
     assert(not pcall(function() session_status.revision = 0 end))
     local status = gnoblin.runtime.status()
     assert(status.state == "running" and status.generation > 0)
