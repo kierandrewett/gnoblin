@@ -5,6 +5,7 @@
 #            and removing the config stops it.
 # window_management.focus_mode: "click" keeps focus when the pointer moves onto another window, "sloppy"
 #            focuses the window under the pointer.
+# window_management.raise_on_click: a click raises the window above an overlapping one, or leaves the stacking.
 # window_management.center_new_windows: true opens a new window centred on the monitor, false uses Mutter's
 #            default placement.
 set -u
@@ -164,6 +165,37 @@ else
     echo "FAIL center_new_windows false still centres the window (off by $default_spot px)"
     fail=$((fail + 1))
 fi
+
+# window_management.raise_on_click: clicking a window raises it above an overlapping one, or does not.
+python3 -c "import PIL" 2>/dev/null || sudo dnf install -y python3-pillow >/dev/null 2>&1
+overlap_pixel() {
+    grim /tmp/raise-shot.png
+    python3 -c 'from PIL import Image; print(Image.open("/tmp/raise-shot.png").convert("RGB").getpixel((450, 300)))'
+}
+for mode in true false; do
+    apply "gnoblin.configure {window_management = {raise_on_click = $mode}}"
+    nohup swaybg -c "#202020" >/dev/null 2>&1 < /dev/null &
+    nohup foot -T raise-A -o colors.background=ff0000 -o colors-dark.background=ff0000 -o colors-light.background=ff0000 >/dev/null 2>&1 < /dev/null &
+    sleep 3
+    nohup foot -T raise-B -o colors.background=0000ff -o colors-dark.background=0000ff -o colors-light.background=0000ff >/dev/null 2>&1 < /dev/null &
+    sleep 3
+    "$G" window move "$(window_id raise-A)" 40 100 >/dev/null 2>&1
+    "$G" window move "$(window_id raise-B)" 300 160 >/dev/null 2>&1
+    sleep 1
+    before="$(overlap_pixel)"
+    python3 "$CLICK" 80 300 >/dev/null 2>&1
+    sleep 1
+    after="$(overlap_pixel)"
+    pkill -f "foot -T raise-"
+    pkill -x swaybg
+    sleep 2
+    check "raise_on_click $mode: overlap before the click is the newer window (blue)" "$before" "(0, 0, 255)"
+    if [ "$mode" = true ]; then
+        check "raise_on_click true raises the clicked window (overlap turns red)" "$after" "(255, 0, 0)"
+    else
+        check "raise_on_click false leaves the stacking alone (overlap stays blue)" "$after" "(0, 0, 255)"
+    fi
+done
 
 apply '-- disabled'
 rm -f "$F"
