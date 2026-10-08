@@ -98,6 +98,9 @@ Outputs:
 - `build/frame-renderers/gnoblin-frame-cairo`
 - `build/frame-renderers/gnoblin-frame-qt`
 
+The Qt renderer needs the Qt 6 development packages. To build only the Cairo
+renderer, run `GNOBLIN_FRAME_RENDERERS=cairo scripts/build-frame-renderers.sh`.
+
 Both accept `--theme-file=FILE`. `FILE` names a text file whose first line is
 a six-digit hex background, for example `#242424`. The renderer reads the
 path as given; relative paths are resolved from its working directory. Valid
