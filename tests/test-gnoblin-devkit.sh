@@ -213,7 +213,8 @@ printf 'GSETTINGS:workspace-names-untouched\n'
 # The idle service is a systemd user unit in a real session. A nested devkit session has no systemd user manager and
 # its private bus cannot activate the unit, so nothing would report session activity. Run the service by hand on the
 # private bus; it claims org.freedesktop.ScreenSaver, and the session-activity snapshot and event follow.
-"$GNOBLIN_PREFIX/libexec/gnoblin-idle" >/dev/null 2>&1 &
+# Keep its output in the devkit log: when no activity event arrives, the reason is in these lines.
+"$GNOBLIN_PREFIX/libexec/gnoblin-idle" > >(sed -u 's/^/GNOBLIN_IDLE: /') 2>&1 &
 idle_service_pid=$!
 trap 'kill "$idle_service_pid" 2>/dev/null || true' EXIT
 sleep 1
