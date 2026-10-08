@@ -22,6 +22,9 @@ command -v grim >/dev/null || {
 mkdir -p "$ROOT/build/tmp"
 fixture_root="$(mktemp -d "$ROOT/build/tmp/devkit-e2e-config.XXXXXX")"
 mkdir -p "$fixture_root/gnoblin"
+# An empty system config directory keeps the host's /etc/xdg/autostart entries (Bluetooth, mouse tools, groupware
+# alarms, VM agents) out of every nested session this test starts.
+mkdir -p "$fixture_root/xdg"
 # Set GNOBLIN_TEST_KEEP=1 to keep the fixture (config, state and devkit-last.log) for inspecting a failure.
 if [[ -z ${GNOBLIN_TEST_KEEP:-} ]]; then
     trap 'rm -rf -- "$fixture_root"' EXIT
@@ -877,6 +880,7 @@ SCRIPT
 # optional devkit viewer. Keep the nested compositor alive if that viewer exits
 # so this test isolates session-supervisor recovery.
 output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
+    XDG_CONFIG_DIRS="$fixture_root/xdg" \
     GNOBLIN_TEST_IBUS_DAEMON=1 \
     GNOBLIN_STATE_DIR="$fixture_root/state" \
     XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
@@ -964,6 +968,7 @@ grep -q 'restarting Lua runtime worker' "$fixture_root/state/devkit-last.log"
 printf '%s\n' 'PASS: Lua config and native control API work in the supervised nested runtime'
 
 per_window_output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
+    XDG_CONFIG_DIRS="$fixture_root/xdg" \
     GNOBLIN_TEST_IBUS_DAEMON=1 \
     GNOBLIN_STATE_DIR="$fixture_root/per-window-input-state" \
     XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
@@ -1215,6 +1220,7 @@ SCRIPT
 )
 
 guardian_output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
+    XDG_CONFIG_DIRS="$fixture_root/xdg" \
     GNOBLIN_STATE_DIR="$fixture_root/guardian-state" \
     GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$guardian_fixture" \
@@ -1369,6 +1375,7 @@ vec4 gnoblin_effect(vec4 color, vec2 uv) {
 GLSL
 effect_ownership_output="$(
     GNOBLIN_DEVKIT_KEEP_SESSION=1 \
+    XDG_CONFIG_DIRS="$fixture_root/xdg" \
         GNOBLIN_STATE_DIR="$fixture_root/effect-ownership-state" \
         XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
         GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
