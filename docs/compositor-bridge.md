@@ -387,6 +387,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.73            | `gnoblin.input.pad-help-requested`                                                                     |
 | 1.74            | `monitors.privacy_screen`, `monitors.set_privacy_screen`, and `gnoblin.monitor.privacy-screen-changed` |
 | 1.75            | Adds the `ui-sessions` capability for state and command messages between shell processes               |
+| 1.76            | Adds the `gnoblin.session.state-changed` event                                                         |
 | 1.78            | Adds the `auth-agent` capability, `auth.begin`, `auth.respond`, `auth.cancel`, and `gnoblin.auth.*` events |
 | 1.79            | Adds the `prompt-broker` capability, `prompt.respond`, `prompt.cancel`, and `gnoblin.prompt.*` events |
 | 1.80            | Adds the `gnoblin.pointer.locate-requested` event                                                      |
