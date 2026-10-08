@@ -14,6 +14,7 @@ copied into it.
 | `tests/qemu-e2e/run-regression.sh`  | Capabilities, privacy, grants, `commands.capture`, polkit prompts, keyring and GPG prompts through the prompt broker, input sources, `gnoblinctl` queries, compositor stability. Prints PASS or FAIL for each check. |
 | `tests/qemu-e2e/run-shortcut.sh`    | A Lua dynamic shortcut fires when its key combination reaches the guest.       |
 | `tests/qemu-e2e/run-config-shortcut.sh` | A shortcut declared in `gnoblin.configure {shortcuts = ...}` runs its command, moves when the binding changes on reload, and stops when disabled. |
+| `tests/qemu-e2e/run-config-fallback.sh` | A config that fails at login keeps the session running, and the fallback choice and error reach the marker file and the session log. Restarts the guest session twice. |
 | `tests/qemu-e2e/run-unfocused.sh`   | The documented rule that dims unfocused windows follows focus when you click.  |
 | `tests/qemu-e2e/run-animations.sh`  | A registered `open` animation fades a normal window in, and `dialog-open` fades a GTK modal dialog in. |
 | `tests/qemu-e2e/run-blur.sh`        | A `blur` rule smooths a striped wallpaper behind a translucent terminal.       |

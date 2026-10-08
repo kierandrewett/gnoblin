@@ -267,6 +267,21 @@ static void append_config_notice(const char* diagnostic) {
 
 static void set_config_fallback_marker(gboolean enabled, gboolean last_good,
                                       const char* diagnostic) {
+    if (enabled && diagnostic && *diagnostic) {
+        /* The panel reads the marker file. Also write the error and the choice to the session log, as the
+         * documentation says, so that someone without the panel can find them. Every fallback path comes through
+         * here and a reload sets the same marker again, so write each distinct message once. */
+        static char* last_logged = NULL;
+        g_autofree char* line = g_strdup_printf("gnoblin: configuration fell back to %s: %s",
+                                                last_good ? "the last good configuration"
+                                                          : "the built-in defaults",
+                                                diagnostic);
+        if (g_strcmp0(line, last_logged)) {
+            g_printerr("%s\n", line);
+            g_free(last_logged);
+            last_logged = g_steal_pointer(&line);
+        }
+    }
     set_config_notice(!enabled ? NULL : last_good ? "last-good" : "defaults", diagnostic);
 }
 
