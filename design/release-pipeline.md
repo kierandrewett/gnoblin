@@ -21,6 +21,18 @@ The support table in `docs/platform-support.md` names these outputs.
 
 Debian and Ubuntu are listed as unsupported. Users build them from source.
 
+## The rule: the build is the product
+
+`./build.sh` is the one way to build Gnoblin. Everything else is a view of its output:
+
+- A source bundle is the tree `./build.sh` compiles, in an archive.
+- A package is the staged install `./build.sh --layout system --destdir DIR` makes, plus
+  the package metadata (requirements, scriptlets, file ownership).
+- CI runs `./build.sh`. It does not hold its own copy of the build.
+
+A recipe may add what only that distribution knows. It may not repeat what the build
+already knows: the file layout, the build flags, the patch series, or the list of tests.
+
 ## What is wrong
 
 ### 1. No release has completed since 22 September
@@ -121,11 +133,10 @@ Pull requests run stages 1 to 3 against the merge commit. `main` runs stages 1 t
 
 ### A. Where does the Mutter source come from at release time?
 
-| Option                                                           | For                                                                                                        | Against                                                                                          |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| 1. Keep the fork commit as the source (today)                    | The bundle holds a reviewed commit.                                                                        | A manual push to a second repository for every patch change. Drift. This broke the pull request. |
-| 2. Apply `patches/mutter/` and the overlay onto the upstream tag | One path for `build.sh`, CI and the release. The repository alone is enough. The portal already does this. | The release build runs `git am` (about a minute). A patch conflict shows at release time.        |
-| 3. Keep the fork, and have CI push the tip                       | Keeps today's design.                                                                                      | CI needs write access to a second repository. More moving parts.                                 |
+Decided by the rule above: the release tarball applies `patches/mutter/` and the overlay
+to the upstream tag, as `./build.sh` does and as the portal already did. The fork no
+longer has to carry the patched commits. Done in `81876e39`; two runs of
+`scripts/make-tarball.sh mutter` gave byte-identical archives with all 221 patches.
 
 ### B. What happens to builds from `main`?
 
@@ -144,18 +155,23 @@ Proposed: no. Build into a draft and publish when all required jobs pass.
 Each item lands as its own commit, and the tree stays working.
 
 - [x] Build every test with one target, `gnoblin-tests`.
-- [ ] Take build dependencies from the RPM specs in every Fedora job, with
-      `dnf builddep`, and stop hand-written lists.
-- [ ] Decide A, B and C above.
-- [ ] Make `make-tarball.sh mutter` follow decision A.
-- [ ] Split `release.yml` into the five stages above. Move shared steps into
-      reusable workflows.
+- [x] Take Fedora build dependencies from the RPM specs in the Lua runtime job.
+- [x] Decision A: make `make-tarball.sh mutter` follow the patch series.
+- [x] Add the system layout to the build: `./build.sh --layout system --destdir DIR`,
+      with a test against the recipes' own file lists.
+- [x] Make the Fedora, openSUSE and Arch recipes call `./build.sh` and copy the stage.
+- [ ] Watch the CI jobs that build those recipes, and fix what they show.
+- [ ] Move the portal recipes onto the layout step (ship the script as a sidecar source).
+- [ ] Add `./build.sh package source|binary`: the source bundle and a relocatable binary
+      tree from the same build, and make CI call it.
+- [ ] Decide B and C above.
+- [ ] Split `release.yml` into the five stages above. Move shared steps into reusable
+      workflows, and build the bundle once.
 - [ ] Stop `main` from publishing releases, as decided in B.
 - [ ] Make the openSUSE job read the source bundle by a name it is given.
 - [ ] Fix the openSUSE RPM adapter, which fails on `main`.
 - [ ] Add a check that fails when a dependency list and the specs disagree.
-- [ ] Delete the stale Debian and APT sections from
-      `design/release-packaging.md`.
+- [ ] Delete the stale Debian and APT sections from `design/release-packaging.md`.
 - [ ] Dry run a release from a branch: draft only, no tag, no COPR upload.
-- [ ] Clean up: remove the 8 development pre-releases and the 3 drafts, after the
-      owner agrees.
+- [ ] Clean up: remove the 8 development pre-releases and the 3 drafts, after the owner
+      agrees.
