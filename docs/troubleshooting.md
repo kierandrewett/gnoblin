@@ -251,6 +251,22 @@ systemctl --user reset-failed xdg-desktop-portal-gnome.service
 
 Restart the session so apps reconnect to the portal.
 
+## X11 apps closed but Wayland apps kept running
+
+If Xwayland stops on its own, every X11 app closes. The compositor and the Wayland
+apps keep running. Start the X11 app again. Xwayland starts again when the first X11
+app connects.
+
+Xwayland does not run at login. `pgrep -x Xwayland` prints nothing until you start an
+X11 app. This is expected.
+
+If the same X11 app closes each time, run it from a terminal and read its output. If
+Xwayland itself keeps stopping, report it with the compositor log:
+
+```sh
+tail -n 40 ~/.local/state/gnoblin/compositor-last.log
+```
+
 ## X11 apps look too large on a fractional-scale display
 
 With a fractional display scale such as 1.25, Mutter rounds the X11 scale up to
