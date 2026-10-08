@@ -5025,7 +5025,6 @@ static int lua_cli_input_snapshot(lua_State* state) {
     }
     if (g_str_equal(method, "input.current_source")) {
         JsonNode* available = json_object_get_member(snapshot, "available");
-        JsonObject* source = json_object_get_object_member(snapshot, "source");
         if (!available || !JSON_NODE_HOLDS_VALUE(available) ||
             json_node_get_value_type(available) != G_TYPE_BOOLEAN)
             return luaL_error(state, "%s returned an invalid availability state", method);
@@ -5033,6 +5032,8 @@ static int lua_cli_input_snapshot(lua_State* state) {
             lua_pushnil(state);
             return 1;
         }
+        /* The reply has no source member while nothing is current, so read it only after the check above. */
+        JsonObject* source = json_object_get_object_member(snapshot, "source");
         if (!source)
             return luaL_error(state, "%s omitted its current source", method);
         gint64 revision = json_object_get_int_member_with_default(snapshot, "revision", -1);

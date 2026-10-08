@@ -99,6 +99,17 @@ sleep 4
 check "select ibus source" "$("$G" input select ibus m17n:ru:translit 2>&1)" '"current":true'
 check "current ibus source" "$("$G" input current 2>&1)" '"type":"ibus"'
 check "restore xkb source" "$("$G" input select xkb us 2>&1)" '"current":true'
+# Reloading a list that does not contain the current source leaves nothing current (us is selected above).
+# gnoblinctl lua must answer nil without a JSON assertion.
+printf 'local c = gnoblin.input.current_source()\nprint(c and c.id or "none")\n' > /tmp/current-source.lua
+printf 'gnoblin.configure {input_sources = {sources = {{type = "xkb", id = "gb"}, {type = "xkb", id = "de"}}}}\n' \
+    > "$CONFIG_DIR/99-test-sources.lua"
+"$G" config reload >/dev/null 2>&1
+sleep 2
+no_current_output="$("$G" lua /tmp/current-source.lua 2>&1)"
+check "current_source() answers nil when nothing is current" "$no_current_output" "none"
+check "gnoblinctl lua prints no JSON assertion for current_source()" "criticals=$(printf '%s' "$no_current_output" | grep -c 'Json-CRITICAL')" "criticals=0"
+disable_config 99-test-sources.lua
 
 echo "-- control surface"
 check "ping" "$("$G" ping 2>&1)" "pong"
