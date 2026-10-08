@@ -27,6 +27,9 @@
   gvdbSrc,
   hyprcursor,
   libglycin,
+  ibus,
+  gcr_4,
+  polkit,
 }:
 let
   versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnome-versions.json");
@@ -87,9 +90,12 @@ let
         dependency: if (dependency.pname or "") == "gsettings-desktop-schemas" then schemas else dependency
       ) (old.buildInputs or [ ])
       ++ [
+        gcr_4
         hyprcursor
+        ibus
         json-glib
         lua5_4
+        polkit
       ];
     mesonFlags =
       lib.filter (
