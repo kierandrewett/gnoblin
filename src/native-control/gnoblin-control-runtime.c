@@ -96,6 +96,8 @@ void gnoblin_control_runtime_add_display_environment(GVariantBuilder* hello) {
     g_variant_builder_add(hello, "{sv}", "environment", g_variant_builder_end(&environment));
 }
 
+static gboolean config_values_equal_at(GVariant* left, GVariant* right, GString* path);
+
 gboolean gnoblin_control_runtime_resume_snapshot_matches(GnoblinNativeControl* control,
                                                        GVariant* payload) {
     g_autoptr(GVariant) document =
@@ -108,18 +110,40 @@ gboolean gnoblin_control_runtime_resume_snapshot_matches(GnoblinNativeControl* c
     guint64 revision = 0;
     guint64 generation = 0;
     guint64 operation_id_watermark = 0;
+    guint64 current_revision = gnoblin_runtime_cache_get_settings_revision(control->runtime_cache);
+    /* Name the first field that differs. The rejection otherwise only says that the state does not match. */
+    const char* mismatch = NULL;
     if (!subscriptions || !control->runtime_event_subscriptions)
-        return FALSE;
-    return gnoblin_control_runtime_event_subscriptions_equal(subscriptions,
-                                                    control->runtime_event_subscriptions) &&
-           document && current_document &&
-           g_variant_lookup(payload, "settings_revision", "t", &revision) &&
-           g_variant_lookup(payload, "runtime_generation", "t", &generation) &&
-           g_variant_lookup(payload, "operation_id_watermark", "t", &operation_id_watermark) &&
-           revision == gnoblin_runtime_cache_get_settings_revision(control->runtime_cache) &&
-           generation == control->runtime_generation &&
-           operation_id_watermark == control->last_runtime_operation_id &&
-           gnoblin_control_runtime_config_values_equal(document, current_document);
+        mismatch = "event subscriptions are missing";
+    else if (!gnoblin_control_runtime_event_subscriptions_equal(subscriptions,
+                                                                 control->runtime_event_subscriptions))
+        mismatch = "event subscriptions differ";
+    else if (!document || !current_document)
+        mismatch = "the document is missing";
+    else if (!g_variant_lookup(payload, "settings_revision", "t", &revision) ||
+             !g_variant_lookup(payload, "runtime_generation", "t", &generation) ||
+             !g_variant_lookup(payload, "operation_id_watermark", "t", &operation_id_watermark))
+        mismatch = "a counter is missing";
+    else if (revision != current_revision)
+        mismatch = "the settings revision differs";
+    else if (generation != control->runtime_generation)
+        mismatch = "the runtime generation differs";
+    else if (operation_id_watermark != control->last_runtime_operation_id)
+        mismatch = "the operation id watermark differs";
+    g_autoptr(GString) difference = g_string_new("");
+    if (!mismatch && !config_values_equal_at(document, current_document, difference))
+        mismatch = "the document values differ";
+    if (!mismatch)
+        return TRUE;
+    if (difference->len)
+        g_message("gnoblin-native-control: first document difference: %s", difference->str);
+    g_warning("gnoblin-native-control: runtime resume does not match the accepted state: %s "
+              "(worker revision %" G_GUINT64_FORMAT " generation %" G_GUINT64_FORMAT
+              " watermark %" G_GUINT64_FORMAT "; accepted revision %" G_GUINT64_FORMAT
+              " generation %" G_GUINT64_FORMAT " watermark %" G_GUINT64_FORMAT ")",
+              mismatch, revision, generation, operation_id_watermark, current_revision,
+              control->runtime_generation, (guint64)control->last_runtime_operation_id);
+    return FALSE;
 }
 
 gboolean gnoblin_control_runtime_reject_resume(GnoblinNativeControl* control, const char* message,
@@ -155,20 +179,34 @@ gboolean gnoblin_native_control_cancel_runtime_request(MetaDisplay* display, gui
     return TRUE;
 }
 
-gboolean gnoblin_control_runtime_config_values_equal(GVariant* left, GVariant* right) {
-    if (!left || !right ||
-        !g_variant_type_equal(g_variant_get_type(left), g_variant_get_type(right)))
+/* Compares two configuration values. When PATH is set, it receives the key path of the first difference and both
+ * values, so a rejected worker resume can say what differed. */
+static gboolean config_values_equal_at(GVariant* left, GVariant* right, GString* path) {
+    if (!left || !right) {
+        if (path)
+            g_string_append_printf(path, " [%s]", !left ? "missing in the worker" : "missing in the accepted state");
         return FALSE;
+    }
+    if (!g_variant_type_equal(g_variant_get_type(left), g_variant_get_type(right))) {
+        if (path)
+            g_string_append_printf(path, " [worker type %s, accepted type %s]",
+                                   g_variant_get_type_string(left), g_variant_get_type_string(right));
+        return FALSE;
+    }
 
     if (g_variant_is_of_type(left, G_VARIANT_TYPE_VARIANT)) {
         g_autoptr(GVariant) left_value = g_variant_get_variant(left);
         g_autoptr(GVariant) right_value = g_variant_get_variant(right);
-        return gnoblin_control_runtime_config_values_equal(left_value, right_value);
+        return config_values_equal_at(left_value, right_value, path);
     }
 
     if (g_variant_is_of_type(left, G_VARIANT_TYPE_VARDICT)) {
-        if (g_variant_n_children(left) != g_variant_n_children(right))
+        if (g_variant_n_children(left) != g_variant_n_children(right)) {
+            if (path)
+                g_string_append_printf(path, " [worker has %" G_GSIZE_FORMAT " keys, accepted has %" G_GSIZE_FORMAT "]",
+                                       g_variant_n_children(left), g_variant_n_children(right));
             return FALSE;
+        }
 
         GVariantIter iter;
         const char* key;
@@ -177,26 +215,51 @@ gboolean gnoblin_control_runtime_config_values_equal(GVariant* left, GVariant* r
         while (g_variant_iter_next(&iter, "{&sv}", &key, &value)) {
             g_autoptr(GVariant) left_value = value;
             g_autoptr(GVariant) right_value = g_variant_lookup_value(right, key, NULL);
-            if (!gnoblin_control_runtime_config_values_equal(left_value, right_value))
+            gsize length = path ? path->len : 0;
+            if (path)
+                g_string_append_printf(path, "/%s", key);
+            if (!config_values_equal_at(left_value, right_value, path))
                 return FALSE;
+            if (path)
+                g_string_truncate(path, length);
         }
         return TRUE;
     }
 
     if (g_variant_is_container(left)) {
-        if (g_variant_n_children(left) != g_variant_n_children(right))
+        if (g_variant_n_children(left) != g_variant_n_children(right)) {
+            if (path)
+                g_string_append_printf(path, " [worker has %" G_GSIZE_FORMAT " items, accepted has %" G_GSIZE_FORMAT "]",
+                                       g_variant_n_children(left), g_variant_n_children(right));
             return FALSE;
+        }
 
         for (gsize i = 0; i < g_variant_n_children(left); i++) {
             g_autoptr(GVariant) left_value = g_variant_get_child_value(left, i);
             g_autoptr(GVariant) right_value = g_variant_get_child_value(right, i);
-            if (!gnoblin_control_runtime_config_values_equal(left_value, right_value))
+            gsize length = path ? path->len : 0;
+            if (path)
+                g_string_append_printf(path, "[%" G_GSIZE_FORMAT "]", i);
+            if (!config_values_equal_at(left_value, right_value, path))
                 return FALSE;
+            if (path)
+                g_string_truncate(path, length);
         }
         return TRUE;
     }
 
-    return g_variant_equal(left, right);
+    if (g_variant_equal(left, right))
+        return TRUE;
+    if (path) {
+        g_autofree char* left_text = g_variant_print(left, FALSE);
+        g_autofree char* right_text = g_variant_print(right, FALSE);
+        g_string_append_printf(path, " [worker %s, accepted %s]", left_text, right_text);
+    }
+    return FALSE;
+}
+
+gboolean gnoblin_control_runtime_config_values_equal(GVariant* left, GVariant* right) {
+    return config_values_equal_at(left, right, NULL);
 }
 
 gboolean gnoblin_control_runtime_flush_state_snapshots(GnoblinNativeControl* control,
