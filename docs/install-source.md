@@ -166,6 +166,8 @@ timeout. Applications can prevent idle activation through the ScreenSaver
 `Inhibit` method or the desktop portal. Portal apps can also prevent suspension.
 Portal inhibition ends when the request closes or its caller disconnects.
 Direct ScreenSaver inhibition ends at `UnInhibit` or caller disconnect.
+The ScreenSaver `Lock` method asks your shell to lock the session; see
+[lock requests](session-lock.md#request-a-lock).
 
 The login reports logout and user-switch inhibition as unsupported. It uses
 `Gnoblin` as its desktop identity so GNOME-only autostart entries stay out of
