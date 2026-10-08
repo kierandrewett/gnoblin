@@ -4078,8 +4078,15 @@ static gboolean guardian_receive_autostart(int fd, GnoblinRuntimeReader* reader,
             *autostart_complete = TRUE;
             start_xdg_autostart(*environment);
         }
-        if (!reconcile_autostart(*entries, *environment, children, active_entries, error))
-            return FALSE;
+        /* reconcile_autostart checks the whole list before it stops or starts a process, so a rejected list leaves
+         * the previous entries running. A bad entry in the config must not end the user's session. */
+        if (!reconcile_autostart(*entries, *environment, children, active_entries, error)) {
+            const char* reason = error && *error ? (*error)->message : "invalid autostart data";
+            g_autofree char* diagnostic = g_strdup_printf("Autostart config ignored: %s", reason);
+            g_printerr("gnoblin: %s\n", diagnostic);
+            append_config_notice(diagnostic);
+            g_clear_error(error);
+        }
     }
     return TRUE;
 }

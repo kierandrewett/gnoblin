@@ -308,6 +308,16 @@ reject_input "input.mouse.accel_curve that is not a table" "{mouse = {accel_curv
 reject_input "input.tablets that is not a table" "{tablets = 3}" "input.tablets must be a table"
 reject_input "an unknown input group" "{repeat_delay = -5}" "unknown input group: repeat-delay"
 check "the compositor keeps running after wrong-typed input" "$("$G" status 2>&1)" '"state":"running"'
+
+# An autostart entry with an unsupported field reaches the session guardian, which rejects it. That used to end the
+# whole session ("login autostart data failed"). It must now be logged and ignored while the session keeps running.
+ignored_count() { sudo journalctl -b --no-pager 2>/dev/null | grep -c 'Autostart config ignored'; }
+ignored_before="$(ignored_count)"
+printf 'gnoblin.configure {autostart = {bad_entry = {unsupported_field = 1}}}\n' > "$CONFIG_DIR/99-test-badreload.lua"
+"$G" config reload >/dev/null 2>&1
+sleep 4
+check "an invalid autostart entry is logged and ignored" "$([ "$(ignored_count)" -gt "$ignored_before" ] && echo yes || echo no)" "yes"
+check "the session keeps running after an invalid autostart entry" "$("$G" status 2>&1)" '"state":"running"'
 disable_config 99-test-badreload.lua
 
 echo "-- stability"

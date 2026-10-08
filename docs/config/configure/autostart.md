@@ -52,6 +52,11 @@ redirection and other shell syntax require explicitly launching a shell. See
 An invalid command logs a warning and does not prevent other entries from
 starting. Gnoblin does not restart a command after it exits.
 
+If the whole autostart list has an invalid entry, such as an unsupported field
+or a missing name, Gnoblin ignores the new list, keeps the entries that already
+run, and logs `Autostart config ignored` with the reason. The session keeps
+running. Fix the entry and reload the configuration.
+
 ## Type definition
 
 This is schema pseudocode in Lua table form. `?` marks an optional field;
