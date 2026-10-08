@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 8 Oct 2026 21:00:00 +0100
+Subject: [PATCH] mutter: keep the session when Xwayland exits
+
+Mutter treats Xwayland as mandatory when the compositor does not run as a systemd user
+unit, and it exits when Xwayland exits. Gnoblin runs under the display manager session
+wrapper, so killing or crashing Xwayland ended the whole session and every Wayland app
+with it.
+
+Use the on-demand policy, as a GNOME Shell session does. Xwayland starts when the first
+X11 client connects, and starts again after it exits.
+
+---
+diff --git a/src/core/meta-context-main.c b/src/core/meta-context-main.c
+index e40394b368..36408aad1e 100644
+--- a/src/core/meta-context-main.c
++++ b/src/core/meta-context-main.c
+@@ -130,15 +130,17 @@ static MetaX11DisplayPolicy
+ meta_context_main_get_x11_display_policy (MetaContext *context)
+ {
+   MetaContextMain *context_main = META_CONTEXT_MAIN (context);
+-  g_autofree char *unit = NULL;
+ 
+   if (context_main->options.no_x11)
+     return META_X11_DISPLAY_POLICY_DISABLED;
+ 
+-  if (sd_pid_get_user_unit (0, &unit) < 0)
+-    return META_X11_DISPLAY_POLICY_MANDATORY;
+-  else
+-    return META_X11_DISPLAY_POLICY_ON_DEMAND;
++  /*
++   * Mutter makes Xwayland mandatory when it does not run as a systemd user
++   * unit, and exits when Xwayland exits. Gnoblin runs under the display
++   * manager's session wrapper, so any Xwayland crash ended the whole session.
++   * Start Xwayland on demand instead, and start it again after it exits.
++   */
++  return META_X11_DISPLAY_POLICY_ON_DEMAND;
+ }
+ 
+ static gboolean
