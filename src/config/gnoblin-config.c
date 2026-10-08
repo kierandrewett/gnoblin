@@ -1864,7 +1864,9 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
         gboolean valid = g_variant_is_of_type(workspaces, G_VARIANT_TYPE("av")) &&
                          g_variant_n_children(workspaces) >= 1;
         GHashTable* ids = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+        gsize failed_index = 0;
         for (gsize i = 0; valid && i < g_variant_n_children(workspaces); i++) {
+            failed_index = i + 1;
             g_autoptr(GVariant) boxed = g_variant_get_child_value(workspaces, i);
             g_autoptr(GVariant) entry = g_variant_get_variant(boxed);
             if (!g_variant_is_of_type(entry, G_VARIANT_TYPE_VARDICT) ||
@@ -1890,9 +1892,13 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
         }
         g_hash_table_unref(ids);
         if (!valid) {
-            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                "workspaces must be a nonempty array of objects with unique valid "
-                                "ids and nonempty names up to 80 characters");
+            g_autofree char* where = failed_index > 0
+                                         ? g_strdup_printf("check entry %" G_GSIZE_FORMAT, failed_index)
+                                         : g_strdup("the value is not a nonempty array");
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "workspaces must be a nonempty array of objects with unique valid "
+                        "ids and nonempty names up to 80 characters (%s)",
+                        where);
             return FALSE;
         }
     }
