@@ -22,7 +22,10 @@ command -v grim >/dev/null || {
 mkdir -p "$ROOT/build/tmp"
 fixture_root="$(mktemp -d "$ROOT/build/tmp/devkit-e2e-config.XXXXXX")"
 mkdir -p "$fixture_root/gnoblin"
-trap 'rm -rf -- "$fixture_root"' EXIT
+# Set GNOBLIN_TEST_KEEP=1 to keep the fixture (config, state and devkit-last.log) for inspecting a failure.
+if [[ -z ${GNOBLIN_TEST_KEEP:-} ]]; then
+    trap 'rm -rf -- "$fixture_root"' EXIT
+fi
 schema_dir="$fixture_root/data/glib-2.0/schemas"
 mkdir -p "$schema_dir"
 cat >"$schema_dir/org.gnome.desktop.input-sources.gschema.xml" <<'XML'

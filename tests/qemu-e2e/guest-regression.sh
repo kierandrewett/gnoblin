@@ -339,6 +339,26 @@ disable_config 99-test-badreload.lua
 sleep 2
 check "removing the entry stops its command" "sleeping=$(pgrep -fc 'sleep 301')" "sleeping=0"
 
+echo "-- worker recovery"
+# A replacement Lua worker sends its configuration to Mutter, which compares it with the state it accepted and rejects the
+# worker when they differ. The shortcut and input handler lists used to follow Lua's per-process hash order, so a
+# replacement could list the same media-key handlers in another order. Mutter then rejected it and the Lua runtime stayed
+# unavailable for the rest of the session. Kill the worker twice with a user config loaded; both recoveries must work.
+printf 'local s=gnoblin.runtime.status(); print("RUNTIME_STATUS:"..s.state..":"..s.generation)\n' > /tmp/runtime-status.lua
+runtime_state() { "$G" --timeout 1 lua /tmp/runtime-status.lua 2>&1 | grep -o 'RUNTIME_STATUS:[a-z]*' || echo "no-status"; }
+worker_pid() { pgrep -f -- '--internal-runtime-worker' | head -1; }
+printf 'gnoblin.configure {input = {mouse = {drag_threshold = 37, double_click_time = 450}, keyboard = {delay = 300, repeat_interval = 40}}}\n' \
+    > "$CONFIG_DIR/99-test-recovery.lua"
+"$G" config reload >/dev/null 2>&1
+sleep 2
+for kill_number in 1 2; do
+    kill -9 "$(worker_pid)" 2>/dev/null
+    sleep 6
+    check "the Lua runtime runs again after worker kill $kill_number with a user config loaded" "$(runtime_state)" "RUNTIME_STATUS:running"
+done
+disable_config 99-test-recovery.lua
+sleep 2
+
 echo "-- stability"
 check "compositor alive" "$(pgrep -x gnoblin | wc -l)" "4"
 coredump_after="$(coredumpctl list --no-pager 2>/dev/null | tail -1)"
