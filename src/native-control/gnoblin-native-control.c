@@ -6162,8 +6162,8 @@ static gboolean native_config_event(MetaDisplay* display, const char* event, GVa
     if (control->touchpad_router && control->native_touchpad_gestures) {
         const char* context = control->wayland_compositor && meta_wayland_session_lock_is_active(
                                                                  control->wayland_compositor)
-                                  ? "unlock-screen"
-                                  : "normal";
+                                  ? "locked"
+                                  : "unlocked";
         g_autoptr(GVariant) matched = NULL;
         claimed = gnoblin_touchpad_router_handle(control->touchpad_router,
                                                  control->native_touchpad_gestures, payload,

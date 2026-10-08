@@ -90,7 +90,7 @@ static gboolean gesture_has_action(GVariant* gesture) {
 static gboolean gesture_matches_begin(GVariant* gesture, const char* kind, gint64 fingers,
                                       const char* context) {
     g_autofree char* gesture_kind = NULL;
-    const char* when = "normal";
+    const char* when = "unlocked";
     gint64 configured_fingers;
     if (!lookup_string(gesture, "gesture", &gesture_kind) ||
         !lookup_integer(gesture, "fingers", &configured_fingers) || !gesture_has_action(gesture) ||
@@ -103,6 +103,11 @@ static gboolean gesture_matches_begin(GVariant* gesture, const char* kind, gint6
             return FALSE;
         when = g_variant_get_string(when_value, NULL);
     }
+    /* "normal" and "unlock-screen" are the deprecated spellings of "unlocked" and "locked". */
+    if (g_str_equal(when, "normal"))
+        when = "unlocked";
+    else if (g_str_equal(when, "unlock-screen"))
+        when = "locked";
     return g_str_equal(when, "any") || (context && g_str_equal(when, context));
 }
 

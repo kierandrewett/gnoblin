@@ -3472,6 +3472,19 @@ static void push_settings(lua_State* state, int source, const char* parent, int 
                                      : key && !strcmp(key, "keybindings") ? 1
                                      : keybinding_depth == 1            ? 2
                                                                         : 0;
+        /* "normal" and "unlock-screen" are the deprecated spellings of the touchpad gesture "when" values
+         * "unlocked" and "locked". Store the new names so snapshots and events report them. */
+        if (key && !strcmp(key, "when") && lua_type(state, -2) == LUA_TSTRING) {
+            const char* value = lua_tostring(state, -2);
+            const char* replacement = !strcmp(value, "normal")         ? "unlocked"
+                                      : !strcmp(value, "unlock-screen") ? "locked"
+                                                                        : NULL;
+            if (replacement) {
+                /* The stack holds the source key, the value, then the converted key. Swap the value. */
+                lua_pushstring(state, replacement);
+                lua_replace(state, -3);
+            }
+        }
         push_settings(state, -2, callback_binding ? parent : key, depth + 1,
                       child_keybinding_depth);
         lua_rawset(state, destination);

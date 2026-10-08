@@ -394,6 +394,36 @@ check "permissions.default default (deprecated): the decision level" "$(permissi
 check "permissions.default default (deprecated): the committed policy" "$("$G" permissions policy 2>&1)" '"default":"inherit"'
 disable_config 99-test-permissions.lua
 
+echo "-- touchpad gesture when"
+# "normal" and "unlock-screen" are the deprecated spellings of "unlocked" and "locked". They must still load, and the
+# active config must report the new names.
+cat > "$CONFIG_DIR/99-test-gestures.lua" <<'LUA'
+gnoblin.configure {
+    touchpad_gestures = {
+        {name = "regression-old-unlocked", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 1, y = 0}},
+         action = "workspace.next", when = "normal"},
+        {name = "regression-old-locked", gesture = "swipe", fingers = 4, path = {{x = 0, y = 0}, {x = 1, y = 0}},
+         action = "workspace.next", when = "unlock-screen"},
+    },
+}
+LUA
+if "$G" config reload >/dev/null 2>&1; then
+    echo "PASS gestures with the deprecated when values reload"
+else
+    echo "FAIL gestures with the deprecated when values reload"
+    fail=$((fail + 1))
+fi
+shown=$("$G" config show 2>&1)
+check "deprecated normal is reported as unlocked" "$shown" '"when":"unlocked"'
+check "deprecated unlock-screen is reported as locked" "$shown" '"when":"locked"'
+if printf '%s' "$shown" | grep -q -F -e '"when":"normal"' -e '"when":"unlock-screen"'; then
+    echo "FAIL the active config still reports an old when value"
+    fail=$((fail + 1))
+else
+    echo "PASS the active config reports no old when value"
+fi
+disable_config 99-test-gestures.lua
+
 echo "-- stability"
 check "compositor alive" "$(pgrep -x gnoblin | wc -l)" "4"
 coredump_after="$(coredumpctl list --no-pager 2>/dev/null | tail -1)"

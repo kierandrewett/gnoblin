@@ -1011,12 +1011,14 @@ static gboolean validate_touchpad_gestures(GVariant* gestures, GError** error) {
         }
         const char* when = when_value && g_variant_is_of_type(when_value, G_VARIANT_TYPE_STRING)
                                ? g_variant_get_string(when_value, NULL)
-                               : "normal";
+                               : "unlocked";
+        /* "normal" and "unlock-screen" are the deprecated spellings of "unlocked" and "locked". */
         if (when_value && (!g_variant_is_of_type(when_value, G_VARIANT_TYPE_STRING) ||
-                           (!g_str_equal(when, "normal") && !g_str_equal(when, "unlock-screen") &&
+                           (!g_str_equal(when, "unlocked") && !g_str_equal(when, "locked") &&
+                            !g_str_equal(when, "normal") && !g_str_equal(when, "unlock-screen") &&
                             !g_str_equal(when, "any")))) {
             g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                        "%s: when must be normal, unlock-screen, or any", name);
+                        "%s: when must be unlocked, locked, or any", name);
             return FALSE;
         }
         double threshold = g_str_equal(kind, "swipe") ? 48 : 0.12;

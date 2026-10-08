@@ -95,7 +95,7 @@ end)
 Lua callbacks receive the queued event asynchronously and cannot claim or
 consume the Mutter input event. The compositor handles configured direct
 actions and commands in the `any` context synchronously. During an active
-session lock, it also handles `unlock-screen` bindings. Other contexts do not
+session lock, it also handles `locked` bindings. Other contexts do not
 have a Gnoblin UI handler.
 
 The standalone native runtime also dispatches the stable
