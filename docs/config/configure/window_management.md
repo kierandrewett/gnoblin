@@ -29,15 +29,17 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | `center_new_windows`          | Boolean         | `false` | Center newly created windows.                                           |
 | `attach_modal_dialogs`        | Boolean         | `false` | Place modal dialogs with their parent window.                           |
 | `disable_workarounds`         | Boolean         | `false` | Disable Mutter's compatibility workarounds for broken X11 applications. |
-| `constrain_drag_to_work_area` | Boolean         | `true`  | Accepted, but not applied yet. See the note below the table.            |
+| `constrain_drag_to_work_area` | Boolean         | `true`  | Keep dragged windows inside the work area. See the note below the table. |
 
 Leave `disable_workarounds` set to `false` unless you are debugging an X11
 application. Enabling it can make some applications behave incorrectly.
 
-`constrain_drag_to_work_area` is accepted and validated, but the compositor does
-not read it yet, so `true` and `false` behave the same. Mutter's own limits
-still apply: a dragged window cannot go above the work area, and it can move
-partly off the sides of a monitor.
+`constrain_drag_to_work_area` controls how far a dragged window can leave the
+work area, which is the monitor minus the space that panels reserve. With
+`true`, the whole window stays inside the work area. With `false`, Mutter's own
+rule applies: a window can move until only a strip of it stays on screen, at
+most 75 pixels tall. The setting is read when a drag starts, so a reload
+affects the next drag.
 
 The table shows the compositor default when a key is missing. The starter
 config that Gnoblin loads first sets these values instead, so they are what you
