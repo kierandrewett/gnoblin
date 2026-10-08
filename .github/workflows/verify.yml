@@ -74,6 +74,7 @@ jobs:
             --tests-regex '^(native-touchpad-router|runtime-protocol|runtime-spawn|runtime-cache|lua-pattern)$'
       - name: Verify the documented installation output
         run: |
+          set -x
           test -x "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin"
           test -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
           "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version | grep -F "Git commit: $GITHUB_SHA"
