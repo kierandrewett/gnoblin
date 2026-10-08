@@ -11,6 +11,7 @@
 # window_management.auto_maximize: a nearly monitor-sized new window opens maximized, or does not.
 # window_management.workspaces_only_on_primary: a second-monitor window follows the active workspace, or not.
 # window_management.auto_raise: with sloppy focus a resting pointer raises the window under it, or not.
+# window_management.focus_new_windows: strict keeps focus on the window in use, smart focuses the new window.
 # window_management.center_new_windows: true opens a new window centred on the monitor, false uses Mutter's
 #            default placement.
 set -u
@@ -335,6 +336,28 @@ for mode in true false; do
         check "auto_raise true raises the window under the resting pointer (overlap turns red)" "$after" "(255, 0, 0)"
     else
         check "auto_raise false leaves the stacking alone (overlap stays blue)" "$after" "(0, 0, 255)"
+    fi
+done
+
+# window_management.focus_new_windows: with strict a new window does not take focus from the window in use,
+# with smart it does. GNOME's default is smart, Gnoblin's is strict.
+for mode in strict smart; do
+    apply "gnoblin.configure {window_management = {focus_new_windows = \"$mode\"}}"
+    nohup swaybg -c "#202020" >/dev/null 2>&1 < /dev/null &
+    nohup foot -T fn-first >/dev/null 2>&1 < /dev/null &
+    sleep 3
+    python3 "$CLICK" $(center fn-first) >/dev/null 2>&1
+    sleep 1
+    nohup foot -T fn-second >/dev/null 2>&1 < /dev/null &
+    sleep 4
+    after="$(focused)"
+    pkill -f "foot -T fn-"
+    pkill -x swaybg
+    sleep 2
+    if [ "$mode" = strict ]; then
+        check "focus_new_windows strict keeps focus on the window in use" "$after" "fn-first"
+    else
+        check "focus_new_windows smart gives focus to the new window" "$after" "fn-second"
     fi
 done
 
