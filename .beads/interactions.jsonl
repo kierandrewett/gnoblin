@@ -35,3 +35,4 @@
 {"id":"int-5c1b725f03b4565dc94226e2667bda83","kind":"field_change","created_at":"2026-10-08T07:23:23.243713524Z","actor":"kierandrewett","issue_id":"gnoblin-379","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
 {"id":"int-c6e636749863442f5e03e8476f7d5e16","kind":"field_change","created_at":"2026-10-08T07:23:24.257651834Z","actor":"kierandrewett","issue_id":"gnoblin-50j","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
 {"id":"int-c9d5e19076e0953a8c494f48eb53ed9f","kind":"field_change","created_at":"2026-10-08T07:23:25.265332001Z","actor":"kierandrewett","issue_id":"gnoblin-5nv","extra":{"field":"status","new_value":"closed","old_value":"open","reason":"Closed"}}
+{"id":"int-8c369447865fd1f5cd5705821b168512","kind":"field_change","created_at":"2026-10-08T07:51:08.285919732Z","actor":"kierandrewett","issue_id":"gnoblin-lwr","extra":{"field":"priority","new_value":"3","old_value":"2"}}
