@@ -239,6 +239,41 @@ check "XSETTINGS byte order is LSBFirst (0), not a letter" \
 check "no Invalid XSETTINGS warning from GTK X11 clients" \
     "invalid=$(sudo journalctl -b --no-pager --since '-2min' 2>/dev/null | grep -c 'Invalid XSETTINGS')" "invalid=0"
 
+cat > /tmp/gtk-scale.py <<'PY'
+import gi
+
+gi.require_version("Gdk", "4.0")
+gi.require_version("Gtk", "4.0")
+from gi.repository import GLib, Gtk
+
+Gtk.init()
+window = Gtk.Window()
+window.present()
+loop = GLib.MainLoop()
+
+
+def report():
+    surface = window.get_surface()
+    print("scale_factor=%s" % (surface.get_scale_factor() if surface else None))
+    loop.quit()
+    return False
+
+
+GLib.timeout_add(1500, report)
+loop.run()
+PY
+x11_scale() { XAUTHORITY="$xs_auth" DISPLAY=:0 GDK_BACKEND=x11 timeout 20 python3 /tmp/gtk-scale.py 2>&1 | grep '^scale_factor=' | head -1; }
+printf 'gnoblin.configure {xwayland = {scaling_factor = 1}}\n' > "$CONFIG_DIR/99-test-xwayland.lua"
+"$G" config reload >/dev/null
+sleep 4
+check "a GTK X11 app sees scale factor 1 at xwayland.scaling_factor 1" "$(x11_scale)" "scale_factor=1"
+printf 'gnoblin.configure {xwayland = {scaling_factor = 2}}\n' > "$CONFIG_DIR/99-test-xwayland.lua"
+"$G" config reload >/dev/null
+sleep 4
+check "a GTK X11 app sees scale factor 2 at xwayland.scaling_factor 2" "$(x11_scale)" "scale_factor=2"
+disable_config 99-test-xwayland.lua
+sleep 3
+
 echo "-- stability"
 check "compositor alive" "$(pgrep -x gnoblin | wc -l)" "4"
 coredump_after="$(coredumpctl list --no-pager 2>/dev/null | tail -1)"
