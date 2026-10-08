@@ -41,6 +41,7 @@ The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled
 ## Reload and pointer checks
 
 - `run-resize-drag.sh`: Super + right-button drag resizes from the nearest corner, checked in all four quadrants.
+- `run-monitor-unplug.sh`: a window on the second monitor is not lost when that monitor is disabled. It moves to the remaining monitor, lies fully inside it with its size kept, and stays reachable when the monitor returns. Where it ends up after the return is reported and not asserted.
 - `run-monitor-move.sh`: Super+Shift+Right and Super+Shift+Left move a window to the next and previous monitor with its size and position kept, and Super+Up maximizes it to the area of the monitor it is on.
 - `run-edge-tiling.sh`: dragging a titlebar to the right edge tiles the window to the right half, dragging to the top edge maximizes it, and dragging a tiled window away gives it back its earlier size. Runs on one monitor and restores both.
 - `run-clipboard.sh`: copy and paste works between `wl-copy` and `wl-paste`, between a Wayland GTK4 app and `wl-clipboard` in both directions, between an X11 GTK4 app and `wl-clipboard` in both directions through Xwayland, and for the primary selection. Sets `focus_new_windows = "allow"`, which `wl-copy` needs.
