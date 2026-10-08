@@ -216,6 +216,37 @@ Registration only adds session files; it does not build a missing runtime.
 | `./build.sh --verbose`             | Show all build output as it runs          |
 | `./build.sh --preview`             | Try the build in a nested Wayland session |
 | `./build.sh --register-session`    | Add the standalone Gnoblin login entry    |
+| `./build.sh --layout system`       | Also write a package's public files       |
+| `./build.sh --destdir DIR`         | Install below DIR, as a package root      |
+
+## Build a package tree
+
+A distribution package uses the same build. It adds `--layout system` and a staging directory.
+
+`--layout` takes two values:
+
+- `private` is the default. Every file goes below `--prefix`. Use it for a
+  development build, `--preview` and `--register-session`.
+- `system` also writes the files a package ships outside the private prefix, below
+  `--system-prefix` (default `/usr`): links to `gnoblin` and `gnoblinctl` in `bin`,
+  the session file, the systemd user units, the portal configuration and the polkit
+  action. `scripts/install-system-layout.sh` lists them.
+
+`--destdir DIR` installs below `DIR`, as a package build root. Nothing outside `DIR`
+changes.
+
+```sh
+./build.sh --layout system --prefix /usr/lib/gnoblin --destdir "$PWD/stage"
+```
+
+The runtime is now in `stage/usr/lib/gnoblin/`, and `stage/usr/bin/gnoblin` links to
+it. Copy `stage/` into the package root. Add `--without-portal` for a package that
+ships the portal backend separately. To check the result against the RPM file lists,
+run `tests/system-layout.test.sh --stage stage`.
+
+`--system-prefix` needs `--layout system`. `--preview` and `--register-session` use
+the private layout. Set `GNOBLIN_BUILD_DIR` to build in a directory other than
+`build/ninja`, so a package build can sit next to a development build.
 
 Use `./build.sh --preview --terminal kitty` to choose a terminal.
 Use `--without-xwayland` only if you run Wayland-native applications; X11-only
