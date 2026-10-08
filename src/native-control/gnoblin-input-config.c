@@ -9,6 +9,17 @@ static gboolean input_number(GVariant* value, double* number) {
         *number = (double)g_variant_get_int64(value);
         return TRUE;
     }
+    /* Normalisation writes int32 and uint32 values (drag-threshold, double-click-time, repeat delay). A replacement
+     * worker normalises Mutter's accepted document again, so these must read back unchanged. Before, an int32 read
+     * back as 0, Mutter saw a different document and rejected the replacement worker. */
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32)) {
+        *number = (double)g_variant_get_int32(value);
+        return TRUE;
+    }
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32)) {
+        *number = (double)g_variant_get_uint32(value);
+        return TRUE;
+    }
     return FALSE;
 }
 
