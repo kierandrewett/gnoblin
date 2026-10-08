@@ -253,3 +253,14 @@ add_custom_target(gnoblin-session
 # default full-session build. Use gnoblin-session for the core without it.
 gnoblin_component(xdg-desktop-portal-gnome EXCLUDE_FROM_ALL gnoblin-session)
 add_custom_target(standalone-session ALL DEPENDS gnoblin-session xdg-desktop-portal-gnome)
+
+# One target that builds every test program, plus gnoblinctl, which the CLI tests run. It collects the targets whose names
+# end in -test, so a test added later is built without a change to any workflow. Run it, then ctest.
+get_property(GNOBLIN_ALL_TARGETS DIRECTORY PROPERTY BUILDSYSTEM_TARGETS)
+set(GNOBLIN_TEST_TARGETS gnoblinctl)
+foreach(target IN LISTS GNOBLIN_ALL_TARGETS)
+  if(target MATCHES "-test$")
+    list(APPEND GNOBLIN_TEST_TARGETS ${target})
+  endif()
+endforeach()
+add_custom_target(gnoblin-tests DEPENDS ${GNOBLIN_TEST_TARGETS})
