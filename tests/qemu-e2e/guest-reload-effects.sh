@@ -9,6 +9,7 @@
 # window_management.edge_tiling: dragging a titlebar to the left screen edge tiles the window to the left half, or
 #            only moves it.
 # window_management.auto_maximize: a nearly monitor-sized new window opens maximized, or does not.
+# window_management.workspaces_only_on_primary: a second-monitor window follows the active workspace, or not.
 # window_management.center_new_windows: true opens a new window centred on the monitor, false uses Mutter's
 #            default placement.
 set -u
@@ -265,6 +266,49 @@ apply 'gnoblin.configure {window_management = {auto_maximize = true}}'
 check "auto_maximize true maximizes a nearly full-size new window" "$(big_window_maximized)" "True"
 apply 'gnoblin.configure {window_management = {auto_maximize = false}}'
 check "auto_maximize false leaves it unmaximized" "$(big_window_maximized)" "False"
+
+# window_management.workspaces_only_on_primary: with true, a window on a second monitor follows the active
+# workspace (second monitors have no workspaces); with false it stays on its own workspace. Needs two monitors.
+monitor_count="$("$G" monitor list | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+monitors = data.get("monitors", data) if isinstance(data, dict) else data
+print(len(monitors))')"
+workspace_of() {
+    "$G" window list | python3 -c '
+import json, sys
+for w in json.load(sys.stdin)["windows"]:
+    if w["title"] == "'"$1"'":
+        print(w.get("workspace_number"))'
+}
+if [ "$monitor_count" -ge 2 ]; then
+    second_x=$((mon_w + 200))
+    for mode in true false; do
+        apply "gnoblin.configure {window_management = {workspaces_only_on_primary = $mode}}"
+        nohup foot -T ws-primary-A >/dev/null 2>&1 < /dev/null &
+        nohup foot -T ws-secondary-B >/dev/null 2>&1 < /dev/null &
+        sleep 4
+        "$G" window move "$(window_id ws-primary-A)" 100 200 >/dev/null 2>&1
+        "$G" window move "$(window_id ws-secondary-B)" "$second_x" 200 >/dev/null 2>&1
+        sleep 2
+        "$G" workspace switch 2 >/dev/null 2>&1
+        sleep 2
+        primary_ws="$(workspace_of ws-primary-A)"
+        secondary_ws="$(workspace_of ws-secondary-B)"
+        "$G" workspace switch 1 >/dev/null 2>&1
+        sleep 1
+        pkill -f "foot -T ws-"
+        sleep 2
+        check "workspaces_only_on_primary $mode: the primary-monitor window stays on workspace 1" "$primary_ws" "1"
+        if [ "$mode" = true ]; then
+            check "workspaces_only_on_primary true: the second-monitor window follows to workspace 2" "$secondary_ws" "2"
+        else
+            check "workspaces_only_on_primary false: the second-monitor window stays on workspace 1" "$secondary_ws" "1"
+        fi
+    done
+else
+    echo "SKIP workspaces_only_on_primary needs two monitors (found $monitor_count)"
+fi
 
 apply '-- disabled'
 rm -f "$F"
