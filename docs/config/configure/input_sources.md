@@ -20,6 +20,8 @@ in place. It does not load the saved GNOME input-source list.
   windows share the same active source; switching layouts in one window changes
   the source used in the others too.
 
+After login, and after a reload that removes the current source, the first `xkb` source in the list becomes current.
+
 ## Choose an ID
 
 Use the exact source ID, not its display name. For example, `"us+intl"` selects
