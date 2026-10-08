@@ -657,13 +657,17 @@ def display_processes():
             yield int(process.name), executable, args
 
 def worker_and_compositor():
-    worker = compositor = None
+    # The worker and the supervisor are the same gnoblin binary started with an internal flag, so the executable
+    # name alone matches all of them and the last match used to be the worker. Take the lowest pid among the
+    # gnoblin processes that carry neither flag.
+    worker = None
+    compositors = []
     for pid, executable, args in display_processes():
         if "--internal-runtime-worker" in args:
             worker = pid
-        if executable == "gnoblin":
-            compositor = pid
-    return worker, compositor
+        elif executable == "gnoblin" and "--internal-session-supervisor" not in args:
+            compositors.append(pid)
+    return worker, min(compositors, default=None)
 
 def config_snapshot():
     result = subprocess.run(
@@ -755,7 +759,11 @@ while time.monotonic() < deadline:
         break
     time.sleep(0.1)
 else:
-    raise AssertionError("Lua worker did not recover with the compositor alive")
+    raise AssertionError(
+        "Lua worker did not recover with the compositor alive: "
+        f"worker {worker_before} -> {worker_after}, compositor {compositor_before} -> {compositor_after}, "
+        f"status {status!r}, expected 'running:{generation_before}'"
+    )
 
 config_path = Path(os.environ["XDG_CONFIG_HOME"]) / "gnoblin" / "init.lua"
 config_path.write_text(

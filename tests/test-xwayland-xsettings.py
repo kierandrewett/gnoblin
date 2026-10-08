@@ -166,9 +166,11 @@ def settings_values(owner, settings_atom):
     settings_type, settings_format, blob = property_bytes(owner, settings_atom)
     if settings_type != settings_atom or settings_format != 8 or len(blob) < 12:
         raise SystemExit("XSettings property has an invalid type, format, or header")
-    if blob[0:1] == b"l":
+    # The XSETTINGS specification stores the X11 byte-order constants: LSBFirst is 0 and MSBFirst is 1. GTK clients
+    # warn "Invalid XSETTINGS" when the marker is an ASCII letter.
+    if blob[0:1] == b"\x00":
         endian = "<"
-    elif blob[0:1] == b"B":
+    elif blob[0:1] == b"\x01":
         endian = ">"
     else:
         raise SystemExit("XSettings property has an invalid byte-order marker")
