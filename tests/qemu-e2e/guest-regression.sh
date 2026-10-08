@@ -316,8 +316,24 @@ reject_input "input with a number where a group table belongs" "{keyboard = 5}" 
 reject_input "input.keyboard.xkb_options that is not a list" "{keyboard = {xkb_options = 5}}" "input.keyboard.xkb-options"
 reject_input "input.keyboard.xkb_options with non-string items" "{keyboard = {xkb_options = {1, 2}}}" "input.keyboard.xkb-options"
 reject_input "input.mouse.accel_curve that is not a table" "{mouse = {accel_curve = 7}}" "input.mouse.accel-curve"
+reject_input "input.mouse.accel_curve with a zero step" '{mouse = {accel_profile = "custom", accel_curve = {step = 0, points = {0.0, 1.0}}}}' "input.mouse.accel-curve"
+reject_input "input.mouse.accel_curve with one point" '{mouse = {accel_profile = "custom", accel_curve = {step = 1.0, points = {1.0}}}}' "input.mouse.accel-curve"
+reject_input "input.mouse.accel_curve with a negative point" '{mouse = {accel_profile = "custom", accel_curve = {step = 1.0, points = {0.0, -1.0}}}}' "input.mouse.accel-curve"
 reject_input "input.tablets that is not a table" "{tablets = 3}" "input.tablets must be a table"
 reject_input "an unknown input group" "{repeat_delay = -5}" "unknown input group: repeat-delay"
+# A valid custom acceleration curve must load, and the active config must report it with its step and points.
+printf 'gnoblin.configure {input = {mouse = {accel_profile = "custom", accel_curve = {step = 0.5, points = {0.0, 1.0, 2.0, 4.0}}}}}\n' \
+    > "$CONFIG_DIR/99-test-badreload.lua"
+if "$G" config reload >/dev/null 2>&1; then
+    echo "PASS a valid custom accel_curve reloads"
+else
+    echo "FAIL a valid custom accel_curve reloads"
+    fail=$((fail + 1))
+fi
+accel_shown=$("$G" config show 2>&1 | tr -d ' \n')
+check "the active config reports the custom accel_profile" "$accel_shown" '"accel_profile":"custom"'
+check "the active config reports the curve step" "$accel_shown" '"step":0.5'
+check "the active config reports the curve points" "$accel_shown" '"points":[0.0,1.0,2.0,4.0]'
 reject_config() {
     # reject_config NAME LUA EXPECTED_MESSAGE
     printf 'gnoblin.configure {%s}\n' "$2" > "$CONFIG_DIR/99-test-badreload.lua"
