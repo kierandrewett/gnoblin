@@ -1245,14 +1245,30 @@ static gboolean named_entries_map(lua_State* state, int index) {
     return map;
 }
 
+static int compare_entry_names(gconstpointer left, gconstpointer right) {
+    return g_strcmp0(*(const char* const*)left, *(const char* const*)right);
+}
+
+/* Entries are appended to an ordered list, and that order reaches the input handlers that Mutter compares with a
+ * replacement worker's configuration. Lua randomises its string hash seed for each process, so lua_next order
+ * differs between the original worker and its replacement. Visit the names in sorted order instead. */
 static void merge_named_entries(lua_State* state, int list, int entries) {
     list = lua_absindex(state, list);
     entries = lua_absindex(state, entries);
+    g_autoptr(GPtrArray) names = g_ptr_array_new_with_free_func(g_free);
     lua_pushnil(state);
     while (lua_next(state, entries)) {
-        if (lua_type(state, -2) != LUA_TSTRING || !lua_istable(state, -1))
+        if (lua_type(state, -2) != LUA_TSTRING || !lua_istable(state, -1)) {
+            g_ptr_array_unref(g_steal_pointer(&names));
             luaL_error(state, "named shortcuts and autostart entries must be tables");
-        const char* name = lua_tostring(state, -2);
+        }
+        g_ptr_array_add(names, g_strdup(lua_tostring(state, -2)));
+        lua_pop(state, 1);
+    }
+    g_ptr_array_sort(names, compare_entry_names);
+    for (guint position = 0; position < names->len; position++) {
+        const char* name = g_ptr_array_index(names, position);
+        lua_getfield(state, entries, name);
         int source = lua_gettop(state);
         lua_getfield(state, source, "name");
         if (!lua_isnil(state, -1) &&
@@ -3546,6 +3562,25 @@ static void remember_configured_input_binding(lua_State* state, const char* grou
     lua_pop(state, 3);
 }
 
+/* String keys of the table at INDEX in sorted order. Lua randomises its string hash seed for each process, so lua_next
+ * order differs between a worker and its replacement; registering in that order would make the input handler list
+ * differ and Mutter would reject the replacement's resume. A key that is not a string raises ERROR_MESSAGE. */
+static GPtrArray* sorted_string_keys(lua_State* state, int index, const char* error_message) {
+    index = lua_absindex(state, index);
+    GPtrArray* keys = g_ptr_array_new_with_free_func(g_free);
+    lua_pushnil(state);
+    while (lua_next(state, index)) {
+        if (lua_type(state, -2) != LUA_TSTRING) {
+            g_ptr_array_unref(keys);
+            luaL_error(state, "%s", error_message);
+        }
+        g_ptr_array_add(keys, g_strdup(lua_tostring(state, -2)));
+        lua_pop(state, 1);
+    }
+    g_ptr_array_sort(keys, compare_entry_names);
+    return keys;
+}
+
 static void register_keyboard_binding_callbacks(lua_State* state, int config_index,
                                                 LuaConfig* config) {
     config_index = lua_absindex(state, config_index);
@@ -3561,11 +3596,15 @@ static void register_keyboard_binding_callbacks(lua_State* state, int config_ind
         return;
     }
     int bindings = lua_absindex(state, -1);
-    lua_pushnil(state);
-    while (lua_next(state, bindings)) {
-        const char* name = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
-        if (!name || !is_keybinding_action_name(name) || !lua_istable(state, -1))
+    g_autoptr(GPtrArray) names =
+        sorted_string_keys(state, bindings, "keyboard binding declarations need snake_case names and tables");
+    for (guint position = 0; position < names->len; position++) {
+        const char* name = g_ptr_array_index(names, position);
+        lua_getfield(state, bindings, name);
+        if (!is_keybinding_action_name(name) || !lua_istable(state, -1)) {
+            g_ptr_array_unref(g_steal_pointer(&names));
             luaL_error(state, "keyboard binding declarations need snake_case names and tables");
+        }
         int declaration = lua_absindex(state, -1);
         lua_getfield(state, declaration, "enable");
         gboolean disabled = lua_isboolean(state, -1) && !lua_toboolean(state, -1);
@@ -3626,14 +3665,23 @@ static void register_pointer_binding_callbacks(lua_State* state, int config_inde
     if (!lua_istable(state, -1))
         luaL_error(state, "keybindings.pointer must be a table");
     int bindings = lua_absindex(state, -1);
-    lua_pushnil(state);
-    while (lua_next(state, bindings)) {
-        if (lua_type(state, -2) != LUA_TSTRING ||
-            !is_keybinding_action_name(lua_tostring(state, -2)))
+    g_autoptr(GPtrArray) names =
+        sorted_string_keys(state, bindings, "pointer binding names must use snake_case");
+    for (guint position = 0; position < names->len; position++) {
+        const char* name = g_ptr_array_index(names, position);
+        if (!is_keybinding_action_name(name)) {
+            g_ptr_array_unref(g_steal_pointer(&names));
             luaL_error(state, "pointer binding names must use snake_case");
-        const char* name = lua_tostring(state, -2);
-        if (!lua_istable(state, -1))
-            luaL_error(state, "pointer binding '%s' must be a table", name);
+        }
+        lua_getfield(state, bindings, name);
+        if (!lua_istable(state, -1)) {
+            /* Build the message in Lua memory first: NAME belongs to the array that is freed next. */
+            luaL_where(state, 1);
+            lua_pushfstring(state, "pointer binding '%s' must be a table", name);
+            lua_concat(state, 2);
+            g_ptr_array_unref(g_steal_pointer(&names));
+            lua_error(state);
+        }
         int declaration = lua_absindex(state, -1);
         lua_getfield(state, declaration, "enable");
         if (!lua_isnil(state, -1) && !lua_isboolean(state, -1))
