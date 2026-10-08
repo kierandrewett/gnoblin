@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Guest: Super + right-button drag resizes from the corner nearest the pointer.
 #
-# Opens a foot window, drags from its south-east quadrant, then from its north-west quadrant, and
-# prints the frame before and after each drag. The south-east drag must grow the window and keep
-# its top-left corner. The north-west drag must move the top-left corner and keep the bottom-right.
+# Opens a foot window and drags from each quadrant in turn: south-east, north-west, north-east, south-west. It prints
+# the frame before and after each drag. Each drag must move the corner nearest the pointer and keep the opposite
+# edges where they were.
 set -u
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
@@ -51,6 +51,30 @@ if [ "$x3" -lt "$x2" ] && [ "$y3" -lt "$y2" ] && [ "$right3" -eq "$right2" ]; th
     echo "PASS north-west drag moves the top-left corner and keeps the right edge"
 else
     echo "FAIL north-west drag"
+    fail=$((fail + 1))
+fi
+
+# North-east quadrant, drag right and up. The left and bottom edges stay; the top edge moves up and the width grows.
+python3 "$DRAG" $((x3 + w3 * 3 / 4)) $((y3 + h3 / 4)) 50 -40
+sleep 1
+read -r x4 y4 w4 h4 <<< "$(frame)"
+echo "after north-east drag: x=$x4 y=$y4 w=$w4 h=$h4"
+if [ "$x4" -eq "$x3" ] && [ "$y4" -lt "$y3" ] && [ "$w4" -gt "$w3" ] && [ "$((y4 + h4))" -eq "$((y3 + h3))" ]; then
+    echo "PASS north-east drag moves the top edge and keeps the left and bottom edges"
+else
+    echo "FAIL north-east drag"
+    fail=$((fail + 1))
+fi
+
+# South-west quadrant, drag left and down. The top and right edges stay; the left edge moves out and the height grows.
+python3 "$DRAG" $((x4 + w4 / 4)) $((y4 + h4 * 3 / 4)) -50 40
+sleep 1
+read -r x5 y5 w5 h5 <<< "$(frame)"
+echo "after south-west drag: x=$x5 y=$y5 w=$w5 h=$h5"
+if [ "$x5" -lt "$x4" ] && [ "$y5" -eq "$y4" ] && [ "$h5" -gt "$h4" ] && [ "$((x5 + w5))" -eq "$((x4 + w4))" ]; then
+    echo "PASS south-west drag moves the left edge and keeps the top and right edges"
+else
+    echo "FAIL south-west drag"
     fail=$((fail + 1))
 fi
 
