@@ -259,6 +259,31 @@ static void dispatch_gesture_sequence_event(gint64 source_sequence) {
     gnoblin_config_finish_event(TRUE);
 }
 
+/* A last-good document that an older Gnoblin saved can hold deprecated enum spellings. Mutter would read an unknown
+ * name as its fallback, so the loader must refuse such a document and accept the same setting with its new name. */
+static void test_last_good_refuses_deprecated_enum_names(const char* config_path) {
+    struct {
+        const char* value;
+        gboolean accepted;
+    } cases[] = {{"sloppy", FALSE}, {"hover", TRUE}};
+    for (guint i = 0; i < G_N_ELEMENTS(cases); i++) {
+        g_autoptr(GError) error = NULL;
+        g_autoptr(GVariant) document = g_variant_ref_sink(
+            g_variant_new_parsed("{'window-management': <{'focus-mode': <%s>}>}", cases[i].value));
+        g_assert_true(gnoblin_config_save_last_good_document(config_path, document, &error));
+        g_assert_no_error(error);
+        g_autoptr(GVariant) loaded = gnoblin_config_load_last_good_document(config_path, &error);
+        if (cases[i].accepted) {
+            g_assert_no_error(error);
+            g_assert_nonnull(loaded);
+        } else {
+            g_assert_null(loaded);
+            g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+            g_assert_nonnull(strstr(error->message, "older Gnoblin"));
+        }
+    }
+}
+
 static void test_input_gesture_sequence(const char* path) {
     const char* first_source =
         "local g=require('gnoblin')\n"
@@ -283,6 +308,10 @@ static void test_input_gesture_sequence(const char* path) {
 
 int main(void) {
     g_autoptr(GError) error = NULL;
+    /* GLib reads XDG_STATE_HOME once, so set it before any call that asks for the state directory. */
+    g_autofree char* state_home = g_dir_make_tmp("gnoblin-lua-state-XXXXXX", &error);
+    g_assert_no_error(error);
+    g_assert_true(g_setenv("XDG_STATE_HOME", state_home, TRUE));
     g_assert_true(gnoblin_config_window_pattern_match("dock", "prefix-dock-suffix", &error));
     g_assert_no_error(error);
     g_assert_true(gnoblin_config_window_pattern_match("^dock$", "dock", &error));
@@ -2795,6 +2824,7 @@ int main(void) {
     g_assert_cmpstr(legacy_surface_title, ==, "Panel");
 
     test_input_gesture_sequence(runtime_root);
+    test_last_good_refuses_deprecated_enum_names(root);
 
     g_unlink(fragment);
     g_unlink(malformed_patterns);
