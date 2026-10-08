@@ -925,8 +925,8 @@ static gboolean validate_touchpad_gestures(GVariant* gestures, GError** error) {
         g_autoptr(GVariant) boxed = g_variant_get_child_value(gestures, i);
         g_autoptr(GVariant) gesture = g_variant_get_variant(boxed);
         if (!touchpad_gesture_fields_allowed(gesture)) {
-            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                "touchpad gesture contains an unknown field");
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "touchpad-gestures entry %" G_GSIZE_FORMAT " contains an unknown field", i + 1);
             return FALSE;
         }
         g_autoptr(GVariant) name_value = g_variant_lookup_value(gesture, "name", NULL);
@@ -946,9 +946,10 @@ static gboolean validate_touchpad_gestures(GVariant* gestures, GError** error) {
             !g_regex_match_simple("^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$", name, G_REGEX_OPTIMIZE,
                                   G_REGEX_MATCH_NOTEMPTY) ||
             g_hash_table_contains(names, name)) {
-            g_set_error_literal(
-                error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                "touchpad gesture names must be unique identifiers of 1 to 64 characters");
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "touchpad-gestures entry %" G_GSIZE_FORMAT
+                        " needs a unique name of 1 to 64 characters (letters, digits, - and _)",
+                        i + 1);
             return FALSE;
         }
         g_hash_table_add(names, g_strdup(name));
