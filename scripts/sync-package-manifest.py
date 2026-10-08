@@ -90,10 +90,7 @@ def render_rpm(manifest: dict) -> str:
             for package_name, minimum in [native_requirement(manifest, name, "rpm")]
         ),
     ]
-    obsolete_packages = [
-        f"Obsoletes:      {name} < {next_major}"
-        for name in gnoblin.get("replaces", [])
-    ]
+    obsolete_packages = [f"Obsoletes:      {name} < {next_major}" for name in gnoblin.get("replaces", [])]
     integration = manifest["packages"]["gnoblin-gnome-integration"]
     integration_same_major, integration_exact, integration_native = dependency_closure(
         manifest, "gnoblin-gnome-integration"
