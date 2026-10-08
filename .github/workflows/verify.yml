@@ -77,7 +77,7 @@ jobs:
           set -x
           test -x "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin"
           test -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
-          "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version | grep -F "Git commit: $GITHUB_SHA"
+          "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version | grep -F "@ $GITHUB_SHA"
           "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version --json |
             python3 -c 'import json, sys; v = json.load(sys.stdin); assert v["gitSha"] == sys.argv[1]; assert v["gitRemote"]; assert v["version"] == sys.argv[2]; assert v["gnomeVersion"] == sys.argv[3]; assert all(v["components"].get(name) for name in ("mutter", "xdg-desktop-portal-gnome")); assert "gnome-shell" not in v["components"]' \
               "$GITHUB_SHA" "$(python3 scripts/gnoblin-version.py get version)" "$(python3 scripts/gnoblin-version.py get gnomeVersion)"

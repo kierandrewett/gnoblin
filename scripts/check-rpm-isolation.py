@@ -17,6 +17,9 @@ GNOME_MAJOR = MANIFEST["release"]["gnomeMajor"]
 ALLOWED_OBSOLETES = {
     f"gnoblin-session < {GNOME_MAJOR}",
     f"gnoblin-shell < {GNOME_MAJOR}",
+    # The separate Mutter packages were merged into gnoblin. The session package replaces them on upgrade.
+    f"gnoblin-mutter < {GNOME_MAJOR}",
+    f"gnoblin-mutter-devel < {GNOME_MAJOR}",
 }
 PUBLIC_FILES = {
     "/usr/bin/gnoblin",
