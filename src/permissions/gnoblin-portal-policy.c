@@ -10,7 +10,9 @@
 #define GNOBLIN_COMPOSITOR_IFACE "org.gnoblin.Compositor"
 static const char* capabilities[] = {"screen-cast", "remote-desktop", "input-capture",
                                      "screenshot",  "access",         NULL};
-static const char* levels[] = {"default", "ask", "allow", "deny", NULL};
+/* "default" is the deprecated spelling of "inherit". Both are accepted in a config; only "inherit" is reported. */
+static const char* levels[] = {"inherit", "default", "ask", "allow", "deny", NULL};
+static const char* reported_levels[] = {"inherit", "ask", "allow", "deny", NULL};
 static const char* devices[] = {"keyboard", "pointer", "touchscreen", NULL};
 
 static gboolean string_in(const char* value, const char* const* values) {
@@ -99,7 +101,7 @@ gboolean gnoblin_permission_policy_validate(GVariant* document, GError** error) 
     }
     gboolean valid = TRUE;
     g_autoptr(GVariant) default_value = g_variant_lookup_value(policy, "default", NULL);
-    const char* fallback = "default";
+    const char* fallback = "inherit";
     if (default_value) {
         valid = valid && g_variant_is_of_type(default_value, G_VARIANT_TYPE_STRING);
         if (g_variant_is_of_type(default_value, G_VARIANT_TYPE_STRING))
@@ -243,7 +245,7 @@ GnoblinPermission gnoblin_permission_policy_evaluate(GVariant* document, const c
         return permission;
     g_autoptr(GVariant) policy = g_variant_lookup_value(document, "permissions", NULL);
     permission.level = GNOBLIN_PERMISSION_DEFAULT;
-    const char* fallback = "default";
+    const char* fallback = "inherit";
     if (policy)
         g_variant_lookup(policy, "default", "&s", &fallback);
     permission.level = parse_level(fallback);
@@ -330,9 +332,11 @@ GVariant* gnoblin_permission_policy_list(GVariant* document, const char* config_
     g_variant_builder_init(&policy_out, G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) policy =
         document ? g_variant_lookup_value(document, "permissions", NULL) : NULL;
-    const char* fallback = "default";
+    const char* fallback = "inherit";
     if (policy)
         g_variant_lookup(policy, "default", "&s", &fallback);
+    if (g_str_equal(fallback, "default"))
+        fallback = "inherit";
     g_variant_builder_add(&policy_out, "{sv}", "default", g_variant_new_string(fallback));
     g_variant_builder_init(&rules_out, G_VARIANT_TYPE("av"));
     g_autoptr(GVariant) rules = policy ? g_variant_lookup_value(policy, "rules", NULL) : NULL;
@@ -346,7 +350,7 @@ GVariant* gnoblin_permission_policy_list(GVariant* document, const char* config_
     g_variant_builder_add(&policy_out, "{sv}", "rules", g_variant_builder_end(&rules_out));
     g_variant_builder_add(&result, "{sv}", "policy", g_variant_builder_end(&policy_out));
     add_string_array(&result, "capabilities", capabilities);
-    add_string_array(&result, "levels", levels);
+    add_string_array(&result, "levels", reported_levels);
     g_variant_builder_add(&result, "{sv}", "path",
                           g_variant_new_string(config_path ? config_path : ""));
     return g_variant_ref_sink(g_variant_builder_end(&result));
@@ -392,7 +396,7 @@ GnoblinPermission gnoblin_permission_check(GDBusMethodInvocation* invocation,
     }
     g_variant_get(reply, "(&s&s^asub)", &level, &rule, &permission.monitors, &permission.devices,
                   &permission.clipboard);
-    if (g_str_equal(level, "default"))
+    if (g_str_equal(level, "inherit") || g_str_equal(level, "default"))
         permission.level = GNOBLIN_PERMISSION_DEFAULT;
     else if (g_str_equal(level, "ask"))
         permission.level = GNOBLIN_PERMISSION_ASK;

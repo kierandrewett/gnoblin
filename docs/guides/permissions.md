@@ -19,12 +19,12 @@ an existing screen share stays connected.
 
 | Level     | Result                                           |
 | --------- | ------------------------------------------------ |
-| `default` | Normal portal behavior, including restore tokens |
+| `inherit` | Normal portal behavior, including restore tokens |
 | `ask`     | Require consent or selection every time          |
 | `allow`   | Approve the rule's specified capabilities        |
 | `deny`    | Reject without a dialog                          |
 
-The global default accepts `default`, `ask` or `deny`.
+The global default accepts `inherit`, `ask` or `deny`. `default` is the old name for `inherit`; it still loads but is deprecated.
 Automatic approval needs an explicit app rule. To ask every time by default:
 
 ```lua

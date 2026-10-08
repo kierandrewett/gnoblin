@@ -2442,7 +2442,7 @@ int main(void) {
     g_assert_true(g_variant_is_of_type(permission_policy_read, G_VARIANT_TYPE_VARDICT));
     const char* policy_default = NULL;
     g_assert_true(g_variant_lookup(permission_policy_read, "default", "&s", &policy_default));
-    g_assert_cmpstr(policy_default, ==, "default");
+    g_assert_cmpstr(policy_default, ==, "inherit");
     gint64 permission_policy_revision = 0;
     g_assert_true(
         g_variant_lookup(permission_policy_read, "revision", "x", &permission_policy_revision));
@@ -2463,7 +2463,7 @@ int main(void) {
     const char* permission_rule = NULL;
     g_assert_true(g_variant_lookup(permission_check, "level", "&s", &permission_level));
     g_assert_true(g_variant_lookup(permission_check, "rule", "&s", &permission_rule));
-    g_assert_cmpstr(permission_level, ==, "default");
+    g_assert_cmpstr(permission_level, ==, "inherit");
     g_assert_cmpstr(permission_rule, ==, "");
 
     GVariantBuilder portal_grant_builder;

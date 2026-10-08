@@ -5026,7 +5026,7 @@ static int lua_permissions_check(lua_State* state) {
         g_variant_new_string(decision.level == GNOBLIN_PERMISSION_ASK     ? "ask"
                              : decision.level == GNOBLIN_PERMISSION_ALLOW ? "allow"
                              : decision.level == GNOBLIN_PERMISSION_DENY  ? "deny"
-                                                                          : "default"));
+                                                                          : "inherit"));
     g_variant_builder_add(&result, "{sv}", "rule",
                           g_variant_new_string(decision.rule ? decision.rule : ""));
     static const char* const empty_monitors[] = {NULL};

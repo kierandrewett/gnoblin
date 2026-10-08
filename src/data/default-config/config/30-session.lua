@@ -9,7 +9,7 @@ gnoblin.configure {
     },
 
     permissions = {
-        default = "default",
+        default = "inherit",
         rules = {}, -- up to 256 rules; see the example below
     },
 

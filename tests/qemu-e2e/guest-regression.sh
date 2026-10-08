@@ -379,13 +379,19 @@ echo "-- permissions default"
 permission_level() {
     "$G" permissions check screen-cast app-id:org.example.Recorder 2>&1 | python3 -c 'import sys,json; print(json.load(sys.stdin).get("level"))' 2>&1
 }
-for mode in ask deny default; do
+for mode in ask deny inherit; do
     printf 'gnoblin.configure {permissions = {default = "%s"}}\n' "$mode" > "$CONFIG_DIR/99-test-permissions.lua"
     "$G" config reload >/dev/null 2>&1
     sleep 2
     check "permissions.default $mode: the decision level" "$(permission_level)" "$mode"
     check "permissions.default $mode: the committed policy" "$("$G" permissions policy 2>&1)" "\"default\":\"$mode\""
 done
+# "default" is the deprecated spelling of "inherit": it must still load and be reported as "inherit".
+printf 'gnoblin.configure {permissions = {default = "default"}}\n' > "$CONFIG_DIR/99-test-permissions.lua"
+"$G" config reload >/dev/null 2>&1
+sleep 2
+check "permissions.default default (deprecated): the decision level" "$(permission_level)" "inherit"
+check "permissions.default default (deprecated): the committed policy" "$("$G" permissions policy 2>&1)" '"default":"inherit"'
 disable_config 99-test-permissions.lua
 
 echo "-- stability"

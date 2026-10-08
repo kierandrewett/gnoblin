@@ -4541,7 +4541,8 @@ static gboolean lua_cli_permission_policy_valid(JsonObject* object) {
     JsonArray* rules = json_object_get_array_member(object, "rules");
     JsonNode* revision = json_object_get_member(object, "revision");
     if (!default_level ||
-        (!g_str_equal(default_level, "default") && !g_str_equal(default_level, "ask") &&
+        (!g_str_equal(default_level, "inherit") && !g_str_equal(default_level, "default") &&
+         !g_str_equal(default_level, "ask") &&
          !g_str_equal(default_level, "deny")) ||
         !rules || !revision || !JSON_NODE_HOLDS_VALUE(revision) ||
         (json_node_get_value_type(revision) != G_TYPE_INT64 &&
@@ -4603,7 +4604,8 @@ static int lua_cli_permissions_list(lua_State* state) {
     const char* default_level = member_string(policy, "default", NULL);
     JsonNode* path = object ? json_object_get_member(object, "path") : NULL;
     if (!policy || !default_level ||
-        (!g_str_equal(default_level, "default") && !g_str_equal(default_level, "ask") &&
+        (!g_str_equal(default_level, "inherit") && !g_str_equal(default_level, "default") &&
+         !g_str_equal(default_level, "ask") &&
          !g_str_equal(default_level, "deny")) ||
         !json_object_get_array_member(policy, "rules") ||
         !lua_cli_permission_string_array_valid(
@@ -4676,8 +4678,9 @@ static gboolean lua_cli_permission_decision_valid(JsonObject* object) {
     JsonNode* clipboard = json_object_get_member(object, "clipboard");
     JsonNode* revision = json_object_get_member(object, "revision");
     if (!level ||
-        (!g_str_equal(level, "default") && !g_str_equal(level, "ask") &&
-         !g_str_equal(level, "allow") && !g_str_equal(level, "deny")) ||
+        (!g_str_equal(level, "inherit") && !g_str_equal(level, "default") &&
+         !g_str_equal(level, "ask") && !g_str_equal(level, "allow") &&
+         !g_str_equal(level, "deny")) ||
         !rule || !JSON_NODE_HOLDS_VALUE(rule) || json_node_get_value_type(rule) != G_TYPE_STRING ||
         !monitors || !devices || !clipboard || !JSON_NODE_HOLDS_VALUE(clipboard) ||
         json_node_get_value_type(clipboard) != G_TYPE_BOOLEAN || !revision ||

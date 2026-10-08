@@ -22,7 +22,7 @@ gnoblin.permission_rule {
 | `name`         | Nonempty string                                                                                   | Required rule label.                                                     |
 | `match`        | Nonempty Lua 5.4 pattern, 1–512 bytes, against the complete verified identity                     | Required. Identities begin with `app-id:` or `host-exe:`.                |
 | `capabilities` | One or more of `"screen-cast"`, `"remote-desktop"`, `"input-capture"`, `"screenshot"`, `"access"` | Required permissions this rule controls.                                 |
-| `level`        | `"default"`, `"ask"`, `"allow"`, `"deny"`                                                         | Required permission decision.                                            |
+| `level`        | `"inherit"`, `"ask"`, `"allow"`, `"deny"`                                                         | Required decision. `"default"` still loads as the old name for `"inherit"`. |
 | `monitors`     | `"primary"` or exact monitor connector names                                                      | Applies to `screen-cast` and `remote-desktop`; unset means all monitors. |
 | `devices`      | Any of `"keyboard"`, `"pointer"`, `"touchscreen"`                                                 | Applies to `remote-desktop`; unset means no devices.                     |
 | `clipboard`    | Boolean                                                                                           | Applies to `remote-desktop`; defaults to `false`.                        |
@@ -52,7 +52,7 @@ gnoblin.permission_rule {
     match = string, -- Lua pattern, 1-512 bytes, over the complete identity
     capabilities = {"screen-cast" | "remote-desktop" | "input-capture"
         | "screenshot" | "access", ...}, -- nonempty
-    level = "default" | "ask" | "allow" | "deny",
+    level = "inherit" | "ask" | "allow" | "deny",
     monitors = {"primary" | string, ...}?,
     devices = {"keyboard" | "pointer" | "touchscreen", ...}?,
     clipboard = boolean?,

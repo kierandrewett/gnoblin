@@ -790,7 +790,7 @@ static void native_policy_method_call(GDBusConnection* connection, const char* s
                       decision.level == GNOBLIN_PERMISSION_ASK     ? "ask"
                       : decision.level == GNOBLIN_PERMISSION_ALLOW ? "allow"
                       : decision.level == GNOBLIN_PERMISSION_DENY  ? "deny"
-                                                                   : "default",
+                                                                   : "inherit",
                       decision.rule ? decision.rule : "", g_variant_new_strv(monitors, -1),
                       decision.devices, decision.clipboard));
 }
