@@ -148,12 +148,12 @@ See [shortcut conflicts](/guides/shortcuts#avoid-conflicts).
 
 ## Shell integration errors
 
-| Symptom                                                | Check                                                                                                                                                  |
-| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `gnoblinctl window list` cannot connect                | Run `gnoblinctl status --json` and check `windowControlError` and the active socket path. See [connection details](gnoblinctl.md#connection-problems). |
-| A bridge request says a window is unavailable          | Get a fresh ID from `gnoblinctl window list --json` or a `windows` snapshot. IDs expire when windows close.                                            |
+| Symptom                                                | Check                                                                                                                                                                                |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gnoblinctl window list` cannot connect                | Run `gnoblinctl status --json` and check `windowControlError` and the active socket path. See [connection details](gnoblinctl.md#connection-problems).                               |
+| A bridge request says a window is unavailable          | Get a fresh ID from `gnoblinctl window list --json` or a `windows` snapshot. IDs expire when windows close.                                                                          |
 | A Wayland client cannot bind a Gnoblin interface       | Inspect the registry inside the Gnoblin session, then check its [protocol gate](wayland-protocols.md). Changes apply after config reload; existing client bindings remain connected. |
-| A layer appears on the host desktop during devkit work | Launch it from the devkit environment and check `WAYLAND_DISPLAY`. The [devkit guide](devkit.md) explains the nested display.                          |
+| A layer appears on the host desktop during devkit work | Launch it from the devkit environment and check `WAYLAND_DISPLAY`. The [devkit guide](devkit.md) explains the nested display.                                                        |
 
 ## Removing a setting does not reset it
 
