@@ -40,9 +40,19 @@ still apply: a dragged window cannot go above the work area, and it can move
 partly off the sides of a monitor.
 
 The table shows the compositor default when a key is missing. The starter
-config from `gnoblinctl init` sets `attach_modal_dialogs = true`, as GNOME
-Shell does, so a modal dialog opens centered over its parent window and moves
-with it. Set it to `false` to let dialogs open freely.
+config that Gnoblin loads first sets these values instead, so they are what you
+get unless your own config changes them:
+
+| Key                            | Starter config value | Why                                                                              |
+| ------------------------------ | -------------------- | -------------------------------------------------------------------------------- |
+| `attach_modal_dialogs`         | `true`               | A modal dialog opens centered over its parent and moves with it, as in GNOME.    |
+| `center_new_windows`           | `true`               | New windows open centered on the monitor.                                        |
+| `edge_tiling`                  | `true`               | Dragging a window to a screen edge tiles it, as in GNOME.                        |
+| `focus_new_windows`            | `"smart"`            | A window started from a launcher takes focus. `"strict"` leaves it behind.       |
+| `workspaces_only_on_primary`   | `true`               | A window on another monitor follows the active workspace, as in GNOME.           |
+| `action_middle_click_titlebar` | `"none"`             | A stray middle click does not lower a window.                                    |
+
+Set any of them in your own config to change it.
 
 ### Titlebar buttons and actions
 
@@ -110,12 +120,15 @@ Mutter's standard policy has two choices. The [GNOME Shell team's
 focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/)
 explains why the modes differ.
 
-- `"strict"` is the default and enables Mutter's focus-stealing prevention. Activation requests
-  need recent launch or user activity. A newly opened window must also be a
-  transient descendant of the focused window, such as a dialog opened by that
-  app. Requests without valid recent activity leave the window unfocused.
-- `"smart"` allows applications to activate their windows after you have
-  interacted with another window since they opened them.
+- `"strict"` enables Mutter's focus-stealing prevention. It is the compositor's value when the
+  key is missing. Activation requests need recent launch or user activity. A
+  newly opened window must also be a transient descendant of the focused
+  window, such as a dialog opened by that app. Requests without valid recent
+  activity leave the window unfocused, including a window you start from a
+  launcher and a password dialog.
+- `"smart"` is the starter config value. It allows applications to activate
+  their windows after you have interacted with another window since they opened
+  them.
 
 In a Gnoblin session, `"strict"` makes Mutter use its focus-stealing checks.
 See [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/52-focus-transfer/0001-honour-app-activation.patch)

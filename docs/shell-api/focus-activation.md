@@ -18,6 +18,9 @@ The snapshot includes:
 | `auto_raise_delay`             | Integer from 0 to 10000 ms       | `500`     | Sets the automatic raise delay.             |
 | `focus_change_on_pointer_rest` | Boolean                         | `false`   | Changes focus after pointer rest.           |
 
+The Default column shows the compositor's value when a key is missing. The
+starter config sets `focus_new_windows` to `smart`.
+
 These are committed config values. See [focus and raising options](/config/configure/window_management#focus-and-raising)
 for when each setting takes effect.
 

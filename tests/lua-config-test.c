@@ -539,7 +539,19 @@ int main(void) {
         g_autoptr(GVariant) example_focus_new_windows = g_variant_lookup_value(
             example_window_management, "focus-new-windows", G_VARIANT_TYPE_STRING);
         g_assert_nonnull(example_focus_new_windows);
-        g_assert_cmpstr(g_variant_get_string(example_focus_new_windows, NULL), ==, "strict");
+        /* A window started from a launcher, or a password dialog, must take focus. */
+        g_assert_cmpstr(g_variant_get_string(example_focus_new_windows, NULL), ==, "smart");
+        gboolean edge_tiling = FALSE;
+        g_assert_true(g_variant_lookup(example_window_management, "edge-tiling", "b", &edge_tiling));
+        g_assert_true(edge_tiling);
+        gboolean only_on_primary = FALSE;
+        g_assert_true(g_variant_lookup(example_window_management, "workspaces-only-on-primary", "b",
+                                       &only_on_primary));
+        g_assert_true(only_on_primary);
+        g_autoptr(GVariant) middle_click = g_variant_lookup_value(
+            example_window_management, "action-middle-click-titlebar", G_VARIANT_TYPE_STRING);
+        g_assert_nonnull(middle_click);
+        g_assert_cmpstr(g_variant_get_string(middle_click, NULL), ==, "none");
     }
 
     g_assert_true(g_file_set_contents(
