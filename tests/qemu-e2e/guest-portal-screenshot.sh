@@ -106,6 +106,14 @@ wait_for_dialog() {
     done
     return 1
 }
+wait_for_focus() {
+    # A new window gets focus a moment after it appears.
+    for _ in $(seq 1 20); do
+        if [ "$(dialog_field focused)" = True ]; then return 0; fi
+        sleep 0.25
+    done
+    return 1
+}
 wait_for_result() {
     for _ in $(seq 1 60); do
         if grep -q '^code=' /tmp/portal-shot.out 2>/dev/null; then return 0; fi
@@ -133,10 +141,15 @@ ask() {
     : >/tmp/portal-shot.out
     nohup python3 /tmp/portal-shot.py >/tmp/portal-shot.out 2>&1 </dev/null &
     check "the access dialog appears for an app with no parent window" "$(wait_for_dialog && echo yes)" "yes"
-    check "the access dialog has keyboard focus" "$(dialog_field focused)" "True"
+    check "the access dialog has keyboard focus" "$(wait_for_focus && echo True)" "True"
     python3 /tmp/portal-keys.py "$1" >/dev/null 2>&1
     wait_for_result
 }
+
+# The backend is already on the bus after a login, because the frontend asks it for settings when it starts. This is the
+# state the first request meets. When the backend is stopped, the frontend skips its own permission check (xdg-desktop-portal
+# 1.20 reads the backend's version property, which is 0 until the backend runs); GitHub #143 follows that case.
+check "the portal backend is running at login" "$([ "$(pgrep -c -f xdg-desktop-portal-gnoblin)" -ge 1 ] && echo yes)" "yes"
 
 # Dialogs left by an earlier run are answered with Escape, which denies them. Then the remembered answer is cleared.
 for _ in 1 2 3 4 5; do
