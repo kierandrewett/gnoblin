@@ -143,48 +143,14 @@ gnoblin-session payload package on upgrade.
 %autosetup -n gnoblin-%{version}
 
 %build
-cmake -S . -B build/session -G Ninja \
-  -DGNOBLIN_PREFIX=%{_prefix} -DGNOBLIN_LIBDIR=%{_lib} \
-  -DGNOBLIN_STAGE_ROOT=%{_builddir}/gnoblin-stage \
-  -DGNOBLIN_BUILD_TYPE=release -DGNOBLIN_SOURCE_MODE=release-archive \
-  -DGNOBLIN_JOBS=%{?_smp_build_ncpus}
-cmake --build build/session --target mutter gnoblin-idle gnoblinctl \
-  --parallel %{?_smp_build_ncpus}
+# ./build.sh is the only build. The system layout adds the public entries (command links, session file, systemd
+# units, portal and polkit files) below the stage root, so this recipe does not repeat them.
+GNOBLIN_LIBDIR=%{_lib} GNOBLIN_BUILD_TYPE=release GNOBLIN_LAYOUT_GEOCLUE=1 \
+  ./build.sh --layout system --without-portal --prefix %{_prefix} \
+  --destdir %{_builddir}/gnoblin-stage --jobs %{?_smp_build_ncpus}
 
 %install
-if [ -d %{_builddir}/gnoblin-stage ]; then
-  cp -a %{_builddir}/gnoblin-stage/. %{buildroot}/
-fi
-GNOBLIN_LIBDIR=%{_lib} \
-GNOBLIN_STAGE_ROOT=%{buildroot} \
-GNOBLIN_IDLE_BINARY="$PWD/build/session/gnoblin-idle" \
-GNOBLINCTL_BINARY="$PWD/build/session/gnoblinctl" \
-GNOBLIN_IDENTITY_FILE="$PWD/build/session/gnoblinctl-identity.json" \
-GNOBLIN_VERSION_METADATA_FILE="$PWD/build/session/gnoblin-version.ini" \
-  scripts/install-session.sh %{_prefix}
-install -Dm0644 %{buildroot}%{_prefix}/share/xdg-desktop-portal/gnoblin-portals.conf \
-  %{buildroot}/usr/share/xdg-desktop-portal/gnoblin-portals.conf
-install -Dm0644 packaging/geoclue/50-gnoblin.conf \
-  %{buildroot}/etc/geoclue/conf.d/50-gnoblin.conf
-rm -f %{buildroot}%{_datadir}/glib-2.0/schemas/gschemas.compiled
-if [ -f %{buildroot}%{_datadir}/polkit-1/actions/org.gnome.mutter.backlight-helper.policy ]; then
-  install -d %{buildroot}/usr/share/polkit-1/actions
-  sed 's/org.gnome.mutter.backlight-helper/org.gnoblin.mutter.backlight-helper/g' \
-    %{buildroot}%{_datadir}/polkit-1/actions/org.gnome.mutter.backlight-helper.policy \
-    > %{buildroot}/usr/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy
-fi
-install -d %{buildroot}/usr/bin %{buildroot}/usr/share/wayland-sessions
-ln -s %{_prefix}/bin/gnoblin %{buildroot}/usr/bin/gnoblin
-ln -s %{_prefix}/bin/gnoblinctl %{buildroot}/usr/bin/gnoblinctl
-install -m 0644 %{buildroot}%{_datadir}/wayland-sessions/gnoblin.desktop \
-  %{buildroot}/usr/share/wayland-sessions/gnoblin.desktop
-install -Dm644 %{buildroot}%{_prefix}/lib/systemd/user/gnoblin-session.target \
-  %{buildroot}/usr/lib/systemd/user/gnoblin-session.target
-install -Dm644 %{buildroot}%{_prefix}/lib/systemd/user/gnoblin-idle.service \
-  %{buildroot}/usr/lib/systemd/user/gnoblin-idle.service
-sed -i -e 's|^Exec=.*|Exec=%{_prefix}/bin/gnoblin|' \
-  -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' \
-  %{buildroot}/usr/share/wayland-sessions/gnoblin.desktop
+cp -a %{_builddir}/gnoblin-stage/. %{buildroot}/
 
 %posttrans
 /usr/bin/glib-compile-schemas %{_datadir}/glib-2.0/schemas

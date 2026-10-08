@@ -27,22 +27,15 @@ prepare() {
 
 build() {
     cd "$srcdir/$pkgname-$pkgver" || return
-    cmake -S . -B build/ninja -G Ninja -DGNOBLIN_PREFIX="$_prefix" -DGNOBLIN_LIBDIR=lib -DGNOBLIN_BUILD_TYPE=release -DGNOBLIN_SOURCE_MODE=release-archive -DGNOBLIN_STAGE_ROOT="$srcdir/$pkgname-$pkgver/stage" -DGNOBLIN_JOBS="$(nproc)"
-    cmake --build build/ninja --target gnoblin-session --parallel "$(nproc)"
+    # ./build.sh is the only build. The system layout adds the public entries below the stage root.
+    GNOBLIN_LIBDIR=lib GNOBLIN_BUILD_TYPE=release \
+        ./build.sh --layout system --without-portal --prefix "$_prefix" \
+        --destdir "$srcdir/$pkgname-$pkgver/stage" --jobs "$(nproc)"
 }
 
 package() {
     cd "$srcdir/$pkgname-$pkgver" || return
     cp -a stage/. "$pkgdir/"
-    install -d "$pkgdir/usr/bin"
-    ln -s "$_prefix/bin/gnoblin" "$pkgdir/usr/bin/gnoblin"
-    ln -s "$_prefix/bin/gnoblinctl" "$pkgdir/usr/bin/gnoblinctl"
-    install -Dm644 "$pkgdir$_prefix/share/xdg-desktop-portal/gnoblin-portals.conf" \
-        "$pkgdir/usr/share/xdg-desktop-portal/gnoblin-portals.conf"
-    install -Dm644 "$pkgdir$_prefix/lib/systemd/user/gnoblin-session.target" "$pkgdir/usr/lib/systemd/user/gnoblin-session.target"
-    install -Dm644 "$pkgdir$_prefix/lib/systemd/user/gnoblin-idle.service" "$pkgdir/usr/lib/systemd/user/gnoblin-idle.service"
-    install -Dm644 "$pkgdir$_prefix/share/wayland-sessions/gnoblin.desktop" "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
-    sed -i -e 's|^Exec=.*|Exec=/usr/lib/gnoblin/bin/gnoblin|' -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' "$pkgdir/usr/share/wayland-sessions/gnoblin.desktop"
     api="$(scripts/gnome-versions.py get mutter api)"
     find "$pkgdir$_prefix" -type f -print0 | while IFS= read -r -d '' file; do
         head -c 4 "$file" | grep -qx $'ELF' || continue
