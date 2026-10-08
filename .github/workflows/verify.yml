@@ -68,8 +68,7 @@ jobs:
       - name: Verify the standalone native runtime
         run: |
           runuser -u builder -- cmake --build "$GNOBLIN_TARBALL_TREE/build/ninja" \
-            --target native-touchpad-router-test runtime-protocol-test runtime-spawn-test runtime-cache-test lua-pattern-test \
-            --parallel 2
+            --target gnoblin-tests --parallel 2
           runuser -u builder -- ctest --test-dir "$GNOBLIN_TARBALL_TREE/build/ninja" \
             --output-on-failure \
             --tests-regex '^(native-touchpad-router|runtime-protocol|runtime-spawn|runtime-cache|lua-pattern)$'
