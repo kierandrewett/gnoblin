@@ -9,6 +9,7 @@
 #include "core/gnoblin-control-internal.h"
 
 #include "meta/util.h"
+#include "meta/workspace.h"
 
 static void native_workspace_state_free(gpointer data) {
     NativeWorkspaceState* state = data;
@@ -353,11 +354,28 @@ JsonNode* gnoblin_control_monitor_snapshot_json(GnoblinNativeControl* control,
                                                      control->state_revision);
         return NULL;
     }
+    MetaWorkspaceManager* workspace_manager = meta_display_get_workspace_manager(control->display);
+    MetaWorkspace* active_workspace =
+        workspace_manager ? meta_workspace_manager_get_active_workspace(workspace_manager) : NULL;
     for (guint i = 0; i < json_array_get_length(monitors); i++) {
         JsonNode* record = json_array_get_element(monitors, i);
-        if (JSON_NODE_HOLDS_OBJECT(record))
-            json_object_set_int_member(json_node_get_object(record), "revision",
-                                       control->state_revision);
+        if (!JSON_NODE_HOLDS_OBJECT(record))
+            continue;
+        JsonObject* monitor = json_node_get_object(record);
+        json_object_set_int_member(monitor, "revision", control->state_revision);
+        /* The work area is the monitor minus the space that panels reserve with exclusive zones.
+         * It is what a window can use, so a shell or a person can see why a window stops where it does. */
+        int monitor_index = (int)json_object_get_int_member_with_default(monitor, "index", -1);
+        MtkRectangle work_area;
+        if (active_workspace && monitor_index >= 0) {
+            meta_workspace_get_work_area_for_monitor(active_workspace, monitor_index, &work_area);
+            JsonObject* area = json_object_new();
+            json_object_set_int_member(area, "x", work_area.x);
+            json_object_set_int_member(area, "y", work_area.y);
+            json_object_set_int_member(area, "width", work_area.width);
+            json_object_set_int_member(area, "height", work_area.height);
+            json_object_set_object_member(monitor, "work_area", area);
+        }
     }
     json_object_set_int_member(json_node_get_object(json), "revision", control->state_revision);
     if (update_lua_snapshot) {
@@ -441,6 +459,7 @@ gboolean gnoblin_control_publish_monitor_changes(GnoblinNativeControl* control, 
         static const char* properties[] = {
             "id",      "index", "x",    "y",     "width",  "height",       "primary",   "scale",
             "enabled", "name",  "make", "model", "serial", "refresh_rate", "transform",
+            "work_area",
         };
         GHashTableIter iter;
         gpointer key;

@@ -96,6 +96,7 @@ Monitor records expose these fields:
 | `name`                      | Optional display name supplied by Mutter.                                                                          |
 | `make`, `model`, `serial`   | Optional physical display details supplied by Mutter.                                                              |
 | `refresh_rate`              | Optional current refresh rate in Hz for the connector used as `id`.                                                |
+| `work_area`                 | The usable area of this monitor: `x`, `y`, `width` and `height` in logical pixels, after panels reserve space with exclusive zones. It follows the active workspace.|
 
 The `transform` values describe the output orientation:
 
@@ -159,5 +160,5 @@ Subscribe to `gnoblin.monitor.added`, `gnoblin.monitor.changed`, and
 `gnoblin.monitor.removed` to track output changes. The `changed` event's
 `changed` array lists changed record properties: `id`, `index`, `x`, `y`,
 `width`, `height`, `primary`, `scale`, `enabled`, `name`, `make`, `model`,
-`serial`, `refresh_rate`, or `transform`. These immediate reads and events are
+`serial`, `refresh_rate`, `transform`, or `work_area`. These immediate reads and events are
 available only in the native Mutter runtime.

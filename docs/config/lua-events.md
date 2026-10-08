@@ -387,7 +387,7 @@ the hook if the session locks or another input grab starts.
 Monitor records describe active logical monitors. The `id` is the canonical
 connector name. A monitor event's `changed` field lists updated properties:
 
-- Position: `index`, `x`, `y`, `width`, `height`.
+- Position: `index`, `x`, `y`, `width`, `height`, `work_area`.
 - Display: `primary`, `scale`, `enabled`, `refresh_rate`, `transform`.
 - Identity: `id`, `name`, `make`, `model`, `serial`.
 

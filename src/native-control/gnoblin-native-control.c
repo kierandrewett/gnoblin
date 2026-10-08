@@ -10646,6 +10646,12 @@ static void monitor_manager_changed(MetaMonitorManager* manager, gpointer user_d
     native_monitor_privacy_screen_publish(user_data);
 }
 
+static void display_work_areas_changed(MetaDisplay* display, gpointer user_data) {
+    (void)display;
+    /* A panel with an exclusive zone changes the work area without changing the monitors. */
+    schedule_windows(user_data);
+}
+
 static void monitor_privacy_screen_changed(MetaMonitorManager* manager,
                                            MetaLogicalMonitor* logical_monitor, gboolean enabled,
                                            gpointer user_data) {
@@ -12621,6 +12627,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     if (control->monitor_manager)
         g_signal_connect(control->monitor_manager, "monitors-changed",
                          G_CALLBACK(monitor_manager_changed), control);
+    g_signal_connect(control->display, "workareas-changed", G_CALLBACK(display_work_areas_changed),
+                     control);
     if (control->monitor_manager)
         g_signal_connect(control->monitor_manager, "monitor-privacy-screen-changed",
                          G_CALLBACK(monitor_privacy_screen_changed), control);

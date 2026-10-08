@@ -221,7 +221,7 @@ Monitor events include `revision`, `sequence`, and monotonic-clock `time`.
 
 The monitor `changed` array can contain `id`, `index`, `x`, `y`, `width`,
 `height`, `primary`, `scale`, `enabled`, `name`, `make`, `model`, `serial`,
-`refresh_rate`, or `transform`.
+`refresh_rate`, `transform`, or `work_area`.
 
 The server sends an initial window snapshot, then streams window and workspace
 events on that connection. Window and workspace events carry `revision`,
@@ -391,6 +391,7 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.78            | Adds the `auth-agent` capability, `auth.begin`, `auth.respond`, `auth.cancel`, and `gnoblin.auth.*` events |
 | 1.79            | Adds the `prompt-broker` capability, `prompt.respond`, `prompt.cancel`, and `gnoblin.prompt.*` events |
 | 1.80            | Adds the `gnoblin.pointer.locate-requested` event                                                      |
+| 1.81            | Adds `work_area` to monitor records and to the monitor `changed` list                                  |
 
 ### API 1.27: shell presentation requests
 
