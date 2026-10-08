@@ -3,6 +3,8 @@
 
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
+#include <json-glib/json-glib.h>
+#include <string.h>
 #include <unistd.h>
 
 #define SCREENSAVER_NAME "org.freedesktop.ScreenSaver"
@@ -56,6 +58,7 @@ typedef struct {
     guint idle_name_watch;
     guint dbus_owner_signal;
     guint screensaver_signal;
+    guint logind_lock_signal;
     guint screensaver_registration;
     guint activity_registration;
     gboolean name_lost;
@@ -177,6 +180,134 @@ static GVariant* call_screen_saver(IdleService* service, const char* method, GVa
                                        GNOME_SCREENSAVER_PATH, GNOME_SCREENSAVER_NAME, method,
                                        parameters, reply_type, G_DBUS_CALL_FLAGS_NONE, 5000, NULL,
                                        error);
+}
+
+/* Gnoblin has no lock screen of its own. A lock request goes to a shell that subscribed to
+ * gnoblin.session.lock-requested, through the same control request as `gnoblinctl session lock`.
+ * Running gnoblinctl keeps one request path and one place that knows the control protocol. */
+static char* gnoblinctl_path(void) {
+    g_autofree char* self = g_file_read_link("/proc/self/exe", NULL);
+    if (self) {
+        g_autofree char* libexec = g_path_get_dirname(self);
+        g_autofree char* candidate = g_build_filename(libexec, "..", "bin", "gnoblinctl", NULL);
+        if (g_file_test(candidate, G_FILE_TEST_IS_EXECUTABLE))
+            return g_steal_pointer(&candidate);
+    }
+    return g_strdup("gnoblinctl");
+}
+
+static gboolean run_gnoblinctl(const char* first, const char* second, char** standard_output,
+                               GError** error) {
+    g_autofree char* path = gnoblinctl_path();
+    const char* argv[] = {path, "--timeout", "5", first, second, NULL};
+    g_autofree char* output = NULL;
+    g_autofree char* failure = NULL;
+    gint status = 0;
+
+    if (!g_spawn_sync(NULL, (char**)argv, NULL, G_SPAWN_SEARCH_PATH, NULL, NULL, &output, &failure,
+                      &status, error))
+        return FALSE;
+    if (!g_spawn_check_wait_status(status, NULL)) {
+        /* gnoblinctl prints "gnoblinctl: <reason>". Pass the reason on to the D-Bus caller. */
+        const char* reason = failure ? g_strstrip(failure) : "";
+        if (g_str_has_prefix(reason, "gnoblinctl: "))
+            reason += strlen("gnoblinctl: ");
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                            *reason ? reason : "gnoblinctl failed");
+        return FALSE;
+    }
+    if (standard_output)
+        *standard_output = g_steal_pointer(&output);
+    return TRUE;
+}
+
+/* TRUE when the compositor holds any lock state other than unlocked, so a locker is or was in
+ * charge. A second lock request then has nothing to do, as in GNOME's screen shield. */
+static gboolean session_lock_active(GError** error) {
+    g_autofree char* output = NULL;
+    g_autoptr(JsonParser) parser = json_parser_new();
+
+    if (!run_gnoblinctl("--json", "status", &output, error))
+        return FALSE;
+    if (!json_parser_load_from_data(parser, output, -1, error))
+        return FALSE;
+    JsonNode* root = json_parser_get_root(parser);
+    if (!root || !JSON_NODE_HOLDS_OBJECT(root)) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "gnoblinctl returned an invalid status");
+        return FALSE;
+    }
+    const char* state = json_object_get_string_member_with_default(json_node_get_object(root),
+                                                                   "lock_state", "unlocked");
+    return !g_str_equal(state, "unlocked");
+}
+
+static gboolean request_session_lock(GError** error) {
+    g_autoptr(GError) state_error = NULL;
+
+    if (session_lock_active(&state_error))
+        return TRUE;
+    if (state_error)
+        g_debug("Could not read the lock state, asking for a lock anyway: %s",
+                state_error->message);
+    return run_gnoblinctl("session", "lock", NULL, error);
+}
+
+static gboolean gnome_screensaver_owned(IdleService* service) {
+    g_autoptr(GVariant) reply = g_dbus_connection_call_sync(
+        service->session_bus, "org.freedesktop.DBus", "/org/freedesktop/DBus",
+        "org.freedesktop.DBus", "NameHasOwner", g_variant_new("(s)", GNOME_SCREENSAVER_NAME),
+        G_VARIANT_TYPE("(b)"), G_DBUS_CALL_FLAGS_NONE, 1000, NULL, NULL);
+    gboolean owned = FALSE;
+
+    if (reply)
+        g_variant_get(reply, "(b)", &owned);
+    return owned;
+}
+
+/* The graphical session of this user, as logind names it. This service runs in the user manager,
+ * outside the session scope, so GetSessionByPID cannot find it. */
+static char* logind_display_session_path(IdleService* service) {
+    g_autoptr(GVariant) user = g_dbus_connection_call_sync(
+        service->system_bus, "org.freedesktop.login1", "/org/freedesktop/login1",
+        "org.freedesktop.login1.Manager", "GetUser", g_variant_new("(u)", (guint)getuid()),
+        G_VARIANT_TYPE("(o)"), G_DBUS_CALL_FLAGS_NONE, 2000, NULL, NULL);
+    const char* user_path = NULL;
+
+    if (!user)
+        return NULL;
+    g_variant_get(user, "(&o)", &user_path);
+    g_autoptr(GVariant) property = g_dbus_connection_call_sync(
+        service->system_bus, "org.freedesktop.login1", user_path, "org.freedesktop.DBus.Properties",
+        "Get", g_variant_new("(ss)", "org.freedesktop.login1.User", "Display"),
+        G_VARIANT_TYPE("(v)"), G_DBUS_CALL_FLAGS_NONE, 2000, NULL, NULL);
+    if (!property)
+        return NULL;
+    g_autoptr(GVariant) boxed = NULL;
+    g_variant_get(property, "(v)", &boxed);
+    const char* id = NULL;
+    const char* path = NULL;
+    g_variant_get(boxed, "(&s&o)", &id, &path);
+    return g_strdup(path);
+}
+
+static void on_logind_lock(GDBusConnection* connection, const char* sender, const char* path,
+                           const char* interface, const char* signal, GVariant* parameters,
+                           gpointer data) {
+    IdleService* service = data;
+    g_autoptr(GError) error = NULL;
+    g_autofree char* display = NULL;
+
+    /* A GNOME Shell that owns the screen saver name also listens to logind. Leave the request to
+     * it. */
+    if (gnome_screensaver_owned(service))
+        return;
+    display = logind_display_session_path(service);
+    if (!display || !g_str_equal(display, path))
+        return;
+    if (!request_session_lock(&error))
+        g_warning("logind asked for a session lock, but it could not be requested: %s",
+                  error->message);
 }
 
 static void on_idle_signal(GDBusProxy* proxy, const char* sender, const char* signal,
@@ -312,6 +443,37 @@ static void handle_method_call(GDBusConnection* connection, const char* sender, 
         return;
     }
 
+    if (g_str_equal(interface, "org.freedesktop.ScreenSaver") &&
+        !gnome_screensaver_owned(service)) {
+        if (g_str_equal(method, "GetActive")) {
+            gboolean active = session_lock_active(&error);
+            if (error) {
+                g_dbus_method_invocation_return_gerror(invocation, error);
+                return;
+            }
+            g_dbus_method_invocation_return_value(invocation, g_variant_new("(b)", active));
+            return;
+        }
+        if (g_str_equal(method, "Lock") || g_str_equal(method, "SetActive")) {
+            gboolean lock = TRUE;
+            if (g_str_equal(method, "SetActive"))
+                g_variant_get(parameters, "(b)", &lock);
+            if (!lock) {
+                g_dbus_method_invocation_return_error_literal(
+                    invocation, G_DBUS_ERROR, G_DBUS_ERROR_NOT_SUPPORTED,
+                    "Only the lock client can unlock the session");
+                return;
+            }
+            if (!request_session_lock(&error)) {
+                g_dbus_method_invocation_return_error_literal(invocation, G_DBUS_ERROR,
+                                                              G_DBUS_ERROR_FAILED, error->message);
+                return;
+            }
+            g_dbus_method_invocation_return_value(invocation, NULL);
+            return;
+        }
+    }
+
     if (g_str_equal(interface, "org.freedesktop.ScreenSaver") && g_str_equal(method, "GetActive")) {
         reply = call_screen_saver(service, "GetActive", NULL, G_VARIANT_TYPE("(b)"), &error);
     } else if (g_str_equal(interface, "org.freedesktop.ScreenSaver") &&
@@ -393,6 +555,9 @@ int main(int argc, char** argv) {
         service.session_bus, GNOME_SCREENSAVER_NAME, GNOME_SCREENSAVER_NAME, "ActiveChanged",
         GNOME_SCREENSAVER_PATH, NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_screen_saver_active_changed,
         &service, NULL);
+    service.logind_lock_signal = g_dbus_connection_signal_subscribe(
+        service.system_bus, "org.freedesktop.login1", "org.freedesktop.login1.Session", "Lock",
+        NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_logind_lock, &service, NULL);
     service.loop = g_main_loop_new(NULL, FALSE);
     name_id = g_bus_own_name_on_connection(service.session_bus, SCREENSAVER_NAME,
                                            G_BUS_NAME_OWNER_FLAGS_NONE, on_name_acquired,
@@ -407,6 +572,7 @@ int main(int argc, char** argv) {
         g_dbus_connection_unregister_object(service.session_bus, service.activity_registration);
     g_dbus_connection_signal_unsubscribe(service.session_bus, service.dbus_owner_signal);
     g_dbus_connection_signal_unsubscribe(service.session_bus, service.screensaver_signal);
+    g_dbus_connection_signal_unsubscribe(service.system_bus, service.logind_lock_signal);
     g_hash_table_unref(service.inhibitors);
     g_clear_object(&service.idle_monitor);
     g_clear_object(&service.system_bus);
