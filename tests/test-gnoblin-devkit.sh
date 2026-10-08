@@ -25,6 +25,7 @@ mkdir -p "$fixture_root/gnoblin"
 # An empty system config directory keeps the host's /etc/xdg/autostart entries (Bluetooth, mouse tools, groupware
 # alarms, VM agents) out of every nested session this test starts.
 mkdir -p "$fixture_root/xdg"
+# GSettings uses the in-memory backend for every nested session, so no setting can reach the user's dconf database.
 # Set GNOBLIN_TEST_KEEP=1 to keep the fixture (config, state and devkit-last.log) for inspecting a failure.
 if [[ -z ${GNOBLIN_TEST_KEEP:-} ]]; then
     trap 'rm -rf -- "$fixture_root"' EXIT
@@ -205,6 +206,13 @@ if [[ ! "$workspace_names" =~ ^(@as )?\[\]$ ]]; then
     exit 1
 fi
 printf 'GSETTINGS:workspace-names-untouched\n'
+# The idle service is a systemd user unit in a real session. A nested devkit session has no systemd user manager and
+# its private bus cannot activate the unit, so nothing would report session activity. Run the service by hand on the
+# private bus; it claims org.freedesktop.ScreenSaver, and the session-activity snapshot and event follow.
+"$GNOBLIN_PREFIX/libexec/gnoblin-idle" >/dev/null 2>&1 &
+idle_service_pid=$!
+trap 'kill "$idle_service_pid" 2>/dev/null || true' EXIT
+sleep 1
 cat > "$XDG_RUNTIME_DIR/mouse-settings.lua" <<'LUA'
 assert(gnoblin.settings.input.mouse.double_click_time == 350)
 print("LUA_API:mouse-double-click-time")
@@ -679,8 +687,10 @@ def worker_and_compositor():
         if "--internal-runtime-worker" in args:
             worker = pid
         elif executable == "gnoblin" and "--internal-session-supervisor" not in args:
-            compositors.append(pid)
-    return worker, min(compositors, default=None)
+            compositors.append((pid, any(arg.startswith("--runtime-fd") for arg in args)))
+    # The compositor is the gnoblin process with the runtime channel; fall back to the lowest pid.
+    preferred = [pid for pid, has_channel in compositors if has_channel]
+    return worker, min(preferred or [pid for pid, _ in compositors], default=None)
 
 def config_snapshot():
     result = subprocess.run(
@@ -888,6 +898,7 @@ SCRIPT
 # so this test isolates session-supervisor recovery.
 output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     XDG_CONFIG_DIRS="$fixture_root/xdg" \
+    GSETTINGS_BACKEND=memory \
     GNOBLIN_TEST_IBUS_DAEMON=1 \
     GNOBLIN_STATE_DIR="$fixture_root/state" \
     XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
@@ -976,6 +987,7 @@ printf '%s\n' 'PASS: Lua config and native control API work in the supervised ne
 
 per_window_output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     XDG_CONFIG_DIRS="$fixture_root/xdg" \
+    GSETTINGS_BACKEND=memory \
     GNOBLIN_TEST_IBUS_DAEMON=1 \
     GNOBLIN_STATE_DIR="$fixture_root/per-window-input-state" \
     XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
@@ -1062,13 +1074,17 @@ def display_processes():
             yield int(process.name), executable, args
 
 def processes():
-    compositor = supervisor = None
+    # Same selection as worker_and_compositor(): the worker is the same binary and has a higher pid, so the last
+    # match used to be the worker.
+    supervisor = None
+    compositors = []
     for pid, executable, args in display_processes():
         if "--internal-session-supervisor" in args:
             supervisor = pid
-        if executable == "gnoblin":
-            compositor = pid
-    return compositor, supervisor
+        elif executable == "gnoblin" and "--internal-runtime-worker" not in args:
+            compositors.append((pid, any(arg.startswith("--runtime-fd") for arg in args)))
+    preferred = [pid for pid, has_channel in compositors if has_channel]
+    return min(preferred or [pid for pid, _ in compositors], default=None), supervisor
 
 def config_snapshot():
     result = subprocess.run(
@@ -1152,8 +1168,8 @@ while time.monotonic() < deadline:
         supervisor_after
         and supervisor_after != supervisor_before
         and compositor_after == compositor_before
-        and config_after == config_before
-        and status == f"running:{generation_before}"
+        and config_after is not None
+        and status == f"running:{generation_before + 1}"
     ):
         assert marker.read_text() == "x", marker.read_text()
         os.kill(compositor_before, 0)
@@ -1162,9 +1178,16 @@ while time.monotonic() < deadline:
         break
     time.sleep(0.1)
 else:
-    raise AssertionError("session supervisor did not recover with the compositor alive")
+    raise AssertionError(
+        "session supervisor did not recover with the compositor alive: "
+        f"supervisor {supervisor_before} -> {supervisor_after}, compositor {compositor_before} -> {compositor_after}, "
+        f"config readable {config_after is not None}, status {status!r}, expected 'running:{generation_before + 1}'"
+    )
 
+# A replacement worker applies the built-in defaults, which Mutter accepts as a new configuration, so every
+# supervisor recovery raises the generation by one.
 supervisor_current = supervisor_after
+generation_current = generation_before + 1
 for retry in range(5):
     os.kill(supervisor_current, signal.SIGKILL)
     terminal_failure = retry == 4
@@ -1173,9 +1196,9 @@ for retry in range(5):
     while time.monotonic() < deadline:
         status = runtime_status()
         if status and status.startswith("restarting:"):
-            assert int(status.split(":", 1)[1]) == generation_before, status
+            assert int(status.split(":", 1)[1]) == generation_current, status
             break
-        if terminal_failure and status == f"unavailable:{generation_before}":
+        if terminal_failure and status == f"unavailable:{generation_current}":
             terminal_state_observed = True
             break
         time.sleep(0.01)
@@ -1192,10 +1215,11 @@ for retry in range(5):
                 supervisor_after
                 and supervisor_after != supervisor_current
                 and compositor_after == compositor_before
-                and config_after == config_before
-                and status == f"running:{generation_before}"
+                and config_after is not None
+                and status == f"running:{generation_current + 1}"
             ):
                 supervisor_current = supervisor_after
+                generation_current += 1
                 break
             time.sleep(0.1)
         else:
@@ -1205,7 +1229,7 @@ for retry in range(5):
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 status = runtime_status()
-                if status == f"unavailable:{generation_before}":
+                if status == f"unavailable:{generation_current}":
                     break
                 time.sleep(0.05)
             else:
@@ -1228,6 +1252,7 @@ SCRIPT
 
 guardian_output="$(GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     XDG_CONFIG_DIRS="$fixture_root/xdg" \
+    GSETTINGS_BACKEND=memory \
     GNOBLIN_STATE_DIR="$fixture_root/guardian-state" \
     GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
     GNOBLIN_DEVKIT_CONFIG_SOURCE="$guardian_fixture" \
@@ -1383,6 +1408,7 @@ GLSL
 effect_ownership_output="$(
     GNOBLIN_DEVKIT_KEEP_SESSION=1 \
     XDG_CONFIG_DIRS="$fixture_root/xdg" \
+    GSETTINGS_BACKEND=memory \
         GNOBLIN_STATE_DIR="$fixture_root/effect-ownership-state" \
         XDG_DATA_DIRS="$fixture_root/data${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}:/usr/local/share:/usr/share" \
         GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
