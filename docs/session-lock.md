@@ -28,6 +28,77 @@ The protocol is enabled by default in Gnoblin. To hide its global, set
 back in; protocol globals are registered at compositor startup. See the
 [protocol setting reference](/config/configure/protocols).
 
+## Request a lock
+
+A lock request asks your shell to show its lock screen. Gnoblin sends the
+request as the `gnoblin.session.lock-requested` event to every shell client
+that subscribed to it. The shell starts its locker, and the locker takes the
+lock with `ext-session-lock-v1`. Gnoblin binds no key and starts no locker.
+
+These sources send the request:
+
+- `gnoblinctl session lock`
+- `gnoblin.session.lock()` in the Lua configuration
+- `org.freedesktop.ScreenSaver.Lock`, or `SetActive(true)`, on the session bus
+- `loginctl lock-session` for your graphical session, and a lid or idle policy
+  that asks logind to lock it
+
+A request does not prove the session is locked. The call reports whether a
+shell received the request. Read `lock_state` in `gnoblinctl status` or
+`gnoblin.session.status()` to see the real state.
+
+If no shell is subscribed, the call fails and says so. `gnoblinctl` exits with
+an error, and `ScreenSaver.Lock` returns the error
+`no session-lock client is subscribed to lock requests`. A logind request writes
+the same message to the journal. Gnoblin leaves the session unlocked in this
+case.
+
+A request while the session is already locked succeeds and sends no second
+event. `ScreenSaver.GetActive` reports whether the compositor holds a lock.
+`SetActive(false)` returns `NotSupported`, because only the locker can unlock.
+Gnoblin does not send the `ScreenSaver.ActiveChanged` signal; subscribe to
+`gnoblin.session.lock-state-changed` for changes.
+
+If GNOME Shell owns `org.gnome.ScreenSaver` in the same session, the
+`ScreenSaver` methods go to GNOME Shell instead, and it handles the logind
+signal.
+
+To lock with a key of your choice, bind a key in the Lua configuration:
+
+```lua
+gnoblin.configure {
+    keybindings = {
+        keyboard = {
+            lock_screen = {
+                binding = "<Super>l",
+                callback = function()
+                    gnoblin.session.lock()
+                end,
+            },
+        },
+    },
+}
+```
+
+To receive the request in a shell, subscribe to the event and start the locker.
+This script runs in `gnoblinctl lua` and starts `swaylock` on each request:
+
+```lua
+gnoblin.events.on("gnoblin.session.lock-requested", function(event)
+    gnoblin.commands.run({"swaylock", "-f"})
+end)
+```
+
+Check the result from a terminal:
+
+```sh
+gnoblinctl session lock
+gnoblinctl status
+```
+
+`lock_state` changes from `unlocked` to `locked` after the locker takes the
+lock.
+
 ## Portal and remote access while locked
 
 Existing portal permission remains in force. A monitor stream already

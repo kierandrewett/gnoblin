@@ -202,18 +202,18 @@ Registration only adds session files; it does not build a missing runtime.
 
 ## Build options
 
-| Command                            | Behaviour                                   |
-| ---------------------------------- | ------------------------------------------- |
-| `./build.sh`                       | Build Gnoblin and its session data          |
-| `./build.sh --jobs N`              | Use N parallel compilation jobs             |
-| `./build.sh --prefix DIR`          | Build into DIR instead of `./install`       |
-| `./build.sh --without-xwayland`    | Omit X11 application support                |
-| `./build.sh --without-portal`      | Omit Gnoblin's GTK portal backend            |
-| `./build.sh --with-vector-cursors` | Include the optional vector cursor theme    |
-| `./build.sh --dry-run`             | Show what will be built                     |
-| `./build.sh --verbose`             | Show all build output as it runs            |
-| `./build.sh --preview`             | Try the build in a nested Wayland session   |
-| `./build.sh --register-session`    | Add the standalone Gnoblin login entry      |
+| Command                            | Behaviour                                 |
+| ---------------------------------- | ----------------------------------------- |
+| `./build.sh`                       | Build Gnoblin and its session data        |
+| `./build.sh --jobs N`              | Use N parallel compilation jobs           |
+| `./build.sh --prefix DIR`          | Build into DIR instead of `./install`     |
+| `./build.sh --without-xwayland`    | Omit X11 application support              |
+| `./build.sh --without-portal`      | Omit Gnoblin's GTK portal backend         |
+| `./build.sh --with-vector-cursors` | Include the optional vector cursor theme  |
+| `./build.sh --dry-run`             | Show what will be built                   |
+| `./build.sh --verbose`             | Show all build output as it runs          |
+| `./build.sh --preview`             | Try the build in a nested Wayland session |
+| `./build.sh --register-session`    | Add the standalone Gnoblin login entry    |
 
 Use `./build.sh --preview --terminal kitty` to choose a terminal.
 Use `--without-xwayland` only if you run Wayland-native applications; X11-only
