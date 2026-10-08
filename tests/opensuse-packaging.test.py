@@ -33,9 +33,8 @@ class OpenSUSEPackagingTests(unittest.TestCase):
     def test_gnoblin_uses_the_unified_cmake_build(self):
         content = (SPECS / "gnoblin.spec").read_text()
         self.assertNotIn("%{_bindir}/meson", content)
-        self.assertIn("cmake -S . -B build/session -G Ninja", content)
-        self.assertIn("--target mutter gnoblin-idle gnoblinctl", content)
-        self.assertIn("scripts/install-session.sh %{_prefix}", content)
+        self.assertIn("./build.sh --layout system --without-portal", content)
+        self.assertIn("--destdir %{_builddir}/gnoblin-stage", content)
 
     def test_portal_uses_the_system_meson_build_tool(self):
         content = (SPECS / "gnoblin-portal.spec").read_text()
@@ -52,7 +51,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         self.assertIn("/usr/lib/systemd/user/gnoblin-idle.service", content)
         self.assertNotIn("gnoblin-recovery", content)
         self.assertIn("BuildRequires:  pkgconfig(xkbcommon)", content)
-        self.assertIn("scripts/install-session.sh %{_prefix}", content)
+        self.assertIn("./build.sh --layout system", content)
         install = (ROOT / "scripts/install-session.sh").read_text()
         self.assertIn("systemd-user/gnoblin-session.target", install)
         self.assertIn("does not require GNOME Shell or GJS", normalized_content)

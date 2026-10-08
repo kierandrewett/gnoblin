@@ -387,7 +387,7 @@ if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ] || [ "$
             lib/systemd/user/gnoblin-idle.service
         )
         for entry in "${public_entries[@]}"; do
-            if [ ! -e "$destdir$system_prefix/$entry" ]; then
+            if [ ! -e "$destdir$system_prefix/$entry" ] && [ ! -L "$destdir$system_prefix/$entry" ]; then
                 printf 'Missing expected public entry: %s\n' "$destdir$system_prefix/$entry" >&2
                 exit 1
             fi
