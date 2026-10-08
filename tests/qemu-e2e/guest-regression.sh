@@ -361,8 +361,16 @@ echo "-- worker recovery"
 printf 'local s=gnoblin.runtime.status(); print("RUNTIME_STATUS:"..s.state..":"..s.generation)\n' > /tmp/runtime-status.lua
 runtime_state() { "$G" --timeout 1 lua /tmp/runtime-status.lua 2>&1 | grep -o 'RUNTIME_STATUS:[a-z]*' || echo "no-status"; }
 worker_pid() { pgrep -f -- '--internal-runtime-worker' | head -1; }
-printf 'gnoblin.configure {input = {mouse = {drag_threshold = 37, double_click_time = 450}, keyboard = {delay = 300, repeat_interval = 40}}}\n' \
-    > "$CONFIG_DIR/99-test-recovery.lua"
+# The config sets keyboard values, which Mutter stores as unsigned integers, and adds a keybinding callback. If the
+# replacement worker could not validate the accepted state it would fall back to the built-in defaults, whose input
+# handlers differ from the accepted ones because of the extra callback, and Mutter would reject it. The callback keeps
+# the test honest: without it the two lists can match by chance and hide the failure.
+cat > "$CONFIG_DIR/99-test-recovery.lua" <<'LUA'
+gnoblin.configure {
+    input = {mouse = {drag_threshold = 37, double_click_time = 450}, keyboard = {delay = 300, repeat_interval = 40}},
+    keybindings = {keyboard = {recovery_probe = {binding = "<Super>F9", callback = function() end}}},
+}
+LUA
 "$G" config reload >/dev/null 2>&1
 sleep 2
 for kill_number in 1 2; do

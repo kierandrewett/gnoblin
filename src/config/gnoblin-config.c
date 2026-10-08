@@ -26,6 +26,12 @@ static gboolean input_number(GVariant* value, double* number) {
         *number = (double)g_variant_get_int32(value);
         return TRUE;
     }
+    /* Mutter stores the keyboard delay and repeat interval as unsigned 32-bit integers, so the accepted state that a
+     * replacement worker validates holds them in this type. */
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32)) {
+        *number = (double)g_variant_get_uint32(value);
+        return TRUE;
+    }
     return FALSE;
 }
 
