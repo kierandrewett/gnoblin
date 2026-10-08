@@ -5,7 +5,7 @@
 # runs: CreateSession, SelectSources, Start, then OpenPipeWireRemote. It reads one frame from the stream with GStreamer
 # through the file descriptor the portal returns, and checks that the frame is a monitor-sized PNG showing a window and not
 # only the black desktop. It also checks that Gnoblin's permission policy reports the rule it matched. The dialog that
-# shows when no rule matches is not covered.
+# shows when no rule matches is not covered. The backend is stopped first, so the first request must start it.
 set -u
 XDG_RUNTIME_DIR="/run/user/$(id -u)"
 export XDG_RUNTIME_DIR
@@ -119,10 +119,14 @@ PY
 
 nohup env GDK_BACKEND=wayland python3 /tmp/cast-window.py >/dev/null 2>&1 </dev/null &
 sleep 3
+# Start from a stopped backend, so that the first request has to start it. The frontend calls the backend as soon as it owns
+# its bus name, and the ScreenCast interface used to be exported later, so that first call failed with "No such interface".
+pkill -f xdg-desktop-portal-gnoblin 2>/dev/null
+sleep 3
 timeout 90 python3 /tmp/portal-cast.py >/tmp/portal-cast.out 2>&1
 field() { sed -n "s/.*$1=\([^ ]*\).*/\1/p" /tmp/portal-cast.out | head -1; }
 
-check "CreateSession succeeds" "$(field create)" "0"
+check "the first request after the backend starts succeeds (CreateSession)" "$(field create)" "0"
 check "SelectSources succeeds" "$(field select)" "0"
 check "Start succeeds with no dialog and returns a stream" "$(sed -n 's/^start=\([0-9]*\) streams=\([0-9]*\)$/\1 \2/p' /tmp/portal-cast.out)" "0 1"
 check "GStreamer reads a frame through the portal's PipeWire connection" "$(field gst)" "0"
