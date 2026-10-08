@@ -1,3 +1,7 @@
+-- Turns the location policy on and allows every request, so a test can check the GeoClue agent path.
+-- location.enabled must be set here or in org.gnome.system.location. Without it the agent denies all requests.
+gnoblin.configure {location = {enabled = true, max_accuracy = "city"}}
+
 local function log(text)
     gnoblin.commands.run({"sh", "-c", 'echo "$1" >> /tmp/location-events.log', "sh", text})
 end
