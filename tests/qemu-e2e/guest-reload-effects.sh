@@ -6,6 +6,8 @@
 # window_management.focus_mode: "click" keeps focus when the pointer moves onto another window, "sloppy"
 #            focuses the window under the pointer.
 # window_management.raise_on_click: a click raises the window above an overlapping one, or leaves the stacking.
+# window_management.edge_tiling: dragging a titlebar to the left screen edge tiles the window to the left half, or
+#            only moves it.
 # window_management.center_new_windows: true opens a new window centred on the monitor, false uses Mutter's
 #            default placement.
 set -u
@@ -194,6 +196,41 @@ for mode in true false; do
         check "raise_on_click true raises the clicked window (overlap turns red)" "$after" "(255, 0, 0)"
     else
         check "raise_on_click false leaves the stacking alone (overlap stays blue)" "$after" "(0, 0, 255)"
+    fi
+done
+
+# window_management.edge_tiling: dragging a titlebar to the left screen edge tiles the window, or does not.
+DRAG="${GNOBLIN_TITLEBAR_DRAG:-/tmp/guest-titlebar-drag.py}"
+tile_frame() {
+    "$G" window list | python3 -c '
+import json, sys
+for w in json.load(sys.stdin)["windows"]:
+    if w["title"] == "tile-test":
+        f = w["frame"]
+        print("%d %d %d %d" % (f["x"], f["y"], f["width"], f["height"]))'
+}
+monitor_size="$("$G" monitor list | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+monitors = data.get("monitors", data) if isinstance(data, dict) else data
+m = monitors[0]
+box = m.get("rect") or m.get("geometry") or m
+print(m.get("width", box.get("width")), m.get("height", box.get("height")))')"
+read -r mon_w mon_h <<<"$monitor_size"
+for mode in true false; do
+    apply "gnoblin.configure {window_management = {edge_tiling = $mode}}"
+    nohup foot -T tile-test >/dev/null 2>&1 < /dev/null &
+    sleep 4
+    read -r wx wy ww wh <<<"$(tile_frame)"
+    python3 "$DRAG" $((wx + ww / 2)) $((wy + 12)) -$((wx + ww / 2 + 200)) 0 >/dev/null 2>&1
+    sleep 2
+    read -r nx ny nw nh <<<"$(tile_frame)"
+    pkill -f "foot -T tile-test"
+    sleep 2
+    if [ "$mode" = true ]; then
+        check "edge_tiling true tiles the window to the left half" "$nx $nw $nh" "0 $((mon_w / 2)) $mon_h"
+    else
+        check "edge_tiling false only moves the window (size unchanged)" "$nw $nh" "$ww $wh"
     fi
 done
 
