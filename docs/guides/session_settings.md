@@ -47,7 +47,9 @@ gnoblin.configure {
 }
 ```
 
-Default: `true`. Applies at the next drag after reload.
+Default: `true`. The compositor accepts this setting but does not read it yet,
+so `true` and `false` behave the same. See the
+[window management reference](/config/configure/window_management).
 
 This keeps the dragged frame below the monitor's reserved top area, including
 space reserved by a layer-shell panel. Set `false` to allow overlap.

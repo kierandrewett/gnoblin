@@ -29,10 +29,15 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | `center_new_windows`          | Boolean         | `false` | Center newly created windows.                                           |
 | `attach_modal_dialogs`        | Boolean         | `false` | Place modal dialogs with their parent window.                           |
 | `disable_workarounds`         | Boolean         | `false` | Disable Mutter's compatibility workarounds for broken X11 applications. |
-| `constrain_drag_to_work_area` | Boolean         | `true`  | Keep interactive window moves inside the work area.                     |
+| `constrain_drag_to_work_area` | Boolean         | `true`  | Accepted, but not applied yet. See the note below the table.            |
 
 Leave `disable_workarounds` set to `false` unless you are debugging an X11
 application. Enabling it can make some applications behave incorrectly.
+
+`constrain_drag_to_work_area` is accepted and validated, but the compositor does
+not read it yet, so `true` and `false` behave the same. Mutter's own limits
+still apply: a dragged window cannot go above the work area, and it can move
+partly off the sides of a monitor.
 
 The table shows the compositor default when a key is missing. The starter
 config from `gnoblinctl init` sets `attach_modal_dialogs = true`, as GNOME
