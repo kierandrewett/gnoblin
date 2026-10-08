@@ -5,14 +5,14 @@
 # it receives). A source and a target are placed side by side and the pointer drags from one to the other with a real
 # left button through RemoteDesktop. The text must arrive intact for Wayland to Wayland, Wayland to X11 and X11 to
 # Wayland. The X11 cases go through the Xwayland drag-and-drop bridge.
-#
-# Wayland to X11 does not work yet (GitHub #116). That case is reported as a known gap and does not fail the run. When
-# it starts to pass the script says so, and the gap marker below should be removed.
 set -u
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export XDG_RUNTIME_DIR
+DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+export DBUS_SESSION_BUS_ADDRESS
 export WAYLAND_DISPLAY=wayland-0
-export DISPLAY=:0 XAUTHORITY="$(ls /run/user/"$(id -u)"/.mutter-Xwaylandauth.* 2>/dev/null | head -1)"
+XAUTHORITY="$(ls /run/user/"$(id -u)"/.mutter-Xwaylandauth.* 2>/dev/null | head -1)"
+export DISPLAY=:0 XAUTHORITY
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
 DRAG="${GNOBLIN_TITLEBAR_DRAG:-/tmp/guest-titlebar-drag.py}"
 fail=0
@@ -28,7 +28,7 @@ check() {
     fi
 }
 
-cat > /tmp/dnd-app.py <<'PY'
+cat >/tmp/dnd-app.py <<'PY'
 import sys
 
 import gi
@@ -80,8 +80,8 @@ for w in json.load(sys.stdin)["windows"]:
 drag_case() {
     # drag_case NAME SOURCE_BACKEND TARGET_BACKEND [KNOWN_GAP_ISSUE]
     rm -f /tmp/dnd-result.txt
-    nohup env GDK_BACKEND="$2" python3 /tmp/dnd-app.py source >/dev/null 2>&1 < /dev/null &
-    nohup env GDK_BACKEND="$3" python3 /tmp/dnd-app.py target >/dev/null 2>&1 < /dev/null &
+    nohup env GDK_BACKEND="$2" python3 /tmp/dnd-app.py source >/dev/null 2>&1 </dev/null &
+    nohup env GDK_BACKEND="$3" python3 /tmp/dnd-app.py target >/dev/null 2>&1 </dev/null &
     sleep 5
     "$G" window move "$(id_of dnd-source)" 100 150 >/dev/null 2>&1
     "$G" window move "$(id_of dnd-target)" 600 150 >/dev/null 2>&1
@@ -105,7 +105,7 @@ drag_case() {
 }
 
 drag_case "text dragged from a Wayland app to a Wayland app arrives intact" wayland wayland
-drag_case "text dragged from a Wayland app to an X11 app arrives intact" wayland x11 "GitHub #116"
+drag_case "text dragged from a Wayland app to an X11 app arrives intact" wayland x11
 drag_case "text dragged from an X11 app to a Wayland app arrives intact" x11 wayland
 check "the compositor keeps running" "$("$G" status 2>&1 | head -1 | grep -o '"state":"[a-z]*"')" '"state":"running"'
 
