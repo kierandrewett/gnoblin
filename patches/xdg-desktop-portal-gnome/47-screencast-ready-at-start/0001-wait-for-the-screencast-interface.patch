@@ -1,0 +1,54 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 8 Oct 2026 20:30:00 +0100
+Subject: [PATCH] screencast: wait for the interface before the backend takes its bus name
+
+The ScreenCast interface is exported when the name org.gnome.Mutter.ScreenCast appears,
+which needs the main loop. The portal frontend starts this backend on demand, and its
+first call arrives as soon as the bus name is owned. That call failed with "No such
+interface org.freedesktop.impl.portal.ScreenCast", so the first screen share after the
+backend started did not work.
+
+Run the main loop for up to two seconds in screen_cast_init, until the interface is
+exported.
+
+---
+diff --git a/src/screencast.c b/src/screencast.c
+index b59a5ef..698109f 100644
+--- a/src/screencast.c
++++ b/src/screencast.c
+@@ -1036,10 +1036,14 @@ screen_cast_session_class_init (ScreenCastSessionClass *klass)
+   session_class->close = screen_cast_session_close;
+ }
+ 
++#define SCREEN_CAST_READY_TIMEOUT_US (2 * G_USEC_PER_SEC)
++
+ gboolean
+ screen_cast_init (GDBusConnection  *connection,
+                   GError          **error)
+ {
++  gint64 deadline;
++
+   /*
+    * Ensure ShellIntrospect and DisplayStateTracker are initialized before
+    * any screencast session is created to avoid race conditions when restoring
+@@ -1056,5 +1060,19 @@ screen_cast_init (GDBusConnection  *connection,
+   g_signal_connect (gnome_screen_cast, "disabled",
+                     G_CALLBACK (on_gnome_screen_cast_disabled), NULL);
+ 
++  /*
++   * The interface is exported when Mutter's ScreenCast name appears, which
++   * needs the main loop. The portal frontend can start this backend with its
++   * first request, and the call arrives as soon as the bus name is owned. Run
++   * the main loop here for a short time, so that the first request finds the
++   * interface instead of failing with "No such interface".
++   */
++  deadline = g_get_monotonic_time () + SCREEN_CAST_READY_TIMEOUT_US;
++  while (impl == NULL && g_get_monotonic_time () < deadline)
++    {
++      if (!g_main_context_iteration (NULL, FALSE))
++        g_usleep (2000);
++    }
++
+   return TRUE;
+ }
