@@ -70,7 +70,6 @@ install -m 0644 -- "$ROOT/packaging/arch/gnome-integration/PKGBUILD" \
     "$OUTPUT/gnoblin-gnome-integration-$GNOBLIN_VERSION.PKGBUILD"
 
 if [ "$SOURCE_ONLY" != --source-only ]; then
-    "$ROOT/scripts/build-srpm.sh" mutter "$SOURCES" "$SRPMS"
     "$ROOT/scripts/build-srpm.sh" gnoblin-portal "$SOURCES" "$SRPMS"
     "$ROOT/scripts/build-srpm.sh" gnoblin "$SOURCES" "$SRPMS"
     find "$SRPMS" -maxdepth 1 -type f -name '*.src.rpm' -exec install -m 0644 -t "$OUTPUT" -- {} +
