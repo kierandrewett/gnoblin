@@ -159,7 +159,7 @@ jobs:
           install -m 0644 -- "${source_tarballs[0]}" \
             "$source_dir/gnoblin-${bundle_roots[0]##*/gnoblin-}-source.tar.xz"
           cd "$GITHUB_WORKSPACE"
-          for component in mutter gnoblin-portal gnoblin; do
+          for component in gnoblin-portal gnoblin; do
             ./scripts/build-srpm.sh "$component" "$source_dir" "$RUNNER_TEMP/gnoblin-rpms"
           done
       - uses: actions/upload-artifact@v4
@@ -206,7 +206,7 @@ jobs:
             accountsservice adwaita-cursors base-devel cmake desktop-file-utils egl-wayland \
             gcr-4 gettext git glib2-devel gnome-desktop-4 gobject-introspection \
             gtk4 \
-            libadwaita libcanberra libdisplay-info libei libibus libinput libnm libxkbcommon \
+            ibus libadwaita libcanberra libdisplay-info libei libinput libnm libxkbcommon \
             libxkbfile libxres lua meson ninja patchelf pipewire pkgconf polkit \
             python python-docutils python-packaging sassc startup-notification \
             wayland wayland-protocols wireplumber \
