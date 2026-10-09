@@ -36,7 +36,7 @@ if "$prepare_devkit"; then
     GNOBLIN_DEVKIT=enabled "$ROOT/build.sh" --prefix "$PREFIX"
 fi
 [[ -x "$RUNTIME" && -x "$GNOBLINCTL" ]] || {
-    echo "No standalone Gnoblin build found in $PREFIX. Run './build.sh' first." >&2
+    echo "No Gnoblin build found in $PREFIX. Run make first." >&2
     exit 1
 }
 

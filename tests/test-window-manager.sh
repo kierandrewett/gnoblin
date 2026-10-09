@@ -4,10 +4,19 @@
 set -euo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
-prefix="${GNOBLIN_PREFIX:-$PWD/install}"
+root="$PWD"
+prefix="${GNOBLIN_PREFIX:-$root/install}"
+libdir="${GNOBLIN_LIBDIR:-lib64}"
 buildtype="${GNOBLIN_BUILD_TYPE:-debugoptimized}"
+
+# The patched Mutter meson.build reads these from the environment, as the build does in scripts/build-component.sh.
+export GNOBLIN_SOURCE_ROOT="$root"
+export GNOBLIN_IMGUI_SOURCE="$root/subprojects/imgui"
+export GNOBLIN_PREFIX="$prefix"
+export GNOBLIN_LIBDIR="$libdir"
+export PKG_CONFIG_PATH="$prefix/$libdir/pkgconfig:$prefix/share/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
 options=(
-    "--prefix=$prefix" --libdir=lib64 "--buildtype=$buildtype"
+    "--prefix=$prefix" "--libdir=$libdir" "--buildtype=$buildtype"
     -Ddevkit=enabled -Dtests=enabled -Dmutter_tests=true -Dclutter_tests=false -Dcogl_tests=false
     -Ddocs=false -Dprofiler=false "-Dudev_dir=$prefix/lib/udev"
 )

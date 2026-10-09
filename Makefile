@@ -1,8 +1,8 @@
 # Gnoblin. ./build.sh is the build; these targets only name its common uses.
 #
 #   make           build into ./install
-#   make preview   build, then open the compositor in a window on this desktop
-#   make install   build, then add the login entry and link gnoblinctl and the man pages (asks for sudo)
+#   make preview   open the compositor in a window on this desktop (run make first)
+#   make install   add the login entry and link gnoblinctl and the man pages (asks for sudo; run make first)
 #   make check     the fast checks
 #   make test      build the tests, then run the CTest suites
 #   make clean     delete build/ and keep ./install
@@ -20,10 +20,10 @@ BUILD_DIR := $(or $(GNOBLIN_BUILD_DIR),build/ninja)
 build:
 	@GNOBLIN_DEVKIT=$(if $(filter 1,$(DEVKIT)),enabled,disabled) ./build.sh --jobs $(JOBS)
 
-preview: build
+preview:
 	@./build.sh --preview
 
-install: build
+install:
 	@./build.sh --register-session
 
 check:

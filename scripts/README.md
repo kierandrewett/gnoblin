@@ -10,7 +10,7 @@ which, so you can tell what a script is for before you run it.
 | ----------------------------- | ---------------------- |
 | See what a build would change | `./build.sh --dry-run` |
 | Build                         | `make` or `./build.sh` |
-| Build and add the login entry | `make install`         |
+| Add the login entry           | `make install`         |
 | Run the fast checks           | `make check`           |
 | Run the CTest suites          | `make test`            |
 

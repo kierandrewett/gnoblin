@@ -244,7 +244,7 @@ if "$register_session"; then
         exit 2
     fi
     if [ ! -f "$prefix/share/wayland-sessions/gnoblin.desktop" ]; then
-        echo 'No source build found. Run ./build.sh first.' >&2
+        printf 'No build found in %s. Run make first, then make install.\n' "$prefix" >&2
         exit 1
     fi
     exec ./scripts/register-session.sh "$prefix"

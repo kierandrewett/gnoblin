@@ -12,8 +12,8 @@ a login session.
 
 ### Build tools and libraries
 
-For a native build, you need a C/C++ toolchain, Python 3.11 or newer, CMake,
-Meson, Ninja, tar, xz and the development libraries required by the pinned
+For a native build, you need a C/C++ toolchain, GNU Make, Python 3.11 or newer,
+CMake, Meson, Ninja, tar, xz and the development libraries required by the pinned
 GNOME sources. A Git checkout also needs Git. Install these packages through
 your distribution. The build reports missing libraries and minimum versions.
 
@@ -82,8 +82,8 @@ make
 ```
 
 The tarball includes Gnoblin and the pinned, patched Mutter and portal sources.
-`make` unpacks and builds Mutter and Gnoblin's portal backend. Use
-`--without-portal` to omit the backend. Neither command needs Git. Keep the
+`make` unpacks and builds Mutter and Gnoblin's portal backend. Run
+`./build.sh --without-portal` to omit the backend. Neither command needs Git. Keep the
 extracted directory if you register it as a login session.
 
 For current development code, install Git and clone the repository instead:
@@ -230,7 +230,7 @@ Registration only adds session files; it does not build a missing runtime.
 | Command        | What it does                                                               |
 | -------------- | -------------------------------------------------------------------------- |
 | `make`         | Build into `./install`, with the nested viewer. Set `JOBS=N` or `DEVKIT=0` |
-| `make install` | Build, then add the login entry and link `gnoblinctl` and the man pages    |
+| `make install` | After `make`: add the login entry and link `gnoblinctl` and the man pages  |
 | `make clean`   | Delete `build/` and keep the installed build                               |
 
 `make install` asks for `sudo` to add the login entry. To see what a build will
