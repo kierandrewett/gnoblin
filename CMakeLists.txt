@@ -248,7 +248,8 @@ add_custom_target(gnoblin-session
     "GNOBLINCTL_BINARY=$<TARGET_FILE:gnoblinctl>"
     "GNOBLIN_IDENTITY_FILE=${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
     "GNOBLIN_VERSION_METADATA_FILE=${CMAKE_BINARY_DIR}/gnoblin-version.ini"
-    "${PROJECT_SOURCE_DIR}/scripts/install-session.sh" "${GNOBLIN_PREFIX}"
+    "${CMAKE_COMMAND}" "-DGNOBLIN_PREFIX=${GNOBLIN_PREFIX}" "-DGNOBLIN_BINARY_DIR=${CMAKE_BINARY_DIR}"
+    -P "${PROJECT_SOURCE_DIR}/cmake/install-session.cmake"
   DEPENDS mutter gnoblin-idle gnoblinctl
   USES_TERMINAL
   COMMENT "Install the standalone Gnoblin session")

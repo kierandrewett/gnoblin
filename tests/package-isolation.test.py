@@ -64,7 +64,7 @@ class IsolationTests(unittest.TestCase):
             install_monolithic_compositor(prefix, inputs)
 
             subprocess.run(
-                ["bash", str(ROOT / "scripts/install-session.sh"), str(prefix)],
+                ["cmake", f"-DGNOBLIN_PREFIX={prefix}", "-P", str(ROOT / "cmake/install-session.cmake")],
                 env={**os.environ, **inputs},
                 check=True,
                 capture_output=True,
@@ -109,7 +109,7 @@ class IsolationTests(unittest.TestCase):
             install_monolithic_compositor(prefix, inputs)
             env.update(inputs)
             subprocess.run(
-                ["bash", str(ROOT / "scripts/install-session.sh"), str(prefix)],
+                ["cmake", f"-DGNOBLIN_PREFIX={prefix}", "-P", str(ROOT / "cmake/install-session.cmake")],
                 env=env,
                 check=True,
                 capture_output=True,
@@ -377,7 +377,7 @@ class IsolationTests(unittest.TestCase):
 
     def test_system_installer_removes_only_the_exact_legacy_gnome_dropin(self):
         installer = (ROOT / "scripts/install-system.sh").read_text()
-        session_installer = (ROOT / "scripts/install-session.sh").read_text()
+        session_installer = (ROOT / "cmake/install-session.cmake").read_text()
 
         self.assertNotIn("gnoblin-recovery.service", installer)
         self.assertIn('cmp -s "$LEGACY_GNOME_SESSION_DROPIN"', installer)

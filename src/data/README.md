@@ -17,4 +17,4 @@
   Mutter defaults and is compiled with the other installed schemas.
 - `shaders/tint.frag` is an example shader available to configuration rules.
 
-The session data is installed by `scripts/install-session.sh`.
+The session data is installed by `cmake/install-session.cmake`.

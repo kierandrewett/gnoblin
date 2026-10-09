@@ -195,7 +195,7 @@ let
       GNOBLINCTL_BINARY="$PWD/build/session/gnoblinctl" \
       GNOBLIN_IDENTITY_FILE="$PWD/build/session/gnoblinctl-identity.json" \
       GNOBLIN_VERSION_METADATA_FILE="$PWD/build/session/gnoblin-version.ini" \
-        bash scripts/install-session.sh "$out"
+        cmake -DGNOBLIN_PREFIX="$out" -DGNOBLIN_BINARY_DIR="$PWD/build/session" -P cmake/install-session.cmake
 
       for schema in ${schemas} ${gnoblinCompositor}; do
         while IFS= read -r -d $'\0' override; do
