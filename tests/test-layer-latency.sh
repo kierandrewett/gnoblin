@@ -42,14 +42,7 @@ cc -std=c11 -Wall -Wextra -Werror \
     -o "$TMP/layer-latency-client"
 
 PREFIX="${GNOBLIN_PREFIX:-$ROOT/install}"
-# Same choice as tests/test-gnoblin-devkit.sh: an explicit prefix means the installed runtime.
-if [[ -n ${GNOBLIN_RUNTIME_BIN:-} ]]; then
-    RUNTIME_BIN="$GNOBLIN_RUNTIME_BIN"
-elif [[ -n ${GNOBLIN_PREFIX:-} ]]; then
-    RUNTIME_BIN="$PREFIX/bin/gnoblin"
-else
-    RUNTIME_BIN="$ROOT/build/ninja/gnoblin"
-fi
+RUNTIME_BIN="${GNOBLIN_RUNTIME_BIN:-$ROOT/build/ninja/gnoblin}"
 echo "== layer-shell chrome latency (Gnoblin devkit, $PREFIX) =="
 OUT="$TMP/run.log"
 if ! GNOBLIN_DEVKIT_KEEP_SESSION=1 \
