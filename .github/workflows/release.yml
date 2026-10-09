@@ -72,9 +72,9 @@ jobs:
           RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
           IS_RELEASE: ${{ steps.meta.outputs.is_release }}
         run: |
-          tag_argument=
-          if [ "$IS_RELEASE" = true ]; then tag_argument="$RELEASE_TAG"; fi
-          ./scripts/build-release-assets.sh "$RUNNER_TEMP/gnoblin-release" "$tag_argument" --source-only "$RELEASE_TAG"
+          tag_arguments=()
+          if [ "$IS_RELEASE" = true ]; then tag_arguments=(--release-tag "$RELEASE_TAG"); fi
+          ./build.sh package --output "$RUNNER_TEMP/gnoblin-release" "${tag_arguments[@]}" --public-tag "$RELEASE_TAG"
       - uses: actions/upload-artifact@v4
         with:
           name: gnoblin-${{ steps.meta.outputs.release_tag }}

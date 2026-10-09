@@ -59,8 +59,12 @@ Arch publishes it as a separate metadata-only PKGBUILD and package archive.
 From a clean release checkout, build the source assets first:
 
 ```sh
-./scripts/build-release-assets.sh ./dist/release "" --source-only
+./build.sh package --output ./dist/release
 ```
+
+`--output` sets the directory, which must be empty. `--srpm` also builds the Fedora
+source RPMs and needs `rpm-build`. `--release-tag TAG` checks `TAG` against the
+version in the tree, for a release build.
 
 The `gnoblin-*-source.tar.xz` file contains Gnoblin and its patched, pinned
 Mutter and portal sources. Extract it and run `./build.sh` to check the
@@ -75,7 +79,7 @@ Use a clean release checkout with `rpm-build` installed. The package does not
 build the optional Adwaita vector cursor theme.
 
 ```sh
-./scripts/build-release-assets.sh ./dist/rpm-assets
+./build.sh package --output ./dist/rpm-assets --srpm
 ```
 
 The command writes the source tarball before building source RPMs for the
