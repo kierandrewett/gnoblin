@@ -12,12 +12,12 @@ removal checks before they can be called package candidates.
 
 Download the `gnoblin-*-source.tar.xz` asset from a
 [Gnoblin release](https://github.com/kierandrewett/gnoblin/releases), extract
-it, and run `./build.sh` inside the extracted directory. This is the primary
+it, and run `make` inside the extracted directory. This is the primary
 installation path. It needs development libraries at the versions required by
 the pinned sources, but does not need Git or an installed GNOME Shell package.
 See [source build prerequisites and login setup](install-source.md).
 
-After building, `./build.sh --register-session` adds the lean login entry.
+After building, `make install` adds the lean login entry.
 GNOME Session and Settings Daemon are optional for this source install.
 Run `./install/bin/gnoblin --version` to see the installed Gnoblin version,
 source Git remote and commit, and when the build ran. Distribution

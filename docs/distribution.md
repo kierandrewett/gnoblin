@@ -44,7 +44,7 @@ Fedora's COPR packages use `gnoblin` as the install entry point. There is
 currently no Gnoblin APT or pacman repository.
 
 RPM and Arch login entries launch the lean session directly, as
-`./build.sh --register-session` does for a source build. GNOME Session and
+registering a source build with `make install` does. GNOME Session and
 Settings Daemon are not package requirements. The source tarball remains the
 primary install route until a distribution package passes its login gate.
 
@@ -67,7 +67,7 @@ source RPMs and needs `rpm-build`. `--release-tag TAG` checks `TAG` against the
 version in the tree, for a release build.
 
 The `gnoblin-*-source.tar.xz` file contains Gnoblin and its patched, pinned
-Mutter and portal sources. Extract it and run `./build.sh` to check the
+Mutter and portal sources. Extract it and run `make` to check the
 same source route users receive. The command also writes component archives,
 an Arch recipe, and checksums into `dist/release`.
 
@@ -129,7 +129,7 @@ git push origin gnoblin-v0.1.0
 
 The release workflow publishes a self-contained Gnoblin source tarball and
 the Mutter and portal source archives first, then source RPMs and binary packages.
-The main tarball builds with `./build.sh` and does not need Git or submodules.
+The main tarball builds with `make` and does not need Git or submodules.
 The Fedora source RPM and openSUSE jobs use the component archives inside that
 tarball, after checking the published source assets' SHA-256 sums.
 

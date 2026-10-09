@@ -88,12 +88,12 @@ required.
 ## Get started
 
 Download the source tarball from a [Gnoblin release](https://github.com/kierandrewett/gnoblin/releases),
-extract it, and run `./build.sh` from the extracted directory. A Git checkout
+extract it, and run `make` from the extracted directory. A Git checkout
 uses the same command. The build uses compatible development libraries from
 your distribution and keeps the compositor and native runtime in a private
 prefix. Add `--with-portal` to build Gnoblin's GTK-based portal backend too.
 
-After building, run `./build.sh --register-session` to add the lean login to
+After building, run `make install` to add the lean login to
 the session picker. The [source instructions](docs/install-source.md) cover
 prerequisites and login setup. `make` builds, `make install` also adds the login entry,
 and `./build.sh --dry-run` shows what a build would change before you run it.

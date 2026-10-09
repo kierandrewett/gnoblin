@@ -10,7 +10,7 @@ The default command builds the standalone session. It uses the portal frontend
 and backend installed on your system:
 
 ```sh
-./build.sh
+make
 ```
 
 To include Gnoblin's GTK-based portal backend, use:
@@ -43,7 +43,7 @@ the [runtime API reference](/config/runtime-api) and [event catalog](/config/lua
 Build the nested viewer when needed and start a private Gnoblin session:
 
 ```sh
-./build.sh --preview
+make preview
 ```
 
 The preview uses a temporary home, config, data, cache, state, runtime

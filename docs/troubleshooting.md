@@ -11,7 +11,7 @@ For Fedora, check the session package:
 rpm -q gnoblin
 ```
 
-For source builds, run `./build.sh --register-session` after building.
+For source builds, run `make install` after building.
 It asks for sudo to add the login entry. See [session registration](install-source.md#login-session).
 
 ## The source build returns to the login screen
@@ -34,7 +34,7 @@ Also check the session journal:
 journalctl -b --no-pager -g gnoblin
 ```
 
-If it reports a missing Gnoblin or Mutter library, run `./build.sh` to install
+If it reports a missing Gnoblin or Mutter library, run `make` to install
 the current build. Meson installs the executable with paths to its private
 libraries. Copying an executable directly from `build/` can leave build-directory
 library paths that fail under the login manager.
@@ -48,7 +48,7 @@ its private binaries from that directory.
 
 Gnoblin does not register with GDM through GNOME Session. Its login entry must
 use `X-GDM-SessionRegisters=false`. If GDM reports “Session never registered,”
-update the entry with `./build.sh --register-session`.
+update the entry with `make install`.
 
 If no configuration exists, Gnoblin loads its built-in Lua configuration. Run
 `gnoblinctl init` to create an editable configuration tree from the copy

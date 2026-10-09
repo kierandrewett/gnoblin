@@ -56,5 +56,5 @@ The standalone login continues to use Gnoblin's idle service if a GNOME
 SessionManager process remains on the user's D-Bus session bus.
 
 For a [source build](install-source.md), install these services with your
-distribution's package manager if you need them. `./build.sh` never installs
+distribution's package manager if you need them. `make` never installs
 host packages.

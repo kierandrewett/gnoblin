@@ -11,7 +11,7 @@ First complete the [source build](install-source.md).
 From the extracted source tarball or a checkout:
 
 ```sh
-./build.sh --preview
+make preview
 ```
 
 A desktop viewer and terminal open. Programs started from that terminal connect
@@ -33,13 +33,13 @@ If your Gnoblin config autostarts a shell, copy it into the preview with:
 
 ```sh
 GNOBLIN_DEVKIT_CONFIG_SOURCE="${XDG_CONFIG_HOME:-$HOME/.config}/gnoblin" \
-./build.sh --preview
+make preview
 ```
 
 If Waybar is installed, start it automatically with the preview:
 
 ```sh
-GNOBLIN_DEVKIT_EXEC='waybar' ./build.sh --preview
+GNOBLIN_DEVKIT_EXEC='waybar' make preview
 ```
 
 ![GNOME Settings in a Gnoblin devkit desktop with Waybar](images/gnoblin-waybar-settings.png)
@@ -76,7 +76,7 @@ Close the terminal to stop the devkit.
 
 ```sh
 GNOBLIN_DEVKIT_EXEC='gnoblinctl version' \
-./build.sh --preview
+make preview
 ```
 
 The command runs inside the nested Gnoblin session. A host Wayland display is

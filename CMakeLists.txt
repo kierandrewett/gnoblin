@@ -152,7 +152,8 @@ add_custom_target(gnoblinctl-identity
     $<$<NOT:$<BOOL:${GNOBLIN_WITH_PORTAL}>>:--without-portal>
     --ini-output "${CMAKE_BINARY_DIR}/gnoblin-version.ini"
   BYPRODUCTS "${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
-    "${CMAKE_BINARY_DIR}/gnoblin-version.ini")
+    "${CMAKE_BINARY_DIR}/gnoblin-version.ini"
+  COMMENT "Write the build identity")
 add_dependencies(gnoblinctl gnoblinctl-identity)
 target_compile_definitions(gnoblinctl PRIVATE
   GNOBLIN_NATIVE_CONTROL_API_MAJOR=${GNOBLIN_NATIVE_CONTROL_API_MAJOR}

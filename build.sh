@@ -537,11 +537,15 @@ if [ "$total_warnings" -gt 0 ]; then
 fi
 
 if [ "$layout" = private ] && [ -z "$destdir" ]; then
-    prefix_option=''
-    if [ "$prefix" != "$PWD/install" ]; then
-        prefix_option="$(printf -- '--prefix %q ' "$prefix")"
+    # The make targets build into ./install. Another prefix has no make target, so name the build.sh commands.
+    if [ "$prefix" = "$PWD/install" ]; then
+        preview_command='make preview'
+        register_command='make install'
+    else
+        preview_command="./build.sh --prefix $(printf '%q' "$prefix") --preview"
+        register_command="./build.sh --prefix $(printf '%q' "$prefix") --register-session"
     fi
     printf '\n%sNext%s\n' "$bold" "$reset"
-    printf '  %-34s %s\n' "./build.sh ${prefix_option}--preview" "Try it in a window"
-    printf '  %-34s %s\n' "./build.sh ${prefix_option}--register-session" "Add it to the login screen"
+    printf '  %-16s %s\n' "$preview_command" "Try it in a window"
+    printf '  %-16s %s\n' "$register_command" "Add it to the login screen"
 fi

@@ -57,7 +57,8 @@ source. Use `--without-portal` when another backend is preferred.
 
 ### Optional features
 
-Mutter's development viewer is built only for `./build.sh --preview`.
+`make` builds Mutter's development viewer, which `make preview` needs. Use `make DEVKIT=0` to skip it.
+`./build.sh` builds the viewer only for `--preview`.
 
 The default build uses an installed Xcursor theme. Install a cursor theme if
 your system does not have one. To include Gnoblin's optional Adwaita vector
@@ -77,11 +78,11 @@ Download one `gnoblin-*-source.tar.xz` from the
 cd ~/Downloads
 tar -xf gnoblin-*-source.tar.xz
 cd gnoblin-[0-9]*/
-./build.sh
+make
 ```
 
 The tarball includes Gnoblin and the pinned, patched Mutter and portal sources.
-`./build.sh` unpacks and builds Mutter and Gnoblin's portal backend. Use
+`make` unpacks and builds Mutter and Gnoblin's portal backend. Use
 `--without-portal` to omit the backend. Neither command needs Git. Keep the
 extracted directory if you register it as a login session.
 
@@ -90,7 +91,7 @@ For current development code, install Git and clone the repository instead:
 ```sh
 git clone https://github.com/kierandrewett/gnoblin.git
 cd gnoblin
-./build.sh
+make
 ```
 
 The script uses CMake and Ninja and checks the installed library versions
@@ -107,7 +108,7 @@ installed backend.
 From an existing Wayland desktop:
 
 ```sh
-./build.sh --preview
+make preview
 ```
 
 The first preview builds Mutter's optional development viewer, then opens a
@@ -134,7 +135,7 @@ Install the commands used by your configuration.
 Register the standalone Gnoblin login:
 
 ```sh
-./build.sh --register-session
+make install
 ```
 
 Registration adds only the standalone Gnoblin login. The normal GNOME session
@@ -186,7 +187,7 @@ separate GNOME login at the login screen when you need those services.
 The lean path needs a fresh Wayland login managed by logind. The login manager
 must set `XDG_SESSION_TYPE=wayland` when it starts Gnoblin.
 
-`./build.sh --register-session` asks for sudo to install the login entry and
+`make install` asks for sudo to install the login entry and
 Gnoblin's desktop-specific portal route. When the prefix includes Gnoblin's
 optional backend, it also installs the backend descriptor and D-Bus service.
 
@@ -203,6 +204,9 @@ separate GNOME session.
 Registration only adds session files; it does not build a missing runtime.
 
 ## Build options
+
+`make`, `make preview` and `make install` cover the usual path. For anything else, run
+`./build.sh` with these flags:
 
 | Command                            | Behaviour                                 |
 | ---------------------------------- | ----------------------------------------- |
@@ -221,7 +225,7 @@ Registration only adds session files; it does not build a missing runtime.
 
 ### Use make
 
-`make` runs `./build.sh` with the usual settings.
+`make` runs `./build.sh` with the usual settings. The options in the table above are `./build.sh` flags.
 
 | Command        | What it does                                                               |
 | -------------- | -------------------------------------------------------------------------- |
@@ -299,16 +303,16 @@ For a Git checkout:
 
 ```sh
 git pull --ff-only
-./build.sh
+make
 ```
 
 Preserve local changes if Git refuses the update. Log out and back in after
 rebuilding; configuration reload cannot replace compositor libraries.
 
 For a release tarball, download the newer source tarball, extract it into a
-new directory, and run `./build.sh` there. If the old build was registered as
+new directory, and run `make` there. If the old build was registered as
 a login session, register the new build with the same registration option you
-used before: `./build.sh --register-session`.
+used before: `make install`.
 
 Registration updates Gnoblin's user-unit links to the new build. If a custom
 unit uses one of those names, move it aside first.
@@ -370,5 +374,5 @@ quota -s
 ```
 
 Move the extracted source directory to a filesystem with enough quota, then
-run `./build.sh` there. The build keeps compiler temporary files under
+run `make` there. The build keeps compiler temporary files under
 `build/tmp` inside that directory.

@@ -40,7 +40,7 @@ animation lifecycle events, and captures intermediate rendered frames.
 For an interactive preview, run:
 
 ```sh
-./build.sh --preview
+make preview
 ```
 
 See the [devkit guide](/devkit) for launching shell clients and choosing a
