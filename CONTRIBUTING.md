@@ -12,19 +12,28 @@ First install the dependencies listed in the
 Build the pinned upstream sources into a separate prefix:
 
 ```sh
-./build.sh
+make plan    # read what the build will change
+make build   # the same as ./build.sh, with the nested viewer enabled
 ```
+
+`./build.sh` is the build, and `make` is a named front door to it. Run `make` to list every
+task and what it changes, and `make status` to see what is built, which login entry
+exists and which `gnoblin` and `gnoblinctl` are on your `PATH`. The [scripts map](scripts/README.md)
+says what each script does and who runs it.
 
 Run the fast checks before sending a change:
 
 ```sh
-just check
-just test-session
+make check
 ```
 
-Use `just test-all` for a fresh build plus the full headless suite. Use `just test-release` only
-when the real-host and RPM gates are required. The testing guide records which
+Use `make test-all` for a fresh build plus the full headless suite. Use `make test-release`
+only when the real-host and RPM gates are required. The testing guide records which
 checks need a real seat, hardware or a running private session.
+
+Before you merge a change to `release.yml`, the packages or their generator, run
+`gh workflow run release.yml --ref BRANCH -f dry_run=true`. The package jobs and install
+checks run only on `main` and on tags, so a pull request does not reach them.
 
 Strict scheduled and manually dispatched app E2E failures create or update a
 Beads/GitHub compatibility issue with the failed outcomes and workflow

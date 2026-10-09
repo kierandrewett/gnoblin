@@ -81,11 +81,11 @@ See [permission policy](/guides/permissions) when testing remote access.
 Run deterministic checks and the native runtime tests with:
 
 ```sh
-just check
-just test-runtime
+make check
+make test-runtime
 ```
 
-Use `just test-preview` for an isolated live session. It requires a working
+Use `make test-preview` for an isolated live session. It requires a working
 Wayland desktop and a current build. A successful build or CTest run does not
 verify login on a real seat; see [hardware verification](real-hardware-verification.md).
 

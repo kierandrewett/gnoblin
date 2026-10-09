@@ -212,12 +212,27 @@ Registration only adds session files; it does not build a missing runtime.
 | `./build.sh --without-xwayland`    | Omit X11 application support              |
 | `./build.sh --without-portal`      | Omit Gnoblin's GTK portal backend         |
 | `./build.sh --with-vector-cursors` | Include the optional vector cursor theme  |
-| `./build.sh --dry-run`             | Show what will be built                   |
+| `./build.sh --dry-run`             | Show the steps and what they change       |
 | `./build.sh --verbose`             | Show all build output as it runs          |
 | `./build.sh --preview`             | Try the build in a nested Wayland session |
 | `./build.sh --register-session`    | Add the standalone Gnoblin login entry    |
 | `./build.sh --layout system`       | Also write a package's public files       |
 | `./build.sh --destdir DIR`         | Install below DIR, as a package root      |
+
+### Use make
+
+`make` names the same tasks and prints the command each one runs. `make` alone lists
+them, with what each one changes.
+
+| Command       | What it does                                                               |
+| ------------- | -------------------------------------------------------------------------- |
+| `make plan`   | Show the steps of a build, what it writes and what it leaves alone         |
+| `make build`  | Build into `./install`, with the nested viewer. Set `JOBS=N` or `DEVKIT=0` |
+| `make status` | Show the build, the login entry and which `gnoblin` is on your `PATH`      |
+| `make man`    | Write the man pages into the prefix                                        |
+| `make clean`  | Delete `build/` and keep the installed build                               |
+
+`make register` adds the login entry. It asks for `sudo`.
 
 ## Build a package tree
 

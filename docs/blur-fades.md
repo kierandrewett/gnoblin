@@ -47,6 +47,6 @@ client direct control of that shape.
 ## Verify a change
 
 Use the [devkit](/devkit) to inspect fades with the shell client that owns the
-affected layer surface. `just test-all` builds the standalone session and runs
+affected layer surface. `make test-all` builds the standalone session and runs
 the native runtime checks; it does not measure a shell client's rendered fade.
 See [testing](/testing) for the available checks and their limits.

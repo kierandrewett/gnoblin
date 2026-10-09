@@ -6,8 +6,8 @@ Run checks from the repository root. Tools are pinned in
 ## Check or format
 
 ```sh
-just lint
-just format --files docs/config.md
+make lint
+make format ARGS="--files docs/config.md"
 ```
 
 `lint` is read-only. `format` rewrites files.
