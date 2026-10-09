@@ -142,6 +142,8 @@ sed "s|@PREFIX@|$PREFIX|g" "$SRC/systemd-user/gnoblin-idle.service.in" \
 install -Dm644 "$INSTALL_PREFIX/lib/systemd/user/gnoblin-idle.service.tmp" \
     "$INSTALL_PREFIX/lib/systemd/user/gnoblin-idle.service"
 rm -f "$INSTALL_PREFIX/lib/systemd/user/gnoblin-idle.service.tmp"
+# Manual pages. gnoblinctl(1) is generated from the table that the command line help reads, so the two agree.
+python3 "$ROOT/scripts/build-man-pages.py" "$INSTALL_PREFIX/share/man/man1"
 # Desktop-specific schema defaults. This runs after Mutter has
 # installed their schemas, so the override is compiled into the prefix used by
 # Gnoblin's session (`XDG_CURRENT_DESKTOP=Gnoblin`).

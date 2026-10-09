@@ -76,7 +76,12 @@ check() {
     check "the RPM specs list public paths" "$([ -n "$expected" ] && echo yes)" "yes"
     while IFS= read -r path; do
         [ -n "$path" ] || continue
-        check "the layout provides $path" "$([ -e "$STAGE$path" ] || [ -L "$STAGE$path" ] && echo yes)" "yes"
+        # A path with a * is a glob: the package compresses man pages, so its file list ends in .1*.
+        if [[ $path == *"*"* ]]; then
+            check "the layout provides $path" "$(compgen -G "$STAGE$path" >/dev/null && echo yes)" "yes"
+        else
+            check "the layout provides $path" "$([ -e "$STAGE$path" ] || [ -L "$STAGE$path" ] && echo yes)" "yes"
+        fi
     done <<<"$expected"
 
     check "/usr/bin/gnoblin links to the private runtime" "$(readlink "$STAGE/usr/bin/gnoblin")" "$PRIVATE/bin/gnoblin"

@@ -84,8 +84,9 @@ sudo nixos-rebuild switch --flake .
 
 [Install a shell](bring-your-own-shell.md), then log out and select **Gnoblin**.
 
-Run `gnoblin --version` to read the installed Gnoblin release, GNOME component
-versions, and source revision; use `gnoblin --version --json` for the full record.
+Run `gnoblin --version` to read the installed Gnoblin release, source revision,
+and build time; use `gnoblin --version --json` for the full record, including
+GNOME component versions.
 
 The NixOS path has not passed login, coexistence or removal. Keep your existing
 session available while trying it. Continue with [configuration](/config) only

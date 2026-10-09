@@ -160,6 +160,161 @@ static gboolean word_in(const char* words, const char* word) {
     return FALSE;
 }
 
+typedef struct {
+    const char* command;
+    const char* action; /* NULL describes the command itself. */
+    const char* summary;
+} HelpEntry;
+
+/* One line for every command and action. The help screens and the "did you mean" hints read this
+ * table. */
+static const HelpEntry help_entries[] = {
+    {"status", NULL, "Show the running session and lock availability"},
+    {"ping", NULL, "Check whether the compositor control socket responds"},
+    {"version", NULL, "Show the installed build, without a running session"},
+    {"capabilities", NULL, "List compositor and protocol capabilities"},
+    {"focus", NULL, "Inspect focus policy and recent focus history"},
+    {"focus", "policy", "Show the committed focus policy"},
+    {"focus", "history", "List recently focused windows"},
+    {"reload", NULL, "Reload supported runtime configuration"},
+    {"logout", NULL, "End this Gnoblin session and return to the login manager"},
+    {"session", NULL, "Read idle activity and ask a shell to lock the session"},
+    {"session", "activity", "Read the latest idle-monitor sample"},
+    {"session", "lock", "Ask a subscribed external shell client to lock the session"},
+    {"privacy", NULL, "Show privacy indicators, or stop sharing or recording"},
+    {"privacy", "stop-sharing", "Stop screen sharing"},
+    {"privacy", "stop-recording", "Stop recording"},
+    {"permissions", NULL, "Inspect portal permission policy"},
+    {"permissions", "list", "Show rules, supported capabilities and configuration path"},
+    {"permissions", "policy", "Show the committed policy with its revision"},
+    {"permissions", "check", "Explain the effective decision for a namespaced identity"},
+    {"window", NULL, "List and manage windows"},
+    {"window", "list", "List open windows"},
+    {"window", "match", "Show the fields used to match one window in config rules"},
+    {"window", "menu", "Open the window menu"},
+    {"window", "interactive-move", "Start moving a window with the pointer"},
+    {"window", "interactive-resize", "Start resizing a window with the pointer"},
+    {"window", "above", "Keep a window above others"},
+    {"window", "unabove", "Stop keeping a window above others"},
+    {"window", "stick", "Show a window on every workspace"},
+    {"window", "unstick", "Show a window on one workspace only"},
+    {"window", "focus", "Focus a window"},
+    {"window", "close", "Close a window"},
+    {"window", "minimize", "Minimize a window"},
+    {"window", "unminimize", "Bring back a minimized window"},
+    {"window", "toggle-minimize", "Minimize a window, or bring it back if minimized"},
+    {"window", "restore-or-minimize", "Restore a window, or minimize it, depending on its state"},
+    {"window", "restore", "Restore a maximized, fullscreen or minimized window"},
+    {"window", "maximize", "Maximize a window"},
+    {"window", "unmaximize", "Stop maximizing a window"},
+    {"window", "fullscreen", "Make a window fullscreen"},
+    {"window", "unfullscreen", "Leave fullscreen"},
+    {"window", "move", "Set position in logical screen coordinates"},
+    {"window", "resize", "Set frame size in logical pixels"},
+    {"window", "monitor", "Move to a connector ID, or use an index for active"},
+    {"window", "workspace", "Move a window to an existing workspace"},
+    {"window", "thumbnail", "Save a window thumbnail as a PNG"},
+    {"layer", NULL, "Inspect layer-shell surfaces"},
+    {"layer", "list", "List layer surfaces and their rule namespaces"},
+    {"completion", NULL, "Print shell completion setup for bash, zsh or fish"},
+    {"shortcut", NULL, "List configured shortcuts and capture key combinations"},
+    {"shortcut", "actions", "List built-in shortcut actions, optionally by group"},
+    {"shortcut", "list", "List shortcuts registered by the native compositor"},
+    {"shortcut", "capture", "Capture one key combination and print its GTK accelerator"},
+    {"config", NULL, "Show the default or manage the active configuration"},
+    {"config", "path", "Show the active configuration path"},
+    {"config", "default", "Print the bundled default Lua configuration"},
+    {"config", "show", "Show the committed settings snapshot"},
+    {"config", "reload", "Reload the active configuration"},
+    {"config", "restore-default", "Back up and replace the config folder with embedded defaults"},
+    {"init", NULL, "Create an editable default config tree from the binary"},
+    {"workspace", NULL, "List and switch workspaces"},
+    {"workspace", "list", "List workspaces"},
+    {"workspace", "create", "Create a workspace"},
+    {"workspace", "rename", "Rename a workspace"},
+    {"workspace", "remove", "Remove a workspace"},
+    {"workspace", "switch", "Switch to an existing workspace"},
+    {"workspace", "next", "Switch to the next workspace"},
+    {"workspace", "previous", "Switch to the previous workspace"},
+    {"workspace", "move-active", "Move the active window to a workspace"},
+    {"monitor", NULL, "List monitors"},
+    {"monitor", "list", "List logical monitors and geometry"},
+    {"input", NULL, "Inspect and select input sources"},
+    {"input", "list", "List configured keyboard sources"},
+    {"input", "current", "Show the active keyboard source"},
+    {"input", "select", "Select a configured keyboard source"},
+    {"input", "devices", "List detected input devices and capabilities"},
+    {"input", "orientation-lock", "Read or set the orientation lock"},
+    {"grant", NULL, "List and revoke portal grants"},
+    {"grant", "list", "List persistent portal permissions"},
+    {"grant", "revoke", "Revoke one persistent portal permission"},
+    {"launch", NULL, "Inspect launch feedback"},
+    {"launch", "status", "Show pending app launches"},
+    {"launch", "begin", "Start a global busy-cursor request"},
+    {"launch", "end", "End a busy-cursor request"},
+    {"animation", NULL, "Inspect and preview compositor animations"},
+    {"animation", "list", "List configured animations"},
+    {"animation", "get", "Show one configured animation"},
+    {"animation", "surfaces", "List layer-shell animation targets"},
+    {"animation", "inspect", "Inspect a configured animation"},
+    {"animation", "preview", "Preview a configured animation"},
+    {"animation", "seek", "Seek a preview to a percentage"},
+    {"animation", "step", "Advance a preview by milliseconds"},
+    {"animation", "play", "Play a preview session"},
+    {"animation", "pause", "Pause a preview session"},
+    {"animation", "stop", "Stop a preview session"},
+    {"lua", NULL, "Open a Lua console, or run a Lua file, with the session API"},
+};
+
+static const char* help_summary(const char* command, const char* action) {
+    for (guint i = 0; i < G_N_ELEMENTS(help_entries); i++)
+        if (g_str_equal(help_entries[i].command, command) &&
+            g_strcmp0(help_entries[i].action, action) == 0)
+            return help_entries[i].summary;
+    return NULL;
+}
+
+/* Edit distance, for the "did you mean" hint. Names are short, so the plain table is fine. */
+static guint edit_distance(const char* a, const char* b) {
+    gsize length_a = strlen(a);
+    gsize length_b = strlen(b);
+    if (length_a > 40 || length_b > 40)
+        return G_MAXUINT;
+    guint row[41];
+    for (gsize j = 0; j <= length_b; j++)
+        row[j] = (guint)j;
+    for (gsize i = 1; i <= length_a; i++) {
+        guint diagonal = row[0];
+        row[0] = (guint)i;
+        for (gsize j = 1; j <= length_b; j++) {
+            guint above = row[j];
+            guint cost = a[i - 1] == b[j - 1] ? 0 : 1;
+            row[j] = MIN(MIN(row[j] + 1, row[j - 1] + 1), diagonal + cost);
+            diagonal = above;
+        }
+    }
+    return row[length_b];
+}
+
+/* The closest name in a space separated list, or NULL when nothing is close enough to suggest. */
+static char* closest_word(const char* typed, const char* words) {
+    if (!typed || !words)
+        return NULL;
+    g_auto(GStrv) parts = g_strsplit(words, " ", -1);
+    const char* best = NULL;
+    guint best_distance = G_MAXUINT;
+    for (guint i = 0; parts[i]; i++) {
+        guint distance = edit_distance(typed, parts[i]);
+        if (g_str_has_prefix(parts[i], typed) && strlen(typed) >= 2)
+            distance = 1;
+        if (distance < best_distance) {
+            best_distance = distance;
+            best = parts[i];
+        }
+    }
+    return best && best_distance <= MAX(2u, (guint)(strlen(typed) / 3)) ? g_strdup(best) : NULL;
+}
+
 static const char* option(Cli* cli, const char* name) {
     return g_hash_table_lookup(cli->options, name);
 }
@@ -248,6 +403,10 @@ static JsonArray* member_array(JsonObject* object, const char* name) {
     return node && JSON_NODE_HOLDS_ARRAY(node) ? json_node_get_array(node) : NULL;
 }
 
+static void print_version_field(const char* label, const char* value) {
+    g_print("%-11s %s\n", label, value);
+}
+
 static void print_version(const char* format) {
     g_autoptr(JsonNode) identity = load_identity();
     if (g_str_equal(format, "json")) {
@@ -256,38 +415,27 @@ static void print_version(const char* format) {
         return;
     }
     JsonObject* object = json_node_get_object(identity);
-    JsonObject* versions = member_object(object, "components");
-    JsonObject* commits = member_object(object, "componentCommits");
-    const char* mutter_version = member_string(versions, "mutter", "unknown");
-    const char* mutter_api = member_string(object, "mutterApi", NULL);
     g_print("Gnoblin %s\n", member_string(object, "version", "unknown"));
-    g_print("Mutter %s", mutter_version);
-    if (mutter_api)
-        g_print(" (API %s)", mutter_api);
-    g_print(" · Lua %s · Native API %s\n", member_string(object, "luaVersion", "unknown"),
-            member_string(object, "apiVersion", "unknown"));
 
-    g_print("Source: %s @ %s", member_string(object, "gitRemote", "unknown"),
-            member_string(object, "gitSha", "unknown"));
-    if (json_object_has_member(object, "sourceModified") &&
-        json_object_get_boolean_member(object, "sourceModified"))
-        g_print(" (modified source tree)");
-    g_print("\n");
-    g_print("Build ID: %s\n", member_string(object, "buildId", "unknown"));
-
-    const char* mutter_commit = member_string(commits, "mutter", NULL);
-    const char* portal_version = member_string(versions, "xdg-desktop-portal-gnome", NULL);
-    const char* portal_commit = member_string(commits, "xdg-desktop-portal-gnome", NULL);
-    if (mutter_commit || portal_version) {
-        g_print("Upstream:");
-        if (mutter_commit)
-            g_print(" Mutter %.12s", mutter_commit);
-        if (portal_version)
-            g_print("%sPortal %s", mutter_commit ? "; " : " ", portal_version);
-        if (portal_commit)
-            g_print(" (%.12s)", portal_commit);
-        g_print("\n");
+    /* The commit, the modified flag and the version already make up the build ID, so the text
+     * output does not repeat it. The JSON record keeps buildId for scripts. */
+    const char* build_time = member_string(object, "buildTime", NULL);
+    if (build_time) {
+        g_autoptr(GDateTime) built = g_date_time_new_from_iso8601(build_time, NULL);
+        g_autofree char* formatted =
+            built ? g_date_time_format(built, "%Y-%m-%d %H:%M:%S UTC") : NULL;
+        print_version_field("Built", formatted ? formatted : build_time);
     }
+    g_autofree char* commit =
+        g_strdup_printf("%s%s", member_string(object, "gitSha", "unknown"),
+                        json_object_has_member(object, "sourceModified") &&
+                                json_object_get_boolean_member(object, "sourceModified")
+                            ? " (modified)"
+                            : "");
+    print_version_field("Commit", commit);
+    print_version_field("Remote", member_string(object, "gitRemote", "unknown"));
+    print_version_field("Lua", member_string(object, "luaVersion", "unknown"));
+    print_version_field("Native API", member_string(object, "apiVersion", "unknown"));
 }
 
 static gboolean parse_cli(Cli* cli, int argc, char** argv, GError** error) {
@@ -969,13 +1117,22 @@ static guint arg_count(Cli* cli) {
 static gboolean validate_cli(Cli* cli, GError** error) {
     const CommandSpec* spec = find_command(cli->command);
     if (!spec) {
-        g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_UNKNOWN_OPTION, "unknown command: %s",
-                    cli->command);
+        g_autoptr(GString) names = g_string_new(NULL);
+        for (guint i = 0; i < G_N_ELEMENTS(commands); i++)
+            g_string_append_printf(names, "%s%s", i ? " " : "", commands[i].name);
+        g_autofree char* guess = closest_word(cli->command, names->str);
+        g_autofree char* hint = guess ? g_strdup_printf(" (did you mean '%s'?)", guess) : NULL;
+        g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_UNKNOWN_OPTION,
+                    "unknown command: %s%s\nRun 'gnoblinctl help' to list the commands.",
+                    cli->command, hint ? hint : "");
         return FALSE;
     }
     if (spec->actions && cli->action && !word_in(spec->actions, cli->action)) {
-        g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_UNKNOWN_OPTION, "unknown %s action: %s",
-                    cli->command, cli->action);
+        g_autofree char* guess = closest_word(cli->action, spec->actions);
+        g_autofree char* hint = guess ? g_strdup_printf(" (did you mean '%s'?)", guess) : NULL;
+        g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_UNKNOWN_OPTION,
+                    "unknown %s action: %s%s\nRun 'gnoblinctl help %s' to list the actions.",
+                    cli->command, cli->action, hint ? hint : "", cli->command);
         return FALSE;
     }
     const char* extra = NULL;
@@ -1152,8 +1309,9 @@ static char* default_config_directory(GError** error) {
     g_autofree char* path = config_path();
     const char* config_home = g_getenv("XDG_CONFIG_HOME");
     g_autofree char* expected =
-        config_home && *config_home ? g_build_filename(config_home, "gnoblin", "init.lua", NULL)
-                             : g_build_filename(g_get_home_dir(), ".config", "gnoblin", "init.lua", NULL);
+        config_home && *config_home
+            ? g_build_filename(config_home, "gnoblin", "init.lua", NULL)
+            : g_build_filename(g_get_home_dir(), ".config", "gnoblin", "init.lua", NULL);
     g_autofree char* canonical_path = g_canonicalize_filename(path, NULL);
     g_autofree char* canonical_expected = g_canonicalize_filename(expected, NULL);
     if (!g_str_equal(canonical_path, canonical_expected)) {
@@ -1185,8 +1343,7 @@ static gboolean write_default_config_tree(const char* directory, GError** error)
             return FALSE;
         }
         if (!g_file_set_contents_full(target, files[i].contents, (gssize)files[i].length,
-                                      G_FILE_SET_CONTENTS_CONSISTENT |
-                                          G_FILE_SET_CONTENTS_DURABLE,
+                                      G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE,
                                       0600, error))
             return FALSE;
     }
@@ -1197,8 +1354,7 @@ static char* stage_default_config_tree(const char* config_directory, GError** er
     g_autofree char* parent = g_path_get_dirname(config_directory);
     if (g_mkdir_with_parents(parent, 0700) != 0) {
         g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
-                    "could not create config parent directory %s: %s", parent,
-                    g_strerror(errno));
+                    "could not create config parent directory %s: %s", parent, g_strerror(errno));
         return NULL;
     }
     g_autofree char* template = g_build_filename(parent, ".gnoblin.default.XXXXXX", NULL);
@@ -1222,7 +1378,8 @@ static gboolean initialize_config(GError** error) {
         return FALSE;
     if (g_file_test(directory, G_FILE_TEST_EXISTS)) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_EXIST,
-                    "configuration directory already exists at %s; it was left unchanged", directory);
+                    "configuration directory already exists at %s; it was left unchanged",
+                    directory);
         return FALSE;
     }
     g_autofree char* staged = stage_default_config_tree(directory, error);
@@ -4545,8 +4702,7 @@ static gboolean lua_cli_permission_policy_valid(JsonObject* object) {
     JsonNode* revision = json_object_get_member(object, "revision");
     if (!default_level ||
         (!g_str_equal(default_level, "inherit") && !g_str_equal(default_level, "default") &&
-         !g_str_equal(default_level, "ask") &&
-         !g_str_equal(default_level, "deny")) ||
+         !g_str_equal(default_level, "ask") && !g_str_equal(default_level, "deny")) ||
         !rules || !revision || !JSON_NODE_HOLDS_VALUE(revision) ||
         (json_node_get_value_type(revision) != G_TYPE_INT64 &&
          json_node_get_value_type(revision) != G_TYPE_INT) ||
@@ -4608,8 +4764,7 @@ static int lua_cli_permissions_list(lua_State* state) {
     JsonNode* path = object ? json_object_get_member(object, "path") : NULL;
     if (!policy || !default_level ||
         (!g_str_equal(default_level, "inherit") && !g_str_equal(default_level, "default") &&
-         !g_str_equal(default_level, "ask") &&
-         !g_str_equal(default_level, "deny")) ||
+         !g_str_equal(default_level, "ask") && !g_str_equal(default_level, "deny")) ||
         !json_object_get_array_member(policy, "rules") ||
         !lua_cli_permission_string_array_valid(
             object ? json_object_get_array_member(object, "capabilities") : NULL) ||
@@ -5038,7 +5193,8 @@ static int lua_cli_input_snapshot(lua_State* state) {
             lua_pushnil(state);
             return 1;
         }
-        /* The reply has no source member while nothing is current, so read it only after the check above. */
+        /* The reply has no source member while nothing is current, so read it only after the check
+         * above. */
         JsonObject* source = json_object_get_object_member(snapshot, "source");
         if (!source)
             return luaL_error(state, "%s omitted its current source", method);
@@ -7698,39 +7854,66 @@ static const char* action_usage(const char* command, const char* action) {
     return NULL;
 }
 
+static void print_options(void) {
+    g_print("Options:\n"
+            "  -j, --json           Print JSON, including in a terminal\n"
+            "      --format FORMAT  auto (tables in a terminal, JSON in a pipe), json or table\n"
+            "      --timeout SECS   Request timeout, 1 to 60 (default 5; 30 for shortcut capture)\n"
+            "      --socket PATH    Compositor socket path\n"
+            "  -h, --help           Show this help\n");
+}
+
 static void print_help(const char* command, const char* action) {
     const CommandSpec* spec = find_command(command);
     if (!spec) {
-        g_print("Usage: gnoblinctl [--json | --format auto|json|table] [--timeout SECONDS] "
-                "[--socket PATH] COMMAND\n\nCommands:\n");
+        g_print("gnoblinctl - control a running Gnoblin session\n\n"
+                "Usage: gnoblinctl [OPTIONS] COMMAND [ACTION] [ARGUMENTS]\n\nCommands:\n");
         for (guint i = 0; i < G_N_ELEMENTS(commands); i++)
-            g_print("  %s\n", commands[i].name);
-        g_print("\nUse 'gnoblinctl help COMMAND' to see its actions.\n");
+            g_print("  %-14s%s\n", commands[i].name, help_summary(commands[i].name, NULL));
+        g_print("\n");
+        print_options();
+        g_print("      --version        Show the installed build, without a running session\n"
+                "\nExamples:\n"
+                "  gnoblinctl ping\n"
+                "  gnoblinctl window list\n"
+                "  gnoblinctl config path\n"
+                "\nUse 'gnoblinctl help COMMAND' to list the actions of a command.\n");
         return;
     }
+    const char* summary = help_summary(command, NULL);
     if (g_str_equal(command, "lua")) {
-        g_print("Usage: gnoblinctl lua [FILE]\n\n"
-                "Run a local Lua console or execute a Lua file with the Gnoblin session API.\n");
+        g_print("%s.\n\nUsage: gnoblinctl lua [FILE]\n", summary);
+        return;
+    }
+    if (g_str_equal(command, "completion")) {
+        g_print("%s.\n\nUsage: gnoblinctl completion bash|zsh|fish\n", summary);
         return;
     }
     if (action && word_in(spec->actions, action)) {
         const char* arguments = action_usage(command, action);
-        g_print("Usage: gnoblinctl %s %s%s%s\n\n", command, action, arguments ? " " : "",
-                arguments ? arguments : "");
-        g_print("Options: -j, --json; --format auto|json|table; --timeout 1..60; --socket PATH\n");
+        g_print("%s.\n\nUsage: gnoblinctl %s %s%s%s\n\n", help_summary(command, action), command,
+                action, arguments ? " " : "", arguments ? arguments : "");
+        print_options();
         return;
     }
-    if (g_str_equal(command, "completion")) {
-        g_print("Usage: gnoblinctl completion bash|zsh|fish\n");
-        return;
-    }
-    g_print("Usage: gnoblinctl %s%s\n", command,
+    g_print("%s.\n\nUsage: gnoblinctl %s%s\n", summary, command,
             spec->actions ? " ACTION [OPTIONS]" : " [OPTIONS]");
     if (spec->actions) {
+        if (g_str_equal(command, "privacy"))
+            g_print("\nWith no action, it shows the privacy indicators.\n");
         g_print("\nActions:\n");
         g_auto(GStrv) parts = g_strsplit(spec->actions, " ", -1);
+        guint width = 0;
         for (guint i = 0; parts[i]; i++)
-            g_print("  %s\n", parts[i]);
+            width = MAX(width, (guint)strlen(parts[i]));
+        for (guint i = 0; parts[i]; i++) {
+            const char* line = help_summary(command, parts[i]);
+            g_print("  %-*s  %s\n", (int)width, parts[i], line ? line : "");
+        }
+        g_print("\nUse 'gnoblinctl help %s ACTION' for the arguments of an action.\n", command);
+    } else {
+        g_print("\n");
+        print_options();
     }
 }
 
@@ -7831,8 +8014,7 @@ int main(int argc, char** argv) {
         }
         return 0;
     }
-    if (g_str_equal(cli.command, "config") &&
-        g_str_equal(cli.action, "restore-default")) {
+    if (g_str_equal(cli.command, "config") && g_str_equal(cli.action, "restore-default")) {
         if (arg_count(&cli) != 0) {
             g_printerr("gnoblinctl config restore-default accepts no arguments\n");
             return 1;
@@ -7849,8 +8031,9 @@ int main(int argc, char** argv) {
         else if (error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CONNECTION_REFUSED))
             g_print("No running Gnoblin session; the restored configuration will load at login.\n");
         else {
-            g_printerr("gnoblinctl: config files were restored, but live reload was not applied: %s\n",
-                       error ? error->message : "unknown compositor error");
+            g_printerr(
+                "gnoblinctl: config files were restored, but live reload was not applied: %s\n",
+                error ? error->message : "unknown compositor error");
             return 1;
         }
         return 0;

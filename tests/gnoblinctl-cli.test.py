@@ -872,6 +872,7 @@ def main() -> int:
         "luaVersion",
         "apiVersion",
         "buildId",
+        "buildTime",
         "gitRemote",
         "gitSha",
     ):
@@ -888,12 +889,59 @@ def main() -> int:
 
     human_version = run(binary, "--version")
     assert human_version.returncode == 0, human_version.stderr
-    for expected in (
-        f"Lua {identity['luaVersion']}",
-        f"Native API {identity['apiVersion']}",
-        f"Build ID: {identity['buildId']}",
-    ):
-        assert expected in human_version.stdout, expected
+    lines = human_version.stdout.splitlines()
+    assert lines[0] == f"Gnoblin {identity['version']}", lines[0]
+    # Each later line is a label in a 11 character column, then its value.
+    fields = {line[:11].strip(): line[12:] for line in lines[1:]}
+    assert fields["Lua"] == identity["luaVersion"], fields
+    assert fields["Native API"] == identity["apiVersion"], fields
+    assert fields["Remote"] == identity["gitRemote"], fields
+    assert fields["Commit"].split(" ")[0] == identity["gitSha"], fields
+    assert fields["Built"] == identity["buildTime"].replace("T", " ").replace("Z", " UTC"), fields
+    # The text output leaves out what the other lines already say, and the GNOME and upstream component versions.
+    # The JSON record keeps buildId and those versions for scripts.
+    for absent in ("Build ID", "Mutter", "Upstream", "GNOME"):
+        assert absent not in human_version.stdout, absent
+
+    # Every command and action in the help has a description, and the manual page lists them all.
+    root_help = run(binary, "--help")
+    assert root_help.returncode == 0, root_help.stderr
+    in_commands = False
+    command_names = []
+    for line in root_help.stdout.splitlines():
+        if line == "Commands:":
+            in_commands = True
+        elif in_commands and not line.strip():
+            break
+        elif in_commands:
+            name, _, description = line.strip().partition(" ")
+            assert description.strip(), f"command {name} has no description"
+            command_names.append(name)
+    assert len(command_names) > 10, command_names
+    man_pages = Path(build_directory) / "man-test"
+    generated = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve().parent.parent / "scripts/build-man-pages.py"), str(man_pages)],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert generated.returncode == 0, generated.stderr
+    man_text = (man_pages / "gnoblinctl.1").read_text().replace("\\-", "-")
+    for command in command_names:
+        assert f".B {command}\n" in man_text.replace("\\-", "-"), f"man page lacks {command}"
+        command_help = run(binary, "help", command)
+        assert command_help.returncode == 0, command_help.stderr
+        if "Actions:" not in command_help.stdout:
+            continue
+        actions = command_help.stdout.split("Actions:\n", 1)[1].split("\n\n", 1)[0].splitlines()
+        for action_line in actions:
+            action, _, description = action_line.strip().partition(" ")
+            assert description.strip(), f"{command} {action} has no description"
+            assert f".B {command} {action}\n" in man_text, f"man page lacks {command} {action}"
+    unknown = run(binary, "windw")
+    assert unknown.returncode != 0
+    assert "did you mean 'window'?" in unknown.stderr, unknown.stderr
 
     config_path = Path(build_directory) / "test-config" / "init.lua"
     config_result = run(

@@ -6,6 +6,7 @@ import json
 import os
 import re
 import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
@@ -79,6 +80,11 @@ else:
 build_id = f"{release['version']}+{sha[:12] if sha else 'unknown'}"
 if source_modified:
     build_id += ".modified"
+# The identity target runs on every build, so this is the time of the latest build. SOURCE_DATE_EPOCH makes a
+# reproducible build give the same time.
+epoch = os.environ.get("SOURCE_DATE_EPOCH")
+built_at = datetime.fromtimestamp(int(epoch), timezone.utc) if epoch else datetime.now(timezone.utc)
+build_time = built_at.strftime("%Y-%m-%dT%H:%M:%SZ")
 identity = {
     "version": release["version"],
     "gnomeVersion": components["mutter"]["version"],
@@ -86,6 +92,7 @@ identity = {
     "luaVersion": None,
     "apiVersion": native_api_version(),
     "buildId": build_id,
+    "buildTime": build_time,
     "components": {name: value["version"] for name, value in shipped_components.items()},
     "componentCommits": {name: value["commit"] for name, value in shipped_components.items()},
     "gitSha": sha,
@@ -129,6 +136,7 @@ if arguments.ini_output:
         "git_remote": identity.get("gitRemote"),
         "git_sha": identity.get("gitSha"),
         "build_id": identity.get("buildId"),
+        "build_time": identity.get("buildTime"),
     }
     metadata.extend(f"{name}={key_file_value(value)}" for name, value in fields.items() if value is not None)
     Path(arguments.ini_output).write_text("\n".join(metadata) + "\n")
