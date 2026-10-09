@@ -411,6 +411,12 @@ run_step() {
                         sub(/\x27.*/, "", name)
                         text = "Build " name
                     }
+                    if (text ~ /^Performing gnoblin-sources step for \x27/) {
+                        name = text
+                        sub(/^Performing gnoblin-sources step for \x27/, "", name)
+                        sub(/\x27.*/, "", name)
+                        text = "Patch " name " sources"
+                    }
                     printf "  %s\n", text
                 } else {
                     if (total != nested_total) {

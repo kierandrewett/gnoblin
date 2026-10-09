@@ -49,20 +49,20 @@ cmake -DACTION=apply-patches -DPROJECT=mutter -P cmake/source-step.cmake
 `checkout` or `release-archive`. A reset refuses to run on a submodule with local changes. Set
 `GNOBLIN_FORCE_RESET=1` only to discard them on purpose.
 
-| Script                                  | What it does                                                               | Run by                    |
-| --------------------------------------- | -------------------------------------------------------------------------- | ------------------------- |
-| `checkout-submodules-with-retry.sh`     | Fetch submodules, retrying GNOME GitLab errors                             | workflows, CMake          |
-| `check-build-deps.py`                   | Check that the development libraries the pinned sources need are installed | CMake                     |
-| `build-identity.py`                     | Write the build identity that `--version` prints, with the build time      | CMake                     |
-| `embed-config.py`                       | Embed the default Lua configuration tree in a C file                       | CMake                     |
-| `generate-mutter-keybinding-catalog.py` | Export Mutter's keybinding descriptors for the Lua API                     | `component-build.cmake`   |
-| `build-adwaita-hyprcursor.py`           | Package the Adwaita cursor vectors for Hyprcursor                          | `install-session.sh`      |
-| `build-frame-renderers.sh`              | Build the optional window frame renderers                                  | by hand, tests            |
-| `install-session.sh`                    | Install the session files, units, schemas and man pages into the prefix    | CMake                     |
-| `cmake/system-layout.cmake`             | Add the public entries a package ships outside the prefix                  | CMake (`--layout system`) |
-| `build-man-pages.py`                    | Write `gnoblin(1)` and `gnoblinctl(1)`                                     | `install-session.sh`      |
-| `gnome-versions.py`                     | Read, check and advance the pinned GNOME version                           | `build.sh`, workflows     |
-| `gnoblin-version.py`                    | Read the Gnoblin release version                                           | scripts, workflows        |
+| Script                                  | What it does                                                               | Run by                        |
+| --------------------------------------- | -------------------------------------------------------------------------- | ----------------------------- |
+| `checkout-submodules-with-retry.sh`     | Fetch submodules, retrying GNOME GitLab errors                             | workflows, CMake              |
+| `check-build-deps.py`                   | Check that the development libraries the pinned sources need are installed | CMake                         |
+| `build-identity.py`                     | Write the build identity that `--version` prints, with the build time      | CMake                         |
+| `embed-config.py`                       | Embed the default Lua configuration tree in a C file                       | CMake                         |
+| `generate-mutter-keybinding-catalog.py` | Export Mutter's keybinding descriptors for the Lua API                     | `component-build.cmake`       |
+| `build-adwaita-hyprcursor.py`           | Package the Adwaita cursor vectors for Hyprcursor                          | `cmake/install-session.cmake` | Install the session files, units, schemas and man pages into the prefix | CMake |
+| `build-frame-renderers.sh`              | Build the optional window frame renderers                                  | by hand, tests                |
+| `cmake/install-session.cmake`           | Install the session files, units, schemas and man pages into the prefix    | CMake                         |
+| `cmake/system-layout.cmake`             | Add the public entries a package ships outside the prefix                  | CMake (`--layout system`)     |
+| `build-man-pages.py`                    | Write `gnoblin(1)` and `gnoblinctl(1)`                                     | `cmake/install-session.cmake` | Install the session files, units, schemas and man pages into the prefix | CMake |
+| `gnome-versions.py`                     | Read, check and advance the pinned GNOME version                           | `build.sh`, workflows         |
+| `gnoblin-version.py`                    | Read the Gnoblin release version                                           | scripts, workflows            |
 
 ## Your session
 
