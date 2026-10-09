@@ -71,11 +71,17 @@ Dependencies live in `nix/package.nix`, `packaging/native-packages.json` and the
 RPM and Arch files made from it, `lua-runtime.yml`, `verify.yml`,
 `application-e2e.yml`, `release.yml` and `docs/install-source.md`.
 
-On one pull request this caused at least six CI failures, each a package, file or
-list missing from one place: `ibus` and `gcr` in Nix and `lua-runtime.yml`,
-`polkit` in the RPM specs, `gnome-desktop-4` in the openSUSE spec, the Dear ImGui
-source in Nix, three workflows and the bundle, a stale test list, and a tarball
-job that still expected no portal in the default build. `main` passed these jobs.
+On one pull request this caused at least six CI failures. Each was a package, file or
+list missing from one place:
+
+- `ibus` and `gcr` in Nix and `lua-runtime.yml`.
+- `polkit` in the RPM specs.
+- `gnome-desktop-4` in the openSUSE spec.
+- The Dear ImGui source in Nix, three workflows and the bundle.
+- A stale test list.
+- A tarball job that still expected no portal in the default build.
+
+`main` passed these jobs.
 
 ### 5. Work is repeated
 
@@ -140,15 +146,29 @@ longer has to carry the patched commits. Done in `81876e39`; two runs of
 
 ### B. What happens to builds from `main`?
 
-| Option                            | For                           | Against                                   |
-| --------------------------------- | ----------------------------- | ----------------------------------------- |
-| 1. A pre-release per push (today) | Anyone can download a build.  | 8 in a day. The release list is unusable. |
-| 2. Workflow artifacts only        | No clutter. 30 day retention. | Needs a GitHub login to download.         |
-| 3. One rolling `nightly` release  | One public link. No clutter.  | Each push replaces the files.             |
+Tried 2026-10-09: option 2. A push to `main` runs the whole pipeline as a dry run and
+publishes nothing. The source bundle and packages stay as workflow artifacts for 30 days.
+Only a release tag publishes. The 17 existing development pre-releases are not touched.
+
+| Option                             | For                           | Against                                  |
+| ---------------------------------- | ----------------------------- | ---------------------------------------- |
+| 1. A pre-release per push (before) | Anyone can download a build.  | 17 so far. The release list is unusable. |
+| 2. Workflow artifacts only (now)   | No clutter. 30 day retention. | Needs a GitHub login to download.        |
+| 3. One rolling `nightly` release   | One public link. No clutter.  | Each push replaces the files.            |
+
+Switching to option 3 later means one more job that replaces the files of a `nightly`
+release after a green run on `main`.
 
 ### C. Should a release publish before every package job passes?
 
-Proposed: no. Build into a draft and publish when all required jobs pass.
+Tried 2026-10-09: no. A tag creates a draft release with the source tarball.
+
+- The `github-release` job attaches the packages and publishes the draft. It runs only
+  when the source RPM, Arch install and Tumbleweed install jobs all passed.
+- A failed gate leaves the draft in place.
+- COPR runs after the publish, because it reads the source RPMs from the published release.
+
+This path has not run, because it needs a release tag.
 
 ### D. How should the portal package come from the one build?
 
@@ -185,10 +205,10 @@ Each item lands as its own commit, and the tree stays working.
 - [x] Add `./build.sh package`: the source bundle, component archives, Arch recipes and
       checksums from the one tree, with `--srpm` for Fedora source RPMs. `verify.yml` and
       `release.yml` call it. A binary tree is already `--layout system --destdir`.
-- [ ] Decide B and C above.
+- [x] Try B and C above (option 2 for B, draft until green for C). The tag path is untested.
 - [ ] Split `release.yml` into the five stages above. Move shared steps into reusable
       workflows, and build the bundle once.
-- [ ] Stop `main` from publishing releases, as decided in B.
+- [x] Stop `main` from publishing releases.
 - [ ] Make the openSUSE job read the source bundle by a name it is given.
 - [ ] Fix the openSUSE RPM adapter, which fails on `main`.
 - [x] Stop CI keeping its own dependency lists. Fedora jobs install with `dnf builddep` from the
