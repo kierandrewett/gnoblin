@@ -71,10 +71,17 @@ done
 # a developer's LD_LIBRARY_PATH. Mutter's libraries search an absolute path below the prefix, so a staged copy is checked
 # with the stage visible at the prefix.
 loader_check=(env -u LD_LIBRARY_PATH -u LD_PRELOAD "$PREFIX/bin/gnoblin" --version)
+run_loader_check=true
 if [ -n "$STAGE" ]; then
     loader_check=("$(dirname "$0")/run-staged.sh" "$PREFIX" "$STAGE" "${loader_check[@]}")
+    # The check needs a private mount namespace. A container or a locked-down kernel may not allow one. Skip the check
+    # then, because the copy step does not depend on it.
+    if ! unshare --user --map-root-user --mount true >/dev/null 2>&1; then
+        echo 'Cannot create a mount namespace here, so the library check is skipped.' >&2
+        run_loader_check=false
+    fi
 fi
-if ! "${loader_check[@]}" >/dev/null; then
+if "$run_loader_check" && ! "${loader_check[@]}" >/dev/null; then
     echo 'The Gnoblin executable cannot load its runtime libraries.' >&2
     echo 'Run make to install the built artifacts through Meson, then install again.' >&2
     exit 1
