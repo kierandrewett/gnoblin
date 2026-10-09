@@ -181,6 +181,7 @@ refresh the pinned Nix inputs, and run:
 ./scripts/gnome-versions.py check --upstream
 nix flake update mutter-src portal-src gxdp-src
 make check
+make test
 ```
 
 Patch rebasing and runtime compatibility still require review.
