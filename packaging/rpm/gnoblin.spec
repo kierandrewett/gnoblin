@@ -42,6 +42,7 @@ Requires:       dconf
 Requires:       gcr-libs
 Requires:       glib2 >= 2.86.0
 Requires:       gsettings-desktop-schemas >= 49.1
+Requires:       ibus-libs
 Requires:       json-glib
 Requires:       libinput >= 1.30.0
 Requires:       lua-libs >= 5.4

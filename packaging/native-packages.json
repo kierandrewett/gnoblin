@@ -9,6 +9,7 @@
         "gcr",
         "glib",
         "gsettings-desktop-schemas",
+        "ibus",
         "json-glib",
         "libinput",
         "lua",
@@ -96,6 +97,13 @@
       "names": {
         "arch": "gvfs",
         "rpm": "gvfs"
+      }
+    },
+    "ibus": {
+      "minVersion": null,
+      "names": {
+        "arch": "ibus",
+        "rpm": "ibus-libs"
       }
     },
     "json-glib": {
