@@ -336,6 +336,7 @@ jobs:
         run: pacman -Scc --noconfirm
 
   arch-package-runtime:
+    if: ${{ !cancelled() && needs.arch-package.result == 'success' }}
     needs: [source-packages, arch-package]
     runs-on: ubuntu-latest
     container: archlinux:base
