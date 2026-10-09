@@ -149,16 +149,37 @@ command -v sudo >/dev/null 2>&1 || {
 }
 sudo -v
 
-printf '%s==>%s Registering Gnoblin with the login screen\n' "$blue" "$reset"
+printf '%s==>%s Registering Gnoblin with the login screen\n\n' "$blue" "$reset"
+
+# Print one row for every file or link this script makes. A link shows its target. Rows carry no category,
+# so a new file needs no change here.
+installed() {
+    if [ -L "$1" ]; then
+        printf '  %s -> %s\n' "$1" "$(readlink "$1")"
+    else
+        printf '  %s\n' "$1"
+    fi
+}
+
+install_system_file() {
+    sudo install -Dm644 "$1" "$2"
+    installed "$2"
+}
+
 if "$have_user_systemd"; then
     unit_files=("$STANDALONE_TARGET" "$IDLE_SERVICE")
+    if "$with_portal"; then
+        unit_files+=("$PORTAL_UNIT")
+    fi
+    systemctl --user --force link "${unit_files[@]}" >/dev/null
+    for unit in "${unit_files[@]}"; do
+        installed "$USER_UNIT_DIR/$(basename "$unit")"
+    done
+    systemctl --user daemon-reload
+else
+    echo 'No systemd user manager detected; Gnoblin core will run without user units.'
 fi
-if "$with_portal" && "$have_user_systemd"; then
-    unit_files+=("$PORTAL_UNIT")
-fi
-if "$have_user_systemd"; then
-    systemctl --user --force link "${unit_files[@]}"
-fi
+
 desktop_to_install="$(mktemp)"
 trap 'rm -f -- "$desktop_to_install"' EXIT
 python3 - "$DESKTOP" "$desktop_to_install" <<'PY'
@@ -175,19 +196,21 @@ for line in source.read_text().splitlines():
     lines.append(line)
 destination.write_text('\n'.join(lines) + '\n')
 PY
-if "$have_user_systemd"; then
-    systemctl --user daemon-reload
-else
-    echo 'No systemd user manager detected; Gnoblin core will run without user units.'
+install_system_file "$desktop_to_install" /usr/share/wayland-sessions/gnoblin.desktop
+install_system_file "$PORTAL_CONFIGURATION" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+if "$with_portal"; then
+    install_system_file "$PORTAL_DESCRIPTOR" /usr/share/xdg-desktop-portal/portals/gnoblin.portal
+    install_system_file "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
 fi
-sudo install -Dm644 "$desktop_to_install" /usr/share/wayland-sessions/gnoblin.desktop
-sudo install -Dm644 "$PORTAL_CONFIGURATION" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+
 # Make the prefix-built native CLI discoverable. Preserve any existing command
 # rather than replacing a user's script or a CLI from another installation.
 mkdir -p "$USER_BIN_DIR"
 if [ ! -L "$GNOBLINCTL_LINK" ]; then
     ln -s "$PREFIX/bin/gnoblinctl" "$GNOBLINCTL_LINK"
 fi
+installed "$GNOBLINCTL_LINK"
+
 # man searches ~/.local/share/man, and a source build keeps its pages inside the prefix. Link them so that
 # "man gnoblin" and "man gnoblinctl" work. A rebuild rewrites the pages in place behind the link. Create the link where
 # nothing exists, and refresh only a link that already points into a Gnoblin prefix. Anything else is the user's, so it
@@ -199,25 +222,23 @@ for page in gnoblin.1 gnoblinctl.1; do
     [ -f "$source_page" ] || continue
     if [ ! -e "$link" ] && [ ! -L "$link" ]; then
         ln -s "$source_page" "$link"
+        installed "$link"
     elif [ -L "$link" ]; then
         target="$(readlink "$link")"
         linked_prefix="${target%/share/man/man1/$page}"
         if [ "$linked_prefix" != "$target" ] && [ -x "$linked_prefix/bin/gnoblinctl" ]; then
             ln -sfn "$source_page" "$link"
+            installed "$link"
         else
-            echo "Left $link alone: it points to $target, which is not a Gnoblin prefix." >&2
+            echo "  Left $link alone: it points to $target, which is not a Gnoblin prefix." >&2
         fi
     else
-        echo "Left $link alone: it is not a link." >&2
+        echo "  Left $link alone: it is not a link." >&2
     fi
 done
-printf '%sGnoblin is available%s at login. Choose the existing GNOME session to switch back to GNOME.\n' "$green" "$reset"
-printf 'Native command: %s\n' "$GNOBLINCTL_LINK"
-printf 'Manual pages: man gnoblin, man gnoblinctl\n'
-if "$with_portal"; then
-    sudo install -Dm644 "$PORTAL_DESCRIPTOR" /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-    sudo install -Dm644 "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
-else
+
+printf '\n%sGnoblin is available%s at login.\n' "$green" "$reset"
+if ! "$with_portal"; then
     echo 'Gnoblin portal backend not built; the default route will select another installed backend.'
     echo 'Set gnoblin.configure.portals in Lua to choose a specific backend.'
 fi

@@ -138,6 +138,9 @@ Register the standalone Gnoblin login:
 make install
 ```
 
+`make install` prints each file or link it creates, one per row. A link row shows
+`path -> target`.
+
 Registration adds only the standalone Gnoblin login. The normal GNOME session
 remains a separate login-screen choice, so you can switch back to GNOME without
 installing a Gnoblin compatibility session.
