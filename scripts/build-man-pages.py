@@ -166,8 +166,10 @@ Most commands need a running session.
 .B \-\-version
 works without one.
 .PP
-In a terminal, results print as tables.
-In a pipe, they print as JSON.
+With the default format, lists and records print as tables in a terminal and as JSON in a pipe.
+A single value, such as the path from
+.BR "config path" ,
+always prints as plain text.
 .SH OPTIONS
 .TP
 .BR \-j ", " \-\-json
@@ -175,7 +177,8 @@ Print JSON, including in a terminal.
 .TP
 .BI \-\-format " FORMAT"
 .B auto
-prints tables in a terminal and JSON in a pipe.
+prints lists and records as tables in a terminal and as JSON in a pipe.
+A single value stays plain text.
 .B json
 and
 .B table
