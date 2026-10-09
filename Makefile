@@ -7,10 +7,11 @@
 #   make clean     delete build/ and keep ./install
 #
 # Settings:  make JOBS=4 DEVKIT=0     DEVKIT=1 builds the nested viewer that the preview and the devkit tests need.
-# Another prefix, or what a build would change first: use ./build.sh (--prefix DIR, --dry-run).
+# Another prefix, or what a build would change first: use ./build.sh (--prefix DIR, and GNOBLIN_DEVKIT=enabled ./build.sh --dry-run).
 
 JOBS ?= $(shell nproc)
 DEVKIT ?= 1
+BUILD_DIR := $(or $(GNOBLIN_BUILD_DIR),build/ninja)
 
 .PHONY: build install check test clean help
 .DEFAULT_GOAL := build
@@ -25,8 +26,8 @@ check:
 	@./tests/check-fast.sh
 
 test: build
-	@cmake --build build/ninja --target gnoblin-tests --parallel $(JOBS)
-	@ctest --test-dir build/ninja --output-on-failure
+	@cmake --build "$(BUILD_DIR)" --target gnoblin-tests --parallel $(JOBS)
+	@ctest --test-dir "$(BUILD_DIR)" --output-on-failure
 
 clean:
 	rm -rf build

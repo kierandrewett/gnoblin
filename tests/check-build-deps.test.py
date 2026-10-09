@@ -153,6 +153,8 @@ bundled_dep = dependency('bundled-lib')
             self.assertRegex(core_result.stdout, r"Ninja target:\s+gnoblin-session")
             self.assertRegex(core_result.stdout, r"Portal backend:\s+omitted")
             self.assertNotIn("Build the portal backend", core_result.stdout)
+            self.assertNotIn("portal backend (reset", core_result.stdout)
+            self.assertIn("subprojects/mutter (reset", core_result.stdout)
             portal_result = subprocess.run(
                 [str(ROOT / "build.sh"), "--dry-run"],
                 capture_output=True,

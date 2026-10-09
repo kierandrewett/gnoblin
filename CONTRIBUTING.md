@@ -12,7 +12,7 @@ First install the dependencies listed in the
 Build the pinned upstream sources into a separate prefix:
 
 ```sh
-./build.sh --dry-run   # read what the build will change
+GNOBLIN_DEVKIT=enabled ./build.sh --dry-run   # read what make will change
 make                   # build: the same as ./build.sh, with the nested viewer enabled
 make install           # build, then add the login entry and link gnoblinctl and the man pages (asks for sudo)
 ```

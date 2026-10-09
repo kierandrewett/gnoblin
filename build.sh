@@ -317,7 +317,13 @@ if "$dry_run"; then
         printf '  %s\n' "$prefix"
     fi
     echo "  $build_dir and the rest of build/ (logs, temporary files)"
-    [ "$source_mode" = checkout ] && echo '  subprojects/mutter and the portal backend (reset to the pinned tag and patched)'
+    if [ "$source_mode" = checkout ]; then
+        if "$with_portal"; then
+            echo '  subprojects/mutter and the portal backend (reset to the pinned tag and patched)'
+        else
+            echo '  subprojects/mutter (reset to the pinned tag and patched)'
+        fi
+    fi
     printf '\nDoes not touch\n'
     echo '  your login screen entry (run ./build.sh --register-session, or make install)'
     echo '  your PATH commands and man page links (the same step makes those)'
