@@ -1152,8 +1152,9 @@ static char* default_config_directory(GError** error) {
     g_autofree char* path = config_path();
     const char* config_home = g_getenv("XDG_CONFIG_HOME");
     g_autofree char* expected =
-        config_home && *config_home ? g_build_filename(config_home, "gnoblin", "init.lua", NULL)
-                             : g_build_filename(g_get_home_dir(), ".config", "gnoblin", "init.lua", NULL);
+        config_home && *config_home
+            ? g_build_filename(config_home, "gnoblin", "init.lua", NULL)
+            : g_build_filename(g_get_home_dir(), ".config", "gnoblin", "init.lua", NULL);
     g_autofree char* canonical_path = g_canonicalize_filename(path, NULL);
     g_autofree char* canonical_expected = g_canonicalize_filename(expected, NULL);
     if (!g_str_equal(canonical_path, canonical_expected)) {
@@ -1185,8 +1186,7 @@ static gboolean write_default_config_tree(const char* directory, GError** error)
             return FALSE;
         }
         if (!g_file_set_contents_full(target, files[i].contents, (gssize)files[i].length,
-                                      G_FILE_SET_CONTENTS_CONSISTENT |
-                                          G_FILE_SET_CONTENTS_DURABLE,
+                                      G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE,
                                       0600, error))
             return FALSE;
     }
@@ -1197,8 +1197,7 @@ static char* stage_default_config_tree(const char* config_directory, GError** er
     g_autofree char* parent = g_path_get_dirname(config_directory);
     if (g_mkdir_with_parents(parent, 0700) != 0) {
         g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
-                    "could not create config parent directory %s: %s", parent,
-                    g_strerror(errno));
+                    "could not create config parent directory %s: %s", parent, g_strerror(errno));
         return NULL;
     }
     g_autofree char* template = g_build_filename(parent, ".gnoblin.default.XXXXXX", NULL);
@@ -1222,7 +1221,8 @@ static gboolean initialize_config(GError** error) {
         return FALSE;
     if (g_file_test(directory, G_FILE_TEST_EXISTS)) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_EXIST,
-                    "configuration directory already exists at %s; it was left unchanged", directory);
+                    "configuration directory already exists at %s; it was left unchanged",
+                    directory);
         return FALSE;
     }
     g_autofree char* staged = stage_default_config_tree(directory, error);
@@ -4545,8 +4545,7 @@ static gboolean lua_cli_permission_policy_valid(JsonObject* object) {
     JsonNode* revision = json_object_get_member(object, "revision");
     if (!default_level ||
         (!g_str_equal(default_level, "inherit") && !g_str_equal(default_level, "default") &&
-         !g_str_equal(default_level, "ask") &&
-         !g_str_equal(default_level, "deny")) ||
+         !g_str_equal(default_level, "ask") && !g_str_equal(default_level, "deny")) ||
         !rules || !revision || !JSON_NODE_HOLDS_VALUE(revision) ||
         (json_node_get_value_type(revision) != G_TYPE_INT64 &&
          json_node_get_value_type(revision) != G_TYPE_INT) ||
@@ -4608,8 +4607,7 @@ static int lua_cli_permissions_list(lua_State* state) {
     JsonNode* path = object ? json_object_get_member(object, "path") : NULL;
     if (!policy || !default_level ||
         (!g_str_equal(default_level, "inherit") && !g_str_equal(default_level, "default") &&
-         !g_str_equal(default_level, "ask") &&
-         !g_str_equal(default_level, "deny")) ||
+         !g_str_equal(default_level, "ask") && !g_str_equal(default_level, "deny")) ||
         !json_object_get_array_member(policy, "rules") ||
         !lua_cli_permission_string_array_valid(
             object ? json_object_get_array_member(object, "capabilities") : NULL) ||
@@ -5038,7 +5036,8 @@ static int lua_cli_input_snapshot(lua_State* state) {
             lua_pushnil(state);
             return 1;
         }
-        /* The reply has no source member while nothing is current, so read it only after the check above. */
+        /* The reply has no source member while nothing is current, so read it only after the check
+         * above. */
         JsonObject* source = json_object_get_object_member(snapshot, "source");
         if (!source)
             return luaL_error(state, "%s omitted its current source", method);
@@ -7831,8 +7830,7 @@ int main(int argc, char** argv) {
         }
         return 0;
     }
-    if (g_str_equal(cli.command, "config") &&
-        g_str_equal(cli.action, "restore-default")) {
+    if (g_str_equal(cli.command, "config") && g_str_equal(cli.action, "restore-default")) {
         if (arg_count(&cli) != 0) {
             g_printerr("gnoblinctl config restore-default accepts no arguments\n");
             return 1;
@@ -7849,8 +7847,9 @@ int main(int argc, char** argv) {
         else if (error && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_CONNECTION_REFUSED))
             g_print("No running Gnoblin session; the restored configuration will load at login.\n");
         else {
-            g_printerr("gnoblinctl: config files were restored, but live reload was not applied: %s\n",
-                       error ? error->message : "unknown compositor error");
+            g_printerr(
+                "gnoblinctl: config files were restored, but live reload was not applied: %s\n",
+                error ? error->message : "unknown compositor error");
             return 1;
         }
         return 0;
