@@ -19,6 +19,7 @@ usage() {
     cat <<'HELP'
 Usage: ./build.sh [--prefix DIR] [--jobs N] [--without-xwayland] [--with-vector-cursors] [--without-portal] [--verbose] [--dry-run]
        ./build.sh --layout system [--prefix DIR] [--system-prefix DIR] [--destdir DIR]
+       ./build.sh package [--output DIR] [--srpm] [--release-tag TAG] [--public-tag TAG]
        ./build.sh [--prefix DIR] --register-session
        ./build.sh [--prefix DIR] --preview [--terminal NAME]
 
@@ -44,10 +45,51 @@ The build does not change system packages.
   --terminal NAME     Terminal to open with --preview (default: first available)
   --help              Show this help
 
+package writes the release assets from the committed tree: the source bundle (the tree this script builds), the
+component archives, the Arch recipes and SHA256SUMS. The tree must have no uncommitted source changes.
+  --output DIR        Where to write the assets (default: ./dist/release, must be empty)
+  --srpm              Also build the Fedora source RPMs (needs rpm-build)
+  --release-tag TAG   Check TAG against the version in the tree (a release build)
+  --public-tag TAG    Tag that the Arch recipes download from (default: gnoblin-v<version>)
+
 GNOBLIN_BUILD_DIR sets the CMake build directory (default: build/ninja). Use a separate one to keep a package
 build next to a development build.
 HELP
 }
+
+if [ "${1:-}" = package ]; then
+    shift
+    package_output="$PWD/dist/release"
+    package_tag='' package_public_tag='' package_source_only=--source-only
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --output)
+                package_output="${2:?--output needs a directory}"
+                shift
+                ;;
+            --release-tag)
+                package_tag="${2:?--release-tag needs a tag}"
+                shift
+                ;;
+            --public-tag)
+                package_public_tag="${2:?--public-tag needs a tag}"
+                shift
+                ;;
+            --srpm) package_source_only='' ;;
+            --help | -h)
+                usage
+                exit 0
+                ;;
+            *)
+                usage >&2
+                exit 2
+                ;;
+        esac
+        shift
+    done
+    # build-release-assets.sh takes OUTPUT, the release tag to validate, --source-only and the public download tag.
+    exec "$PWD/scripts/build-release-assets.sh" "$package_output" "$package_tag" "$package_source_only" "$package_public_tag"
+fi
 
 jobs="${GNOBLIN_BUILD_JOBS:-4}"
 build_dir="${GNOBLIN_BUILD_DIR:-build/ninja}"

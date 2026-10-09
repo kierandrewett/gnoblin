@@ -53,7 +53,7 @@ jobs:
           git -C subprojects/mutter fetch --force --tags origin
           git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin
           source_dir="$RUNNER_TEMP/gnoblin-source-assets"
-          ./scripts/build-release-assets.sh "$source_dir" "" --source-only
+          ./build.sh package --output "$source_dir"
           mapfile -t bundles < <(find "$source_dir" -maxdepth 1 -type f -name 'gnoblin-*-source.tar.xz')
           test "${#bundles[@]}" -eq 1
           tree_root="$RUNNER_TEMP/gnoblin-source-build"
