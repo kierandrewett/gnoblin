@@ -150,7 +150,7 @@ bundled_dep = dependency('bundled-lib')
                 text=True,
             )
             self.assertEqual(core_result.returncode, 0, core_result.stderr)
-            self.assertRegex(core_result.stdout, r"Ninja target:\s+gnoblin-session")
+            self.assertRegex(core_result.stdout, r"Ninja target:\s+gnoblin-public-entries")
             self.assertRegex(core_result.stdout, r"Portal backend:\s+omitted")
             self.assertNotIn("Build the portal backend", core_result.stdout)
             self.assertNotIn("portal backend (reset", core_result.stdout)

@@ -41,7 +41,7 @@ The build does not change system packages.
   --destdir DIR       Install below DIR, as a package build root. Nothing outside DIR changes.
   --verbose           Stream every build command and its output
   --dry-run           Show stages without changing files
-  --target NAME       Build a CMake target (default: gnoblin-session)
+  --target NAME       Build a CMake target (default: standalone-session)
   --register-session  Add the standalone Gnoblin login
   --preview           Open the compositor viewer and terminal; start a sample
                       Waybar panel when Waybar is installed.
@@ -197,7 +197,7 @@ if "$portal_selected" && "$with_portal" && "$target_selected"; then
     exit 2
 fi
 if ! "$with_portal" && ! "$target_selected"; then
-    target=gnoblin-session
+    target=gnoblin-public-entries
 fi
 case "$layout" in
     private | system) ;;
@@ -494,7 +494,7 @@ else
     fail_step 'Build Gnoblin' "$?"
 fi
 # Check that the install is complete. Say nothing when it is, and stop with the missing file when it is not.
-if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ] || [ "$target" = gnoblin-system-layout ]; then
+if [ "$target" = gnoblin-session ] || [ "$target" = gnoblin-public-entries ] || [ "$target" = standalone-session ] || [ "$target" = gnoblin-system-layout ]; then
     artifacts=(
         bin/gnoblin
         bin/gnoblinctl
@@ -502,6 +502,7 @@ if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ] || [ "$
         share/wayland-sessions/gnoblin.desktop
         lib/systemd/user/gnoblin-session.target
         lib/systemd/user/gnoblin-idle.service
+        share/gnoblin/public-entries.txt
     )
     if "$with_portal" && [ "$target" != gnoblin-session ]; then
         artifacts+=(libexec/xdg-desktop-portal-gnoblin)
@@ -534,7 +535,11 @@ row() { printf '  %-10s %s\n' "$1" "$2"; }
 warn_row() { printf '  %s%-10s %s%s\n' "$yellow" "$1" "$2" "$reset"; }
 
 printf '\n%sBuilt Gnoblin%s%s in %s\n\n' "$green" "${gnoblin_version:+ $gnoblin_version}" "$reset" "$took"
-row Installed "${destdir:+$destdir}$prefix"
+if [ -n "$destdir" ]; then
+    row Staged "$destdir$prefix"
+else
+    row Installed "$prefix"
+fi
 if [ "$layout" = system ]; then
     row Public "${destdir:+$destdir}$system_prefix"
 fi
@@ -542,16 +547,21 @@ if [ "$total_warnings" -gt 0 ]; then
     warn_row Warnings "$total_warnings compiler warnings, listed in ${log#"$PWD"/}"
 fi
 
-if [ "$layout" = private ] && [ -z "$destdir" ]; then
-    # The make targets build into ./install. Another prefix has no make target, so name the build.sh commands.
-    if [ "$prefix" = "$PWD/install" ]; then
+if [ "$layout" = private ]; then
+    # make builds for its PREFIX into a stage and installs from there. Another build has no make target, so name the
+    # build.sh commands.
+    if [ -n "${GNOBLIN_VIA_MAKE:-}" ]; then
         preview_command='make preview'
         register_command='make install'
-    else
+        register_note="Copy it to $prefix and add it to the login screen"
+    elif [ -z "$destdir" ]; then
         preview_command="./build.sh --prefix $(printf '%q' "$prefix") --preview"
         register_command="./build.sh --prefix $(printf '%q' "$prefix") --register-session"
+        register_note="Add it to the login screen"
     fi
-    printf '\n%sNext%s\n' "$bold" "$reset"
-    printf '  %-16s %s\n' "$preview_command" "Try it in a window"
-    printf '  %-16s %s\n' "$register_command" "Add it to the login screen"
+    if [ -n "${register_command:-}" ]; then
+        printf '\n%sNext%s\n' "$bold" "$reset"
+        printf '  %-16s %s\n' "$preview_command" "Try it in a window"
+        printf '  %-16s %s\n' "$register_command" "$register_note"
+    fi
 fi

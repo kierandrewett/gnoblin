@@ -290,6 +290,7 @@ add_dependencies(gnoblin-public-entries gnoblin-session)
 if(GNOBLIN_WITH_PORTAL)
   add_dependencies(gnoblin-public-entries xdg-desktop-portal-gnome)
 endif()
+add_dependencies(standalone-session gnoblin-public-entries)
 
 add_custom_target(gnoblin-system-layout
   COMMAND "${CMAKE_COMMAND}" -E env "GNOBLIN_STAGE_ROOT=${GNOBLIN_STAGE_ROOT}"
