@@ -191,7 +191,12 @@ Each item lands as its own commit, and the tree stays working.
 - [ ] Stop `main` from publishing releases, as decided in B.
 - [ ] Make the openSUSE job read the source bundle by a name it is given.
 - [ ] Fix the openSUSE RPM adapter, which fails on `main`.
-- [ ] Add a check that fails when a dependency list and the specs disagree.
+- [x] Stop CI keeping its own dependency lists. Fedora jobs install with `dnf builddep` from the
+      specs. Arch jobs install with `scripts/install-arch-build-deps.sh` from the PKGBUILDs. A
+      missing package in a recipe now fails CI the way it fails a user. A name-by-name check
+      across distros was not added: the same library has a different package name on each
+      one, so it would raise false alarms. The hand-written lists left are `nix/package.nix`,
+      `packaging/opensuse/gnoblin.spec` and the small Lua test installs in `lua.yml`.
 - [x] Mark `design/release-packaging.md` as a historical log, with a pointer to this file.
 - [ ] Dry run a release from a branch: draft only, no tag, no COPR upload.
 - [ ] Clean up: remove the 8 development pre-releases and the 3 drafts, after the owner
