@@ -23,7 +23,7 @@ Gnoblin installs as its own session and can coexist with GNOME.
 - `gnoblinctl` uses GLib/GIO and JSON-GLib at runtime. Python is a build tool,
   not a base package requirement.
 
-Nix uses separate store outputs. Source builds use a private prefix.
+Nix uses separate store outputs. Source builds use their own prefix, `/usr/local/lib/gnoblin` by default.
 Bingux owns and releases its shell package separately.
 
 ## Package definitions
@@ -44,7 +44,7 @@ Fedora's COPR packages use `gnoblin` as the install entry point. There is
 currently no Gnoblin APT or pacman repository.
 
 RPM and Arch login entries launch the lean session directly, as
-registering a source build with `make install` does. GNOME Session and
+installing a source build with `make install` does. GNOME Session and
 Settings Daemon are not package requirements. The source tarball remains the
 primary install route until a distribution package passes its login gate.
 

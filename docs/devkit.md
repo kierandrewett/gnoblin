@@ -2,9 +2,11 @@
 
 The devkit runs a nested Gnoblin session inside your Wayland desktop.
 Use it to test a build without logging out.
-The normal source build omits the viewer; the first preview builds it for you.
+`make` builds the viewer. `./build.sh` omits it, and the first `./build.sh --preview`
+builds it for you.
 
-First complete the [source build](install-source.md).
+First complete the [source build](install-source.md). `make preview` runs the
+build in `build/stage` and needs no `make install`.
 
 ## Start
 
@@ -129,7 +131,7 @@ Captures include the pointer and omit terminal windows.
 
 Set `GNOBLIN_DOC_SITE_URL` or `GNOBLIN_DOC_FIREFOX_URL` to choose another page.
 Pass a second argument for a different output directory. Captures need a visible
-Wayland session, a current build in `./install` and the apps used by the scene. See the
+Wayland session, a current build (`make`, or a prefix from `./build.sh`) and the apps used by the scene. See the
 [shell guide](/bring-your-own-shell) for the resulting setups.
 
 The [private test harness](testing.md) is for automated checks.
@@ -140,7 +142,7 @@ A devkit capture shows the nested session, not an installed login session.
 | Problem                    | Next step                                                |
 | -------------------------- | -------------------------------------------------------- |
 | No host `WAYLAND_DISPLAY`  | Start the preview from a Wayland desktop                 |
-| No Gnoblin in `./install`  | Finish the source build                                  |
+| No staged build            | Run `make`                                               |
 | No terminal found          | Install one or pass its command explicitly               |
 | Quickshell/Qt mismatch     | Install or rebuild a matching Quickshell                 |
 | `EBUSY` taking the session | Use this devkit launcher, not a direct native/KMS launch |

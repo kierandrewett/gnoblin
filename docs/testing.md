@@ -8,7 +8,7 @@ nested preview, and real login each verify a different part of the session.
 | Command or test                           | What it checks                                                                                         | Requirement                                                        |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------ |
 | `make check`                              | Source manifests, patch metadata, scripts, configuration, and packaging checks                         | Python and repository tooling                                      |
-| `make test`                               | CTest runtime, Lua configuration, protocol, and CLI tests                                              | A configured build in `build/ninja`                                |
+| `make test`                               | CTest runtime, Lua configuration, protocol, and CLI tests                                              | A configured build in `build/make`                                 |
 | `tests/test-gnoblin-devkit.sh`            | Config, native controls, and visible workspace animation frames in a fresh nested Gnoblin session      | A working Wayland desktop and `grim`                               |
 | `tests/test-privacy-pipewire.py`          | Live microphone and camera activity through `gnoblin.privacy.state()`                                  | Source build, Wayland desktop, PipeWire tools                      |
 | `tests/test-window-csd-reconstruction.py` | Lua `remove_csd` pixel behavior in a fresh nested Gnoblin session                                      | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
@@ -53,7 +53,8 @@ and an active stream with the PipeWire media role set to `Camera` let the test
 run without capture hardware.
 
 The test requires `pipewire`, `wireplumber`, `pipewire-pulse`, `pactl`,
-`pw-cat`, and `pw-cli`. Its source build prefix defaults to `install`. Set
+`pw-cat`, and `pw-cli`. Its source build prefix defaults to `install`, the
+`./build.sh` default. Set
 `GNOBLIN_TEST_PREFIX` to use a different prefix.
 
 ## Test compositor changes
