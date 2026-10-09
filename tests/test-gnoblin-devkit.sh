@@ -1346,8 +1346,8 @@ gnoblin.configure {
     cursor = {size = 55},
 }
 LUA
-# A config that fails at login does not stop the session: Gnoblin falls back to the last good configuration (docs/config/
-# load.md). The valid cursor size in the same file is lost with it, and a reload reports the rejected binding.
+# A rejected keybinding does not stop the session. At login Gnoblin ignores only that item and applies the rest of the
+# file (docs/config/load.md), so the valid cursor size stays. A reload is stricter and reports the rejected binding.
 unsupported_action_exec=$(
     cat <<'SCRIPT'
 set -uo pipefail
@@ -1380,12 +1380,12 @@ grep -q 'RELOAD_OUTPUT:.*keybinding has no action in this Mutter build: wm.panel
     echo 'A reload did not report the rejected keybinding' >&2
     exit 1
 }
-grep -q 'CURSOR_AFTER:{}' <<<"$unsupported_action_output" || {
+grep -q "CURSOR_AFTER:{'size': 55}" <<<"$unsupported_action_output" || {
     printf '%s\n' "$unsupported_action_output" >&2
-    echo 'The valid setting from the failed config was applied; the fallback should have dropped it' >&2
+    echo 'The valid cursor size was lost; login should ignore only the rejected keybinding' >&2
     exit 1
 }
-printf '%s\n' 'PASS: a config with a rejected keybinding falls back and keeps the session running'
+printf '%s\n' 'PASS: a rejected keybinding is ignored at login and the rest of the config loads'
 
 released_binding_fixture="$fixture_root/released-keybinding-config"
 mkdir -p "$released_binding_fixture/gnoblin"
