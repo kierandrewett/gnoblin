@@ -82,10 +82,10 @@ Run deterministic checks and the native runtime tests with:
 
 ```sh
 make check
-make test-runtime
+make test
 ```
 
-Use `make test-preview` for an isolated live session. It requires a working
+Use `tests/test-gnoblin-devkit.sh` for an isolated live session. It requires a working
 Wayland desktop and a current build. A successful build or CTest run does not
 verify login on a real seat; see [hardware verification](real-hardware-verification.md).
 

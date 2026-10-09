@@ -12,24 +12,22 @@ First install the dependencies listed in the
 Build the pinned upstream sources into a separate prefix:
 
 ```sh
-make plan      # read what the build will change
-make           # build: the same as ./build.sh, with the nested viewer enabled
-make install   # build, then add the login entry, the commands and the man pages (asks for sudo)
+./build.sh --dry-run   # read what the build will change
+make                   # build: the same as ./build.sh, with the nested viewer enabled
+make install           # build, then add the login entry, the commands and the man pages (asks for sudo)
 ```
 
-`./build.sh` is the build, and `make` is a named front door to it. Run `make help` to list every
-task and what it changes, and `make status` to see what is built, which login entry
-exists and which `gnoblin` and `gnoblinctl` are on your `PATH`. The [scripts map](scripts/README.md)
+`./build.sh` is the build, and `make` is a short way to run it. The [scripts map](scripts/README.md)
 says what each script does and who runs it.
 
 Run the fast checks before sending a change:
 
 ```sh
 make check
+make test    # the CTest suites, after a build
 ```
 
-Use `make test-all` for a fresh build plus the full headless suite. Use `make test-release`
-only when the real-host and RPM gates are required. The testing guide records which
+Run `tests/test-window-manager.sh` only when the real-host and RPM gates are required. The testing guide records which
 checks need a real seat, hardware or a running private session.
 
 Before you merge a change to `release.yml`, the packages or their generator, run

@@ -40,4 +40,4 @@ remains XML only and does not register a global.
 
 Run `tests/test-protocol-boundaries.sh` for the protocol contracts and
 `tests/test-protocol-gating.sh` for the configuration gate. Run
-`make test-window-manager` on a real host before release.
+`tests/test-window-manager.sh` on a real host before release.

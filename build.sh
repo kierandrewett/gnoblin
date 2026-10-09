@@ -493,4 +493,14 @@ else
     printf 'Try it: ./build.sh --prefix %q --preview\n' "$prefix"
     printf 'Add it to your login screen: ./build.sh --prefix %q --register-session\n' "$prefix"
 fi
+# An older install earlier on PATH is easy to mistake for this build, so say which one a bare command runs.
+if [ "$layout" = private ] && [ -z "$destdir" ]; then
+    for command_name in gnoblin gnoblinctl; do
+        found="$(command -v "$command_name" || true)"
+        if [ -n "$found" ] && [ "$(readlink -f "$found")" != "$(readlink -f "$prefix/bin/$command_name")" ]; then
+            printf 'Note: %s on your PATH is %s, not this build. Run %s/bin/%s for this one.\n' \
+                "$command_name" "$(readlink -f "$found")" "$prefix" "$command_name"
+        fi
+    done
+fi
 printf 'Full output: %s\n' "$log"

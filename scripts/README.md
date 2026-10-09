@@ -1,21 +1,20 @@
 # Scripts
 
 Most of these scripts are not meant to be run by hand. `./build.sh` and CMake run the build
-ones, the workflows run the release ones, and `make` names the rest. This page says which is
+ones, the workflows run the release ones, and the rest are tools. This page says which is
 which, so you can tell what a script is for before you run it.
 
 ## What to run
 
 | You want to                   | Run                    |
 | ----------------------------- | ---------------------- |
-| See every task and its effect | `make help`            |
-| See what is built and linked  | `make status`          |
-| See what a build would change | `make plan`            |
+| See what a build would change | `./build.sh --dry-run` |
 | Build                         | `make` or `./build.sh` |
+| Build and add the login entry | `make install`         |
 | Run the fast checks           | `make check`           |
+| Run the CTest suites          | `make test`            |
 
-`./build.sh` is the build. `make` adds names and a place to read what each task changes.
-Neither holds logic that the scripts below do not already hold.
+`./build.sh` is the build. `make` is a short way to run it, and holds no logic of its own.
 
 ## Build
 
@@ -69,13 +68,13 @@ Run by the workflows and by `./build.sh package`.
 | `build-source-bundle.sh`                    | Join the archives into the source bundle                                | `build-release-assets.sh`                |
 | `build-srpm.sh`                             | Build one Fedora source RPM                                             | `build-release-assets.sh`, `release.yml` |
 | `stage-rpm-sources.sh`                      | Stage the loose RPM source files of a patched subproject                | the openSUSE build chain                 |
-| `sync-package-manifest.py`                  | Check or write the recipes from `packaging/native-packages.json`        | `make package-manifest`                  |
+| `sync-package-manifest.py`                  | Check or write the recipes from `packaging/native-packages.json`        | workflows, by hand                       |
 | `check-release-tag.sh`                      | Check a release tag against the version in the tree                     | `release.yml`                            |
 | `check-rpm-isolation.py`                    | Reject an RPM that could replace GNOME files                            | `opensuse-rpm.yml`                       |
 | `check-packaging-targets.py`                | Validate the package target list                                        | a workflow                               |
 | `probe-rpm-target.py`                       | Record the library floor of a distribution image                        | a workflow                               |
 | `install-arch-build-deps.sh`                | Install what the PKGBUILDs declare                                      | `release.yml`, `verify.yml`              |
-| `install-system.sh`                         | Install the published Fedora packages from COPR                         | `make install-fedora`                    |
+| `install-system.sh`                         | Install the published Fedora packages from COPR                         | by hand                                  |
 | `publish-copr.sh`                           | Send source RPMs to COPR                                                | `copr.yml`                               |
 | `prepare-apt-pages.py`                      | Add the already-published APT archive to the docs site                  | `docs.yml`                               |
 
@@ -90,7 +89,7 @@ Run by the workflows and by `./build.sh package`.
 
 | Script                                               | What it does                                          |
 | ---------------------------------------------------- | ----------------------------------------------------- |
-| `quality.sh`                                         | Lint and format (`make lint`, `make format`)          |
+| `quality.sh`                                         | Lint and format (`./scripts/quality.sh lint`)         |
 | `markdown-style.py`                                  | The Markdown review that the pre-commit hook runs     |
 | `format-qt.py`                                       | Format QML and JavaScript that has Qt directives      |
 | `docs-vitepress-postbuild.mjs`                       | Post-process the built documentation site             |

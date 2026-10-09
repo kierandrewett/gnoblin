@@ -122,7 +122,7 @@ else
         mapfile -t matches < <(find "$RPM_DIR" -type f -name "$name-$version-$release.*.rpm" | sort)
         if [ "${#matches[@]}" -ne 1 ]; then
             echo "Expected one $name-$version-$release RPM under $RPM_DIR; found ${#matches[@]}." >&2
-            echo "Use the official COPR path unless you are packaging locally. To run a source build instead: make build && make register" >&2
+            echo "Use the official COPR path unless you are packaging locally. To run a source build instead: make install" >&2
             exit 1
         fi
         rpms+=("${matches[0]}")

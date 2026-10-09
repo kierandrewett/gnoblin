@@ -32,8 +32,8 @@ Bingux owns and releases its shell package separately.
 and their distribution names. Generate or verify the adapters with Python:
 
 ```sh
-make package-manifest ARGS=write
-make package-manifest
+./scripts/sync-package-manifest.py write
+./scripts/sync-package-manifest.py check
 ```
 
 The package check also compares pinned versions with `gnome-versions.json` and
@@ -178,9 +178,9 @@ generated version fields. Then rebase patches, update submodule references,
 refresh the pinned Nix inputs, and run:
 
 ```sh
-make check-gnome-version
+./scripts/gnome-versions.py check --upstream
 nix flake update mutter-src portal-src gxdp-src
-make test-all
+make check
 ```
 
 Patch rebasing and runtime compatibility still require review.

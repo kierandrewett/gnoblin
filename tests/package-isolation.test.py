@@ -363,16 +363,15 @@ class IsolationTests(unittest.TestCase):
 
     def test_system_install_defaults_to_official_copr(self):
         installer = (ROOT / "scripts/install-system.sh").read_text()
-        justfile = (ROOT / "Justfile").read_text()
+        makefile = (ROOT / "Makefile").read_text()
         self.assertIn("SOURCE=copr", installer)
         self.assertIn('dnf copr enable -y "$copr"', installer)
         self.assertIn('dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"', installer)
         self.assertIn('packages=("gnoblin:$META_VERSION"', installer)
         self.assertIn("gnoblin) project=gnoblin", installer)
         self.assertIn("install --refresh gnoblin", (ROOT / ".github/workflows/verify.yml").read_text())
-        self.assertIn("install-fedora:", justfile)
-        self.assertIn("./scripts/install-system.sh", justfile)
-        self.assertNotIn('"--local-rpms"', justfile)
+        # No task passes a local RPM option to the COPR installer.
+        self.assertNotIn("--local-rpms", makefile)
         self.assertIn("scripts/legacy/gnome-session@gnoblin.target.d.conf", installer)
 
     def test_system_installer_removes_only_the_exact_legacy_gnome_dropin(self):
