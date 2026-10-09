@@ -7,7 +7,7 @@ pkgdesc='Standalone Gnoblin desktop session'
 arch=('x86_64')
 url='https://github.com/kierandrewett/gnoblin'
 license=('GPL-2.0-or-later')
-makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gcr-4' 'gettext' 'ibus' 'glib2-devel' 'gobject-introspection' 'gtk4>=4.14.0' 'json-glib' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' 'lua>=5.4' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
+makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gcr-4' 'gettext' 'gnome-desktop-4' 'ibus' 'glib2-devel' 'gobject-introspection' 'gtk4>=4.14.0' 'json-glib' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'libxkbcommon' 'libxkbfile' 'libxres' 'xkeyboard-config' 'lua>=5.4' 'meson' 'ninja' 'patchelf' 'pkgconf' 'polkit' 'python' 'python-docutils' 'python-packaging' 'sassc' 'startup-notification' 'wayland-protocols>=1.48' 'xorg-xwayland')
 depends=('adwaita-cursors' 'dbus' 'dconf' 'gcr-4' 'glib2>=2.86.0' 'gsettings-desktop-schemas>=49.1' 'ibus' 'json-glib' 'libinput>=1.30.0' 'lua>=5.4' 'pipewire>=1.4.11' 'polkit' 'systemd-libs' 'wayland>=1.25' 'wireplumber' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'polkit' 'startup-notification')
 conflicts=('gnoblin-mutter' 'gnoblin-mutter-devel')
 replaces=('gnoblin-mutter' 'gnoblin-mutter-devel')
