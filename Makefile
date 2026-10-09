@@ -3,7 +3,7 @@
 #   make           build into ./install
 #   make install   build, then add the login entry and link gnoblinctl and the man pages (asks for sudo)
 #   make check     the fast checks
-#   make test      the CTest suites (needs a build)
+#   make test      build the tests, then run the CTest suites
 #   make clean     delete build/ and keep ./install
 #
 # Settings:  make JOBS=4 DEVKIT=0     DEVKIT=1 builds the nested viewer that the preview and the devkit tests need.
@@ -24,7 +24,8 @@ install: build
 check:
 	@./tests/check-fast.sh
 
-test:
+test: build
+	@cmake --build build/ninja --target gnoblin-tests --parallel $(JOBS)
 	@ctest --test-dir build/ninja --output-on-failure
 
 clean:

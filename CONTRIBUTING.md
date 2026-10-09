@@ -24,7 +24,7 @@ Run the fast checks before sending a change:
 
 ```sh
 make check
-make test    # the CTest suites, after a build
+make test    # build the tests, then run the CTest suites
 ```
 
 Run `tests/test-window-manager.sh` only when the real-host and RPM gates are required. The testing guide records which

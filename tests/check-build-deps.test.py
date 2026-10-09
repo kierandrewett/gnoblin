@@ -138,10 +138,9 @@ bundled_dep = dependency('bundled-lib')
             self.assertRegex(result.stdout, r"Output prefix:\s+" + re.escape(str(output_dir)))
             self.assertRegex(result.stdout, r"Ninja target:\s+gnoblin\n")
             self.assertRegex(result.stdout, r"XWayland:\s+false")
-            # The plan names its steps and says what it writes and what it leaves alone.
-            for heading in ("Steps, in order", "Writes", "Does not touch"):
-                self.assertIn(heading, result.stdout)
-            self.assertRegex(result.stdout, r"\d+ patches in patches/mutter")
+            # A chosen target has its own steps, so the plan is not printed for it.
+            self.assertIn("The steps depend on the target gnoblin", result.stdout)
+            self.assertNotIn("Steps, in order", result.stdout)
             self.assertFalse(output_dir.exists())
             for obsolete in ("sudo", "dnf", "pacman", "apt-get", "zypper", "--yes", "--no-deps"):
                 self.assertNotIn(obsolete, result.stdout)
@@ -161,6 +160,10 @@ bundled_dep = dependency('bundled-lib')
             )
             self.assertEqual(portal_result.returncode, 0, portal_result.stderr)
             self.assertRegex(portal_result.stdout, r"Ninja target:\s+standalone-session")
+            # The default build prints the plan: its steps, what it writes and what it leaves alone.
+            for heading in ("Steps, in order", "Writes", "Does not touch"):
+                self.assertIn(heading, portal_result.stdout)
+            self.assertRegex(portal_result.stdout, r"\d+ patches in patches/mutter")
             self.assertRegex(portal_result.stdout, r"Portal backend:\s+included")
             self.assertIn("Build the portal backend", portal_result.stdout)
             system_result = subprocess.run(

@@ -284,6 +284,10 @@ if "$dry_run"; then
     echo "  XWayland:        $xwayland"
     echo "  Vector cursors:  $vector_cursors"
     echo "  Nested viewer:   ${GNOBLIN_DEVKIT:-disabled}"
+    if "$target_selected"; then
+        printf '\nThe steps depend on the target %s, so no plan is printed. Run without --target for the full plan.\n' "$target"
+        exit 0
+    fi
     printf '\nSteps, in order\n'
     step=1
     plan_step() {
