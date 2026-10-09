@@ -211,16 +211,22 @@ Each item lands as its own commit, and the tree stays working.
 - [x] Stop `main` from publishing releases.
 - [ ] Make the openSUSE job read the source bundle by a name it is given.
 - [ ] Fix the openSUSE RPM adapter, which fails on `main`.
-- [x] Stop CI keeping its own dependency lists. Fedora jobs install with `dnf builddep` from the
-      specs. Arch jobs install with `scripts/install-arch-build-deps.sh` from the PKGBUILDs. A
-      missing package in a recipe now fails CI the way it fails a user. A name-by-name check
-      across distros was not added: the same library has a different package name on each
-      one, so it would raise false alarms. The hand-written lists left are `nix/package.nix`,
-      `packaging/opensuse/gnoblin.spec` and the small Lua test installs in `lua.yml`.
+- [x] Stop the Fedora and Arch jobs naming packages that the recipes already require. Fedora jobs
+      install with `dnf builddep` from the specs, and the hand-written lists in `verify.yml`,
+      `application-e2e.yml` and `lua-runtime.yml` keep only tools and test programs that no spec
+      requires. Arch jobs install with `scripts/install-arch-build-deps.sh` from the PKGBUILDs.
+      A package missing from a recipe now fails CI the way it fails a user. A name-by-name check
+      across distros was not added: the same library has a different package name on each one.
+- [ ] Keep the other hand-written lists in step with their recipes: `nix/package.nix`,
+      `packaging/opensuse/gnoblin.spec`, and the small installs in `lua.yml`.
 - [x] Mark `design/release-packaging.md` as a historical log, with a pointer to this file.
 - [x] Dry run a release from a branch. `gh workflow run release.yml --ref BRANCH -f dry_run=true`
-      builds and tests every package job and the install gates from that branch, and publishes
-      nothing: no pre-release, no tag, no COPR upload. Run it after any change to `release.yml`,
-      the recipes or the generator, and before the merge.
+      builds the source bundle and the Fedora source RPMs, builds the Arch package and runs its
+      clean-install gate, and builds the Tumbleweed RPMs and runs their install and GNOME
+      coexistence gates. It publishes nothing: no release, no tag, no COPR upload. Run it after
+      any change to `release.yml`, the recipes or the generator, and before the merge.
+- [ ] Run the Fedora binary build and its clean-install, GNOME coexistence and removal checks in a
+      dry run. They exist only inside `copr.yml`, after a COPR build, so a dry run does not
+      reach them. A Fedora packaging error shows up on the first tag.
 - [ ] Clean up: remove the 8 development pre-releases and the 3 drafts, after the owner
       agrees.

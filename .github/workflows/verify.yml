@@ -47,8 +47,8 @@ jobs:
           GIT_COMMITTER_NAME: Gnoblin CI
           GIT_COMMITTER_EMAIL: ci@gnoblin.local
         run: |
-          dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
-            json-glib-devel desktop-file-utils python3 rpm-build util-linux-user
+          # Build requirements come from the specs below. Only tools that no spec requires are named here.
+          dnf -y install dnf-plugins-core rpm-build util-linux-user
           dnf -y builddep packaging/rpm/gnoblin.spec packaging/rpm/gnoblin-portal.spec
           git -C subprojects/mutter fetch --force --tags origin
           git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin

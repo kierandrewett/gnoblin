@@ -38,8 +38,8 @@ jobs:
           # Build requirements come from the RPM specs, the same source the native session job uses. Only tools that
           # no spec requires are named here.
           dnf -y install \
-            dnf-plugins-core git cmake ninja-build meson python3 gcc gcc-c++ make pkgconf-pkg-config \
-            python3-packaging adwaita-cursor-theme util-linux-user cvt xorg-x11-server-Xwayland
+            dnf-plugins-core git make pkgconf-pkg-config python3-packaging adwaita-cursor-theme \
+            util-linux-user xorg-x11-server-Xwayland
           dnf -y builddep packaging/rpm/gnoblin.spec packaging/rpm/gnoblin-portal.spec
 
       - name: Build all targets as an unprivileged user
