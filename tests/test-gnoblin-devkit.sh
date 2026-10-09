@@ -1361,7 +1361,8 @@ printf 'CURSOR_AFTER:%s\n' "$(gnoblinctl --json config show 2>&1 | python3 -c 'i
 SCRIPT
 )
 unsupported_action_output="$(
-    GNOBLIN_STATE_DIR="$fixture_root/unsupported-action-state" \
+    GNOBLIN_DEVKIT_KEEP_SESSION=1 \
+        GNOBLIN_STATE_DIR="$fixture_root/unsupported-action-state" \
         GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
         GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
         GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
@@ -1411,7 +1412,8 @@ echo 'SHORTCUT:claimed-released-mutter-binding'
 SCRIPT
 )
 released_binding_output="$(
-    GNOBLIN_STATE_DIR="$fixture_root/released-keybinding-state" \
+    GNOBLIN_DEVKIT_KEEP_SESSION=1 \
+        GNOBLIN_STATE_DIR="$fixture_root/released-keybinding-state" \
         GNOBLIN_PREFIX="$GNOBLIN_TEST_PREFIX" \
         GNOBLIN_RUNTIME_BIN="$GNOBLIN_TEST_RUNTIME" \
         GNOBLIN_DEVKIT_CTL="$GNOBLIN_TEST_PREFIX/bin/gnoblinctl" \
