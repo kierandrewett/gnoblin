@@ -200,25 +200,22 @@ jobs:
     env:
       RELEASE_TAG: ${{ needs.source-packages.outputs.release_tag }}
     steps:
-      - name: Install package build requirements without stock Shell or Mutter
-        run: |
-          pacman -Syu --noconfirm --needed \
-            accountsservice adwaita-cursors base-devel cmake desktop-file-utils egl-wayland \
-            gcr-4 gettext git glib2-devel gnome-desktop-4 gobject-introspection \
-            gtk4 \
-            ibus libadwaita libcanberra libdisplay-info libei libinput libnm libxkbcommon \
-            libxkbfile libxres lua meson ninja patchelf pipewire pkgconf polkit \
-            python python-docutils python-packaging sassc startup-notification \
-            wayland wayland-protocols wireplumber \
-            xdg-desktop-portal xorg-xwayland
-          ! pacman -Q gnome-shell >/dev/null 2>&1
-          ! pacman -Q mutter >/dev/null 2>&1
-          ! pacman -Q gnome-session >/dev/null 2>&1
-          ! pacman -Q gnome-settings-daemon >/dev/null 2>&1
+      - name: Install the tools that fetch the sources
+        run: pacman -Syu --noconfirm --needed git
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
       - uses: actions/download-artifact@v4
         with:
           name: gnoblin-${{ env.RELEASE_TAG }}
           path: release-assets
+      - name: Install the packages the released recipes declare, without stock Shell or Mutter
+        run: |
+          ./scripts/install-arch-build-deps.sh release-assets/*.PKGBUILD
+          ! pacman -Q gnome-shell >/dev/null 2>&1
+          ! pacman -Q mutter >/dev/null 2>&1
+          ! pacman -Q gnome-session >/dev/null 2>&1
+          ! pacman -Q gnome-settings-daemon >/dev/null 2>&1
       - name: Build the release Arch package from its local source asset
         run: |
           source_archive="$(find release-assets -maxdepth 1 -name 'gnoblin-*-source.tar.xz' -print -quit)"
