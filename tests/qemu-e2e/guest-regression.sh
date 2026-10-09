@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Runs inside the Gnoblin guest. Re-checks the features added in this work and prints PASS or FAIL.
 set -u
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+XDG_RUNTIME_DIR="/run/user/$(id -u)"
+DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
+export XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
 export WAYLAND_DISPLAY=wayland-0
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
 CONFIG_DIR="$HOME/.config/gnoblin/config"
@@ -19,8 +20,14 @@ check() {
     fi
 }
 
-install_config() { cp "/tmp/$1" "$CONFIG_DIR/$1"; "$G" config reload >/dev/null; }
-disable_config() { printf -- '-- disabled by the regression script\n' > "$CONFIG_DIR/$1"; "$G" config reload >/dev/null; }
+install_config() {
+    cp "/tmp/$1" "$CONFIG_DIR/$1"
+    "$G" config reload >/dev/null
+}
+disable_config() {
+    printf -- '-- disabled by the regression script\n' >"$CONFIG_DIR/$1"
+    "$G" config reload >/dev/null
+}
 
 caps="$("$G" capabilities 2>&1 | python3 -c '
 import json, sys
@@ -34,7 +41,7 @@ check "grant list" "$("$G" grant list 2>&1)" '"grants"'
 check "version build id" "$("$G" --version 2>&1)" "Build ID:"
 
 echo "-- capture"
-: > /tmp/capture-events.log
+: >/tmp/capture-events.log
 install_config 99-test-capture.lua
 sleep 15
 log="$(cat /tmp/capture-events.log)"
@@ -49,7 +56,7 @@ check "capture finished" "$log" "all steps done"
 disable_config 99-test-capture.lua
 
 echo "-- polkit"
-: > /tmp/doc-events.log
+: >/tmp/doc-events.log
 install_config 99-test-doc.lua
 auth_caps() {
     "$G" capabilities 2>&1 | python3 -c '
@@ -68,7 +75,7 @@ check "capability auth-agent off after disable" "$(auth_caps)" "auth-agent False
 echo "-- prompt broker"
 install_config 99-test-prompts.lua
 sleep 3
-: > /tmp/prompt-events.log
+: >/tmp/prompt-events.log
 check "broker owns names" "$(busctl --user list --no-pager 2>/dev/null | grep -i 'keyring.*SystemPrompter')" "gnoblin"
 python3 - <<'PY' >/dev/null 2>&1
 from gi.repository import Gio, GLib
@@ -101,9 +108,9 @@ check "current ibus source" "$("$G" input current 2>&1)" '"type":"ibus"'
 check "restore xkb source" "$("$G" input select xkb us 2>&1)" '"current":true'
 # Reloading a list without the current source makes the first listed source current (us is selected above), and a
 # config that is accepted at startup does the same. gnoblinctl lua must print no JSON assertion for current_source().
-printf 'local c = gnoblin.input.current_source()\nprint(c and c.id or "none")\n' > /tmp/current-source.lua
+printf 'local c = gnoblin.input.current_source()\nprint(c and c.id or "none")\n' >/tmp/current-source.lua
 printf 'gnoblin.configure {input_sources = {sources = {{type = "xkb", id = "gb"}, {type = "xkb", id = "de"}}}}\n' \
-    > "$CONFIG_DIR/99-test-sources.lua"
+    >"$CONFIG_DIR/99-test-sources.lua"
 "$G" config reload >/dev/null 2>&1
 sleep 3
 current_output="$("$G" lua /tmp/current-source.lua 2>&1)"
@@ -117,8 +124,8 @@ check "status running" "$("$G" status 2>&1)" '"state":"running"'
 check "workspace list" "$("$G" workspace list 2>&1)" "Workspace 1"
 check "monitor list" "$("$G" monitor list 2>&1)" "refresh_rate"
 check "focus policy" "$("$G" focus policy 2>&1)" "focus_mode"
-nohup swaybg -c "#223344" >/dev/null 2>&1 < /dev/null &
-nohup foot -T regression-window >/dev/null 2>&1 < /dev/null &
+nohup swaybg -c "#223344" >/dev/null 2>&1 </dev/null &
+nohup foot -T regression-window >/dev/null 2>&1 </dev/null &
 sleep 4
 wallpaper_layers() {
     # Report whether swaybg's wallpaper layer surfaces exist (one for each monitor). Other layer clients (a notification daemon, for example) may come and go.
@@ -138,8 +145,8 @@ check "window removed after exit" "$("$G" window list 2>&1)" '"windows":[]'
 
 echo "-- window rules"
 install_config 99-test-rules.lua
-nohup foot -T rule-test >/dev/null 2>&1 < /dev/null &
-nohup foot -T rule-control >/dev/null 2>&1 < /dev/null &
+nohup foot -T rule-test >/dev/null 2>&1 </dev/null &
+nohup foot -T rule-control >/dev/null 2>&1 </dev/null &
 sleep 4
 rule_windows="$("$G" window list 2>&1 | python3 -c '
 import json, sys
@@ -162,6 +169,8 @@ for w in json.load(sys.stdin)["windows"]:
         f = w["frame"]
         print(f["x"] + f["width"] // 2, f["y"] + f["height"] // 2)')"
     grim -t ppm /tmp/opacity.ppm
+    # geometry holds two numbers, X and Y, and the script reads them as two arguments.
+    # shellcheck disable=SC2086
     python3 - $geometry <<'PY'
 import sys
 x, y = int(sys.argv[1]), int(sys.argv[2])
@@ -171,8 +180,8 @@ width = int(parts[1].split()[0])
 print(parts[3][(y * width + x) * 3])
 PY
 }
-nohup swaybg -c "#ffffff" >/dev/null 2>&1 < /dev/null &
-nohup foot -T opacity-test >/dev/null 2>&1 < /dev/null &
+nohup swaybg -c "#ffffff" >/dev/null 2>&1 </dev/null &
+nohup foot -T opacity-test >/dev/null 2>&1 </dev/null &
 sleep 4
 before="$(window_pixel)"
 install_config 99-test-opacity.lua
@@ -204,7 +213,7 @@ fi
 
 echo "-- protocol reload"
 screencopy_globals() { wayland-info 2>/dev/null | grep -c 'zwlr_screencopy_manager_v1'; }
-printf 'gnoblin.configure {protocols = {wlr_screencopy = false}}\n' > "$CONFIG_DIR/99-test-protocols.lua"
+printf 'gnoblin.configure {protocols = {wlr_screencopy = false}}\n' >"$CONFIG_DIR/99-test-protocols.lua"
 "$G" config reload >/dev/null
 sleep 2
 check "one reload hides a disabled protocol" "screencopy=$(screencopy_globals)" "screencopy=0"
@@ -213,16 +222,16 @@ sleep 2
 check "one reload advertises the protocol again" "screencopy=$(screencopy_globals)" "screencopy=1"
 
 echo "-- xwayland reload"
-xauth_file="$(ls /run/user/"$(id -u)"/.mutter-Xwaylandauth.* 2>/dev/null | head -1)"
+xauth_file="$(find "/run/user/$(id -u)" -maxdepth 1 -name '.mutter-Xwaylandauth.*' -print -quit 2>/dev/null)"
 xft_dpi() { XAUTHORITY="$xauth_file" DISPLAY=:0 timeout 10 xrdb -query 2>&1 | grep -i 'Xft.dpi' | tr -d '\t'; }
 xwayland_pid() { pgrep -u "$(id -u)" -x Xwayland | head -1; }
-printf 'gnoblin.configure {xwayland = {scaling_factor = 2}}\n' > "$CONFIG_DIR/99-test-xwayland.lua"
+printf 'gnoblin.configure {xwayland = {scaling_factor = 2}}\n' >"$CONFIG_DIR/99-test-xwayland.lua"
 pid_before="$(xwayland_pid)"
 "$G" config reload >/dev/null
 sleep 4
 check "scaling_factor updates Xft.dpi live" "$(xft_dpi)" "Xft.dpi:192"
 check "scaling_factor does not restart Xwayland" "pid=$(xwayland_pid)" "pid=$pid_before"
-printf 'gnoblin.configure {xwayland = {disable_extensions = {"xtest"}}}\n' > "$CONFIG_DIR/99-test-xwayland.lua"
+printf 'gnoblin.configure {xwayland = {disable_extensions = {"xtest"}}}\n' >"$CONFIG_DIR/99-test-xwayland.lua"
 "$G" config reload >/dev/null
 sleep 6
 check "disable_extensions restarts Xwayland without ending the session" \
@@ -232,7 +241,7 @@ disable_config 99-test-xwayland.lua
 sleep 6
 
 echo "-- xsettings"
-cat > /tmp/xsettings-byte-order.py <<'PY'
+cat >/tmp/xsettings-byte-order.py <<'PY'
 import ctypes
 import ctypes.util
 
@@ -252,13 +261,13 @@ x.XGetWindowProperty(display, ctypes.c_ulong(owner), ctypes.c_ulong(setting), 0,
                      ctypes.byref(data))
 print("byte_order=%s" % (data[0] if count.value else "missing"))
 PY
-xs_auth="$(ls /run/user/"$(id -u)"/.mutter-Xwaylandauth.* 2>/dev/null | head -1)"
+xs_auth="$(find "/run/user/$(id -u)" -maxdepth 1 -name '.mutter-Xwaylandauth.*' -print -quit 2>/dev/null)"
 check "XSETTINGS byte order is LSBFirst (0), not a letter" \
     "$(XAUTHORITY="$xs_auth" DISPLAY=:0 python3 /tmp/xsettings-byte-order.py 2>&1 | tail -1)" "byte_order=0"
 check "no Invalid XSETTINGS warning from GTK X11 clients" \
     "invalid=$(sudo journalctl -b --no-pager --since '-2min' 2>/dev/null | grep -c 'Invalid XSETTINGS')" "invalid=0"
 
-cat > /tmp/gtk-scale.py <<'PY'
+cat >/tmp/gtk-scale.py <<'PY'
 import gi
 
 gi.require_version("Gdk", "4.0")
@@ -282,11 +291,11 @@ GLib.timeout_add(1500, report)
 loop.run()
 PY
 x11_scale() { XAUTHORITY="$xs_auth" DISPLAY=:0 GDK_BACKEND=x11 timeout 20 python3 /tmp/gtk-scale.py 2>&1 | grep '^scale_factor=' | head -1; }
-printf 'gnoblin.configure {xwayland = {scaling_factor = 1}}\n' > "$CONFIG_DIR/99-test-xwayland.lua"
+printf 'gnoblin.configure {xwayland = {scaling_factor = 1}}\n' >"$CONFIG_DIR/99-test-xwayland.lua"
 "$G" config reload >/dev/null
 sleep 4
 check "a GTK X11 app sees scale factor 1 at xwayland.scaling_factor 1" "$(x11_scale)" "scale_factor=1"
-printf 'gnoblin.configure {xwayland = {scaling_factor = 2}}\n' > "$CONFIG_DIR/99-test-xwayland.lua"
+printf 'gnoblin.configure {xwayland = {scaling_factor = 2}}\n' >"$CONFIG_DIR/99-test-xwayland.lua"
 "$G" config reload >/dev/null
 sleep 4
 check "a GTK X11 app sees scale factor 2 at xwayland.scaling_factor 2" "$(x11_scale)" "scale_factor=2"
@@ -295,10 +304,10 @@ sleep 3
 
 echo "-- failed reload"
 active_cursor_size() { "$G" config show 2>&1 | grep -o '"size":[0-9]*' | head -1; }
-printf 'gnoblin.configure {cursor = {size = 48}}\n' > "$CONFIG_DIR/99-test-badreload.lua"
+printf 'gnoblin.configure {cursor = {size = 48}}\n' >"$CONFIG_DIR/99-test-badreload.lua"
 "$G" config reload >/dev/null
 check "a valid reload applies cursor.size" "$(active_cursor_size)" '"size":48'
-printf 'gnoblin.configure {cursor = {size = 48}, window_management = {focus_mode = "bogus"}}\n' > "$CONFIG_DIR/99-test-badreload.lua"
+printf 'gnoblin.configure {cursor = {size = 48}, window_management = {focus_mode = "bogus"}}\n' >"$CONFIG_DIR/99-test-badreload.lua"
 bad_output="$("$G" config reload 2>&1)"
 bad_status=$?
 check "an invalid reload exits with an error" "status=$bad_status" "status=1"
@@ -309,7 +318,7 @@ check "the compositor keeps running after a failed reload" "$("$G" status 2>&1)"
 # rejected with a message that names the setting.
 reject_input() {
     # reject_input NAME LUA EXPECTED_MESSAGE
-    printf 'gnoblin.configure {input = %s}\n' "$2" > "$CONFIG_DIR/99-test-badreload.lua"
+    printf 'gnoblin.configure {input = %s}\n' "$2" >"$CONFIG_DIR/99-test-badreload.lua"
     check "$1" "$("$G" config reload 2>&1)" "$3"
 }
 reject_input "input with a number where a group table belongs" "{keyboard = 5}" "input.keyboard must be a table"
@@ -323,7 +332,7 @@ reject_input "input.tablets that is not a table" "{tablets = 3}" "input.tablets 
 reject_input "an unknown input group" "{repeat_delay = -5}" "unknown input group: repeat-delay"
 # A valid custom acceleration curve must load, and the active config must report it with its step and points.
 printf 'gnoblin.configure {input = {mouse = {accel_profile = "custom", accel_curve = {step = 0.5, points = {0.0, 1.0, 2.0, 4.0}}}}}\n' \
-    > "$CONFIG_DIR/99-test-badreload.lua"
+    >"$CONFIG_DIR/99-test-badreload.lua"
 if "$G" config reload >/dev/null 2>&1; then
     echo "PASS a valid custom accel_curve reloads"
 else
@@ -336,7 +345,7 @@ check "the active config reports the curve step" "$accel_shown" '"step":0.5'
 check "the active config reports the curve points" "$accel_shown" '"points":[0.0,1.0,2.0,4.0]'
 reject_config() {
     # reject_config NAME LUA EXPECTED_MESSAGE
-    printf 'gnoblin.configure {%s}\n' "$2" > "$CONFIG_DIR/99-test-badreload.lua"
+    printf 'gnoblin.configure {%s}\n' "$2" >"$CONFIG_DIR/99-test-badreload.lua"
     check "$1" "$("$G" config reload 2>&1)" "$3"
 }
 reject_config "cursor.size out of range names the field" 'cursor = {size = 9999}' 'cursor "size" is not valid'
@@ -353,7 +362,7 @@ check "the compositor keeps running after wrong-typed input" "$("$G" status 2>&1
 # and used to end the whole session when one reached it ("login autostart data failed"); it now logs and ignores them.
 reject_autostart() {
     # reject_autostart NAME LUA EXPECTED_MESSAGE
-    printf 'gnoblin.configure {autostart = %s}\n' "$2" > "$CONFIG_DIR/99-test-badreload.lua"
+    printf 'gnoblin.configure {autostart = %s}\n' "$2" >"$CONFIG_DIR/99-test-badreload.lua"
     check "$1" "$("$G" config reload 2>&1)" "$3"
 }
 reject_autostart "autostart entry with an unsupported field" "{bad_entry = {unsupported_field = 1}}" 'autostart "bad_entry" has an unsupported field'
@@ -361,7 +370,7 @@ reject_autostart "autostart entry with an empty command list" "{a = {command = {
 reject_autostart "autostart command item that is not a string" '{a = {command = {"sleep", 5}}}' 'autostart "a" command item 2 must be a string'
 reject_autostart "autostart when value that is not on_login" '{a = {command = {"true"}, when = "later"}}' 'autostart "a" when must be "on_login"'
 check "the session keeps running after invalid autostart entries" "$("$G" status 2>&1)" '"state":"running"'
-printf 'gnoblin.configure {autostart = {regression_sleep = {command = {"sleep", "301"}}}}\n' > "$CONFIG_DIR/99-test-badreload.lua"
+printf 'gnoblin.configure {autostart = {regression_sleep = {command = {"sleep", "301"}}}}\n' >"$CONFIG_DIR/99-test-badreload.lua"
 "$G" config reload >/dev/null 2>&1
 sleep 3
 check "a valid autostart entry starts its command" "sleeping=$(pgrep -fc 'sleep 301')" "sleeping=1"
@@ -374,14 +383,14 @@ echo "-- worker recovery"
 # worker when they differ. The shortcut and input handler lists used to follow Lua's per-process hash order, so a
 # replacement could list the same media-key handlers in another order. Mutter then rejected it and the Lua runtime stayed
 # unavailable for the rest of the session. Kill the worker twice with a user config loaded; both recoveries must work.
-printf 'local s=gnoblin.runtime.status(); print("RUNTIME_STATUS:"..s.state..":"..s.generation)\n' > /tmp/runtime-status.lua
+printf 'local s=gnoblin.runtime.status(); print("RUNTIME_STATUS:"..s.state..":"..s.generation)\n' >/tmp/runtime-status.lua
 runtime_state() { "$G" --timeout 1 lua /tmp/runtime-status.lua 2>&1 | grep -o 'RUNTIME_STATUS:[a-z]*' || echo "no-status"; }
 worker_pid() { pgrep -f -- '--internal-runtime-worker' | head -1; }
 # The config sets keyboard values, which Mutter stores as unsigned integers, and adds a keybinding callback. If the
 # replacement worker could not validate the accepted state it would fall back to the built-in defaults, whose input
 # handlers differ from the accepted ones because of the extra callback, and Mutter would reject it. The callback keeps
 # the test honest: without it the two lists can match by chance and hide the failure.
-cat > "$CONFIG_DIR/99-test-recovery.lua" <<'LUA'
+cat >"$CONFIG_DIR/99-test-recovery.lua" <<'LUA'
 gnoblin.configure {
     input = {mouse = {drag_threshold = 37, double_click_time = 450}, keyboard = {delay = 300, repeat_interval = 40}},
     keybindings = {keyboard = {recovery_probe = {binding = "<Super>F9", callback = function() end}}},
@@ -404,20 +413,20 @@ permission_level() {
     "$G" permissions check screen-cast app-id:org.example.Recorder 2>&1 | python3 -c 'import sys,json; print(json.load(sys.stdin).get("level"))' 2>&1
 }
 for mode in ask deny inherit; do
-    printf 'gnoblin.configure {permissions = {default = "%s"}}\n' "$mode" > "$CONFIG_DIR/99-test-permissions.lua"
+    printf 'gnoblin.configure {permissions = {default = "%s"}}\n' "$mode" >"$CONFIG_DIR/99-test-permissions.lua"
     "$G" config reload >/dev/null 2>&1
     sleep 2
     check "permissions.default $mode: the decision level" "$(permission_level)" "$mode"
     check "permissions.default $mode: the committed policy" "$("$G" permissions policy 2>&1)" "\"default\":\"$mode\""
 done
 # "default" is the deprecated spelling of "inherit": it must still load and be reported as "inherit".
-printf 'gnoblin.configure {permissions = {default = "default"}}\n' > "$CONFIG_DIR/99-test-permissions.lua"
+printf 'gnoblin.configure {permissions = {default = "default"}}\n' >"$CONFIG_DIR/99-test-permissions.lua"
 "$G" config reload >/dev/null 2>&1
 sleep 2
 check "permissions.default default (deprecated): the decision level" "$(permission_level)" "inherit"
 check "permissions.default default (deprecated): the committed policy" "$("$G" permissions policy 2>&1)" '"default":"inherit"'
 # A rule that still says level = "default" must also be reported as "inherit".
-cat > "$CONFIG_DIR/99-test-permissions.lua" <<'LUA'
+cat >"$CONFIG_DIR/99-test-permissions.lua" <<'LUA'
 gnoblin.configure {
     permissions = {
         default = "ask",
@@ -441,7 +450,7 @@ disable_config 99-test-permissions.lua
 echo "-- touchpad gesture when"
 # "normal" and "unlock-screen" are the deprecated spellings of "unlocked" and "locked". They must still load, and the
 # active config must report the new names.
-cat > "$CONFIG_DIR/99-test-gestures.lua" <<'LUA'
+cat >"$CONFIG_DIR/99-test-gestures.lua" <<'LUA'
 gnoblin.configure {
     touchpad_gestures = {
         {name = "regression-old-unlocked", gesture = "swipe", fingers = 3, path = {{x = 0, y = 0}, {x = 1, y = 0}},
@@ -474,7 +483,7 @@ echo "-- touchpad enum names"
 touchpad_enum_case() {
     # touchpad_enum_case LABEL HANDED TAP_MAP EXPECTED_HANDED EXPECTED_TAP_MAP
     printf 'gnoblin.configure {input = {touchpad = {left_handed = "%s", tap_button_map = "%s"}}}\n' "$2" "$3" \
-        > "$CONFIG_DIR/99-test-touchpad-enums.lua"
+        >"$CONFIG_DIR/99-test-touchpad-enums.lua"
     if "$G" config reload >/dev/null 2>&1; then
         echo "PASS touchpad enums $1 reload"
     else
@@ -496,7 +505,7 @@ echo "-- focus enum names"
 focus_enum_case() {
     # focus_enum_case LABEL FOCUS_MODE FOCUS_NEW_WINDOWS EXPECTED_MODE EXPECTED_NEW_WINDOWS
     printf 'gnoblin.configure {window_management = {focus_mode = "%s", focus_new_windows = "%s"}}\n' "$2" "$3" \
-        > "$CONFIG_DIR/99-test-focus-enums.lua"
+        >"$CONFIG_DIR/99-test-focus-enums.lua"
     if "$G" config reload >/dev/null 2>&1; then
         echo "PASS focus enums $1 reload"
     else
@@ -516,7 +525,7 @@ echo "-- unknown config section"
 # A misspelled top-level section does nothing. The reload still succeeds, so a config written for a newer Gnoblin
 # loads, and the session log names the unknown section.
 printf 'gnoblin.configure {window_managment = {focus_mode = "click"}, cursor = {size = 24}}\n' \
-    > "$CONFIG_DIR/99-test-typo.lua"
+    >"$CONFIG_DIR/99-test-typo.lua"
 if "$G" config reload >/dev/null 2>&1; then
     echo "PASS a reload with an unknown section still succeeds"
 else
@@ -535,7 +544,7 @@ fi
 disable_config 99-test-typo.lua
 
 # A misspelled protocol name is logged. Every documented protocol name must pass without a warning.
-cat > "$CONFIG_DIR/99-test-protocol-typo.lua" <<'LUA'
+cat >"$CONFIG_DIR/99-test-protocol-typo.lua" <<'LUA'
 gnoblin.configure {
     protocols = {
         wlr_layer_shell = true, ext_foreign_toplevel_list = true, wlr_foreign_toplevel_management = true,
