@@ -24,6 +24,11 @@ source Git remote and commit, and when the build ran. Distribution
 packages also expose this command as `gnoblin --version`.
 Add `--json` after `--version` for a machine-readable build identity.
 
+Manual pages `gnoblin(1)` and `gnoblinctl(1)` come with the packages, so
+`man gnoblinctl` works after you install one. A source build puts them in
+`install/share/man`. Read one from the checkout with
+`man -M ./install/share/man gnoblinctl`.
+
 `gnoblin` is both the login command and the package to install. Its
 Gnoblin runs as the login session and does not require a systemd user manager.
 When one is available, the optional `gnoblin-session` target starts additional

@@ -65,6 +65,9 @@ arguments of one action. Each command and action has a one-line description. A
 bare group lists its actions. A mistyped command or action names the closest
 match, as in `unknown command: windw (did you mean 'window'?)`.
 
+`man gnoblinctl` has the same commands and actions, generated from the same
+table as the help. `man gnoblin` covers the login command.
+
 If a Lua configuration reload is already in progress, API commands retry that
 temporary response until their `--timeout` expires. Other compositor errors are
 reported immediately, and uncertain actions are not retried.

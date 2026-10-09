@@ -71,6 +71,9 @@ publish share/xdg-desktop-portal/gnoblin-portals.conf share/xdg-desktop-portal/g
 publish lib/systemd/user/gnoblin-session.target lib/systemd/user/gnoblin-session.target
 publish lib/systemd/user/gnoblin-idle.service lib/systemd/user/gnoblin-idle.service
 
+publish share/man/man1/gnoblin.1 share/man/man1/gnoblin.1
+publish share/man/man1/gnoblinctl.1 share/man/man1/gnoblinctl.1
+
 publish_if_present share/xdg-desktop-portal/portals/gnoblin.portal share/xdg-desktop-portal/portals/gnoblin.portal
 publish_if_present share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service \
     share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service

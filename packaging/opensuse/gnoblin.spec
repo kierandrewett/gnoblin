@@ -160,6 +160,8 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/lib/systemd/user/gnoblin-session.target
 /usr/lib/systemd/user/gnoblin-idle.service
 /usr/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy
+/usr/share/man/man1/gnoblin.1*
+/usr/share/man/man1/gnoblinctl.1*
 
 %package -n gnoblin-gnome-integration
 Summary:        Optional GNOME application services for Gnoblin
