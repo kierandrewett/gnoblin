@@ -53,7 +53,8 @@ let
     cp -r --no-preserve=mode "${imguiSrc}/." "$out/subprojects/imgui"
   '';
   copyOverlay = project: ''
-    bash ${gnoblinSrc}/scripts/copy-overlay.sh ${project} "$PWD"
+    ${cmake}/bin/cmake -DACTION=overlay -DPROJECT=${project} "-DSOURCE_DIR=$PWD" -DMODE=copy \
+      -P ${gnoblinSrc}/cmake/source-step.cmake
   '';
   addSubproject = source: directory: ''
     mkdir -p "subprojects/${directory}"

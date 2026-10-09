@@ -6,7 +6,7 @@ GNOME Shell build or compatibility layer.
 ## Build boundary
 
 The source build prepares and builds Mutter and `xdg-desktop-portal-gnome`.
-`scripts/prepare-build-sources.sh` and `scripts/apply-patches.sh` accept only
+The `prepare` and `apply-patches` steps in `cmake/source-step.cmake` accept only
 those projects. The GNOME Shell patch tree is not applied, built, packaged, or
 included in the standalone session. Shell patches that remain in the checkout
 are migration history, not active runtime behavior.

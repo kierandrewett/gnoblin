@@ -234,4 +234,5 @@ git -C "$SOURCE_ROOT" ls-files --cached -z
 for dependency in "${REQUIRED_SUBPROJECTS[@]}"; do
     list_required_subproject "$dependency"
 done
-"$ROOT/scripts/copy-overlay.sh" "$PROJECT" "$SOURCE_ROOT" --list-destinations
+cmake -DACTION=overlay "-DPROJECT=$PROJECT" "-DSOURCE_DIR=$SOURCE_ROOT" -DMODE=list -P "$ROOT/cmake/source-step.cmake" |
+    tr '\n' '\0'

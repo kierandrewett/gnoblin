@@ -9,7 +9,7 @@ prefix="${GNOBLIN_PREFIX:-$root/install}"
 libdir="${GNOBLIN_LIBDIR:-lib64}"
 buildtype="${GNOBLIN_BUILD_TYPE:-debugoptimized}"
 
-# The patched Mutter meson.build reads these from the environment, as the build does in scripts/build-component.sh.
+# The patched Mutter meson.build reads these from the environment, as the build does in cmake/component-build.cmake.
 export GNOBLIN_SOURCE_ROOT="$root"
 export GNOBLIN_IMGUI_SOURCE="$root/subprojects/imgui"
 export GNOBLIN_PREFIX="$prefix"
@@ -43,7 +43,7 @@ require_tests() {
     echo ">> running $count Mutter $label tests"
 }
 
-run ./scripts/apply-patches.sh mutter
+run cmake -DACTION=apply-patches -DPROJECT=mutter -P cmake/source-step.cmake
 run meson setup --reconfigure build/mutter-tests subprojects/mutter "${options[@]}" ||
     run meson setup build/mutter-tests subprojects/mutter "${options[@]}"
 run meson compile -C build/mutter-tests

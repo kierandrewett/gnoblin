@@ -25,30 +25,44 @@ contains `gnoblin`. Nothing else needs to change.
 
 ## Build
 
-Run by `./build.sh` through CMake and `scripts/build-component.sh`. Run them by hand only to
+Run by `./build.sh` through CMake. Run them by hand only to
 debug a step.
 
-| Script                                  | What it does                                                                  | Run by                                  |
-| --------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------- |
-| `prepare-build-sources.sh`              | Check out the pinned submodules, or unpack a source bundle                    | CMake                                   |
-| `apply-patches.sh`                      | Reset a submodule to its tag, copy the overlay, apply `patches/<name>/`       | `build-component.sh`, `make-tarball.sh` |
-| `copy-overlay.sh`                       | Copy the Gnoblin-owned overlay files into a submodule                         | `apply-patches.sh`                      |
-| `subproject-state.sh`                   | Refuse to reset a submodule that has local changes                            | `apply-patches.sh`                      |
-| `ensure-release-subprojects.sh`         | Check that the submodules match the release tags                              | `build-component.sh`                    |
-| `checkout-submodules-with-retry.sh`     | Fetch submodules, retrying GNOME GitLab errors                                | workflows                               |
-| `retry-command.sh`                      | The retry function used by the script above and by `prepare-build-sources.sh` | those scripts                           |
-| `check-build-deps.py`                   | Check that the development libraries the pinned sources need are installed    | CMake                                   |
-| `build-component.sh`                    | Build one Meson project (Mutter or the portal backend) into the prefix        | CMake                                   |
-| `build-identity.py`                     | Write the build identity that `--version` prints, with the build time         | CMake                                   |
-| `embed-config.py`                       | Embed the default Lua configuration tree in a C file                          | CMake                                   |
-| `generate-mutter-keybinding-catalog.py` | Export Mutter's keybinding descriptors for the Lua API                        | `build-component.sh`                    |
-| `build-adwaita-hyprcursor.py`           | Package the Adwaita cursor vectors for Hyprcursor                             | `install-session.sh`                    |
-| `build-frame-renderers.sh`              | Build the optional window frame renderers                                     | by hand, tests                          |
-| `install-session.sh`                    | Install the session files, units, schemas and man pages into the prefix       | CMake                                   |
-| `cmake/system-layout.cmake`             | Add the public entries a package ships outside the prefix                     | CMake (`--layout system`)               |
-| `build-man-pages.py`                    | Write `gnoblin(1)` and `gnoblinctl(1)`                                        | `install-session.sh`                    |
-| `gnome-versions.py`                     | Read, check and advance the pinned GNOME version                              | `build.sh`, workflows                   |
-| `gnoblin-version.py`                    | Read the Gnoblin release version                                              | scripts, workflows                      |
+The source steps are CMake script files, not shell scripts. `cmake/source-step.cmake` runs one step by name, and
+`cmake/source-lib.cmake` and `cmake/source-prepare.cmake` hold the code. Run a step like this from the repository root:
+
+```sh
+cmake -DACTION=apply-patches -DPROJECT=mutter -P cmake/source-step.cmake
+```
+
+| Action              | Arguments                       | What it does                                                                     |
+| ------------------- | ------------------------------- | -------------------------------------------------------------------------------- |
+| `prepare`           | `SOURCE_MODE`, `PROJECTS`       | Check out the pinned submodules, or unpack a source bundle                       |
+| `apply-patches`     | `PROJECT`                       | Reset a submodule to its tag, copy the overlay, apply `patches/<name>/`          |
+| `component-sources` | `PROJECT`, `BUILD_ROOT`         | Run `apply-patches` when the patches, overlay or pins changed since the last run |
+| `overlay`           | `PROJECT`, `SOURCE_DIR`, `MODE` | Copy, list or remove the overlay files. `MODE` is `copy`, `list` or `remove`     |
+| `state-check`       | `PROJECT`, `TAG`                | Refuse to reset a submodule that has local changes                               |
+| `state-record`      | `PROJECT`, `TAG`                | Record the state of a patched submodule so the next run accepts it               |
+| `ensure-release`    | `PROJECTS`                      | Check that the submodules match the release tags                                 |
+
+`PROJECT` is `mutter` or `xdg-desktop-portal-gnome`. `PROJECTS` is a list separated by semicolons. `SOURCE_MODE` is
+`checkout` or `release-archive`. A reset refuses to run on a submodule with local changes. Set
+`GNOBLIN_FORCE_RESET=1` only to discard them on purpose.
+
+| Script                                  | What it does                                                               | Run by                    |
+| --------------------------------------- | -------------------------------------------------------------------------- | ------------------------- |
+| `checkout-submodules-with-retry.sh`     | Fetch submodules, retrying GNOME GitLab errors                             | workflows, CMake          |
+| `check-build-deps.py`                   | Check that the development libraries the pinned sources need are installed | CMake                     |
+| `build-identity.py`                     | Write the build identity that `--version` prints, with the build time      | CMake                     |
+| `embed-config.py`                       | Embed the default Lua configuration tree in a C file                       | CMake                     |
+| `generate-mutter-keybinding-catalog.py` | Export Mutter's keybinding descriptors for the Lua API                     | `component-build.cmake`   |
+| `build-adwaita-hyprcursor.py`           | Package the Adwaita cursor vectors for Hyprcursor                          | `install-session.sh`      |
+| `build-frame-renderers.sh`              | Build the optional window frame renderers                                  | by hand, tests            |
+| `install-session.sh`                    | Install the session files, units, schemas and man pages into the prefix    | CMake                     |
+| `cmake/system-layout.cmake`             | Add the public entries a package ships outside the prefix                  | CMake (`--layout system`) |
+| `build-man-pages.py`                    | Write `gnoblin(1)` and `gnoblinctl(1)`                                     | `install-session.sh`      |
+| `gnome-versions.py`                     | Read, check and advance the pinned GNOME version                           | `build.sh`, workflows     |
+| `gnoblin-version.py`                    | Read the Gnoblin release version                                           | scripts, workflows        |
 
 ## Your session
 

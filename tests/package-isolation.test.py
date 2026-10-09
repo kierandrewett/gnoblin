@@ -359,8 +359,8 @@ class IsolationTests(unittest.TestCase):
         self.assertIn("BuildRequires: pkgconfig(gsettings-desktop-schemas) >= 49.1", gnoblin)
         self.assertIn("BuildRequires:  pkgconfig(lua)", gnoblin)
         self.assertIn("Requires:       gsettings-desktop-schemas >= 49.1", gnoblin)
-        component_build = (ROOT / "scripts/build-component.sh").read_text()
-        self.assertIn('export GI_GIR_PATH="$installed_prefix/share/gir-1.0', component_build)
+        component_build = (ROOT / "cmake/component-build.cmake").read_text()
+        self.assertIn('component_env_prepend(GI_GIR_PATH "${installed_prefix}/share/gir-1.0")', component_build)
         runtime_env = (ROOT / "src/tools/gnoblin-env.sh").read_text()
         self.assertNotIn("GI_TYPELIB_PATH", runtime_env)
         build_order = [
