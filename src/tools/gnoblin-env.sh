@@ -11,7 +11,7 @@
 # extra variables after calling gnoblin_env_apply — this only owns the part
 # every caller needs identically.
 #
-# Installed to $PREFIX/libexec/gnoblin-env.sh by scripts/install-session.sh
+# Installed to $PREFIX/libexec/gnoblin-env.sh by cmake/install-session.cmake
 # for tools that need the same setup after the repository checkout is gone.
 set -uo pipefail
 
