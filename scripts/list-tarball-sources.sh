@@ -165,14 +165,21 @@ list_required_subproject() {
                 --sourcedir "$SOURCE_ROOT" "$dependency" >&2
         fi
     elif [ "$PREPARE" = true ]; then
-        # GNOME's GitLab sometimes answers 503. Retry a few times before a release or a package job fails on it.
+        # GNOME's GitLab sometimes answers 503. meson reports the failed fetch as a warning and still exits 0, so the
+        # exit status cannot decide whether to retry. Retry until the subproject is a Git checkout with a commit.
         attempt=1
-        until meson subprojects download --sourcedir "$SOURCE_ROOT" "$dependency" >&2; do
+        while true; do
+            meson subprojects download --sourcedir "$SOURCE_ROOT" "$dependency" >&2 || true
+            if [ "$(git -C "$dependency_root" rev-parse --show-toplevel 2>/dev/null || true)" = "$dependency_root" ] &&
+                git -C "$dependency_root" rev-parse --verify --quiet HEAD >/dev/null; then
+                break
+            fi
             if [ "$attempt" -ge 4 ]; then
                 echo "could not download subproject $dependency after $attempt attempts" >&2
                 exit 1
             fi
             echo "[tarball] download of $dependency failed (attempt $attempt of 4); retrying" >&2
+            rm -rf -- "${dependency_root:?}"
             sleep $((attempt * 10))
             attempt=$((attempt + 1))
         done
