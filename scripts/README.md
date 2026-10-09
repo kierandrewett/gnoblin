@@ -18,10 +18,9 @@ which, so you can tell what a script is for before you run it.
 
 ## Which files are public
 
-No script names the public files. `gnoblin_env_public_entries` in `src/tools/gnoblin-env.sh` reads the finished
-prefix and lists every file with `gnoblin` in its name under `share/wayland-sessions`, `share/xdg-desktop-portal`,
-`share/dbus-1/services`, `lib/systemd/user` and `share/man/man1`. `make install` and the system layout both use that
-list. To ship a new login or portal file, install it into the prefix under one of those directories with a name that
+No script names the public files. `cmake/public-entries.cmake` reads the finished prefix and lists every file with `gnoblin` in its name under `share/wayland-sessions`, `share/xdg-desktop-portal`,
+`share/dbus-1/services`, `lib/systemd/user` and `share/man/man1`. The build writes the list to
+`share/gnoblin/public-entries.txt` in the prefix. `make install` and `cmake/system-layout.cmake` both use it. To ship a new login or portal file, install it into the prefix under one of those directories with a name that
 contains `gnoblin`. Nothing else needs to change.
 
 ## Build
@@ -46,7 +45,7 @@ debug a step.
 | `build-adwaita-hyprcursor.py`           | Package the Adwaita cursor vectors for Hyprcursor                             | `install-session.sh`                    |
 | `build-frame-renderers.sh`              | Build the optional window frame renderers                                     | by hand, tests                          |
 | `install-session.sh`                    | Install the session files, units, schemas and man pages into the prefix       | CMake                                   |
-| `install-system-layout.sh`              | Add the public entries a package ships outside the prefix                     | CMake (`--layout system`)               |
+| `cmake/system-layout.cmake`             | Add the public entries a package ships outside the prefix                     | CMake (`--layout system`)               |
 | `build-man-pages.py`                    | Write `gnoblin(1)` and `gnoblinctl(1)`                                        | `install-session.sh`                    |
 | `gnome-versions.py`                     | Read, check and advance the pinned GNOME version                              | `build.sh`, workflows                   |
 | `gnoblin-version.py`                    | Read the Gnoblin release version                                              | scripts, workflows                      |

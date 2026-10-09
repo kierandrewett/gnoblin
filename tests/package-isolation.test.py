@@ -42,6 +42,15 @@ def install_monolithic_compositor(prefix, inputs):
     shutil.copy2(inputs["GNOBLIN_BINARY"], compositor)
 
 
+def write_public_entries(prefix):
+    """Write the list of public files, as the build does after it installs the session."""
+    subprocess.run(
+        ["cmake", f"-DGNOBLIN_PREFIX={prefix}", "-P", str(ROOT / "cmake/write-public-entries.cmake")],
+        check=True,
+        capture_output=True,
+    )
+
+
 class IsolationTests(unittest.TestCase):
     def test_source_install_removes_known_legacy_shell_files_only(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -114,6 +123,7 @@ class IsolationTests(unittest.TestCase):
                 check=True,
                 capture_output=True,
             )
+            write_public_entries(prefix)
             subprocess.run(
                 ["bash", str(ROOT / "scripts/register-session.sh"), str(prefix)],
                 env=env,
@@ -134,6 +144,7 @@ class IsolationTests(unittest.TestCase):
                 destination = prefix / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 destination.write_text("portal fixture\n")
+            write_public_entries(prefix)
             subprocess.run(
                 ["bash", str(ROOT / "scripts/register-session.sh"), str(prefix)],
                 env=env,

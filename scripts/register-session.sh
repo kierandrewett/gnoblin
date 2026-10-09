@@ -101,7 +101,13 @@ if "$with_portal" && "$have_user_systemd" && ! systemctl --user cat xdg-desktop-
 fi
 # A previous source tarball may have registered the same unit names from a
 # different prefix. Refresh only links that point to Gnoblin's own unit paths.
-mapfile -t public_entries < <(gnoblin_env_public_entries "$PREFIX")
+# The build writes the list of public files. Register what it built, not a list kept in this script.
+PUBLIC_ENTRIES="$PREFIX/share/gnoblin/public-entries.txt"
+[ -f "$PUBLIC_ENTRIES" ] || {
+    echo "Missing $PUBLIC_ENTRIES -- run make first" >&2
+    exit 1
+}
+mapfile -t public_entries <"$PUBLIC_ENTRIES"
 unit_files=()
 linked_units=()
 for entry in "${public_entries[@]}"; do

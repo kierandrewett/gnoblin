@@ -248,9 +248,10 @@ A distribution package uses the same build. It adds `--layout system` and a stag
 - `private` is the default. Every file goes below `--prefix`. Use it for a
   development build, `--preview` and `--register-session`.
 - `system` also writes the files a package ships outside the private prefix, below
-  `--system-prefix` (default `/usr`): links to `gnoblin` and `gnoblinctl` in `bin`,
-  the session file, the systemd user units, the portal configuration and the polkit
-  action. `scripts/install-system-layout.sh` lists them.
+  `--system-prefix` (default `/usr`). `cmake/system-layout.cmake` makes them:
+    - links to `gnoblin` and `gnoblinctl` in `bin`
+    - the session file, the systemd user units and the portal files
+    - the polkit action
 
 `--destdir DIR` installs below `DIR`, as a package build root. Nothing outside `DIR`
 changes.
