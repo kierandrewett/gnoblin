@@ -13,7 +13,7 @@ on:
         required: false
         type: string
       dry_run:
-        description: Build and test everything from the selected ref, and publish nothing. Leave the tag empty.
+        description: Build and test the source bundle, the Arch and Tumbleweed packages and their install gates, and publish nothing. COPR does not run. Leave the tag empty.
         required: false
         default: false
         type: boolean
@@ -136,13 +136,26 @@ jobs:
             echo "Only a release tag publishes. This run should have been a dry run." >&2
             exit 1
           fi
-          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$RELEASE_TAG" "${source_tarballs[0]}" --repo "$GITHUB_REPOSITORY" --clobber
-          else
-            gh release create "$RELEASE_TAG" "${source_tarballs[0]}" \
-              --repo "$GITHUB_REPOSITORY" --draft --verify-tag --generate-notes \
-              --title "Gnoblin ${RELEASE_TAG#gnoblin-v}"
-          fi
+          # gh release upload --clobber deletes an existing asset before it uploads the new one. On a release that is
+          # already public, a failed upload or a later failed gate would leave the live release incomplete. So only a
+          # draft, or a new release, takes assets here.
+          state="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,isDraft \
+            --jq ".[] | select(.tagName == \"$RELEASE_TAG\") | .isDraft")"
+          case "$state" in
+            false)
+              echo "$RELEASE_TAG is already published, so this run will not replace its assets." >&2
+              echo "To repair it, turn it back into a draft first: gh release edit $RELEASE_TAG --draft" >&2
+              exit 1
+              ;;
+            true)
+              gh release upload "$RELEASE_TAG" "${source_tarballs[0]}" --repo "$GITHUB_REPOSITORY" --clobber
+              ;;
+            *)
+              gh release create "$RELEASE_TAG" "${source_tarballs[0]}" \
+                --repo "$GITHUB_REPOSITORY" --draft --verify-tag --generate-notes \
+                --title "Gnoblin ${RELEASE_TAG#gnoblin-v}"
+              ;;
+          esac
           if [ "${#other_assets[@]}" -gt 0 ]; then
             gh release upload "$RELEASE_TAG" "${other_assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           fi
@@ -192,8 +205,9 @@ jobs:
           retention-days: 30
 
   publish-source-rpms:
-    if: ${{ needs.source-packages.outputs.dry_run != 'true' }}
-    needs: [source-packages, source-rpms]
+    # Only after publish-sources accepted the release, so a refused published release is not touched here either.
+    if: ${{ needs.source-packages.outputs.dry_run != 'true' && needs.publish-sources.result == 'success' }}
+    needs: [source-packages, source-rpms, publish-sources]
     runs-on: ubuntu-latest
     permissions:
       contents: write
