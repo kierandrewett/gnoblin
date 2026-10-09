@@ -26,9 +26,6 @@ source Git remote and commit, and when the build ran. Distribution
 packages also expose this command as `gnoblin --version`.
 Add `--json` after `--version` for a machine-readable build identity.
 
-Before `make install`, run
-`build/stage/usr/local/lib/gnoblin/bin/gnoblin --version`.
-
 Gnoblin has two manual pages, `gnoblin(1)` and `gnoblinctl(1)`:
 
 - A package installs them, so `man gnoblin` works after you install it.

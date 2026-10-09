@@ -348,10 +348,11 @@ For a Git checkout:
 ```sh
 git pull --ff-only
 make
+make install
 ```
 
 Preserve local changes if Git refuses the update. Log out and back in after
-rebuilding; configuration reload cannot replace compositor libraries.
+`make install`; configuration reload cannot replace compositor libraries.
 
 For a release tarball, download the newer source tarball, extract it into a
 new directory, and run `make` there. Then run `make install` to update the

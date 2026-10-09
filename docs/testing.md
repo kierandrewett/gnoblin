@@ -22,9 +22,10 @@ nested preview, and real login each verify a different part of the session.
 `test-window-native-shadows`) run through the nested viewer. For example:
 
 ```sh
-GNOBLIN_DEVKIT_EXEC='python3 tests/test-window-csd-reconstruction.py' ./scripts/run-gnoblin-devkit.sh
+GNOBLIN_DEVKIT_EXEC='python3 tests/test-window-csd-reconstruction.py' make preview
 ```
 
+Use the same form for the other three tests. Replace the script name in `GNOBLIN_DEVKIT_EXEC`.
 `test-window-rule-lifecycle` also needs `GNOBLIN_DEVKIT_CONFIG_SOURCE=tests/configs/window-rule-lifecycle`.
 
 ## Test the Lua runtime in a preview

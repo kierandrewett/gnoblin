@@ -167,6 +167,8 @@ gnoblin_remove(
   bin/gnoblin-mutter
   bin/mutter
   lib/systemd/user/gnoblin-recovery.service
+  lib/systemd/user/org.gnoblin.Shell.target
+  lib/systemd/user/org.gnoblin.Shell@wayland.service
   ${LIBDIR}/mutter-51/plugins/libgnoblin.so)
 
 gnoblin_install_file("${ROOT}/src/tools/gnoblin-seed-config" "${INSTALL_PREFIX}/libexec/gnoblin-seed-config" MODE_755)

@@ -123,7 +123,7 @@ package_owner() {
     fi
 }
 
-# Stop before any change if a package already ships one of these files. A half install would mix two builds: the
+# Stop before any change if something else already holds one of these files. A half install would mix two builds: a
 # package's login entry and units would start the package's runtime, not this one.
 conflicts=0
 owners=()
@@ -135,9 +135,27 @@ for entry in "${public_entries[@]}"; do
         [[ " ${owners[*]:-} " == *" $owner "* ]] || owners+=("$owner")
     fi
 done
-if ((conflicts > 0)); then
-    echo 'Nothing was changed. Remove the package, then run make install again:' >&2
-    echo "  sudo dnf remove ${owners[*]}    (or the package manager of this system)" >&2
+# A command is replaced only when it is a link to a Gnoblin runtime. A file or a link to anything else is not ours.
+command_conflicts=0
+for tool in "$SRC"/bin/gnoblin*; do
+    name="$(basename "$tool")"
+    existing="$BIN_DIR/$name"
+    if [ -e "$existing" ] || [ -L "$existing" ]; then
+        if [ -L "$existing" ] && [[ "$(readlink "$existing")" == */bin/"$name" ]]; then
+            continue
+        fi
+        echo "$existing exists and is not a link to a Gnoblin runtime." >&2
+        command_conflicts=$((command_conflicts + 1))
+    fi
+done
+if ((conflicts > 0 || command_conflicts > 0)); then
+    echo 'Nothing was changed.' >&2
+    if ((conflicts > 0)); then
+        echo "Remove the package, then run make install again:  sudo dnf remove ${owners[*]}  (or your package manager)" >&2
+    fi
+    if ((command_conflicts > 0)); then
+        echo "Move the command aside or remove it, then run make install again." >&2
+    fi
     exit 1
 fi
 
