@@ -2185,9 +2185,21 @@ static void terminate_and_reap(Runtime* runtime) {
     }
     GPid pid = runtime->compositor_pid;
     runtime->compositor_pid = 0;
-    kill(pid, SIGTERM);
     int status = 0;
     gboolean reaped = FALSE;
+    // A compositor that is already gone did not stop because of our signal.
+    // Say how it ended, so a crash shows in the log and not only as a closed channel.
+    if (waitpid(pid, &status, WNOHANG) == pid) {
+        if (WIFSIGNALED(status))
+            g_printerr("gnoblin: runtime supervisor: the compositor ended on signal %d\n",
+                       WTERMSIG(status));
+        else if (WIFEXITED(status))
+            g_printerr("gnoblin: runtime supervisor: the compositor exited with status %d\n",
+                       WEXITSTATUS(status));
+        g_spawn_close_pid(pid);
+        return;
+    }
+    kill(pid, SIGTERM);
     for (guint i = 0; i < 200; i++) {
         pid_t result = waitpid(pid, &status, WNOHANG);
         if (result == pid) {
