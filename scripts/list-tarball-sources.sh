@@ -167,6 +167,18 @@ list_required_subproject() {
     elif [ "$PREPARE" = true ]; then
         # GNOME's GitLab sometimes answers 503. meson reports the failed fetch as a warning and still exits 0, so the
         # exit status cannot decide whether to retry. Retry until the subproject is a Git checkout with a commit.
+        #
+        # meson also treats any existing directory as already downloaded. So a half-made directory from a failed
+        # attempt has to go before the next one, but only a directory that this run created. A directory that
+        # someone else filled is not ours to delete, and an empty one would stop meson from fetching at all.
+        if [ -e "$dependency_root" ]; then
+            if [ -n "$(find "$dependency_root" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+                echo "subproject $dependency exists but is not a Git checkout: $dependency_root" >&2
+                echo "Move it away or remove it, then run: $0 $PROJECT --prepare" >&2
+                exit 1
+            fi
+            rmdir -- "$dependency_root"
+        fi
         attempt=1
         while true; do
             meson subprojects download --sourcedir "$SOURCE_ROOT" "$dependency" >&2 || true
@@ -179,6 +191,7 @@ list_required_subproject() {
                 exit 1
             fi
             echo "[tarball] download of $dependency failed (attempt $attempt of 4); retrying" >&2
+            # This run made the directory (it was absent or empty above), so removing it is safe.
             rm -rf -- "${dependency_root:?}"
             sleep $((attempt * 10))
             attempt=$((attempt + 1))

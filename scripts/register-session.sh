@@ -38,6 +38,9 @@ PORTAL_DBUS="$PREFIX/share/dbus-1/services/org.freedesktop.impl.portal.desktop.g
 USER_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 USER_BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 GNOBLINCTL_LINK="$USER_BIN_DIR/gnoblinctl"
+# man-db finds user manual pages by mapping each directory on PATH to the share/man beside it, not from XDG_DATA_HOME. So
+# the pages go next to the bin directory that holds the gnoblinctl link, which is the directory the user has on PATH.
+USER_MAN_DIR="$(dirname "$USER_BIN_DIR")/share/man/man1"
 LEGACY_RECOVERY_LINK="$USER_UNIT_DIR/gnoblin-recovery.service"
 
 required=("$DESKTOP" "$PREFIX/bin/gnoblin" "$PREFIX/bin/gnoblinctl"
@@ -185,8 +188,32 @@ mkdir -p "$USER_BIN_DIR"
 if [ ! -L "$GNOBLINCTL_LINK" ]; then
     ln -s "$PREFIX/bin/gnoblinctl" "$GNOBLINCTL_LINK"
 fi
+# man searches ~/.local/share/man, and a source build keeps its pages inside the prefix. Link them so that
+# "man gnoblin" and "man gnoblinctl" work. A rebuild rewrites the pages in place behind the link. Create the link where
+# nothing exists, and refresh only a link that already points into a Gnoblin prefix. Anything else is the user's, so it
+# stays and the script says so.
+mkdir -p "$USER_MAN_DIR"
+for page in gnoblin.1 gnoblinctl.1; do
+    source_page="$PREFIX/share/man/man1/$page"
+    link="$USER_MAN_DIR/$page"
+    [ -f "$source_page" ] || continue
+    if [ ! -e "$link" ] && [ ! -L "$link" ]; then
+        ln -s "$source_page" "$link"
+    elif [ -L "$link" ]; then
+        target="$(readlink "$link")"
+        linked_prefix="${target%/share/man/man1/$page}"
+        if [ "$linked_prefix" != "$target" ] && [ -x "$linked_prefix/bin/gnoblinctl" ]; then
+            ln -sfn "$source_page" "$link"
+        else
+            echo "Left $link alone: it points to $target, which is not a Gnoblin prefix." >&2
+        fi
+    else
+        echo "Left $link alone: it is not a link." >&2
+    fi
+done
 printf '%sGnoblin is available%s at login. Choose the existing GNOME session to switch back to GNOME.\n' "$green" "$reset"
 printf 'Native command: %s\n' "$GNOBLINCTL_LINK"
+printf 'Manual pages: man gnoblin, man gnoblinctl\n'
 if "$with_portal"; then
     sudo install -Dm644 "$PORTAL_DESCRIPTOR" /usr/share/xdg-desktop-portal/portals/gnoblin.portal
     sudo install -Dm644 "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service

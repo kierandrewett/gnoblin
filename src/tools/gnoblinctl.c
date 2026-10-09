@@ -171,7 +171,7 @@ typedef struct {
 static const HelpEntry help_entries[] = {
     {"status", NULL, "Show the running session and lock availability"},
     {"ping", NULL, "Check whether the compositor control socket responds"},
-    {"version", NULL, "Show the installed build, without a running session"},
+    {"version", NULL, "Show the version reported by the running compositor"},
     {"capabilities", NULL, "List compositor and protocol capabilities"},
     {"focus", NULL, "Inspect focus policy and recent focus history"},
     {"focus", "policy", "Show the committed focus policy"},
@@ -191,14 +191,14 @@ static const HelpEntry help_entries[] = {
     {"window", NULL, "List and manage windows"},
     {"window", "list", "List open windows"},
     {"window", "match", "Show the fields used to match one window in config rules"},
-    {"window", "menu", "Open the window menu"},
-    {"window", "interactive-move", "Start moving a window with the pointer"},
-    {"window", "interactive-resize", "Start resizing a window with the pointer"},
+    {"window", "menu", "Rejected: needs a trusted shell input context"},
+    {"window", "interactive-move", "Rejected: needs a trusted shell input context"},
+    {"window", "interactive-resize", "Rejected: needs a trusted shell input context"},
     {"window", "above", "Keep a window above others"},
     {"window", "unabove", "Stop keeping a window above others"},
     {"window", "stick", "Show a window on every workspace"},
     {"window", "unstick", "Show a window on one workspace only"},
-    {"window", "focus", "Focus a window"},
+    {"window", "focus", "Rejected: needs a one-use trusted context or an activation token"},
     {"window", "close", "Close a window"},
     {"window", "minimize", "Minimize a window"},
     {"window", "unminimize", "Bring back a minimized window"},
@@ -7855,12 +7855,14 @@ static const char* action_usage(const char* command, const char* action) {
 }
 
 static void print_options(void) {
-    g_print("Options:\n"
-            "  -j, --json           Print JSON, including in a terminal\n"
-            "      --format FORMAT  auto (tables in a terminal, JSON in a pipe), json or table\n"
-            "      --timeout SECS   Request timeout, 1 to 60 (default 5; 30 for shortcut capture)\n"
-            "      --socket PATH    Compositor socket path\n"
-            "  -h, --help           Show this help\n");
+    g_print(
+        "Options:\n"
+        "  -j, --json           Print JSON, including in a terminal\n"
+        "      --format FORMAT  auto, json or table. auto prints lists and records as tables in a\n"
+        "                       terminal and as JSON in a pipe; a single value stays plain text\n"
+        "      --timeout SECS   Request timeout, 1 to 60 (default 5; 30 for shortcut capture)\n"
+        "      --socket PATH    Compositor socket path\n"
+        "  -h, --help           Show this help\n");
 }
 
 static void print_help(const char* command, const char* action) {

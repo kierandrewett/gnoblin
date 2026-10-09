@@ -74,11 +74,14 @@ an Arch recipe, and checksums into `dist/release`.
 A release tag starts the release workflow:
 
 1. It creates a draft GitHub release with the source tarball.
-2. It builds and installs every package.
-3. It publishes the release only when every build and install check has passed.
+2. It builds the Fedora source RPMs, and builds and installs the Arch and openSUSE
+   packages.
+3. It publishes the release only when those builds and install checks have passed.
+4. COPR then builds the Fedora packages and runs the Fedora install checks.
 
-A failed check leaves the draft in place. A push to `main` runs the same builds and
-checks and publishes nothing.
+A failed check leaves the draft in place. A push to `main`, or a run without a tag,
+does step 2 only and publishes nothing. It does not run COPR, so a Fedora packaging
+error shows up on the first tag.
 
 ## Prepare Fedora source RPMs
 
@@ -133,21 +136,22 @@ The main tarball builds with `make` and does not need Git or submodules.
 The Fedora source RPM and openSUSE jobs use the component archives inside that
 tarball, after checking the published source assets' SHA-256 sums.
 
-Tagged commits create versioned releases. Other commits on
-`main` create prereleases named after their commit SHA. Manual dispatch can
-repair assets for an existing SemVer tag.
+A release tag creates a versioned release. A push to `main`, or a manual run
+without a tag, builds and tests everything and publishes nothing. A manual run
+with a tag repairs a release that is still a draft. It refuses to change a
+release that is already public.
 
 `v<gnome-version>` tags predate this convention and remain historical releases.
 
-The source release is public as soon as its archives are ready. Package jobs
-add their artifacts when they complete. The Arch package is attached only after
-a clean installation resolves its runtime dependencies, then installs the
-optional GNOME app integration package.
+The release starts as a draft with the source archives. Package jobs add their
+artifacts as they pass. The Arch package is attached only after a clean
+installation resolves its runtime dependencies, then installs the optional GNOME
+app integration package.
 
-A package job can fail because its
-distribution repository lacks a required dependency version; the release still
-publishes source archives and checksums for the assets that succeeded. Check
-the package jobs before advertising a package for that distribution.
+The draft becomes public only when the source RPM, Arch and openSUSE jobs have
+all passed. If one fails, for example because its distribution repository lacks
+a required dependency version, the release stays a draft and nothing is public.
+Fix the cause and run the workflow again for the same tag.
 
 The COPR job installs the published Fedora package without stock GNOME, adds
 the optional app integration package, then checks coexistence with GNOME.
