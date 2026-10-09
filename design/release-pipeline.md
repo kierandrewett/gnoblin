@@ -193,6 +193,9 @@ Each item lands as its own commit, and the tree stays working.
 - [ ] Fix the openSUSE RPM adapter, which fails on `main`.
 - [ ] Add a check that fails when a dependency list and the specs disagree.
 - [x] Mark `design/release-packaging.md` as a historical log, with a pointer to this file.
-- [ ] Dry run a release from a branch: draft only, no tag, no COPR upload.
+- [x] Dry run a release from a branch. `gh workflow run release.yml --ref BRANCH -f dry_run=true`
+      builds and tests every package job and the install gates from that branch, and publishes
+      nothing: no pre-release, no tag, no COPR upload. Run it after any change to `release.yml`,
+      the recipes or the generator, and before the merge.
 - [ ] Clean up: remove the 8 development pre-releases and the 3 drafts, after the owner
       agrees.
