@@ -9,15 +9,20 @@ the Bingux repository.
 
 First install the dependencies listed in the
 [source installation guide](docs/install-source.md).
-Build the pinned upstream sources into a separate prefix:
+Build the pinned upstream sources for the install prefix:
 
 ```sh
 GNOBLIN_DEVKIT=enabled ./build.sh --dry-run   # read what make will change
-make                   # build: the same as ./build.sh, with the nested viewer enabled
-make install           # after make: add the login entry and link gnoblinctl and the man pages (asks for sudo)
+make                   # build for /usr/local/lib/gnoblin into build/stage, with the nested viewer; installs nothing
+make preview           # run the staged build in a nested window, without root
+make install           # after make: copy the build to the prefix and add the login entry (asks for sudo)
 ```
 
-`./build.sh` is the build, and `make` is a short way to run it. The [scripts map](scripts/README.md)
+`./build.sh` is the build, and `make` is a short way to run it with
+`--prefix`, `--destdir build/stage` and the build directory `build/make`.
+Set `PREFIX=DIR` to use another prefix, and use the same value for `make` and
+`make install`. A plain `./build.sh` still builds a private prefix in
+`./install`. The [scripts map](scripts/README.md)
 says what each script does and who runs it.
 
 Run the fast checks before sending a change:

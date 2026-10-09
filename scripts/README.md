@@ -6,15 +6,16 @@ which, so you can tell what a script is for before you run it.
 
 ## What to run
 
-| You want to                   | Run                    |
-| ----------------------------- | ---------------------- |
-| See what a build would change | `./build.sh --dry-run` |
-| Build                         | `make` or `./build.sh` |
-| Add the login entry           | `make install`         |
-| Run the fast checks           | `make check`           |
-| Run the CTest suites          | `make test`            |
+| You want to                               | Run                    |
+| ----------------------------------------- | ---------------------- |
+| See what a build would change             | `./build.sh --dry-run` |
+| Build                                     | `make` or `./build.sh` |
+| Try the build in a window                 | `make preview`         |
+| Install the build and add the login entry | `make install`         |
+| Run the fast checks                       | `make check`           |
+| Run the CTest suites                      | `make test`            |
 
-`./build.sh` is the build. `make` is a short way to run it, and holds no logic of its own.
+`./build.sh` is the build. `make` is a short way to run it for the prefix `/usr/local/lib/gnoblin`, with the stage `build/stage` and the build directory `build/make`. It holds no other logic. `make` installs nothing. `make install` copies the build to the prefix and registers it.
 
 ## Which files are public
 
@@ -66,15 +67,16 @@ cmake -DACTION=apply-patches -DPROJECT=mutter -P cmake/source-step.cmake
 
 ## Your session
 
-| Script                           | What it does                                                           | Run by                        |
-| -------------------------------- | ---------------------------------------------------------------------- | ----------------------------- |
-| `register-session.sh`            | Add the login entry, link `gnoblinctl` and the man pages. Needs `sudo` | `build.sh --register-session` |
-| `run-gnoblin-devkit.sh`          | Start the compositor in a nested viewer window                         | `build.sh --preview`, tests   |
-| `run-clean-devkit.sh`            | Same, with a clean configuration                                       | by hand                       |
-| `devkit_dbus.py`                 | Write the private D-Bus configuration a nested run uses                | the devkit scripts            |
-| `devkit-document-portal-stub.py` | A stand-in document portal for nested runs                             | `devkit_dbus.py`              |
-| `gnoblin-state.sh`               | Write persistent development logs safely                               | `run-gnoblin-devkit.sh`       |
-| `gnoblin-test-ibus.sh`           | Start an IBus daemon on the private bus                                | the devkit tests              |
+| Script                           | What it does                                                                                                                   | Run by                                        |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------- |
+| `register-session.sh`            | Copy a staged build to its prefix, link the commands, install the login entry, portal files, units and man pages. Needs `sudo` | `make install`, `build.sh --register-session` |
+| `run-staged.sh`                  | Run a command with a staged build shown at its prefix, in a private mount namespace. No root                                   | `make preview`, `register-session.sh`         |
+| `run-gnoblin-devkit.sh`          | Start the compositor in a nested viewer window                                                                                 | `build.sh --preview`, `make preview`, tests   |
+| `run-clean-devkit.sh`            | Same, with a clean configuration                                                                                               | by hand                                       |
+| `devkit_dbus.py`                 | Write the private D-Bus configuration a nested run uses                                                                        | the devkit scripts                            |
+| `devkit-document-portal-stub.py` | A stand-in document portal for nested runs                                                                                     | `devkit_dbus.py`                              |
+| `gnoblin-state.sh`               | Write persistent development logs safely                                                                                       | `run-gnoblin-devkit.sh`                       |
+| `gnoblin-test-ibus.sh`           | Start an IBus daemon on the private bus                                                                                        | the devkit tests                              |
 
 ## Releases and packages
 
