@@ -3,7 +3,9 @@
 # ./build.sh is the build. These targets name what you want and call it with the right flags. They hold no build
 # logic of their own, and each one prints the command it runs.
 #
-#   make              list the targets
+#   make              build (the same as make build)
+#   make help         list the targets and what each one changes
+#   make install      build, then make this checkout your installed Gnoblin (login entry, commands, man pages)
 #   make status       show what is built, what is registered and what is on your PATH
 #   make plan         show what "make build" would change, without changing anything
 #
@@ -14,7 +16,7 @@
 
 SHELL := bash
 .SHELLFLAGS := -euo pipefail -c
-.DEFAULT_GOAL := help
+.DEFAULT_GOAL := build
 MAKEFLAGS += --no-print-directory
 
 PREFIX ?= $(CURDIR)/install
@@ -44,7 +46,7 @@ MUTTER_FOCUS_TESTS := mutter:focus-default-window-globally-active-input mutter:c
 	mutter:overview-focus mutter:sloppy-focus mutter:sloppy-focus-pointer-rest mutter:sloppy-focus-auto-raise \
 	mutter:popup-focus
 
-.PHONY: help status plan setup build build-system register preview man clean package package-srpm \
+.PHONY: help status plan setup build build-system register install preview man clean package package-srpm \
 	check test-runtime test-all test-release test-window-manager test-preview test-privacy-pipewire \
 	test-window-csd test-window-borders test-window-rule-lifecycle test-window-shadows lint format \
 	package-manifest check-gnome-version install-fedora
@@ -55,7 +57,7 @@ help: ## Show this list.
 	@echo "Gnoblin make targets    (PREFIX=$(PREFIX)  JOBS=$(JOBS)  DEVKIT=$(DEVKIT))"
 	@awk 'BEGIN { FS = ":.*## " } /^##@/ { printf "\n%s\n", substr($$0, 5) } /^[a-zA-Z0-9_-]+:.*## / { printf "  %-24s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 	@echo
-	@echo "Run 'make status' to see the current state, and 'make plan' before the first build."
+	@echo "Run 'make status' to see the current state, and 'make plan' before the first build. 'make' alone builds."
 
 status: ## Show the build, the login entry, the commands on your PATH and the man page links.
 	@echo "Source"
@@ -73,7 +75,7 @@ status: ## Show the build, the login entry, the commands on your PATH and the ma
 	@if [ -f /usr/share/wayland-sessions/gnoblin.desktop ]; then \
 	    printf '  %-18s %s\n' "starts" "$$(sed -n 's/^Exec=//p' /usr/share/wayland-sessions/gnoblin.desktop)"; \
 	else \
-	    echo "  none. Run: make register"; \
+	    echo "  none. Run: make install"; \
 	fi
 	@echo
 	@echo "Commands on your PATH"
@@ -96,7 +98,7 @@ status: ## Show the build, the login entry, the commands on your PATH and the ma
 	    elif [ -e "$$link" ]; then \
 	        printf '  %-18s %s\n' "$$page" "a file that is not a link"; \
 	    else \
-	        printf '  %-18s %s\n' "$$page" "not linked (make register links it)"; \
+	        printf '  %-18s %s\n' "$$page" "not linked (make install links it)"; \
 	    fi; \
 	done
 
@@ -108,15 +110,24 @@ plan: ## Show what "make build" would do and which paths it would change. Change
 setup: ## Fetch the pinned source trees. Changes: subprojects/ (downloads and checks out pins).
 	$(call run,./build.sh --target prepare-sources)
 
-build: ## Build into PREFIX. Changes: PREFIX, build/, subprojects/mutter and the portal (patched). Not your login entry.
+build: ## Build into PREFIX. This is what plain make runs. Changes: PREFIX, build/, subprojects/mutter and the portal (patched). Not your login entry.
 	$(call run,GNOBLIN_DEVKIT=$(DEVKIT_MODE) ./build.sh --jobs $(JOBS) --prefix $(PREFIX))
 
 build-system: ## Build the package layout into DESTDIR (needs DESTDIR=...). Changes: DESTDIR, build/.
 	@test -n "$(DESTDIR)" || { echo "Set DESTDIR, for example: make build-system DESTDIR=/tmp/stage" >&2; exit 2; }
 	$(call run,./build.sh --jobs $(JOBS) --layout system --system-prefix $(SYSTEM_PREFIX) --destdir $(DESTDIR))
 
-register: ## Add Gnoblin to the login screen and link its commands and man pages. Needs sudo. Changes: /usr/share, ~/.local.
+register: ## Only the login step of install: add the login entry and link the commands and man pages. Needs sudo and an earlier build.
 	$(call run,./build.sh --prefix $(PREFIX) --register-session)
+
+# make install: with DESTDIR it stages a package tree, as the usual make convention does. Without it, it builds and then
+# registers this checkout. The recipes differ, so the rule is chosen here.
+ifeq ($(strip $(DESTDIR)),)
+install: build ## Build, then add the login entry and link the commands and man pages. Needs sudo. With DESTDIR=dir: stage a package tree there instead.
+	$(call run,./build.sh --prefix $(PREFIX) --register-session)
+else
+install: build-system
+endif
 
 preview: ## Open the compositor in a nested viewer window on the current desktop (TERMINAL=name).
 	$(call run,./scripts/run-gnoblin-devkit.sh $(TERMINAL))

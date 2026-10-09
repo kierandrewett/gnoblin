@@ -312,7 +312,7 @@ if "$dry_run"; then
     echo "  $build_dir and the rest of build/ (logs, temporary files)"
     [ "$source_mode" = checkout ] && echo '  subprojects/mutter and the portal backend (reset to the pinned tag and patched)'
     printf '\nDoes not touch\n'
-    echo '  your login screen entry (run ./build.sh --register-session, or make register)'
+    echo '  your login screen entry (run ./build.sh --register-session, or make install)'
     echo '  your PATH commands and man page links (the same step makes those)'
     if [ -z "$destdir" ] && [ "$layout" = private ]; then
         echo '  /usr and other system paths'

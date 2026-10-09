@@ -95,8 +95,8 @@ prefix. Add `--with-portal` to build Gnoblin's GTK-based portal backend too.
 
 After building, run `./build.sh --register-session` to add the lean login to
 the session picker. The [source instructions](docs/install-source.md) cover
-prerequisites and login setup. `make` lists the same tasks by name, and
-`make plan` shows what a build would change before you run it.
+prerequisites and login setup. `make` builds, `make install` also adds the login entry,
+`make plan` shows what a build would change before you run it, and `make help` lists the tasks.
 
 [Install](docs/installation.md) on Fedora, Arch, openSUSE, NixOS or from source, or
 [try a nested session](docs/devkit.md) without logging out.

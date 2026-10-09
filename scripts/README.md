@@ -6,13 +6,13 @@ which, so you can tell what a script is for before you run it.
 
 ## What to run
 
-| You want to                   | Run                          |
-| ----------------------------- | ---------------------------- |
-| See every task and its effect | `make`                       |
-| See what is built and linked  | `make status`                |
-| See what a build would change | `make plan`                  |
-| Build                         | `make build` or `./build.sh` |
-| Run the fast checks           | `make check`                 |
+| You want to                   | Run                    |
+| ----------------------------- | ---------------------- |
+| See every task and its effect | `make help`            |
+| See what is built and linked  | `make status`          |
+| See what a build would change | `make plan`            |
+| Build                         | `make` or `./build.sh` |
+| Run the fast checks           | `make check`           |
 
 `./build.sh` is the build. `make` adds names and a place to read what each task changes.
 Neither holds logic that the scripts below do not already hold.

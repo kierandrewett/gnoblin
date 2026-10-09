@@ -221,18 +221,21 @@ Registration only adds session files; it does not build a missing runtime.
 
 ### Use make
 
-`make` names the same tasks and prints the command each one runs. `make` alone lists
+`make` names the same tasks and prints the command each one runs. `make help` lists
 them, with what each one changes.
 
-| Command       | What it does                                                               |
-| ------------- | -------------------------------------------------------------------------- |
-| `make plan`   | Show the steps of a build, what it writes and what it leaves alone         |
-| `make build`  | Build into `./install`, with the nested viewer. Set `JOBS=N` or `DEVKIT=0` |
-| `make status` | Show the build, the login entry and which `gnoblin` is on your `PATH`      |
-| `make man`    | Write the man pages into the prefix                                        |
-| `make clean`  | Delete `build/` and keep the installed build                               |
+| Command                  | What it does                                                               |
+| ------------------------ | -------------------------------------------------------------------------- |
+| `make`                   | Build into `./install`, with the nested viewer. Set `JOBS=N` or `DEVKIT=0` |
+| `make install`           | Build, then add the login entry and link the commands and man pages        |
+| `make install DESTDIR=D` | Stage a package tree in `D` and change nothing else                        |
+| `make plan`              | Show the steps of a build, what it writes and what it leaves alone         |
+| `make status`            | Show the build, the login entry and which `gnoblin` is on your `PATH`      |
+| `make man`               | Write the man pages into the prefix                                        |
+| `make clean`             | Delete `build/` and keep the installed build                               |
 
-`make register` adds the login entry. It asks for `sudo`.
+`make install` asks for `sudo` to add the login entry. `make register` does only that step,
+for a checkout that is already built.
 
 ## Build a package tree
 

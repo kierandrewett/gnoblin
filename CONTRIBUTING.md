@@ -12,11 +12,12 @@ First install the dependencies listed in the
 Build the pinned upstream sources into a separate prefix:
 
 ```sh
-make plan    # read what the build will change
-make build   # the same as ./build.sh, with the nested viewer enabled
+make plan      # read what the build will change
+make           # build: the same as ./build.sh, with the nested viewer enabled
+make install   # build, then add the login entry, the commands and the man pages (asks for sudo)
 ```
 
-`./build.sh` is the build, and `make` is a named front door to it. Run `make` to list every
+`./build.sh` is the build, and `make` is a named front door to it. Run `make help` to list every
 task and what it changes, and `make status` to see what is built, which login entry
 exists and which `gnoblin` and `gnoblinctl` are on your `PATH`. The [scripts map](scripts/README.md)
 says what each script does and who runs it.

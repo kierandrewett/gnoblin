@@ -1,6 +1,6 @@
 # Testing Gnoblin
 
-Run `make` to list every task and what it changes. Choose a check based on the code you changed. The source build, native tests,
+Run `make help` to list every task and what it changes. Choose a check based on the code you changed. The source build, native tests,
 nested preview, and real login each verify a different part of the session.
 
 ## Available checks
