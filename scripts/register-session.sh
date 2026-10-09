@@ -187,12 +187,26 @@ if [ ! -L "$GNOBLINCTL_LINK" ]; then
     ln -s "$PREFIX/bin/gnoblinctl" "$GNOBLINCTL_LINK"
 fi
 # man searches ~/.local/share/man, and a source build keeps its pages inside the prefix. Link them so that
-# "man gnoblin" and "man gnoblinctl" work. Replace only a link, never a file that is not ours, and a rebuild updates the
-# pages in place behind the link.
+# "man gnoblin" and "man gnoblinctl" work. A rebuild rewrites the pages in place behind the link. Create the link where
+# nothing exists, and refresh only a link that already points into a Gnoblin prefix. Anything else is the user's, so it
+# stays and the script says so.
 mkdir -p "$USER_MAN_DIR"
 for page in gnoblin.1 gnoblinctl.1; do
-    if [ -f "$PREFIX/share/man/man1/$page" ] && { [ -L "$USER_MAN_DIR/$page" ] || [ ! -e "$USER_MAN_DIR/$page" ]; }; then
-        ln -sfn "$PREFIX/share/man/man1/$page" "$USER_MAN_DIR/$page"
+    source_page="$PREFIX/share/man/man1/$page"
+    link="$USER_MAN_DIR/$page"
+    [ -f "$source_page" ] || continue
+    if [ ! -e "$link" ] && [ ! -L "$link" ]; then
+        ln -s "$source_page" "$link"
+    elif [ -L "$link" ]; then
+        target="$(readlink "$link")"
+        linked_prefix="${target%/share/man/man1/$page}"
+        if [ "$linked_prefix" != "$target" ] && [ -x "$linked_prefix/bin/gnoblinctl" ]; then
+            ln -sfn "$source_page" "$link"
+        else
+            echo "Left $link alone: it points to $target, which is not a Gnoblin prefix." >&2
+        fi
+    else
+        echo "Left $link alone: it is not a link." >&2
     fi
 done
 printf '%sGnoblin is available%s at login. Choose the existing GNOME session to switch back to GNOME.\n' "$green" "$reset"
