@@ -4,4 +4,5 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT/scripts/retry-command.sh"
 
-gnoblin_retry_command git submodule update --init --recursive
+# Optional arguments are the submodule paths to fetch. With none, every submodule is fetched.
+gnoblin_retry_command git submodule update --init --recursive "$@"
