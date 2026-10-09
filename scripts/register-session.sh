@@ -114,6 +114,33 @@ if "$with_portal" && "$have_user_systemd" && ! systemctl --user cat xdg-desktop-
 fi
 mapfile -t public_entries <"$PUBLIC_ENTRIES"
 
+# Print the name of the installed package that owns a path, or nothing.
+package_owner() {
+    if command -v rpm >/dev/null 2>&1; then
+        rpm -qf --qf '%{NAME}\n' "$1" 2>/dev/null | head -n 1 | grep -v 'not owned' || true
+    elif command -v pacman >/dev/null 2>&1; then
+        pacman -Qoq "$1" 2>/dev/null | head -n 1 || true
+    fi
+}
+
+# Stop before any change if a package already ships one of these files. A half install would mix two builds: the
+# package's login entry and units would start the package's runtime, not this one.
+conflicts=0
+owners=()
+for entry in "${public_entries[@]}"; do
+    owner="$(package_owner "$SYSTEM_ROOT/$entry")"
+    if [ -n "$owner" ]; then
+        echo "$SYSTEM_ROOT/$entry belongs to the installed package $owner." >&2
+        conflicts=$((conflicts + 1))
+        [[ " ${owners[*]:-} " == *" $owner "* ]] || owners+=("$owner")
+    fi
+done
+if ((conflicts > 0)); then
+    echo 'Nothing was changed. Remove the package, then run make install again:' >&2
+    echo "  sudo dnf remove ${owners[*]}    (or the package manager of this system)" >&2
+    exit 1
+fi
+
 sudo -v
 printf '%s==>%s Installing Gnoblin\n\n' "$blue" "$reset"
 
@@ -127,20 +154,9 @@ installed() {
     fi
 }
 
-package_owns() {
-    { command -v rpm >/dev/null 2>&1 && rpm -qf "$1" >/dev/null 2>&1; } ||
-        { command -v pacman >/dev/null 2>&1 && pacman -Qo "$1" >/dev/null 2>&1; }
-}
-
-# Copy one public file below the system root, unless an installed package owns it.
 install_public_file() {
-    local source="$1" destination="$2"
-    if package_owns "$destination"; then
-        echo "  Left $destination alone: an installed package owns it." >&2
-        return
-    fi
-    sudo install -Dm644 "$source" "$destination"
-    installed "$destination"
+    sudo install -Dm644 "$1" "$2"
+    installed "$2"
 }
 
 # The runtime. Files belong to root, so nobody can change what the login manager runs. Existing directories keep their

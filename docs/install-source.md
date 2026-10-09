@@ -151,7 +151,11 @@ by root. It does not build anything, so run `make` first. Use the same `PREFIX`
 for `make` and `make install`, because the binaries have it compiled in.
 
 `make install` prints each file or link it creates, one per row. A link row shows
-`path -> target`. It leaves a file alone when an installed package owns it.
+`path -> target`.
+
+If an installed package such as the Fedora `gnoblin` package already ships one of the files, `make install`
+changes nothing. It names the package and the command that removes it. Remove the package, then run
+`make install` again.
 
 After `make install`, the install is permanent and does not need the source
 directory. Run `make install` again after each rebuild to update it. It does not
