@@ -163,17 +163,9 @@ jobs:
     container: archlinux:base
     timeout-minutes: 180
     steps:
-      - name: Install stock GNOME and package build requirements
+      - name: Install stock GNOME, which the install gate must leave alone
         run: |
-          pacman -Syu --noconfirm --needed \
-            accountsservice adwaita-cursors base-devel cmake desktop-file-utils egl-wayland \
-            gcr-4 gettext git glib2-devel gnome-desktop-4 gobject-introspection \
-            gnome-shell gtk4 \
-            libadwaita libcanberra libdisplay-info libei libibus libinput libnm libxml2 libxkbcommon xkeyboard-config \
-            libxkbfile libxres lua meson ninja patchelf pipewire pkgconf polkit \
-            python python-docutils python-packaging sassc startup-notification \
-            wayland wayland-protocols wireplumber \
-            xdg-desktop-portal-gnome xorg-xwayland
+          pacman -Syu --noconfirm --needed base-devel git gnome-shell xdg-desktop-portal-gnome
           pacman -Q gnome-shell mutter > /tmp/stock-gnome-packages
           pacman -Qo /usr/bin/gnome-shell > /tmp/stock-gnome-shell-owner
           pacman -Qo /usr/bin/mutter > /tmp/stock-mutter-owner
@@ -188,6 +180,8 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Fetch compositor and portal source trees
         run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
+      - name: Install the packages the recipes declare
+        run: ./scripts/install-arch-build-deps.sh packaging/arch/PKGBUILD packaging/arch/portal/PKGBUILD
       - name: Build a source bundle from this checked-out revision
         env:
           GIT_COMMITTER_NAME: Gnoblin Package Builder
