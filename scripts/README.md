@@ -26,7 +26,7 @@ contains `gnoblin`. Nothing else needs to change.
 
 ## Build
 
-Run by `./build.sh` through CMake and `scripts/build-component.sh`. Run them by hand only to
+Run by `./build.sh` through CMake. Run them by hand only to
 debug a step.
 
 The source steps are CMake script files, not shell scripts. `cmake/source-step.cmake` runs one step by name, and
@@ -54,10 +54,9 @@ cmake -DACTION=apply-patches -DPROJECT=mutter -P cmake/source-step.cmake
 | --------------------------------------- | -------------------------------------------------------------------------- | ------------------------- |
 | `checkout-submodules-with-retry.sh`     | Fetch submodules, retrying GNOME GitLab errors                             | workflows, CMake          |
 | `check-build-deps.py`                   | Check that the development libraries the pinned sources need are installed | CMake                     |
-| `build-component.sh`                    | Build one Meson project (Mutter or the portal backend) into the prefix     | CMake                     |
 | `build-identity.py`                     | Write the build identity that `--version` prints, with the build time      | CMake                     |
 | `embed-config.py`                       | Embed the default Lua configuration tree in a C file                       | CMake                     |
-| `generate-mutter-keybinding-catalog.py` | Export Mutter's keybinding descriptors for the Lua API                     | `build-component.sh`      |
+| `generate-mutter-keybinding-catalog.py` | Export Mutter's keybinding descriptors for the Lua API                     | `component-build.cmake`   |
 | `build-adwaita-hyprcursor.py`           | Package the Adwaita cursor vectors for Hyprcursor                          | `install-session.sh`      |
 | `build-frame-renderers.sh`              | Build the optional window frame renderers                                  | by hand, tests            |
 | `install-session.sh`                    | Install the session files, units, schemas and man pages into the prefix    | CMake                     |

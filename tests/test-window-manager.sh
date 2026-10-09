@@ -9,7 +9,7 @@ prefix="${GNOBLIN_PREFIX:-$root/install}"
 libdir="${GNOBLIN_LIBDIR:-lib64}"
 buildtype="${GNOBLIN_BUILD_TYPE:-debugoptimized}"
 
-# The patched Mutter meson.build reads these from the environment, as the build does in scripts/build-component.sh.
+# The patched Mutter meson.build reads these from the environment, as the build does in cmake/component-build.cmake.
 export GNOBLIN_SOURCE_ROOT="$root"
 export GNOBLIN_IMGUI_SOURCE="$root/subprojects/imgui"
 export GNOBLIN_PREFIX="$prefix"
