@@ -190,6 +190,19 @@ class IsolationTests(unittest.TestCase):
             "gnoblin-session < 51\ngnoblin-shell < 51",
         )
 
+    def test_only_the_gnoblin_package_may_ship_its_two_man_pages(self):
+        for page in ("gnoblin.1", "gnoblin.1.gz", "gnoblinctl.1.zst", "gnoblinctl.1.xz"):
+            with self.subTest(page=page):
+                isolation.validate("gnoblin", f"/usr/share/man/man1/{page}", "", "", "")
+        for name, page in (
+            ("gnoblin-portal", "gnoblin.1.gz"),
+            ("gnoblin", "ls.1.gz"),
+            ("gnoblin", "gnoblin.2.gz"),
+            ("gnoblin", "gnoblinctl-extra.1.gz"),
+        ):
+            with self.subTest(name=name, page=page), self.assertRaises(ValueError):
+                isolation.validate(name, f"/usr/share/man/man1/{page}", "", "", "")
+
     def test_manifest_has_one_gnoblin_runtime_package(self):
         manifest = json.loads((ROOT / "packaging/native-packages.json").read_text())
         packages = manifest["packages"]

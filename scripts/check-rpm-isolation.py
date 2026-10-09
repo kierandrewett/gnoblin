@@ -21,6 +21,9 @@ ALLOWED_OBSOLETES = {
     "gnoblin-mutter < 52",
     "gnoblin-mutter-devel < 52",
 }
+# The manual pages of the gnoblin package. The package build compresses them, and the extension depends on the
+# distribution: .gz from brp-compress, .zst or .xz elsewhere.
+MAN_PAGE = re.compile(r"^/usr/share/man/man1/gnoblin(?:ctl)?\.1(?:\.(?:gz|zst|xz|bz2))?$")
 PUBLIC_FILES = {
     "/usr/bin/gnoblin",
     "/usr/bin/gnoblinctl",
@@ -55,6 +58,8 @@ def validate(name, files, provides, conflicts, obsoletes):
         if ".." in path.parts or not path.is_absolute():
             raise ValueError(f"invalid package path: {filename}")
         if filename in PUBLIC_FILES or filename in ("/usr/lib/gnoblin", "/usr/lib/.build-id"):
+            continue
+        if name == "gnoblin" and MAN_PAGE.match(filename):
             continue
         if filename.startswith(
             ("/usr/lib/gnoblin/", "/usr/lib/.build-id/", f"/usr/share/licenses/{name}/", f"/usr/share/doc/{name}/")
