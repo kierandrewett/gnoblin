@@ -38,7 +38,9 @@ PORTAL_DBUS="$PREFIX/share/dbus-1/services/org.freedesktop.impl.portal.desktop.g
 USER_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 USER_BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
 GNOBLINCTL_LINK="$USER_BIN_DIR/gnoblinctl"
-USER_MAN_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/man/man1"
+# man-db finds user manual pages by mapping each directory on PATH to the share/man beside it, not from XDG_DATA_HOME. So
+# the pages go next to the bin directory that holds the gnoblinctl link, which is the directory the user has on PATH.
+USER_MAN_DIR="$(dirname "$USER_BIN_DIR")/share/man/man1"
 LEGACY_RECOVERY_LINK="$USER_UNIT_DIR/gnoblin-recovery.service"
 
 required=("$DESKTOP" "$PREFIX/bin/gnoblin" "$PREFIX/bin/gnoblinctl"

@@ -28,8 +28,9 @@ Gnoblin has two manual pages, `gnoblin(1)` and `gnoblinctl(1)`:
 
 - A package installs them, so `man gnoblin` works after you install it.
 - A source build puts them in `install/share/man`.
-- `./build.sh --register-session` links them into `~/.local/share/man`, where
-  `man` looks.
+- `./build.sh --register-session` links them into the `share/man` directory
+  beside the bin directory that holds the `gnoblinctl` link, which is
+  `~/.local/share/man` by default. `man` finds that directory from your `PATH`.
 - Without that step, read one with `man -M ./install/share/man gnoblinctl`.
 
 `gnoblin` is both the login command and the package to install. Its
