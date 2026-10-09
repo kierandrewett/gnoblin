@@ -47,7 +47,9 @@ gnoblin.configure {
 }
 ```
 
-Default: `true`. Applies at the next drag after reload.
+Default: `true`. The compositor accepts this setting but does not read it yet,
+so `true` and `false` behave the same. See the
+[window management reference](/config/configure/window_management).
 
 This keeps the dragged frame below the monitor's reserved top area, including
 space reserved by a layer-shell panel. Set `false` to allow overlap.
@@ -68,8 +70,12 @@ gnoblin.configure {
 }
 ```
 
-**Log out and back in** to apply protocol changes. Gnoblin exposes these
-interfaces when the session starts and cannot remove them during config reload.
+Changes apply on config reload. Disabling an interface stops new clients from
+binding to it; clients that already bound it keep their connection until they
+disconnect.
+
+Disabling `ext_session_lock` while the session is locked makes the reload fail
+and keeps the previous configuration. Unlock before changing that setting.
 
 | Name                              | Used for                           |
 | --------------------------------- | ---------------------------------- |
@@ -87,8 +93,8 @@ interfaces when the session starts and cannot remove them during config reload.
 | `blur_fade`                       | Per-item blur fade metadata        |
 
 Each protocol name accepts `true` or `false` and defaults to `true`. Set a
-protocol to `false` to keep Gnoblin from advertising that interface when the
-session starts.
+protocol to `false` to keep Gnoblin from advertising that interface to new
+clients.
 
 This does not block all screen sharing: apps using the desktop portal follow
 [portal permissions](/guides/permissions) instead.

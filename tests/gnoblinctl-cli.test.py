@@ -888,12 +888,12 @@ def main() -> int:
 
     human_version = run(binary, "--version")
     assert human_version.returncode == 0, human_version.stderr
-    for label, field in (
-        ("Lua", "luaVersion"),
-        ("Native API", "apiVersion"),
-        ("Build ID", "buildId"),
+    for expected in (
+        f"Lua {identity['luaVersion']}",
+        f"Native API {identity['apiVersion']}",
+        f"Build ID: {identity['buildId']}",
     ):
-        assert f"{label}: {identity[field]}" in human_version.stdout
+        assert expected in human_version.stdout, expected
 
     config_path = Path(build_directory) / "test-config" / "init.lua"
     config_result = run(

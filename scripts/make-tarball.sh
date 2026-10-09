@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Produce a release tarball from the pinned Gnoblin Mutter fork or patched portal source.
+# Produce a release tarball from the patched Mutter or portal source. It is the same tree that ./build.sh compiles.
 #
 # The archive manifest combines Git-tracked paths, pinned mandatory Meson
 # subprojects, and any portal overlay destinations. Unrelated checkout state is excluded.
@@ -29,13 +29,13 @@ case "$EPOCH" in
         ;;
 esac
 
+# Both components take the same path as ./build.sh: reset to the upstream tag, copy the overlay and apply patches/<project>/.
+# The release tarball therefore holds exactly the tree a source build compiles, and no commit has to be published to the
+# Mutter fork for it. apply-patches.sh checks that the checkout is pristine or in a state it recorded.
 if [ "$PROJ" = mutter ]; then
     "$ROOT/scripts/ensure-release-subprojects.sh" mutter
-    "$ROOT/scripts/subproject-state.sh" check mutter "$VER"
-    "$ROOT/scripts/copy-overlay.sh" mutter "$SM"
-else
-    "$ROOT/scripts/apply-patches.sh" "$PROJ" >&2
 fi
+"$ROOT/scripts/apply-patches.sh" "$PROJ" >&2
 
 mkdir -p "$OUTDIR"
 ARCHIVE_NAME="$PROJ"

@@ -1,0 +1,18 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 22:05:00 +0100
+Subject: [PATCH] mutter: build the window rules control domain
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index dd04e49476..354dee40d6 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1206,6 +1206,7 @@ libmutter = library(libmutter_name,
+   files('core/gnoblin-control-workspaces.c'),
+   files('core/gnoblin-control-layers.c'),
+   files('core/gnoblin-control-shortcuts.c'),
++  files('core/gnoblin-control-window-rules.c'),
+   files('core/gnoblin-touchpad-router.c'),
+   files('core/gnoblin-keybinding-catalog.c'),
+   version: '0.0.0',

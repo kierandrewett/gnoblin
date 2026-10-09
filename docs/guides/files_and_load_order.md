@@ -19,12 +19,10 @@ can report that the file must be converted; TOML and CONF are not parsed. Rename
 or remove an old file after converting it to Lua. Every selected root and
 included configuration file must use the `.lua` suffix.
 
-For packaged logins, `gnoblin` copies
-`/usr/share/gnoblin/init.lua.example` to `init.lua` when no user config exists.
-The session supervisor loads that file when the compositor starts.
-
-If the example is unavailable, or you run a build directly, Gnoblin uses its
-defaults. Setting `GNOBLIN_CONFIG` in a terminal does not change the
+When no user config exists, the session supervisor loads the starter Lua
+configuration embedded in the binary. Run `gnoblinctl init` to create an
+editable copy at the selected config path. The command leaves existing files
+unchanged. Setting `GNOBLIN_CONFIG` in a terminal does not change the
 environment of an already-running compositor.
 
 ## Include a file
@@ -38,7 +36,7 @@ The included file uses the same API:
 
 ```lua
 gnoblin.configure {
-    window_management = {focus_mode = "sloppy"},
+    window_management = {focus_mode = "hover"},
 }
 ```
 
@@ -67,7 +65,7 @@ are applied last.
 Repeated `gnoblin.configure` calls keep settings you have not changed:
 
 ```lua
-gnoblin.configure {window_management = {focus_mode = "sloppy"}}
+gnoblin.configure {window_management = {focus_mode = "hover"}}
 gnoblin.configure {window_management = {raise_on_click = true}}
 ```
 
@@ -107,7 +105,7 @@ For ordinary config files, `gnoblin.load` is enough.
 In `appearance.lua`:
 
 ```lua
-return {window_management = {focus_mode = "sloppy"}}
+return {window_management = {focus_mode = "hover"}}
 ```
 
 In `init.lua`:
@@ -163,13 +161,14 @@ Wayland clients; the runtime API controls compositor state.
 | Orientation lock                   | On reload                                      | GNOME orientation setting applies        |
 | Cursor theme and size              | On reload                                      | Adwaita at 24 logical pixels             |
 | Notifications and layout popup     | On reload                                      | Saved GSettings value stays              |
-| Autostart                          | New names start on reload                      | Running process stays                    |
+| Autostart                          | Reconciled on reload                           | Updated or removed child stops           |
 | Renderer services                  | Restart on reload                              | Enabled frames use native fallback       |
-| Protocols                          | Next login                                     | Default on next login                    |
-| Launcher focus behaviour           | Next login                                     | Default on next login                    |
+| Protocols                          | On reload for new clients                      | Default on reload for new clients        |
+| Launcher focus behaviour           | On reload                                      | Default on reload                        |
 | Drag boundary                      | Next drag after reload                         | Defaults to enabled                      |
+| Portal routes                      | Portal service restarts on reload              | Active portal requests may be interrupted |
+| Xwayland server flags              | Xwayland restarts when flags change            | Running X11 apps disconnect              |
 
-An already-started autostart name uses a changed command only on the next login.
 If you change a setting with the CLI, a value written in your config file
 will replace that change on the next config reload.
 

@@ -26,6 +26,13 @@ for project in "${projects[@]}"; do
         exit 1
     }
 
+    # Checkout builds materialize the reviewed overlay and patch series in
+    # this worktree. Accept that exact recorded state on later build stages;
+    # subproject-state.sh rejects any edits outside the patch pipeline.
+    if "$ROOT/scripts/subproject-state.sh" check "$project" "$tag" >/dev/null 2>&1; then
+        continue
+    fi
+
     if ! git -C "$subproject" rev-parse --verify "$tag^{commit}" >/dev/null 2>&1; then
         git -C "$subproject" fetch --quiet --depth=1 origin "refs/tags/$tag:refs/tags/$tag"
     fi

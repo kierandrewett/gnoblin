@@ -8,9 +8,11 @@ shell read windows and request window actions.
 For terminal commands and scripts, [gnoblinctl](gnoblinctl.md) handles the
 connection for you.
 
-Jump to the bridge's [API versions](#availability), [request format](#connect),
-[operation reference](#operation-index), [common UI patterns](#example-watch-the-window-list),
-or [connection limits](#limits-and-disconnects):
+- [API versions](#availability)
+- [Request format](#connect)
+- [Operation reference](#operation-index)
+- [Common UI patterns](#example-watch-the-window-list)
+- [Connection limits](#limits-and-disconnects)
 
 ## Availability
 
@@ -219,7 +221,7 @@ Monitor events include `revision`, `sequence`, and monotonic-clock `time`.
 
 The monitor `changed` array can contain `id`, `index`, `x`, `y`, `width`,
 `height`, `primary`, `scale`, `enabled`, `name`, `make`, `model`, `serial`,
-`refresh_rate`, or `transform`.
+`refresh_rate`, `transform`, or `work_area`.
 
 The server sends an initial window snapshot, then streams window and workspace
 events on that connection. Window and workspace events carry `revision`,
@@ -385,6 +387,11 @@ The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
 | 1.73            | `gnoblin.input.pad-help-requested`                                                                     |
 | 1.74            | `monitors.privacy_screen`, `monitors.set_privacy_screen`, and `gnoblin.monitor.privacy-screen-changed` |
 | 1.75            | Adds the `ui-sessions` capability for state and command messages between shell processes               |
+| 1.76            | Adds the `gnoblin.session.state-changed` event                                                         |
+| 1.78            | Adds the `auth-agent` capability, `auth.begin`, `auth.respond`, `auth.cancel`, and `gnoblin.auth.*` events |
+| 1.79            | Adds the `prompt-broker` capability, `prompt.respond`, `prompt.cancel`, and `gnoblin.prompt.*` events |
+| 1.80            | Adds the `gnoblin.pointer.locate-requested` event                                                      |
+| 1.81            | Adds `work_area` to monitor records and to the monitor `changed` list                                  |
 
 ### API 1.27: shell presentation requests
 
@@ -608,18 +615,15 @@ Lua supervisor health. The socket cannot report a final state after the
 compositor stops; a failed connection means the compositor is unavailable.
 
 API 1.20 adds `runtime.reload_config()` with no arguments. In a standalone
-native session, reload applies changes to these settings:
+native session, reload validates and applies the complete Lua configuration
+while the session is running. Native settings, policies, autostart entries,
+and Lua callbacks are updated as one transaction.
 
-- `animations`
-- `input`
-- `permissions`
-- `touchpad-gestures`
-- `window-rules`
-- `workspaces`
+If loading or applying the candidate fails, Gnoblin keeps the previous
+configuration active. The native open-animation matcher uses updated rules for
+windows mapped after reload.
 
-Any other setting change is rejected and leaves the active runtime unchanged.
-Start a new session to apply it. The native open-animation matcher uses updated rules for windows mapped after
-reload. Reload does not replay open animations for windows already mapped.
+Reload does not replay open animations for windows already mapped.
 
 The result contains `ok: true`, `action: "config reload"`, and
 `runtime_generation`. This is the generation the new runtime will receive if
@@ -1340,12 +1344,13 @@ handle stops. These methods do not revoke persistent grants.
 }
 ```
 
-API 1.31 also exposes `layer.animation_policy` through the shared Lua read
-path. It accepts a `namespace` string of 1–128 UTF-8 bytes and returns the
-effective enter and exit phases plus `window_shadow`.
+Call `layer.animation_policy` with a `namespace` string of 1–128 UTF-8 bytes
+to read its enter and exit phases and `window_shadow`. It requires API 1.31.
 
-Without a matching animation rule, both phases use `slide`. The
-`window_shadow` default is `false` unless a matching default-window rule
+Without a matching animation rule, each phase uses its first enabled event
+registration, or `none` if no event is registered.
+
+`window_shadow` defaults to `false` unless a matching default-window rule
 supplies a shadow value.
 
 ### API version 1.32: XDG Activation focus and session logout
@@ -1525,8 +1530,9 @@ Read worker health directly from Mutter with `runtime.status`:
 - `unavailable` means the supervisor is disconnected or stopping.
 
 `generation` identifies the runtime configuration accepted by Mutter. It
-stays the same across worker recovery and changes when Mutter accepts a new
-configuration.
+changes when Mutter accepts a new configuration. Worker recovery applies the
+built-in defaults (see [worker recovery](/config/load#worker-recovery)), so the
+generation rises by one after a worker restarts.
 
 ### API version 1.69: focus denial events
 

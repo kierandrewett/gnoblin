@@ -60,17 +60,14 @@ jobs:
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern '*.src.rpm' --dir release-assets
           shopt -s nullglob
-          mutter=(release-assets/gnoblin-mutter-*.src.rpm)
           portal=(release-assets/gnoblin-portal-*.src.rpm)
           meta=(release-assets/gnoblin-[0-9]*.src.rpm)
-          test "${#mutter[@]}" -eq 1
           test "${#portal[@]}" -eq 1
           test "${#meta[@]}" -eq 1
-          printf '%s\n' "${mutter[@]}" "${portal[@]}" "${meta[@]}"
+          printf '%s\n' "${portal[@]}" "${meta[@]}"
       - name: Publish and verify the release in COPR
         run: |
           scripts/publish-copr.sh kierandrewett/gnoblin \
-            release-assets/gnoblin-mutter-*.src.rpm \
             release-assets/gnoblin-portal-*.src.rpm \
             release-assets/gnoblin-[0-9]*.src.rpm
 
@@ -95,7 +92,7 @@ jobs:
           dnf -y --setopt=install_weak_deps=False install --refresh "gnoblin-$expected_version"
           installed_version="$(rpm -q --qf '%{VERSION}' gnoblin)"
           test "$installed_version" = "$expected_version"
-          rpm -q gnoblin gnoblin-mutter
+          rpm -q gnoblin
           ! rpm -q gnoblin-portal
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf

@@ -44,7 +44,7 @@ command -v dnf >/dev/null || {
 
 # Existing local overrides would hide the packaged session. Stop before making
 # any changes if they are user-written files rather than registration symlinks.
-units=(gnoblin-session.target org.gnoblin.Shell.target org.gnoblin.Shell@wayland.service xdg-desktop-portal-gnoblin.service)
+units=(gnoblin-session.target gnoblin-idle.service org.gnoblin.Shell.target org.gnoblin.Shell@wayland.service xdg-desktop-portal-gnoblin.service)
 for unit in "${units[@]}"; do
     if [ -e "$UNIT_DIR/$unit" ] && [ ! -L "$UNIT_DIR/$unit" ]; then
         echo "Move the custom Gnoblin override aside first: $UNIT_DIR/$unit" >&2
@@ -97,12 +97,8 @@ if [ "$SOURCE" = copr ]; then
     "${sudo_args[@]}" dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"
 else
     META_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin.spec")"
-    MUTTER_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/mutter.spec")"
     PORTAL_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin-portal.spec")"
-    packages=("gnoblin:$META_VERSION" "gnoblin-mutter:$MUTTER_VERSION")
-    if rpm -q gnoblin-mutter-devel >/dev/null 2>&1; then
-        packages+=("gnoblin-mutter-devel:$MUTTER_VERSION")
-    fi
+    packages=("gnoblin:$META_VERSION")
     portal_release="$(rpmspec -q --srpm --qf '%{RELEASE}' "$ROOT/packaging/rpm/gnoblin-portal.spec")"
     mapfile -t portal_matches < <(find "$RPM_DIR" -type f \
         -name "gnoblin-portal-$PORTAL_VERSION-$portal_release.*.rpm" | sort)
@@ -120,7 +116,6 @@ else
         version="${package#*:}"
         case "$name" in
             gnoblin) project=gnoblin ;;
-            gnoblin-mutter*) project=mutter ;;
             gnoblin-portal) project=gnoblin-portal ;;
         esac
         release="$(rpmspec -q --srpm --qf '%{RELEASE}' "$ROOT/packaging/rpm/$project.spec")"
@@ -157,10 +152,10 @@ elif [ -f "$LEGACY_GNOME_SESSION_DROPIN_PATH" ] &&
     echo 'Removed the obsolete managed GNOME session drop-in.'
 fi
 systemctl --user daemon-reload
-rpm -q gnoblin gnoblin-mutter
+rpm -q gnoblin
 if rpm -q gnoblin-portal >/dev/null 2>&1; then
     rpm -q gnoblin-portal
 fi
 printf '%s\n' 'Installed. Select Gnoblin at login; GNOME remains available.' \
-    'Remove with: sudo dnf remove gnoblin gnoblin-mutter' \
+    'Remove with: sudo dnf remove gnoblin' \
     'Remove the optional portal separately: sudo dnf remove gnoblin-portal'

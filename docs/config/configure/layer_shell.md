@@ -1,7 +1,7 @@
 # gnoblin.configure.layer_shell
 
 Configure how Gnoblin handles an active window when a layer-shell client opens.
-Changes apply at the next login.
+Changes apply after `gnoblinctl config reload`.
 
 | Setting                  | Values  | Default | Effect                                                                                                              |
 | ------------------------ | ------- | ------- | ------------------------------------------------------------------------------------------------------------------- |

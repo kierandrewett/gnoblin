@@ -33,7 +33,7 @@ gnoblin.configure {
             },
             tolerance = 0.2,
             command = {"kgx"},
-            when = "normal",
+            when = "unlocked",
         },
     },
 }
@@ -51,7 +51,7 @@ gnoblin.configure {
             fingers = 4,
             direction = "out",
             command = {"kgx"},
-            when = "normal",
+            when = "unlocked",
             threshold = 0.18,
         },
     },
@@ -72,7 +72,7 @@ Set exactly one of `action` or `command` for each entry.
 | `tolerance` | Swipe: 0.05–0.5                                           | Defaults to 0.22. Lower values require a closer match to the path.                                                            |
 | `action`    | One of the built-in actions below                         | Set this or `command`, but not both.                                                                                          |
 | `command`   | Nonempty array of strings                                 | Set this or `action`, but not both.                                                                                           |
-| `when`      | `"normal"`, `"unlock-screen"`, or `"any"`                 | Defaults to `"normal"`. `normal` applies while unlocked; `unlock-screen` applies while locked; `any` applies in either state. |
+| `when`      | `"unlocked"`, `"locked"`, or `"any"`                      | Defaults to `"unlocked"`. `unlocked` applies while the session is unlocked; `locked` applies while the session is locked; `any` applies in either state. `"normal"` and `"unlock-screen"` still load as the old names for `"unlocked"` and `"locked"`. |
 | `threshold` | Swipe: 16–240; pinch: 0.05–0.5                            | Defaults to 48 for swipe and 0.12 for pinch. Minimum movement before the path can match.                                      |
 
 At gesture start, Gnoblin reserves input when a binding matches the gesture

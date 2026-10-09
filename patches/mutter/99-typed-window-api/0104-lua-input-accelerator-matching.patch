@@ -1,0 +1,143 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] lua input accelerator matching
+
+---
+diff --git a/src/core/keybindings-private.h b/src/core/keybindings-private.h
+index 90be9557..aad5da53 100644
+--- a/src/core/keybindings-private.h
++++ b/src/core/keybindings-private.h
+@@ -168,3 +168,10 @@ const char * meta_prefs_get_iso_next_group_option (void);
+ gboolean meta_display_process_keybinding_event (MetaDisplay        *display,
+                                                 const char         *name,
+                                                 const ClutterEvent *event);
++
++gboolean meta_keybindings_gnoblin_accelerator_valid (MetaDisplay *display,
++                                                     const char  *accelerator,
++                                                     gboolean     pointer);
++gboolean meta_keybindings_gnoblin_event_matches_accelerator (MetaDisplay *display,
++                                                             const ClutterEvent *event,
++                                                             const char *accelerator);
+diff --git a/src/core/keybindings.c b/src/core/keybindings.c
+index b3566835..326dece7 100644
+--- a/src/core/keybindings.c
++++ b/src/core/keybindings.c
+@@ -1203,6 +1203,118 @@ invalid:
+   return FALSE;
+ }
+ 
++/* Parse with Mutter's live keymap before publishing a Lua input selector.
++ * Pointer selectors support the same restricted Button1..Button3 grammar as
++ * configured window operations; a keyboard selector must use Mutter's
++ * accelerator grammar. Device key availability is intentionally not checked
++ * so a config remains valid when a media key is temporarily absent. */
++gboolean
++meta_keybindings_gnoblin_accelerator_valid (MetaDisplay *display,
++                                            const char  *accelerator,
++                                            gboolean     pointer)
++{
++  if (!display || !accelerator || !*accelerator)
++    return FALSE;
++
++  if (pointer)
++    {
++      MetaGnoblinPointerBinding binding = { 0 };
++      g_autoptr (GError) error = NULL;
++
++      return parse_gnoblin_pointer_binding (accelerator, &binding, &error);
++    }
++  else
++    {
++      MetaKeyCombo combo = { 0 };
++      return meta_parse_accelerator (accelerator, &combo);
++    }
++}
++
++/* A virtual modifier must resolve to a physical mask before it can be used
++ * for a pointer selector.  Otherwise `<Super>Button1` degenerates into an
++ * unmodified Button1 match while the keymap is unavailable or incomplete. */
++static gboolean
++gnoblin_pointer_binding_modifiers_resolved (MetaKeyBindingManager        *keys,
++                                            const MetaGnoblinPointerBinding *binding)
++{
++  return (!(binding->modifiers & CLUTTER_META_MASK) || keys->meta_mask) &&
++         (!(binding->modifiers & CLUTTER_HYPER_MASK) || keys->hyper_mask) &&
++         (!(binding->modifiers & CLUTTER_SUPER_MASK) || keys->super_mask);
++}
++
++/* Native input tracing is deliberately opt-in and bounded. It exists to
++ * diagnose pointer-selector state without ever logging keyboard input. */
++static gboolean
++gnoblin_input_trace_take_slot (void)
++{
++  static gsize initialized = 0;
++  static gint remaining = 0;
++
++  if (g_once_init_enter (&initialized))
++    {
++      const char *value = g_getenv ("GNOBLIN_INPUT_TRACE");
++
++      remaining = value && *value && !g_str_equal (value, "0") ? 32 : 0;
++      g_once_init_leave (&initialized, 1);
++    }
++
++  return g_atomic_int_add (&remaining, -1) > 0;
++}
++
++/* Resolve with Mutter's live keymap so Lua bindings use the same modifier
++ * and layout rules as native accelerators. Invalid bindings never match. */
++gboolean
++meta_keybindings_gnoblin_event_matches_accelerator (MetaDisplay        *display,
++                                                   const ClutterEvent *event,
++                                                   const char         *accelerator)
++{
++  MetaKeyBindingManager *keys = &display->key_binding_manager;
++  ClutterEventType type = clutter_event_type (event);
++  unsigned int event_mods = mask_from_event_params (keys,
++                                                     clutter_event_get_state (event));
++
++  if (type == CLUTTER_BUTTON_PRESS || type == CLUTTER_BUTTON_RELEASE)
++    {
++      MetaGnoblinPointerBinding binding = { 0 };
++      unsigned int wanted_mods = 0;
++      gboolean matches = FALSE;
++      g_autoptr (GError) error = NULL;
++
++      if (parse_gnoblin_pointer_binding (accelerator, &binding, &error))
++        {
++          devirtualize_modifiers (keys, binding.modifiers, &wanted_mods);
++          matches = gnoblin_pointer_binding_modifiers_resolved (keys, &binding) &&
++                    binding.button == clutter_event_get_button (event) &&
++                    wanted_mods == event_mods;
++        }
++
++      if (clutter_event_get_button (event) <= 3 && gnoblin_input_trace_take_slot ())
++        g_message ("gnoblin-input-match: button=%u state=0x%x super-mask=0x%x wanted=0x%x result=%s",
++                   clutter_event_get_button (event), clutter_event_get_state (event),
++                   keys->super_mask, wanted_mods, matches ? "match" : "no-match");
++
++      return matches;
++    }
++
++  if (type == CLUTTER_KEY_PRESS || type == CLUTTER_KEY_RELEASE)
++    {
++      MetaKeyCombo combo = { 0 };
++      MetaResolvedKeyCombo resolved = { NULL, 0 };
++      gboolean matches;
++
++      if (!meta_parse_accelerator (accelerator, &combo))
++        return FALSE;
++      resolve_key_combo (keys, &combo, &resolved);
++      matches = resolved.mask == event_mods &&
++                resolved_key_combo_has_keycode (&resolved,
++                                                clutter_event_get_key_code (event));
++      resolved_key_combo_reset (&resolved);
++      return matches;
++    }
++
++  return FALSE;
++}
++
+ gboolean
+ meta_keybindings_apply_gnoblin_pointer_bindings (MetaDisplay *display,
+                                                   GVariant    *document,

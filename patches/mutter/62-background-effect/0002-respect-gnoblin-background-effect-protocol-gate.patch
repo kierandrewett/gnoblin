@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 19 Sep 2026 22:08:20 +0100
-Subject: [PATCH] Respect the background effect protocol gate
+Subject: [PATCH] Make background effect protocol visibility reloadable
 
 ---
 diff --git a/src/wayland/meta-wayland-background-effect.c b/src/wayland/meta-wayland-background-effect.c
@@ -12,17 +12,22 @@ index 33e408edc..e406ec0a2 100644
  #include <wayland-server.h>
  
  #include "ext-background-effect-v1-server-protocol.h"
-+#include "core/gnoblin-native-control.h"
++#include "wayland/meta-gnoblin-live-protocols.h"
  #include "compositor/meta-surface-actor-wayland.h"
  #include "meta/display.h"
  #include "meta/meta-context.h"
-@@ -214,6 +215,9 @@ background_effect_manager_bind (struct wl_client *client,
- void
- meta_wayland_init_background_effect (MetaWaylandCompositor *compositor)
- {
-+  if (!gnoblin_native_control_protocol_enabled ("ext-background-effect-v1"))
-+    return;
-+
-   if (g_signal_lookup ("gnoblin-background-effect-changed", META_TYPE_DISPLAY) == 0)
-     g_signal_new ("gnoblin-background-effect-changed",
-                   META_TYPE_DISPLAY,
+@@ -224,7 +225,8 @@ meta_wayland_init_background_effect (MetaWaylandCompositor *compositor)
+-  if (!wl_global_create (compositor->wayland_display,
+-                         &ext_background_effect_manager_v1_interface,
+-                         META_EXT_BACKGROUND_EFFECT_V1_VERSION,
+-                         compositor,
+-                         background_effect_manager_bind))
+-    g_warning ("Failed to create ext_background_effect_manager_v1 global");
++  GError *error = NULL;
++  if (!meta_gnoblin_register_protocol_global (
++        compositor, "ext-background-effect-v1",
++        &ext_background_effect_manager_v1_interface,
++        META_EXT_BACKGROUND_EFFECT_V1_VERSION, compositor,
++        background_effect_manager_bind, &error))
++    g_error ("Failed to register ext-background-effect-v1: %s", error->message);
+ }

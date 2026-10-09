@@ -29,6 +29,7 @@
 #include "meta/meta-idle-monitor.h"
 #include "wayland/meta-wayland-private.h"
 #include "core/gnoblin-native-control.h"
+#include "wayland/meta-gnoblin-live-protocols.h"
 
 #include "ext-idle-notify-v1-server-protocol.h"
 
@@ -177,12 +178,9 @@ static void bind_idle_notifier(struct wl_client* client, void* data, uint32_t ve
 }
 
 void meta_wayland_init_idle_notify(MetaWaylandCompositor* compositor) {
-    if (!gnoblin_native_control_protocol_enabled("ext-idle-notify")) {
-        g_message("Gnoblin ext-idle-notify protocol disabled by settings");
-        return;
-    }
-
-    if (!wl_global_create(compositor->wayland_display, &ext_idle_notifier_v1_interface,
-                          META_EXT_IDLE_NOTIFY_VERSION, compositor, bind_idle_notifier))
+    g_autoptr(GError) error = NULL;
+    if (!meta_gnoblin_register_protocol_global(
+            compositor, "ext-idle-notify", &ext_idle_notifier_v1_interface,
+            META_EXT_IDLE_NOTIFY_VERSION, compositor, bind_idle_notifier, &error))
         g_error("Failed to register ext-idle-notify global");
 }

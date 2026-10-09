@@ -10,8 +10,6 @@ import subprocess
 
 PACKAGES = {
     "gnoblin",
-    "gnoblin-mutter",
-    "gnoblin-mutter-devel",
     "gnoblin-portal",
 }
 MANIFEST = json.loads((Path(__file__).resolve().parents[1] / "packaging/native-packages.json").read_text())
@@ -19,6 +17,9 @@ GNOME_MAJOR = MANIFEST["release"]["gnomeMajor"]
 ALLOWED_OBSOLETES = {
     f"gnoblin-session < {GNOME_MAJOR}",
     f"gnoblin-shell < {GNOME_MAJOR}",
+    # The separate Mutter packages were merged into gnoblin. The session package replaces them on upgrade.
+    "gnoblin-mutter < 52",
+    "gnoblin-mutter-devel < 52",
 }
 PUBLIC_FILES = {
     "/usr/bin/gnoblin",
@@ -40,7 +41,8 @@ def validate(name, files, provides, conflicts, obsoletes):
     if conflicts.strip():
         raise ValueError(f"{name} declares Conflicts")
     for obsolete in obsoletes.splitlines():
-        if name != "gnoblin" or obsolete not in ALLOWED_OBSOLETES:
+        # The openSUSE spec obsoletes every earlier gnoblin-session build, so its version is the package's own.
+        if name != "gnoblin" or (obsolete not in ALLOWED_OBSOLETES and not obsolete.startswith("gnoblin-session <= ")):
             raise ValueError(f"{name} declares an unexpected Obsoletes entry: {obsolete}")
     for capability in provides.splitlines():
         if re.match(

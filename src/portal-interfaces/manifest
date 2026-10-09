@@ -1,0 +1,25 @@
+# project source destination
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Access.xml data/interfaces/org.freedesktop.impl.portal.Access.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Account.xml data/interfaces/org.freedesktop.impl.portal.Account.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.AppChooser.xml data/interfaces/org.freedesktop.impl.portal.AppChooser.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Background.xml data/interfaces/org.freedesktop.impl.portal.Background.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Clipboard.xml data/interfaces/org.freedesktop.impl.portal.Clipboard.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.DynamicLauncher.xml data/interfaces/org.freedesktop.impl.portal.DynamicLauncher.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Email.xml data/interfaces/org.freedesktop.impl.portal.Email.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.FileChooser.xml data/interfaces/org.freedesktop.impl.portal.FileChooser.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.GlobalShortcuts.xml data/interfaces/org.freedesktop.impl.portal.GlobalShortcuts.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Inhibit.xml data/interfaces/org.freedesktop.impl.portal.Inhibit.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.InputCapture.xml data/interfaces/org.freedesktop.impl.portal.InputCapture.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Lockdown.xml data/interfaces/org.freedesktop.impl.portal.Lockdown.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Notification.xml data/interfaces/org.freedesktop.impl.portal.Notification.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.PermissionStore.xml data/interfaces/org.freedesktop.impl.portal.PermissionStore.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Print.xml data/interfaces/org.freedesktop.impl.portal.Print.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.RemoteDesktop.xml data/interfaces/org.freedesktop.impl.portal.RemoteDesktop.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Request.xml data/interfaces/org.freedesktop.impl.portal.Request.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.ScreenCast.xml data/interfaces/org.freedesktop.impl.portal.ScreenCast.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Screenshot.xml data/interfaces/org.freedesktop.impl.portal.Screenshot.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Secret.xml data/interfaces/org.freedesktop.impl.portal.Secret.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Session.xml data/interfaces/org.freedesktop.impl.portal.Session.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Settings.xml data/interfaces/org.freedesktop.impl.portal.Settings.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Usb.xml data/interfaces/org.freedesktop.impl.portal.Usb.xml
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.Wallpaper.xml data/interfaces/org.freedesktop.impl.portal.Wallpaper.xml

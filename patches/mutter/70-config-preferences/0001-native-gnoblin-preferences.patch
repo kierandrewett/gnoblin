@@ -138,8 +138,8 @@ index fe38b341..425cc796 100644
 +void
 +meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
 +{
-+  const char *const focus_modes[] = { "click", "sloppy", "mouse", NULL };
-+  const char *const new_window_modes[] = { "smart", "strict", NULL };
++  const char *const focus_modes[] = { "click", "hover", "hover-strict", NULL };
++  const char *const new_window_modes[] = { "allow", "prevent", NULL };
 +  const char *const titlebar_actions[] = {
 +    "toggle-shade", "toggle-maximize", "toggle-maximize-horizontally",
 +    "toggle-maximize-vertically", "minimize", "none", "lower", "menu", NULL

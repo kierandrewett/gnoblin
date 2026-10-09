@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 00:50:00 +0100
+Subject: [PATCH] clutter: open C linkage in the color transform header
+
+---
+ clutter/clutter/clutter-color-transform.h | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/clutter/clutter/clutter-color-transform.h b/clutter/clutter/clutter-color-transform.h
+--- a/clutter/clutter/clutter-color-transform.h
++++ b/clutter/clutter/clutter-color-transform.h
+@@ -29,6 +29,7 @@
+ #include "clutter/clutter-types.h"
+ #include "clutter/clutter-macros.h"
+ 
++G_BEGIN_DECLS
+ #define CLUTTER_TYPE_COLOR_TRANSFORM (clutter_color_transform_get_type ())
+ CLUTTER_EXPORT
+ G_DECLARE_FINAL_TYPE (ClutterColorTransform, clutter_color_transform,
+-- 
+2.51.0

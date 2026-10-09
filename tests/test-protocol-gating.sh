@@ -10,12 +10,13 @@ DK="$(mktemp -d "$ROOT/build/tmp/protocol-gating.XXXXXX")"
 trap 'rm -rf -- "$DK"' EXIT
 mkdir -p "$DK/config/gnoblin"
 
-# init.lua disabling layer shell and the background-effect global.
+# init.lua disabling layer shell, the background-effect global and GTK decoration negotiation.
 CONF_FILE="$DK/config/gnoblin/init.lua"
 cat >"$CONF_FILE" <<'LUA'
 gnoblin.configure {
     protocols = {
         wlr_layer_shell = false,
+        kde_server_decoration = false,
         ext_background_effect_v1 = false,
     },
 }
@@ -38,7 +39,12 @@ if "$GNOBLIN_TEST_WL_GLOBALS" ext_background_effect_manager_v1 \
     echo 'FAIL: background-effect global remained visible when disabled' >&2
     exit 1
 fi
-echo 'PASS: Lua config gates layer-shell and background-effect globals'
+if "$GNOBLIN_TEST_WL_GLOBALS" org_kde_kwin_server_decoration_manager \
+    | grep -q org_kde_kwin_server_decoration_manager; then
+    echo 'FAIL: KDE server-decoration global remained visible when disabled' >&2
+    exit 1
+fi
+echo 'PASS: Lua config gates layer-shell, background-effect, and KDE decoration globals'
 SCRIPT
 )
 

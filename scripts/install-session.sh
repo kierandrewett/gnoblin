@@ -25,7 +25,13 @@ IDLE_BINARY="${GNOBLIN_IDLE_BINARY:?Build the session with ./build.sh}"
 GNOBLINCTL_BINARY="${GNOBLINCTL_BINARY:?Build the session with ./build.sh}"
 GNOBLIN_IDENTITY_FILE="${GNOBLIN_IDENTITY_FILE:?Build the session with ./build.sh}"
 GNOBLIN_VERSION_METADATA_FILE="${GNOBLIN_VERSION_METADATA_FILE:?Build the session with ./build.sh}"
-GNOBLIN_BINARY="${GNOBLIN_BINARY:?Build the session with ./build.sh}"
+
+# The monolithic compositor is installed by the pinned Mutter build before
+# this session payload runs.
+if [ ! -x "$INSTALL_PREFIX/bin/gnoblin" ]; then
+    echo "Missing $INSTALL_PREFIX/bin/gnoblin -- build the Mutter component first" >&2
+    exit 1
+fi
 
 # A prior development install may have included GNOME's extension manager,
 # captive-network portal helper, calendar server, or test tools.
@@ -84,13 +90,23 @@ fi
 install -Dm644 "$ROOT/src/tools/gnoblin-env.sh" "$INSTALL_PREFIX/libexec/gnoblin-env.sh"
 install -Dm644 /dev/null "$INSTALL_PREFIX/libexec/gnoblin-libdir"
 printf '%s\n' "$LIBDIR" >"$INSTALL_PREFIX/libexec/gnoblin-libdir"
-install -Dm755 "$GNOBLIN_BINARY" "$INSTALL_PREFIX/bin/gnoblin"
 if [ -L "$INSTALL_PREFIX/bin/gnoblin-session" ] &&
     [ "$(readlink "$INSTALL_PREFIX/bin/gnoblin-session")" = gnoblin ]; then
     rm "$INSTALL_PREFIX/bin/gnoblin-session"
 fi
+# Recovery and developer UI are compositor-resident, and the compositor itself
+# is now named gnoblin. Remove only obsolete executable names from earlier
+# source builds in this private prefix.
+rm -f "$INSTALL_PREFIX/bin/gnoblin-recovery" \
+    "$INSTALL_PREFIX/bin/gnoblin-console" \
+    "$INSTALL_PREFIX/bin/gnoblin-mutter" \
+    "$INSTALL_PREFIX/bin/mutter" \
+    "$INSTALL_PREFIX/lib/systemd/user/gnoblin-recovery.service" \
+    "$INSTALL_PREFIX/$LIBDIR/mutter-51/plugins/libgnoblin.so"
 install -Dm755 "$ROOT/src/tools/gnoblin-seed-config" "$INSTALL_PREFIX/libexec/gnoblin-seed-config"
 install -Dm644 "$ROOT/src/data/init.lua.example" "$INSTALL_PREFIX/share/gnoblin/init.lua.example"
+mkdir -p "$INSTALL_PREFIX/share/gnoblin/default-config"
+cp -R "$ROOT/src/data/default-config/." "$INSTALL_PREFIX/share/gnoblin/default-config/"
 install -Dm644 "$ROOT/src/data/gnoblin-portals.conf" \
     "$INSTALL_PREFIX/share/xdg-desktop-portal/gnoblin-portals.conf"
 install -Dm644 "$SRC/gnoblin.desktop" "$INSTALL_PREFIX/share/wayland-sessions/gnoblin.desktop"
@@ -117,7 +133,7 @@ if "$vector_cursors_enabled"; then
     cp -a "$theme_build/Adwaita-Hyprcursor/." "$INSTALL_PREFIX/share/icons/Adwaita-Hyprcursor/"
 fi
 
-# Standalone session services.
+# Standalone session services. Recovery and developer UI are compositor-resident.
 install -Dm644 "$SRC/systemd-user/gnoblin-session.target" \
     "$INSTALL_PREFIX/lib/systemd/user/gnoblin-session.target"
 install -Dm755 "$IDLE_BINARY" "$INSTALL_PREFIX/libexec/gnoblin-idle"

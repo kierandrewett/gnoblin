@@ -67,18 +67,14 @@ the [XDG portal configuration
 reference](https://flatpak.github.io/xdg-desktop-portal/docs/portals.conf.html)
 for the portal service's configuration interface.
 
-When `portals` is set, Gnoblin writes the generated override before starting
-session services. A configuration reload updates the override, but an already
-running portal service keeps its current routing until it starts again.
-Gnoblin does not restart it automatically because that can interrupt active
-portal requests, including screen sharing.
+When a config reload changes `portals`, Gnoblin updates the generated override
+and sends `SIGTERM` to the running `org.freedesktop.portal.Desktop` service.
+The session D-Bus activation setup starts it again on the next portal request,
+so it reads the new routes without requiring systemd.
 
-To apply a reload immediately, restart the portal service when no portal
-request is active:
-
-```sh
-systemctl --user restart xdg-desktop-portal.service
-```
+Requests active during the restart, including screen sharing, may be
+interrupted. If the portal service is not running, the next activation reads
+the new routes.
 
 If you omit `portals`, the default installed for the Gnoblin session applies.
 It uses Gnoblin's backend when installed and otherwise selects another

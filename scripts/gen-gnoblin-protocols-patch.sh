@@ -29,10 +29,10 @@ PROTOCOLS_FILE="$TMP/protocols.txt"
 
 # Overlay sources copied into src/wayland/ (aggregator first, then per protocol).
 SOURCES=(
-    gnoblin-config.c
-    gnoblin-config.h
     meta-gnoblin-protocols.c
     meta-gnoblin-protocols.h
+    meta-gnoblin-live-protocols.c
+    meta-gnoblin-live-protocols.h
     meta-wayland-idle-notify.c
     meta-wayland-idle-notify.h
     meta-wayland-foreign-toplevel-common.c
@@ -99,21 +99,10 @@ perl -0pi -e 's@(#include "wayland/meta-wayland-color-representation.h"\n)@$1#in
 perl -0pi -e 's@(  meta_wayland_xdg_shell_init \(compositor\);\n)@$1  meta_gnoblin_init_protocols (compositor);\n@' "$surface"
 
 git -C "$SM" add src/meson.build src/wayland/meta-wayland-surface.c
-git -C "$SM" commit -q -m "gnoblin-protocols: wire gnoblin's extra Wayland protocols into the build
-
-Add a single aggregated entry point, meta_gnoblin_init_protocols(), called
-once from meta_wayland_shell_init(), plus the meson sources and vendored
-protocol XML entries for gnoblin's wlr-/ext- protocols.
-
-The implementations, headers and protocol XML are gnoblin overlay files,
-copied into src/wayland/ at build time. New protocols are added by editing
-the aggregator overlay and scripts/gen-gnoblin-protocols-patch.sh, not this
-patch by hand. Insertions are anchored on pristine-stable context so the
-patch applies cleanly to the pinned tag independently of the layer-shell and
-screencopy wiring patches."
-
 mkdir -p "$OUT"
-"$ROOT/scripts/manage-patches.py" export mutter HEAD \
-    "$OUT/0001-gnoblin-protocols-wire-gnoblin-s-extra-Wayland-proto.patch" --replace --unified 1
+"$ROOT/scripts/manage-patches.py" export-worktree mutter \
+    "$OUT/0001-gnoblin-protocols-wire-gnoblin-s-extra-Wayland-proto.patch" \
+    --source-tree "$SM" --replace --unified 1 \
+    --subject "gnoblin-protocols: wire Gnoblin's extra Wayland protocols into the build"
 
 echo ">> regenerated $(ls "$OUT"/*.patch)"

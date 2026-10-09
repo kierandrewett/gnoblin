@@ -6,33 +6,11 @@ Subject: [PATCH] Wire ext-background-effect-v1 into surface transactions
 Build the standard background effect protocol and carry its state through
 synchronised subsurface transactions. Expose committed regions to the shell.
 ---
- src/wayland/meta-wayland-actor-surface.c     |   3 +-
  src/wayland/meta-wayland-background-effect.c | 361 +++++++++++++------
  src/wayland/meta-wayland-background-effect.h |  27 +-
  src/wayland/meta-wayland-surface.c           |   2 +
- 4 files changed, 268 insertions(+), 125 deletions(-)
+ 3 files changed, 265 insertions(+), 124 deletions(-)
 
-diff --git a/src/wayland/meta-wayland-actor-surface.c b/src/wayland/meta-wayland-actor-surface.c
-index d1e1d7709..cb201ab19 100644
---- a/src/wayland/meta-wayland-actor-surface.c
-+++ b/src/wayland/meta-wayland-actor-surface.c
-@@ -25,6 +25,7 @@
- #include "backends/meta-logical-monitor-private.h"
- #include "compositor/meta-surface-actor-wayland.h"
- #include "compositor/meta-window-actor-wayland.h"
-+#include "core/util-private.h"
- #include "wayland/meta-wayland-buffer.h"
- #include "wayland/meta-wayland-surface-private.h"
- #include "wayland/meta-window-wayland.h"
-@@ -253,7 +254,7 @@ meta_wayland_actor_surface_real_sync_actor_state (MetaWaylandActorSurface *actor
-         meta_surface_actor_set_opaque_region (surface_actor, NULL);
-       }
- 
--    if (surface->background_blur_region)
-+    if (!meta_is_gnoblin_session () && surface->background_blur_region)
-       {
-         g_autoptr (MtkRegion) background_blur_region = NULL;
- 
 diff --git a/src/wayland/meta-wayland-background-effect.c b/src/wayland/meta-wayland-background-effect.c
 index 41fb2a276..33e408edc 100644
 --- a/src/wayland/meta-wayland-background-effect.c

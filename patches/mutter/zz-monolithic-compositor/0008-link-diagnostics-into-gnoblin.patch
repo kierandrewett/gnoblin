@@ -1,0 +1,120 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] Link compositor diagnostics into Gnoblin with installed library paths
+
+---
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1299,10 +1299,25 @@
+   gnoblin_root / 'src/permissions',
+   gnoblin_root / 'src/native-control',
+ )
++gnoblin_diagnostic_sources = files(
++  gnoblin_root / 'src/compositor/gnoblin-plugin.c',
++  gnoblin_root / 'src/compositor/gnoblin-plugin-ui.cpp',
++  gnoblin_root / 'src/compositor/gnoblin-recovery-panel.cpp',
++  gnoblin_root / 'src/compositor/gnoblin-console-panel.cpp',
++  gnoblin_root / 'src/compositor/gnoblin-imgui-overlay.cpp',
++  gnoblin_root / 'subprojects/imgui/imgui.cpp',
++  gnoblin_root / 'subprojects/imgui/imgui_draw.cpp',
++  gnoblin_root / 'subprojects/imgui/imgui_tables.cpp',
++  gnoblin_root / 'subprojects/imgui/imgui_widgets.cpp',
++)
++gnoblin_diagnostic_includes = include_directories(
++  gnoblin_root / 'src/compositor',
++  gnoblin_root / 'subprojects/imgui',
++)
+ gnoblin = executable('gnoblin',
+   sources: [files('core/mutter.c'), gnoblin_default_config] +
+-    gnoblin_config_sources + gnoblin_session_sources,
+-  include_directories: [mutter_includes, gnoblin_include_dirs],
++    gnoblin_config_sources + gnoblin_session_sources + gnoblin_diagnostic_sources,
++  include_directories: [mutter_includes, gnoblin_include_dirs, gnoblin_diagnostic_includes],
+   c_args: mutter_c_args + [
+     '-DG_LOG_DOMAIN="gnoblin"',
+     '-DGNOBLIN_NATIVE_CONTROL_API_MAJOR=' + gnoblin_api_major,
+@@ -1310,7 +1325,7 @@
+     '-DGNOBLIN_DEFAULT_COMPOSITOR="' + gnoblin_prefix / 'bin/gnoblin' + '"',
+   ],
+   dependencies: [libmutter_dep, mutter_deps, gnoblin_lua_dep, gnoblin_json_dep],
+-  install_rpath: libdir,
++  install_rpath: '$ORIGIN/../' + get_option('libdir') + ':$ORIGIN/../' + get_option('libdir') / 'mutter-51',
+   install_dir: bindir,
+   install: true,
+ )
+diff --git a/src/core/mutter.c b/src/core/mutter.c
+--- a/src/core/mutter.c
++++ b/src/core/mutter.c
+@@ -66,7 +66,7 @@
+     }
+ }
+ 
+-static const char *plugin = "libdefault";
++GType meta_gnoblin_plugin_get_type (void);
+ static gint gnoblin_runtime_fd = -1;
+ static char **argv_ignored = NULL;
+ 
+@@ -76,12 +76,6 @@
+     print_version,
+     N_("Print version"),
+     NULL
+-  },
+-  {
+-    "mutter-plugin", 0, 0, G_OPTION_ARG_STRING,
+-    &plugin,
+-    N_("Mutter plugin to use"),
+-    "PLUGIN",
+   },
+   {
+     "gnoblin-runtime-fd", 0, G_OPTION_FLAG_HIDDEN, G_OPTION_ARG_INT,
+@@ -194,7 +188,7 @@
+ 
+   command_argv = g_steal_pointer (&argv_ignored);
+ 
+-  meta_context_set_plugin_name (context, plugin);
++  meta_context_set_plugin_gtype (context, meta_gnoblin_plugin_get_type ());
+ 
+   init_signal_handlers (context);
+ 
+diff --git a/src/compositor/plugins/meson.build b/src/compositor/plugins/meson.build
+--- a/src/compositor/plugins/meson.build
++++ b/src/compositor/plugins/meson.build
+@@ -18,37 +18,3 @@
+   install: true,
+ )
+ 
+-gnoblin_python = find_program('python3')
+-gnoblin_root = run_command(
+-  gnoblin_python, '-c', 'import os; print(os.environ["GNOBLIN_SOURCE_ROOT"])',
+-  check: true).stdout().strip()
+-gnoblin_imgui_root = run_command(
+-  gnoblin_python, '-c', 'import os; print(os.environ["GNOBLIN_IMGUI_SOURCE"])',
+-  check: true).stdout().strip()
+-gnoblin_imgui_sources = files(
+-  gnoblin_imgui_root / 'imgui.cpp',
+-  gnoblin_imgui_root / 'imgui_draw.cpp',
+-  gnoblin_imgui_root / 'imgui_tables.cpp',
+-  gnoblin_imgui_root / 'imgui_widgets.cpp',
+-  'gnoblin-plugin-ui.cpp',
+-  'gnoblin-recovery-panel.cpp',
+-  'gnoblin-console-panel.cpp',
+-  'gnoblin-imgui-overlay.cpp',
+-)
+-gnoblin_imgui_includes = include_directories(
+-  gnoblin_imgui_root,
+-  gnoblin_root / 'src/native-control',
+-)
+-
+-gnoblin_plugin = shared_module('gnoblin',
+-  sources: ['gnoblin-plugin.c', gnoblin_imgui_sources],
+-  include_directories: [mutter_includes, gnoblin_imgui_includes],
+-  c_args: default_plugin_c_args,
+-  dependencies: [
+-    glib_dep,
+-    libmutter_clutter_dep,
+-  ],
+-  install_dir: pkglibdir / 'plugins',
+-  install_rpath: pkglibdir,
+-  install: true,
+-)

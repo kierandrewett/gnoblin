@@ -165,8 +165,8 @@ index 1d247b568..ba660b0e7 100644
 +          const char *nick = g_variant_get_string (value, NULL);
 +          const char * const *nicks = NULL;
 +          static const char * const accel[] = { "default", "flat", "adaptive", "custom", NULL };
-+          static const char * const handed[] = { "right", "left", "mouse", NULL };
-+          static const char * const tap_map[] = { "default", "lrm", "lmr", NULL };
++          static const char * const handed[] = { "right", "left", "follow-mouse", NULL };
++          static const char * const tap_map[] = { "default", "left-right-middle", "left-middle-right", NULL };
 +          static const char * const click[] = { "default", "none", "areas", "fingers", NULL };
 +          static const char * const mapping[] = { "absolute", "relative", NULL };
 +          static const char * const stylus[] = {

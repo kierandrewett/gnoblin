@@ -2,25 +2,14 @@
   "formatVersion": 1,
   "packages": {
     "gnoblin": {
-      "requires": ["cursor-theme", "dbus-tools", "dconf", "glib", "json-glib", "lua", "systemd", "wireplumber"],
-      "requiresSameMajor": ["gnoblin-mutter"],
+      "requires": ["cursor-theme", "dbus-tools", "dconf", "gcr", "glib", "gsettings-desktop-schemas", "json-glib", "libinput", "lua", "pipewire", "polkit", "systemd-libs", "wayland", "wireplumber"],
+      "replaces": ["gnoblin-mutter", "gnoblin-mutter-devel"],
       "version": "0.1.10"
     },
     "gnoblin-gnome-integration": {
       "requires": ["gvfs", "gnome-keyring", "xdg-user-dirs"],
       "requiresExact": ["gnoblin"],
       "version": "0.1.10"
-    },
-    "gnoblin-mutter": {
-      "requires": ["glib", "gsettings-desktop-schemas", "wayland", "libinput", "pipewire"],
-      "source": "mutter",
-      "version": "51.0"
-    },
-    "gnoblin-mutter-devel": {
-      "requires": ["wayland-protocols"],
-      "requiresSameMajor": ["gnoblin-mutter"],
-      "source": "mutter",
-      "version": "51.0"
     },
     "gnoblin-portal": {
       "requires": ["gtk4", "xdg-desktop-portal"],
@@ -29,13 +18,12 @@
     }
   },
   "release": {
-    "archPkgRelease": 29,
+    "archPkgRelease": 30,
     "gnoblinVersion": "0.1.10",
     "gnomeMajor": 51,
     "gnomeVersion": "51.0",
-    "gnoblinRpmRelease": 21,
+    "gnoblinRpmRelease": 22,
     "mutterApi": "51",
-    "mutterRpmRelease": "44.gnoblin",
     "rpmEpoch": 1
   },
   "requirements": {
@@ -68,7 +56,7 @@
       }
     },
     "gtk4": {
-      "minVersion": "4.22.0",
+      "minVersion": "4.20.0",
       "names": {
         "arch": "gtk4",
         "rpm": "gtk4"
@@ -102,11 +90,18 @@
         "rpm": "json-glib"
       }
     },
-    "systemd": {
+    "systemd-libs": {
       "minVersion": null,
       "names": {
         "arch": "systemd-libs",
-        "rpm": "systemd"
+        "rpm": "systemd-libs"
+      }
+    },
+    "gcr": {
+      "minVersion": null,
+      "names": {
+        "arch": "gcr-4",
+        "rpm": "gcr-libs"
       }
     },
     "libinput": {
@@ -128,6 +123,13 @@
       "names": {
         "arch": "pipewire",
         "rpm": "pipewire"
+      }
+    },
+    "polkit": {
+      "minVersion": null,
+      "names": {
+        "arch": "polkit",
+        "rpm": "polkit"
       }
     },
     "wayland": {
@@ -152,7 +154,7 @@
       }
     },
     "xdg-desktop-portal": {
-      "minVersion": "1.21.1",
+      "minVersion": "1.20.0",
       "names": {
         "arch": "xdg-desktop-portal",
         "rpm": "xdg-desktop-portal"

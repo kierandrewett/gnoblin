@@ -11,6 +11,8 @@
 
 #include "config.h"
 
+#include <gio/gio.h>
+
 #include "backends/meta-backend-private.h"
 #include "compositor/meta-surface-actor-wayland.h"
 #include "meta/compositor.h"
@@ -821,25 +823,41 @@ void meta_wayland_session_lock_surface_destroyed(gpointer owner,
      * opaque cover. This is the specified fail-closed fallback. */
 }
 
-void meta_wayland_init_session_lock(MetaWaylandCompositor* compositor) {
-    MetaWaylandSessionLockController* controller;
+gboolean meta_wayland_session_lock_configure_protocol(MetaWaylandCompositor* compositor,
+                                                       gboolean enabled,
+                                                       GError** error) {
+    g_return_val_if_fail(compositor != NULL, FALSE);
+    MetaWaylandSessionLockController* controller = get_controller(compositor);
 
-    g_return_if_fail(compositor != NULL);
-
-    /* This standard global is a Gnoblin-session capability, never a replacement
-     * policy or launcher. The existing predicate defaults it on only for
-     * XDG_CURRENT_DESKTOP=Gnoblin, preserving GNOME ScreenShield's normal
-     * session behaviour. A global cannot safely be retracted at config reload. */
-    if (!gnoblin_native_control_protocol_enabled("ext-session-lock"))
-        return;
-
-    controller = get_controller(compositor);
-    if (controller->global)
-        return;
+    if (enabled == (controller->global != NULL))
+        return TRUE;
+    if (!enabled) {
+        if (controller->lock) {
+            g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_BUSY,
+                                "cannot disable ext-session-lock while a lock is active");
+            return FALSE;
+        }
+        wl_global_remove(controller->global);
+        wl_global_destroy(controller->global);
+        controller->global = NULL;
+        return TRUE;
+    }
 
     controller->global =
         wl_global_create(compositor->wayland_display, &ext_session_lock_manager_v1_interface, 1,
                          compositor, session_lock_manager_bind);
-    if (!controller->global)
-        g_warning("Failed to create Gnoblin ext-session-lock-v1 manager global");
+    if (!controller->global) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,
+                            "could not enable ext-session-lock");
+        return FALSE;
+    }
+    return TRUE;
+}
+
+void meta_wayland_init_session_lock(MetaWaylandCompositor* compositor) {
+    g_autoptr(GError) error = NULL;
+    g_return_if_fail(compositor != NULL);
+    if (!meta_wayland_session_lock_configure_protocol(
+            compositor, gnoblin_native_control_protocol_enabled("ext-session-lock"), &error))
+        g_warning("Could not configure Gnoblin ext-session-lock-v1: %s", error->message);
 }

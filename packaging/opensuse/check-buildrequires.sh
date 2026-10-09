@@ -9,29 +9,28 @@ package=""
 for arg in "$@"; do
     case "$arg" in
         --install) install=1 ;;
-        mutter | gnoblin-portal | gnoblin)
+        gnoblin-portal | gnoblin)
             if [[ -n "$package" ]]; then
-                echo "Pass exactly one package: mutter, gnoblin-portal, or gnoblin" >&2
+                echo "Pass exactly one package: gnoblin-portal or gnoblin" >&2
                 exit 2
             fi
             package="$arg"
             ;;
         *)
-            echo "Usage: $0 <mutter|gnoblin-portal|gnoblin> [--install]" >&2
+            echo "Usage: $0 <gnoblin-portal|gnoblin> [--install]" >&2
             exit 2
             ;;
     esac
 done
 
 if [[ -z "$package" ]]; then
-    echo "Usage: $0 <mutter|gnoblin-portal|gnoblin> [--install]" >&2
+    echo "Usage: $0 <gnoblin-portal|gnoblin> [--install]" >&2
     exit 2
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
 case "$package" in
-    mutter) spec="$ROOT/packaging/opensuse/mutter.spec" ;;
     gnoblin-portal) spec="$ROOT/packaging/opensuse/gnoblin-portal.spec" ;;
     gnoblin) spec="$ROOT/packaging/opensuse/gnoblin.spec" ;;
 esac

@@ -1,0 +1,374 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] lua input policy event routing
+
+---
+diff --git a/clutter/clutter/clutter-main.c b/clutter/clutter/clutter-main.c
+index a4ad2f47c9..7e0e544f95 100644
+--- a/clutter/clutter/clutter-main.c
++++ b/clutter/clutter/clutter-main.c
+@@ -154,6 +154,9 @@ clutter_stage_handle_event (ClutterStage *stage,
+   context = clutter_actor_get_context (CLUTTER_ACTOR (stage));
+   event_type = clutter_event_type (event);
+ 
++  if (clutter_stage_filter_gnoblin_input_policy (stage, event))
++    return;
++
+   switch (event_type)
+     {
+     case CLUTTER_ENTER:
+@@ -203,10 +206,11 @@ clutter_stage_handle_event (ClutterStage *stage,
+         }
+     }
+   else
+-    {
+-      _clutter_stage_queue_event (stage, event, TRUE);
+-    }
++    _clutter_stage_queue_event (stage, event, TRUE);
+ 
++  /* End-of-sequence events must flush normal delivery before their device
++   * sprite is retired. A Lua-policy event returns above and reaches this same
++   * cleanup only when replayed, after its decision. */
+   if (event_type == CLUTTER_TOUCH_END ||
+       event_type == CLUTTER_TOUCH_CANCEL ||
+       event_type == CLUTTER_PROXIMITY_OUT ||
+diff --git a/clutter/clutter/clutter-stage-private.h b/clutter/clutter/clutter-stage-private.h
+index 81f7e0843c..88db4a0c94 100644
+--- a/clutter/clutter/clutter-stage-private.h
++++ b/clutter/clutter/clutter-stage-private.h
+@@ -152,6 +152,30 @@ GPtrArray * clutter_stage_get_active_gestures_array (ClutterStage *self);
+ void clutter_stage_update_device_for_event (ClutterStage *stage,
+                                             ClutterEvent *event);
+ 
++typedef gboolean (* ClutterStageGnoblinInputPolicyFunc) (ClutterStage       *stage,
++                                                         const ClutterEvent *event,
++                                                         gpointer            user_data);
++CLUTTER_EXPORT
++void clutter_stage_set_gnoblin_input_policy_filter (ClutterStage                         *stage,
++                                                     ClutterStageGnoblinInputPolicyFunc    callback,
++                                                     gpointer                              user_data,
++                                                     GDestroyNotify                        destroy);
++CLUTTER_EXPORT
++gboolean clutter_stage_filter_gnoblin_input_policy (ClutterStage       *stage,
++                                                     const ClutterEvent *event);
++CLUTTER_EXPORT
++void clutter_stage_replay_gnoblin_input_policy_event (ClutterStage       *stage,
++                                                       ClutterEvent       *event,
++                                                       gboolean            consume);
++CLUTTER_EXPORT
++gboolean clutter_stage_gnoblin_input_policy_replay_is_active
++                                                      (ClutterStage       *stage,
++                                                       const ClutterEvent *event);
++CLUTTER_EXPORT
++gboolean clutter_stage_gnoblin_input_policy_replay_is_consumed
++                                                      (ClutterStage       *stage,
++                                                       const ClutterEvent *event);
++
+ void clutter_stage_update_devices_in_view (ClutterStage     *stage,
+                                            ClutterStageView *view);
+ 
+diff --git a/clutter/clutter/clutter-stage.c b/clutter/clutter/clutter-stage.c
+index df926b11a2..f79f906bd8 100644
+--- a/clutter/clutter/clutter-stage.c
++++ b/clutter/clutter/clutter-stage.c
+@@ -110,6 +110,13 @@ typedef struct _ClutterStagePrivate
+ 
+   ClutterActor *chrome_actor;
+ 
++  ClutterStageGnoblinInputPolicyFunc gnoblin_input_policy_callback;
++  gpointer gnoblin_input_policy_data;
++  GDestroyNotify gnoblin_input_policy_destroy;
++  gboolean replaying_gnoblin_input_policy_event;
++  const ClutterEvent *gnoblin_input_policy_replay_event;
++  gboolean gnoblin_input_policy_replay_consume;
++
+   guint actor_needs_immediate_relayout : 1;
+   gboolean is_active;
+ } ClutterStagePrivate;
+@@ -3583,6 +3590,75 @@ clutter_stage_update_device_for_event (ClutterStage *stage,
+     }
+ }
+ 
++void
++clutter_stage_set_gnoblin_input_policy_filter (ClutterStage                      *stage,
++                                                ClutterStageGnoblinInputPolicyFunc callback,
++                                                gpointer                           user_data,
++                                                GDestroyNotify                     destroy)
++{
++  ClutterStagePrivate *priv = clutter_stage_get_instance_private (stage);
++
++  if (priv->gnoblin_input_policy_destroy)
++    priv->gnoblin_input_policy_destroy (priv->gnoblin_input_policy_data);
++  priv->gnoblin_input_policy_callback = callback;
++  priv->gnoblin_input_policy_data = user_data;
++  priv->gnoblin_input_policy_destroy = destroy;
++}
++
++gboolean
++clutter_stage_filter_gnoblin_input_policy (ClutterStage       *stage,
++                                            const ClutterEvent *event)
++{
++  ClutterStagePrivate *priv = clutter_stage_get_instance_private (stage);
++
++  return !priv->replaying_gnoblin_input_policy_event &&
++         priv->gnoblin_input_policy_callback &&
++         priv->gnoblin_input_policy_callback (stage, event,
++                                              priv->gnoblin_input_policy_data);
++}
++
++void
++clutter_stage_replay_gnoblin_input_policy_event (ClutterStage *stage,
++                                                  ClutterEvent *event,
++                                                  gboolean      consume)
++{
++  ClutterStagePrivate *priv = clutter_stage_get_instance_private (stage);
++
++  g_return_if_fail (priv->gnoblin_input_policy_callback != NULL);
++  gboolean previous_replaying = priv->replaying_gnoblin_input_policy_event;
++  const ClutterEvent *previous_event = priv->gnoblin_input_policy_replay_event;
++  gboolean previous_consume = priv->gnoblin_input_policy_replay_consume;
++  priv->replaying_gnoblin_input_policy_event = TRUE;
++  priv->gnoblin_input_policy_replay_event = event;
++  priv->gnoblin_input_policy_replay_consume = consume;
++  clutter_stage_handle_event (stage, event);
++  priv->gnoblin_input_policy_replay_event = previous_event;
++  priv->gnoblin_input_policy_replay_consume = previous_consume;
++  priv->replaying_gnoblin_input_policy_event = previous_replaying;
++}
++
++gboolean
++clutter_stage_gnoblin_input_policy_replay_is_active (ClutterStage       *stage,
++                                                      const ClutterEvent *event)
++{
++  ClutterStagePrivate *priv = clutter_stage_get_instance_private (stage);
++
++  return priv->replaying_gnoblin_input_policy_event &&
++         priv->gnoblin_input_policy_replay_event == event;
++}
++
++gboolean
++clutter_stage_gnoblin_input_policy_replay_is_consumed
++                                                     (ClutterStage       *stage,
++                                                      const ClutterEvent *event)
++{
++  ClutterStagePrivate *priv = clutter_stage_get_instance_private (stage);
++
++  return priv->replaying_gnoblin_input_policy_event &&
++         priv->gnoblin_input_policy_replay_event == event &&
++         priv->gnoblin_input_policy_replay_consume;
++}
++
+ static gboolean
+ update_devices_in_view_foreach_cb (ClutterStage  *stage,
+                                    ClutterSprite *sprite,
+diff --git a/src/core/display-private.h b/src/core/display-private.h
+index a5689c9cb2..af78bea865 100644
+--- a/src/core/display-private.h
++++ b/src/core/display-private.h
+@@ -325,6 +325,7 @@ gboolean meta_display_process_captured_input (MetaDisplay        *display,
+                                               const ClutterEvent *event);
+ 
+ gboolean meta_display_can_start_native_key_capture (MetaDisplay *display);
++gboolean meta_display_gnoblin_input_policy_allowed (MetaDisplay *display);
+ void meta_display_cancel_native_key_capture (MetaDisplay *display);
+ 
+ void meta_display_cancel_input_capture (MetaDisplay *display);
+diff --git a/src/core/display.c b/src/core/display.c
+index 8fa8bee623..de19d57b0c 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -656,6 +656,23 @@ meta_display_can_start_native_key_capture (MetaDisplay *display)
+          !stage_is_grabbed;
+ }
+ 
++gboolean
++meta_display_gnoblin_input_policy_allowed (MetaDisplay *display)
++{
++  MetaDisplayPrivate *priv = meta_display_get_instance_private (display);
++  MetaBackend *backend = meta_context_get_backend (priv->context);
++  ClutterStage *stage = CLUTTER_STAGE (meta_backend_get_stage (backend));
++  gboolean stage_is_grabbed = TRUE;
++
++  if (stage)
++    g_object_get (stage, "is-grabbed", &stage_is_grabbed, NULL);
++
++  return !priv->enable_input_capture &&
++         !display->native_key_capture_active &&
++         stage != NULL &&
++         !stage_is_grabbed;
++}
++
+ void
+ meta_display_cancel_input_capture (MetaDisplay *display)
+ {
+diff --git a/src/core/events.c b/src/core/events.c
+index b2cfc5fa69..1a757529ad 100644
+--- a/src/core/events.c
++++ b/src/core/events.c
+@@ -24,6 +24,9 @@
+ 
+ #include "core/events.h"
+ 
++#include "clutter/clutter-stage-private.h"
++
++
+ #include "backends/meta-a11y-manager.h"
+ #include "backends/meta-cursor-tracker-private.h"
+ #include "backends/meta-dnd-private.h"
+@@ -147,11 +150,37 @@ meta_display_handle_event (MetaDisplay        *display,
+ 
+   event_type = clutter_event_type (event);
+ 
++  /* A queued normal-session event must never be replayed into a newly
++   * active capture, key-capture, or stage grab. Those owners only see input
++   * that arrived while they were active. */
++  if (clutter_stage_gnoblin_input_policy_replay_is_active (stage_from_display (display), event) &&
++      !meta_display_gnoblin_input_policy_allowed (display))
++    {
++      /* The replay must not reach an owner that became active after the
++       * event was queued. Still update seat state so a withheld key release
++       * cannot leave a modifier or button physically pressed. */
++#ifdef HAVE_WAYLAND
++      if (wayland_compositor)
++        meta_wayland_compositor_update (wayland_compositor, event);
++#endif
++      return CLUTTER_EVENT_STOP;
++    }
++
+ #ifdef HAVE_WAYLAND
+   /* A stage grab is not early enough for a session lock: by then input has
+    * already reached captured-input hooks, IM, accessibility, gestures, and
+    * global keybindings.  The lock filter is an embargo and must remain ahead
+    * of every normal-session consumer below. */
++  if (wayland_compositor &&
++      clutter_stage_gnoblin_input_policy_replay_is_active (stage_from_display (display), event) &&
++      meta_wayland_session_lock_is_active (wayland_compositor))
++    {
++      /* Preserve physical key/button state without routing an old normal
++       * session event into the lock surface that took ownership meanwhile. */
++      meta_wayland_compositor_update (wayland_compositor, event);
++      return CLUTTER_EVENT_STOP;
++    }
++
+   if (wayland_compositor &&
+       meta_wayland_session_lock_filter_event (wayland_compositor, event))
+     return CLUTTER_EVENT_STOP;
+@@ -170,10 +199,28 @@ meta_display_handle_event (MetaDisplay        *display,
+ #endif
+       )
+     {
++#ifdef HAVE_WAYLAND
++      /* Capture owns delivery, not physical state. Keep the seat's pressed
++       * keys and modifiers current so releasing a modifier during capture
++       * cannot affect the client that receives the next pointer event. */
++      if (wayland_compositor)
++        meta_wayland_compositor_update (wayland_compositor, event);
++#endif
+       display->native_key_capture_handler (event, display->native_key_capture_data);
+       return CLUTTER_EVENT_STOP;
+     }
+ 
++  /* A consumed replay follows the lock and portal-capture embargoes, then
++   * advances only the physical Wayland seat state. */
++  if (clutter_stage_gnoblin_input_policy_replay_is_consumed (stage_from_display (display), event))
++    {
++#ifdef HAVE_WAYLAND
++      if (wayland_compositor)
++        meta_wayland_compositor_update (wayland_compositor, event);
++#endif
++      return CLUTTER_EVENT_STOP;
++    }
++
+   if (IS_KEY_EVENT (event_type))
+     {
+       gboolean should_inhibit_a11y = FALSE;
+@@ -306,16 +353,6 @@ meta_display_handle_event (MetaDisplay        *display,
+         return CLUTTER_EVENT_PROPAGATE;
+     }
+ 
+-  if (event_type == CLUTTER_SCROLL &&
+-      meta_prefs_get_mouse_button_mods () > 0)
+-    {
+-      ClutterModifierType grab_mods;
+-
+-      grab_mods = meta_display_get_compositor_modifiers (display);
+-      if ((clutter_event_get_state (event) & grab_mods) == grab_mods)
+-        return CLUTTER_EVENT_PROPAGATE;
+-    }
+-
+   if (display->current_pad_osd)
+     return CLUTTER_EVENT_PROPAGATE;
+ 
+@@ -364,13 +401,43 @@ event_callback (const ClutterEvent *event,
+   return retval;
+ }
+ 
++static gboolean
++gnoblin_input_policy_stage_filter (ClutterStage       *stage,
++                                   const ClutterEvent *event,
++                                   gpointer            user_data)
++{
++  MetaDisplay *display = user_data;
++
++  (void) stage;
++  return gnoblin_native_control_filter_input_event (display, event, NULL);
++}
++
++gboolean
++meta_display_resume_input_event (MetaDisplay        *display,
++                                 const ClutterEvent *event,
++                                 ClutterActor       *event_actor,
++                                 gboolean            consume)
++{
++  g_return_val_if_fail (display != NULL, CLUTTER_EVENT_PROPAGATE);
++  g_return_val_if_fail (event != NULL, CLUTTER_EVENT_PROPAGATE);
++  (void) event_actor;
++  clutter_stage_replay_gnoblin_input_policy_event (stage_from_display (display),
++                                                    (ClutterEvent *) event, consume);
++  return CLUTTER_EVENT_STOP;
++}
++
+ void
+ meta_display_init_events (MetaDisplay *display)
+ {
++  ClutterStage *stage = stage_from_display (display);
++
+   display->clutter_event_filter = clutter_event_add_filter (NULL,
+                                                             event_callback,
+                                                             NULL,
+                                                             display);
++  clutter_stage_set_gnoblin_input_policy_filter (stage,
++                                                  gnoblin_input_policy_stage_filter,
++                                                  display, NULL);
+ }
+ 
+ void
+@@ -378,6 +445,8 @@ meta_display_free_events (MetaDisplay *display)
+ {
+   meta_display_unregister_native_key_capture_handler (
+     display, display->native_key_capture_data);
++  clutter_stage_set_gnoblin_input_policy_filter (stage_from_display (display),
++                                                  NULL, NULL, NULL);
+   clutter_event_remove_filter (display->clutter_event_filter);
+   display->clutter_event_filter = 0;
+ }
+diff --git a/src/core/events.h b/src/core/events.h
+index c4efb581c3..1755285599 100644
+--- a/src/core/events.h
++++ b/src/core/events.h
+@@ -35,6 +35,14 @@
+ void meta_display_init_events (MetaDisplay *display);
+ void meta_display_free_events (MetaDisplay *display);
+ 
++/* Continue one event retained by Gnoblin's ordered input policy.  `consume`
++ * keeps physical Wayland seat state current while withholding the event from
++ * normal session consumers. */
++gboolean meta_display_resume_input_event (MetaDisplay        *display,
++                                          const ClutterEvent *event,
++                                          ClutterActor       *event_actor,
++                                          gboolean            consume);
++
+ /* Native shortcut capture runs before normal-session keyboard consumers.
+  * While active, every key press and release is delivered to the registered
+  * handler and consumed. Other event types continue through normal handling. */
+-- 

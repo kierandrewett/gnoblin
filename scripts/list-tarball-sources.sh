@@ -26,6 +26,77 @@ case "$PROJECT" in
         ;;
 esac
 
+compatibility_patch_for() {
+    local dependency="${1:?dependency required}"
+
+    case "$PROJECT:$dependency" in
+        xdg-desktop-portal-gnome:libgxdp)
+            printf '%s\n' "$ROOT/patches/portal-dependencies/libgxdp/0001-gtk-4.20-compat.patch"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+expected_compatibility_diff() {
+    local dependency_root="${1:?dependency root required}"
+    local patch="${2:?patch required}"
+    local temporary_index
+
+    temporary_index="$(mktemp)"
+    rm -f -- "$temporary_index"
+    GIT_INDEX_FILE="$temporary_index" git -C "$dependency_root" read-tree HEAD
+    GIT_INDEX_FILE="$temporary_index" git -C "$dependency_root" apply --cached "$patch"
+    GIT_INDEX_FILE="$temporary_index" git -C "$dependency_root" diff --cached --binary HEAD
+    rm -f -- "$temporary_index"
+}
+
+compatibility_patch_is_exact() {
+    local dependency_root="${1:?dependency root required}"
+    local patch="${2:?patch required}"
+    local expected actual
+
+    git -C "$dependency_root" diff --cached --quiet || return 1
+    expected="$(expected_compatibility_diff "$dependency_root" "$patch")"
+    actual="$(git -C "$dependency_root" diff --binary HEAD)"
+    [ "$actual" = "$expected" ]
+}
+
+apply_compatibility_patch() {
+    local dependency="${1:?dependency required}"
+    local dependency_root="${2:?dependency root required}"
+    local patch
+
+    patch="$(compatibility_patch_for "$dependency" || true)"
+    [ -n "$patch" ] || return 0
+    [ -f "$patch" ] || {
+        echo "missing compatibility patch: $patch" >&2
+        exit 1
+    }
+
+    if git -C "$dependency_root" diff --quiet &&
+        git -C "$dependency_root" diff --cached --quiet; then
+        git -C "$dependency_root" apply "$patch"
+    elif ! compatibility_patch_is_exact "$dependency_root" "$patch"; then
+        echo "required subproject contains unknown local changes: $dependency" >&2
+        exit 1
+    fi
+}
+
+verify_compatibility_patch() {
+    local dependency="${1:?dependency required}"
+    local dependency_root="${2:?dependency root required}"
+    local patch
+
+    patch="$(compatibility_patch_for "$dependency" || true)"
+    [ -n "$patch" ] || return 0
+    if ! compatibility_patch_is_exact "$dependency_root" "$patch"; then
+        echo "required subproject compatibility patch was not applied exactly: $dependency" >&2
+        exit 1
+    fi
+}
+
 read_wrap_git_value() {
     local wrap="${1:?wrap required}"
     local wanted="${2:?key required}"
@@ -83,14 +154,13 @@ list_required_subproject() {
     fi
     repository_root="$(git -C "$dependency_root" rev-parse --show-toplevel 2>/dev/null || true)"
     if [ "$PREPARE" = true ] && [ "$repository_root" = "$dependency_root" ]; then
-        if ! git -C "$dependency_root" diff --quiet ||
-            ! git -C "$dependency_root" diff --cached --quiet; then
-            echo "required subproject contains tracked changes: $dependency" >&2
-            exit 1
-        fi
-
         actual_revision="$(git -C "$dependency_root" rev-parse HEAD)"
         if [ "$actual_revision" != "$revision" ]; then
+            if ! git -C "$dependency_root" diff --quiet ||
+                ! git -C "$dependency_root" diff --cached --quiet; then
+                echo "required subproject contains tracked changes: $dependency" >&2
+                exit 1
+            fi
             meson subprojects update --reset \
                 --sourcedir "$SOURCE_ROOT" "$dependency" >&2
         fi
@@ -111,9 +181,18 @@ list_required_subproject() {
         exit 1
     fi
 
+    if [ "$PREPARE" = true ]; then
+        apply_compatibility_patch "$dependency" "$dependency_root"
+    fi
+    verify_compatibility_patch "$dependency" "$dependency_root"
+
     if ! git -C "$dependency_root" diff --quiet || ! git -C "$dependency_root" diff --cached --quiet; then
-        echo "required subproject contains tracked changes: $dependency" >&2
-        exit 1
+        patch="$(compatibility_patch_for "$dependency" || true)"
+        if [ -z "$patch" ]; then
+            echo "required subproject contains tracked changes: $dependency" >&2
+            exit 1
+        fi
+        # verify_compatibility_patch above has proved the exact known diff.
     fi
 
     while IFS= read -r -d '' path; do

@@ -4,11 +4,13 @@
 from pathlib import Path
 import re
 import unittest
+import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from _sources import control_header, control_source  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROL = ROOT / "src/native-control/gnoblin-native-control.c"
-HEADER = ROOT / "src/native-control/gnoblin-native-control.h"
 LUA = ROOT / "src/config/gnoblin-lua.c"
 SESSION = ROOT / "src/session/gnoblin-runtime.c"
 CLI = ROOT / "src/tools/gnoblinctl.c"
@@ -30,7 +32,7 @@ def api_minor(header: str) -> int:
 
 class NativeSocketTextSnapTests(unittest.TestCase):
     def test_configured_shortcut_input_capture_uses_dynamic_bare_super_path(self):
-        source = CONTROL.read_text()
+        source = control_source()
         capture_start = source.index("static gboolean apply_configured_capture_shortcut(")
         capture_start = source.index("static gboolean apply_configured_capture_shortcut(", capture_start + 1)
         apply_capture = source[
@@ -83,8 +85,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('GNOBLIN_NATIVE_CONTROL_API_MINOR "${GNOBLIN_NATIVE_CONTROL_API_MINOR_LINE}"', cmake)
 
     def test_orientation_lock_read_write_and_event_use_api_166(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         methods = function_body(
             source,
             "static gboolean client_connected(",
@@ -106,14 +108,14 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"system"', source)
 
     def test_orientation_lock_snapshot_name_matches_runtime_worker(self):
-        source = CONTROL.read_text()
+        source = control_source()
         session = SESSION.read_text()
         self.assertIn('g_str_equal(name, "input-orientation-lock")', session)
         self.assertEqual(source.count('native_publish_runtime_snapshot(control, "input-orientation-lock"'), 2)
         self.assertNotIn('native_publish_runtime_snapshot(control, "orientation-lock"', source)
 
     def test_handshake_advertises_current_runtime_methods(self):
-        source = CONTROL.read_text()
+        source = control_source()
         connected = function_body(
             source,
             "static gboolean client_connected(",
@@ -137,7 +139,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
                 self.assertIn(f'"{method}"', methods)
 
     def test_window_match_uses_lua_query_and_is_advertised(self):
-        source = CONTROL.read_text()
+        source = control_source()
         connected = function_body(
             source,
             "static gboolean client_connected(",
@@ -156,7 +158,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("client->api_minor >= 59", dispatcher)
 
     def test_window_socket_events_keep_legacy_field_aliases(self):
-        source = CONTROL.read_text()
+        source = control_source()
         aliases = function_body(
             source,
             "static void native_window_event_add_compat_aliases(",
@@ -176,8 +178,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("native_window_event_add_compat_aliases(socket_object)", publish)
 
     def test_appearance_changes_reach_lua_and_socket_at_api_134(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         startup = function_body(
             source,
@@ -224,8 +226,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
     def test_appearance_color_scheme_read_uses_shared_lua_snapshot_at_api_170(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         lua_source = LUA.read_text()
         session = SESSION.read_text()
         cli = CLI.read_text()
@@ -272,8 +274,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(method_name, "appearance.color_scheme")', cli)
 
     def test_layer_lifecycle_events_are_advertised_and_require_api_171(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         events = function_body(
             source,
             "static const char* native_socket_events[] = {",
@@ -300,8 +302,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("layer lifecycle events require API version 1.71", subscription)
 
     def test_runtime_status_events_follow_the_authoritative_status_tuple(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         events = function_body(
             source,
             "static const char* native_socket_events[] = {",
@@ -346,8 +348,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("native_runtime_publish_status(control)", runtime_handler)
 
     def test_session_lifecycle_api_is_negotiated_cached_and_versioned(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         events = function_body(
             source,
             "static const char* native_socket_events[] = {",
@@ -392,8 +394,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"session_revision"', source)
 
     def test_tablet_pad_help_event_is_available_to_lua_and_socket_clients(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         patch = PAD_HELP_PATCH.read_text()
         events = function_body(
             source,
@@ -431,7 +433,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("-  if (!layout_path || !settings)", patch)
 
     def test_layer_event_baseline_is_seeded_before_startup_returns(self):
-        source = CONTROL.read_text()
+        source = control_source()
         startup = function_body(
             source,
             "GnoblinNativeControl* gnoblin_native_control_start(",
@@ -453,8 +455,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("if (control->layer_state_initialized)", publisher)
 
     def test_capture_capabilities_and_camera_privacy_reach_lua(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         callback = function_body(
             source,
             "static void privacy_pipewire_state_changed(",
@@ -492,7 +494,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('native_publish_request_event(control, "gnoblin.capability.changed"', callback)
 
     def test_ping_is_a_transport_operation_not_an_api_method(self):
-        source = CONTROL.read_text()
+        source = control_source()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         ping = function_body(
             dispatcher,
@@ -505,7 +507,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("shell.ping", dispatcher)
 
     def test_stopping_control_rejects_new_requests_but_keeps_ping_available(self):
-        source = CONTROL.read_text()
+        source = control_source()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         ping = dispatcher.index('if (g_str_equal(op, "ping"))')
         stopping = dispatcher.index("if (client->control && client->control->stopping)")
@@ -516,7 +518,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"Gnoblin compositor control is stopping"', dispatcher[stopping:version_handling])
 
     def test_runtime_abort_and_stop_drain_deferred_requests(self):
-        source = CONTROL.read_text()
+        source = control_source()
         abort = function_body(source, "static void native_runtime_abort(", "static gboolean native_runtime_send(")
         drain_start = source.rindex("static void native_runtime_fail_pending_requests(")
         drain_end = source.index("static gboolean native_runtime_send_worker_suspended(", drain_start)
@@ -564,8 +566,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("g_clear_pointer(&control->pending_runtime_requests, g_hash_table_unref)", stop)
 
     def test_api_128_methods_are_advertised_and_routed_directly(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         direct = dispatcher.split('if (g_str_equal(method, "input.text_target") ||', 1)[1]
         direct = direct.split('if (g_str_equal(method, "window.snap.offer"))', 1)[0]
@@ -583,13 +585,13 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("queue_runtime_api_request", direct)
 
     def test_status_method_is_gated_at_api_129(self):
-        source = CONTROL.read_text()
+        source = control_source()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         self.assertIn('g_str_equal(method, "session.status") && client->api_minor < 29', dispatcher)
 
     def test_wm_menu_authority_is_api_130_typed_and_target_bound(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         menu_emit = function_body(
             source,
@@ -636,8 +638,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn('json_object_set_int_member(socket_object, "expires_at_us"', socket_issue)
 
     def test_xdg_activation_focus_is_pid_bound_and_api_132(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         focus = function_body(
             source,
@@ -663,7 +665,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
     def test_session_logout_waits_for_matching_compositor_success(self):
         lua = (ROOT / "src/config/gnoblin-lua.c").read_text()
         runtime = (ROOT / "src/session/gnoblin-runtime.c").read_text()
-        source = CONTROL.read_text()
+        source = control_source()
         operation = function_body(
             source,
             "static gboolean native_runtime_handle_operation(",
@@ -691,7 +693,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("g_main_loop_quit(runtime->loop)", completion)
 
     def test_menu_authority_uses_subscription_version_not_latest_request_version(self):
-        source = CONTROL.read_text()
+        source = control_source()
         menu_emit = function_body(
             source,
             "void gnoblin_native_control_window_menu_requested(",
@@ -704,7 +706,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("client->api_minor >= 30", menu_emit)
 
     def test_rejected_api_versions_consume_matching_menu_context(self):
-        source = CONTROL.read_text()
+        source = control_source()
         consumer = function_body(
             source,
             "static void native_socket_consume_rejected_menu_context(",
@@ -744,7 +746,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("native_socket_consume_rejected_menu_context(client, request)", version_block)
 
     def test_menu_contexts_revoke_with_socket_and_runtime_authorities(self):
-        source = CONTROL.read_text()
+        source = control_source()
         revoke = function_body(
             source,
             "static void revoke_menu_contexts(GnoblinNativeControl* control) {",
@@ -761,7 +763,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("revoke_menu_contexts(control)", source)
 
     def test_status_socket_read_stays_available_during_supervisor_recovery(self):
-        source = CONTROL.read_text()
+        source = control_source()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         status = function_body(
             dispatcher,
@@ -771,7 +773,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         reads = function_body(
             source,
             "static gboolean native_api_read_method(",
-            "static gboolean runtime_reload_document_supported(",
+            "static gboolean runtime_config_values_equal(",
         )
 
         self.assertIn("native_session_lock_snapshot(", status)
@@ -781,8 +783,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(method, "session.status")', reads)
 
     def test_workspace_list_always_uses_lua_snapshot_and_preserves_legacy_shape(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         workspace_list = function_body(
@@ -806,7 +808,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("legacy_workspace_list_from_lua(value, error)", read_api)
 
     def test_window_list_always_uses_lua_snapshot_and_preserves_legacy_shape(self):
-        source = CONTROL.read_text()
+        source = control_source()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         window_list = function_body(
             dispatcher,
@@ -827,7 +829,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("legacy_window_list_from_lua(value, error)", read_api)
 
     def test_layer_animation_policy_socket_read_uses_supervised_lua_read(self):
-        source = CONTROL.read_text()
+        source = control_source()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         generic_read = function_body(
             dispatcher,
@@ -837,7 +839,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         reads = function_body(
             source,
             "static gboolean native_api_read_method(",
-            "static gboolean runtime_reload_document_supported(",
+            "static gboolean runtime_config_values_equal(",
         )
 
         self.assertIn('g_str_equal(method, "layer.animation_policy")', reads)
@@ -845,7 +847,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("Lua supervisor is not connected", generic_read)
 
     def test_animation_queries_dispatch_as_native_reads(self):
-        source = CONTROL.read_text()
+        source = control_source()
         connected = function_body(
             source,
             "static gboolean client_connected(",
@@ -878,7 +880,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("queue_runtime_api_request", animation_reads)
 
     def test_aborted_runtime_waits_for_native_teardown_before_free(self):
-        source = CONTROL.read_text()
+        source = control_source()
         maybe_free = function_body(
             source,
             "static void native_control_maybe_free_stopped(GnoblinNativeControl* control) {",
@@ -893,7 +895,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
     def test_expired_snap_contexts_and_targets_are_pruned_and_bounded(self):
-        source = CONTROL.read_text()
+        source = control_source()
         pruner = function_body(
             source,
             "static void prune_focus_contexts(GnoblinNativeControl* control, gint64 now) {",
@@ -916,7 +918,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("MAX_SNAP_CONTEXTS", snap_context)
 
     def test_text_target_requires_and_consumes_the_connection_focus_grant(self):
-        source = CONTROL.read_text()
+        source = control_source()
         take_grant = function_body(
             source,
             "static gboolean native_socket_take_focus_grant(",
@@ -938,7 +940,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("target->socket_owner_client_id = client->client_id", create)
 
     def test_text_target_owner_check_precedes_consumption_and_invalid_fields_consume(self):
-        source = CONTROL.read_text()
+        source = control_source()
         insert = function_body(
             source,
             "static GVariant* native_socket_insert_text(",
@@ -964,7 +966,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
     def test_snap_context_is_owner_bound_and_consumed_before_argument_validation(self):
-        source = CONTROL.read_text()
+        source = control_source()
         commit = function_body(
             source,
             "static GVariant* native_commit_snap_context_owned(",
@@ -994,7 +996,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("revoke_focus_contexts(control)", source)
 
     def test_owner_tokens_are_revoked_on_disconnect_subscription_reset_and_global_revocation(self):
-        source = CONTROL.read_text()
+        source = control_source()
         revoke = function_body(
             source,
             "static void native_socket_revoke_client_tokens(Client* client) {",
@@ -1016,8 +1018,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("revoke_text_targets(control)", focus_revoke)
 
     def test_lua_snapshot_collection_reads_require_api_137(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         connected = function_body(
             source,
             "static gboolean client_connected(",
@@ -1026,7 +1028,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         read_methods = function_body(
             source,
             "static gboolean native_api_read_method(const char* method)",
-            "static gboolean runtime_reload_document_supported(",
+            "static gboolean runtime_config_values_equal(",
         )
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
 
@@ -1051,11 +1053,11 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertGreaterEqual(api_minor(header), 41)
         self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', dispatcher)
 
-        header = HEADER.read_text()
+        header = control_header()
         self.assertGreaterEqual(api_minor(header), 39)
 
     def test_permissions_list_always_uses_lua(self):
-        source = CONTROL.read_text()
+        source = control_source()
         permission_list = function_body(
             source,
             'if (g_str_equal(method, "permissions.list")) {',
@@ -1067,7 +1069,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("native_config_document(client->control)", permission_list)
 
     def test_permissions_check_always_uses_lua(self):
-        source = CONTROL.read_text()
+        source = control_source()
         permission_check = function_body(
             source,
             'if (g_str_equal(method, "permissions.check")) {',
@@ -1079,7 +1081,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("native_config_document(client->control)", permission_check)
 
     def test_permissions_policy_always_uses_lua(self):
-        source = CONTROL.read_text()
+        source = control_source()
         permission_policy = function_body(
             source,
             'if (g_str_equal(method, "permissions.policy")) {',
@@ -1091,8 +1093,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("native_config_document(client->control)", permission_policy)
 
     def test_legacy_window_actions_use_typed_lua_operations_for_all_api_versions(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         overlay_manifest = (ROOT / "src/native-control/manifest").read_text()
         lua = LUA.read_text()
@@ -1156,8 +1158,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"Lua returned an invalid window action operation"', response)
 
     def test_legacy_window_resize_uses_typed_lua_operation_for_api_161(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         resize_patch = (
             ROOT / "patches/mutter/99-typed-window-api/0065-native-window-resize-user-operation.patch"
@@ -1184,8 +1186,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
 
     def test_legacy_window_move_uses_typed_lua_operation_for_api_162(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         move_patch = (
             ROOT / "patches/mutter/99-typed-window-api/0066-native-window-move-user-operation.patch"
@@ -1209,8 +1211,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("meta_window_move_frame (window, TRUE, (int) x, (int) y)", move_patch)
 
     def test_legacy_workspace_and_monitor_actions_use_typed_lua_operations(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         handler = function_body(
             source,
@@ -1231,8 +1233,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"call", action, target)', handler)
 
     def test_shortcut_session_end_preserves_owner_binding(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         lua = LUA.read_text()
         connected = function_body(
@@ -1268,8 +1270,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('operation = "end_session"', lua)
 
     def test_modal_key_events_refresh_focus_authority_from_real_input(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         capture_start = source.rindex("static void native_shortcut_capture_key(")
         capture_end = source.index("gboolean gnoblin_native_control_overlay_modifier_pressed(", capture_start)
         capture = source[capture_start:capture_end]
@@ -1311,8 +1313,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("focus_context_event && active_runtime->config.dispatch_focus_handle", lua_dispatch)
 
     def test_strict_activation_denial_event_is_versioned_and_routed(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         events = function_body(
             source,
             "static const char* native_socket_events[] = {",
@@ -1349,8 +1351,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
                 self.assertIn(reason, docs)
 
     def test_portal_grants_always_uses_lua(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         lua_source = LUA.read_text()
         grant_handler = function_body(
             source,
@@ -1372,8 +1374,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertGreaterEqual(api_minor(header), 45)
 
     def test_input_snapshots_always_use_lua(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         lua_source = LUA.read_text()
         devices = function_body(
@@ -1411,8 +1413,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertGreaterEqual(api_minor(header), 46)
 
     def test_privacy_state_always_uses_lua(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         lua_source = LUA.read_text()
         handler = function_body(
@@ -1423,7 +1425,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         reads = function_body(
             source,
             "static gboolean native_api_read_method(",
-            "static gboolean runtime_reload_document_supported(",
+            "static gboolean runtime_config_values_equal(",
         )
         lua_read = function_body(
             lua_source,
@@ -1442,8 +1444,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
 
     def test_restore_or_minimize_always_uses_lua_operation(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         helper = function_body(
             source,
             "GVariant* gnoblin_native_control_restore_or_minimize_window(",
@@ -1498,8 +1500,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
 
     def test_session_lock_uses_lua_for_api_149_and_keeps_legacy_route(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         dispatcher = function_body(
             source,
             "static char* handle_request(",
@@ -1523,8 +1525,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
 
     def test_launch_mutations_use_lua_for_api_150_and_keep_legacy_route(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         launch = function_body(
             source,
             'if (g_str_has_prefix(method, "launch.")) {',
@@ -1551,8 +1553,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", cmake)
 
     def test_launch_status_always_uses_lua_and_keeps_event_tracking(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         launch = function_body(
@@ -1587,8 +1589,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('g_str_equal(method, "launches.snapshot") || g_str_equal(method, "launch.status")', read_api)
 
     def test_legacy_shortcut_list_always_uses_lua(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         shortcut_list = function_body(
@@ -1605,8 +1607,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("native_shortcut_snapshot", shortcut_list)
 
     def test_legacy_shortcut_actions_always_use_lua(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
         shortcut_actions = function_body(
@@ -1623,8 +1625,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertNotIn("shortcut_actions_snapshot", shortcut_actions)
 
     def test_legacy_layer_list_always_uses_lua(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         lua = LUA.read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
@@ -1648,8 +1650,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"surfaces"', lua)
 
     def test_legacy_monitor_list_always_uses_lua(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         lua = LUA.read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
@@ -1673,8 +1675,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertIn('"monitors"', lua)
 
     def test_legacy_window_match_always_uses_lua_and_preserves_compatibility(self):
-        source = CONTROL.read_text()
-        header = HEADER.read_text()
+        source = control_source()
+        header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         lua = LUA.read_text()
         dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")

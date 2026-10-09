@@ -108,8 +108,14 @@ wait_for_preview_child() {
             wait "$child_pid"
             return $?
         fi
-        echo "Gnoblin stopped while the devkit $child_name was still open. Recent output:" >&2
+        echo "Gnoblin stopped (exit status $status) while the devkit $child_name was still open. Recent output:" >&2
         tail -n 30 "$DK/runtime.log" >&2
+        for diagnostic in session-last.log compositor-last.log; do
+            if [[ -f $XDG_STATE_HOME/gnoblin/$diagnostic ]]; then
+                echo "--- $diagnostic" >&2
+                tail -n 25 "$XDG_STATE_HOME/gnoblin/$diagnostic" >&2
+            fi
+        done
         return 1
     fi
 

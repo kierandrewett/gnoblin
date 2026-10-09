@@ -15,7 +15,7 @@ MESON_ASSIGNMENT = re.compile(r"^([a-zA-Z0-9_]+)\s*=\s*'([^']+)'$", re.MULTILINE
 # The pinned portal build pulls libgxdp through a Meson wrap, so its gtk4
 # requirement is not visible in the portal's root Meson files.
 WRAPPED_PROJECT_REQUIREMENTS = {
-    "xdg-desktop-portal-gnome": (("gtk4", ">= 4.22.0"),),
+    "xdg-desktop-portal-gnome": (("gtk4", ">= 4.20.0"),),
 }
 
 
@@ -187,6 +187,14 @@ def check(mode="checkout", project=None, xwayland=True, vector_cursors=False):
                     return 1
                 root_source = result.stdout
             source = apply_dependency_version_patches(source, source_project, build_file)
+        # Gnoblin bundles the upstream 1.21.1 backend interface XML, so its
+        # portal backend supports the installed 1.20 frontend API floor.
+        if source_project == "xdg-desktop-portal-gnome":
+            source = re.sub(
+                r"dependency\('xdg-desktop-portal', version: '>= 1\.21\.1'\)",
+                "dependency('xdg-desktop-portal', version: '>= 1.20.0')",
+                source,
+            )
         for module, minimum in requirements(
             source,
             include_schemas=(

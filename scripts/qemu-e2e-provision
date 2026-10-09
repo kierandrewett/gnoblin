@@ -1,0 +1,78 @@
+#!/usr/bin/env bash
+# Build a golden Fedora guest image for scripts/qemu-e2e from a Fedora Cloud
+# base image.
+#
+# The source image is copied, never modified. cloud-init creates the guest user
+# with an SSH public key (no password) and installs GNOME and GDM. Passwordless
+# sudo exists only inside this disposable image.
+set -euo pipefail
+export PATH="/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+
+readonly SOURCE="${1:-}"
+readonly OUTPUT="${2:-}"
+readonly PUBKEY="${GNOBLIN_QEMU_PUBKEY:-${HOME}/.ssh/id_ed25519.pub}"
+readonly GUEST_USER="${GNOBLIN_QEMU_GUEST_USER:-luna}"
+readonly DISK_SIZE="${GNOBLIN_QEMU_DISK_SIZE:-40G}"
+readonly PORT="${GNOBLIN_QEMU_PROVISION_PORT:-22391}"
+
+die() {
+    printf '[qemu-provision] %s\n' "$*" >&2
+    exit 1
+}
+
+[[ -f "$SOURCE" && -n "$OUTPUT" ]] || die "usage: $0 CLOUD_BASE.qcow2 OUTPUT.qcow2"
+[[ -r "$PUBKEY" ]] || die "SSH public key not readable: $PUBKEY"
+[[ ! -e "$OUTPUT" ]] || die "refusing to overwrite existing image: $OUTPUT"
+
+work="$(mktemp -d)"
+trap 'rm -rf "$work"; [[ -r "$work.pid" ]] && kill "$(cat "$work.pid")" 2>/dev/null || true' EXIT
+
+cp --reflink=auto "$SOURCE" "$OUTPUT"
+qemu-img resize "$OUTPUT" "$DISK_SIZE" >/dev/null
+
+cat >"$work/user-data" <<EOF
+#cloud-config
+users:
+  - name: ${GUEST_USER}
+    gecos: Luna QEMU
+    groups: [wheel]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: true
+    ssh_authorized_keys:
+      - $(cat "$PUBKEY")
+ssh_pwauth: false
+package_update: false
+packages:
+  - gdm
+  - gnome-shell
+  - gnome-session-wayland-session
+  - gnome-terminal
+  - mesa-dri-drivers
+  - mesa-libEGL
+  - ibus
+  - dbus-tools
+  - xdg-desktop-portal-gnome
+  - gnome-control-center
+  - pipewire
+  - wireplumber
+runcmd:
+  - [systemctl, set-default, graphical.target]
+  - [systemctl, enable, gdm.service]
+  - [mkdir, -p, /mnt/gnoblin-src]
+  - [touch, /var/lib/gnoblin-provisioned]
+power_state:
+  mode: poweroff
+  timeout: 30
+  condition: true
+EOF
+printf 'instance-id: gnoblin-e2e\nlocal-hostname: gnoblin-e2e\n' >"$work/meta-data"
+genisoimage -quiet -output "$work/seed.iso" -volid cidata -joliet -rock "$work/user-data" "$work/meta-data"
+
+printf '[qemu-provision] installing packages into %s (this takes several minutes)\n' "$OUTPUT"
+qemu-system-x86_64 -name gnoblin-provision -machine q35,accel=kvm -cpu host -smp 4 -m 4096 \
+    -drive "file=$OUTPUT,if=virtio,format=qcow2" \
+    -drive "file=$work/seed.iso,if=virtio,format=raw,readonly=on" \
+    -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${PORT}-:22" -device virtio-net-pci,netdev=net0 \
+    -display none -serial "file:${OUTPUT}.provision.log" -pidfile "$work.pid" -no-reboot
+printf '[qemu-provision] guest powered off; image ready: %s\n' "$OUTPUT"

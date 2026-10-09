@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 00:40:00 +0100
+Subject: [PATCH] clutter: make private enum declarations usable from C++
+
+The compositor-owned ImGui renderer is C++, while Clutter and Cogl headers
+forward-declare two enums using C-only syntax. Give those forward declarations
+and definitions matching fixed underlying types in C++ builds.
+
+---
+ cogl/cogl/cogl-types.h                      | 5 +++++
+ cogl/cogl/cogl-framebuffer-private.h        | 4 ++++
+ clutter/clutter/clutter-types.h             | 4 ++++
+ clutter/clutter/clutter-paint-context.h     | 4 ++++
+ 4 files changed, 17 insertions(+)
+
+diff --git a/cogl/cogl/cogl-types.h b/cogl/cogl/cogl-types.h
+--- a/cogl/cogl/cogl-types.h
++++ b/cogl/cogl/cogl-types.h
+@@ -274,3 +274,6 @@
+-typedef enum _CoglFramebufferState CoglFramebufferState;
++#ifdef __cplusplus
++enum _CoglFramebufferState : unsigned int;
++#endif
++typedef enum _CoglFramebufferState CoglFramebufferState;
+ 
+ typedef struct _CoglAttribute CoglAttribute;
+diff --git a/cogl/cogl/cogl-framebuffer-private.h b/cogl/cogl/cogl-framebuffer-private.h
+--- a/cogl/cogl/cogl-framebuffer-private.h
++++ b/cogl/cogl/cogl-framebuffer-private.h
+@@ -70,2 +70,6 @@
+-enum _CoglFramebufferState
++#ifdef __cplusplus
++enum _CoglFramebufferState : unsigned int
++#else
++enum _CoglFramebufferState
++#endif
+ {
+diff --git a/clutter/clutter/clutter-types.h b/clutter/clutter/clutter-types.h
+--- a/clutter/clutter/clutter-types.h
++++ b/clutter/clutter/clutter-types.h
+@@ -88,5 +88,8 @@
+ typedef union _ClutterEvent                     ClutterEvent;
+ 
+-typedef enum _ClutterPaintFlag                  ClutterPaintFlag;
++#ifdef __cplusplus
++enum _ClutterPaintFlag : int;
++#endif
++typedef enum _ClutterPaintFlag                  ClutterPaintFlag;
+ 
+ typedef struct _ClutterColorState               ClutterColorState;
+diff --git a/clutter/clutter/clutter-paint-context.h b/clutter/clutter/clutter-paint-context.h
+--- a/clutter/clutter/clutter-paint-context.h
++++ b/clutter/clutter/clutter-paint-context.h
+@@ -31,2 +31,6 @@
+-typedef enum _ClutterPaintFlag
++#ifdef __cplusplus
++typedef enum _ClutterPaintFlag : int
++#else
++typedef enum _ClutterPaintFlag
++#endif
+ {
+-- 
+2.51.0

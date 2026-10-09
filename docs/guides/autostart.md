@@ -20,16 +20,20 @@ explicitly run a shell.
 `when = "on_login"` is the only supported trigger and is the default. Gnoblin
 starts each named entry once per login and does not restart it after exit.
 
-A new name starts when the Shell session reloads its config if you are already
-logged in; otherwise it starts at the next login. The standalone native
-compositor reads autostart only when it starts. See the
+A new name starts after a successful config reload if you are already logged
+in; otherwise it starts at the next login.
+
+If a command changes or an entry is removed or disabled, Gnoblin sends
+`SIGTERM` to the process group it started, then sends `SIGKILL` if it has not
+exited after 200 ms. Descendants that remain in the group are included. It
+starts the updated command if enabled. See the
 [autostart reference](/config/configure/autostart) for launch failures.
 
-Changing an entry does not stop a running process. The new command starts at
-the next login if that name already launched.
-
-Do not add a program already started by your chosen shell. Bingux is one
-separate shell project that starts its own services.
+Gnoblin starts configured commands after Mutter publishes the Wayland display.
+It also launches XDG autostart entries at this point, so graphical login apps
+do not start before the compositor is ready. When using Bingux, load its
+Gnoblin module to start its shell and layer clients through this same
+configuration path.
 
 ## Override an imported command
 
@@ -60,18 +64,16 @@ gnoblin.configure {
 }
 ```
 
-An unknown name adds a disabled entry. Disabling or removing an entry does not
-stop a process that is already running.
+An unknown name adds a disabled entry. Disabling or removing an entry stops its Gnoblin-owned process group on reload.
 
 ## When does it run?
 
-- A new name starts when Shell reloads its config. In the native compositor,
-  start a new session to pick up config changes.
+- A new name starts after Gnoblin accepts a config reload.
 - Each name gets one launch per login. Saving again or unlocking does not
   start a second copy.
-- Changing the command for an entry that already launched takes effect at the
-  next login.
-- Disabling or removing an entry does not stop its running process.
+- Changing the command stops the owned process group and starts the updated
+  command. Gnoblin sends `SIGKILL` after 200 ms if the group ignores `SIGTERM`.
+- Disabling or removing an entry stops the owned process group.
 
 See [command syntax](/guides/shortcuts#commands-and-shell-syntax) for shell
 commands and [configuration loading](/guides/files_and_load_order) for how

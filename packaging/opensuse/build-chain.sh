@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build the private Gnoblin RPM dependency chain in a disposable Tumbleweed
+# Build Gnoblin's single-compositor RPM and optional extensions in Tumbleweed
 # worker. The result is intentionally an artifact, never a package repository.
 set -euo pipefail
 
@@ -13,8 +13,8 @@ PREPARED_SOURCES="${2:-}"
 mkdir -p "$SOURCES" "$BUILDROOT"
 gnoblin_version="$("$ROOT/scripts/gnoblin-version.py" get version)"
 
-# The source archiver needs the host tools from the first build stage too.
-"$ROOT/packaging/opensuse/check-buildrequires.sh" mutter --install
+# Resolve compositor and session build requirements together.
+"$ROOT/packaging/opensuse/check-buildrequires.sh" gnoblin --install
 
 if [[ -n "$PREPARED_SOURCES" ]]; then
     gnoblin_source="$PREPARED_SOURCES/gnoblin-$gnoblin_version-source.tar.xz"
@@ -66,11 +66,6 @@ install_output() {
         zypper --non-interactive install --no-recommends --allow-unsigned-rpm "$package"
     done
 }
-
-build mutter.spec
-mapfile -t mutter_rpms < <(find "$TOPDIR/RPMS" -type f \( -name 'gnoblin-mutter-[0-9]*.rpm' -o -name 'gnoblin-mutter-devel-[0-9]*.rpm' \) | sort)
-((${#mutter_rpms[@]} == 2))
-install_output "${mutter_rpms[@]}"
 
 "$ROOT/packaging/opensuse/check-buildrequires.sh" gnoblin-portal --install
 build gnoblin-portal.spec

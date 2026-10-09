@@ -20,7 +20,9 @@
 #define CSD_MAX_PIXELS 16000000
 #define WINDOW_SHADOW_ACTOR_KEY "gnoblin-window-shadow"
 #define WINDOW_SHADOW_EFFECT_NAME "gnoblin-window-shadow-effect"
+#define WINDOW_OUTLINE_ACTOR_KEY "gnoblin-window-outline"
 #define WINDOW_SHADER_EFFECT_NAME "gnoblin-window-shader-effect"
+#define WINDOW_SHADER_SOURCE_KEY "gnoblin-window-shader-source"
 #define WINDOW_SHADER_SOURCE_LIMIT (64 * 1024)
 #define WINDOW_SHADER_UNIFORM_LIMIT 64
 
@@ -183,10 +185,13 @@ static CoglPipeline* window_shadow_create_pipeline(ClutterOffscreenEffect* effec
     g_string_append(code,
                     "cogl_color_out=mix(resultA,resultB,gnoblin_shadow_progress)*cogl_color_in;");
 
-    CoglSnippet* snippet =
-        cogl_snippet_new(COGL_SNIPPET_HOOK_FRAGMENT, declarations->str, code->str);
+/* Cogl identifies a snippet by pointer, not by source text. A new snippet per
+ * window makes a new GPU program per window even when the text is identical.
+ * Keep one snippet per shader kind for the life of the process. */
+    static CoglSnippet* snippet;
+    if (!snippet)
+        snippet = cogl_snippet_new(COGL_SNIPPET_HOOK_FRAGMENT, declarations->str, code->str);
     cogl_pipeline_add_snippet(pipeline, snippet);
-    g_object_unref(snippet);
     g_string_free(declarations, TRUE);
     g_string_free(code, TRUE);
     return pipeline;
@@ -395,7 +400,7 @@ window_shadow_start_transition(MetaGnoblinWindowShadowEffect* effect,
     if (effect->has_bezier)
         memcpy(effect->bezier, transition->bezier, sizeof(effect->bezier));
 
-    if (!effect->duration_ms || !meta_prefs_get_gnome_animations()) {
+    if (!effect->duration_ms) {
         effect->progress = 1.;
         memcpy(effect->from_geometry, effect->to_geometry, sizeof(effect->from_geometry));
         memcpy(effect->from_color, effect->to_color, sizeof(effect->from_color));
@@ -547,6 +552,26 @@ gboolean meta_gnoblin_window_effects_set_shader(ClutterActor* surface_actor,
                                "cogl_color_out = vec4(gnoblin_result.rgb * gnoblin_result.a, "
                                "gnoblin_result.a);\n";
 
+    /* Rule refreshes run on focus and geometry changes. The source describes
+     * the program variant; dimensions and configured values are uniforms, so
+     * retain a matching effect instead of compiling a new program each time. */
+    if (existing &&
+        g_strcmp0(g_object_get_data(G_OBJECT(existing), WINDOW_SHADER_SOURCE_KEY), function_source) ==
+            0) {
+        ClutterShaderEffect* shader = CLUTTER_SHADER_EFFECT(existing);
+        const float size[2] = {(float)logical_width, (float)logical_height};
+        const float width = (float)logical_width;
+        const float height = (float)logical_height;
+        clutter_shader_effect_set_uniform_float(shader, "gnoblin_size", 2, 2, size);
+        clutter_shader_effect_set_uniform_float(shader, "gnoblin_width", 1, 1, &width);
+        clutter_shader_effect_set_uniform_float(shader, "gnoblin_height", 1, 1, &height);
+        for (guint i = 0; i < n_uniforms; i++) {
+            const float value = (float)uniforms[i].value;
+            clutter_shader_effect_set_uniform_float(shader, uniforms[i].name, 1, 1, &value);
+        }
+        return TRUE;
+    }
+
     g_autoptr(CoglSnippet) snippet =
         cogl_snippet_new(COGL_SNIPPET_HOOK_FRAGMENT, globals->str, hook);
     g_autoptr(ClutterEffect) replacement = clutter_shader_effect_new_with_snippet(snippet);
@@ -574,6 +599,8 @@ gboolean meta_gnoblin_window_effects_set_shader(ClutterActor* surface_actor,
     /* The actor sinks floating ClutterActorMeta instances; keep one local ref
      * so the autoptr releases only our reference after the actor takes its own. */
     g_object_ref_sink(replacement);
+    g_object_set_data_full(G_OBJECT(replacement), WINDOW_SHADER_SOURCE_KEY, g_strdup(function_source),
+                           g_free);
     clutter_actor_add_effect_with_name(surface_actor, WINDOW_SHADER_EFFECT_NAME, replacement);
     return TRUE;
 }
@@ -654,8 +681,7 @@ void meta_gnoblin_window_effects_set_window_shadow(
     window_shadow_layout(window_actor, shadow_actor, effect, bounds, padding);
 
     if (!window_shadow_layers_equal(effect, layer_geometry, layer_color, n_layers)) {
-        if (effect->timeline && transition && transition->duration_ms > 0 &&
-            meta_prefs_get_gnome_animations()) {
+        if (effect->timeline && transition && transition->duration_ms > 0) {
             effect->queued = TRUE;
             memcpy(effect->queued_geometry, layer_geometry, sizeof(effect->queued_geometry));
             memcpy(effect->queued_color, layer_color, sizeof(effect->queued_color));
@@ -689,6 +715,10 @@ typedef struct {
     double border_color[4];
     gboolean csd_reconstruction;
     double csd_insets[4];
+    double client_bounds[4];
+    gboolean has_client_bounds;
+    double client_scale;
+    gboolean outline_only;
 } MetaGnoblinRoundedClip;
 
 typedef struct {
@@ -809,7 +839,9 @@ static gboolean detect_csd_insets(const guint8* pixels, int width, int height, d
     return TRUE;
 }
 
-gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* actor, double insets[4]) {
+gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* texture_actor,
+                                                ClutterActor* effect_actor,
+                                                double insets[4]) {
     CsdProbeCache* cache;
     MetaShapedTexture* texture;
     g_autoptr(GBytes) pixels_bytes = NULL;
@@ -822,26 +854,27 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* actor, double inse
     double pixel_insets[4];
     guint attempts = 1;
 
-    g_return_val_if_fail(CLUTTER_IS_ACTOR(actor), FALSE);
+    g_return_val_if_fail(CLUTTER_IS_ACTOR(texture_actor), FALSE);
+    g_return_val_if_fail(CLUTTER_IS_ACTOR(effect_actor), FALSE);
     g_return_val_if_fail(insets != NULL, FALSE);
-    if (!META_IS_WINDOW_ACTOR(actor) || !clutter_actor_is_mapped(actor) ||
-        clutter_actor_get_opacity(actor) != 255)
+    if (!META_IS_WINDOW_ACTOR(texture_actor) || !clutter_actor_is_mapped(texture_actor) ||
+        clutter_actor_get_opacity(texture_actor) != 255)
         return FALSE;
 
-    texture = meta_window_actor_get_texture(META_WINDOW_ACTOR(actor));
+    texture = meta_window_actor_get_texture(META_WINDOW_ACTOR(texture_actor));
     if (!texture)
         return FALSE;
     width = meta_shaped_texture_get_width(texture);
     height = meta_shaped_texture_get_height(texture);
     if (width < 16 || height < 16 || (gint64)width * height > CSD_MAX_PIXELS)
         return FALSE;
-    if (clutter_actor_get_width(actor) <= 0 || clutter_actor_get_height(actor) <= 0)
+    if (clutter_actor_get_width(effect_actor) <= 0 || clutter_actor_get_height(effect_actor) <= 0)
         return FALSE;
 
-    cache = g_object_get_data(G_OBJECT(actor), CSD_PROBE_CACHE_KEY);
+    cache = g_object_get_data(G_OBJECT(effect_actor), CSD_PROBE_CACHE_KEY);
     if (cache && cache->width == width && cache->height == height) {
         if (cache->detected) {
-            csd_insets_to_actor_units(actor, width, height, cache->insets, insets);
+            csd_insets_to_actor_units(effect_actor, width, height, cache->insets, insets);
             return TRUE;
         }
         if (cache->attempts >= 8)
@@ -855,7 +888,7 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* actor, double inse
         cache->width = meta_shaped_texture_get_width(texture);
         cache->height = meta_shaped_texture_get_height(texture);
         cache->attempts = attempts;
-        g_object_set_data_full(G_OBJECT(actor), CSD_PROBE_CACHE_KEY, cache, g_free);
+        g_object_set_data_full(G_OBJECT(effect_actor), CSD_PROBE_CACHE_KEY, cache, g_free);
         return FALSE;
     }
     pixels = g_bytes_get_data(pixels_bytes, &size);
@@ -864,7 +897,7 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* actor, double inse
         cache->width = width;
         cache->height = height;
         cache->attempts = attempts;
-        g_object_set_data_full(G_OBJECT(actor), CSD_PROBE_CACHE_KEY, cache, g_free);
+        g_object_set_data_full(G_OBJECT(effect_actor), CSD_PROBE_CACHE_KEY, cache, g_free);
         return FALSE;
     }
 
@@ -876,9 +909,9 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* actor, double inse
     cache->attempts = attempts;
     if (detected)
         memcpy(cache->insets, pixel_insets, sizeof(cache->insets));
-    g_object_set_data_full(G_OBJECT(actor), CSD_PROBE_CACHE_KEY, cache, g_free);
+    g_object_set_data_full(G_OBJECT(effect_actor), CSD_PROBE_CACHE_KEY, cache, g_free);
     if (detected)
-        csd_insets_to_actor_units(actor, width, height, pixel_insets, insets);
+        csd_insets_to_actor_units(effect_actor, width, height, pixel_insets, insets);
     return detected;
 }
 
@@ -899,9 +932,15 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
                                                   CoglTexture* texture) {
     CoglPipeline* pipeline = CLUTTER_OFFSCREEN_EFFECT_CLASS(meta_gnoblin_rounded_clip_parent_class)
                                  ->create_pipeline(effect, texture);
-    CoglSnippet* snippet = cogl_snippet_new(
+/* Cogl identifies a snippet by pointer, not by source text. A new snippet per
+ * window makes a new GPU program per window even when the text is identical.
+ * Keep one snippet per shader kind for the life of the process. */
+    static CoglSnippet* snippet;
+    if (!snippet)
+        snippet = cogl_snippet_new(
         COGL_SNIPPET_HOOK_FRAGMENT,
         "uniform vec4 gnoblin_rounded_clip_bounds;"
+        "uniform vec4 gnoblin_rounded_clip_texture_bounds;"
         "uniform float gnoblin_rounded_clip_radius;"
         "uniform float gnoblin_rounded_clip_exponent;"
         "uniform float gnoblin_rounded_clip_automatic;"
@@ -909,13 +948,14 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
         "uniform vec4 gnoblin_rounded_clip_csd_insets;"
         "uniform float gnoblin_rounded_clip_border_width;"
         "uniform vec4 gnoblin_rounded_clip_border_color;"
+        "uniform float gnoblin_rounded_clip_outline_only;"
         "float sourceAlpha(vec2 point){"
-        "vec2 uv=(point-gnoblin_rounded_clip_bounds.xy)/"
-        "(gnoblin_rounded_clip_bounds.zw-gnoblin_rounded_clip_bounds.xy);"
+        "vec2 uv=(point-gnoblin_rounded_clip_texture_bounds.xy)/"
+        "(gnoblin_rounded_clip_texture_bounds.zw-gnoblin_rounded_clip_texture_bounds.xy);"
         "return texture2D(cogl_sampler0,clamp(uv,vec2(0.0),vec2(1.0))).a;}"
         "vec4 sourcePixel(vec2 point){"
-        "vec2 uv=(point-gnoblin_rounded_clip_bounds.xy)/"
-        "(gnoblin_rounded_clip_bounds.zw-gnoblin_rounded_clip_bounds.xy);"
+        "vec2 uv=(point-gnoblin_rounded_clip_texture_bounds.xy)/"
+        "(gnoblin_rounded_clip_texture_bounds.zw-gnoblin_rounded_clip_texture_bounds.xy);"
         "vec4 pixel=texture2D(cogl_sampler0,clamp(uv,vec2(0.0),vec2(1.0)));"
         "return vec4(pixel.rgb/max(pixel.a,0.00001),pixel.a);}"
         "float roundedCoverage(vec2 point,vec4 box,float radius,float exponent){"
@@ -968,9 +1008,9 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
         "float horizontal=sourceAlpha(origin+direction*vec2(inset,0.75));"
         "float vertical=sourceAlpha(origin+direction*vec2(0.75,inset));"
         "return reference>0.02&&min(diagonal,min(horizontal,vertical))>=reference*0.85;}",
-        "vec2 p=gnoblin_rounded_clip_bounds.xy+"
-        "cogl_tex_coord_in[0].st*(gnoblin_rounded_clip_bounds.zw-"
-        "gnoblin_rounded_clip_bounds.xy);"
+        "vec2 p=gnoblin_rounded_clip_texture_bounds.xy+"
+        "cogl_tex_coord_in[0].st*(gnoblin_rounded_clip_texture_bounds.zw-"
+        "gnoblin_rounded_clip_texture_bounds.xy);"
         "vec2 half_size=(gnoblin_rounded_clip_bounds.zw-"
         "gnoblin_rounded_clip_bounds.xy)*0.5;"
         "float radius=min(gnoblin_rounded_clip_radius,min(half_size.x,half_size.y));"
@@ -1027,10 +1067,34 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
         "float borderAlpha=borderCoverage*gnoblin_rounded_clip_border_color.a;"
         "vec4 border=vec4(gnoblin_rounded_clip_border_color.rgb*borderAlpha,borderAlpha);"
         "cogl_color_out=border*cogl_color_in+"
-        "cogl_color_out*coverage*(1.0-borderAlpha);}"
+        "cogl_color_out*coverage*(1.0-borderAlpha);"
+        "if(gnoblin_rounded_clip_outline_only>0.5)cogl_color_out=border*cogl_color_in;}"
+        "else cogl_color_out*=coverage;}"
+        "else{"
+        "float coverage=roundedCoverage(p,gnoblin_rounded_clip_bounds,0.0,"
+        "gnoblin_rounded_clip_exponent);"
+        "float borderWidth=gnoblin_rounded_clip_border_width;"
+        "if(abs(borderWidth)>0.01){"
+        "float borderCoverage;"
+        "if(borderWidth>0.0){"
+        "vec4 innerBounds=gnoblin_rounded_clip_bounds+"
+        "vec4(borderWidth,borderWidth,-borderWidth,-borderWidth);"
+        "borderCoverage=max(0.0,coverage-roundedCoverage(p,innerBounds,0.0,"
+        "gnoblin_rounded_clip_exponent));}"
+        "else{"
+        "float outsideWidth=-borderWidth;"
+        "vec4 outerBounds=gnoblin_rounded_clip_bounds+"
+        "vec4(-outsideWidth,-outsideWidth,outsideWidth,outsideWidth);"
+        "float outerCoverage=roundedCoverage(p,outerBounds,0.0,"
+        "gnoblin_rounded_clip_exponent);"
+        "borderCoverage=max(0.0,outerCoverage-coverage);}"
+        "float borderAlpha=borderCoverage*gnoblin_rounded_clip_border_color.a;"
+        "vec4 border=vec4(gnoblin_rounded_clip_border_color.rgb*borderAlpha,borderAlpha);"
+        "cogl_color_out=border*cogl_color_in+"
+        "cogl_color_out*coverage*(1.0-borderAlpha);"
+        "if(gnoblin_rounded_clip_outline_only>0.5)cogl_color_out=border*cogl_color_in;}"
         "else cogl_color_out*=coverage;} ");
     cogl_pipeline_add_snippet(pipeline, snippet);
-    g_object_unref(snippet);
     return pipeline;
 }
 
@@ -1052,8 +1116,10 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     float padding_left;
 
     if (actor && clutter_offscreen_effect_get_target_rect(effect, &target)) {
-        scale_x = target.size.width / MAX(clutter_actor_get_width(actor), 1.f);
-        scale_y = target.size.height / MAX(clutter_actor_get_height(actor), 1.f);
+        const float actor_width = clutter_actor_get_width(actor);
+        const float actor_height = clutter_actor_get_height(actor);
+        scale_x = actor_width > 0 ? target.size.width / actor_width : (float)clip->client_scale;
+        scale_y = actor_height > 0 ? target.size.height / actor_height : (float)clip->client_scale;
         radius = (float)(clip->radius * MIN(scale_x, scale_y));
         border_width = (float)(clip->border_width * MIN(scale_x, scale_y));
         for (guint i = 0; i < G_N_ELEMENTS(border_color); i++)
@@ -1062,15 +1128,28 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
         padding_right = (float)(clip->padding[1] * scale_x);
         padding_bottom = (float)(clip->padding[2] * scale_y);
         padding_left = (float)(clip->padding[3] * scale_x);
-        bounds[0] = target.origin.x + padding_left;
-        bounds[1] = target.origin.y + padding_top;
-        bounds[2] = target.origin.x + target.size.width - padding_right;
-        bounds[3] = target.origin.y + target.size.height - padding_bottom;
+        bounds[0] = (float)(target.origin.x + padding_left);
+        bounds[1] = (float)(target.origin.y + padding_top);
+        bounds[2] = (float)(target.origin.x + target.size.width - padding_right);
+        bounds[3] = (float)(target.origin.y + target.size.height - padding_bottom);
+        if (clip->has_client_bounds) {
+            bounds[0] = MAX(bounds[0], (float)(target.origin.x + clip->client_bounds[0] * scale_x));
+            bounds[1] = MAX(bounds[1], (float)(target.origin.y + clip->client_bounds[1] * scale_y));
+            bounds[2] = MIN(bounds[2], (float)(target.origin.x + clip->client_bounds[2] * scale_x));
+            bounds[3] = MIN(bounds[3], (float)(target.origin.y + clip->client_bounds[3] * scale_y));
+        }
         if (bounds[2] <= bounds[0] || bounds[3] <= bounds[1])
             radius = 0.f;
         cogl_pipeline_set_uniform_float(
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_bounds"),
             4, 1, bounds);
+        float texture_bounds[4] = {target.origin.x, target.origin.y,
+                                   target.origin.x + target.size.width,
+                                   target.origin.y + target.size.height};
+        cogl_pipeline_set_uniform_float(
+            pipeline,
+            cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_texture_bounds"), 4,
+            1, texture_bounds);
         cogl_pipeline_set_uniform_1f(
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_radius"),
             radius);
@@ -1081,6 +1160,10 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
             pipeline,
             cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_automatic"),
             clip->automatic ? 1.f : 0.f);
+        cogl_pipeline_set_uniform_1f(
+            pipeline,
+            cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_outline_only"),
+            clip->outline_only ? 1.f : 0.f);
         cogl_pipeline_set_uniform_1f(
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_csd"),
             clip->csd_reconstruction ? 1.f : 0.f);
@@ -1169,6 +1252,68 @@ void meta_gnoblin_window_effects_set_rounded_border(ClutterActor* actor, double 
     clip->border_width = width;
     memcpy(clip->border_color, clamped_color, sizeof(clamped_color));
     clutter_effect_queue_repaint(CLUTTER_EFFECT(clip));
+}
+
+void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent,
+                                                     const double bounds[4], double radius,
+                                                     double exponent, double width,
+                                                     const double color[4]) {
+    ClutterActor* outline;
+    MetaGnoblinRoundedClip* clip;
+    ClutterEffect* effect;
+    double padding[4];
+    double outset;
+
+    g_return_if_fail(CLUTTER_IS_ACTOR(parent));
+    outline = g_object_get_data(G_OBJECT(parent), WINDOW_OUTLINE_ACTOR_KEY);
+    if (!bounds || !color || !isfinite(radius) || !isfinite(exponent) || !isfinite(width) ||
+        radius < 0 || fabs(width) <= 0.001 || bounds[2] <= bounds[0] ||
+        bounds[3] <= bounds[1]) {
+        if (outline) {
+            g_object_set_data(G_OBJECT(parent), WINDOW_OUTLINE_ACTOR_KEY, NULL);
+            clutter_actor_destroy(outline);
+        }
+        return;
+    }
+    for (guint i = 0; i < 4; i++)
+        if (!isfinite(bounds[i]) || !isfinite(color[i]))
+            return;
+
+    if (!outline) {
+        outline = clutter_actor_new();
+        clutter_actor_set_name(outline, "gnoblin-window-outline");
+        clutter_actor_set_reactive(outline, FALSE);
+        clutter_actor_set_background_color(outline, &COGL_COLOR_INIT(255, 255, 255, 255));
+        clutter_actor_add_child(parent, outline);
+        g_object_set_data(G_OBJECT(parent), WINDOW_OUTLINE_ACTOR_KEY, outline);
+    }
+    const guint n_children = clutter_actor_get_n_children(parent);
+    if (n_children > 0)
+        clutter_actor_set_child_at_index(parent, outline, n_children - 1);
+    /* A negative border is outside the frame bounds. Give its offscreen
+     * texture matching margins and keep the shader's logical bounds at the
+     * frame edge, so the outer ring is neither clipped nor opaque. */
+    width = CLAMP(width, -40., 40.);
+    outset = MAX(-width, 0.);
+    for (guint i = 0; i < G_N_ELEMENTS(padding); i++)
+        padding[i] = outset;
+    clutter_actor_set_position(outline, bounds[0] - outset, bounds[1] - outset);
+    clutter_actor_set_size(outline, bounds[2] - bounds[0] + 2. * outset,
+                           bounds[3] - bounds[1] + 2. * outset);
+    /* Keep an effect for a square outline. Its zero radius is restored below;
+     * the public rounded-clip setter intentionally removes zero-radius clips. */
+    meta_gnoblin_window_effects_set_rounded_clip(outline, MAX(radius, 0.001), exponent, FALSE,
+                                                  padding);
+    meta_gnoblin_window_effects_set_rounded_border(outline, width, color);
+    effect = clutter_actor_get_effect(outline, ROUNDED_CLIP_EFFECT_NAME);
+    if (!effect || !META_IS_GNOBLIN_ROUNDED_CLIP(effect))
+        return;
+    clip = META_GNOBLIN_ROUNDED_CLIP(effect);
+    if (!clip->outline_only || clip->radius != radius) {
+        clip->outline_only = TRUE;
+        clip->radius = radius;
+        clutter_effect_queue_repaint(CLUTTER_EFFECT(clip));
+    }
 }
 
 void meta_gnoblin_window_effects_clear_rounded_clip(ClutterActor* actor) {
@@ -1264,5 +1409,62 @@ void meta_gnoblin_window_effects_set_csd_reconstruction(ClutterActor* actor, gbo
         return;
     clip->csd_reconstruction = enabled;
     memcpy(clip->csd_insets, values, sizeof(clip->csd_insets));
+    clutter_effect_queue_repaint(CLUTTER_EFFECT(clip));
+}
+
+void meta_gnoblin_window_effects_set_rounded_clip_geometry(ClutterActor* actor,
+                                                           const double bounds[4], double scale) {
+    MetaGnoblinRoundedClip* clip;
+
+    g_return_if_fail(CLUTTER_IS_ACTOR(actor));
+    if (!isfinite(scale) || scale < 1 || scale > 8) {
+        g_warning("Gnoblin rounded-clip scale must be finite and from 1 to 8");
+        return;
+    }
+    double normalized_bounds[4] = {0, 0, 0, 0};
+    if (bounds) {
+        for (guint i = 0; i < 4; i++) {
+            if (!isfinite(bounds[i])) {
+                g_warning("Gnoblin rounded-clip geometry must be finite");
+                return;
+            }
+            normalized_bounds[i] = bounds[i];
+        }
+        if (normalized_bounds[2] <= normalized_bounds[0] ||
+            normalized_bounds[3] <= normalized_bounds[1]) {
+            bounds = NULL;
+            memset(normalized_bounds, 0, sizeof(normalized_bounds));
+        }
+    }
+
+    clip = find_rounded_clip(actor);
+    if (!clip && bounds) {
+        ClutterEffect* effect = clutter_actor_get_effect(actor, ROUNDED_CLIP_EFFECT_NAME);
+        if (effect) {
+            g_warning("Gnoblin rounded clip name is occupied by an unrelated effect");
+            return;
+        }
+        clip = g_object_new(META_TYPE_GNOBLIN_ROUNDED_CLIP, NULL);
+        clip->exponent = 2.;
+        g_object_ref_sink(clip);
+        clutter_actor_add_effect_with_name(actor, ROUNDED_CLIP_EFFECT_NAME, CLUTTER_EFFECT(clip));
+        g_object_unref(clip);
+        clip = META_GNOBLIN_ROUNDED_CLIP(clutter_actor_get_effect(actor, ROUNDED_CLIP_EFFECT_NAME));
+    }
+    if (!clip)
+        return;
+    if (!bounds && clip->radius <= 0. && fabs(clip->border_width) <= 0.001) {
+        meta_gnoblin_window_effects_clear_rounded_clip(actor);
+        return;
+    }
+    if (clip->has_client_bounds == (bounds != NULL) &&
+        (!bounds ||
+         memcmp(clip->client_bounds, normalized_bounds, sizeof(clip->client_bounds)) == 0) &&
+        clip->client_scale == scale)
+        return;
+
+    memcpy(clip->client_bounds, normalized_bounds, sizeof(normalized_bounds));
+    clip->has_client_bounds = bounds != NULL;
+    clip->client_scale = scale;
     clutter_effect_queue_repaint(CLUTTER_EFFECT(clip));
 }

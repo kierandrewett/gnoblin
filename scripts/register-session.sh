@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Register a source build with the login manager and systemd --user.
+# Register a source build with the login manager. User-systemd integration is
+# optional and is linked only when an active user manager is available.
 # build.sh is the public entry point. This script changes state outside the
 # build prefix, so it runs only for an explicit registration request.
 set -euo pipefail
@@ -35,8 +36,12 @@ PORTAL_DESCRIPTOR="$PREFIX/share/xdg-desktop-portal/portals/gnoblin.portal"
 PORTAL_CONFIGURATION="$PREFIX/share/xdg-desktop-portal/gnoblin-portals.conf"
 PORTAL_DBUS="$PREFIX/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service"
 USER_UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
+USER_BIN_DIR="${XDG_BIN_HOME:-$HOME/.local/bin}"
+GNOBLINCTL_LINK="$USER_BIN_DIR/gnoblinctl"
+LEGACY_RECOVERY_LINK="$USER_UNIT_DIR/gnoblin-recovery.service"
 
-required=("$DESKTOP" "$PREFIX/bin/gnoblin" "$PREFIX/libexec/gnoblin-env.sh"
+required=("$DESKTOP" "$PREFIX/bin/gnoblin" "$PREFIX/bin/gnoblinctl"
+    "$PREFIX/libexec/gnoblin-env.sh"
     "$STANDALONE_TARGET" "$IDLE_SERVICE" "$IDLE_BINARY" "$PORTAL_CONFIGURATION")
 for f in "${required[@]}"; do
     [ -f "$f" ] || {
@@ -44,6 +49,22 @@ for f in "${required[@]}"; do
         exit 1
     }
 done
+executables=("$PREFIX/bin/gnoblin" "$PREFIX/bin/gnoblinctl" "$IDLE_BINARY")
+for f in "${executables[@]}"; do
+    [ -x "$f" ] || {
+        echo "Not executable: $f -- rebuild with ./build.sh" >&2
+        exit 1
+    }
+done
+
+# GDM starts this binary directly, before Gnoblin can set its runtime paths.
+# A build-tree copy may exist and be executable while its ELF loader paths
+# still point outside the installed prefix. Reject that registration early.
+if ! env -u LD_LIBRARY_PATH -u LD_PRELOAD "$PREFIX/bin/gnoblin" --version >/dev/null; then
+    echo 'The installed Gnoblin executable cannot load its runtime libraries.' >&2
+    echo 'Run ./build.sh to install the built artifacts through Meson, then register again.' >&2
+    exit 1
+fi
 
 portal_files=(
     "$PORTAL_UNIT"
@@ -63,48 +84,61 @@ fi
 with_portal=false
 ((portal_count == ${#portal_files[@]})) && with_portal=true
 
-command -v systemctl >/dev/null 2>&1 || {
-    echo "systemctl not found -- this needs a systemd user session" >&2
-    exit 1
-}
 command -v python3 >/dev/null 2>&1 || {
     echo 'Missing python3; it is required to create the standalone login entry.' >&2
     exit 1
 }
-command -v dbus-update-activation-environment >/dev/null 2>&1 || {
-    echo "Missing dbus-update-activation-environment; install your distribution's D-Bus tools." >&2
-    exit 1
-}
-systemctl --user show-environment >/dev/null 2>&1 || {
-    echo 'The systemd user manager is unavailable. Register from a logged-in systemd session.' >&2
-    exit 1
-}
-if "$with_portal" && ! systemctl --user cat xdg-desktop-portal.service >/dev/null 2>&1; then
+have_user_systemd=false
+if command -v systemctl >/dev/null 2>&1 && systemctl --user show-environment >/dev/null 2>&1; then
+    have_user_systemd=true
+fi
+if "$with_portal" && "$have_user_systemd" && ! systemctl --user cat xdg-desktop-portal.service >/dev/null 2>&1; then
     echo 'Missing user service xdg-desktop-portal.service. Install the session runtime packages in docs/install-source.md.' >&2
     exit 1
 fi
 # A previous source tarball may have registered the same unit names from a
 # different prefix. Refresh only links that point to Gnoblin's own unit paths.
 linked_units=(gnoblin-session.target gnoblin-idle.service)
-if "$with_portal"; then
+if "$with_portal" && "$have_user_systemd"; then
     linked_units+=(xdg-desktop-portal-gnoblin.service)
 fi
-for unit in "${linked_units[@]}"; do
-    link="$USER_UNIT_DIR/$unit"
-    if [ -e "$link" ] && [ ! -L "$link" ]; then
-        echo "Existing custom unit at $link; move it aside before registering Gnoblin." >&2
+if "$have_user_systemd"; then
+    for unit in "${linked_units[@]}"; do
+        link="$USER_UNIT_DIR/$unit"
+        if [ -e "$link" ] && [ ! -L "$link" ]; then
+            echo "Existing custom unit at $link; move it aside before registering Gnoblin." >&2
+            exit 1
+        fi
+        if [ -L "$link" ]; then
+            case "$(readlink "$link")" in
+                */lib/systemd/user/"$unit") ;;
+                *)
+                    echo "Existing custom unit link at $link; move it aside before registering Gnoblin." >&2
+                    exit 1
+                    ;;
+            esac
+        fi
+    done
+fi
+
+# A prior source registration linked this compositor-external recovery unit.
+# Remove only that known link; a user-owned unit remains untouched.
+if [ -L "$LEGACY_RECOVERY_LINK" ] &&
+    [ "$(readlink "$LEGACY_RECOVERY_LINK")" = "$PREFIX/lib/systemd/user/gnoblin-recovery.service" ]; then
+    rm "$LEGACY_RECOVERY_LINK"
+fi
+
+if [ -L "$GNOBLINCTL_LINK" ]; then
+    existing_target="$(readlink "$GNOBLINCTL_LINK")"
+    if [ "$existing_target" != "$PREFIX/bin/gnoblinctl" ]; then
+        echo "Existing gnoblinctl link points elsewhere: $GNOBLINCTL_LINK -> $existing_target" >&2
+        echo 'Move it aside before registering this Gnoblin prefix.' >&2
         exit 1
     fi
-    if [ -L "$link" ]; then
-        case "$(readlink "$link")" in
-            */lib/systemd/user/"$unit") ;;
-            *)
-                echo "Existing custom unit link at $link; move it aside before registering Gnoblin." >&2
-                exit 1
-                ;;
-        esac
-    fi
-done
+elif [ -e "$GNOBLINCTL_LINK" ]; then
+    echo "Existing command at $GNOBLINCTL_LINK; move it aside before registering Gnoblin." >&2
+    exit 1
+fi
 
 command -v sudo >/dev/null 2>&1 || {
     echo 'sudo is needed to add the login screen entries.' >&2
@@ -112,12 +146,16 @@ command -v sudo >/dev/null 2>&1 || {
 }
 sudo -v
 
-printf '%s==>%s Registering Gnoblin with systemd and the login screen\n' "$blue" "$reset"
-unit_files=("$STANDALONE_TARGET" "$IDLE_SERVICE")
-if "$with_portal"; then
+printf '%s==>%s Registering Gnoblin with the login screen\n' "$blue" "$reset"
+if "$have_user_systemd"; then
+    unit_files=("$STANDALONE_TARGET" "$IDLE_SERVICE")
+fi
+if "$with_portal" && "$have_user_systemd"; then
     unit_files+=("$PORTAL_UNIT")
 fi
-systemctl --user --force link "${unit_files[@]}"
+if "$have_user_systemd"; then
+    systemctl --user --force link "${unit_files[@]}"
+fi
 desktop_to_install="$(mktemp)"
 trap 'rm -f -- "$desktop_to_install"' EXIT
 python3 - "$DESKTOP" "$desktop_to_install" <<'PY'
@@ -129,13 +167,26 @@ lines = []
 for line in source.read_text().splitlines():
     if line.startswith('DesktopNames='):
         line = 'DesktopNames=Gnoblin;'
+    elif line.startswith('X-GDM-SessionRegisters='):
+        line = 'X-GDM-SessionRegisters=false'
     lines.append(line)
 destination.write_text('\n'.join(lines) + '\n')
 PY
-systemctl --user daemon-reload
+if "$have_user_systemd"; then
+    systemctl --user daemon-reload
+else
+    echo 'No systemd user manager detected; Gnoblin core will run without user units.'
+fi
 sudo install -Dm644 "$desktop_to_install" /usr/share/wayland-sessions/gnoblin.desktop
 sudo install -Dm644 "$PORTAL_CONFIGURATION" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+# Make the prefix-built native CLI discoverable. Preserve any existing command
+# rather than replacing a user's script or a CLI from another installation.
+mkdir -p "$USER_BIN_DIR"
+if [ ! -L "$GNOBLINCTL_LINK" ]; then
+    ln -s "$PREFIX/bin/gnoblinctl" "$GNOBLINCTL_LINK"
+fi
 printf '%sGnoblin is available%s at login. Choose the existing GNOME session to switch back to GNOME.\n' "$green" "$reset"
+printf 'Native command: %s\n' "$GNOBLINCTL_LINK"
 if "$with_portal"; then
     sudo install -Dm644 "$PORTAL_DESCRIPTOR" /usr/share/xdg-desktop-portal/portals/gnoblin.portal
     sudo install -Dm644 "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service

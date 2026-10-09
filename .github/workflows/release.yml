@@ -270,7 +270,7 @@ jobs:
           pacman -U --noconfirm "$portal_package"
           pacman -Q gnoblin-portal
           ! pacman -Q gnoblin-gnome-integration
-          test -x /usr/lib/gnoblin/bin/gnoblin-mutter
+          test ! -e /usr/lib/gnoblin/bin/gnoblin-mutter
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -x /usr/bin/gnoblinctl
           test -f /usr/share/wayland-sessions/gnoblin.desktop
@@ -342,7 +342,7 @@ jobs:
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
-          test -x /usr/lib/gnoblin/bin/gnoblin-mutter
+          test ! -e /usr/lib/gnoblin/bin/gnoblin-mutter
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           pacman -U --noconfirm "${portal_packages[0]}"

@@ -1,0 +1,391 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] configured pointer bindings
+
+---
+diff --git a/src/core/keybindings-private.h b/src/core/keybindings-private.h
+index 7d87662469..90be95579c 100644
+--- a/src/core/keybindings-private.h
++++ b/src/core/keybindings-private.h
+@@ -101,6 +101,13 @@ typedef struct _MetaKeyBindingKeyboardLayout
+   xkb_level_index_t n_levels;
+ } MetaKeyBindingKeyboardLayout;
+ 
++typedef struct
++{
++  char *name;
++  guint button;
++  ClutterModifierType modifiers;
++} MetaGnoblinPointerBinding;
++
+ typedef struct
+ {
+   MetaBackend *backend;
+@@ -129,6 +136,8 @@ typedef struct
+ 
+   /* Alt+click button grabs */
+   ClutterModifierType window_grab_modifiers;
++
++  GPtrArray *gnoblin_pointer_bindings;
+ } MetaKeyBindingManager;
+ 
+ void     meta_display_init_keys             (MetaDisplay *display);
+@@ -136,6 +145,11 @@ void     meta_display_shutdown_keys         (MetaDisplay *display);
+ gboolean meta_keybindings_process_event     (MetaDisplay        *display,
+                                              MetaWindow         *window,
+                                              const ClutterEvent *event);
++gboolean meta_keybindings_apply_gnoblin_pointer_bindings (MetaDisplay *display,
++                                                          GVariant    *document,
++                                                          GError     **error);
++const char *meta_keybindings_get_gnoblin_pointer_binding (MetaDisplay        *display,
++                                                          const ClutterEvent *event);
+ 
+ gboolean meta_prefs_add_keybinding          (const char           *name,
+                                              GSettings            *settings,
+diff --git a/src/core/keybindings.c b/src/core/keybindings.c
+index 64b7c7c5d3..b35668353d 100644
+--- a/src/core/keybindings.c
++++ b/src/core/keybindings.c
+@@ -1165,6 +1165,156 @@ reload_keybindings (MetaDisplay *display)
+                                          META_MAPPING_STATE_POST_CHANGE);
+ }
+ 
++static void
++meta_gnoblin_pointer_binding_free (MetaGnoblinPointerBinding *binding)
++{
++  g_free (binding->name);
++  g_free (binding);
++}
++
++static gboolean
++parse_gnoblin_pointer_binding (const char                 *accelerator,
++                               MetaGnoblinPointerBinding  *binding,
++                               GError                     **error)
++{
++  gsize length = strlen (accelerator);
++  const char *button_text;
++  g_autofree char *modifiers = NULL;
++
++  if (length < strlen ("<X>Button1") ||
++      (!g_str_has_suffix (accelerator, "Button1") &&
++       !g_str_has_suffix (accelerator, "Button2") &&
++       !g_str_has_suffix (accelerator, "Button3")))
++    goto invalid;
++
++  button_text = accelerator + length - strlen ("Button1");
++  modifiers = g_strndup (accelerator, button_text - accelerator);
++  if (!*modifiers || !meta_parse_modifier (modifiers, &binding->modifiers) ||
++      binding->modifiers == 0)
++    goto invalid;
++
++  binding->button = button_text[6] - '0';
++  return TRUE;
++
++invalid:
++  g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++               "pointer binding '%s' must be a modified Button1, Button2, or Button3 accelerator",
++               accelerator);
++  return FALSE;
++}
++
++gboolean
++meta_keybindings_apply_gnoblin_pointer_bindings (MetaDisplay *display,
++                                                  GVariant    *document,
++                                                  GError     **error)
++{
++  MetaKeyBindingManager *keys = &display->key_binding_manager;
++  g_autoptr (GVariant) keybindings = NULL;
++  g_autoptr (GVariant) pointer = NULL;
++  g_autoptr (GPtrArray) bindings =
++    g_ptr_array_new_with_free_func ((GDestroyNotify) meta_gnoblin_pointer_binding_free);
++
++  keybindings = document ? g_variant_lookup_value (document, "keybindings",
++                                                    G_VARIANT_TYPE_VARDICT) : NULL;
++  pointer = keybindings ? g_variant_lookup_value (keybindings, "pointer",
++                                                  G_VARIANT_TYPE_VARDICT) : NULL;
++  if (pointer)
++    {
++      GVariantIter actions;
++      const char *name;
++      GVariant *values;
++
++      g_variant_iter_init (&actions, pointer);
++      while (g_variant_iter_next (&actions, "{&sv}", &name, &values))
++        {
++          g_autoptr (GVariant) accelerators = values;
++          if (!g_variant_is_of_type (accelerators, G_VARIANT_TYPE ("av")))
++            {
++              g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                           "pointer binding '%s' must be an array of accelerators", name);
++              return FALSE;
++            }
++          for (guint i = 0; i < g_variant_n_children (accelerators); i++)
++            {
++              g_autoptr (GVariant) boxed = g_variant_get_child_value (accelerators, i);
++              g_autoptr (GVariant) value = g_variant_get_variant (boxed);
++              MetaGnoblinPointerBinding *binding;
++
++              if (!g_variant_is_of_type (value, G_VARIANT_TYPE_STRING))
++                {
++                  g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                                       "pointer bindings must be accelerator strings");
++                  return FALSE;
++                }
++              binding = g_new0 (MetaGnoblinPointerBinding, 1);
++              binding->name = g_strdup (name);
++              if (!parse_gnoblin_pointer_binding (g_variant_get_string (value, NULL), binding,
++                                                   error))
++                {
++                  meta_gnoblin_pointer_binding_free (binding);
++                  return FALSE;
++                }
++              for (guint other = 0; other < bindings->len; other++)
++                {
++                  MetaGnoblinPointerBinding *candidate = g_ptr_array_index (bindings, other);
++                  unsigned int candidate_modifiers;
++                  unsigned int binding_modifiers;
++
++                  devirtualize_modifiers (keys, candidate->modifiers, &candidate_modifiers);
++                  devirtualize_modifiers (keys, binding->modifiers, &binding_modifiers);
++                  if (candidate->button == binding->button &&
++                      candidate_modifiers == binding_modifiers)
++                    {
++                      g_set_error (error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
++                                   "pointer binding '%s' conflicts with '%s'",
++                                   binding->name, candidate->name);
++                      meta_gnoblin_pointer_binding_free (binding);
++                      return FALSE;
++                    }
++                }
++              g_ptr_array_add (bindings, binding);
++            }
++        }
++    }
++
++  meta_compositor_notify_mapping_change (display->compositor,
++                                         META_MAPPING_TYPE_BUTTON,
++                                         META_MAPPING_STATE_PRE_CHANGE);
++  g_clear_pointer (&keys->gnoblin_pointer_bindings, g_ptr_array_unref);
++  keys->gnoblin_pointer_bindings = g_steal_pointer (&bindings);
++  meta_compositor_notify_mapping_change (display->compositor,
++                                         META_MAPPING_TYPE_BUTTON,
++                                         META_MAPPING_STATE_POST_CHANGE);
++  return TRUE;
++}
++
++const char *
++meta_keybindings_get_gnoblin_pointer_binding (MetaDisplay        *display,
++                                              const ClutterEvent *event)
++{
++  MetaKeyBindingManager *keys = &display->key_binding_manager;
++  ClutterModifierType event_modifiers;
++  guint button;
++
++  if (clutter_event_type (event) != CLUTTER_BUTTON_PRESS)
++    return NULL;
++
++  button = clutter_event_get_button (event);
++  event_modifiers = mask_from_event_params (keys, clutter_event_get_state (event));
++  for (guint i = 0; keys->gnoblin_pointer_bindings &&
++                   i < keys->gnoblin_pointer_bindings->len; i++)
++    {
++      MetaGnoblinPointerBinding *binding =
++        g_ptr_array_index (keys->gnoblin_pointer_bindings, i);
++      unsigned int binding_modifiers;
++
++      devirtualize_modifiers (keys, binding->modifiers, &binding_modifiers);
++      if (binding->button == button && binding_modifiers == event_modifiers)
++        return binding->name;
++    }
++  return NULL;
++}
++
+ ClutterModifierType
+ meta_display_get_compositor_modifiers (MetaDisplay *display)
+ {
+@@ -1246,6 +1396,7 @@ meta_display_shutdown_keys (MetaDisplay *display)
+ 
+   g_hash_table_destroy (keys->key_bindings_index);
+   g_hash_table_destroy (keys->key_bindings);
++  g_clear_pointer (&keys->gnoblin_pointer_bindings, g_ptr_array_unref);
+ 
+   resolved_key_combo_reset (&keys->overlay_resolved_key_combo);
+   resolved_key_combo_reset (&keys->locate_pointer_resolved_key_combo);
+diff --git a/src/core/window.c b/src/core/window.c
+index e48185523f..b8f59d597c 100644
+--- a/src/core/window.c
++++ b/src/core/window.c
+@@ -72,6 +72,7 @@
+ #include "core/boxes-private.h"
+ #include "core/constraints.h"
+ #include "core/keybindings-private.h"
++#include "core/gnoblin-native-control.h"
+ #include "core/meta-window-config-private.h"
+ #include "core/meta-workspace-manager-private.h"
+ #include "core/place.h"
+@@ -6553,6 +6554,27 @@ meta_window_begin_grab_op (MetaWindow       *window,
+                                       pos_hint);
+ }
+ 
++gboolean
++meta_window_begin_pointer_grab_op (MetaWindow       *window,
++                                   MetaGrabOp        op,
++                                   ClutterSprite    *sprite,
++                                   guint32           timestamp,
++                                   graphene_point_t *pos_hint,
++                                   guint             button)
++{
++  MetaWindowDrag *drag;
++
++  if (button == 0 ||
++      !meta_window_begin_grab_op (window, op, sprite, timestamp, pos_hint))
++    return FALSE;
++
++  drag = meta_compositor_get_current_window_drag (window->display->compositor);
++  if (!drag)
++    return FALSE;
++  meta_window_drag_set_initiating_button (drag, button);
++  return TRUE;
++}
++
+ MetaStackLayer
+ meta_window_get_default_layer (MetaWindow *window)
+ {
+@@ -7805,19 +7827,10 @@ meta_window_handle_ungrabbed_event (MetaWindow         *window,
+                                     const ClutterEvent *event)
+ {
+   MetaDisplay *display = window->display;
+-  MetaContext *context = meta_display_get_context (display);
+-  MetaBackend *backend = meta_context_get_backend (context);
+-  ClutterStage *stage = CLUTTER_STAGE (meta_backend_get_stage (backend));
+-  ClutterBackend *clutter_backend = meta_backend_get_clutter_backend (backend);
+-  ClutterSprite *sprite;
+-  gboolean unmodified;
+-  gboolean is_window_grab;
+-  gboolean is_window_button_grab_allowed;
+-  ClutterModifierType grab_mods, event_mods;
++  const char *pointer_binding;
+   ClutterInputDevice *source;
+   ClutterEventType event_type;
+   uint32_t time_ms;
+-  gfloat x, y;
+   guint button;
+ 
+   if (window->unmanaging)
+@@ -7854,40 +7867,12 @@ meta_window_handle_ungrabbed_event (MetaWindow         *window,
+       meta_window_check_alive (window, time_ms);
+     }
+ 
+-  /* We have three passive button grabs:
+-   * - on any button, without modifiers => focuses and maybe raises the window
+-   * - on resize button, with modifiers => start an interactive resizing
+-   *   (normally <Super>middle)
+-   * - on move button, with modifiers => start an interactive move
+-   *   (normally <Super>left)
+-   * - on menu button, with modifiers => show the window menu
+-   *   (normally <Super>right)
+-   *
+-   * We may get here because we actually have a button
+-   * grab on the window, or because we're a wayland
+-   * compositor and thus we see all the events, so we
+-   * need to check if the event is interesting.
+-   * We want an event that is not modified for a window.
+-   *
+-   * We may have other events on the window, for example
+-   * a click on a frame button, but that's not for us to
+-   * care about. Just let the event through.
+-   */
+-
+-  grab_mods = meta_display_get_compositor_modifiers (display);
+-  event_mods = clutter_event_get_state (event);
+-  unmodified = (event_mods & grab_mods) == 0;
+   source = clutter_event_get_source_device (event);
+-  is_window_button_grab_allowed = !display->focus_window ||
+-                                  !meta_window_shortcuts_inhibited (display->focus_window, source);
+-  is_window_grab = (is_window_button_grab_allowed &&
+-                    ((event_mods & grab_mods) == grab_mods));
+-
+-  clutter_event_get_coords (event, &x, &y);
++  pointer_binding = !meta_window_shortcuts_inhibited (window, source)
++    ? meta_keybindings_get_gnoblin_pointer_binding (display, event)
++    : NULL;
+ 
+-  sprite = clutter_backend_get_sprite (clutter_backend, stage, event);
+-
+-  if (unmodified)
++  if (!pointer_binding)
+     {
+       if (meta_prefs_get_raise_on_click ())
+         meta_window_raise (window);
+@@ -7895,67 +7880,12 @@ meta_window_handle_ungrabbed_event (MetaWindow         *window,
+         meta_topic (META_DEBUG_FOCUS,
+                     "Not raising window on click due to don't-raise-on-click option");
+     }
+-  else if (is_window_grab && (int) button == meta_prefs_get_mouse_button_resize ())
+-    {
+-      if (window->has_resize_func)
+-        {
+-          gboolean north, south;
+-          gboolean west, east;
+-          MtkRectangle frame_rect;
+-          MetaGrabOp op = META_GRAB_OP_WINDOW_BASE;
+-
+-          meta_window_get_frame_rect (window, &frame_rect);
+-
+-          west = x < (frame_rect.x + 1 * frame_rect.width / 3);
+-          east = x > (frame_rect.x + 2 * frame_rect.width / 3);
+-          north = y < (frame_rect.y + 1 * frame_rect.height / 3);
+-          south = y > (frame_rect.y + 2 * frame_rect.height / 3);
+-
+-          if (west)
+-            op |= META_GRAB_OP_WINDOW_DIR_WEST;
+-          if (east)
+-            op |= META_GRAB_OP_WINDOW_DIR_EAST;
+-          if (north)
+-            op |= META_GRAB_OP_WINDOW_DIR_NORTH;
+-          if (south)
+-            op |= META_GRAB_OP_WINDOW_DIR_SOUTH;
+-
+-          if (op != META_GRAB_OP_WINDOW_BASE)
+-            {
+-              op |= META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
+-              if (meta_window_begin_grab_op (window,
+-                                             op,
+-                                             sprite,
+-                                             time_ms,
+-                                             NULL))
+-                return CLUTTER_EVENT_STOP;
+-            }
+-        }
+-    }
+-  else if (is_window_grab && (int) button == meta_prefs_get_mouse_button_menu ())
++  else
+     {
+-      if (meta_prefs_get_raise_on_click ())
+-        meta_window_raise (window);
+-
+-      meta_window_show_menu (window,
+-                             META_WINDOW_MENU_WM,
+-                             (int) x, (int) y);
+-
++      gnoblin_native_control_pointer_binding_activated (display, window, event,
++                                                         pointer_binding);
+       return CLUTTER_EVENT_STOP;
+     }
+-  else if (is_window_grab && (int) button == 1)
+-    {
+-      if (window->has_move_func)
+-        {
+-          if (meta_window_begin_grab_op (window,
+-                                         META_GRAB_OP_MOVING |
+-                                         META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED,
+-                                         sprite,
+-                                         time_ms,
+-                                         NULL))
+-            return CLUTTER_EVENT_STOP;
+-        }
+-    }
+ 
+   return CLUTTER_EVENT_PROPAGATE;
+ }
+

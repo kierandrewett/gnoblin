@@ -1,7 +1,8 @@
 # gnoblin.configure.autostart
 
 `autostart` maps each entry name to a command Gnoblin starts in the user
-session. Put these settings in `~/.config/gnoblin/init.lua`.
+session after Mutter publishes its Wayland display. Put these settings in
+`~/.config/gnoblin/init.lua`.
 
 | Field     | Accepted values                   | Default and effect                                   |
 | --------- | --------------------------------- | ---------------------------------------------------- |
@@ -11,8 +12,8 @@ session. Put these settings in `~/.config/gnoblin/init.lua`.
 | `enable`  | Boolean                           | `true`; set to `false` to disable an imported entry. |
 
 Use the same name to override an imported command. Omitted fields keep their
-earlier values. Disabling an entry prevents future launches but does not stop
-a process that is already running.
+earlier values. Removing or disabling an entry stops its Gnoblin-owned process
+group on config reload, including descendants that remain in that group.
 
 ```lua
 gnoblin.configure {
@@ -50,6 +51,16 @@ redirection and other shell syntax require explicitly launching a shell. See
 
 An invalid command logs a warning and does not prevent other entries from
 starting. Gnoblin does not restart a command after it exits.
+
+An invalid entry makes `gnoblinctl config reload` fail and names the entry, for
+example `autostart "bar" has an unsupported field "cmd"; use name, command or
+when`. The previous configuration stays active and the session keeps running.
+An entry is invalid when:
+
+- it has no name, a name longer than 80 characters, or a name used twice
+- it has a field other than `name`, `command` or `when`
+- `when` is set to anything other than `"on_login"`
+- `command` is not a list, is empty, or has an item that is not a string
 
 ## Type definition
 

@@ -27,9 +27,18 @@ Set `window_management.button_layout` to choose Mutter's global server-side
 button order. The per-window `frame.button_layout` option controls buttons for
 Gnoblin frame renderers. See [titlebar button placement](/config/configure/window_management#titlebar-button-placement).
 
-Gnoblin's frames are off by default, although your desktop shell can enable
-them through its config. Use `mode` to decide which windows get a frame and
-`renderer` to choose what draws it. Setting a renderer alone does not enable frames.
+The embedded default config enables Gnoblin's built-in `native` renderer with
+`mode = "auto"` and extents `{32, 1, 1, 1}`. Apps keep their own titlebars;
+apps requesting server decorations get a native frame. It needs no desktop shell
+or external renderer. The default config disables animations.
+
+Use `mode` to decide which windows get a frame and `renderer` to choose what
+draws it. Setting a renderer alone does not enable frames. A config without a
+frame rule retains the API default, `"off"`.
+
+Run `gnoblinctl config restore-default` to replace your config with the current
+embedded defaults; Gnoblin backs up your previous config. To keep your other
+settings, add the frame rule below instead.
 
 ## Choose a mode
 
@@ -40,9 +49,24 @@ them through its config. Use `mode` to decide which windows get a frame and
 | `prefer-server` | Prefer a Gnoblin frame for apps that support decoration negotiation |
 | `replace`       | Hide the configured app margins and draw a Gnoblin frame            |
 
-Apps negotiate decorations through the Wayland `xdg-decoration` protocol.
-Not every app supports it, and an app that gives no preference may still draw
-a titlebar. `auto` uses explicit requests instead of guessing from appearance.
+Apps negotiate decorations through Wayland decoration protocols. GTK on Wayland
+uses KDE's server-decoration protocol; other clients commonly use
+`xdg-decoration`. Gnoblin supports server decorations through both. GTK windows
+that create the KDE decoration object use `auto` behavior by default, so
+Gnoblin's native renderer supplies their frame. A matching Lua window rule can
+select another mode. `auto` uses client requests instead of guessing from
+appearance.
+
+GTK apps with a custom titlebar can still draw titlebar controls inside their
+surface. Gnoblin applies its frame and clips declared client shadow margins,
+but it cannot identify arbitrary pixels inside an app surface as a border
+without risking removal of app content. `corners.remove_csd` reconstructs
+detected client-rounded corners before applying Gnoblin's shape.
+
+With `prefer-server`, Gnoblin uses the app's declared visible bounds when the
+app keeps CSD. It clips buffer margins outside those bounds and draws Gnoblin's
+configured border and shadow around them. Apps that omit visible bounds use the
+full surface.
 
 ## Let apps request a Gnoblin titlebar {#enable-negotiated-ssd}
 
@@ -88,13 +112,15 @@ Renderer and style names accept 1–64 letters, digits, `_` or `-`.
 
 ## Cropping client decorations
 
-Cropping hides a strip of the app and makes that strip unclickable. It cannot
-distinguish a titlebar from tabs, search boxes or other controls. Use it only
-when you know exactly which margins you want to hide.
+The `crop` option hides a strip of the app and makes that strip unclickable. It
+cannot distinguish a titlebar from tabs, search boxes or other controls. Use
+it only when you know exactly which margins you want to hide.
 
-With `prefer-server`, explicit crop provides a fallback for CSD-only clients;
-negotiated SSD clients are not cropped. With `replace`, zero extents give a
-crop-only window. Fullscreen temporarily removes crop and frame extents.
+With `prefer-server`, the declared visible bounds are cropped automatically
+when an app keeps CSD; `crop` adds extra margins in that case. Negotiated SSD
+clients use their own declared bounds and ignore `crop`. With `replace`, zero
+extents give a crop-only window. Fullscreen temporarily removes explicit crop
+and frame extents.
 
 ## Custom renderers
 
@@ -128,6 +154,17 @@ Frames work on normal Wayland application windows (`xdg-toplevel`). They do
 not apply to X11 apps running through Xwayland, popups, bars or launchers.
 Moving framed windows between displays with different scales and cropping apps
 with many popups have limited test coverage.
+
+Wayland window effects exclude transparent buffer margins outside the client's
+declared window geometry. Borders and shadows include Gnoblin's server frame.
+When an app uses Gnoblin's frame, `corners.radius` rounds the whole window,
+frame and content, even in `auto` mode, so square app content never shows
+outside the frame's corners. States where rounding is off, such as maximised
+with `keep_maximized = false`, make both the frame and the content square.
+
+Popup positions use the parent window's client origin, excluding Gnoblin's
+frame extents and accounting for cropped margins. This also applies when a
+popup acknowledges its configuration or follows a moved parent.
 
 For renderer implementation and tests, see
 [renderer architecture](/window-frame-renderers) and the [author guide](/frame-renderer-api).

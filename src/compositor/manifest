@@ -1,2 +1,10 @@
 mutter gnoblin-plugin.c src/compositor/plugins/gnoblin-plugin.c
+mutter gnoblin-imgui-overlay.hpp src/compositor/plugins/gnoblin-imgui-overlay.hpp
+mutter gnoblin-imgui-overlay.cpp src/compositor/plugins/gnoblin-imgui-overlay.cpp
+mutter gnoblin-plugin-ui.h src/compositor/plugins/gnoblin-plugin-ui.h
+mutter gnoblin-plugin-ui.cpp src/compositor/plugins/gnoblin-plugin-ui.cpp
+mutter gnoblin-console-panel.hpp src/compositor/plugins/gnoblin-console-panel.hpp
+mutter gnoblin-console-panel.cpp src/compositor/plugins/gnoblin-console-panel.cpp
+mutter gnoblin-recovery-panel.hpp src/compositor/plugins/gnoblin-recovery-panel.hpp
+mutter gnoblin-recovery-panel.cpp src/compositor/plugins/gnoblin-recovery-panel.cpp
 mutter gnoblin-config.h src/wayland/gnoblin-config.h

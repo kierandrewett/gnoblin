@@ -8,10 +8,12 @@ diff --git a/src/meson.build b/src/meson.build
 index 17f6edcb8..383f02c46 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -597,10 +597,14 @@ mutter_sources += [
+@@ -597,12 +597,16 @@ mutter_sources += [
    # at build time; registered via meta_gnoblin_init_protocols)
    'wayland/meta-gnoblin-protocols.c',
    'wayland/meta-gnoblin-protocols.h',
+   'wayland/meta-gnoblin-live-protocols.c',
+   'wayland/meta-gnoblin-live-protocols.h',
 +  'wayland/gnoblin-portal-policy.c',
 +  'wayland/gnoblin-portal-identity.c',
    'wayland/meta-gnoblin-window-frame.c',

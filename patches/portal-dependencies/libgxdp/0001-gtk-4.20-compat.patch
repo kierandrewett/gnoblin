@@ -1,0 +1,97 @@
+From 6e1b9b5874e5bfef19c72aab1c30cbf5dc46aec0 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 12:00:00 +0100
+Subject: [PATCH] build: support GTK 4.20 and older GNOME schemas
+
+GTK 4.22 added gtk_disable_portal_interfaces().  The Gnoblin portal
+backend disables every GTK portal interface, so GTK 4.20's existing
+ gtk_disable_portals() has the required behaviour for it.  Retain the
+selective call for newer GTK builds and conservatively disable every portal
+when libgxdp is used with a selective list on GTK 4.20.
+
+
+The backend also binds every listed GNOME setting to a GtkSettings
+property with g_settings_bind(), which aborts the process when a key is
+missing. Fedora 43 ships GNOME 49 schemas without a11y.interface
+reduced-motion, so the backend died with SIGTRAP at startup. Skip
+schemas, keys and GtkSettings properties that are not available.
+---
+ meson.build        |  2 +-
+ src/gxdp-wayland.c | 21 +++++++++++++++++++++
+ src/gxdp.c         |  6 ++++++
+ 3 files changed, 28 insertions(+), 1 deletion(-)
+
+diff --git a/meson.build b/meson.build
+index 792ecb0..7443166 100644
+--- a/meson.build
++++ b/meson.build
+@@ -6,7 +6,7 @@ project(
+   license: 'LGPLv2.1+'
+ )
+ 
+-gtk_dep = dependency('gtk4', version: '>= 4.22.0')
++gtk_dep = dependency('gtk4', version: '>= 4.20.0')
+ 
+ subdir('src')
+ 
+diff --git a/src/gxdp-wayland.c b/src/gxdp-wayland.c
+index 650424a..386e942 100644
+--- a/src/gxdp-wayland.c
++++ b/src/gxdp-wayland.c
+@@ -190,14 +190,35 @@ init_settings (void)
+     },
+   };
+   GtkSettings *gtk_settings = gtk_settings_get_default ();
++  GSettingsSchemaSource *source = g_settings_schema_source_get_default ();
+ 
+   for (size_t i = 0; i < G_N_ELEMENTS (schemas); i++)
+     {
+       g_autoptr (GSettings) settings = NULL;
++      g_autoptr (GSettingsSchema) schema = NULL;
++
++      /* An older GNOME schema set, or an older GTK, may lack a schema, a key
++       * or a GtkSettings property that a newer release added. Skip those
++       * mappings: g_settings_bind() aborts the whole backend on a missing key. */
++      schema = source ? g_settings_schema_source_lookup (source, schemas[i].schema, TRUE) : NULL;
++      if (!schema)
++        {
++          g_debug ("Skipping missing schema %s", schemas[i].schema);
++          continue;
++        }
+ 
+       settings = g_settings_new (schemas[i].schema);
+       for (size_t j = 0; j < MAX_KEYS && schemas[i].mappings[j].schema_key; j++)
+         {
++          if (!g_settings_schema_has_key (schema, schemas[i].mappings[j].schema_key) ||
++              !g_object_class_find_property (G_OBJECT_GET_CLASS (gtk_settings),
++                                             schemas[i].mappings[j].gtk_key))
++            {
++              g_debug ("Skipping unavailable setting %s %s",
++                       schemas[i].schema, schemas[i].mappings[j].schema_key);
++              continue;
++            }
++
+           if (schemas[i].mappings[j].mapping)
+             {
+               g_settings_bind_with_mapping (settings,
+diff --git a/src/gxdp.c b/src/gxdp.c
+index 9cc8d7e..d1b02df 100644
+--- a/src/gxdp.c
++++ b/src/gxdp.c
+@@ -66,7 +66,13 @@ gxdp_init_gtk (GxdpServiceClientType   service_client_type,
+     }
+   else
+     {
++#if GTK_CHECK_VERSION(4, 22, 0)
+       gtk_disable_portal_interfaces (implemented_interfaces);
++#else
++      /* GTK 4.20 cannot select interfaces.  Disabling all portals keeps
++       * backend dialog requests inside this process. */
++      gtk_disable_portals ();
++#endif
+     }
+ 
+   /* Make libadwaita use GSettings */
+
+-- 
+2.55.0

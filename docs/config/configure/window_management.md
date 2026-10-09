@@ -11,19 +11,12 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 
 | Key                            | Values                           | Default    | Effect                                                    |
 | ------------------------------ | -------------------------------- | ---------- | --------------------------------------------------------- |
-| `focus_mode`                   | `"click"`, `"sloppy"`, `"mouse"` | `"click"`  | Selects when pointer movement changes focus.              |
-| `focus_new_windows`            | `"smart"`, `"strict"`            | `"strict"` | Selects Mutter's new-window focus policy.                 |
+| `focus_mode`                   | `"click"`, `"hover"`, `"hover-strict"` | `"click"`  | Selects when pointer movement changes focus.        |
+| `focus_new_windows`            | `"allow"`, `"prevent"`           | `"prevent"` | Selects Mutter's new-window focus policy.                |
 | `raise_on_click`               | Boolean                          | `true`     | Raise a window when clicked.                              |
 | `auto_raise`                   | Boolean                          | `false`    | Raise the focused window automatically.                   |
 | `auto_raise_delay`             | 0–10000 ms                       | `500`      | Delay before automatically raising the focused window.    |
 | `focus_change_on_pointer_rest` | Boolean                          | `false`    | Change focus after the pointer rests over another window. |
-
-### Modified window clicks
-
-| Key                        | Values                     | Default     | Effect                                                        |
-| -------------------------- | -------------------------- | ----------- | ------------------------------------------------------------- |
-| `mouse_button_modifier`    | Mutter modifier expression | `"<Super>"` | Modifier for moving, resizing, and opening menus.             |
-| `resize_with_right_button` | Boolean                    | `false`     | Use modified right click to resize instead of opening a menu. |
 
 ### Placement and responsiveness
 
@@ -36,10 +29,34 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 | `center_new_windows`          | Boolean         | `false` | Center newly created windows.                                           |
 | `attach_modal_dialogs`        | Boolean         | `false` | Place modal dialogs with their parent window.                           |
 | `disable_workarounds`         | Boolean         | `false` | Disable Mutter's compatibility workarounds for broken X11 applications. |
-| `constrain_drag_to_work_area` | Boolean         | `true`  | Keep interactive window moves inside the work area.                     |
+| `constrain_drag_to_work_area` | Boolean         | `true`  | Keep dragged windows inside the work area. See the note below the table. |
 
 Leave `disable_workarounds` set to `false` unless you are debugging an X11
 application. Enabling it can make some applications behave incorrectly.
+
+`constrain_drag_to_work_area` controls how far a dragged window can leave the
+work area, which is the monitor minus the space that panels reserve.
+
+- With `true`, the whole window stays inside the work area.
+- With `false`, Mutter's own rule applies: a window can move until only a strip
+  of it stays on screen, at most 75 pixels tall.
+
+The setting is read when a drag starts, so a reload affects the next drag.
+
+The table shows the compositor default when a key is missing. The starter
+config that Gnoblin loads first sets these values instead, so they are what you
+get unless your own config changes them:
+
+| Key                            | Starter config value | Why                                                                              |
+| ------------------------------ | -------------------- | -------------------------------------------------------------------------------- |
+| `attach_modal_dialogs`         | `true`               | A modal dialog opens centered over its parent and moves with it, as in GNOME.    |
+| `center_new_windows`           | `true`               | New windows open centered on the monitor.                                        |
+| `edge_tiling`                  | `true`               | Dragging a window to a screen edge tiles it, as in GNOME.                        |
+| `focus_new_windows`            | `"allow"`            | A window started from a launcher takes focus. `"prevent"` leaves it behind.      |
+| `workspaces_only_on_primary`   | `true`               | A window on another monitor follows the active workspace, as in GNOME.           |
+| `action_middle_click_titlebar` | `"none"`             | A stray middle click does not lower a window.                                    |
+
+Set any of them in your own config to change it.
 
 ### Titlebar buttons and actions
 
@@ -56,39 +73,34 @@ application. Enabling it can make some applications behave incorrectly.
 
 - `"click"` focuses a window when you click it. Moving the pointer does not
   change focus.
-- `"sloppy"` focuses a window when the pointer enters it. If the pointer
+- `"hover"` focuses a window when the pointer enters it. If the pointer
   leaves all windows, focus returns to the most recently used eligible window.
-- `"mouse"` also focuses on pointer entry, but clears focus when the pointer
+- `"hover-strict"` also focuses on pointer entry, but clears focus when the pointer
   leaves all windows.
 
 Set `focus_change_on_pointer_rest = true` to change focus only after the
 pointer rests briefly.
 
-## Modified window clicks
+`"sloppy"` and `"mouse"` still load as the old names for `"hover"` and
+`"hover-strict"`. Gnoblin reports the new names. The old names will be removed in
+a later release.
 
-Hold `mouse_button_modifier` while clicking a window to move it with the left
-button, resize it with the middle button, or open its menu with the right
-button. Set `resize_with_right_button = true` to swap the middle and right
-button actions.
+## Pointer bindings
 
-The modifier uses Mutter's accelerator modifier syntax. Combine tokens without
-spaces, such as `"<Super><Shift>"`. Tokens are case-insensitive. Mutter accepts
-`<Alt>`, `<Super>`, `<Meta>`, `<Hyper>`, `<Mod1>` through `<Mod5>`, and these
-Control and Shift aliases:
-
-- Control: `<Control>`, `<Ctrl>`, `<Ctl>`, or `<Primary>`.
-- Shift: `<Shift>` or `<Shft>`.
-
-Set the modifier to `"disabled"` or `""` to disable modified window clicks.
-These settings apply to the Gnoblin session; other desktop sessions keep their
-own settings.
+Configure modified dragging and window menus with
+[`keybindings.pointer`](/config/configure/keybindings#pointer-bindings).
+The default Lua callbacks bind Super + left-drag to move and Super + right-drag
+to resize from the nearest corner. These gestures work on application windows
+with client or server decorations.
 
 ## Titlebar button placement
 
-`button_layout` places Mutter's server-side titlebar buttons. It also controls
-the built-in fallback SSD. It does not change client-side titlebars or custom
-frame renderers. The default leaves the left side empty and puts minimize,
-maximize, and close on the right.
+`button_layout` sets Mutter's global titlebar button order. Gnoblin's native
+frame does not use it. To change the buttons on a window that has the native
+frame, set `frame.button_layout` in a
+[window rule](/config/window_rule#frame-fields). `button_layout` does not change
+client-side titlebars or custom frame renderers. The default leaves the left side
+empty and puts minimize, maximize, and close on the right.
 
 Set either side to an ordered list of `"menu"`, `"minimize"`, `"maximize"`, or
 `"close"`. A `"spacer"` between two buttons adds a gap. A button can appear at
@@ -118,14 +130,20 @@ Mutter's standard policy has two choices. The [GNOME Shell team's
 focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/)
 explains why the modes differ.
 
-- `"strict"` is the default and enables Mutter's focus-stealing prevention. Activation requests
-  need recent launch or user activity. A newly opened window must also be a
-  transient descendant of the focused window, such as a dialog opened by that
-  app. Requests without valid recent activity leave the window unfocused.
-- `"smart"` allows applications to activate their windows after you have
-  interacted with another window since they opened them.
+- `"prevent"` enables Mutter's focus-stealing prevention. It is the compositor's value when the
+  key is missing. Activation requests need recent launch or user activity. A
+  newly opened window must also be a transient descendant of the focused
+  window, such as a dialog opened by that app. Requests without valid recent
+  activity leave the window unfocused, including a window you start from a
+  launcher and a password dialog.
+- `"allow"` is the starter config value. It allows applications to activate
+  their windows after you have interacted with another window since they opened
+  them.
 
-In a Gnoblin session, `"strict"` makes Mutter use its focus-stealing checks.
+`"smart"` and `"strict"` still load as the old names for `"allow"` and
+`"prevent"`. The old names will be removed in a later release.
+
+In a Gnoblin session, `"prevent"` makes Mutter use its focus-stealing checks.
 See [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/52-focus-transfer/0001-honour-app-activation.patch)
 for this session-specific behavior, or read
 [Mutter's focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/).
@@ -160,7 +178,7 @@ For example, use pointer-follow focus and declare two persistent workspaces:
 ```lua
 gnoblin.configure {
     window_management = {
-        focus_mode = "sloppy",
+        focus_mode = "hover",
     },
     workspaces = {
         {id = "main", name = "Main"},
@@ -183,9 +201,9 @@ The three titlebar click fields accept these values:
 | `menu`                         | Open the window menu.                   |
 | `none`                         | Do nothing.                             |
 
-These settings control Mutter policy and Gnoblin's built-in fallback SSD.
-Applications that draw their own client-side titlebars handle those clicks
-themselves.
+These settings control what a click on a titlebar does, including a titlebar
+drawn by Gnoblin's native frame. Applications that draw their own client-side
+titlebars handle those clicks themselves.
 
 GTK applications usually draw their own titlebars and read GNOME's window
 manager settings directly. This Lua section does not change those apps' CSD
@@ -201,10 +219,8 @@ This is schema pseudocode in Lua table form. `?` marks an optional field;
 ```lua
 gnoblin.configure {
     window_management = {
-        focus_mode = "click" | "sloppy" | "mouse"?,
-        focus_new_windows = "smart" | "strict"?,
-        mouse_button_modifier = string?, -- Mutter modifier expression, "disabled", or ""
-        resize_with_right_button = boolean?,
+        focus_mode = "click" | "hover" | "hover-strict"?,
+        focus_new_windows = "allow" | "prevent"?,
         auto_maximize = boolean?,
         raise_on_click = boolean?,
         auto_raise = boolean?,

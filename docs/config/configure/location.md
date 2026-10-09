@@ -43,3 +43,34 @@ Choose the least precise level an application needs:
 - `"street"`: street-level location.
 - `"exact"`: exact location, typically requiring a GPS receiver.
 - `"inherit"`: clear an earlier Lua override and follow the system setting.
+
+## When GeoClue asks your handler
+
+GeoClue asks the agent about an app only when it can identify the app as a
+sandboxed Flatpak app. It reads that identity from the app's systemd scope
+(`app-flatpak-ID-N.scope`). Every other app counts as a system component:
+GeoClue does not ask, and the app receives location up to `max_accuracy`.
+`enabled` and `max_accuracy` apply to every app, with or without a request.
+
+## Stop the GeoClue demo agent
+
+GeoClue accepts one agent for each user. On Fedora the `geoclue-demo-agent`
+autostart entry hides itself only in GNOME, so it also starts in a Gnoblin
+session. It approves every request, and it can take the agent slot before
+Gnoblin registers.
+
+To stop it, create `~/.config/autostart/geoclue-demo-agent.desktop`:
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Geoclue Demo agent
+Exec=/usr/libexec/geoclue-2.0/demos/agent
+Hidden=true
+```
+
+Run `systemctl --user daemon-reload`, then log out and in. A running demo agent
+keeps running until then. To check that GeoClue accepted Gnoblin, stop the
+service with `sudo systemctl stop geoclue`, start it by hand with
+`sudo -u geoclue env G_MESSAGES_DEBUG=Geoclue /usr/libexec/geoclue`, and look
+for `New agent for user ID` in its output.

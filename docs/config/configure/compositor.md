@@ -5,14 +5,22 @@ Configure this part of `gnoblin.configure` with the `compositor` key.
 Put these fields inside `gnoblin.configure {compositor = {...}}`. Changes apply
 on configuration reload. Omitted values keep the defaults shown below.
 
+Animations run only when selected through animation declarations or window
+rules. There is no global animation switch. See the
+[animation guide](/guides/animations).
+
 | Key                  | Values                                  | Default              | Effect                                                   |
 | -------------------- | --------------------------------------- | -------------------- | -------------------------------------------------------- |
-| `enable_animations`  | Boolean                                 | `true`               | Enables compositor animations.                           |
-| `locate_pointer`     | Boolean                                 | `false`              | Enables the pointer-location effect.                     |
+| `locate_pointer`     | Boolean                                 | `false`              | Sends `gnoblin.pointer.locate-requested` when the key is pressed. |
 | `locate_pointer_key` | Mutter key name, `"disabled"`, or `""`  | `"Control_L"`        | Key that triggers the pointer locator.                   |
 | `visual_bell`        | Boolean                                 | `false`              | Flashes the screen when an app requests the visual bell. |
 | `audible_bell`       | Boolean                                 | `true`               | Plays a sound when an app requests the audible bell.     |
 | `visual_bell_type`   | `"fullscreen-flash"` or `"frame-flash"` | `"fullscreen-flash"` | Flash the full screen or the focused window.             |
+
+Gnoblin draws nothing for the pointer locator. With `locate_pointer = true`,
+pressing `locate_pointer_key` sends the `gnoblin.pointer.locate-requested`
+event with the pointer position (`x`, `y`) and its monitor. A shell or a Lua
+callback decides how to show it. See [Lua events](/config/lua-events).
 
 For example, enable the pointer locator and use a focused-window flash:
 
@@ -44,7 +52,6 @@ field, and `|` separates accepted alternatives.
 ```lua
 gnoblin.configure {
     compositor = {
-        enable_animations = boolean?,
         locate_pointer = boolean?,
         locate_pointer_key = string?, -- XKB keysym name, "disabled", or ""
         visual_bell = boolean?,

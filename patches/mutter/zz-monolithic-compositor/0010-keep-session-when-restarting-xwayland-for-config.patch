@@ -1,0 +1,22 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 22:05:00 +0100
+Subject: [PATCH] mutter: keep the session when Gnoblin restarts Xwayland for config
+
+---
+diff --git a/src/wayland/meta-xwayland.c b/src/wayland/meta-xwayland.c
+index a4b6c6afba..d8fcfa4092 100644
+--- a/src/wayland/meta-xwayland.c
++++ b/src/wayland/meta-xwayland.c
+@@ -510,6 +510,11 @@ x_io_error_exit (Display *display,
+   MetaContext *context = manager->compositor->context;
+   MetaX11DisplayPolicy x11_display_policy;
+ 
++  /* Gnoblin stops Xwayland on purpose to apply a config change and starts it
++   * again when the process exits. Do not treat that as a crash. */
++  if (manager->config_restart_pending)
++    return;
++
+   x11_display_policy =
+     meta_context_get_x11_display_policy (context);
+ 

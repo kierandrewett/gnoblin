@@ -48,7 +48,7 @@ index 7cfa28b79..213f18cdd 100644
 --- a/src/backends/meta-input-settings.c
 +++ b/src/backends/meta-input-settings.c
 @@ -373,6 +373,7 @@ input_get_enum (MetaInputSettings *input_settings,
-           static const char * const tap_map[] = { "default", "lrm", "lmr", NULL };
+           static const char * const tap_map[] = { "default", "left-right-middle", "left-middle-right", NULL };
            static const char * const click[] = { "default", "none", "areas", "fingers", NULL };
            static const char * const mapping[] = { "absolute", "relative", NULL };
 +          static const char * const eraser_mode[] = { "default", "button", NULL };

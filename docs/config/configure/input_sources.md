@@ -20,6 +20,8 @@ in place. It does not load the saved GNOME input-source list.
   windows share the same active source; switching layouts in one window changes
   the source used in the others too.
 
+After login, and after a reload that removes the current source, the first `xkb` source in the list becomes current.
+
 ## Choose an ID
 
 Use the exact source ID, not its display name. For example, `"us+intl"` selects
@@ -66,6 +68,24 @@ gnoblin.configure {
     },
 }
 ```
+
+## Switch sources with the keyboard
+
+The starter config binds two keys, as a GNOME session does:
+
+- **Super+Space** selects the next source and wraps to the first after the last.
+- **Shift+Super+Space** selects the previous source.
+
+With fewer than two sources, the keys do nothing.
+
+These bindings live in `config/40-shortcuts.lua`. `gnoblinctl init` copies that
+file once, so a copy made earlier does not have them. Run
+`gnoblinctl config restore-default` to replace your folder with the current
+starter files. This moves your files to a backup, so copy back any changes you
+made. To keep your file instead, add the two `switch_input_source` bindings from
+the starter file to your own config.
+
+## Share or keep sources per window
 
 With `per_window = false` (or with `per_window` omitted), the selected layout is
 shared. If you switch from US to UK while typing in one window, a different
@@ -121,6 +141,55 @@ gnoblin.configure {
 This setting selects layouts or input methods; it does not set XKB options.
 Configure those separately with
 [`input.keyboard.xkb_options`](/config/configure/input/keyboard).
+
+## Type with an input method {#type-with-an-input-method}
+
+Gnoblin includes an IBus input method. Apps that use Wayland `text-input-v3`,
+such as GTK4 and Qt on Wayland, get preedit and committed text from the IBus
+engine you select, with no toolkit module or `GTK_IM_MODULE` setting. Gnoblin
+does not start the IBus daemon. Without a running daemon, or without an active
+engine, every key goes to the app unchanged.
+
+1. Install `ibus` and an engine. On Fedora, for the Russian transliteration
+   engine used here:
+
+   ```sh
+   sudo dnf install ibus ibus-m17n
+   ```
+
+2. Start the daemon in your session. This autostart entry starts it at login and
+   stops it when you remove the entry or log out. Leave out the `-d` flag, which
+   makes the daemon detach from the process group that Gnoblin stops:
+
+   ```lua
+   gnoblin.configure {
+       autostart = {
+           ibus = {command = {"ibus-daemon", "-r", "-x"}},
+       },
+   }
+   ```
+
+3. Configure the source with the engine ID from `ibus list-engine --name-only`:
+
+   ```lua
+   gnoblin.configure {
+       input_sources = {
+           sources = {
+               {type = "xkb", id = "us"},
+               {type = "ibus", id = "m17n:ru:translit"},
+           },
+       },
+   }
+   ```
+
+4. Select the IBus source and type `privet` into a GTK4 text field. The text
+   becomes `привет`.
+
+Builds made without the IBus development files (`ibus-devel` on Fedora) leave
+this input method out. In that case a GTK app can use the toolkit's own IBus
+module instead. Install `ibus-gtk3` and `ibus-gtk4`, and start the app with
+`GTK_IM_MODULE=ibus`. Qt and X11 apps use their own IBus settings, which are not
+described here.
 
 ## Type definition
 

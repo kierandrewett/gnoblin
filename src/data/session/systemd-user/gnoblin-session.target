@@ -1,5 +1,5 @@
 [Unit]
 Description=Gnoblin graphical session
 Requires=graphical-session.target
-Wants=gnoblin-idle.service xdg-desktop-autostart.target
+Wants=gnoblin-idle.service
 After=graphical-session.target gnoblin-idle.service

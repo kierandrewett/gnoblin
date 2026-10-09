@@ -374,8 +374,8 @@ these fields:
 
 | Field                          | Type and accepted values             | Current default; standalone proposal and effect                                                                   |
 | ------------------------------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `focus_mode`                   | `"click"`, `"sloppy"`, or `"mouse"`  | `"click"`; controls whether pointer entry changes focus.                                                          |
-| `focus_new_windows`            | `"strict"` or `"smart"`              | `"strict"`; prevents activation requests without valid launch or user context from interrupting the current task. |
+| `focus_mode`                   | `"click"`, `"hover"`, or `"hover-strict"`  | `"click"`; controls whether pointer entry changes focus.                                                          |
+| `focus_new_windows`            | `"prevent"` or `"allow"`              | `"prevent"`; prevents activation requests without valid launch or user context from interrupting the current task. |
 | `raise_on_click`               | boolean                              | `true`; raise a window when clicked.                                                                              |
 | `auto_raise`                   | boolean                              | `false`; raise the focused window automatically.                                                                  |
 | `focus_change_on_pointer_rest` | boolean                              | `false`; delay pointer-follow focus until the pointer rests.                                                      |
@@ -387,20 +387,20 @@ configuration:
 
 ```lua
 gnoblin.configure {
-    window_management = {focus_new_windows = "strict"},
+    window_management = {focus_new_windows = "prevent"},
 }
 ```
 
 `"click"` focuses a window when clicked; pointer movement alone does
-not change focus. `"sloppy"` focuses a window when the pointer enters it and
+not change focus. `"hover"` focuses a window when the pointer enters it and
 returns to the most recent eligible window when the pointer leaves all
-windows. `"mouse"` focuses on pointer entry and clears focus when the pointer
+windows. `"hover-strict"` focuses on pointer entry and clears focus when the pointer
 leaves all windows.
 
 `"strict"` uses Mutter's activation and transient-parent checks for
 application-originated requests. Mutter honors a request when its recent user
 or launch context is valid; an unapproved request remains unfocused and may
-mark the window as demanding attention. `"smart"` focuses a new window even
+mark the window as demanding attention. `"allow"` focuses a new window even
 when its activation context is weak. This is convenient for apps that do not
 provide activation metadata, but can let an app interrupt the current task, so
 it remains an opt-in compatibility choice. Supervised Lua callbacks use their
@@ -1218,14 +1218,14 @@ candidate while keeping the active Lua runtime in place. The supervisor waits
 asynchronously for active-runtime operations and their deferred Lua completion
 callbacks to finish, including operations those callbacks enqueue. It dispatches
 those callbacks on the supervisor main loop, then sends a correlated
-configuration transaction to Mutter. Mutter validates
-and applies the supported changes, and replies with the same transaction ID,
+configuration transaction to Mutter. Mutter validates and applies the
+candidate's compositor settings, and replies with the same transaction ID,
 revision, and generation. Only an accepted reply commits the staged Lua
 runtime and completes the API operation. A rejected reply discards the
 candidate and returns an error; the active runtime remains in place. Events, state snapshots, and API requests received during the transaction
 are queued and dispatched after the result, against whichever runtime remains
-active. Settings that require a
-new session remain unchanged by reload. If the session stops before the
+active. Xwayland options that only take effect at server startup restart the
+Xwayland child after commit, disconnecting its existing clients. If the session stops before the
 transaction finishes, the candidate is discarded. On shutdown, the server
 queues an error for outstanding requests but may close the connection before
 it flushes, so clients can receive EOF.
@@ -1971,9 +1971,10 @@ surface and input serial, and locked sessions reject the focus request.
 
 Native-control API 1.20 implements `runtime.reload_config`. It stages and
 validates the selected Lua config, waits asynchronously for active-runtime
-operations to complete, and applies supported live changes as a correlated
-Mutter transaction. The API operation completes only after Mutter confirms
-application. Settings that require a new session remain unchanged by reload.
+operations to complete, and applies compositor changes as a correlated Mutter
+transaction. The API operation completes only after Mutter confirms
+application. Xwayland server-start options restart the Xwayland child after
+commit and disconnect its existing clients.
 Native-control API 1.67 adds `runtime.status()`. It returns `state` and
 `generation`; the states are `starting`, `running`, `restarting`, and
 `unavailable`. `generation` identifies the runtime configuration Mutter has

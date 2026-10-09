@@ -43,18 +43,17 @@ Gnoblin builds without the gnome-desktop development package.
 
 ### Portal backend
 
-The default build works with any portal frontend and backend installed on your
-system. Applications continue to call the standard portal frontend. You can
-choose an installed backend for Gnoblin with
+The default build includes Gnoblin's portal backend. Applications continue to
+call the standard portal frontend. You can choose an installed backend for Gnoblin with
 [`gnoblin.configure.portals`](/config/configure/portals).
 
-Gnoblin's optional backend uses GTK4 and libadwaita for its dialogs and capture
-features. It uses Glycin for wallpaper previews. Build it with
-`./build.sh --with-portal`.
+Gnoblin's backend uses GTK4 and libadwaita for its dialogs and capture
+features. It uses Glycin for wallpaper previews. Build without it with
+`./build.sh --without-portal`.
 
-The pinned `libgxdp` source requires GTK4 development files version 4.22.0 or
-newer. The portal source also requires `xdg-desktop-portal` 1.21.1 or newer.
-These versions are not requirements for the default Gnoblin build.
+Gnoblin's portal build supports GTK4 4.20 and `xdg-desktop-portal` 1.20 or
+newer. It bundles the backend interface definitions needed by its pinned
+source. Use `--without-portal` when another backend is preferred.
 
 ### Optional features
 
@@ -82,9 +81,9 @@ cd gnoblin-[0-9]*/
 ```
 
 The tarball includes Gnoblin and the pinned, patched Mutter and portal sources.
-`./build.sh` unpacks and builds Mutter. Add `--with-portal` to unpack and build
-Gnoblin's portal backend too. Neither command needs Git. Keep the extracted
-directory if you register it as a login session.
+`./build.sh` unpacks and builds Mutter and Gnoblin's portal backend. Use
+`--without-portal` to omit the backend. Neither command needs Git. Keep the
+extracted directory if you register it as a login session.
 
 For current development code, install Git and clone the repository instead:
 
@@ -98,9 +97,9 @@ The script uses CMake and Ninja and checks the installed library versions
 against the pinned source requirements. It never calls your system package
 manager. Run it as your normal user.
 
-The default build includes the session and Mutter. Add `--with-portal` to build
-Gnoblin's optional backend. Session registration installs the portal route
-whether or not that backend is built; without it, the route selects another
+The default build includes the session, Mutter, and Gnoblin's portal backend.
+Use `--without-portal` to build the core session only. Session registration
+installs the portal route; without Gnoblin's backend, the route selects another
 installed backend.
 
 ## 2. Try it in a window
@@ -167,6 +166,8 @@ timeout. Applications can prevent idle activation through the ScreenSaver
 `Inhibit` method or the desktop portal. Portal apps can also prevent suspension.
 Portal inhibition ends when the request closes or its caller disconnects.
 Direct ScreenSaver inhibition ends at `UnInhibit` or caller disconnect.
+The ScreenSaver `Lock` method asks your shell to lock the session; see
+[lock requests](session-lock.md#request-a-lock).
 
 The login reports logout and user-switch inhibition as unsupported. It uses
 `Gnoblin` as its desktop identity so GNOME-only autostart entries stay out of
@@ -188,7 +189,12 @@ must set `XDG_SESSION_TYPE=wayland` when it starts Gnoblin.
 `./build.sh --register-session` asks for sudo to install the login entry and
 Gnoblin's desktop-specific portal route. When the prefix includes Gnoblin's
 optional backend, it also installs the backend descriptor and D-Bus service.
-It then links Gnoblin's user services.
+
+If a systemd user manager is available, registration links Gnoblin's optional
+user services. The compositor login entry does not depend on them.
+
+Registration adds the prefix's native `gnoblinctl` command to
+`~/.local/bin`. It stops if a different command already uses that name.
 
 [Install a shell](bring-your-own-shell.md), log out, and select **Gnoblin**.
 This registration changes the Gnoblin login entry; it does not change a
@@ -198,26 +204,58 @@ Registration only adds session files; it does not build a missing runtime.
 
 ## Build options
 
-| Command                            | Behaviour                                   |
-| ---------------------------------- | ------------------------------------------- |
-| `./build.sh`                       | Build Gnoblin and its session data          |
-| `./build.sh --jobs N`              | Use N parallel compilation jobs             |
-| `./build.sh --prefix DIR`          | Build into DIR instead of `./install`       |
-| `./build.sh --without-xwayland`    | Omit X11 application support                |
-| `./build.sh --with-portal`         | Build Gnoblin's optional GTK portal backend |
-| `./build.sh --with-vector-cursors` | Include the optional vector cursor theme    |
-| `./build.sh --dry-run`             | Show what will be built                     |
-| `./build.sh --verbose`             | Show all build output as it runs            |
-| `./build.sh --preview`             | Try the build in a nested Wayland session   |
-| `./build.sh --register-session`    | Add the standalone Gnoblin login entry      |
+| Command                            | Behaviour                                 |
+| ---------------------------------- | ----------------------------------------- |
+| `./build.sh`                       | Build Gnoblin and its session data        |
+| `./build.sh --jobs N`              | Use N parallel compilation jobs           |
+| `./build.sh --prefix DIR`          | Build into DIR instead of `./install`     |
+| `./build.sh --without-xwayland`    | Omit X11 application support              |
+| `./build.sh --without-portal`      | Omit Gnoblin's GTK portal backend         |
+| `./build.sh --with-vector-cursors` | Include the optional vector cursor theme  |
+| `./build.sh --dry-run`             | Show what will be built                   |
+| `./build.sh --verbose`             | Show all build output as it runs          |
+| `./build.sh --preview`             | Try the build in a nested Wayland session |
+| `./build.sh --register-session`    | Add the standalone Gnoblin login entry    |
+| `./build.sh --layout system`       | Also write a package's public files       |
+| `./build.sh --destdir DIR`         | Install below DIR, as a package root      |
+
+## Build a package tree
+
+A distribution package uses the same build. It adds `--layout system` and a staging directory.
+
+`--layout` takes two values:
+
+- `private` is the default. Every file goes below `--prefix`. Use it for a
+  development build, `--preview` and `--register-session`.
+- `system` also writes the files a package ships outside the private prefix, below
+  `--system-prefix` (default `/usr`): links to `gnoblin` and `gnoblinctl` in `bin`,
+  the session file, the systemd user units, the portal configuration and the polkit
+  action. `scripts/install-system-layout.sh` lists them.
+
+`--destdir DIR` installs below `DIR`, as a package build root. Nothing outside `DIR`
+changes.
+
+```sh
+./build.sh --layout system --prefix /usr/lib/gnoblin --destdir "$PWD/stage"
+```
+
+The runtime is now in `stage/usr/lib/gnoblin/`, and `stage/usr/bin/gnoblin` links to
+it. Copy `stage/` into the package root. Add `--without-portal` for a package that
+ships the portal backend separately. To check the result against the RPM file lists,
+run `tests/system-layout.test.sh --stage stage`.
+
+`--system-prefix` needs `--layout system`. `--preview` and `--register-session` use
+the private layout. Set `GNOBLIN_BUILD_DIR` to build in a directory other than
+`build/ninja`, so a package build can sit next to a development build.
 
 Use `./build.sh --preview --terminal kitty` to choose a terminal.
 Use `--without-xwayland` only if you run Wayland-native applications; X11-only
 applications cannot open in that build. Rebuild without the option to restore
 XWayland support.
 
-The build shows each top-level Ninja entry, compilation progress at roughly
-10% intervals, and up to 14 recent lines of other output per entry. It saves
+The session and compositor run from one `gnoblin` executable. The build shows
+outer Ninja entries and nested build progress at roughly 10%
+intervals, plus up to 14 recent lines of other output per entry. It saves
 every line under `build/logs/` and points to that log on failure. Use
 `--verbose` to watch every command and diagnostic as it runs.
 

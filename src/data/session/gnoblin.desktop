@@ -4,4 +4,4 @@ Comment=Standalone Wayland desktop
 Exec=gnoblin
 Type=Application
 DesktopNames=Gnoblin;
-X-GDM-SessionRegisters=true
+X-GDM-SessionRegisters=false

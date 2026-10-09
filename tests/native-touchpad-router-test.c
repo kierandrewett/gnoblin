@@ -35,23 +35,23 @@ static void assert_no_match(GVariant* matched) {
 
 static void test_matching_swipe(void) {
     g_autoptr(GnoblinTouchpadRouter) router = gnoblin_touchpad_router_new();
-    g_autoptr(GVariant) gestures = swipe_gestures("normal", 16, .2);
+    g_autoptr(GVariant) gestures = swipe_gestures("unlocked", 16, .2);
     GVariant* matched = NULL;
 
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     assert_no_match(matched);
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'update'>, 'dx': <20.0>, 'dy': <0.0>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     assert_no_match(matched);
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'update'>, 'dx': <0.0>, 'dy': <20.0>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     assert_no_match(matched);
     g_assert_true(
-        handle(router, gestures, "{'gesture': <'swipe'>, 'phase': <'end'>}", "normal", &matched));
+        handle(router, gestures, "{'gesture': <'swipe'>, 'phase': <'end'>}", "unlocked", &matched));
     g_assert_nonnull(matched);
     g_autoptr(GVariant) name = g_variant_lookup_value(matched, "name", G_VARIANT_TYPE_STRING);
     g_assert_cmpstr(g_variant_get_string(name, NULL), ==, "right-down");
@@ -60,51 +60,51 @@ static void test_matching_swipe(void) {
 
 static void test_path_normalization_and_tolerance(void) {
     g_autoptr(GnoblinTouchpadRouter) router = gnoblin_touchpad_router_new();
-    g_autoptr(GVariant) gestures = swipe_gestures("normal", 16, .1);
+    g_autoptr(GVariant) gestures = swipe_gestures("unlocked", 16, .1);
     GVariant* matched = NULL;
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'update'>, 'dx': <12.0>, 'dy': <0.0>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'update'>, 'dx': <13.0>, 'dy': <0.0>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'update'>, 'dx': <0.0>, 'dy': <10.0>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'update'>, 'dx': <0.0>, 'dy': <15.0>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(
-        handle(router, gestures, "{'gesture': <'swipe'>, 'phase': <'end'>}", "normal", &matched));
+        handle(router, gestures, "{'gesture': <'swipe'>, 'phase': <'end'>}", "unlocked", &matched));
     g_assert_nonnull(matched);
     g_variant_unref(matched);
 }
 
 static void test_threshold_and_claimed_nonmatch(void) {
     g_autoptr(GnoblinTouchpadRouter) router = gnoblin_touchpad_router_new();
-    g_autoptr(GVariant) gestures = swipe_gestures("normal", 48, .2);
+    g_autoptr(GVariant) gestures = swipe_gestures("unlocked", 48, .2);
     GVariant* matched = NULL;
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'update'>, 'dx': <12.0>, 'dy': <0.0>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(
-        handle(router, gestures, "{'gesture': <'swipe'>, 'phase': <'end'>}", "normal", &matched));
+        handle(router, gestures, "{'gesture': <'swipe'>, 'phase': <'end'>}", "unlocked", &matched));
     assert_no_match(matched);
 
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'update'>, 'dx': <48.0>, 'dy': <0.0>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(
-        handle(router, gestures, "{'gesture': <'swipe'>, 'phase': <'end'>}", "normal", &matched));
+        handle(router, gestures, "{'gesture': <'swipe'>, 'phase': <'end'>}", "unlocked", &matched));
     assert_no_match(matched);
 }
 
@@ -124,9 +124,9 @@ static void test_pinch_directions(void) {
     g_assert_true(
         handle(router, gestures,
                "{'gesture': <'pinch'>, 'phase': <'begin'>, 'fingers': <int64 2>, 'scale': <1.0>}",
-               "normal", &matched));
+               "unlocked", &matched));
     g_assert_true(handle(router, gestures,
-                         "{'gesture': <'pinch'>, 'phase': <'end'>, 'scale': <1.2>}", "normal",
+                         "{'gesture': <'pinch'>, 'phase': <'end'>, 'scale': <1.2>}", "unlocked",
                          &matched));
     g_assert_nonnull(matched);
     g_variant_unref(matched);
@@ -134,9 +134,9 @@ static void test_pinch_directions(void) {
     g_assert_true(
         handle(router, gestures,
                "{'gesture': <'pinch'>, 'phase': <'begin'>, 'fingers': <int64 2>, 'scale': <1.0>}",
-               "normal", &matched));
+               "unlocked", &matched));
     g_assert_true(handle(router, gestures,
-                         "{'gesture': <'pinch'>, 'phase': <'end'>, 'scale': <0.8>}", "normal",
+                         "{'gesture': <'pinch'>, 'phase': <'end'>, 'scale': <0.8>}", "unlocked",
                          &matched));
     g_assert_nonnull(matched);
     g_variant_unref(matched);
@@ -144,13 +144,13 @@ static void test_pinch_directions(void) {
 
 static void test_context_cancel_and_config_change(void) {
     g_autoptr(GnoblinTouchpadRouter) router = gnoblin_touchpad_router_new();
-    g_autoptr(GVariant) normal = swipe_gestures("normal", 16, .2);
-    g_autoptr(GVariant) unlock = swipe_gestures("unlock-screen", 16, .2);
+    g_autoptr(GVariant) normal = swipe_gestures("unlocked", 16, .2);
+    g_autoptr(GVariant) unlock = swipe_gestures("locked", 16, .2);
     g_autoptr(GVariant) any = swipe_gestures("any", 16, .2);
     GVariant* matched = NULL;
     g_assert_false(handle(router, unlock,
                           "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
-                          "normal", &matched));
+                          "unlocked", &matched));
     assert_no_match(matched);
     g_assert_true(handle(router, any,
                          "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
@@ -159,16 +159,16 @@ static void test_context_cancel_and_config_change(void) {
                          &matched));
     g_assert_true(handle(router, normal,
                          "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(
-        handle(router, normal, "{'gesture': <'swipe'>, 'phase': <'cancel'>}", "normal", &matched));
+        handle(router, normal, "{'gesture': <'swipe'>, 'phase': <'cancel'>}", "unlocked", &matched));
     assert_no_match(matched);
     g_assert_true(handle(router, normal,
                          "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_false(handle(router, unlock,
                           "{'gesture': <'swipe'>, 'phase': <'update'>, 'dx': <20.0>, 'dy': <0.0>}",
-                          "normal", &matched));
+                          "unlocked", &matched));
     assert_no_match(matched);
 }
 
@@ -181,8 +181,8 @@ static void test_progress_and_malformed_events_do_not_claim(void) {
     GVariant* matched = NULL;
     g_assert_false(handle(router, gestures,
                           "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
-                          "normal", &matched));
-    g_assert_false(handle(router, gestures, "{'gesture': <'swipe'>}", "normal", &matched));
+                          "unlocked", &matched));
+    g_assert_false(handle(router, gestures, "{'gesture': <'swipe'>}", "unlocked", &matched));
     assert_no_match(matched);
 }
 
@@ -197,9 +197,9 @@ static void test_native_any_binding_claims_only_its_context(void) {
     g_assert_true(
         handle(router, gestures,
                "{'gesture': <'pinch'>, 'phase': <'begin'>, 'fingers': <int64 2>, 'scale': <1.0>}",
-               "normal", &matched));
+               "unlocked", &matched));
     g_assert_true(handle(router, gestures,
-                         "{'gesture': <'pinch'>, 'phase': <'end'>, 'scale': <0.8>}", "normal",
+                         "{'gesture': <'pinch'>, 'phase': <'end'>, 'scale': <0.8>}", "unlocked",
                          &matched));
     g_assert_nonnull(matched);
     g_autoptr(GVariant) action = g_variant_lookup_value(matched, "action", G_VARIANT_TYPE_STRING);
@@ -216,12 +216,12 @@ static void test_normal_binding_matches_unlocked_session_context(void) {
     GVariant* matched = NULL;
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(handle(router, gestures,
                          "{'gesture': <'swipe'>, 'phase': <'update'>, 'dx': <48.0>, 'dy': <0.0>}",
-                         "normal", &matched));
+                         "unlocked", &matched));
     g_assert_true(
-        handle(router, gestures, "{'gesture': <'swipe'>, 'phase': <'end'>}", "normal", &matched));
+        handle(router, gestures, "{'gesture': <'swipe'>, 'phase': <'end'>}", "unlocked", &matched));
     g_assert_nonnull(matched);
     g_variant_unref(matched);
 }
@@ -237,9 +237,9 @@ static void test_command_preserves_empty_argument(void) {
     g_assert_true(
         handle(router, gestures,
                "{'gesture': <'pinch'>, 'phase': <'begin'>, 'fingers': <int64 2>, 'scale': <1.0>}",
-               "normal", &matched));
+               "unlocked", &matched));
     g_assert_true(handle(router, gestures,
-                         "{'gesture': <'pinch'>, 'phase': <'end'>, 'scale': <0.8>}", "normal",
+                         "{'gesture': <'pinch'>, 'phase': <'end'>, 'scale': <0.8>}", "unlocked",
                          &matched));
     g_assert_nonnull(matched);
     g_autoptr(GVariant) command = g_variant_lookup_value(matched, "command", G_VARIANT_TYPE("av"));

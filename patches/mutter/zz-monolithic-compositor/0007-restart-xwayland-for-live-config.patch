@@ -1,0 +1,84 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] mutter: restart Xwayland for live Gnoblin config
+
+---
+diff --git a/src/wayland/meta-wayland-private.h b/src/wayland/meta-wayland-private.h
+index 5e45a5aa17..288ed661c9 100644
+--- a/src/wayland/meta-wayland-private.h
++++ b/src/wayland/meta-wayland-private.h
+@@ -77,6 +77,8 @@ struct _MetaXWaylandManager
+ 
+   gboolean should_enable_ei_portal;
+ 
++  gboolean config_restart_pending;
++
+   double highest_monitor_scale;
+ };
+ 
+diff --git a/src/wayland/meta-xwayland-private.h b/src/wayland/meta-xwayland-private.h
+index 08a4996859..021518de2d 100644
+--- a/src/wayland/meta-xwayland-private.h
++++ b/src/wayland/meta-xwayland-private.h
+@@ -49,6 +49,7 @@ void meta_xwayland_start_xserver (MetaXWaylandManager *manager,
+                                   GCancellable        *cancellable,
+                                   GAsyncReadyCallback  callback,
+                                   gpointer             user_data);
++void meta_xwayland_restart_for_config (MetaXWaylandManager *manager);
+ gboolean meta_xwayland_start_xserver_finish (MetaXWaylandManager  *manager,
+                                              GAsyncResult         *result,
+                                              GError              **error);
+diff --git a/src/wayland/meta-xwayland.c b/src/wayland/meta-xwayland.c
+index 4b99babe51..a4b6c6afba 100644
+--- a/src/wayland/meta-xwayland.c
++++ b/src/wayland/meta-xwayland.c
+@@ -67,6 +67,7 @@
+ static int display_number_override = -1;
+ 
+ static void meta_xwayland_stop_xserver (MetaXWaylandManager *manager);
++static void on_init_x11_cb (MetaDisplay *display, GAsyncResult *result, gpointer user_data);
+ 
+ static void
+ meta_xwayland_set_primary_output (MetaX11Display *x11_display);
+@@ -420,6 +421,22 @@ xserver_died (GObject      *source,
+   g_clear_object (&manager->xserver_died_cancellable);
+   g_clear_object (&manager->proc);
+ 
++  if (manager->config_restart_pending)
++    {
++      manager->config_restart_pending = FALSE;
++      manager->client = NULL;
++      if (display->x11_display)
++        meta_display_shutdown_x11 (display);
++      if (!meta_xwayland_init (manager, compositor, compositor->wayland_display, &error))
++        {
++          g_warning ("Failed to reopen Xwayland sockets after config reload: %s",
++                     error->message);
++          return;
++        }
++      meta_display_init_x11 (display, NULL, (GAsyncReadyCallback) on_init_x11_cb, NULL);
++      return;
++    }
++
+   x11_display_policy =
+     meta_context_get_x11_display_policy (compositor->context);
+   if (!g_subprocess_get_successful (proc))
+@@ -447,6 +464,18 @@ xserver_died (GObject      *source,
+     }
+ }
+ 
++void
++meta_xwayland_restart_for_config (MetaXWaylandManager *manager)
++{
++  g_return_if_fail (manager != NULL);
++
++  if (!manager->proc)
++    return;
++
++  manager->config_restart_pending = TRUE;
++  g_subprocess_send_signal (manager->proc, SIGTERM);
++}
++
+ static void
+ meta_xwayland_terminate (MetaXWaylandManager *manager)
+ {

@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 21:40:00 +0100
+Subject: [PATCH] settings: read reduced motion without new enum headers
+
+Use the schema enum nick instead of constants added in newer desktop
+schema headers. Preserve no preference when the runtime schema lacks the key.
+
+---
+--- a/src/settings.c
++++ b/src/settings.c
+@@ -131,20 +131,14 @@
+ get_reduced_motion_value (void)
+ {
+   SettingsBundle *bundle = g_hash_table_lookup (settings, "org.gnome.desktop.a11y.interface");
+-  int value = 0;
+-
++  g_autofree char *value = NULL;
++
++  /* Read the enum nick so older schema headers can build this backend.
++   * Systems without the key report no preference. */
+   if (bundle && g_settings_schema_has_key (bundle->schema, "reduced-motion"))
+-    value = g_settings_get_enum (bundle->settings, "reduced-motion");
+-
+-  switch (value)
+-    {
+-    case G_DESKTOP_REDUCED_MOTION_REDUCE:
+-      return g_variant_new_uint32 (1);
+-
+-    case G_DESKTOP_REDUCED_MOTION_NO_PREFERENCE:
+-    default:
+-      return g_variant_new_uint32 (0);
+-    }
++    value = g_settings_get_string (bundle->settings, "reduced-motion");
++
++  return g_variant_new_uint32 (g_strcmp0 (value, "reduce") == 0 ? 1 : 0);
+ }
+ 
+ static GVariant *

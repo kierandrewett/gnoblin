@@ -24,10 +24,11 @@ Select Gnoblin at login; the regular GNOME session stays available.
 - **Layer-shell first.** `zwlr_layer_shell_v1` version 5 supports panels,
   docks, wallpapers, launchers and overlays, including layer popups and
   exclusive zones. See [bring-your-own-shell](docs/bring-your-own-shell.md).
-- **Hyprcursor support.** [Configure compositor cursors](docs/guides/cursors.md) with
+- **Cursor themes.** [Configure compositor cursors](docs/guides/cursors.md) with
   the generic `cursor.theme` and `cursor.size` settings in Gnoblin's live
-  config. Animated frames preserve hotspots and timing, and the same theme
-  supplies launch feedback.
+  config. Xcursor themes work on every install, and an uninstalled theme falls
+  back to the default cursor. Builds with Hyprcursor support also read
+  Hyprcursor themes, with animated frames that preserve hotspots and timing.
 - **Compositor effects.** Configure [blur, opacity, rounded corners, borders,
   shadows, custom shaders and layer animations](docs/guides/window_effects.md) with
   window rules.
@@ -39,6 +40,15 @@ Select Gnoblin at login; the regular GNOME session stays available.
   bridge expose supported runtime state and actions.
 - **External desktop controls.** A separate shell or desktop clients provide
   bars, docks, launchers, notifications and other visible controls.
+- **Input methods.** Gnoblin includes an IBus input method, so GTK4 and Qt apps on
+  Wayland get composed text from engines such as Russian transliteration or
+  Japanese. It needs a running `ibus-daemon` and an installed engine. See
+  [type with an input method](docs/config/configure/input_sources.md#type-with-an-input-method).
+- **Prompts for your shell.** Gnoblin can act as the polkit agent and can
+  serve keyring and GPG passphrase prompts. Each request reaches Lua as an
+  event, so your shell draws the dialog and sends the answer back. Both are
+  opt-in. See [authentication](docs/shell-api/authentication.md) and
+  [passphrase prompts](docs/shell-api/passphrase-prompts.md).
 - **Portal permissions.** The optional [Gnoblin portal backend](docs/guides/permissions.md) supports persistent,
   identity-checked rules for Screen Cast, Remote Desktop, input capture,
   screenshots and Access. Stock GNOME keeps its normal portal behaviour.

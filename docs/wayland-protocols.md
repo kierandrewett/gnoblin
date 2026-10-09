@@ -18,11 +18,14 @@ gnoblin.configure {
 }
 ```
 
-Lua underscores become hyphens in the native setting name. Protocol globals
-are registered at compositor startup, so **log out and back in** after changing
-these gates. `gnoblinctl config reload` cannot add or remove an advertised
-global. GNOME's separate login session does not advertise Gnoblin-owned
-globals.
+Lua underscores become hyphens in the native setting name. Apply changes with
+`gnoblinctl config reload`; this adds or removes the global for new clients.
+Clients that already bound an interface keep their existing connection until
+they disconnect. GNOME's separate login session does not advertise Gnoblin-
+owned globals.
+
+Gnoblin rejects a reload that disables `ext_session_lock` while the session is
+locked. Unlock first, then reload the configuration.
 
 ## Available interfaces
 
@@ -39,6 +42,7 @@ globals.
 | `ext_session_lock`                | [`ext_session_lock_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/session-lock/ext-session-lock-v1.xml)                                             | 1           | Secure session locking with an external locker       | [Session locking](/session-lock)             |
 | `ext_background_effect_v1`        | [`ext_background_effect_manager_v1`](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/ext-background-effect/ext-background-effect-v1.xml)              | 1           | Client-defined background blur regions               | [Background blur](background-effects.md)     |
 | `xdg_decoration`                  | [`zxdg_decoration_manager_v1`](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/xdg-decoration/xdg-decoration-unstable-v1.xml)                         | 1           | Negotiate client or server titlebars                 | [Window frames](/guides/window_frames)       |
+| `kde_server_decoration`           | [`org_kde_kwin_server_decoration_manager`](https://invent.kde.org/libraries/plasma-wayland-protocols/-/blob/master/src/protocols/server-decoration.xml)                            | 1           | Let GTK Wayland windows use compositor decorations   | [Window frames](/guides/window_frames)       |
 | `window_frame_renderer`           | [`gnoblin_window_frame_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/window-frame/gnoblin-window-frame-v1.xml)                                     | 1           | External frame renderer service                      | [Frame renderer API](frame-renderer-api.md)  |
 | `blur_fade`                       | [`gnoblin_blur_fade_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/blur-fade/gnoblin-blur-fade-v1.xml)                                              | 1           | Per-item blur fade metadata                          | [Blur fades](blur-fades.md)                  |
 

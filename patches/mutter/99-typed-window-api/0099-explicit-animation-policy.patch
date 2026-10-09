@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] explicit animation policy
+
+---
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -1865,17 +1865,6 @@
+ }
+ 
+ static char *animation_for_event(const char *event) {
+-  static const struct {
+-    const char *event;
+-    const char *name;
+-  } defaults[] = {
+-      {"minimize", "gnome-minimize"},
+-      {"restore", "gnome-restore"},
+-      {"open", "gnome-open"},
+-      {"close", "gnome-close"},
+-      {"resize", "gnome-resize"},
+-      {NULL, NULL},
+-  };
+   g_autoptr(GVariant) animations = config_animations();
+ 
+   if (animations && g_variant_is_container(animations)) {
+@@ -1907,13 +1896,6 @@
+       g_variant_unref(candidate);
+     }
+   }
+-
+-  for (guint i = 0; defaults[i].event; i++)
+-    if (g_str_equal(defaults[i].event, event))
+-      return g_strdup(defaults[i].name);
+-
+-  if (g_str_equal(event, "workspace-switch"))
+-    return g_strdup("gnome-workspace-switch");
+ 
+   return NULL;
+ }
+@@ -2205,8 +2187,7 @@
+   g_autoptr(GError) error = NULL;
+   GList *window_actors;
+ 
+-  if (!from_workspace || !to_workspace || is_locked(display) ||
+-      !meta_prefs_get_gnome_animations())
++  if (!from_workspace || !to_workspace || is_locked(display))
+     return FALSE;
+ 
+   state = get_state(display);
+@@ -2394,8 +2375,7 @@
+    * surfaces. */
+   if (meta_window_get_window_type(window) != META_WINDOW_NORMAL ||
+       meta_window_is_override_redirect(window) || layer_namespace ||
+-      meta_gnoblin_layer_anchor(window) >= 0 || is_locked(display) ||
+-      !meta_prefs_get_gnome_animations())
++      meta_gnoblin_layer_anchor(window) >= 0 || is_locked(display))
+     return FALSE;
+ 
+   if (!select_window_lifecycle_animation(window, layer_namespace, event,
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -1281,7 +1281,6 @@
+   if (target != integer_value) { target = integer_value; queue_changed (pref); } \
+ } G_STMT_END
+ 
+-  APPLY_BOOL ("enable-animations", gnome_animations, TRUE, META_PREF_GNOME_ANIMATIONS);
+   APPLY_BOOL ("locate-pointer", locate_pointer_is_enabled, FALSE, META_PREF_LOCATE_POINTER);
+   APPLY_BOOL ("visual-bell", bell_is_visible, FALSE, META_PREF_VISUAL_BELL);
+   APPLY_BOOL ("audible-bell", bell_is_audible, TRUE, META_PREF_AUDIBLE_BELL);
+@@ -1377,7 +1376,7 @@
+ gnoblin_owns_compositor_preference (const char *key)
+ {
+   static const char *const keys[] = {
+-    "enable-animations", "locate-pointer", "visual-bell", "audible-bell",
++    "locate-pointer", "visual-bell", "audible-bell",
+     "visual-bell-type", "locate-pointer-key", "check-alive-timeout", NULL
+   };
+   for (int i = 0; keys[i]; i++)
+--- a/src/core/gnoblin-animation.c
++++ b/src/core/gnoblin-animation.c
+@@ -1689,8 +1689,7 @@
+                               gpointer user_data) {
+   (void)timeline;
+   AnimationPreview *preview = user_data;
+-  if (is_locked(preview->display) ||
+-      (preview->lifecycle && !meta_prefs_get_gnome_animations())) {
++  if (is_locked(preview->display)) {
+     preview_stop(preview, TRUE, TRUE);
+     return;
+   }

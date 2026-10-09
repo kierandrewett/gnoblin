@@ -1,5 +1,9 @@
 # Animation guide
 
+Without animation declarations or matching animation rules, Gnoblin runs no
+animations. Remove those declarations or rule fields to return to instant
+window and workspace changes.
+
 Register a named animation once. The first registration for an event becomes
 its default. A window rule can select a different registered animation for
 matching windows or layer surfaces.
@@ -88,7 +92,7 @@ Scale is a multiplier where 1 is the original size. `rotation` is in degrees.
 
 | Events                                              | Properties                                                     |
 | --------------------------------------------------- | -------------------------------------------------------------- |
-| Window, dialog, layer, console and companion events | `x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation`, `opacity` |
+| Window, dialog and layer events                     | `x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation`, `opacity` |
 | `workspace-switch`, `resize`, `shadow-change`       | `progress`                                                     |
 
 | Field                | Meaning and accepted values                                                                                                                   |
@@ -227,8 +231,7 @@ below.
 
 Aliases `gnome`, `zoom`, `fade`, `slide` and `none` are also available. `none`
 completes immediately. `fade` changes opacity only. `zoom` minimizes toward the
-dock target. `slide` uses the layer's anchor-derived offset; it is the default
-policy for layer surfaces.
+dock target. `slide` uses the layer's anchor-derived offset; it runs only when selected for a layer surface.
 
 ## Select animations
 
@@ -269,8 +272,8 @@ Without an explicit animation name, Gnoblin uses a registered `shadow-change`
 declaration when available. The existing `duration` and `easing` fields remain
 available for a simple fade.
 
-Gnoblin respects GNOME reduced motion and its global animation setting;
-disabled animations complete immediately.
+Shadow transitions run only when a declaration or rule supplies a duration
+greater than zero. Without one, shadow changes complete immediately.
 
 ## Layer-shell surfaces
 
@@ -314,6 +317,6 @@ milliseconds, and `stop` restores
 the original visual state. The CLI lists which animations are previewable
 against window or layer targets.
 
-Console, shadow, and layer-companion transitions animate internal actors or
-effects and cannot currently be previewed against those targets. See
+Workspace and shadow transitions animate internal actors or effects and
+cannot currently be previewed against those targets. See
 [gnoblinctl animation commands](/gnoblinctl#animations).

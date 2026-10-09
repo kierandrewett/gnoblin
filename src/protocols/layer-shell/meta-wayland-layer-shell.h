@@ -29,10 +29,13 @@ typedef struct _MetaSurfaceActor MetaSurfaceActor;
 /* Build the native `layer.list` record for a layer-shell MetaWindow. Returns
  * NULL for windows that do not have the layer-shell snapshot marker. The
  * monitor ID is the canonical connector selected by the native monitor API,
- * or NULL when no active connector can be resolved. */
+ * or NULL when no active connector can be resolved. The result is a floating
+ * reference: add it to a GVariantBuilder, or sink it before keeping it. */
 GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const char* monitor_id);
 
 gboolean meta_wayland_surface_is_layer_shell(MetaWaylandSurface* surface);
 MetaSurfaceActor* meta_wayland_layer_shell_get_actor(MetaWindow* window);
 
 void meta_wayland_init_layer_shell(MetaWaylandCompositor* compositor);
+void meta_wayland_layer_shell_set_preserve_active_window(MetaWaylandCompositor* compositor,
+                                                         gboolean preserve);

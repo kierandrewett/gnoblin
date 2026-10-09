@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 22:05:00 +0100
+Subject: [PATCH] mutter: add an optional libibus dependency for the Gnoblin input method
+
+---
+diff --git a/config.h.meson b/config.h.meson
+index ce95cc5e89..38cc0d358f 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -27,6 +27,9 @@
+ 
+ /* Have GL for rendering */
+ #mesondefine HAVE_GL
++
++/* Have IBus for the Gnoblin input method */
++#mesondefine HAVE_IBUS
+ #mesondefine HAVE_HYPRCURSOR
+ 
+ /* Have GLES 2.0 for rendering */
+diff --git a/meson.build b/meson.build
+index 7a3f22be0e..900f36534c 100644
+--- a/meson.build
++++ b/meson.build
+@@ -122,6 +122,8 @@ hyprcursor_dep = dependency('hyprcursor', version: '>= 0.1.11', required: get_op
+ have_hyprcursor = hyprcursor_dep.found()
+ if have_hyprcursor
+ endif
++ibus_dep = dependency('ibus-1.0', version: '>= 1.5.33', required: get_option('ibus'))
++have_ibus = ibus_dep.found()
+ pixman_dep = dependency('pixman-1', version: pixman_req)
+ gsettings_desktop_schemas_dep = dependency('gsettings-desktop-schemas',
+                                            version: gsettings_desktop_schemas_req)
+@@ -551,6 +553,7 @@ cc.compiles('void main (void) { __builtin_ffsl (0); __builtin_popcountl (0); }')
+ have_eventfd = cc.has_header('sys/eventfd.h')
+ 
+ cdata = configuration_data()
++cdata.set('HAVE_IBUS', have_ibus)
+ cdata.set('HAVE_HYPRCURSOR', have_hyprcursor)
+ cdata.set_quoted('GETTEXT_PACKAGE', gettext_package)
+ cdata.set_quoted('VERSION', meson.project_version())
+diff --git a/meson.options b/meson.options
+index 3d1433e8ff..a0c2e78727 100644
+--- a/meson.options
++++ b/meson.options
+@@ -4,6 +4,12 @@ option('hyprcursor',
+   description: 'Enable Gnoblin Hyprcursor themes'
+ )
+ 
++option('ibus',
++  type: 'feature',
++  value: 'auto',
++  description: 'Enable the Gnoblin IBus input method'
++)
++
+ option('opengl',
+   type: 'boolean',
+   value: true,
+diff --git a/src/meson.build b/src/meson.build
+index 2dcb32f0c9..8b60dd9828 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -11,6 +11,9 @@ mutter_includes = [
+ mutter_lib_deps = [
+   m_dep,
+ ]
++if have_ibus
++  mutter_lib_deps += ibus_dep
++endif
+ if have_hyprcursor
+   mutter_lib_deps += hyprcursor_dep
+ endif
+@@ -380,6 +383,13 @@ if have_hyprcursor
+   mutter_sources += 'backends/gnoblin-hyprcursor.cpp'
+ endif
+ 
++if have_ibus
++  mutter_sources += [
++    'backends/gnoblin-ibus-input-method.c',
++    'backends/gnoblin-ibus-input-method.h',
++  ]
++endif
++
+ if have_xwayland
+   mutter_sources += [
+     'compositor/meta-window-actor-x11.c',

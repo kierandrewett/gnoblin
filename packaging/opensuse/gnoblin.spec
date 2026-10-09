@@ -2,20 +2,33 @@
 %global _prefix /usr/lib/gnoblin
 %global _libdir %{_prefix}/%{_lib}
 %global _datadir %{_prefix}/share
+%global glib_version 2.81.1
+%global gobject_introspection_version 1.41.4
+%global gtk4_version 4.14.0
+%global gsettings_desktop_schemas_version 49.1
+%global libdrm_version 2.4.118
+%global libinput_version 1.30.0
+%global pipewire_version 1.4.11
+%global libei_version 1.3.901
+%global wayland_protocols_version 1.48
+%global wayland_server_version 1.25
 %global debug_package %{nil}
+%global __provides_exclude_from ^%{_prefix}/.*$
+%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
 
 Name:           gnoblin
 Version:        %{gnoblin_version}
 Epoch:          1
-Release:        21%{?dist}
+Release:        22%{?dist}
 Summary:        Standalone Gnoblin desktop session
 License:        GPL-2.0-or-later
 URL:            https://github.com/kierandrewett/gnoblin
 Source0:        gnoblin-%{version}-source.tar.xz
 Provides:       gnoblin-session = %{version}
 Obsoletes:      gnoblin-session <= %{version}-%{release}
+Obsoletes:      gnoblin-mutter < 52
+Obsoletes:      gnoblin-mutter-devel < 52
 
-Requires:       gnoblin-mutter = 51.0-20%{?dist}
 Requires:       adwaita-icon-theme
 Requires:       dbus-1
 Requires:       dconf
@@ -29,64 +42,100 @@ Requires:       libwayland-client0 >= 1.25
 Requires:       wireplumber
 
 BuildRequires:  cmake
+BuildRequires:  gcc-c++
+BuildRequires:  gettext-tools
+BuildRequires:  git
+BuildRequires:  meson
+BuildRequires:  pam-devel
+BuildRequires:  pkgconfig(atk)
+BuildRequires:  pkgconfig(colord)
+BuildRequires:  pkgconfig(gbm)
+BuildRequires:  pkgconfig(gcr-4)
+BuildRequires:  pkgconfig(gnome-desktop-4)
+BuildRequires:  pkgconfig(ibus-1.0) >= 1.5.33
+BuildRequires:  pkgconfig(polkit-agent-1)
+BuildRequires:  pkgconfig(polkit-gobject-1)
+BuildRequires:  pkgconfig(glesv2)
+BuildRequires:  pkgconfig(glib-2.0) >= %{glib_version}
+BuildRequires:  pkgconfig(glycin-2) >= 2.0.beta.2
+BuildRequires:  pkgconfig(gobject-introspection-1.0) >= %{gobject_introspection_version}
+BuildRequires:  pkgconfig(graphene-gobject-1.0)
+BuildRequires:  pkgconfig(gtk4) >= %{gtk4_version}
+BuildRequires:  pkgconfig(gudev-1.0)
+BuildRequires:  pkgconfig(egl)
+BuildRequires:  pkgconfig(fribidi)
+BuildRequires:  pkgconfig(gl)
+BuildRequires:  pkgconfig(harfbuzz) >= 2.6
+BuildRequires:  pkgconfig(lcms2)
+BuildRequires:  pkgconfig(libcanberra)
+BuildRequires:  pkgconfig(libdisplay-info) >= 0.2
+BuildRequires:  pkgconfig(libdrm) >= %{libdrm_version}
+BuildRequires:  libxcvt
+BuildRequires:  pkgconfig(libei-1.0) >= %{libei_version}
+BuildRequires:  pkgconfig(libeis-1.0) >= %{libei_version}
+BuildRequires:  pkgconfig(libinput) >= %{libinput_version}
+BuildRequires:  pkgconfig(libpipewire-0.3) >= %{pipewire_version}
+BuildRequires:  pkgconfig(libstartup-notification-1.0)
+BuildRequires:  pkgconfig(libsystemd)
+BuildRequires:  pkgconfig(libudev) >= 228
+BuildRequires:  pkgconfig(libwacom)
+BuildRequires:  pkgconfig(pango) >= 1.46.0
+BuildRequires:  pkgconfig(pangocairo) >= 1.20
+BuildRequires:  pkgconfig(pixman-1)
+BuildRequires:  pkgconfig(sm)
+BuildRequires:  pkgconfig(wayland-client) >= %{wayland_server_version}
+BuildRequires:  pkgconfig(wayland-cursor)
+BuildRequires:  pkgconfig(wayland-egl)
+BuildRequires:  pkgconfig(x11) >= 1.7.0
+BuildRequires:  pkgconfig(x11-xcb)
+BuildRequires:  pkgconfig(xau)
+BuildRequires:  pkgconfig(xcb-res)
+BuildRequires:  pkgconfig(xcomposite) >= 0.4
+BuildRequires:  pkgconfig(xcursor)
+BuildRequires:  pkgconfig(xdamage)
+BuildRequires:  pkgconfig(xext)
+BuildRequires:  pkgconfig(xfixes) >= 6
+BuildRequires:  pkgconfig(xinerama)
+BuildRequires:  pkgconfig(xi) >= 1.7.4
+BuildRequires:  pkgconfig(xrandr) >= 1.5.0
+BuildRequires:  pkgconfig(xkbregistry)
+BuildRequires:  pkgconfig(xkeyboard-config)
+BuildRequires:  pkgconfig(udev)
+BuildRequires:  pkgconfig(wayland-protocols) >= %{wayland_protocols_version}
+BuildRequires:  pkgconfig(wayland-server) >= %{wayland_server_version}
+BuildRequires:  pkgconfig(xwayland)
+BuildRequires:  python3dist(docutils)
+BuildRequires:  pkgconfig(gsettings-desktop-schemas) >= %{gsettings_desktop_schemas_version}
 BuildRequires:  desktop-file-utils
 BuildRequires:  gcc
 BuildRequires:  glib2-devel >= 2.86
-BuildRequires:  gnoblin-mutter-devel >= 51
-BuildRequires:  gnoblin-mutter-devel < 52
 BuildRequires:  json-glib-devel
 BuildRequires:  ninja
 BuildRequires:  pkgconfig(gio-2.0)
 BuildRequires:  pkgconfig(gio-unix-2.0)
 BuildRequires:  pkgconfig(json-glib-1.0)
+BuildRequires:  pkgconfig(xkbcommon)
 BuildRequires:  pkgconfig(lua) >= 5.4
 BuildRequires:  python3
 
 %description
-Installs the Lua-supervised Gnoblin session, private runtime tools, and login
-entry. It uses the separately packaged Gnoblin Mutter and does not require
-GNOME Shell or GJS. The GTK-based Gnoblin portal backend is optional.
+Installs the Lua-supervised Gnoblin session, patched Mutter runtime, and login
+entry as one package with the single `gnoblin` compositor executable. It does
+not require GNOME Shell or GJS. The GTK-based Gnoblin portal backend is
+optional.
 
 %prep
 %autosetup -n gnoblin-%{version}
 
 %build
-cmake -S . -B build/session -G Ninja \
-  -DGNOBLIN_PREFIX=%{_prefix} -DGNOBLIN_LIBDIR=%{_lib} \
-  -DGNOBLIN_BUILD_TYPE=release -DGNOBLIN_SOURCE_MODE=release-archive \
-  -DGNOBLIN_JOBS=%{?_smp_build_ncpus}
-cmake --build build/session --target gnoblin gnoblin-idle gnoblinctl \
-  --parallel %{?_smp_build_ncpus}
+# ./build.sh is the only build. The system layout adds the public entries (command links, session file, systemd
+# units, portal and polkit files) below the stage root, so this recipe does not repeat them.
+GNOBLIN_LIBDIR=%{_lib} GNOBLIN_BUILD_TYPE=release \
+  ./build.sh --layout system --without-portal --prefix %{_prefix} \
+  --destdir %{_builddir}/gnoblin-stage --jobs %{?_smp_build_ncpus}
 
 %install
-mkdir -p %{buildroot}%{_datadir}/glib-2.0/schemas
-cp -a %{_datadir}/glib-2.0/schemas/*.xml %{buildroot}%{_datadir}/glib-2.0/schemas/
-GNOBLIN_LIBDIR=%{_lib} \
-GNOBLIN_STAGE_ROOT=%{buildroot} \
-GNOBLIN_IDLE_BINARY="$PWD/build/session/gnoblin-idle" \
-GNOBLINCTL_BINARY="$PWD/build/session/gnoblinctl" \
-GNOBLIN_IDENTITY_FILE="$PWD/build/session/gnoblinctl-identity.json" \
-GNOBLIN_VERSION_METADATA_FILE="$PWD/build/session/gnoblin-version.ini" \
-GNOBLIN_BINARY="$PWD/build/session/gnoblin" \
-  scripts/install-session.sh %{_prefix}
-install -Dm0644 %{buildroot}%{_prefix}/share/xdg-desktop-portal/gnoblin-portals.conf \
-  %{buildroot}/usr/share/xdg-desktop-portal/gnoblin-portals.conf
-# The Mutter schemas are available while the aggregate schema is compiled but
-# belong to gnoblin-mutter. Keep only the session-owned override in this RPM.
-find %{buildroot}%{_datadir}/glib-2.0/schemas -maxdepth 1 -type f -name '*.xml' \
-  ! -name '00_org.gnoblin.mutter.gschema.override' -delete
-install -d %{buildroot}/usr/bin %{buildroot}/usr/share/wayland-sessions
-ln -s %{_prefix}/bin/gnoblin %{buildroot}/usr/bin/gnoblin
-ln -s %{_prefix}/bin/gnoblinctl %{buildroot}/usr/bin/gnoblinctl
-install -m 0644 %{buildroot}%{_datadir}/wayland-sessions/gnoblin.desktop \
-  %{buildroot}/usr/share/wayland-sessions/gnoblin.desktop
-install -Dm644 %{buildroot}%{_prefix}/lib/systemd/user/gnoblin-session.target \
-  %{buildroot}/usr/lib/systemd/user/gnoblin-session.target
-install -Dm644 %{buildroot}%{_prefix}/lib/systemd/user/gnoblin-idle.service \
-  %{buildroot}/usr/lib/systemd/user/gnoblin-idle.service
-sed -i -e 's|^Exec=.*|Exec=%{_prefix}/bin/gnoblin|' \
-  -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' \
-  %{buildroot}/usr/share/wayland-sessions/gnoblin.desktop
+cp -a %{_builddir}/gnoblin-stage/. %{buildroot}/
 
 %posttrans
 /usr/bin/glib-compile-schemas %{_datadir}/glib-2.0/schemas
@@ -110,6 +159,7 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/share/xdg-desktop-portal/gnoblin-portals.conf
 /usr/lib/systemd/user/gnoblin-session.target
 /usr/lib/systemd/user/gnoblin-idle.service
+/usr/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy
 
 %package -n gnoblin-gnome-integration
 Summary:        Optional GNOME application services for Gnoblin

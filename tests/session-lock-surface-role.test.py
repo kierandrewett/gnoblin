@@ -27,7 +27,7 @@ class SessionLockSurfaceRoleTests(unittest.TestCase):
         source = SOURCE.read_text()
 
         self.assertIn("clutter_actor_set_position (CLUTTER_ACTOR (actor), layout.x, layout.y)", source)
-        self.assertIn("meta_window_move_resize_frame", source)
+        self.assertIn("window->placed = TRUE", source)
         self.assertIn("output-destroyed", source)
         self.assertIn("clutter_actor_remove_child (scene, CLUTTER_ACTOR (actor))", source)
 

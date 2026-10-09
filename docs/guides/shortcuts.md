@@ -1,22 +1,28 @@
-# shortcuts
+# Keyboard shortcuts
 
 [Configuration reference](/config/configure)
 
 Gnoblin reads global shortcuts from its Lua config. Use
-`gnoblin.configure.shortcuts` to run commands and
-`gnoblin.configure.keybindings` to change built-in Mutter actions. Add the
-examples to `~/.config/gnoblin/init.lua`; changes apply when the config reloads.
+`gnoblin.configure.keybindings.keyboard` for a binding and its Lua callback.
+The callback can run a command, manage a window, or return `"forward"` to
+leave the input for the focused app. Add the examples to
+`~/.config/gnoblin/init.lua`; changes apply when the config reloads.
 
 ## Launch a command
 
-Add this after any `gnoblin.load(...)` lines. It opens a terminal with Super+Enter:
+Add this after any `gnoblin.load(...)` lines. It opens a terminal with
+Super+Enter:
 
 ```lua
 gnoblin.configure {
-    shortcuts = {
-        my_terminal = {
-            binding = "<Super>Return",
-            command = {"ptyxis", "--new-window"},
+    keybindings = {
+        keyboard = {
+            my_terminal = {
+                binding = "<Super>Return",
+                callback = function()
+                    gnoblin.commands.run({"ptyxis", "--new-window"})
+                end,
+            },
         },
     },
 }
@@ -25,16 +31,24 @@ gnoblin.configure {
 Replace `ptyxis` with an installed terminal. Each command argument is a separate
 string. Spaces inside a string stay in that argument.
 
-Shortcut names use letters, numbers, `_` and `-`. A config can declare up to
-256 shortcuts. Removing a command shortcut releases its binding; it does not
-stop a launched program.
+Binding names use lowercase letters, numbers and `_`.
 
-The standalone session accepts command shortcuts and compositor actions at
-startup, including release triggers and bare Super. GNOME Shell actions require
-GNOME Shell. For a standalone shell to receive keystrokes while bare Super is
-held, configure `capture_input` as described in
-[Popups that capture typing](#popups-that-capture-typing). Restart the
-compositor after changing its config.
+### Callback fields
+
+| Field | Accepted value | Default | Effect |
+| --- | --- | --- | --- |
+| `binding` | One GTK accelerator string | Required | Chooses the key combination. |
+| `callback` | Lua function | Required | Runs when the binding matches. |
+| `trigger` | `"press"` or `"release"` | `"press"` | Chooses key press or release. |
+| `enable` | `true` or `false` | `true` | `false` disables an imported named binding. |
+
+The callback can return `"consume"` to keep the event in Gnoblin or
+`"forward"` to route it to the focused app. A missing return is `"consume"`.
+
+Release triggers consume the whole pair, including the reserved press.
+Use a press trigger when the callback must choose whether to forward input.
+
+Run `gnoblinctl reload` after changing the config.
 
 ## Open an application launcher
 
@@ -42,8 +56,15 @@ Bind Fuzzel to Super+D:
 
 ```lua
 gnoblin.configure {
-    shortcuts = {
-        launcher = {binding = "<Super>d", command = {"fuzzel"}},
+    keybindings = {
+        keyboard = {
+            launcher = {
+                binding = "<Super>d",
+                callback = function()
+                    gnoblin.commands.run({"fuzzel"})
+                end,
+            },
+        },
     },
 }
 ```
@@ -52,20 +73,22 @@ gnoblin.configure {
 
 _The shortcut opens Fuzzel; Firefox is the selected search result._
 
-## Remove a shortcut
+## Disable a Lua binding
 
-Set `enable = false` to disable a named shortcut added by another config file:
+Set `enable = false` to disable a named binding added by another config file:
 
 ```lua
 gnoblin.configure {
-    shortcuts = {
-        my_terminal = {enable = false},
+    keybindings = {
+        keyboard = {
+            my_terminal = {enable = false},
+        },
     },
 }
 ```
 
-The config is rebuilt on every reload. Disabling a command shortcut releases
-its binding. Shortcuts registered by other programs are unaffected.
+The config is rebuilt on every reload. Disabling a binding releases its key.
+Shortcuts registered by other programs are unaffected.
 
 Put the removal after the file that adds the shortcut. See
 [load order](/guides/files_and_load_order#override-or-append).
@@ -83,12 +106,22 @@ Super is usually the Windows-logo key. Put modifiers in angle brackets and
 the main key after them. This is
 [GTK accelerator syntax](https://docs.gtk.org/gtk4/func.accelerator_parse.html).
 
-Run `gnoblinctl shortcut capture` in a Gnoblin terminal and press a key combination. It prints the GTK accelerator for `binding`; bare Super prints Gnoblin’s special `Super` binding. Escape cancels. The command grabs the keyboard while it waits, consumes the captured combination, and times out after 30 seconds by default. Use `--timeout SECONDS` for 1–60 seconds.
+Run `gnoblinctl shortcut capture` in a Gnoblin terminal and press a key
+combination. It prints the GTK accelerator for `binding`; bare Super prints
+Gnoblin’s special `Super` binding. Escape cancels.
 
-Held keys do not repeatedly launch commands. Command shortcuts are inactive on
-the lock and login screens.
+The command grabs the keyboard while it waits and consumes the captured
+combination. It times out after 30 seconds by default. Use `--timeout SECONDS`
+for 1–60 seconds.
 
-## Change a built-in action
+## Declarative shortcuts and built-in actions
+
+Use `gnoblin.configure.shortcuts` for a declarative command shortcut when a
+Lua callback is unnecessary. Use `gnoblin.commands.run` inside a callback when
+the action needs Lua logic.
+
+Use `keybindings.wm`, `keybindings.mutter` or `keybindings.wayland` to override
+an existing Mutter action:
 
 ```lua
 gnoblin.configure {
@@ -115,11 +148,14 @@ override restores the default on reload.
 
 ## Media keys
 
-Media keys use command shortcuts. The starter config includes volume and
+Media keys use Lua keyboard callbacks. The starter config includes volume and
 microphone mute through WirePlumber's `wpctl`, and playback through
 `playerctl`. Install those commands if you use the matching keys. Brightness
 keys are not handled by the standalone session; bind them to a command such as
 `brightnessctl` if your hardware and permissions support it.
+
+Gnoblin handles shortcuts inside the compositor. It does not require systemd
+or GNOME Settings Daemon’s MediaKeys service.
 
 Run `gnoblinctl config path` to see the config file used by your session. Run
 `gnoblinctl config default` to print the packaged starter config. For example,
@@ -127,10 +163,14 @@ a volume key can run `wpctl` directly:
 
 ```lua
 gnoblin.configure {
-    shortcuts = {
-        ["volume-up"] = {
-            binding = "XF86AudioRaiseVolume",
-            command = {"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"},
+    keybindings = {
+        keyboard = {
+            volume_up = {
+                binding = "XF86AudioRaiseVolume",
+                callback = function()
+                    gnoblin.commands.run({"wpctl", "set-volume", "@DEFAULT_AUDIO_SINK@", "5%+"})
+                end,
+            },
         },
     },
 }
@@ -141,14 +181,18 @@ behavior. The commands they call must be installed.
 
 ## Avoid conflicts
 
-To override an imported shortcut, use the same map key. Only supplied fields
-change. Different names must use different bindings. See the
+To override an imported callback binding, use the same map key and supply
+its complete declaration. Use different bindings for independent shortcuts. See the
 [override example](/recipes/add-a-shortcut).
 
 A Mutter action may already use the key. Change or disable it through
 `gnoblin.configure.keybindings` before assigning the same key to a command.
-Gnoblin rejects duplicate bindings in the config and keeps the previous
-working registrations if a reload contains an invalid or conflicting shortcut.
+Legacy command declarations reject duplicate bindings and keep the previous
+working registrations if reload fails.
+
+Lua input callbacks run in registration
+order until one consumes the event; a later callback can use the same selector
+when earlier handlers return forward.
 
 ## Commands and shell syntax
 
@@ -167,6 +211,8 @@ gnoblin.configure {
 ```
 
 This appends the current time to `~/shortcut.log` when you press Super+Shift+T.
+The declarative form is retained for configurations that do not need a Lua
+callback.
 
 ## Popups that capture typing
 

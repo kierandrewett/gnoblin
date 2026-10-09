@@ -14,8 +14,9 @@ sudo dnf --setopt=install_weak_deps=False install --refresh gnoblin
 ```
 
 `gnoblin` installs the Lua-supervised session, its private Mutter runtime, and
-the portal route for Gnoblin sessions. It does not install GNOME Shell, GJS, or
-a portal backend. Install `gnoblin-portal` to add Gnoblin's GTK-based backend.
+the portal route for Gnoblin sessions. The session and compositor run from one
+`gnoblin` executable. It does not install GNOME Shell, GJS, or a portal
+backend. Install `gnoblin-portal` to add Gnoblin's GTK-based backend.
 The route uses it when installed and otherwise selects another installed
 backend.
 
@@ -52,9 +53,10 @@ custom GeoClue agent IDs, include them in the effective whitelist too.
 Run `gnoblinctl privacy` after restarting GeoClue. The location source should
 report `inactive` when no application is using it.
 
-For IBus input methods, install `ibus` separately with `sudo dnf install ibus`.
-The basic session needs only `ibus-libs` and does not start the daemon until
-an IBus input source is configured.
+For IBus input methods, install `ibus` and an engine with
+`sudo dnf install ibus ibus-m17n`. The basic session needs only `ibus-libs`.
+Gnoblin includes the input method but never starts the IBus daemon. See
+[Type with an input method](/config/configure/input_sources#type-with-an-input-method).
 
 ## 2. Install a shell
 
@@ -72,7 +74,7 @@ Continue with [configuration](/config).
 ## Update
 
 ```sh
-sudo dnf upgrade --refresh gnoblin gnoblin-mutter
+sudo dnf upgrade --refresh gnoblin
 ```
 
 If you installed `gnoblin-portal`, update it separately:
@@ -91,7 +93,7 @@ If you installed the optional integration package, remove it with
 `sudo dnf remove gnoblin-gnome-integration` before removing the session.
 
 ```sh
-sudo dnf remove gnoblin gnoblin-mutter
+sudo dnf remove gnoblin
 ```
 
 If you installed `gnoblin-portal`, remove it with

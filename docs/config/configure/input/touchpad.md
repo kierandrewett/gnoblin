@@ -26,7 +26,7 @@ gnoblin.configure {
 | `scroll_speed`   | Number from `0` to `2`                             | Scales two-finger and touchpad scrolling. `1` is the default speed, `0.5` is half speed, and `2` is twice the speed. |
 | `accel_profile`  | `"default"`, `"flat"`, `"adaptive"`, or `"custom"` | Selects the system curve or a custom profile.                                                                        |
 | `accel_curve`    | `{step = number, points = number[]}`               | Defines custom pointer acceleration. Requires `accel_profile = "custom"`; it affects pointer motion, not scrolling.  |
-| `left_handed`    | `"right"`, `"left"`, or `"mouse"`                  | Selects the touchpad button order; `"mouse"` follows the mouse setting.                                              |
+| `left_handed`    | `"right"`, `"left"`, or `"follow-mouse"`           | Selects the touchpad button order; `"follow-mouse"` uses the mouse setting. `"mouse"` still loads as the old name.   |
 | `natural_scroll` | Boolean                                            | Reverses the scroll direction.                                                                                       |
 
 ## Gestures
@@ -51,7 +51,7 @@ the timeout takes effect only while that behavior is enabled.
 
 | Field                    | Accepted values                                  | Meaning                                                                                                                            |
 | ------------------------ | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `tap_button_map`         | `"default"`, `"lrm"`, or `"lmr"`                 | `"lrm"` maps one-, two-, and three-finger taps to left, right, and middle click. `"lmr"` swaps the two- and three-finger mappings. |
+| `tap_button_map`         | `"default"`, `"left-right-middle"`, or `"left-middle-right"` | `"left-right-middle"` maps one-, two-, and three-finger taps to left, right, and middle click. `"left-middle-right"` swaps the two- and three-finger mappings. `"lrm"` and `"lmr"` still load as the old names. |
 | `click_method`           | `"default"`, `"none"`, `"areas"`, or `"fingers"` | Keep hardware behavior, disable software-emulated clicks, or emulate clicks using click areas or finger counts.                    |
 | `middle_click_emulation` | Boolean                                          | Setting true enables middle-click when both buttons are pressed; omitted uses the current device preference, normally off.         |
 
@@ -99,7 +99,7 @@ gnoblin.configure {
             scroll_speed = number?, -- 0 to 2
             accel_profile = "default" | "flat" | "adaptive" | "custom"?,
             accel_curve = {step = number, points = number[]}?,
-            left_handed = "right" | "left" | "mouse"?,
+            left_handed = "right" | "left" | "follow-mouse"?,
             natural_scroll = boolean?,
             tap_to_click = boolean?,
             middle_click_emulation = boolean?,
@@ -109,7 +109,7 @@ gnoblin.configure {
             disable_while_typing_timeout = integer?, -- 100 to 5000 milliseconds
             edge_scrolling_enabled = boolean?,
             two_finger_scrolling_enabled = boolean?,
-            tap_button_map = "default" | "lrm" | "lmr"?,
+            tap_button_map = "default" | "left-right-middle" | "left-middle-right"?,
             click_method = "default" | "none" | "areas" | "fingers"?,
         },
     },

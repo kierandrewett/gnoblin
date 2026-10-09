@@ -31,7 +31,7 @@ jobs:
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Fetch compositor and portal source trees
-        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
+        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
       - name: Check native package definitions
         run: |
           python3 scripts/sync-package-manifest.py check
@@ -49,7 +49,7 @@ jobs:
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
             json-glib-devel desktop-file-utils python3 rpm-build util-linux-user
-          dnf -y builddep packaging/rpm/mutter.spec
+          dnf -y builddep packaging/rpm/gnoblin.spec packaging/rpm/gnoblin-portal.spec
           git -C subprojects/mutter fetch --force --tags origin
           git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin
           source_dir="$RUNNER_TEMP/gnoblin-source-assets"
@@ -68,16 +68,16 @@ jobs:
       - name: Verify the standalone native runtime
         run: |
           runuser -u builder -- cmake --build "$GNOBLIN_TARBALL_TREE/build/ninja" \
-            --target native-touchpad-router-test runtime-protocol-test runtime-spawn-test runtime-cache-test lua-pattern-test \
-            --parallel 2
+            --target gnoblin-tests --parallel 2
           runuser -u builder -- ctest --test-dir "$GNOBLIN_TARBALL_TREE/build/ninja" \
             --output-on-failure \
             --tests-regex '^(native-touchpad-router|runtime-protocol|runtime-spawn|runtime-cache|lua-pattern)$'
       - name: Verify the documented installation output
         run: |
+          set -x
           test -x "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin"
-          test ! -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
-          "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version | grep -F "Git commit: $GITHUB_SHA"
+          test -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
+          "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version | grep -F "@ $GITHUB_SHA"
           "$GNOBLIN_TARBALL_TREE/install/bin/gnoblin" --version --json |
             python3 -c 'import json, sys; v = json.load(sys.stdin); assert v["gitSha"] == sys.argv[1]; assert v["gitRemote"]; assert v["version"] == sys.argv[2]; assert v["gnomeVersion"] == sys.argv[3]; assert all(v["components"].get(name) for name in ("mutter", "xdg-desktop-portal-gnome")); assert "gnome-shell" not in v["components"]' \
               "$GITHUB_SHA" "$(python3 scripts/gnoblin-version.py get version)" "$(python3 scripts/gnoblin-version.py get gnomeVersion)"
@@ -85,10 +85,8 @@ jobs:
           test -f "$GNOBLIN_TARBALL_TREE/install/lib/systemd/user/gnoblin-session.target"
           test ! -e "$GNOBLIN_TARBALL_TREE/install/bin/gnome-shell"
           test ! -e "$GNOBLIN_TARBALL_TREE/install/libexec/gnoblin-runtime"
-      - name: Build Gnoblin's optional portal backend
+      - name: Check Gnoblin's portal backend, which the default build includes
         run: |
-          dnf -y builddep packaging/rpm/gnoblin-portal.spec
-          runuser -u builder -- "$GNOBLIN_TARBALL_TREE/build.sh" --with-portal
           test -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
           ! readelf -d "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin" | grep -Eq 'libgnome-(bg|desktop)'
       - name: Verify installer and package isolation
@@ -114,7 +112,7 @@ jobs:
           dnf -y install dnf-plugins-core
           dnf -y copr enable kierandrewett/gnoblin
           dnf -y --setopt=install_weak_deps=False install --refresh gnoblin
-          rpm -q gnoblin gnoblin-mutter
+          rpm -q gnoblin
           ! rpm -q gnoblin-portal
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
@@ -189,7 +187,7 @@ jobs:
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Fetch compositor and portal source trees
-        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
+        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
       - name: Build a source bundle from this checked-out revision
         env:
           GIT_COMMITTER_NAME: Gnoblin Package Builder

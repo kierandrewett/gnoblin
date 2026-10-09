@@ -9,10 +9,58 @@ static gboolean input_number(GVariant* value, double* number) {
         *number = (double)g_variant_get_int64(value);
         return TRUE;
     }
+    /* Normalisation writes int32 and uint32 values (drag-threshold, double-click-time, repeat delay). A replacement
+     * worker normalises Mutter's accepted document again, so these must read back unchanged. Before, an int32 read
+     * back as 0, Mutter saw a different document and rejected the replacement worker. */
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32)) {
+        *number = (double)g_variant_get_int32(value);
+        return TRUE;
+    }
+    if (g_variant_is_of_type(value, G_VARIANT_TYPE_UINT32)) {
+        *number = (double)g_variant_get_uint32(value);
+        return TRUE;
+    }
     return FALSE;
 }
 
+/* The Lua layer can hand over any shape. Values that do not have the expected shape pass through unchanged, so the
+ * validation in the compositor reports them by name. Iterating a value of the wrong type would abort the worker. */
+static gboolean input_is_table(GVariant* value) {
+    return g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT);
+}
+
+static gboolean input_is_empty_table(GVariant* value) {
+    return input_is_table(value) && g_variant_n_children(value) == 0;
+}
+
+static gboolean input_is_string_list(GVariant* value) {
+    if (!g_variant_is_of_type(value, G_VARIANT_TYPE("av")))
+        return FALSE;
+    for (gsize i = 0; i < g_variant_n_children(value); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+        g_autoptr(GVariant) item = g_variant_get_variant(boxed);
+        if (!g_variant_is_of_type(item, G_VARIANT_TYPE_STRING))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static gboolean input_is_number_list(GVariant* value) {
+    if (!g_variant_is_of_type(value, G_VARIANT_TYPE("av")))
+        return FALSE;
+    for (gsize i = 0; i < g_variant_n_children(value); i++) {
+        g_autoptr(GVariant) boxed = g_variant_get_child_value(value, i);
+        g_autoptr(GVariant) item = g_variant_get_variant(boxed);
+        double number;
+        if (!input_number(item, &number))
+            return FALSE;
+    }
+    return TRUE;
+}
+
 static GVariant* normalize_input_curve(GVariant* curve) {
+    if (!input_is_table(curve))
+        return g_variant_ref(curve);
     GVariantBuilder normalized;
     g_variant_builder_init(&normalized, G_VARIANT_TYPE_VARDICT);
     GVariantIter iter;
@@ -24,6 +72,8 @@ static GVariant* normalize_input_curve(GVariant* curve) {
             double step = 0;
             input_number(value, &step);
             g_variant_builder_add(&normalized, "{sv}", key, g_variant_new_double(step));
+        } else if (!input_is_number_list(value)) {
+            g_variant_builder_add(&normalized, "{sv}", key, value);
         } else {
             GVariantBuilder points_builder;
             g_variant_builder_init(&points_builder, G_VARIANT_TYPE("ad"));
@@ -60,6 +110,8 @@ static GVariant* normalize_tablet_area(GVariant* area) {
 }
 
 static GVariant* normalize_input_fields(GVariant* fields) {
+    if (!input_is_table(fields))
+        return g_variant_ref(fields);
     GVariantBuilder normalized;
     g_variant_builder_init(&normalized, G_VARIANT_TYPE_VARDICT);
     GVariantIter iter;
@@ -86,6 +138,8 @@ static GVariant* normalize_input_fields(GVariant* fields) {
             double number = 0;
             input_number(value, &number);
             g_variant_builder_add(&normalized, "{sv}", key, g_variant_new_uint32((guint32)number));
+        } else if (g_str_equal(key, "xkb-options") && !input_is_string_list(value)) {
+            g_variant_builder_add(&normalized, "{sv}", key, value);
         } else if (g_str_equal(key, "xkb-options")) {
             GVariantBuilder options_builder;
             GVariantIter options_iter;
@@ -114,6 +168,8 @@ static GVariant* normalize_input_fields(GVariant* fields) {
 }
 
 static GVariant* normalize_input_devices(GVariant* devices) {
+    if (!input_is_table(devices))
+        return g_variant_ref(devices);
     GVariantBuilder normalized;
     g_variant_builder_init(&normalized, G_VARIANT_TYPE_VARDICT);
     GVariantIter iter;
@@ -122,7 +178,7 @@ static GVariant* normalize_input_devices(GVariant* devices) {
     g_variant_iter_init(&iter, devices);
     while (g_variant_iter_next(&iter, "{&sv}", &device, &fields)) {
         g_autoptr(GVariant) normalized_fields = normalize_input_fields(fields);
-        if (g_variant_n_children(normalized_fields) > 0)
+        if (!input_is_empty_table(normalized_fields))
             g_variant_builder_add(&normalized, "{sv}", device, normalized_fields);
         g_variant_unref(fields);
     }
@@ -150,7 +206,7 @@ GVariant* gnoblin_native_input_normalize(GVariant* input) {
                 (g_str_equal(group, "tablets") || g_str_equal(group, "styluses"))
                     ? normalize_input_devices(value)
                     : normalize_input_fields(value);
-            if (g_variant_n_children(normalized_group) > 0)
+            if (!input_is_empty_table(normalized_group))
                 g_variant_builder_add(&normalized, "{sv}", group, normalized_group);
         }
         g_variant_unref(value);

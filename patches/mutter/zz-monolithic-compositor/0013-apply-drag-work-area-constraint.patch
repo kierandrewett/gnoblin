@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 6 Oct 2026 22:05:00 +0100
+Subject: [PATCH] window-management: apply the drag work-area constraint
+
+---
+diff --git a/src/compositor/meta-window-drag.c b/src/compositor/meta-window-drag.c
+index d7680d9d2f..ce8508666d 100644
+--- a/src/compositor/meta-window-drag.c
++++ b/src/compositor/meta-window-drag.c
+@@ -1291,6 +1291,39 @@ update_move_maybe_tile (MetaWindowDrag *window_drag,
+     }
+ }
+ 
++static void
++constrain_move_to_work_area (MetaWindowDrag *window_drag,
++                             int             window_width,
++                             int             window_height,
++                             int            *x,
++                             int            *y)
++{
++  MetaWindow *window = window_drag->effective_grab_window;
++  MetaDisplay *display = meta_window_get_display (window);
++  MetaContext *context = meta_display_get_context (display);
++  MetaBackend *backend = meta_context_get_backend (context);
++  MetaMonitorManager *monitor_manager =
++    meta_backend_get_monitor_manager (backend);
++  MetaLogicalMonitor *logical_monitor;
++  MtkRectangle work_area;
++  int max_x, max_y;
++
++  logical_monitor =
++    meta_monitor_manager_get_logical_monitor_at (monitor_manager,
++                                                 window_drag->latest_motion_x,
++                                                 window_drag->latest_motion_y);
++  if (!logical_monitor)
++    return;
++
++  meta_window_get_work_area_for_monitor (window, logical_monitor->number,
++                                         &work_area);
++
++  max_x = MAX (work_area.x, work_area.x + work_area.width - window_width);
++  max_y = MAX (work_area.y, work_area.y + work_area.height - window_height);
++  *x = CLAMP (*x, work_area.x, max_x);
++  *y = CLAMP (*y, work_area.y, max_y);
++}
++
+ static void
+ calculate_window_position (MetaWindowDrag          *window_drag,
+                            MetaEdgeResistanceFlags  flags,
+@@ -1325,6 +1358,10 @@ calculate_window_position (MetaWindowDrag          *window_drag,
+                                              &new_y,
+                                              flags);
+ 
++  if (window_drag->constrain_drag_to_work_area)
++    constrain_move_to_work_area (window_drag, window_width, window_height,
++                                 &new_x, &new_y);
++
+   *out_x = new_x;
+   *out_y = new_y;
+ }

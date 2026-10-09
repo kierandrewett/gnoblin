@@ -20,6 +20,7 @@
 #include "config.h"
 
 #include "wayland/meta-wayland-layer-shell.h"
+#include "wayland/meta-gnoblin-live-protocols.h"
 
 #include <gio/gio.h>
 
@@ -108,6 +109,7 @@ struct _MetaWaylandLayerSurface {
     guint destroy_window_idle_id;
     gboolean closed;
     MetaWaylandEventHandler* menu_keyboard_handler;
+    gboolean raise_pending;
 };
 
 typedef struct _DestroyWindowIdleData {
@@ -260,7 +262,8 @@ GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const
     g_variant_builder_add(&record, "{sv}", "mapped",
                           g_variant_new_boolean(meta_wayland_surface_get_buffer(surface) != NULL));
 
-    return g_variant_ref_sink(g_variant_builder_end(&record));
+    /* Floating on purpose: the caller adds the record to a builder, which takes it over. */
+    return g_variant_builder_end(&record);
 }
 
 MetaSurfaceActor* meta_wayland_layer_shell_get_actor(MetaWindow* window) {
@@ -1054,8 +1057,14 @@ static void focus_exclusive_layer_surface(MetaWaylandLayerSurface* layer_surface
             meta_wayland_surface_get_buffer(surface)) {
             if (!layer_surface->menu_keyboard_handler) {
                 /* Retained menus can reopen after another overlay was raised.
-                 * Raise once on opening without changing the active window. */
-                meta_window_raise(window);
+                 * Raise once on opening without changing the active window.
+                 * The first buffer arrives before the window is ready, and
+                 * raising it then runs placement on an unready window. Wait
+                 * for post_apply_state to mark it ready. */
+                if (meta_window_is_ready(window))
+                    meta_window_raise(window);
+                else
+                    layer_surface->raise_pending = TRUE;
                 layer_surface->menu_keyboard_handler = meta_wayland_input_attach_event_handler(
                     meta_wayland_seat_get_input(surface->compositor->seat),
                     &menu_keyboard_interface, FALSE, layer_surface);
@@ -1208,6 +1217,10 @@ static void meta_wayland_layer_surface_post_apply_state(MetaWaylandSurfaceRole* 
             move_resize_layer_window(window, geom);
         update_exclusive_zone_struts(layer_surface, window, mon);
         meta_window_update_visibility(window);
+        if (layer_surface->raise_pending && meta_window_is_ready(window)) {
+            layer_surface->raise_pending = FALSE;
+            meta_window_raise(window);
+        }
         {
             MetaContext* context = meta_wayland_compositor_get_context(surface->compositor);
             MetaBackend* backend = meta_context_get_backend(context);
@@ -1398,16 +1411,20 @@ static void bind_layer_shell(struct wl_client* client, void* data, uint32_t vers
     wl_resource_set_implementation(resource, &layer_shell_implementation, data, NULL);
 }
 
+void meta_wayland_layer_shell_set_preserve_active_window(MetaWaylandCompositor* compositor,
+                                                         gboolean preserve) {
+    (void)compositor;
+    preserve_active_window = preserve;
+}
+
 void meta_wayland_init_layer_shell(MetaWaylandCompositor* compositor) {
     preserve_active_window =
         gnoblin_native_control_get_config_bool(NULL, "layer-shell", "preserve-active-window", TRUE);
 
-    if (!gnoblin_native_control_protocol_enabled("wlr-layer-shell")) {
-        g_message("Gnoblin wlr-layer-shell protocol disabled by settings");
-        return;
-    }
-
-    if (wl_global_create(compositor->wayland_display, &zwlr_layer_shell_v1_interface,
-                         META_WLR_LAYER_SHELL_V1_VERSION, compositor, bind_layer_shell) == NULL)
-        g_error("Failed to register a global zwlr_layer_shell_v1 object");
+    g_autoptr(GError) error = NULL;
+    if (!meta_gnoblin_register_protocol_global(compositor, "wlr-layer-shell",
+                                               &zwlr_layer_shell_v1_interface,
+                                               META_WLR_LAYER_SHELL_V1_VERSION, compositor,
+                                               bind_layer_shell, &error))
+        g_error("Failed to register wlr-layer-shell: %s", error->message);
 }

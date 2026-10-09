@@ -21,13 +21,6 @@ UPSTREAM = {project: f"https://gitlab.gnome.org/GNOME/{project}.git" for project
 MUTTER_FORK = "https://github.com/kierandrewett/gnoblin-mutter.git"
 
 
-def mutter_source_commit() -> str:
-    return subprocess.check_output(
-        ["git", "-C", str(ROOT / "subprojects/mutter"), "rev-parse", "HEAD"],
-        text=True,
-    ).strip()
-
-
 def load() -> dict:
     return json.loads(MANIFEST.read_text())
 
@@ -69,13 +62,11 @@ def generated_values(data: dict) -> Tuple[Tuple[Path, str, str], ...]:
     schemas = components["gsettings-desktop-schemas"]
     portal = components["xdg-desktop-portal-gnome"]
     return (
-        (ROOT / "packaging/rpm/mutter.spec", r"(?m)^Version:\s+(\S+)$", mutter["version"]),
-        (ROOT / "packaging/rpm/mutter.spec", r"(?m)^%global mutter_api_version\s+(\S+)$", mutter["api"]),
         (ROOT / "packaging/rpm/gnoblin-portal.spec", r"(?m)^Version:\s+(\S+)$", portal["version"]),
         (
             ROOT / "flake.nix",
-            r"gnoblin-mutter\.git\?ref=gnoblin-51&rev=([0-9a-f]{40})",
-            mutter_source_commit(),
+            r"gitlab\.gnome\.org/GNOME/mutter\.git\?rev=([0-9a-f]{40})",
+            mutter["commit"],
         ),
         (
             ROOT / ".gitmodules",

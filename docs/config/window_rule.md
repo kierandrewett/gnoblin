@@ -46,9 +46,9 @@ Gnoblin leaves the window in place and logs a warning.
 
 | Field                 | Values                                                                     |
 | --------------------- | -------------------------------------------------------------------------- |
-| `blur`                | Integer 0–100; 0 disables blur                                             |
+| `blur`                | Number 0–100; blur radius in pixels; 0 disables blur                       |
 | `opacity`             | Number 0–1; affects content and text                                       |
-| `blur_ignore_shadows` | Boolean; default `false`                                                   |
+| `blur_ignore_shadows` | Boolean; default `false`; limits blur to the window frame                  |
 | `corners`             | Corner fields below                                                        |
 | `shader`              | GLSL file path; `""` clears it                                             |
 | `shader_uniforms`     | Up to 64 uniform names mapped to finite numeric values                     |
@@ -135,8 +135,17 @@ Omitted values inherit shell settings. `in` needs brackets because it is a Lua k
 | `inactive_background` | `"#303030"`                         | Unfocused background colour                          |
 | `button_layout`       | `{"minimize", "maximize", "close"}` | Ordered buttons, without duplicates; `{}` hides them |
 
+The generic default mode is `off`. GTK Wayland windows that create a KDE
+server-decoration object use `auto` behavior by default and receive Gnoblin's
+native frame. A matching rule's `frame.mode` overrides that behavior.
+
 `auto` supplies SSD only for explicit client requests. `replace` crops client
 pixels and adds a frame.
+
+With `prefer-server`, Gnoblin clips CSD buffer margins to the app's declared
+visible bounds and applies Gnoblin's configured border and shadow there. It
+does not estimate margin sizes. An app that omits visible bounds uses its full
+surface.
 
 `frame.button_layout` sets the buttons drawn by that window's frame renderer.
 For Mutter's global server-side button order, see
@@ -206,7 +215,7 @@ gnoblin.window_rule {
         layer_open = string?, layer_close = string?,
         minimize = string?, restore = string?, workspace_switch = string?,
         shadow_change = string?,
-        layer_companion_close = string?, resize = string?,
+        resize = string?,
         duration = integer?, -- 0–5000 ms
         easing = string?,
         ease = string?, -- alias for easing

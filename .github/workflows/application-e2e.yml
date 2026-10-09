@@ -54,14 +54,14 @@ jobs:
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
       - name: Fetch pinned compositor and portal sources
-        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome
+        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
 
       - name: Prepare the Fedora build environment
         run: |
           dnf -y install dnf-plugins-core cmake ninja-build lua-devel glib2-devel \
             json-glib-devel desktop-file-utils gsettings-desktop-schemas \
             python3 weston dbus-daemon dbus-tools ibus flatpak grim util-linux-user
-          dnf -y builddep --allowerasing packaging/rpm/mutter.spec packaging/rpm/gnoblin-portal.spec
+          dnf -y builddep --allowerasing packaging/rpm/gnoblin.spec packaging/rpm/gnoblin-portal.spec
           useradd --create-home builder
           builder_uid="$(id -u builder)"
           install -d -o builder -g builder -m 700 "/run/user/$builder_uid"
@@ -122,9 +122,7 @@ jobs:
           [[ -S "$runtime_dir/$socket_name" ]]
 
           runuser -u builder -- cmake --build "$GITHUB_WORKSPACE/build/ninja" \
-            --target native-touchpad-router-test runtime-protocol-test runtime-spawn-test \
-            autostart-protocol-test runtime-cache-test lua-pattern-test lua-config-test \
-            lua-api-test glob-config-test gnoblinctl --parallel 2
+            --target gnoblin-tests --parallel 2
           runuser -u builder -- ctest --test-dir "$GITHUB_WORKSPACE/build/ninja" --output-on-failure
           runuser -u builder -- env \
             XDG_RUNTIME_DIR="$runtime_dir" \
@@ -149,7 +147,6 @@ jobs:
             XDG_RUNTIME_DIR="$runtime_dir" \
             WAYLAND_DISPLAY="$socket_name" \
             GNOBLIN_PREFIX="$GITHUB_WORKSPACE/install" \
-            GNOBLIN_RUNTIME_BIN="$GITHUB_WORKSPACE/build/ninja/gnoblin" \
             bash tests/test-layer-latency.sh
 
       - name: Upload build and session logs

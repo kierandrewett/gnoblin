@@ -1,0 +1,24 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 8 Oct 2026 18:30:00 +0100
+Subject: [PATCH] xwayland: drop the stale XdndProxy name from the XDND atom list
+
+The atom enum no longer has ATOM_DND_PROXY, but atom_names[] still listed
+XdndProxy. Every atom after it was off by one. The XdndTypeList property was
+written as XdndProxy, and the action atoms named the wrong actions. An X11
+drop target then found no types in a Wayland drag and never sent XdndStatus,
+so the drop was cancelled.
+
+---
+diff --git a/src/wayland/meta-xwayland-dnd.c b/src/wayland/meta-xwayland-dnd.c
+index 3634af3565..6782cc4ae5 100644
+--- a/src/wayland/meta-xwayland-dnd.c
++++ b/src/wayland/meta-xwayland-dnd.c
+@@ -103,7 +103,6 @@ const gchar *atom_names[] = {
+   "XdndLeave",
+   "XdndDrop",
+   "XdndFinished",
+-  "XdndProxy",
+   "XdndTypeList",
+   "XdndActionMove",
+   "XdndActionCopy",

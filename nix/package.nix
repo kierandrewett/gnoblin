@@ -20,12 +20,17 @@
   gnoblinSourceModified ? false,
   gnoblinRemote ? null,
   mutterSrc,
+  imguiSrc,
   gsettingsDesktopSchemasSrc,
   portalSrc,
   gxdpSrc,
   gvdbSrc,
   hyprcursor,
   libglycin,
+  ibus,
+  gcr_4,
+  polkit,
+  runCommand,
 }:
 let
   versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnome-versions.json");
@@ -40,6 +45,13 @@ let
         lib.filesystem.listFilesRecursive "${gnoblinSrc}/patches/${project}"
       )
     );
+  # Mutter's meson build compiles Dear ImGui from subprojects/imgui under the Gnoblin source root. The flake source has no
+  # submodules, so add the pinned ImGui checkout to a copy of it.
+  gnoblinSourceRoot = runCommand "gnoblin-source-root" { } ''
+    cp -r --no-preserve=mode "${gnoblinSrc}/." "$out"
+    mkdir -p "$out/subprojects/imgui"
+    cp -r --no-preserve=mode "${imguiSrc}/." "$out/subprojects/imgui"
+  '';
   copyOverlay = project: ''
     bash ${gnoblinSrc}/scripts/copy-overlay.sh ${project} "$PWD"
   '';
@@ -58,11 +70,11 @@ let
         src = gsettingsDesktopSchemasSrc;
         patches = [ ];
       };
-  gnoblinMutter = (mutter.override { stdenv = gcc16Stdenv; }).overrideAttrs (old: {
-    pname = "gnoblin-mutter";
+  gnoblinCompositor = (mutter.override { stdenv = gcc16Stdenv; }).overrideAttrs (old: {
+    pname = "gnoblin-compositor";
     version = mutterVersion;
     src = mutterSrc;
-    patches = [ ];
+    patches = patchesFor "mutter";
     prePatch = (old.prePatch or "") + copyOverlay "mutter" + addSubproject gvdbSrc "gvdb";
     postPatch = (old.postPatch or "") + ''
       python3 ${gnoblinSrc}/scripts/generate-mutter-keybinding-catalog.py \
@@ -75,6 +87,9 @@ let
       python3
     ];
     preConfigure = ''
+      export GNOBLIN_SOURCE_ROOT="${gnoblinSourceRoot}"
+      export GNOBLIN_IMGUI_SOURCE="${imguiSrc}"
+      export GNOBLIN_PREFIX="$out"
       export PKG_CONFIG_PATH="${schemas}/share/pkgconfig''${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
     ''
     + (old.preConfigure or "");
@@ -83,9 +98,12 @@ let
         dependency: if (dependency.pname or "") == "gsettings-desktop-schemas" then schemas else dependency
       ) (old.buildInputs or [ ])
       ++ [
+        gcr_4
         hyprcursor
+        ibus
         json-glib
         lua5_4
+        polkit
       ];
     mesonFlags =
       lib.filter (
@@ -155,32 +173,31 @@ let
     '';
     buildPhase = ''
       runHook preBuild
-      cmake --build build/session --target gnoblin gnoblin-idle gnoblinctl \
+      cmake --build build/session --target gnoblin-idle gnoblinctl \
         --parallel "''${NIX_BUILD_CORES:-1}"
       runHook postBuild
     '';
     installPhase = ''
       runHook preInstall
       mkdir -p "$out/share/glib-2.0/schemas"
-      for source in ${schemas} ${gnoblinMutter}; do
+      for source in ${schemas} ${gnoblinCompositor}; do
         while IFS= read -r -d $'\0' schema; do
           install -Dm644 "$schema" "$out/share/glib-2.0/schemas/''${schema##*/}"
-        done < <(find "$source" -path '*/glib-2.0/schemas/*.xml' -print0)
+      done < <(find "$source" -path '*/glib-2.0/schemas/*.xml' -print0)
       done
+      mkdir -p "$out/bin" "$out/lib" "$out/libexec"
+      install -m755 ${gnoblinCompositor}/bin/gnoblin "$out/bin/gnoblin"
+      ln -s ${gnoblinCompositor}/lib/mutter-${mutterApi} "$out/lib/mutter-${mutterApi}"
+      printf '%s\n' '${gcc16Stdenv.cc.cc.lib}/lib' > "$out/libexec/gnoblin-cxx-lib"
+
       GNOBLIN_VECTOR_CURSORS=OFF \
       GNOBLIN_IDLE_BINARY="$PWD/build/session/gnoblin-idle" \
       GNOBLINCTL_BINARY="$PWD/build/session/gnoblinctl" \
       GNOBLIN_IDENTITY_FILE="$PWD/build/session/gnoblinctl-identity.json" \
       GNOBLIN_VERSION_METADATA_FILE="$PWD/build/session/gnoblin-version.ini" \
-      GNOBLIN_BINARY="$PWD/build/session/gnoblin" \
         bash scripts/install-session.sh "$out"
 
-      mkdir -p "$out/bin" "$out/lib"
-      ln -s ${gnoblinMutter}/bin/gnoblin-mutter "$out/bin/gnoblin-mutter"
-      ln -s ${gnoblinMutter}/lib/mutter-${mutterApi} "$out/lib/mutter-${mutterApi}"
-      printf '%s\n' '${gcc16Stdenv.cc.cc.lib}/lib' > "$out/libexec/gnoblin-cxx-lib"
-
-      for schema in ${schemas} ${gnoblinMutter}; do
+      for schema in ${schemas} ${gnoblinCompositor}; do
         while IFS= read -r -d $'\0' override; do
           install -Dm644 "$override" "$out/share/glib-2.0/schemas/''${override##*/}"
         done < <(find "$schema" -path '*/glib-2.0/schemas/*.override' -print0)
@@ -199,7 +216,7 @@ let
       runHook postInstall
     '';
     passthru = {
-      inherit gnoblinMutter gnoblinPortal schemas;
+      inherit gnoblinCompositor gnoblinPortal schemas;
       providedSessions = [ "gnoblin" ];
     };
     meta = {

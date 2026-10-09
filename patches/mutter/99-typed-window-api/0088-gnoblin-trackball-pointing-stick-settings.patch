@@ -20,7 +20,7 @@ index 8622ee243..d05589f4a 100644
 +          static const char * const pointing_stick_scroll[] = {
 +            "default", "none", "on-button-down", NULL
 +          };
-           static const char * const handed[] = { "right", "left", "mouse", NULL };
+           static const char * const handed[] = { "right", "left", "follow-mouse", NULL };
 @@ -476,2 +483,5 @@ input_get_enum (MetaInputSettings *input_settings,
              nicks = accel;
 +          else if (settings == priv->pointing_stick_settings &&
