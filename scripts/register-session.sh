@@ -174,6 +174,11 @@ installed() {
     fi
 }
 
+package_owns() {
+    { command -v rpm >/dev/null 2>&1 && rpm -qf "$1" >/dev/null 2>&1; } ||
+        { command -v pacman >/dev/null 2>&1 && pacman -Qo "$1" >/dev/null 2>&1; }
+}
+
 install_system_file() {
     sudo install -Dm644 "$1" "$2"
     installed "$2"
@@ -213,6 +218,14 @@ PY
             ;;
         share/xdg-desktop-portal/* | share/dbus-1/services/*)
             install_system_file "$PREFIX/$entry" "/usr/$entry"
+            ;;
+        share/man/man1/*)
+            # A package that ships the same page owns it. Leave that file alone.
+            if package_owns "/usr/$entry"; then
+                echo "  Left /usr/$entry alone: an installed package owns it." >&2
+            else
+                install_system_file "$PREFIX/$entry" "/usr/$entry"
+            fi
             ;;
     esac
 done

@@ -2,7 +2,7 @@
 #
 #   make           build into ./install
 #   make preview   open the compositor in a window on this desktop (run make first)
-#   make install   add the login entry and link gnoblinctl and the man pages (asks for sudo; run make first)
+#   make install   add the login entry, link gnoblinctl, install the man pages (asks for sudo; run make first)
 #   make check     the fast checks
 #   make test      build the tests, then run the CTest suites
 #   make clean     delete build/ and keep ./install

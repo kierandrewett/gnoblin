@@ -230,11 +230,11 @@ Registration only adds session files; it does not build a missing runtime.
 
 `make` runs `./build.sh` with the usual settings. The options in the table above are `./build.sh` flags.
 
-| Command        | What it does                                                               |
-| -------------- | -------------------------------------------------------------------------- |
-| `make`         | Build into `./install`, with the nested viewer. Set `JOBS=N` or `DEVKIT=0` |
-| `make install` | After `make`: add the login entry and link `gnoblinctl` and the man pages  |
-| `make clean`   | Delete `build/` and keep the installed build                               |
+| Command        | What it does                                                                    |
+| -------------- | ------------------------------------------------------------------------------- |
+| `make`         | Build into `./install`, with the nested viewer. Set `JOBS=N` or `DEVKIT=0`      |
+| `make install` | After `make`: add the login entry, link `gnoblinctl`, and install the man pages |
+| `make clean`   | Delete `build/` and keep the installed build                                    |
 
 `make install` asks for `sudo` to add the login entry. To see what a build will
 change first, run `./build.sh --dry-run`.
