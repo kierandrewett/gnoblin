@@ -49,35 +49,24 @@ publish() {
     echo "[layout] $SYSTEM/$2"
 }
 
-# publish_if_present SOURCE DESTINATION: the portal backend is optional, so its files may be absent.
-publish_if_present() {
-    if [ -e "$PRIVATE_DIR/$1" ]; then
-        publish "$1" "$2"
-    fi
-}
-
 install -d "$SYSTEM_DIR/bin"
-for tool in gnoblin gnoblinctl; do
-    ln -sfn "$PRIVATE/bin/$tool" "$SYSTEM_DIR/bin/$tool"
-    echo "[layout] $SYSTEM/bin/$tool -> $PRIVATE/bin/$tool"
+for tool in "$PRIVATE_DIR"/bin/gnoblin*; do
+    ln -sfn "$PRIVATE/bin/$(basename "$tool")" "$SYSTEM_DIR/bin/$(basename "$tool")"
+    echo "[layout] $SYSTEM/bin/$(basename "$tool") -> $PRIVATE/bin/$(basename "$tool")"
 done
 
-publish share/wayland-sessions/gnoblin.desktop share/wayland-sessions/gnoblin.desktop
-sed -i -e "s|^Exec=.*|Exec=$PRIVATE/bin/gnoblin|" \
-    -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' \
-    "$SYSTEM_DIR/share/wayland-sessions/gnoblin.desktop"
-
-publish share/xdg-desktop-portal/gnoblin-portals.conf share/xdg-desktop-portal/gnoblin-portals.conf
-publish lib/systemd/user/gnoblin-session.target lib/systemd/user/gnoblin-session.target
-publish lib/systemd/user/gnoblin-idle.service lib/systemd/user/gnoblin-idle.service
-
-publish share/man/man1/gnoblin.1 share/man/man1/gnoblin.1
-publish share/man/man1/gnoblinctl.1 share/man/man1/gnoblinctl.1
-
-publish_if_present share/xdg-desktop-portal/portals/gnoblin.portal share/xdg-desktop-portal/portals/gnoblin.portal
-publish_if_present share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service \
-    share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
-publish_if_present lib/systemd/user/xdg-desktop-portal-gnoblin.service lib/systemd/user/xdg-desktop-portal-gnoblin.service
+# Every public file the build made, found in the private tree. The session file also gets the system command path.
+source "$ROOT/src/tools/gnoblin-env.sh"
+while IFS= read -r entry; do
+    publish "$entry" "$entry"
+    case "$entry" in
+        share/wayland-sessions/*.desktop)
+            sed -i -e "s|^Exec=.*|Exec=$PRIVATE/bin/gnoblin|" \
+                -e 's|^DesktopNames=.*|DesktopNames=Gnoblin;|' \
+                "$SYSTEM_DIR/$entry"
+            ;;
+    esac
+done < <(gnoblin_env_public_entries "$PRIVATE_DIR")
 
 # Mutter's backlight helper ships a polkit action under a GNOME name. A system package must not clash with GNOME's own
 # copy, so Gnoblin publishes the action under its own name.

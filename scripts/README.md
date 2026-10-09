@@ -16,6 +16,14 @@ which, so you can tell what a script is for before you run it.
 
 `./build.sh` is the build. `make` is a short way to run it, and holds no logic of its own.
 
+## Which files are public
+
+No script names the public files. `gnoblin_env_public_entries` in `src/tools/gnoblin-env.sh` reads the finished
+prefix and lists every file with `gnoblin` in its name under `share/wayland-sessions`, `share/xdg-desktop-portal`,
+`share/dbus-1/services`, `lib/systemd/user` and `share/man/man1`. `make install` and the system layout both use that
+list. To ship a new login or portal file, install it into the prefix under one of those directories with a name that
+contains `gnoblin`. Nothing else needs to change.
+
 ## Build
 
 Run by `./build.sh` through CMake and `scripts/build-component.sh`. Run them by hand only to

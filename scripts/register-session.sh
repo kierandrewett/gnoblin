@@ -101,10 +101,17 @@ if "$with_portal" && "$have_user_systemd" && ! systemctl --user cat xdg-desktop-
 fi
 # A previous source tarball may have registered the same unit names from a
 # different prefix. Refresh only links that point to Gnoblin's own unit paths.
-linked_units=(gnoblin-session.target gnoblin-idle.service)
-if "$with_portal" && "$have_user_systemd"; then
-    linked_units+=(xdg-desktop-portal-gnoblin.service)
-fi
+mapfile -t public_entries < <(gnoblin_env_public_entries "$PREFIX")
+unit_files=()
+linked_units=()
+for entry in "${public_entries[@]}"; do
+    case "$entry" in
+        lib/systemd/user/*)
+            unit_files+=("$PREFIX/$entry")
+            linked_units+=("${entry##*/}")
+            ;;
+    esac
+done
 if "$have_user_systemd"; then
     for unit in "${linked_units[@]}"; do
         link="$USER_UNIT_DIR/$unit"
@@ -167,10 +174,6 @@ install_system_file() {
 }
 
 if "$have_user_systemd"; then
-    unit_files=("$STANDALONE_TARGET" "$IDLE_SERVICE")
-    if "$with_portal"; then
-        unit_files+=("$PORTAL_UNIT")
-    fi
     systemctl --user --force link "${unit_files[@]}" >/dev/null
     for unit in "${unit_files[@]}"; do
         installed "$USER_UNIT_DIR/$(basename "$unit")"
@@ -182,7 +185,11 @@ fi
 
 desktop_to_install="$(mktemp)"
 trap 'rm -f -- "$desktop_to_install"' EXIT
-python3 - "$DESKTOP" "$desktop_to_install" <<'PY'
+for entry in "${public_entries[@]}"; do
+    case "$entry" in
+        share/wayland-sessions/*.desktop)
+            # GDM must not wait for this session to register with GNOME Session.
+            python3 - "$PREFIX/$entry" "$desktop_to_install" <<'PY'
 from pathlib import Path
 import sys
 
@@ -196,12 +203,13 @@ for line in source.read_text().splitlines():
     lines.append(line)
 destination.write_text('\n'.join(lines) + '\n')
 PY
-install_system_file "$desktop_to_install" /usr/share/wayland-sessions/gnoblin.desktop
-install_system_file "$PORTAL_CONFIGURATION" /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-if "$with_portal"; then
-    install_system_file "$PORTAL_DESCRIPTOR" /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-    install_system_file "$PORTAL_DBUS" /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
-fi
+            install_system_file "$desktop_to_install" "/usr/$entry"
+            ;;
+        share/xdg-desktop-portal/* | share/dbus-1/services/*)
+            install_system_file "$PREFIX/$entry" "/usr/$entry"
+            ;;
+    esac
+done
 
 # Make the prefix-built native CLI discoverable. Preserve any existing command
 # rather than replacing a user's script or a CLI from another installation.
@@ -216,10 +224,14 @@ installed "$GNOBLINCTL_LINK"
 # nothing exists, and refresh only a link that already points into a Gnoblin prefix. Anything else is the user's, so it
 # stays and the script says so.
 mkdir -p "$USER_MAN_DIR"
-for page in gnoblin.1 gnoblinctl.1; do
-    source_page="$PREFIX/share/man/man1/$page"
+for entry in "${public_entries[@]}"; do
+    case "$entry" in
+        share/man/man1/*) ;;
+        *) continue ;;
+    esac
+    page="${entry##*/}"
+    source_page="$PREFIX/$entry"
     link="$USER_MAN_DIR/$page"
-    [ -f "$source_page" ] || continue
     if [ ! -e "$link" ] && [ ! -L "$link" ]; then
         ln -s "$source_page" "$link"
         installed "$link"

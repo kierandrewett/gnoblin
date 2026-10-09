@@ -27,6 +27,17 @@ gnoblin_env_validate_install_prefix() {
     esac
 }
 
+# Print the files in PREFIX that the desktop finds by directory and that Gnoblin owns by name, one per line, relative to
+# PREFIX. The installer, the system layout and the login registration all read this list from the finished tree. A file
+# that a build adds under one of these directories, with gnoblin in its name, is picked up with no change to a script.
+gnoblin_env_public_entries() {
+    local prefix="${1:?prefix required}" dir
+    for dir in share/wayland-sessions share/xdg-desktop-portal share/dbus-1/services lib/systemd/user share/man/man1; do
+        [ -d "$prefix/$dir" ] || continue
+        find "$prefix/$dir" \( -type f -o -type l \) -name '*gnoblin*' -printf "$dir/%P\n"
+    done | LC_ALL=C sort
+}
+
 gnoblin_env_validate_libdir() {
     local libdir="${1-}"
 
