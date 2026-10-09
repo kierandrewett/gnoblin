@@ -508,7 +508,7 @@ if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ] || [ "$
     fi
 fi
 
-# The summary: what was built, anything that needs a look, and what to run next. One row per fact.
+# The summary: what was built, the warning count if there is one, and what to run next. One row per fact.
 if [ "$SECONDS" -ge 60 ]; then
     took="$((SECONDS / 60))m $((SECONDS % 60))s"
 else
@@ -524,14 +524,6 @@ if [ "$layout" = system ]; then
 fi
 if [ "$total_warnings" -gt 0 ]; then
     warn_row Warnings "$total_warnings compiler warnings, listed in ${log#"$PWD"/}"
-fi
-if [ "$layout" = private ] && [ -z "$destdir" ]; then
-    for command_name in gnoblin gnoblinctl; do
-        found="$(command -v "$command_name" || true)"
-        if [ -n "$found" ] && [ "$(readlink -f "$found")" != "$(readlink -f "$prefix/bin/$command_name")" ]; then
-            warn_row PATH "$command_name runs $(readlink -f "$found"), not this build. Use $prefix/bin/$command_name."
-        fi
-    done
 fi
 
 if [ "$layout" = private ] && [ -z "$destdir" ]; then
