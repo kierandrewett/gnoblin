@@ -108,7 +108,7 @@ wait_for_preview_child() {
             wait "$child_pid"
             return $?
         fi
-        echo "Gnoblin stopped while the devkit $child_name was still open. Recent output:" >&2
+        echo "Gnoblin stopped (exit status $status) while the devkit $child_name was still open. Recent output:" >&2
         tail -n 30 "$DK/runtime.log" >&2
         return 1
     fi
