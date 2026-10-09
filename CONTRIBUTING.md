@@ -14,7 +14,7 @@ Build the pinned upstream sources into a separate prefix:
 ```sh
 ./build.sh --dry-run   # read what the build will change
 make                   # build: the same as ./build.sh, with the nested viewer enabled
-make install           # build, then add the login entry, the commands and the man pages (asks for sudo)
+make install           # build, then add the login entry and link gnoblinctl and the man pages (asks for sudo)
 ```
 
 `./build.sh` is the build, and `make` is a short way to run it. The [scripts map](scripts/README.md)

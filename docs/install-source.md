@@ -226,7 +226,7 @@ Registration only adds session files; it does not build a missing runtime.
 | Command        | What it does                                                               |
 | -------------- | -------------------------------------------------------------------------- |
 | `make`         | Build into `./install`, with the nested viewer. Set `JOBS=N` or `DEVKIT=0` |
-| `make install` | Build, then add the login entry and link the commands and man pages        |
+| `make install` | Build, then add the login entry and link `gnoblinctl` and the man pages    |
 | `make clean`   | Delete `build/` and keep the installed build                               |
 
 `make install` asks for `sudo` to add the login entry. To see what a build will
