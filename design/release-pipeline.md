@@ -198,6 +198,9 @@ Each item lands as its own commit, and the tree stays working.
       one, so it would raise false alarms. The hand-written lists left are `nix/package.nix`,
       `packaging/opensuse/gnoblin.spec` and the small Lua test installs in `lua.yml`.
 - [x] Mark `design/release-packaging.md` as a historical log, with a pointer to this file.
-- [ ] Dry run a release from a branch: draft only, no tag, no COPR upload.
+- [x] Dry run a release from a branch. `gh workflow run release.yml --ref BRANCH -f dry_run=true`
+      builds and tests every package job and the install gates from that branch, and publishes
+      nothing: no pre-release, no tag, no COPR upload. Run it after any change to `release.yml`,
+      the recipes or the generator, and before the merge.
 - [ ] Clean up: remove the 8 development pre-releases and the 3 drafts, after the owner
       agrees.

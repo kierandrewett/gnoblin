@@ -9,9 +9,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to build or repair
-        required: true
+        description: Existing release tag to build or repair. Leave empty for a dry run.
+        required: false
         type: string
+      dry_run:
+        description: Build and test everything from the selected ref, and publish nothing. Leave the tag empty.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -26,6 +31,7 @@ jobs:
     outputs:
       release_tag: ${{ steps.meta.outputs.release_tag }}
       is_release: ${{ steps.meta.outputs.is_release }}
+      dry_run: ${{ steps.meta.outputs.dry_run }}
     runs-on: ubuntu-latest
     container: fedora:45
     timeout-minutes: 30
@@ -44,8 +50,18 @@ jobs:
         id: meta
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
         run: |
-          if [ -n "$INPUT_TAG" ]; then
+          dry_run=false
+          if [ "$INPUT_DRY_RUN" = true ] && [ -n "$INPUT_TAG" ]; then
+            echo "A dry run builds the selected ref. Leave the tag empty." >&2
+            exit 1
+          fi
+          if [ "$INPUT_DRY_RUN" = true ]; then
+            release_tag="commit-${GITHUB_SHA:0:12}"
+            is_release=false
+            dry_run=true
+          elif [ -n "$INPUT_TAG" ]; then
             release_tag="$INPUT_TAG"
             is_release=true
           elif [[ "$GITHUB_REF" == refs/tags/gnoblin-v* ]]; then
@@ -55,7 +71,7 @@ jobs:
             release_tag="commit-${GITHUB_SHA:0:12}"
             is_release=false
           fi
-          printf 'release_tag=%s\nis_release=%s\n' "$release_tag" "$is_release" >> "$GITHUB_OUTPUT"
+          printf 'release_tag=%s\nis_release=%s\ndry_run=%s\n' "$release_tag" "$is_release" "$dry_run" >> "$GITHUB_OUTPUT"
       - name: Set checkout ownership
         run: chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
       - name: Fetch upstream release tags
@@ -83,6 +99,7 @@ jobs:
           retention-days: 30
 
   publish-sources:
+    if: ${{ needs.source-packages.outputs.dry_run != 'true' }}
     needs: source-packages
     runs-on: ubuntu-latest
     permissions:
@@ -127,6 +144,7 @@ jobs:
           fi
 
   source-rpms:
+    if: ${{ !cancelled() && needs.source-packages.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.publish-sources.result) }}
     needs: [source-packages, publish-sources]
     runs-on: ubuntu-latest
     container: fedora:45
@@ -170,6 +188,7 @@ jobs:
           retention-days: 30
 
   publish-source-rpms:
+    if: ${{ needs.source-packages.outputs.dry_run != 'true' }}
     needs: [source-packages, source-rpms]
     runs-on: ubuntu-latest
     permissions:
@@ -186,6 +205,7 @@ jobs:
         run: gh release upload "$RELEASE_TAG" source-rpms/*.src.rpm --repo "$GITHUB_REPOSITORY" --clobber
 
   opensuse-package:
+    if: ${{ !cancelled() && needs.source-packages.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.publish-sources.result) }}
     needs: [source-packages, publish-sources]
     uses: ./.github/workflows/opensuse-rpm.yml
     with:
@@ -193,6 +213,7 @@ jobs:
       source_artifact: gnoblin-${{ needs.source-packages.outputs.release_tag }}
 
   arch-package:
+    if: ${{ !cancelled() && needs.source-packages.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.publish-sources.result) }}
     needs: [source-packages, publish-sources]
     runs-on: ubuntu-latest
     container: archlinux:base
@@ -315,6 +336,7 @@ jobs:
         run: pacman -Scc --noconfirm
 
   arch-package-runtime:
+    if: ${{ !cancelled() && needs.arch-package.result == 'success' }}
     needs: [source-packages, arch-package]
     runs-on: ubuntu-latest
     container: archlinux:base
