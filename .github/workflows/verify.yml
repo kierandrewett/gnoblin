@@ -31,7 +31,7 @@ jobs:
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Fetch compositor and portal source trees
-        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
+        run: ./scripts/checkout-submodules-with-retry.sh subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
       - name: Check native package definitions
         run: |
           python3 scripts/sync-package-manifest.py check
@@ -179,7 +179,7 @@ jobs:
           chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Fetch compositor and portal source trees
-        run: git submodule update --init --recursive subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
+        run: ./scripts/checkout-submodules-with-retry.sh subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
       - name: Install the packages the recipes declare
         run: ./scripts/install-arch-build-deps.sh packaging/arch/PKGBUILD packaging/arch/portal/PKGBUILD
       - name: Build a source bundle from this checked-out revision

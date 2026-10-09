@@ -24,10 +24,14 @@ jobs:
       - name: Install checkout and build tools
         run: dnf -y install git
 
-      - name: Checkout Gnoblin and pinned sources
+      - name: Checkout Gnoblin
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
+
+      - name: Fetch pinned sources, retrying GNOME GitLab errors
+        run: |
+          chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          ./scripts/checkout-submodules-with-retry.sh
 
       - name: Install build dependencies
         run: |

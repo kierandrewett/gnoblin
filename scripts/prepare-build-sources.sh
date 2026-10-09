@@ -3,6 +3,7 @@
 set -euo pipefail
 cd -- "$(dirname -- "$(realpath -- "$0")")/.."
 ROOT="$(pwd -P)"
+source "$ROOT/scripts/retry-command.sh"
 mode="${1:?source mode required}"
 if [ "$#" -gt 1 ]; then
     projects=("$2")
@@ -147,7 +148,7 @@ for name in "${projects[@]}"; do
     expected_root="$(realpath -m -- "$submodule_path")"
     actual_root="$(git -C "$submodule_path" rev-parse --show-toplevel 2>/dev/null || true)"
     if [ "$actual_root" != "$expected_root" ]; then
-        git submodule update --init --recursive -- "subprojects/$name"
+        gnoblin_retry_command git submodule update --init --recursive -- "subprojects/$name"
     fi
 done
 ./scripts/ensure-release-subprojects.sh "${projects[@]}"
