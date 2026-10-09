@@ -16,16 +16,16 @@ DEVKIT ?= 1
 .DEFAULT_GOAL := build
 
 build:
-	GNOBLIN_DEVKIT=$(if $(filter 1,$(DEVKIT)),enabled,disabled) ./build.sh --jobs $(JOBS)
+	@GNOBLIN_DEVKIT=$(if $(filter 1,$(DEVKIT)),enabled,disabled) ./build.sh --jobs $(JOBS)
 
 install: build
-	./build.sh --register-session
+	@./build.sh --register-session
 
 check:
-	./tests/check-fast.sh
+	@./tests/check-fast.sh
 
 test:
-	ctest --test-dir build/ninja --output-on-failure
+	@ctest --test-dir build/ninja --output-on-failure
 
 clean:
 	rm -rf build

@@ -3,10 +3,13 @@
 set -euo pipefail
 cd -- "$(dirname -- "$(realpath -- "$0")")"
 
-blue='' green='' dim='' reset='' red='' err_reset=''
+blue='' green='' yellow='' bold='' dim='' reset='' out_red='' red='' err_reset=''
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
     blue=$'\033[1;36m'
     green=$'\033[1;32m'
+    yellow=$'\033[1;33m'
+    bold=$'\033[1m'
+    out_red=$'\033[1;31m'
     dim=$'\033[2m'
     reset=$'\033[0m'
 fi
@@ -344,72 +347,111 @@ export TMPDIR="$PWD/build/tmp"
 mkdir -p "$TMPDIR" build/logs
 log="$PWD/build/logs/build-$(date +%Y%m%d-%H%M%S)-$$.log"
 : >"$log"
-printf '%sBuild log:%s %s\n' "$dim" "$reset" "$log"
+gnoblin_version="$(./scripts/gnoblin-version.py get version 2>/dev/null || true)"
+printf '%sBuilding Gnoblin%s%s\n' "$bold" "${gnoblin_version:+ $gnoblin_version}" "$reset"
+printf '  %-8s %s\n' Prefix "${destdir:+$destdir}$prefix" Log "${log#"$PWD"/}"
+progress_tty=0
+if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ]; then
+    progress_tty=1
+fi
+total_warnings=0
+step_log_offset=0
+SECONDS=0
 
 run_step() {
-    local label="$1" status
+    local label="$1" status started count warning_file took
     shift
-    printf '\n%s==>%s %s\n' "$blue" "$reset" "$label"
+    started=$SECONDS
+    printf '\n%s==>%s %s%s%s\n' "$blue" "$reset" "$bold" "$label" "$reset"
     printf '\n== %s ==\n' "$label" >>"$log"
+    step_log_offset="$(stat -c %s "$log")"
+    warning_file="$TMPDIR/warnings.$$"
+    : >"$warning_file"
     set +e
     if "$verbose"; then
         "$@" 2>&1 | tee -a "$log"
         status=${PIPESTATUS[0]}
     else
+        # Show one line for each top-level step, one progress line for the long Meson builds, and every error. Count
+        # the compiler warnings instead of printing them: the log has them all.
         "$@" 2>&1 | tee -a "$log" | awk \
-            -v blue="$blue" -v dim="$dim" -v reset="$reset" '
+            -v dim="$dim" -v reset="$reset" -v red="$out_red" -v tty="$progress_tty" -v warning_file="$warning_file" '
+            function close_progress() {
+                if (open && tty) printf "\n"
+                open = 0
+            }
             /^\[[0-9]+\/[0-9]+\]/ {
                 split(substr($1, 2, length($1) - 2), step, "/")
                 done = step[1] + 0
                 total = step[2] + 0
+                text = $0
+                sub(/^\[[0-9]+\/[0-9]+\] */, "", text)
+                # CMake prints its own re-check as a two step graph first. It is not the list of steps.
+                if (text ~ /^Re-checking globbed directories/) next
                 if (!top_total) top_total = total
                 if (total == top_total) {
-                    print blue "   " $0 reset
-                    nested_name = ""
+                    close_progress()
                     nested_total = 0
                     last_bucket = -1
-                    if ($0 ~ /Performing build step for/) {
-                        nested_name = $NF
-                        gsub(/[^[:alnum:]_-]/, "", nested_name)
+                    # CMake prints a step for every stage of an external project. Only the build stage matters here.
+                    if (text ~ /^(Completed|No [a-z]+ step|Creating directories for|Performing (configure|install|update|patch|download|mkdir|test))/) next
+                    if (text ~ /^Performing build step for \x27/) {
+                        name = text
+                        sub(/^Performing build step for \x27/, "", name)
+                        sub(/\x27.*/, "", name)
+                        text = "Build " name
                     }
+                    printf "  %s\n", text
                 } else {
-                    if (!nested_name) nested_name = "Nested build"
                     if (total != nested_total) {
                         nested_total = total
                         last_bucket = -1
                     }
-                    bucket = int(done * 10 / total)
-                    if (bucket > last_bucket && bucket > 0) {
-                        printf "%s   %s: %d%% (%d/%d steps)%s\n", dim, nested_name,
-                            int(done * 100 / total), done, total, reset
-                        last_bucket = bucket
+                    pct = int(done * 100 / total)
+                    if (tty) {
+                        printf "\r\033[K    %s%s %3d%%  (%d of %d)%s", dim, name, pct, done, total, reset
+                        open = 1
+                    } else {
+                        bucket = int(done * 4 / total)
+                        if (bucket > last_bucket && bucket > 0) {
+                            printf "    %s%s %d%% (%d of %d)%s\n", dim, name, pct, done, total, reset
+                            last_bucket = bucket
+                        }
                     }
                 }
                 fflush()
                 next
             }
-            /^FAILED:|: (fatal )?error:|: warning:|: ERROR:|^ninja: build stopped/ {
-                print "   " $0
-                fflush()
-                next
-            }
-            /^-- (Configuring|Generating) done|^-- Build files have been written/ {
-                print "   " $0
+            /: warning:/ { warnings++; next }
+            /^FAILED:|: (fatal )?error:|: ERROR:|^ninja: build stopped/ {
+                close_progress()
+                print "  " red $0 reset
                 fflush()
                 next
             }
             { next }
+            END {
+                close_progress()
+                print warnings + 0 > warning_file
+            }
         '
         status=${PIPESTATUS[0]}
     fi
     set -e
+    count="$(cat "$warning_file" 2>/dev/null || echo 0)"
+    rm -f -- "$warning_file"
+    total_warnings=$((total_warnings + ${count:-0}))
+    if [ "$status" -eq 0 ]; then
+        took=$((SECONDS - started))
+        printf '  %sdone in %ss%s\n' "$dim" "$took" "$reset"
+    fi
     return "$status"
 }
 
 fail_step() {
-    printf '\n%s%s failed%s (exit %s). Full output: %s\n' \
-        "$red" "$1" "$err_reset" "$2" "$log" >&2
-    tail -n 30 "$log" >&2
+    printf '\n%s%s failed%s (exit %s). The end of its output:\n\n' "$red" "$1" "$err_reset" "$2" >&2
+    tail -c "+$((step_log_offset + 1))" "$log" | tail -n 20 | sed 's/^/  /' >&2
+    printf '\nFull log: %s\n' "${log#"$PWD"/}" >&2
     exit "$2"
 }
 
@@ -435,13 +477,8 @@ if run_step 'Build Gnoblin' cmake --build "$build_dir" --parallel "$jobs" --targ
 else
     fail_step 'Build Gnoblin' "$?"
 fi
-printf '\n%sBuild and install complete%s\n' "$green" "$reset"
-printf 'Prefix: %s\n' "$prefix"
-if [ -n "$destdir" ]; then
-    printf 'Install root: %s\n' "$destdir"
-fi
+# Check that the install is complete. Say nothing when it is, and stop with the missing file when it is not.
 if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ] || [ "$target" = gnoblin-system-layout ]; then
-    printf 'Installed runtime:\n'
     artifacts=(
         bin/gnoblin
         bin/gnoblinctl
@@ -458,49 +495,51 @@ if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ] || [ "$
             printf 'Missing expected install artifact: %s\n' "$destdir$prefix/$artifact" >&2
             exit 1
         fi
-        printf '  %s\n' "$artifact"
     done
-    if ! "$with_portal"; then
-        printf 'Portal backend: omitted\n'
-    fi
     if [ "$layout" = system ]; then
-        printf 'Public entries (system layout):\n'
-        public_entries=(
-            bin/gnoblin
-            bin/gnoblinctl
-            share/wayland-sessions/gnoblin.desktop
-            share/xdg-desktop-portal/gnoblin-portals.conf
-            lib/systemd/user/gnoblin-session.target
-            lib/systemd/user/gnoblin-idle.service
-        )
-        for entry in "${public_entries[@]}"; do
+        for entry in bin/gnoblin bin/gnoblinctl share/wayland-sessions/gnoblin.desktop \
+            share/xdg-desktop-portal/gnoblin-portals.conf lib/systemd/user/gnoblin-session.target \
+            lib/systemd/user/gnoblin-idle.service; do
             if [ ! -e "$destdir$system_prefix/$entry" ] && [ ! -L "$destdir$system_prefix/$entry" ]; then
                 printf 'Missing expected public entry: %s\n' "$destdir$system_prefix/$entry" >&2
                 exit 1
             fi
-            printf '  %s/%s\n' "$system_prefix" "$entry"
         done
-    else
-        printf 'Login registration: use ./build.sh --register-session\n'
     fi
 fi
-if [ "$layout" = system ]; then
-    :
-elif [ "$prefix" = "$PWD/install" ]; then
-    printf 'Try it: ./build.sh --preview\n'
-    printf 'Add it to your login screen: ./build.sh --register-session\n'
+
+# The summary: what was built, anything that needs a look, and what to run next. One row per fact.
+if [ "$SECONDS" -ge 60 ]; then
+    took="$((SECONDS / 60))m $((SECONDS % 60))s"
 else
-    printf 'Try it: ./build.sh --prefix %q --preview\n' "$prefix"
-    printf 'Add it to your login screen: ./build.sh --prefix %q --register-session\n' "$prefix"
+    took="${SECONDS}s"
 fi
-# An older install earlier on PATH is easy to mistake for this build, so say which one a bare command runs.
+row() { printf '  %-10s %s\n' "$1" "$2"; }
+warn_row() { printf '  %s%-10s %s%s\n' "$yellow" "$1" "$2" "$reset"; }
+
+printf '\n%sBuilt Gnoblin%s%s in %s\n\n' "$green" "${gnoblin_version:+ $gnoblin_version}" "$reset" "$took"
+row Installed "${destdir:+$destdir}$prefix"
+if [ "$layout" = system ]; then
+    row Public "${destdir:+$destdir}$system_prefix"
+fi
+if [ "$total_warnings" -gt 0 ]; then
+    warn_row Warnings "$total_warnings compiler warnings, listed in ${log#"$PWD"/}"
+fi
 if [ "$layout" = private ] && [ -z "$destdir" ]; then
     for command_name in gnoblin gnoblinctl; do
         found="$(command -v "$command_name" || true)"
         if [ -n "$found" ] && [ "$(readlink -f "$found")" != "$(readlink -f "$prefix/bin/$command_name")" ]; then
-            printf 'Note: %s on your PATH is %s, not this build. Run %s/bin/%s for this one.\n' \
-                "$command_name" "$(readlink -f "$found")" "$prefix" "$command_name"
+            warn_row PATH "$command_name runs $(readlink -f "$found"), not this build. Use $prefix/bin/$command_name."
         fi
     done
 fi
-printf 'Full output: %s\n' "$log"
+
+if [ "$layout" = private ] && [ -z "$destdir" ]; then
+    prefix_option=''
+    if [ "$prefix" != "$PWD/install" ]; then
+        prefix_option="$(printf -- '--prefix %q ' "$prefix")"
+    fi
+    printf '\n%sNext%s\n' "$bold" "$reset"
+    printf '  %-34s %s\n' "./build.sh ${prefix_option}--preview" "Try it in a window"
+    printf '  %-34s %s\n' "./build.sh ${prefix_option}--register-session" "Add it to the login screen"
+fi
