@@ -254,24 +254,69 @@ if "$preview"; then
     exec ./scripts/run-gnoblin-devkit.sh "$terminal"
 fi
 if "$dry_run"; then
-    printf 'Build Gnoblin from pinned sources.\n'
-    printf '  Output: %s\n' "$prefix"
-    echo "  Layout: $layout"
+    mutter_version="$(./scripts/gnome-versions.py get mutter version 2>/dev/null || echo unknown)"
+    portal_version="$(./scripts/gnome-versions.py get xdg-desktop-portal-gnome version 2>/dev/null || echo unknown)"
+    mutter_patches="$(find patches/mutter -name '*.patch' 2>/dev/null | wc -l)"
+    portal_patches="$(find patches/xdg-desktop-portal-gnome -name '*.patch' 2>/dev/null | wc -l)"
+    printf 'Gnoblin build plan. Nothing has been changed.\n\nSettings\n'
+    case "$source_mode" in
+        checkout) echo '  Sources:         the pinned submodules of this checkout' ;;
+        *) echo '  Sources:         the component archives of a source bundle' ;;
+    esac
+    printf '  Output prefix:   %s\n' "$prefix"
+    printf '  Build directory: %s\n' "$build_dir"
+    echo "  Layout:          $layout"
     if [ "$layout" = system ]; then
-        echo "  System prefix: $system_prefix"
+        echo "  System prefix:   $system_prefix"
     fi
     if [ -n "$destdir" ]; then
-        echo "  Install root: $destdir"
+        echo "  Install root:    $destdir"
     fi
-    echo "  Ninja target: $target"
+    echo "  Ninja target:    $target"
     if "$with_portal"; then
-        echo '  Gnoblin portal backend: included by default'
+        echo '  Portal backend:  included'
     else
-        echo '  Gnoblin portal backend: omitted'
+        echo '  Portal backend:  omitted'
     fi
-    echo "  XWayland: $xwayland"
-    echo "  Vector cursor theme: $vector_cursors"
-    echo "  Development viewer: ${GNOBLIN_DEVKIT:-disabled}"
+    echo "  XWayland:        $xwayland"
+    echo "  Vector cursors:  $vector_cursors"
+    echo "  Nested viewer:   ${GNOBLIN_DEVKIT:-disabled}"
+    printf '\nSteps, in order\n'
+    step=1
+    plan_step() {
+        printf '  %d. %s\n' "$step" "$1"
+        step=$((step + 1))
+    }
+    plan_step "Check the tools: cmake, ninja, meson, pkg-config, python3$([ "$source_mode" = checkout ] && echo ', git' || echo ', tar, xz')."
+    plan_step "Configure CMake in $build_dir."
+    if [ "$source_mode" = checkout ]; then
+        plan_step "Prepare the pinned sources. Mutter $mutter_version is reset to its upstream tag, then the overlay is copied and the $mutter_patches patches in patches/mutter are applied as commits."
+        "$with_portal" && plan_step "Do the same for the portal backend $portal_version, with its $portal_patches patches."
+    else
+        plan_step "Unpack the component archives from the bundle's sources/ directory. They already carry the overlay and the patches."
+    fi
+    plan_step "Check that the development libraries the pinned sources need are installed."
+    plan_step "Build Mutter with Meson and install it into the prefix. This is the long step."
+    plan_step "Build gnoblinctl and gnoblin-idle."
+    plan_step "Install the session files into the prefix: the login entry, the systemd units, the man pages and the compiled schemas."
+    "$with_portal" && plan_step "Build the portal backend and install it into the prefix."
+    if [ "$layout" = system ]; then
+        plan_step "Publish the public entries under $system_prefix: command links, session file, units, portal and polkit files, man pages."
+    fi
+    printf '\nWrites\n'
+    if [ -n "$destdir" ]; then
+        printf '  %s%s (the install root, nothing else outside it)\n' "$destdir" "$prefix"
+    else
+        printf '  %s\n' "$prefix"
+    fi
+    echo "  $build_dir and the rest of build/ (logs, temporary files)"
+    [ "$source_mode" = checkout ] && echo '  subprojects/mutter and the portal backend (reset to the pinned tag and patched)'
+    printf '\nDoes not touch\n'
+    echo '  your login screen entry (run ./build.sh --register-session, or make register)'
+    echo '  your PATH commands and man page links (the same step makes those)'
+    if [ -z "$destdir" ] && [ "$layout" = private ]; then
+        echo '  /usr and other system paths'
+    fi
     exit 0
 fi
 tools=(cmake ninja meson pkg-config python3)

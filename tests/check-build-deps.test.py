@@ -4,6 +4,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 import subprocess
 import tempfile
 import unittest
@@ -134,9 +135,13 @@ bundled_dep = dependency('bundled-lib')
                 text=True,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn(f"Output: {output_dir}", result.stdout)
-            self.assertIn("Ninja target: gnoblin", result.stdout)
-            self.assertIn("XWayland: false", result.stdout)
+            self.assertRegex(result.stdout, r"Output prefix:\s+" + re.escape(str(output_dir)))
+            self.assertRegex(result.stdout, r"Ninja target:\s+gnoblin\n")
+            self.assertRegex(result.stdout, r"XWayland:\s+false")
+            # The plan names its steps and says what it writes and what it leaves alone.
+            for heading in ("Steps, in order", "Writes", "Does not touch"):
+                self.assertIn(heading, result.stdout)
+            self.assertRegex(result.stdout, r"\d+ patches in patches/mutter")
             self.assertFalse(output_dir.exists())
             for obsolete in ("sudo", "dnf", "pacman", "apt-get", "zypper", "--yes", "--no-deps"):
                 self.assertNotIn(obsolete, result.stdout)
@@ -146,16 +151,27 @@ bundled_dep = dependency('bundled-lib')
                 text=True,
             )
             self.assertEqual(core_result.returncode, 0, core_result.stderr)
-            self.assertIn("Ninja target: gnoblin-session", core_result.stdout)
-            self.assertIn("Gnoblin portal backend: omitted", core_result.stdout)
+            self.assertRegex(core_result.stdout, r"Ninja target:\s+gnoblin-session")
+            self.assertRegex(core_result.stdout, r"Portal backend:\s+omitted")
+            self.assertNotIn("Build the portal backend", core_result.stdout)
             portal_result = subprocess.run(
                 [str(ROOT / "build.sh"), "--dry-run"],
                 capture_output=True,
                 text=True,
             )
             self.assertEqual(portal_result.returncode, 0, portal_result.stderr)
-            self.assertIn("Ninja target: standalone-session", portal_result.stdout)
-            self.assertIn("Gnoblin portal backend: included by default", portal_result.stdout)
+            self.assertRegex(portal_result.stdout, r"Ninja target:\s+standalone-session")
+            self.assertRegex(portal_result.stdout, r"Portal backend:\s+included")
+            self.assertIn("Build the portal backend", portal_result.stdout)
+            system_result = subprocess.run(
+                [str(ROOT / "build.sh"), "--dry-run", "--layout", "system", "--destdir", "/tmp/stage-for-the-plan"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(system_result.returncode, 0, system_result.stderr)
+            self.assertIn("Publish the public entries under /usr", system_result.stdout)
+            self.assertIn("/tmp/stage-for-the-plan", system_result.stdout)
+            self.assertNotIn("/usr and other system paths", system_result.stdout)
 
     def test_build_cli_rejects_invalid_or_misplaced_options(self):
         for args in (
