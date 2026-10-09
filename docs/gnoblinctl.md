@@ -59,8 +59,11 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl lua`                               | Open a local Lua console for the session API                 |
 | `gnoblinctl ping`                              | Check whether the compositor control socket responds         |
 
-Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
-`--help` for accepted arguments. A bare group lists its actions.
+Run `gnoblinctl --help` for the commands and options, `gnoblinctl help window`
+for the actions of a command, and `gnoblinctl help window thumbnail` for the
+arguments of one action. Each command and action has a one-line description. A
+bare group lists its actions. A mistyped command or action names the closest
+match, as in `unknown command: windw (did you mean 'window'?)`.
 
 If a Lua configuration reload is already in progress, API commands retry that
 temporary response until their `--timeout` expires. Other compositor errors are

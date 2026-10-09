@@ -160,6 +160,161 @@ static gboolean word_in(const char* words, const char* word) {
     return FALSE;
 }
 
+typedef struct {
+    const char* command;
+    const char* action; /* NULL describes the command itself. */
+    const char* summary;
+} HelpEntry;
+
+/* One line for every command and action. The help screens and the "did you mean" hints read this
+ * table. */
+static const HelpEntry help_entries[] = {
+    {"status", NULL, "Show the running session and lock availability"},
+    {"ping", NULL, "Check whether the compositor control socket responds"},
+    {"version", NULL, "Show the installed build, without a running session"},
+    {"capabilities", NULL, "List compositor and protocol capabilities"},
+    {"focus", NULL, "Inspect focus policy and recent focus history"},
+    {"focus", "policy", "Show the committed focus policy"},
+    {"focus", "history", "List recently focused windows"},
+    {"reload", NULL, "Reload supported runtime configuration"},
+    {"logout", NULL, "End this Gnoblin session and return to the login manager"},
+    {"session", NULL, "Read idle activity and ask a shell to lock the session"},
+    {"session", "activity", "Read the latest idle-monitor sample"},
+    {"session", "lock", "Ask a subscribed external shell client to lock the session"},
+    {"privacy", NULL, "Show privacy indicators, or stop sharing or recording"},
+    {"privacy", "stop-sharing", "Stop screen sharing"},
+    {"privacy", "stop-recording", "Stop recording"},
+    {"permissions", NULL, "Inspect portal permission policy"},
+    {"permissions", "list", "Show rules, supported capabilities and configuration path"},
+    {"permissions", "policy", "Show the committed policy with its revision"},
+    {"permissions", "check", "Explain the effective decision for a namespaced identity"},
+    {"window", NULL, "List and manage windows"},
+    {"window", "list", "List open windows"},
+    {"window", "match", "Show the fields used to match one window in config rules"},
+    {"window", "menu", "Open the window menu"},
+    {"window", "interactive-move", "Start moving a window with the pointer"},
+    {"window", "interactive-resize", "Start resizing a window with the pointer"},
+    {"window", "above", "Keep a window above others"},
+    {"window", "unabove", "Stop keeping a window above others"},
+    {"window", "stick", "Show a window on every workspace"},
+    {"window", "unstick", "Show a window on one workspace only"},
+    {"window", "focus", "Focus a window"},
+    {"window", "close", "Close a window"},
+    {"window", "minimize", "Minimize a window"},
+    {"window", "unminimize", "Bring back a minimized window"},
+    {"window", "toggle-minimize", "Minimize a window, or bring it back if minimized"},
+    {"window", "restore-or-minimize", "Restore a window, or minimize it, depending on its state"},
+    {"window", "restore", "Restore a maximized, fullscreen or minimized window"},
+    {"window", "maximize", "Maximize a window"},
+    {"window", "unmaximize", "Stop maximizing a window"},
+    {"window", "fullscreen", "Make a window fullscreen"},
+    {"window", "unfullscreen", "Leave fullscreen"},
+    {"window", "move", "Set position in logical screen coordinates"},
+    {"window", "resize", "Set frame size in logical pixels"},
+    {"window", "monitor", "Move to a connector ID, or use an index for active"},
+    {"window", "workspace", "Move a window to an existing workspace"},
+    {"window", "thumbnail", "Save a window thumbnail as a PNG"},
+    {"layer", NULL, "Inspect layer-shell surfaces"},
+    {"layer", "list", "List layer surfaces and their rule namespaces"},
+    {"completion", NULL, "Print shell completion setup for bash, zsh or fish"},
+    {"shortcut", NULL, "List configured shortcuts and capture key combinations"},
+    {"shortcut", "actions", "List built-in shortcut actions, optionally by group"},
+    {"shortcut", "list", "List shortcuts registered by the native compositor"},
+    {"shortcut", "capture", "Capture one key combination and print its GTK accelerator"},
+    {"config", NULL, "Show the default or manage the active configuration"},
+    {"config", "path", "Show the active configuration path"},
+    {"config", "default", "Print the bundled default Lua configuration"},
+    {"config", "show", "Show the committed settings snapshot"},
+    {"config", "reload", "Reload the active configuration"},
+    {"config", "restore-default", "Back up and replace the config folder with embedded defaults"},
+    {"init", NULL, "Create an editable default config tree from the binary"},
+    {"workspace", NULL, "List and switch workspaces"},
+    {"workspace", "list", "List workspaces"},
+    {"workspace", "create", "Create a workspace"},
+    {"workspace", "rename", "Rename a workspace"},
+    {"workspace", "remove", "Remove a workspace"},
+    {"workspace", "switch", "Switch to an existing workspace"},
+    {"workspace", "next", "Switch to the next workspace"},
+    {"workspace", "previous", "Switch to the previous workspace"},
+    {"workspace", "move-active", "Move the active window to a workspace"},
+    {"monitor", NULL, "List monitors"},
+    {"monitor", "list", "List logical monitors and geometry"},
+    {"input", NULL, "Inspect and select input sources"},
+    {"input", "list", "List configured keyboard sources"},
+    {"input", "current", "Show the active keyboard source"},
+    {"input", "select", "Select a configured keyboard source"},
+    {"input", "devices", "List detected input devices and capabilities"},
+    {"input", "orientation-lock", "Read or set the orientation lock"},
+    {"grant", NULL, "List and revoke portal grants"},
+    {"grant", "list", "List persistent portal permissions"},
+    {"grant", "revoke", "Revoke one persistent portal permission"},
+    {"launch", NULL, "Inspect launch feedback"},
+    {"launch", "status", "Show pending app launches"},
+    {"launch", "begin", "Start a global busy-cursor request"},
+    {"launch", "end", "End a busy-cursor request"},
+    {"animation", NULL, "Inspect and preview compositor animations"},
+    {"animation", "list", "List configured animations"},
+    {"animation", "get", "Show one configured animation"},
+    {"animation", "surfaces", "List layer-shell animation targets"},
+    {"animation", "inspect", "Inspect a configured animation"},
+    {"animation", "preview", "Preview a configured animation"},
+    {"animation", "seek", "Seek a preview to a percentage"},
+    {"animation", "step", "Advance a preview by milliseconds"},
+    {"animation", "play", "Play a preview session"},
+    {"animation", "pause", "Pause a preview session"},
+    {"animation", "stop", "Stop a preview session"},
+    {"lua", NULL, "Open a Lua console, or run a Lua file, with the session API"},
+};
+
+static const char* help_summary(const char* command, const char* action) {
+    for (guint i = 0; i < G_N_ELEMENTS(help_entries); i++)
+        if (g_str_equal(help_entries[i].command, command) &&
+            g_strcmp0(help_entries[i].action, action) == 0)
+            return help_entries[i].summary;
+    return NULL;
+}
+
+/* Edit distance, for the "did you mean" hint. Names are short, so the plain table is fine. */
+static guint edit_distance(const char* a, const char* b) {
+    gsize length_a = strlen(a);
+    gsize length_b = strlen(b);
+    if (length_a > 40 || length_b > 40)
+        return G_MAXUINT;
+    guint row[41];
+    for (gsize j = 0; j <= length_b; j++)
+        row[j] = (guint)j;
+    for (gsize i = 1; i <= length_a; i++) {
+        guint diagonal = row[0];
+        row[0] = (guint)i;
+        for (gsize j = 1; j <= length_b; j++) {
+            guint above = row[j];
+            guint cost = a[i - 1] == b[j - 1] ? 0 : 1;
+            row[j] = MIN(MIN(row[j] + 1, row[j - 1] + 1), diagonal + cost);
+            diagonal = above;
+        }
+    }
+    return row[length_b];
+}
+
+/* The closest name in a space separated list, or NULL when nothing is close enough to suggest. */
+static char* closest_word(const char* typed, const char* words) {
+    if (!typed || !words)
+        return NULL;
+    g_auto(GStrv) parts = g_strsplit(words, " ", -1);
+    const char* best = NULL;
+    guint best_distance = G_MAXUINT;
+    for (guint i = 0; parts[i]; i++) {
+        guint distance = edit_distance(typed, parts[i]);
+        if (g_str_has_prefix(parts[i], typed) && strlen(typed) >= 2)
+            distance = 1;
+        if (distance < best_distance) {
+            best_distance = distance;
+            best = parts[i];
+        }
+    }
+    return best && best_distance <= MAX(2u, (guint)(strlen(typed) / 3)) ? g_strdup(best) : NULL;
+}
+
 static const char* option(Cli* cli, const char* name) {
     return g_hash_table_lookup(cli->options, name);
 }
@@ -962,13 +1117,22 @@ static guint arg_count(Cli* cli) {
 static gboolean validate_cli(Cli* cli, GError** error) {
     const CommandSpec* spec = find_command(cli->command);
     if (!spec) {
-        g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_UNKNOWN_OPTION, "unknown command: %s",
-                    cli->command);
+        g_autoptr(GString) names = g_string_new(NULL);
+        for (guint i = 0; i < G_N_ELEMENTS(commands); i++)
+            g_string_append_printf(names, "%s%s", i ? " " : "", commands[i].name);
+        g_autofree char* guess = closest_word(cli->command, names->str);
+        g_autofree char* hint = guess ? g_strdup_printf(" (did you mean '%s'?)", guess) : NULL;
+        g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_UNKNOWN_OPTION,
+                    "unknown command: %s%s\nRun 'gnoblinctl help' to list the commands.",
+                    cli->command, hint ? hint : "");
         return FALSE;
     }
     if (spec->actions && cli->action && !word_in(spec->actions, cli->action)) {
-        g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_UNKNOWN_OPTION, "unknown %s action: %s",
-                    cli->command, cli->action);
+        g_autofree char* guess = closest_word(cli->action, spec->actions);
+        g_autofree char* hint = guess ? g_strdup_printf(" (did you mean '%s'?)", guess) : NULL;
+        g_set_error(error, G_OPTION_ERROR, G_OPTION_ERROR_UNKNOWN_OPTION,
+                    "unknown %s action: %s%s\nRun 'gnoblinctl help %s' to list the actions.",
+                    cli->command, cli->action, hint ? hint : "", cli->command);
         return FALSE;
     }
     const char* extra = NULL;
@@ -7690,39 +7854,66 @@ static const char* action_usage(const char* command, const char* action) {
     return NULL;
 }
 
+static void print_options(void) {
+    g_print("Options:\n"
+            "  -j, --json           Print JSON, including in a terminal\n"
+            "      --format FORMAT  auto (tables in a terminal, JSON in a pipe), json or table\n"
+            "      --timeout SECS   Request timeout, 1 to 60 (default 5; 30 for shortcut capture)\n"
+            "      --socket PATH    Compositor socket path\n"
+            "  -h, --help           Show this help\n");
+}
+
 static void print_help(const char* command, const char* action) {
     const CommandSpec* spec = find_command(command);
     if (!spec) {
-        g_print("Usage: gnoblinctl [--json | --format auto|json|table] [--timeout SECONDS] "
-                "[--socket PATH] COMMAND\n\nCommands:\n");
+        g_print("gnoblinctl - control a running Gnoblin session\n\n"
+                "Usage: gnoblinctl [OPTIONS] COMMAND [ACTION] [ARGUMENTS]\n\nCommands:\n");
         for (guint i = 0; i < G_N_ELEMENTS(commands); i++)
-            g_print("  %s\n", commands[i].name);
-        g_print("\nUse 'gnoblinctl help COMMAND' to see its actions.\n");
+            g_print("  %-14s%s\n", commands[i].name, help_summary(commands[i].name, NULL));
+        g_print("\n");
+        print_options();
+        g_print("      --version        Show the installed build, without a running session\n"
+                "\nExamples:\n"
+                "  gnoblinctl ping\n"
+                "  gnoblinctl window list\n"
+                "  gnoblinctl config path\n"
+                "\nUse 'gnoblinctl help COMMAND' to list the actions of a command.\n");
         return;
     }
+    const char* summary = help_summary(command, NULL);
     if (g_str_equal(command, "lua")) {
-        g_print("Usage: gnoblinctl lua [FILE]\n\n"
-                "Run a local Lua console or execute a Lua file with the Gnoblin session API.\n");
+        g_print("%s.\n\nUsage: gnoblinctl lua [FILE]\n", summary);
+        return;
+    }
+    if (g_str_equal(command, "completion")) {
+        g_print("%s.\n\nUsage: gnoblinctl completion bash|zsh|fish\n", summary);
         return;
     }
     if (action && word_in(spec->actions, action)) {
         const char* arguments = action_usage(command, action);
-        g_print("Usage: gnoblinctl %s %s%s%s\n\n", command, action, arguments ? " " : "",
-                arguments ? arguments : "");
-        g_print("Options: -j, --json; --format auto|json|table; --timeout 1..60; --socket PATH\n");
+        g_print("%s.\n\nUsage: gnoblinctl %s %s%s%s\n\n", help_summary(command, action), command,
+                action, arguments ? " " : "", arguments ? arguments : "");
+        print_options();
         return;
     }
-    if (g_str_equal(command, "completion")) {
-        g_print("Usage: gnoblinctl completion bash|zsh|fish\n");
-        return;
-    }
-    g_print("Usage: gnoblinctl %s%s\n", command,
+    g_print("%s.\n\nUsage: gnoblinctl %s%s\n", summary, command,
             spec->actions ? " ACTION [OPTIONS]" : " [OPTIONS]");
     if (spec->actions) {
+        if (g_str_equal(command, "privacy"))
+            g_print("\nWith no action, it shows the privacy indicators.\n");
         g_print("\nActions:\n");
         g_auto(GStrv) parts = g_strsplit(spec->actions, " ", -1);
+        guint width = 0;
         for (guint i = 0; parts[i]; i++)
-            g_print("  %s\n", parts[i]);
+            width = MAX(width, (guint)strlen(parts[i]));
+        for (guint i = 0; parts[i]; i++) {
+            const char* line = help_summary(command, parts[i]);
+            g_print("  %-*s  %s\n", (int)width, parts[i], line ? line : "");
+        }
+        g_print("\nUse 'gnoblinctl help %s ACTION' for the arguments of an action.\n", command);
+    } else {
+        g_print("\n");
+        print_options();
     }
 }
 
