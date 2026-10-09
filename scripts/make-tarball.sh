@@ -31,11 +31,11 @@ esac
 
 # Both components take the same path as ./build.sh: reset to the upstream tag, copy the overlay and apply patches/<project>/.
 # The release tarball therefore holds exactly the tree a source build compiles, and no commit has to be published to the
-# Mutter fork for it. apply-patches.sh checks that the checkout is pristine or in a state it recorded.
+# Mutter fork for it. The apply-patches action checks that the checkout is pristine or in a state it recorded.
 if [ "$PROJ" = mutter ]; then
-    "$ROOT/scripts/ensure-release-subprojects.sh" mutter
+    cmake -DACTION=ensure-release -DPROJECTS=mutter -P "$ROOT/cmake/source-step.cmake"
 fi
-"$ROOT/scripts/apply-patches.sh" "$PROJ" >&2
+cmake -DACTION=apply-patches "-DPROJECT=$PROJ" -P "$ROOT/cmake/source-step.cmake" >&2
 
 mkdir -p "$OUTDIR"
 ARCHIVE_NAME="$PROJ"

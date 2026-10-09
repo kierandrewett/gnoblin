@@ -18,35 +18,6 @@ mutter_api="${mutter_version%%.*}"
 source_dir="$root/subprojects/$name"
 build_dir="$build_root/$name"
 
-if [ "$mode" = checkout ]; then
-    if [ "$name" = mutter ]; then
-        # Validate the pinned fork before the patch pipeline resets it, copies
-        # Gnoblin overlays, and applies the complete ordered series.
-        "$root/scripts/ensure-release-subprojects.sh" mutter
-    fi
-    inputs=("$root/gnome-versions.json")
-    while IFS= read -r -d '' patch; do inputs+=("$patch"); done < <(
-        find "$root/patches/$name" -type f -name '*.patch' -print0 | sort -z
-    )
-    if [ "$name" = xdg-desktop-portal-gnome ]; then
-        inputs+=("$root/patches/portal-dependencies/libgxdp/0001-gtk-4.20-compat.patch")
-    fi
-    while IFS= read -r -d '' manifest; do
-        inputs+=("$manifest")
-        while read -r project source _destination _rest; do
-            [ "$project" = "$name" ] || continue
-            inputs+=("$(dirname "$manifest")/$source")
-        done <"$manifest"
-    done < <(find "$root/src" -type f -name manifest -print0 | sort -z)
-    signature="$(sha256sum -- "${inputs[@]}" | sha256sum | cut -d ' ' -f 1)"
-    stamp="$build_root/$name.patch-inputs.sha256"
-    tag="$("$root/scripts/gnome-versions.py" get "$name" version)"
-    if [ ! -f "$stamp" ] || [ "$(cat "$stamp")" != "$signature" ] ||
-        [ "$(git -C "$source_dir" rev-parse HEAD)" = "$(git -C "$source_dir" rev-parse "$tag^{commit}")" ]; then
-        "$root/scripts/apply-patches.sh" "$name"
-        printf '%s\n' "$signature" >"$stamp"
-    fi
-fi
 if [ "$name" = xdg-desktop-portal-gnome ]; then
     options=("-Ddbus_service_dir=$prefix/share/dbus-1/services"
         "-Dsystemduserunitdir=$prefix/lib/systemd/user")
@@ -111,7 +82,7 @@ if [ "$name" = mutter ]; then
     expected_schemas_revision="$("$root/scripts/gnome-versions.py" get gsettings-desktop-schemas commit)"
     actual_schemas_revision="$(git -C "$schemas_source_dir" rev-parse HEAD 2>/dev/null || cat "$schemas_source_dir/GNOBLIN_SOURCE_REVISION" 2>/dev/null || true)"
     if [ "$actual_schemas_revision" != "$expected_schemas_revision" ]; then
-        echo "pinned gsettings-desktop-schemas source is missing or mismatched; prepare it with scripts/prepare-build-sources.sh $mode gsettings-desktop-schemas" >&2
+        echo "pinned gsettings-desktop-schemas source is missing or mismatched; prepare it with: cmake -DACTION=prepare -DSOURCE_MODE=$mode -DPROJECTS=gsettings-desktop-schemas -P cmake/source-step.cmake" >&2
         exit 1
     fi
     python3 "$root/scripts/generate-mutter-keybinding-catalog.py" \

@@ -43,7 +43,7 @@ require_tests() {
     echo ">> running $count Mutter $label tests"
 }
 
-run ./scripts/apply-patches.sh mutter
+run cmake -DACTION=apply-patches -DPROJECT=mutter -P cmake/source-step.cmake
 run meson setup --reconfigure build/mutter-tests subprojects/mutter "${options[@]}" ||
     run meson setup build/mutter-tests subprojects/mutter "${options[@]}"
 run meson compile -C build/mutter-tests

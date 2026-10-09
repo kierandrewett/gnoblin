@@ -192,9 +192,13 @@ if(GNOBLIN_VECTOR_CURSORS)
   list(APPEND GNOBLIN_REQUIREMENTS_OPTIONS --with-vector-cursors)
 endif()
 
+# The source steps (prepare, patch, overlay) are script-mode CMake files. See cmake/source-step.cmake.
+set(GNOBLIN_SOURCE_STEP "${PROJECT_SOURCE_DIR}/cmake/source-step.cmake")
+
 foreach(name IN ITEMS mutter xdg-desktop-portal-gnome)
   add_custom_target("prepare-${name}-source"
-    COMMAND "${PROJECT_SOURCE_DIR}/scripts/prepare-build-sources.sh" "${GNOBLIN_SOURCE_MODE}" "${name}"
+    COMMAND "${CMAKE_COMMAND}" -DACTION=prepare "-DSOURCE_MODE=${GNOBLIN_SOURCE_MODE}" "-DPROJECTS=${name}"
+      -P "${GNOBLIN_SOURCE_STEP}"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     USES_TERMINAL
     COMMENT "Prepare pinned ${name} source")
@@ -205,8 +209,8 @@ foreach(name IN ITEMS mutter xdg-desktop-portal-gnome)
     COMMENT "Check ${name} development libraries")
 endforeach()
 add_custom_target(prepare-gsettings-desktop-schemas-source
-  COMMAND "${PROJECT_SOURCE_DIR}/scripts/prepare-build-sources.sh"
-    "${GNOBLIN_SOURCE_MODE}" gsettings-desktop-schemas
+  COMMAND "${CMAKE_COMMAND}" -DACTION=prepare "-DSOURCE_MODE=${GNOBLIN_SOURCE_MODE}"
+    -DPROJECTS=gsettings-desktop-schemas -P "${GNOBLIN_SOURCE_STEP}"
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
   USES_TERMINAL
   COMMENT "Prepare pinned gsettings-desktop-schemas metadata source")
@@ -237,6 +241,16 @@ function(gnoblin_component name)
     DEPENDS "check-${name}-requirements" ${COMPONENT_UNPARSED_ARGUMENTS}
     EXCLUDE_FROM_ALL "${exclude_from_all}"
     USES_TERMINAL_BUILD TRUE)
+  if(GNOBLIN_SOURCE_MODE STREQUAL "checkout")
+    # Reset the submodule to its tag and apply the overlay and patches, but only when their inputs changed.
+    ExternalProject_Add_Step("${name}" gnoblin-sources
+      COMMAND "${CMAKE_COMMAND}" -DACTION=component-sources "-DPROJECT=${name}" "-DBUILD_ROOT=${CMAKE_BINARY_DIR}"
+        -P "${GNOBLIN_SOURCE_STEP}"
+      DEPENDEES patch
+      DEPENDERS configure
+      ALWAYS TRUE
+      USES_TERMINAL TRUE)
+  endif()
 endfunction()
 
 gnoblin_component(mutter prepare-gsettings-desktop-schemas-source)

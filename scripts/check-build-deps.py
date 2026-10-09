@@ -147,9 +147,12 @@ def check(mode="checkout", project=None, xwayland=True, vector_cursors=False):
     if mode == "release-archive":
         prepare = subprocess.run(
             [
-                str(ROOT / "scripts/prepare-build-sources.sh"),
-                mode,
-                *([project] if project else []),
+                "cmake",
+                "-DACTION=prepare",
+                f"-DSOURCE_MODE={mode}",
+                f"-DPROJECTS={project or ''}",
+                "-P",
+                str(ROOT / "cmake/source-step.cmake"),
             ]
         )
         if prepare.returncode:

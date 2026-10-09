@@ -60,7 +60,7 @@ build or patch GNOME Shell. For uncommitted tracked changes, use
 For a patch that follows existing patches on the same lines, use a temporary
 subproject worktree. Apply the earlier patches, stage that state as the baseline,
 make the new edit, then export with `--source-tree WORKTREE --against-index`.
-`scripts/apply-patches.sh` checks every patch header before use.
+The `apply-patches` step (`cmake/source-step.cmake`) checks every patch header before use.
 
 ## Packaging
 

@@ -1,7 +1,7 @@
 # Wayland Protocol Overlays
 
 `src/protocols/` contains Gnoblin-owned Mutter overlay code. These sources are
-not built in place. `scripts/copy-overlay.sh` copies the paths declared by each
+not built in place. The `overlay` step in `cmake/source-step.cmake` copies the paths declared by each
 `manifest` into the Mutter checkout before the patch stack adds Meson and
 startup wiring.
 
