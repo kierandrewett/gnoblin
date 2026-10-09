@@ -70,8 +70,15 @@ The `gnoblin-*-source.tar.xz` file contains Gnoblin and its patched, pinned
 Mutter and portal sources. Extract it and run `./build.sh` to check the
 same source route users receive. The command also writes component archives,
 an Arch recipe, and checksums into `dist/release`.
-GitHub publishes the complete source tarball first, then the companion source
-assets. Package assets follow after their builds finish.
+
+A release tag starts the release workflow:
+
+1. It creates a draft GitHub release with the source tarball.
+2. It builds and installs every package.
+3. It publishes the release only when every build and install check has passed.
+
+A failed check leaves the draft in place. A push to `main` runs the same builds and
+checks and publishes nothing.
 
 ## Prepare Fedora source RPMs
 

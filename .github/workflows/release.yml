@@ -68,8 +68,10 @@ jobs:
             release_tag="$GITHUB_REF_NAME"
             is_release=true
           else
+            # A push to main builds and tests everything and publishes nothing. Only a release tag publishes.
             release_tag="commit-${GITHUB_SHA:0:12}"
             is_release=false
+            dry_run=true
           fi
           printf 'release_tag=%s\nis_release=%s\ndry_run=%s\n' "$release_tag" "$is_release" "$dry_run" >> "$GITHUB_OUTPUT"
       - name: Set checkout ownership
@@ -126,18 +128,17 @@ jobs:
               other_assets+=("$asset")
             fi
           done
+          # The release stays a draft until github-release has attached every package and every gate has passed.
+          if [ "$IS_RELEASE" != true ]; then
+            echo "Only a release tag publishes. This run should have been a dry run." >&2
+            exit 1
+          fi
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$RELEASE_TAG" "${source_tarballs[0]}" --repo "$GITHUB_REPOSITORY" --clobber
-            gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
-          elif [ "$IS_RELEASE" = true ]; then
-            gh release create "$RELEASE_TAG" "${source_tarballs[0]}" \
-              --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes \
-              --title "Gnoblin ${RELEASE_TAG#gnoblin-v}"
           else
             gh release create "$RELEASE_TAG" "${source_tarballs[0]}" \
-              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
-              --title "Gnoblin development ${GITHUB_SHA:0:12}" \
-              --notes "Development build from commit $GITHUB_SHA."
+              --repo "$GITHUB_REPOSITORY" --draft --verify-tag --generate-notes \
+              --title "Gnoblin ${RELEASE_TAG#gnoblin-v}"
           fi
           if [ "${#other_assets[@]}" -gt 0 ]; then
             gh release upload "$RELEASE_TAG" "${other_assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
@@ -398,7 +399,10 @@ jobs:
           ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
 
   github-release:
-    if: ${{ always() && needs.publish-sources.result == 'success' }}
+    # Publish only when every gate passed. Otherwise the release stays a draft with the source tarball.
+    if: >-
+      ${{ !cancelled() && needs.publish-sources.result == 'success' && needs.publish-source-rpms.result == 'success' &&
+      needs.arch-package-runtime.result == 'success' && needs.opensuse-package.result == 'success' }}
     needs:
       - source-packages
       - publish-sources
@@ -450,12 +454,15 @@ jobs:
           cd release-assets
           find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' |
             LC_ALL=C sort | xargs sha256sum > SHA256SUMS
-      - name: Add package assets to the published release
+      - name: Add package assets to the release
         run: gh release upload "$RELEASE_TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Publish the release
+        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
 
   copr-repository:
-    if: needs.source-packages.outputs.is_release == 'true'
-    needs: [source-packages, publish-source-rpms]
+    # COPR reads the source RPMs from the published release, so it runs after github-release.
+    if: ${{ needs.source-packages.outputs.is_release == 'true' && needs.github-release.result == 'success' }}
+    needs: [source-packages, github-release]
     uses: ./.github/workflows/copr.yml
     with:
       tag: ${{ needs.source-packages.outputs.release_tag }}
