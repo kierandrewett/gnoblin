@@ -165,7 +165,17 @@ list_required_subproject() {
                 --sourcedir "$SOURCE_ROOT" "$dependency" >&2
         fi
     elif [ "$PREPARE" = true ]; then
-        meson subprojects download --sourcedir "$SOURCE_ROOT" "$dependency" >&2
+        # GNOME's GitLab sometimes answers 503. Retry a few times before a release or a package job fails on it.
+        attempt=1
+        until meson subprojects download --sourcedir "$SOURCE_ROOT" "$dependency" >&2; do
+            if [ "$attempt" -ge 4 ]; then
+                echo "could not download subproject $dependency after $attempt attempts" >&2
+                exit 1
+            fi
+            echo "[tarball] download of $dependency failed (attempt $attempt of 4); retrying" >&2
+            sleep $((attempt * 10))
+            attempt=$((attempt + 1))
+        done
     fi
 
     repository_root="$(git -C "$dependency_root" rev-parse --show-toplevel 2>/dev/null || true)"
