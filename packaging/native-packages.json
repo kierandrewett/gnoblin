@@ -2,7 +2,22 @@
   "formatVersion": 1,
   "packages": {
     "gnoblin": {
-      "requires": ["cursor-theme", "dbus-tools", "dconf", "gcr", "glib", "gsettings-desktop-schemas", "json-glib", "libinput", "lua", "pipewire", "polkit", "systemd-libs", "wayland", "wireplumber"],
+      "requires": [
+        "cursor-theme",
+        "dbus-tools",
+        "dconf",
+        "gcr",
+        "glib",
+        "gsettings-desktop-schemas",
+        "json-glib",
+        "libinput",
+        "lua",
+        "pipewire",
+        "polkit",
+        "systemd-libs",
+        "wayland",
+        "wireplumber"
+      ],
       "replaces": ["gnoblin-mutter", "gnoblin-mutter-devel"],
       "version": "0.1.10"
     },
