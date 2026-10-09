@@ -38,7 +38,7 @@ check "capability portal-grants" "$caps" "portal-grants True"
 check "capability prompt-broker present" "$caps" "prompt-broker"
 check "privacy state" "$("$G" privacy 2>&1)" "microphone_in_use"
 check "grant list" "$("$G" grant list 2>&1)" '"grants"'
-check "version build id" "$("$G" --version 2>&1)" "Build ID:"
+check "version commit" "$("$G" --version 2>&1)" "Commit"
 
 echo "-- capture"
 : >/tmp/capture-events.log

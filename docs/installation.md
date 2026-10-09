@@ -19,8 +19,8 @@ See [source build prerequisites and login setup](install-source.md).
 
 After building, `./build.sh --register-session` adds the lean login entry.
 GNOME Session and Settings Daemon are optional for this source install.
-Run `./install/bin/gnoblin --version` to see the installed Gnoblin and GNOME
-versions, component versions, and source Git remote and commit. Distribution
+Run `./install/bin/gnoblin --version` to see the installed Gnoblin version,
+source Git remote and commit, and when the build ran. Distribution
 packages also expose this command as `gnoblin --version`.
 Add `--json` after `--version` for a machine-readable build identity.
 

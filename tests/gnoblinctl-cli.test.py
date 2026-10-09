@@ -872,6 +872,7 @@ def main() -> int:
         "luaVersion",
         "apiVersion",
         "buildId",
+        "buildTime",
         "gitRemote",
         "gitSha",
     ):
@@ -888,12 +889,19 @@ def main() -> int:
 
     human_version = run(binary, "--version")
     assert human_version.returncode == 0, human_version.stderr
-    for expected in (
-        f"Lua {identity['luaVersion']}",
-        f"Native API {identity['apiVersion']}",
-        f"Build ID: {identity['buildId']}",
-    ):
-        assert expected in human_version.stdout, expected
+    lines = human_version.stdout.splitlines()
+    assert lines[0] == f"Gnoblin {identity['version']}", lines[0]
+    # Each later line is a label in a 11 character column, then its value.
+    fields = {line[:11].strip(): line[12:] for line in lines[1:]}
+    assert fields["Lua"] == identity["luaVersion"], fields
+    assert fields["Native API"] == identity["apiVersion"], fields
+    assert fields["Remote"] == identity["gitRemote"], fields
+    assert fields["Commit"].split(" ")[0] == identity["gitSha"], fields
+    assert fields["Built"] == identity["buildTime"].replace("T", " ").replace("Z", " UTC"), fields
+    # The text output leaves out what the other lines already say, and the GNOME and upstream component versions.
+    # The JSON record keeps buildId and those versions for scripts.
+    for absent in ("Build ID", "Mutter", "Upstream", "GNOME"):
+        assert absent not in human_version.stdout, absent
 
     config_path = Path(build_directory) / "test-config" / "init.lua"
     config_result = run(

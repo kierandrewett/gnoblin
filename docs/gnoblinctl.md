@@ -1,10 +1,17 @@
 # gnoblinctl
 
 Run `gnoblinctl --version` to read the installed build identity without a
-running session. It reports the Gnoblin and GNOME versions, Mutter and portal
-backend versions, Lua and native API versions, build ID, Git remote, and commit.
+running session. It reports:
+
+- The Gnoblin version.
+- The UTC time of the build.
+- The Git commit, marked `(modified)` when the source tree had changes.
+- The Git remote.
+- The Lua and native API versions.
+
 `gnoblin --version` prints the same identity. Add `--json` to either command to
-save the complete build identity as JSON.
+save the complete build identity as JSON, which also has the build ID and the
+GNOME and component versions.
 
 In a Git checkout, the command reads the source manifests, current commit and
 tracking remote (or `origin`). In a release tarball, it reads the embedded
@@ -24,33 +31,33 @@ with the external shell's own tools.
 
 Run commands from a terminal inside Gnoblin:
 
-| Command                                        | Use it to                                                  |
-| ---------------------------------------------- | ---------------------------------------------------------- |
-| `gnoblinctl status`                            | Check the running session and lock-state availability      |
-| `gnoblinctl logout`                            | End the session and return to the login manager            |
-| `gnoblinctl session activity`                  | Read the latest idle-monitor sample                        |
-| `gnoblinctl session lock`                      | Ask a subscribed external shell client to lock the session |
-| `gnoblinctl window list`                       | Find open windows and their IDs                            |
-| `gnoblinctl window match`                      | Show the values a window rule can match                    |
-| `gnoblinctl window thumbnail ID --output PATH` | Save a window thumbnail as a PNG                           |
-| `gnoblinctl layer list`                        | Find layer-surface namespaces                              |
-| `gnoblinctl input devices`                     | List detected input devices and capabilities               |
-| `gnoblinctl input orientation-lock [VALUE]`    | Read or set the orientation lock                           |
-| `gnoblinctl workspace list`                    | Show workspace IDs, names, positions and windows           |
-| `gnoblinctl config path`                       | Find the config file your session uses                     |
-| `gnoblinctl config default`                    | Print the bundled default `init.lua`                       |
-| `gnoblinctl init`                              | Create an editable default config tree from the binary  |
-| `gnoblinctl config restore-default`             | Back up and replace the config folder with embedded defaults |
-| `gnoblinctl config reload`                     | Validate and apply the complete configuration live         |
-| `gnoblinctl shortcut list`                     | List shortcuts registered by the native compositor         |
-| `gnoblinctl shortcut actions [GROUP]`          | List built-in shortcut actions, optionally by group        |
-| `gnoblinctl shortcut capture`                  | Capture a key combination as a shortcut binding            |
-| `gnoblinctl capabilities`                      | List compositor and protocol capabilities                  |
-| `gnoblinctl focus history`                     | List recently focused windows                              |
-| `gnoblinctl focus policy`                      | Show the committed focus policy                            |
-| `gnoblinctl config show`                       | Show the committed settings snapshot                       |
-| `gnoblinctl lua`                               | Open a local Lua console for the session API               |
-| `gnoblinctl ping`                              | Check whether the compositor control socket responds       |
+| Command                                        | Use it to                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------ |
+| `gnoblinctl status`                            | Check the running session and lock-state availability        |
+| `gnoblinctl logout`                            | End the session and return to the login manager              |
+| `gnoblinctl session activity`                  | Read the latest idle-monitor sample                          |
+| `gnoblinctl session lock`                      | Ask a subscribed external shell client to lock the session   |
+| `gnoblinctl window list`                       | Find open windows and their IDs                              |
+| `gnoblinctl window match`                      | Show the values a window rule can match                      |
+| `gnoblinctl window thumbnail ID --output PATH` | Save a window thumbnail as a PNG                             |
+| `gnoblinctl layer list`                        | Find layer-surface namespaces                                |
+| `gnoblinctl input devices`                     | List detected input devices and capabilities                 |
+| `gnoblinctl input orientation-lock [VALUE]`    | Read or set the orientation lock                             |
+| `gnoblinctl workspace list`                    | Show workspace IDs, names, positions and windows             |
+| `gnoblinctl config path`                       | Find the config file your session uses                       |
+| `gnoblinctl config default`                    | Print the bundled default `init.lua`                         |
+| `gnoblinctl init`                              | Create an editable default config tree from the binary       |
+| `gnoblinctl config restore-default`            | Back up and replace the config folder with embedded defaults |
+| `gnoblinctl config reload`                     | Validate and apply the complete configuration live           |
+| `gnoblinctl shortcut list`                     | List shortcuts registered by the native compositor           |
+| `gnoblinctl shortcut actions [GROUP]`          | List built-in shortcut actions, optionally by group          |
+| `gnoblinctl shortcut capture`                  | Capture a key combination as a shortcut binding              |
+| `gnoblinctl capabilities`                      | List compositor and protocol capabilities                    |
+| `gnoblinctl focus history`                     | List recently focused windows                                |
+| `gnoblinctl focus policy`                      | Show the committed focus policy                              |
+| `gnoblinctl config show`                       | Show the committed settings snapshot                         |
+| `gnoblinctl lua`                               | Open a local Lua console for the session API                 |
+| `gnoblinctl ping`                              | Check whether the compositor control socket responds         |
 
 Run `gnoblinctl --help`, `gnoblinctl help window`, or a command's
 `--help` for accepted arguments. A bare group lists its actions.

@@ -248,6 +248,10 @@ static JsonArray* member_array(JsonObject* object, const char* name) {
     return node && JSON_NODE_HOLDS_ARRAY(node) ? json_node_get_array(node) : NULL;
 }
 
+static void print_version_field(const char* label, const char* value) {
+    g_print("%-11s %s\n", label, value);
+}
+
 static void print_version(const char* format) {
     g_autoptr(JsonNode) identity = load_identity();
     if (g_str_equal(format, "json")) {
@@ -256,38 +260,27 @@ static void print_version(const char* format) {
         return;
     }
     JsonObject* object = json_node_get_object(identity);
-    JsonObject* versions = member_object(object, "components");
-    JsonObject* commits = member_object(object, "componentCommits");
-    const char* mutter_version = member_string(versions, "mutter", "unknown");
-    const char* mutter_api = member_string(object, "mutterApi", NULL);
     g_print("Gnoblin %s\n", member_string(object, "version", "unknown"));
-    g_print("Mutter %s", mutter_version);
-    if (mutter_api)
-        g_print(" (API %s)", mutter_api);
-    g_print(" · Lua %s · Native API %s\n", member_string(object, "luaVersion", "unknown"),
-            member_string(object, "apiVersion", "unknown"));
 
-    g_print("Source: %s @ %s", member_string(object, "gitRemote", "unknown"),
-            member_string(object, "gitSha", "unknown"));
-    if (json_object_has_member(object, "sourceModified") &&
-        json_object_get_boolean_member(object, "sourceModified"))
-        g_print(" (modified source tree)");
-    g_print("\n");
-    g_print("Build ID: %s\n", member_string(object, "buildId", "unknown"));
-
-    const char* mutter_commit = member_string(commits, "mutter", NULL);
-    const char* portal_version = member_string(versions, "xdg-desktop-portal-gnome", NULL);
-    const char* portal_commit = member_string(commits, "xdg-desktop-portal-gnome", NULL);
-    if (mutter_commit || portal_version) {
-        g_print("Upstream:");
-        if (mutter_commit)
-            g_print(" Mutter %.12s", mutter_commit);
-        if (portal_version)
-            g_print("%sPortal %s", mutter_commit ? "; " : " ", portal_version);
-        if (portal_commit)
-            g_print(" (%.12s)", portal_commit);
-        g_print("\n");
+    /* The commit, the modified flag and the version already make up the build ID, so the text
+     * output does not repeat it. The JSON record keeps buildId for scripts. */
+    const char* build_time = member_string(object, "buildTime", NULL);
+    if (build_time) {
+        g_autoptr(GDateTime) built = g_date_time_new_from_iso8601(build_time, NULL);
+        g_autofree char* formatted =
+            built ? g_date_time_format(built, "%Y-%m-%d %H:%M:%S UTC") : NULL;
+        print_version_field("Built", formatted ? formatted : build_time);
     }
+    g_autofree char* commit =
+        g_strdup_printf("%s%s", member_string(object, "gitSha", "unknown"),
+                        json_object_has_member(object, "sourceModified") &&
+                                json_object_get_boolean_member(object, "sourceModified")
+                            ? " (modified)"
+                            : "");
+    print_version_field("Commit", commit);
+    print_version_field("Remote", member_string(object, "gitRemote", "unknown"));
+    print_version_field("Lua", member_string(object, "luaVersion", "unknown"));
+    print_version_field("Native API", member_string(object, "apiVersion", "unknown"));
 }
 
 static gboolean parse_cli(Cli* cli, int argc, char** argv, GError** error) {
