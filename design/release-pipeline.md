@@ -176,6 +176,11 @@ Each item lands as its own commit, and the tree stays working.
 - [x] Watch the CI jobs that build those recipes, and fix what they show. Five fixes landed:
       the link check in `build.sh`, two stale packaging tests, the RPM isolation rules, and
       the `systemd-libs` requirement on openSUSE.
+- [x] Run the release workflow on `main` with the new recipes. It first failed in three
+      package jobs and the Arch install gate, and passed in full on `64c07a5a`. The fixes
+      were a removed `mutter` spec, a wrong Arch package name, a path error in the
+      openSUSE job, and a missing `ibus` runtime dependency. Pull request checks do not
+      run these steps, so only a dry run of the release path can catch them early.
 - [ ] Move the portal recipes onto the layout step. See decision D below.
 - [ ] Add `./build.sh package source|binary`: the source bundle and a relocatable binary
       tree from the same build, and make CI call it.
