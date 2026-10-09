@@ -1,7 +1,9 @@
 # Release packaging status and procedure
 
-This is internal release engineering material. Keep it current whenever the
-release pipeline or COPR publication changes.
+> **Historical log.** This file records release runs from September 2026. The Debian,
+> Ubuntu and APT build, the APT repository and the separate Mutter packages it describes
+> were removed. `docs/platform-support.md` lists Debian and Ubuntu as unsupported. The
+> current pipeline, its problems and its work order are in `design/release-pipeline.md`.
 
 ## Candidate release validation (2026-09-26)
 

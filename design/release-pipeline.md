@@ -182,8 +182,9 @@ Each item lands as its own commit, and the tree stays working.
       openSUSE job, and a missing `ibus` runtime dependency. Pull request checks do not
       run these steps, so only a dry run of the release path can catch them early.
 - [ ] Move the portal recipes onto the layout step. See decision D below.
-- [ ] Add `./build.sh package source|binary`: the source bundle and a relocatable binary
-      tree from the same build, and make CI call it.
+- [x] Add `./build.sh package`: the source bundle, component archives, Arch recipes and
+      checksums from the one tree, with `--srpm` for Fedora source RPMs. `verify.yml` and
+      `release.yml` call it. A binary tree is already `--layout system --destdir`.
 - [ ] Decide B and C above.
 - [ ] Split `release.yml` into the five stages above. Move shared steps into reusable
       workflows, and build the bundle once.
@@ -191,7 +192,7 @@ Each item lands as its own commit, and the tree stays working.
 - [ ] Make the openSUSE job read the source bundle by a name it is given.
 - [ ] Fix the openSUSE RPM adapter, which fails on `main`.
 - [ ] Add a check that fails when a dependency list and the specs disagree.
-- [ ] Delete the stale Debian and APT sections from `design/release-packaging.md`.
+- [x] Mark `design/release-packaging.md` as a historical log, with a pointer to this file.
 - [ ] Dry run a release from a branch: draft only, no tag, no COPR upload.
 - [ ] Clean up: remove the 8 development pre-releases and the 3 drafts, after the owner
       agrees.
