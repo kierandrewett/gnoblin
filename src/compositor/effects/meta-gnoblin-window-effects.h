@@ -44,7 +44,8 @@ void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent, const 
  * found.
  */
 gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* texture_actor,
-                                                ClutterActor* effect_actor, double insets[4]);
+                                                ClutterActor* effect_actor,
+                                                const double geometry[4], double insets[4]);
 
 /* Enable conservative filling of detected transparent CSD corner pixels. */
 void meta_gnoblin_window_effects_set_csd_reconstruction(ClutterActor* actor, gboolean enabled,

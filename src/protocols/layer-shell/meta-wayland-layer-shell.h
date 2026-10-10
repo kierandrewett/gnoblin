@@ -35,6 +35,8 @@ GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const
 
 gboolean meta_wayland_surface_is_layer_shell(MetaWaylandSurface* surface);
 MetaSurfaceActor* meta_wayland_layer_shell_get_actor(MetaWindow* window);
+/* TRUE when the window is a layer surface currently on the background layer. */
+gboolean meta_wayland_layer_shell_is_background(MetaWindow* window);
 
 void meta_wayland_init_layer_shell(MetaWaylandCompositor* compositor);
 void meta_wayland_layer_shell_set_preserve_active_window(MetaWaylandCompositor* compositor,

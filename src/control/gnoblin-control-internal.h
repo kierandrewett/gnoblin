@@ -597,7 +597,6 @@ G_GNUC_INTERNAL char* gnoblin_control_dynamic_shortcut_request_end_session(Clien
  * toolkit probe. */
 G_GNUC_INTERNAL void gnoblin_control_apply_window_rules(GnoblinNativeControl* control,
                                                         MetaWindow* window);
-G_GNUC_INTERNAL void gnoblin_control_refresh_window_rule_blur(MetaWindow* window);
 G_GNUC_INTERNAL void gnoblin_control_apply_all_window_rules(GnoblinNativeControl* control);
 G_GNUC_INTERNAL void gnoblin_control_place_window_by_rules(GnoblinNativeControl* control,
                                                            MetaWindow* window);

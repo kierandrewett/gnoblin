@@ -20,7 +20,9 @@ with their surface transaction.
 
 ## Clear or destroy
 
-A null/empty region or destroyed effect removes blur on the next commit.
+A null or empty region removes blur on the next commit, even when a window
+rule sets `blur` for the surface. Destroying the effect returns the surface
+to its window-rule blur, if any.
 Destroying the manager does not destroy existing effects.
 
 After a client sets a blur region through this protocol, Gnoblin uses that
@@ -34,7 +36,8 @@ Gnoblin defaults client requests to radius 24; a window rule can override it,
 including `blur = 0`.
 
 Foreground icons and text do not punch holes in the material region.
-Client item animations use separate [blur-fade metadata](blur-fades.md).
+The blur fades with the surface's own alpha, so it follows a panel's fade-in and
+fade-out without help from the client; see [blur during animations](blur-fades.md).
 
 ## Disable the protocol
 

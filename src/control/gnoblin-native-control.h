@@ -44,6 +44,8 @@ META_EXPORT
 void gnoblin_native_control_track_layer_window(MetaDisplay* display, MetaWindow* window);
 META_EXPORT
 void gnoblin_native_control_layer_changed(MetaDisplay* display);
+/* Recompute a window's rule blur after its size or layer-shell layer changes. */
+void gnoblin_control_refresh_window_rule_blur(MetaWindow* window);
 
 META_EXPORT
 GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVariant* document,

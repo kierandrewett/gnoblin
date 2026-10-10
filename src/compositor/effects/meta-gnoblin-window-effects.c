@@ -723,6 +723,7 @@ typedef struct {
 typedef struct {
     int width;
     int height;
+    int region[4];
     gboolean detected;
     guint attempts;
     double insets[4];
@@ -738,8 +739,9 @@ static void csd_insets_to_actor_units(ClutterActor* actor, int width, int height
     insets[3] = pixel_insets[3] * scale_x;
 }
 
-static guint8 pixel_alpha(const guint8* pixels, int width, int x, int y) {
-    return pixels[((gsize)y * width + x) * 4 + 3];
+/* The probed pixels are a region of a larger buffer; stride is the buffer's row length. */
+static guint8 pixel_alpha(const guint8* pixels, int stride, int x, int y) {
+    return pixels[((gsize)y * stride + x) * 4 + 3];
 }
 
 static int detect_alpha_edge(const guint8* line, int length, int max_distance, int transition) {
@@ -775,8 +777,8 @@ static int detect_alpha_edge(const guint8* line, int length, int max_distance, i
     return -1;
 }
 
-static void sample_alpha_line(const guint8* pixels, int width, int height, int corner, int axis,
-                              int offset, guint8* line, int* length) {
+static void sample_alpha_line(const guint8* pixels, int stride, int width, int height, int corner,
+                              int axis, int offset, guint8* line, int* length) {
     gboolean right = corner == 1 || corner == 2;
     gboolean bottom = corner >= 2;
 
@@ -785,27 +787,27 @@ static void sample_alpha_line(const guint8* pixels, int width, int height, int c
         int y = bottom ? height - 1 - offset : offset;
         for (int i = 0; i < width; i++) {
             int x = right ? width - 1 - i : i;
-            line[i] = pixel_alpha(pixels, width, x, y);
+            line[i] = pixel_alpha(pixels, stride, x, y);
         }
     } else {
         *length = height;
         int x = right ? width - 1 - offset : offset;
         for (int i = 0; i < height; i++) {
             int y = bottom ? height - 1 - i : i;
-            line[i] = pixel_alpha(pixels, width, x, y);
+            line[i] = pixel_alpha(pixels, stride, x, y);
         }
     }
 }
 
-static int detect_corner_axis(const guint8* pixels, int width, int height, int corner, int axis,
-                              guint8* line) {
+static int detect_corner_axis(const guint8* pixels, int stride, int width, int height, int corner,
+                              int axis, guint8* line) {
     static const int offsets[] = {1, 2, 4, 8};
     int count = 0;
     int maximum = -1;
 
     for (guint i = 0; i < G_N_ELEMENTS(offsets); i++) {
         int length;
-        sample_alpha_line(pixels, width, height, corner, axis, offsets[i], line, &length);
+        sample_alpha_line(pixels, stride, width, height, corner, axis, offsets[i], line, &length);
         int inset = detect_alpha_edge(line, length, length >> 1, 8);
         if (inset >= 0) {
             count++;
@@ -816,14 +818,15 @@ static int detect_corner_axis(const guint8* pixels, int width, int height, int c
     return count >= 2 ? maximum : -1;
 }
 
-static gboolean detect_csd_insets(const guint8* pixels, int width, int height, double insets[4]) {
+static gboolean detect_csd_insets(const guint8* pixels, int stride, int width, int height,
+                                  double insets[4]) {
     g_autofree guint8* line = g_malloc(MAX(width, height));
     int corner[4][2];
     int radius[4];
 
     for (int c = 0; c < 4; c++) {
-        corner[c][0] = detect_corner_axis(pixels, width, height, c, 0, line);
-        corner[c][1] = detect_corner_axis(pixels, width, height, c, 1, line);
+        corner[c][0] = detect_corner_axis(pixels, stride, width, height, c, 0, line);
+        corner[c][1] = detect_corner_axis(pixels, stride, width, height, c, 1, line);
         if (corner[c][0] < 0 || corner[c][1] < 0)
             return FALSE;
         radius[c] = MAX(corner[c][0], corner[c][1]);
@@ -839,7 +842,8 @@ static gboolean detect_csd_insets(const guint8* pixels, int width, int height, d
 }
 
 gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* texture_actor,
-                                                ClutterActor* effect_actor, double insets[4]) {
+                                                ClutterActor* effect_actor,
+                                                const double geometry[4], double insets[4]) {
     CsdProbeCache* cache;
     MetaShapedTexture* texture;
     g_autoptr(GBytes) pixels_bytes = NULL;
@@ -851,6 +855,7 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* texture_actor,
     gboolean detected;
     double pixel_insets[4];
     guint attempts = 1;
+    int region[4] = {0, 0, 0, 0};
 
     g_return_val_if_fail(CLUTTER_IS_ACTOR(texture_actor), FALSE);
     g_return_val_if_fail(CLUTTER_IS_ACTOR(effect_actor), FALSE);
@@ -869,8 +874,25 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* texture_actor,
     if (clutter_actor_get_width(effect_actor) <= 0 || clutter_actor_get_height(effect_actor) <= 0)
         return FALSE;
 
+    /* Probe the client's declared window geometry, not the whole buffer: a client that draws
+     * its own shadow has transparent margins, and a scan line through them never meets the
+     * window's corner. Geometry is in actor units; convert it to texture pixels. */
+    {
+        const double to_pixels_x = width / clutter_actor_get_width(effect_actor);
+        const double to_pixels_y = height / clutter_actor_get_height(effect_actor);
+        region[0] = CLAMP((int)lround(geometry[0] * to_pixels_x), 0, width);
+        region[1] = CLAMP((int)lround(geometry[1] * to_pixels_y), 0, height);
+        region[2] =
+            CLAMP((int)lround((geometry[2] - geometry[0]) * to_pixels_x), 0, width - region[0]);
+        region[3] =
+            CLAMP((int)lround((geometry[3] - geometry[1]) * to_pixels_y), 0, height - region[1]);
+        if (region[2] < 16 || region[3] < 16)
+            return FALSE;
+    }
+
     cache = g_object_get_data(G_OBJECT(effect_actor), CSD_PROBE_CACHE_KEY);
-    if (cache && cache->width == width && cache->height == height) {
+    if (cache && cache->width == width && cache->height == height &&
+        memcmp(cache->region, region, sizeof(region)) == 0) {
         if (cache->detected) {
             csd_insets_to_actor_units(effect_actor, width, height, cache->insets, insets);
             return TRUE;
@@ -885,6 +907,7 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* texture_actor,
         cache = g_new0(CsdProbeCache, 1);
         cache->width = meta_shaped_texture_get_width(texture);
         cache->height = meta_shaped_texture_get_height(texture);
+        memcpy(cache->region, region, sizeof(region));
         cache->attempts = attempts;
         g_object_set_data_full(G_OBJECT(effect_actor), CSD_PROBE_CACHE_KEY, cache, g_free);
         return FALSE;
@@ -894,15 +917,18 @@ gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* texture_actor,
         cache = g_new0(CsdProbeCache, 1);
         cache->width = width;
         cache->height = height;
+        memcpy(cache->region, region, sizeof(region));
         cache->attempts = attempts;
         g_object_set_data_full(G_OBJECT(effect_actor), CSD_PROBE_CACHE_KEY, cache, g_free);
         return FALSE;
     }
 
-    detected = detect_csd_insets(pixels, width, height, pixel_insets);
+    detected = detect_csd_insets(pixels + ((gsize)region[1] * width + region[0]) * 4, width,
+                                 region[2], region[3], pixel_insets);
     cache = g_new0(CsdProbeCache, 1);
     cache->width = width;
     cache->height = height;
+    memcpy(cache->region, region, sizeof(region));
     cache->detected = detected;
     cache->attempts = attempts;
     if (detected)
@@ -1115,10 +1141,15 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     float padding_left;
 
     if (actor && clutter_offscreen_effect_get_target_rect(effect, &target)) {
-        const float actor_width = clutter_actor_get_width(actor);
-        const float actor_height = clutter_actor_get_height(actor);
-        scale_x = actor_width > 0 ? target.size.width / actor_width : (float)clip->client_scale;
-        scale_y = actor_height > 0 ? target.size.height / actor_height : (float)clip->client_scale;
+        /* The target rect is in actor coordinates and is larger than the actor box: the
+         * offscreen texture is padded outward. Client bounds, padding and the shader's own
+         * coordinates are all actor-local, so the padded origin and size must not enter them. */
+        const float actor_width =
+            clutter_actor_get_width(actor) > 0 ? clutter_actor_get_width(actor) : target.size.width;
+        const float actor_height = clutter_actor_get_height(actor) > 0
+                                       ? clutter_actor_get_height(actor)
+                                       : target.size.height;
+        scale_x = scale_y = 1.f;
         radius = (float)(clip->radius * MIN(scale_x, scale_y));
         border_width = (float)(clip->border_width * MIN(scale_x, scale_y));
         for (guint i = 0; i < G_N_ELEMENTS(border_color); i++)
@@ -1127,15 +1158,15 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
         padding_right = (float)(clip->padding[1] * scale_x);
         padding_bottom = (float)(clip->padding[2] * scale_y);
         padding_left = (float)(clip->padding[3] * scale_x);
-        bounds[0] = (float)(target.origin.x + padding_left);
-        bounds[1] = (float)(target.origin.y + padding_top);
-        bounds[2] = (float)(target.origin.x + target.size.width - padding_right);
-        bounds[3] = (float)(target.origin.y + target.size.height - padding_bottom);
+        bounds[0] = padding_left;
+        bounds[1] = padding_top;
+        bounds[2] = actor_width - padding_right;
+        bounds[3] = actor_height - padding_bottom;
         if (clip->has_client_bounds) {
-            bounds[0] = MAX(bounds[0], (float)(target.origin.x + clip->client_bounds[0] * scale_x));
-            bounds[1] = MAX(bounds[1], (float)(target.origin.y + clip->client_bounds[1] * scale_y));
-            bounds[2] = MIN(bounds[2], (float)(target.origin.x + clip->client_bounds[2] * scale_x));
-            bounds[3] = MIN(bounds[3], (float)(target.origin.y + clip->client_bounds[3] * scale_y));
+            bounds[0] = MAX(bounds[0], (float)clip->client_bounds[0]);
+            bounds[1] = MAX(bounds[1], (float)clip->client_bounds[1]);
+            bounds[2] = MIN(bounds[2], (float)clip->client_bounds[2]);
+            bounds[3] = MIN(bounds[3], (float)clip->client_bounds[3]);
         }
         if (bounds[2] <= bounds[0] || bounds[3] <= bounds[1])
             radius = 0.f;

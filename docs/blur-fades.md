@@ -1,39 +1,21 @@
 # Blur during client animations
 
-A translucent panel still needs full blur while it is visible. During a fade-out,
-both the panel and its blur should disappear. Pixel transparency alone cannot
-tell Gnoblin which of those two cases is happening.
+Blur follows the alpha of the surface it sits behind. When a panel fades out by
+committing translucent frames, the blur behind it fades at the same time, and
+no blur is left behind once the panel is gone. Shells need no protocol or
+extra code for this.
 
-This page explains how shell developers mark animated regions. For normal
-desktop settings, see [animations](/guides/animations).
+Blur reaches full strength once the surface behind it is about 80% opaque, so a
+translucent panel keeps its full blur while it is visible. A surface that
+animates with a [layer animation](/guides/animations#layer-shell-surfaces) fades
+its blur with the window.
 
-## Whole-window fades
+## Blur-fade metadata
 
-Let Gnoblin animate the whole surface using a [layer animation](/guides/animations#layer-shell-surfaces).
-It fades the window and the blur behind it together.
-Do not also fade the client buffer for the same transition.
-
-## Items sharing one buffer
-
-Use `gnoblin_blur_fade_manager_v1` for independent item fades; its requests and
-fields are defined in the [protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/blur-fade/gnoblin-blur-fade-v1.xml).
-Commit each item's logical rectangle and animation opacity with the buffer.
-
-The protocol does not enable blur or change foreground pixels.
+`gnoblin_blur_fade_manager_v1` is still accepted so existing shells keep
+running, but Gnoblin no longer reads the rectangles or opacities it receives.
+Its requests and fields are defined in the [protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/blur-fade/gnoblin-blur-fade-v1.xml).
 It is optional and unavailable outside Gnoblin mode.
-
-| Limit               | Value                                  |
-| ------------------- | -------------------------------------- |
-| Regions per surface | 32                                     |
-| Coordinates         | Signed 24.8 fixed point, within ±65536 |
-| Opacity             | 0–1                                    |
-| Clear metadata      | Empty array                            |
-
-Do not submit both an ancestor and descendant for the same animation.
-Group overlapping foreground elements and their shadows before applying opacity.
-
-Bingux submits metadata during Qt scene synchronisation, including client
-decoration offsets. Settled windows clear it and use the ordinary blur cache.
 
 ## Foreground details
 

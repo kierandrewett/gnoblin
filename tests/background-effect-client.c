@@ -9,6 +9,8 @@
 #include <unistd.h>
 #include <wayland-client.h>
 #include "background-effect-client.h"
+#include "blur-fade-client.h"
+#include "blur-fade-client.h"
 #include "layer-shell-client.h"
 
 static struct wl_display* display;
@@ -17,6 +19,8 @@ static struct wl_subcompositor* subcompositor;
 static struct wl_shm* shm;
 static struct zwlr_layer_shell_v1* layers;
 static struct ext_background_effect_manager_v1* manager;
+static struct gnoblin_blur_fade_manager_v1* fader;
+static struct gnoblin_blur_fade_manager_v1* fader;
 static unsigned int manager_global_count;
 static uint32_t capabilities;
 static void caps(void* data, struct ext_background_effect_manager_v1* m, uint32_t flags) {
@@ -33,6 +37,10 @@ static void global(void* data, struct wl_registry* registry, uint32_t name, cons
         shm = wl_registry_bind(registry, name, &wl_shm_interface, 1);
     if (!strcmp(interface, "zwlr_layer_shell_v1"))
         layers = wl_registry_bind(registry, name, &zwlr_layer_shell_v1_interface, 1);
+    if (!strcmp(interface, "gnoblin_blur_fade_manager_v1"))
+        fader = wl_registry_bind(registry, name, &gnoblin_blur_fade_manager_v1_interface, 1);
+    if (!strcmp(interface, "gnoblin_blur_fade_manager_v1"))
+        fader = wl_registry_bind(registry, name, &gnoblin_blur_fade_manager_v1_interface, 1);
     if (!strcmp(interface, "ext_background_effect_manager_v1")) {
         manager_global_count++;
         manager = wl_registry_bind(registry, name, &ext_background_effect_manager_v1_interface, 1);
@@ -166,6 +174,18 @@ int main(int argc, char** argv) {
             struct wl_region* empty = wl_compositor_create_region(compositor);
             ext_background_effect_surface_v1_set_blur_region(effect, empty);
             wl_region_destroy(empty);
+        } else if (!strncmp(line, "fade ", 5)) {
+            // One record over the whole surface; the argument is the opacity in percent.
+            int32_t record[5] = {0, 0, 320 * 256, 240 * 256, atoi(line + 5) * 256 / 100};
+            struct wl_array array = {sizeof record, 0, record};
+            assert(fader);
+            gnoblin_blur_fade_manager_v1_set_fades(fader, surface, &array);
+            wl_surface_commit(surface);
+        } else if (!strncmp(line, "unfade", 6)) {
+            struct wl_array array = {0, 0, NULL};
+            assert(fader);
+            gnoblin_blur_fade_manager_v1_set_fades(fader, surface, &array);
+            wl_surface_commit(surface);
         } else if (!strncmp(line, "commit", 6))
             wl_surface_commit(surface);
         else if (!strncmp(line, "destroy", 7)) {

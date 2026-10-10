@@ -421,7 +421,8 @@ static void native_input_issue_focus_context(GnoblinNativeControl* control,
         ClutterActor* stage = backend ? meta_backend_get_stage(backend) : NULL;
         ClutterActor* actor = pending->actor;
         if (!actor && stage && CLUTTER_IS_STAGE(stage))
-            actor = clutter_stage_get_actor_at_pos(CLUTTER_STAGE(stage), CLUTTER_PICK_ALL, x, y);
+            actor =
+                clutter_stage_get_actor_at_pos(CLUTTER_STAGE(stage), CLUTTER_PICK_REACTIVE, x, y);
         MetaWindowActor* window_actor = native_input_window_actor_from_stage_actor(actor);
         MetaWindow* window = window_actor ? meta_window_actor_get_meta_window(window_actor) : NULL;
         if (window) {
@@ -811,6 +812,16 @@ gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display, const C
     const char* type = event ? native_input_event_type(event) : NULL;
     if (!control || control->stopping)
         return FALSE;
+    /* A pointer button pressed while a bare Super session captures keys is a window chord such as
+     * Super + drag, not a Super tap. End the session so it neither swallows the button nor fires on
+     * Super's release, and the press reaches the compositor's pointer bindings. */
+    if (event && clutter_event_type(event) == CLUTTER_BUTTON_PRESS &&
+        !(clutter_event_get_flags(event) &
+          (CLUTTER_EVENT_FLAG_SYNTHETIC | CLUTTER_EVENT_FLAG_INPUT_METHOD)) &&
+        control->bare_super_shortcut &&
+        control->active_shortcut_session == control->bare_super_shortcut &&
+        control->shortcut_session_capture_active)
+        dynamic_shortcut_end_session(control, control->bare_super_shortcut, "chord");
     if (!meta_display_gnoblin_input_policy_allowed(display) ||
         (control->wayland_compositor &&
          meta_wayland_session_lock_is_active(control->wayland_compositor))) {

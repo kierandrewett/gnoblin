@@ -1008,13 +1008,19 @@ void gnoblin_control_place_window_by_rules(GnoblinNativeControl* control, MetaWi
         meta_window_change_workspace(window, workspace);
 }
 
-/* Rule blur is stored on the window as radius and ignore flag so a size change only recomputes
- * the region. The client's own ext-background-effect region still wins inside the compositor. */
+/* Rule blur is stored on the window as radius + 1 and an ignore flag so a size change only
+ * recomputes the region. The radius also applies to the client's own ext-background-effect
+ * region, which wins over the fallback region computed here. A background layer surface has
+ * only the compositor background beneath it, so it gets no fallback region. */
 static void native_window_rule_blur_update(MetaWindow* window, MetaSurfaceActor* surface) {
     gpointer stored_radius = g_object_get_data(G_OBJECT(window), "gnoblin-rule-blur");
-    float radius = GPOINTER_TO_INT(stored_radius);
-    if (radius <= 0.f) {
+    if (!stored_radius) {
         meta_surface_actor_set_rule_background_blur(surface, FALSE, 0.f, NULL);
+        return;
+    }
+    float radius = GPOINTER_TO_INT(stored_radius) - 1;
+    if (radius <= 0.f || meta_wayland_layer_shell_is_background(window)) {
+        meta_surface_actor_set_rule_background_blur(surface, TRUE, radius, NULL);
         return;
     }
 
@@ -1092,6 +1098,7 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     double rule_opacity = 1.;
     gboolean opacity_selected = FALSE;
     int rule_blur = 0;
+    gboolean rule_blur_selected = FALSE;
     gboolean rule_blur_ignore_shadows = FALSE;
     g_autoptr(GVariant) document = gnoblin_control_native_config_document(control);
     g_autoptr(GVariant) rules =
@@ -1122,8 +1129,10 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         }
 
         double configured_blur;
-        if (native_rule_get_number(rule, "blur", &configured_blur))
+        if (native_rule_get_number(rule, "blur", &configured_blur)) {
             rule_blur = (int)lround(CLAMP(configured_blur, 0., 100.));
+            rule_blur_selected = TRUE;
+        }
         native_rule_get_boolean(rule, "blur_ignore_shadows", "blur-ignore-shadows",
                                 &rule_blur_ignore_shadows);
 
@@ -1227,9 +1236,10 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         g_object_set_data(G_OBJECT(window), "gnoblin-rule-opacity", NULL);
     }
 
-    /* Only touch the surface blur override for a window this engine blurred before. */
-    if (rule_blur > 0) {
-        g_object_set_data(G_OBJECT(window), "gnoblin-rule-blur", GINT_TO_POINTER(rule_blur));
+    /* A selected radius of 0 is kept: it also turns off the client's own blur region. Only
+     * touch the surface blur override for a window a rule set blur on before. */
+    if (rule_blur_selected) {
+        g_object_set_data(G_OBJECT(window), "gnoblin-rule-blur", GINT_TO_POINTER(rule_blur + 1));
         g_object_set_data(G_OBJECT(window), "gnoblin-rule-blur-ignore-shadows",
                           rule_blur_ignore_shadows ? GINT_TO_POINTER(1) : NULL);
         native_window_rule_blur_update(window, surface);
@@ -1315,9 +1325,32 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     for (guint i = 0; i < G_N_ELEMENTS(padding); i++)
         has_padding |= fabs(padding[i]) > 0.001;
     double csd_insets[4] = {0, 0, 0, 0};
-    gboolean csd_detected = clip_enabled && remove_csd && !has_padding && !window->minimized &&
-                            meta_gnoblin_window_effects_detect_csd(
-                                CLUTTER_ACTOR(actor), CLUTTER_ACTOR(surface), csd_insets);
+    /* Probe inside the client's declared window geometry (left, top, right, bottom in surface
+     * coordinates), or the whole surface when the client declares none. */
+    MtkRectangle probe_rect = {0};
+    double probe_geometry[4] = {0, 0, clutter_actor_get_width(CLUTTER_ACTOR(surface)),
+                                clutter_actor_get_height(CLUTTER_ACTOR(surface))};
+    if (meta_gnoblin_window_frame_get_visible_geometry(window, &probe_rect)) {
+        probe_geometry[0] = probe_rect.x;
+        probe_geometry[1] = probe_rect.y;
+        probe_geometry[2] = probe_rect.x + probe_rect.width;
+        probe_geometry[3] = probe_rect.y + probe_rect.height;
+    }
+    gboolean csd_detected =
+        clip_enabled && remove_csd && !has_padding && !window->minimized &&
+        meta_gnoblin_window_effects_detect_csd(CLUTTER_ACTOR(actor), CLUTTER_ACTOR(surface),
+                                               probe_geometry, csd_insets);
+    /* Reading a client buffer back can fail (GPU-only buffers, first frames). Probing is then
+     * inconclusive, not negative: fall back to the widest corner radius toolkits draw so the
+     * transparent corners of a client-drawn frame are still filled. The fill only touches
+     * pixels that are less opaque than their surroundings, so square windows are unaffected. */
+    const gboolean csd_fallback = !csd_detected && clip_enabled && remove_csd && !has_padding &&
+                                  !window->minimized && !meta_window_is_fullscreen(window);
+    if (csd_fallback) {
+        for (guint i = 0; i < G_N_ELEMENTS(csd_insets); i++)
+            csd_insets[i] = 16;
+        csd_detected = TRUE;
+    }
     if (clip_enabled && g_str_equal(mode, "auto") && !csd_detected &&
         native_corner_toolkit_should_skip(control, window, skip_libadwaita, skip_libhandy))
         clip_enabled = FALSE;
