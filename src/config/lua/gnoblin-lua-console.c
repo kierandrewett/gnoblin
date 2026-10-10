@@ -618,7 +618,15 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
                             "too many pending Gnoblin session actions");
         return NULL;
     }
-    const char* separator = strchr(method, '.');
+    /* Wire methods use operation names; Lua exposes them under public collection names such
+     * as gnoblin.animations.preview. Look the function up by its public name. */
+    const char* lookup = method;
+    for (guint i = 0; i < api_aliases_count; i++)
+        if (g_str_equal(api_aliases[i].operation, method)) {
+            lookup = api_aliases[i].public_name;
+            break;
+        }
+    const char* separator = strchr(lookup, '.');
     g_autofree char* domain = NULL;
     const char* operation = NULL;
     if (g_str_equal(method, "shortcut.capture")) {
@@ -631,7 +639,7 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
         domain = g_strdup("shortcuts");
         operation = "end_session";
     } else {
-        domain = g_strndup(method, separator - method);
+        domain = g_strndup(lookup, separator - lookup);
         operation = separator + 1;
     }
     lua_State* state = active_runtime->state;
@@ -651,9 +659,15 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
                                                                 : lua_generic_api_action,
                          2);
     } else {
+        /* An unregistered domain is a nil, and indexing it outside a protected call would abort
+         * the whole Lua worker. Walk the path only through tables. */
         lua_getglobal(state, "gnoblin");
-        lua_getfield(state, -1, domain);
-        lua_getfield(state, -1, operation);
+        if (lua_istable(state, -1))
+            lua_getfield(state, -1, domain);
+        if (lua_istable(state, -1))
+            lua_getfield(state, -1, operation);
+        else
+            lua_pushnil(state);
     }
     if (!lua_isfunction(state, -1)) {
         lua_settop(state, stack_base);
