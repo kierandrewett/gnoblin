@@ -10,7 +10,7 @@ import subprocess
 
 PACKAGES = {
     "gnoblin",
-    "gnoblin-portal",
+    "xdg-desktop-portal-gnoblin",
 }
 MANIFEST = json.loads((Path(__file__).resolve().parents[1] / "packaging/native-packages.json").read_text())
 GNOME_MAJOR = MANIFEST["release"]["gnomeMajor"]

@@ -202,7 +202,7 @@ class IsolationTests(unittest.TestCase):
             with self.subTest(page=page):
                 isolation.validate("gnoblin", f"/usr/share/man/man1/{page}", "", "", "")
         for name, page in (
-            ("gnoblin-portal", "gnoblin.1.gz"),
+            ("xdg-desktop-portal-gnoblin", "gnoblin.1.gz"),
             ("gnoblin", "ls.1.gz"),
             ("gnoblin", "gnoblin.2.gz"),
             ("gnoblin", "gnoblinctl-extra.1.gz"),
@@ -216,9 +216,9 @@ class IsolationTests(unittest.TestCase):
         self.assertNotIn("gnoblin-session", packages)
         self.assertIn("lua", packages["gnoblin"]["requires"])
         self.assertEqual(manifest["requirements"]["lua"]["minVersion"], "5.4")
-        self.assertIn("gtk4", packages["gnoblin-portal"]["requires"])
+        self.assertIn("gtk4", packages["xdg-desktop-portal-gnoblin"]["requires"])
         self.assertEqual(manifest["requirements"]["gtk4"]["minVersion"], "4.20.0")
-        self.assertNotIn("gnoblin-portal", packages["gnoblin"].get("requiresSameMajor", []))
+        self.assertNotIn("xdg-desktop-portal-gnoblin", packages["gnoblin"].get("requiresSameMajor", []))
         self.assertEqual(manifest["requirements"]["gsettings-desktop-schemas"]["minVersion"], "49.1")
         arch = (ROOT / "packaging/arch/PKGBUILD").read_text()
         makedepends = next(line for line in arch.splitlines() if line.startswith("makedepends="))
@@ -271,11 +271,11 @@ class IsolationTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_rpm_build_paths_and_metadata(self):
-        for project in ("gnoblin-portal", "gnoblin"):
+        for project in ("xdg-desktop-portal-gnoblin", "gnoblin"):
             expanded = subprocess.check_output(
                 ["rpmspec", "-P", str(ROOT / f"packaging/rpm/{project}.spec")], text=True
             )
-            if project == "gnoblin-portal":
+            if project == "xdg-desktop-portal-gnoblin":
                 self.assertIn("--prefix=/usr/lib/gnoblin", expanded)
                 self.assertIn("--libdir=/usr/lib/gnoblin/lib64", expanded)
             elif project == "gnoblin":
@@ -313,7 +313,7 @@ class IsolationTests(unittest.TestCase):
 
     def test_portal_rpm_requires_gtk_422_for_build_and_runtime(self):
         expanded = subprocess.check_output(
-            ["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin-portal.spec")], text=True
+            ["rpmspec", "-P", str(ROOT / "packaging/rpm/xdg-desktop-portal-gnoblin.spec")], text=True
         )
         self.assertIn("BuildRequires:  pkgconfig(gtk4) >= 4.20.0", expanded)
         self.assertIn("Requires:       gtk4 >= 4.20.0", expanded)

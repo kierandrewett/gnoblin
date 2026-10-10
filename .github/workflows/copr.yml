@@ -60,7 +60,7 @@ jobs:
           gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
             --pattern '*.src.rpm' --dir release-assets
           shopt -s nullglob
-          portal=(release-assets/gnoblin-portal-*.src.rpm)
+          portal=(release-assets/xdg-desktop-portal-gnoblin-*.src.rpm)
           meta=(release-assets/gnoblin-[0-9]*.src.rpm)
           test "${#portal[@]}" -eq 1
           test "${#meta[@]}" -eq 1
@@ -68,7 +68,7 @@ jobs:
       - name: Publish and verify the release in COPR
         run: |
           scripts/publish-copr.sh kierandrewett/gnoblin \
-            release-assets/gnoblin-portal-*.src.rpm \
+            release-assets/xdg-desktop-portal-gnoblin-*.src.rpm \
             release-assets/gnoblin-[0-9]*.src.rpm
 
   install-smoke:
@@ -93,12 +93,12 @@ jobs:
           installed_version="$(rpm -q --qf '%{VERSION}' gnoblin)"
           test "$installed_version" = "$expected_version"
           rpm -q gnoblin
-          ! rpm -q gnoblin-portal
+          ! rpm -q xdg-desktop-portal-gnoblin
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
-          dnf -y install gnoblin-portal
-          rpm -q gnoblin-portal
+          dnf -y install xdg-desktop-portal-gnoblin
+          rpm -q xdg-desktop-portal-gnoblin
           test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal

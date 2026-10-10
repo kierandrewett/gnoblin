@@ -201,7 +201,7 @@ jobs:
           install -m 0644 -- "${source_tarballs[0]}" \
             "$source_dir/gnoblin-${bundle_roots[0]##*/gnoblin-}-source.tar.xz"
           cd "$GITHUB_WORKSPACE"
-          for component in gnoblin-portal gnoblin; do
+          for component in xdg-desktop-portal-gnoblin gnoblin; do
             ./scripts/build-srpm.sh "$component" "$source_dir" "$RUNNER_TEMP/gnoblin-rpms"
           done
       - uses: actions/upload-artifact@v4
@@ -267,7 +267,7 @@ jobs:
           source_archive="$(find release-assets -maxdepth 1 -name 'gnoblin-*-source.tar.xz' -print -quit)"
           portal_source="$(find release-assets -maxdepth 1 -name 'xdg-desktop-portal-gnome-*.tar.xz' -print -quit)"
           pkgbuild="$(find release-assets -maxdepth 1 -name 'gnoblin-[0-9]*.PKGBUILD' -print -quit)"
-          portal_pkgbuild="$(find release-assets -maxdepth 1 -name 'gnoblin-portal-*.PKGBUILD' -print -quit)"
+          portal_pkgbuild="$(find release-assets -maxdepth 1 -name 'xdg-desktop-portal-gnoblin-*.PKGBUILD' -print -quit)"
           test -n "$source_archive"
           test -n "$portal_source"
           test -n "$pkgbuild"
@@ -292,17 +292,17 @@ jobs:
       - name: Install on a system without stock Shell or Mutter
         run: |
           package="$(find build -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
-          portal_package="$(find build -maxdepth 1 -name 'gnoblin-portal-[0-9]*.pkg.tar.zst' -print -quit)"
+          portal_package="$(find build -maxdepth 1 -name 'xdg-desktop-portal-gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
           test -n "$package"
           test -n "$portal_package"
           pacman -U --noconfirm "$package"
           pacman -Q gnoblin
-          ! pacman -Q gnoblin-portal >/dev/null 2>&1
+          ! pacman -Q xdg-desktop-portal-gnoblin >/dev/null 2>&1
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           pacman -U --noconfirm "$portal_package"
-          pacman -Q gnoblin-portal
+          pacman -Q xdg-desktop-portal-gnoblin
           test ! -e /usr/lib/gnoblin/bin/gnoblin-mutter
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -x /usr/bin/gnoblinctl
@@ -328,7 +328,7 @@ jobs:
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
-          pacman -R --noconfirm gnoblin-portal gnoblin
+          pacman -R --noconfirm xdg-desktop-portal-gnoblin gnoblin
           ! pacman -Q gnoblin
           ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           ! test -e /usr/lib/systemd/user/gnoblin-session.target
@@ -361,12 +361,12 @@ jobs:
         run: |
           pacman -Syu --noconfirm
           mapfile -t packages < <(find packages -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -type f)
-          mapfile -t portal_packages < <(find packages -maxdepth 1 -name 'gnoblin-portal-[0-9]*.pkg.tar.zst' -type f)
+          mapfile -t portal_packages < <(find packages -maxdepth 1 -name 'xdg-desktop-portal-gnoblin-[0-9]*.pkg.tar.zst' -type f)
           test "${#packages[@]}" -eq 1
           test "${#portal_packages[@]}" -eq 1
           pacman -U --noconfirm "${packages[0]}"
           pacman -Q gnoblin
-          ! pacman -Q gnoblin-portal >/dev/null 2>&1
+          ! pacman -Q xdg-desktop-portal-gnoblin >/dev/null 2>&1
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
@@ -374,7 +374,7 @@ jobs:
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           pacman -U --noconfirm "${portal_packages[0]}"
-          pacman -Q gnoblin-portal
+          pacman -Q xdg-desktop-portal-gnoblin
           test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
@@ -399,7 +399,7 @@ jobs:
           for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon nautilus; do
             ! pacman -Q "$stock_package" >/dev/null 2>&1
           done
-          pacman -R --noconfirm gnoblin-portal gnoblin
+          pacman -R --noconfirm xdg-desktop-portal-gnoblin gnoblin
           ! pacman -Q gnoblin >/dev/null 2>&1
           ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
 

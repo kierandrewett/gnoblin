@@ -182,7 +182,7 @@ package() {{
 
 
 def render_arch_portal(manifest: dict, source_sha256: str = "SKIP", release_tag: str | None = None) -> str:
-    portal = manifest["packages"]["gnoblin-portal"]
+    portal = manifest["packages"]["xdg-desktop-portal-gnoblin"]
     version = portal["version"]
     package_release = manifest["release"]["archPkgRelease"]
     gnoblin_version = manifest["packages"]["gnoblin"]["version"]
@@ -199,7 +199,7 @@ def render_arch_portal(manifest: dict, source_sha256: str = "SKIP", release_tag:
     ]
     return f"""# Generated from packaging/native-packages.json; do not edit.
 # shellcheck shell=bash disable=SC2034,SC2154
-pkgname=gnoblin-portal
+pkgname=xdg-desktop-portal-gnoblin
 pkgver={version}
 pkgrel={package_release}
 pkgdesc='Optional GTK-based portal backend for Gnoblin sessions'

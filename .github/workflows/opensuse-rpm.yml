@@ -139,7 +139,7 @@ jobs:
         run: |
           mapfile -t component_rpms < <(
             find rpms -type f \( \
-              -name 'gnoblin-portal-[0-9]*.rpm' -o \
+              -name 'xdg-desktop-portal-gnoblin-[0-9]*.rpm' -o \
               -name 'gnoblin-[0-9]*.rpm' \
             \) | sort
           )
@@ -152,14 +152,14 @@ jobs:
           python3 scripts/check-rpm-isolation.py "${component_rpms[@]}"
           zypper --non-interactive install --no-recommends --allow-unsigned-rpm "${runtime_rpms[@]}"
           rpm -q gnoblin
-          ! rpm -q gnoblin-portal
+          ! rpm -q xdg-desktop-portal-gnoblin
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
-          portal_rpm="$(find rpms -type f -name 'gnoblin-portal-[0-9]*.rpm' -print -quit)"
+          portal_rpm="$(find rpms -type f -name 'xdg-desktop-portal-gnoblin-[0-9]*.rpm' -print -quit)"
           test -n "$portal_rpm"
           zypper --non-interactive install --no-recommends --allow-unsigned-rpm "$portal_rpm"
-          rpm -q gnoblin-portal
+          rpm -q xdg-desktop-portal-gnoblin
           test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           set -x
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
@@ -182,7 +182,7 @@ jobs:
       - name: Remove Gnoblin and reverify stock GNOME
         run: |
           zypper --non-interactive remove \
-            gnoblin gnoblin-portal
+            gnoblin xdg-desktop-portal-gnoblin
           ! test -e /usr/share/wayland-sessions/gnoblin.desktop
           ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           ! test -e /usr/lib/systemd/user/gnoblin-session.target

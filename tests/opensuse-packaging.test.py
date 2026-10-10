@@ -37,7 +37,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         self.assertIn("--destdir %{_builddir}/gnoblin-stage", content)
 
     def test_portal_uses_the_system_meson_build_tool(self):
-        content = (SPECS / "gnoblin-portal.spec").read_text()
+        content = (SPECS / "xdg-desktop-portal-gnoblin.spec").read_text()
         self.assertNotIn("%{_bindir}/meson", content)
         self.assertIn("/usr/bin/meson setup build .", content)
         self.assertIn("/usr/bin/meson compile -C build", content)
@@ -65,7 +65,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
 
     def test_check_script_keeps_the_probe_non_installing(self):
         check = (SPECS / "check-buildrequires.sh").read_text()
-        self.assertIn("gnoblin-portal|gnoblin", check)
+        self.assertIn("xdg-desktop-portal-gnoblin|gnoblin", check)
         self.assertIn(
             'rpmspec -q --buildrequires --define "gnoblin_version $gnoblin_version" "$spec"',
             check,
@@ -85,10 +85,10 @@ class OpenSUSEPackagingTests(unittest.TestCase):
             chain.index("git fetch --force --tags origin"),
             chain.index('"$ROOT/scripts/make-tarball.sh"'),
         )
-        self.assertLess(chain.index("build gnoblin-portal.spec"), chain.index("build gnoblin.spec"))
+        self.assertLess(chain.index("build xdg-desktop-portal-gnoblin.spec"), chain.index("build gnoblin.spec"))
         self.assertLess(
-            chain.index('check-buildrequires.sh" gnoblin-portal --install'),
-            chain.index("build gnoblin-portal.spec"),
+            chain.index('check-buildrequires.sh" xdg-desktop-portal-gnoblin --install'),
+            chain.index("build xdg-desktop-portal-gnoblin.spec"),
         )
         self.assertLess(
             chain.index('check-buildrequires.sh" gnoblin --install'),

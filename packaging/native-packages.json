@@ -22,7 +22,7 @@
       "replaces": ["gnoblin-mutter", "gnoblin-mutter-devel"],
       "version": "0.1.10"
     },
-    "gnoblin-portal": {
+    "xdg-desktop-portal-gnoblin": {
       "requires": ["gtk4", "json-glib", "xdg-desktop-portal"],
       "source": "xdg-desktop-portal-gnome",
       "version": "51.0"

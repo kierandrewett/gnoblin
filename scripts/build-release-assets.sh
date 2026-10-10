@@ -63,12 +63,12 @@ python3 "$ROOT/scripts/sync-package-manifest.py" arch-release \
     --release-tag "$PUBLIC_RELEASE_TAG"
 PORTAL_SOURCE_SHA256="$(sha256sum "$OUTPUT/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" | awk '{print $1}')"
 python3 "$ROOT/scripts/sync-package-manifest.py" arch-portal-release \
-    --output "$OUTPUT/gnoblin-portal-$GNOME_VERSION.PKGBUILD" \
+    --output "$OUTPUT/xdg-desktop-portal-gnoblin-$GNOME_VERSION.PKGBUILD" \
     --source-sha256 "$PORTAL_SOURCE_SHA256" \
     --release-tag "$PUBLIC_RELEASE_TAG"
 
 if [ "$SOURCE_ONLY" != --source-only ]; then
-    "$ROOT/scripts/build-srpm.sh" gnoblin-portal "$SOURCES" "$SRPMS"
+    "$ROOT/scripts/build-srpm.sh" xdg-desktop-portal-gnoblin "$SOURCES" "$SRPMS"
     "$ROOT/scripts/build-srpm.sh" gnoblin "$SOURCES" "$SRPMS"
     find "$SRPMS" -maxdepth 1 -type f -name '*.src.rpm' -exec install -m 0644 -t "$OUTPUT" -- {} +
 fi
