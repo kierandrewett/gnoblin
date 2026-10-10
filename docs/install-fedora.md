@@ -31,9 +31,9 @@ Gnoblin does not install `xdg-desktop-portal-gtk` or require
 `gnome-desktop4`. Package dependencies may still bring GTK3 onto a system;
 inspect the transaction before installing if that matters to you.
 
-For GNOME apps on a minimal Fedora install, add the optional
-[`gnoblin-gnome-integration` package](gnome-apps.md). It supplies common
-desktop services; install the apps you want separately.
+For GNOME apps on a minimal Fedora install, install the
+[shared desktop services](gnome-apps.md) first. Install the apps you want
+separately.
 
 If your Thunderbolt devices need authorization, install `bolt` separately with
 `sudo dnf install bolt`. Gnoblin does not provide GNOME's Thunderbolt menu.
@@ -88,9 +88,6 @@ Log out and back in to load the updated compositor.
 ## Remove
 
 Log into GNOME or another session first, then run:
-
-If you installed the optional integration package, remove it with
-`sudo dnf remove gnoblin-gnome-integration` before removing the session.
 
 ```sh
 sudo dnf remove gnoblin

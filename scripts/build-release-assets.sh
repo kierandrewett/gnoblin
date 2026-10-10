@@ -66,8 +66,6 @@ python3 "$ROOT/scripts/sync-package-manifest.py" arch-portal-release \
     --output "$OUTPUT/gnoblin-portal-$GNOME_VERSION.PKGBUILD" \
     --source-sha256 "$PORTAL_SOURCE_SHA256" \
     --release-tag "$PUBLIC_RELEASE_TAG"
-install -m 0644 -- "$ROOT/packaging/arch/gnome-integration/PKGBUILD" \
-    "$OUTPUT/gnoblin-gnome-integration-$GNOBLIN_VERSION.PKGBUILD"
 
 if [ "$SOURCE_ONLY" != --source-only ]; then
     "$ROOT/scripts/build-srpm.sh" gnoblin-portal "$SOURCES" "$SRPMS"

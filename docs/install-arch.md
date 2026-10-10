@@ -34,6 +34,6 @@ backend. The default route uses it when installed and otherwise selects
 another installed backend. You can route interfaces to another backend in the
 Lua config.
 
-For GNOME applications on a minimal Arch system, install the separate
-[`gnoblin-gnome-integration` package](gnome-apps.md). Install the applications
-you want through pacman.
+For GNOME applications on a minimal Arch system, install the
+[shared desktop services](gnome-apps.md) first. Install the applications you
+want through pacman.

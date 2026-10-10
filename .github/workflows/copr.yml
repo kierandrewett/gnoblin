@@ -99,7 +99,6 @@ jobs:
           test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           dnf -y install gnoblin-portal
           rpm -q gnoblin-portal
-          ! rpm -q gnoblin-gnome-integration
           test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
           grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
@@ -110,11 +109,6 @@ jobs:
           done
           test -f /usr/share/wayland-sessions/gnoblin.desktop
           grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
-          for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon gdm; do
-            ! rpm -q "$stock_package" >/dev/null 2>&1
-          done
-          dnf -y install gnoblin-gnome-integration
-          rpm -q gnoblin-gnome-integration gvfs gnome-keyring xdg-user-dirs
           for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon gdm; do
             ! rpm -q "$stock_package" >/dev/null 2>&1
           done

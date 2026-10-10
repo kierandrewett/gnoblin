@@ -12,7 +12,7 @@ as supported until its graphical-session gate has passed.
 Gnoblin installs as its own session and can coexist with GNOME.
 
 - RPM names: `gnoblin`, the optional `gnoblin-portal`, and the optional
-  `gnoblin-gnome-integration` subpackage.
+  `gnoblin-geoclue-integration` subpackage.
 - The RPM and Arch `gnoblin` packages contain the single `gnoblin` compositor
   executable, login entry, Lua runtime, session services, and Gnoblin-specific
   portal route. They do not require a portal backend or a separate Mutter

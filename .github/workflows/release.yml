@@ -268,12 +268,10 @@ jobs:
           portal_source="$(find release-assets -maxdepth 1 -name 'xdg-desktop-portal-gnome-*.tar.xz' -print -quit)"
           pkgbuild="$(find release-assets -maxdepth 1 -name 'gnoblin-[0-9]*.PKGBUILD' -print -quit)"
           portal_pkgbuild="$(find release-assets -maxdepth 1 -name 'gnoblin-portal-*.PKGBUILD' -print -quit)"
-          integration_pkgbuild="$(find release-assets -maxdepth 1 -name 'gnoblin-gnome-integration-*.PKGBUILD' -print -quit)"
           test -n "$source_archive"
           test -n "$portal_source"
           test -n "$pkgbuild"
           test -n "$portal_pkgbuild"
-          test -n "$integration_pkgbuild"
           mkdir -p build
           cp "$source_archive" build/
           cp "$pkgbuild" build/PKGBUILD
@@ -291,19 +289,12 @@ jobs:
           chown -R builder:builder build/portal
           runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$GITHUB_WORKSPACE/build/portal"
           cp build/portal/*.pkg.tar.zst build/
-          mkdir -p build/integration
-          cp "$integration_pkgbuild" build/integration/PKGBUILD
-          chown -R builder:builder build/integration
-          runuser -u builder -- bash -lc 'cd "$1" && makepkg --nodeps --noconfirm --cleanbuild' bash "$GITHUB_WORKSPACE/build/integration"
-          cp build/integration/*.pkg.tar.zst build/
       - name: Install on a system without stock Shell or Mutter
         run: |
           package="$(find build -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
           portal_package="$(find build -maxdepth 1 -name 'gnoblin-portal-[0-9]*.pkg.tar.zst' -print -quit)"
-          integration_package="$(find build -maxdepth 1 -name 'gnoblin-gnome-integration-*.pkg.tar.zst' -print -quit)"
           test -n "$package"
           test -n "$portal_package"
-          test -n "$integration_package"
           pacman -U --noconfirm "$package"
           pacman -Q gnoblin
           ! pacman -Q gnoblin-portal >/dev/null 2>&1
@@ -312,7 +303,6 @@ jobs:
           test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
           pacman -U --noconfirm "$portal_package"
           pacman -Q gnoblin-portal
-          ! pacman -Q gnoblin-gnome-integration
           test ! -e /usr/lib/gnoblin/bin/gnoblin-mutter
           test -x /usr/lib/gnoblin/bin/gnoblin
           test -x /usr/bin/gnoblinctl
@@ -331,7 +321,6 @@ jobs:
           ! pacman -Q mutter >/dev/null 2>&1
       - name: Check stock GNOME coexistence and package removal
         run: |
-          integration_package="$(find build -maxdepth 1 -name 'gnoblin-gnome-integration-*.pkg.tar.zst' -print -quit)"
           pacman -S --noconfirm --needed gnome-shell mutter
           pacman -Q gnome-shell mutter > /tmp/stock-gnome-packages
           pacman -Qo /usr/bin/gnome-shell > /tmp/stock-gnome-shell-owner
@@ -339,9 +328,6 @@ jobs:
           cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
           cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
           cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
-          pacman -U --noconfirm "$integration_package"
-          pacman -Q gnoblin-gnome-integration gvfs gnome-keyring xdg-user-dirs
-          pacman -R --noconfirm gnoblin-gnome-integration
           pacman -R --noconfirm gnoblin-portal gnoblin
           ! pacman -Q gnoblin
           ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
@@ -376,10 +362,8 @@ jobs:
           pacman -Syu --noconfirm
           mapfile -t packages < <(find packages -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -type f)
           mapfile -t portal_packages < <(find packages -maxdepth 1 -name 'gnoblin-portal-[0-9]*.pkg.tar.zst' -type f)
-          mapfile -t integration_packages < <(find packages -maxdepth 1 -name 'gnoblin-gnome-integration-*.pkg.tar.zst' -type f)
           test "${#packages[@]}" -eq 1
           test "${#portal_packages[@]}" -eq 1
-          test "${#integration_packages[@]}" -eq 1
           pacman -U --noconfirm "${packages[0]}"
           pacman -Q gnoblin
           ! pacman -Q gnoblin-portal >/dev/null 2>&1
@@ -412,14 +396,11 @@ jobs:
               fi
             fi
           done < <(find /usr/lib/gnoblin -type f -print0)
-          pacman -U --noconfirm "${integration_packages[0]}"
-          pacman -Q gnoblin-gnome-integration gvfs gnome-keyring xdg-user-dirs
           for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon nautilus; do
             ! pacman -Q "$stock_package" >/dev/null 2>&1
           done
-          pacman -R --noconfirm gnoblin-gnome-integration gnoblin-portal gnoblin
+          pacman -R --noconfirm gnoblin-portal gnoblin
           ! pacman -Q gnoblin >/dev/null 2>&1
-          ! pacman -Q gnoblin-gnome-integration >/dev/null 2>&1
           ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
 
   github-release:

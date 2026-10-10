@@ -22,11 +22,6 @@
       "replaces": ["gnoblin-mutter", "gnoblin-mutter-devel"],
       "version": "0.1.10"
     },
-    "gnoblin-gnome-integration": {
-      "requires": ["gvfs", "gnome-keyring", "xdg-user-dirs"],
-      "requiresExact": ["gnoblin"],
-      "version": "0.1.10"
-    },
     "gnoblin-portal": {
       "requires": ["gtk4", "json-glib", "xdg-desktop-portal"],
       "source": "xdg-desktop-portal-gnome",

@@ -42,15 +42,12 @@ Install a desktop shell such as [Bingux](bring-your-own-shell.md), log out, and
 select **Gnoblin** at the login screen. If the session does not start, return
 to your existing session.
 
-For GNOME apps on a minimal install, add the optional
-[`gnoblin-gnome-integration` RPM](gnome-apps.md). It is separate from the
-runtime packages above.
+For GNOME apps on a minimal install, install the
+[shared desktop services](gnome-apps.md) first.
 
 ## Remove
 
-Log into another session first. If you installed the optional integration
-package, remove it with `sudo zypper remove gnoblin-gnome-integration`.
-Then remove the Gnoblin packages you installed:
+Log into another session first. Then remove the Gnoblin packages you installed:
 
 ```sh
 sudo zypper remove \

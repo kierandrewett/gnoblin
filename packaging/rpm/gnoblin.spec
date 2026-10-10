@@ -179,19 +179,6 @@ desktop-file-validate gnoblin-validation.desktop
 /usr/share/man/man1/gnoblin.1*
 /usr/share/man/man1/gnoblinctl.1*
 
-%package -n gnoblin-gnome-integration
-Summary:        Optional GNOME application services for Gnoblin
-Requires:       gnoblin = 1:0.1.10
-Requires:       gvfs
-Requires:       gnome-keyring
-Requires:       xdg-user-dirs
-
-%description -n gnoblin-gnome-integration
-Adds GNOME Keyring, GVfs, and standard user directories to a Gnoblin session.
-Applications are installed separately.
-
-%files -n gnoblin-gnome-integration
-
 %package -n gnoblin-geoclue-integration
 Summary:        Optional GeoClue agent authorization for Gnoblin
 Requires:       gnoblin = 1:%{version}-%{release}
