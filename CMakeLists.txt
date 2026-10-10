@@ -92,9 +92,31 @@ if(GNOBLIN_LUA_FOUND)
       "${PROJECT_SOURCE_DIR}/scripts/embed-config.py"
     VERBATIM)
   set(GNOBLIN_CONFIG_SOURCES
+    src/config/gnoblin-config-input.c
+    src/config/gnoblin-config-keybindings.c
+    src/config/gnoblin-config-portal.c
+    src/config/gnoblin-config-salvage.c
+    src/config/gnoblin-config-validate.c
+    src/config/gnoblin-config-windows.c
     src/config/gnoblin-config.c
     "${GNOBLIN_DEFAULT_CONFIG_C}"
     src/input/gnoblin-input-config.c
+    src/config/lua/gnoblin-lua-animation.c
+    src/config/lua/gnoblin-lua-console.c
+    src/config/lua/gnoblin-lua-contexts.c
+    src/config/lua/gnoblin-lua-dispatch.c
+    src/config/lua/gnoblin-lua-finish.c
+    src/config/lua/gnoblin-lua-input.c
+    src/config/lua/gnoblin-lua-install.c
+    src/config/lua/gnoblin-lua-merge.c
+    src/config/lua/gnoblin-lua-named.c
+    src/config/lua/gnoblin-lua-operations.c
+    src/config/lua/gnoblin-lua-queries.c
+    src/config/lua/gnoblin-lua-read.c
+    src/config/lua/gnoblin-lua-runtime.c
+    src/config/lua/gnoblin-lua-state-queries.c
+    src/config/lua/gnoblin-lua-subscriptions.c
+    src/config/lua/gnoblin-lua-variant.c
     src/config/lua/gnoblin-lua.c
     src/config/lua/gnoblin-lua-pattern.c
     src/config/gnoblin-glob.c

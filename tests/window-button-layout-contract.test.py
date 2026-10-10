@@ -3,6 +3,10 @@
 
 from pathlib import Path
 import unittest
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _sources import CONFIG_SOURCES  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,7 +21,7 @@ class WindowButtonLayoutContractTests(unittest.TestCase):
         self.assertIn('"resize-with-right-button", "disable-workarounds", "button-layout", NULL', patch)
 
     def test_shared_config_validation_and_runtime_case_cover_the_shape(self):
-        validator = (ROOT / "src/config/gnoblin-config.c").read_text()
+        validator = CONFIG_SOURCES.read_text()
         runtime_test = (ROOT / "tests/lua-config-test.c").read_text()
         self.assertIn('g_str_equal(name, "button-layout")', validator)
         self.assertIn('g_variant_is_of_type(side, G_VARIANT_TYPE("av"))', validator)

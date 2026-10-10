@@ -21,7 +21,7 @@ diff --git a/src/meson.build b/src/meson.build
 index 3fc274ded..c7c57b7bb 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -1224,30 +1224,92 @@ libmutter_dep = declare_dependency(
+@@ -1224,30 +1224,114 @@ libmutter_dep = declare_dependency(
    ],
  )
  
@@ -97,9 +97,31 @@ index 3fc274ded..c7c57b7bb 100644
 -    mutter_c_args,
 -    '-DG_LOG_DOMAIN="gnoblin-mutter"',
 +gnoblin_config_sources = files(
++  gnoblin_root / 'src/config/gnoblin-config-input.c',
++  gnoblin_root / 'src/config/gnoblin-config-windows.c',
++  gnoblin_root / 'src/config/gnoblin-config-portal.c',
++  gnoblin_root / 'src/config/gnoblin-config-keybindings.c',
++  gnoblin_root / 'src/config/gnoblin-config-validate.c',
 +  gnoblin_root / 'src/config/gnoblin-config.c',
++  gnoblin_root / 'src/config/gnoblin-config-salvage.c',
 +  gnoblin_root / 'src/input/gnoblin-input-config.c',
 +  gnoblin_root / 'src/config/lua/gnoblin-lua.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-variant.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-merge.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-subscriptions.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-operations.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-contexts.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-animation.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-input.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-named.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-queries.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-state-queries.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-install.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-runtime.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-dispatch.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-console.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-read.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-finish.c',
 +  gnoblin_root / 'src/config/lua/gnoblin-lua-pattern.c',
 +  gnoblin_root / 'src/config/gnoblin-glob.c',
 +  gnoblin_root / 'src/input/gnoblin-keybinding-catalog.c',

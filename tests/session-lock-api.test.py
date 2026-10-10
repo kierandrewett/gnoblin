@@ -8,10 +8,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _sources import control_header, control_source  # noqa: E402
+from _sources import control_header, control_source, LUA_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-LUA = ROOT / "src/config/lua/gnoblin-lua.c"
+LUA = LUA_SOURCES
 DISPATCH_PATCH = ROOT / "patches/mutter/99-typed-window-api/0032-dispatch-shell-session-lock-request.patch"
 
 

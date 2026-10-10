@@ -6,12 +6,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _sources import control_header, control_source, overlay_manifests  # noqa: E402
+from _sources import control_header, control_source, overlay_manifests, CONFIG_SOURCES, LUA_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "CMakeLists.txt"
-LUA = ROOT / "src/config/lua/gnoblin-lua.c"
-CONFIG = ROOT / "src/config/gnoblin-config.c"
+LUA = LUA_SOURCES
+CONFIG = CONFIG_SOURCES
 
 
 class LocationAgentContractTests(unittest.TestCase):
