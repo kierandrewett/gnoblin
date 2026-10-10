@@ -32,7 +32,7 @@ def extract_function(source: str, signature: str) -> str:
 
 class NativeControlOwnershipTests(unittest.TestCase):
     def test_variant_from_json_releases_nested_variants(self):
-        converter = extract_function(control_source(), "static GVariant* variant_from_json(")
+        converter = extract_function(control_source(), "GVariant* variant_from_json(")
         harness = textwrap.dedent(
             f"""
             #include <glib.h>
@@ -86,8 +86,10 @@ class NativeControlOwnershipTests(unittest.TestCase):
 
     def test_window_state_comparison_excludes_transport_revision(self):
         source = control_source()
-        function = extract_function(source, "static void publish_window_changes(")
-        comparable = function[function.index("g_autoptr(JsonNode) comparable") : function.index("state->comparable_json")]
+        function = extract_function(source, "void publish_window_changes(")
+        comparable = function[
+            function.index("g_autoptr(JsonNode) comparable") : function.index("state->comparable_json")
+        ]
         self.assertIn('json_object_remove_member(json_node_get_object(comparable), "focused");', comparable)
         self.assertIn('json_object_remove_member(json_node_get_object(comparable), "revision");', comparable)
 

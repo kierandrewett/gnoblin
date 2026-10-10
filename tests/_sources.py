@@ -11,17 +11,40 @@ SRC_DIR = ROOT / "src"
 CONTROL_DIR = SRC_DIR / "control"
 
 
-def _combined(main_name: str, pattern: str) -> str:
-    paths = [CONTROL_DIR / main_name, *sorted(SRC_DIR.rglob(pattern))]
-    return "".join(path.read_text() for path in paths)
+# gnoblin-native-control.c was split in file order. Reading these first, in this order, keeps text searches that
+# depend on one function appearing before another working as they did on the single file.
+NATIVE_CONTROL_SPLIT = [
+    "gnoblin-native-control.c",
+    "gnoblin-control-focus.c",
+    "gnoblin-control-input-config.c",
+    "gnoblin-control-wire.c",
+    "gnoblin-control-input-routing.c",
+    "gnoblin-control-dispatch.c",
+    "gnoblin-control-publish.c",
+    "gnoblin-control-events.c",
+    "gnoblin-control-text-snap.c",
+    "gnoblin-control-launches.c",
+    "gnoblin-control-monitors.c",
+    "gnoblin-control-queue.c",
+    "gnoblin-control-requests.c",
+    "gnoblin-control-signals.c",
+    "gnoblin-control-connection.c",
+    "gnoblin-control-runtime-channel.c",
+    "gnoblin-control-api.c",
+]
+
+
+def _combined(first: list[Path], pattern: str) -> str:
+    others = [path for path in sorted(SRC_DIR.rglob(pattern)) if path not in first]
+    return "".join(path.read_text() for path in [*first, *others])
 
 
 def control_source() -> str:
-    return _combined("gnoblin-native-control.c", "gnoblin-control-*.c")
+    return _combined([CONTROL_DIR / name for name in NATIVE_CONTROL_SPLIT], "gnoblin-control-*.c")
 
 
 def control_header() -> str:
-    return _combined("gnoblin-native-control.h", "gnoblin-control-*.h")
+    return _combined([CONTROL_DIR / "gnoblin-native-control.h"], "gnoblin-control-*.h")
 
 
 def overlay_manifests() -> str:

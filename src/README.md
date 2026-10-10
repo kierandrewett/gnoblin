@@ -36,11 +36,28 @@ tree (Mutter or the GNOME portal backend).
       by the runtime and the portal backend.
 - `control/` — the private runtime protocol: the native control socket, cached
   configuration snapshots, and the operation files that serve it.
-    - `gnoblin-native-control.c` — the socket server and method dispatch.
-    - `gnoblin-control-internal.h` — shared state struct and helper declarations for the split files.
+    - `gnoblin-native-control.c` — control object setup, the socket server start and stop, and policy checks.
+    - `gnoblin-native-control-private.h` — types and declarations that the files below share.
+    - `gnoblin-control-internal.h` — shared state struct and helper declarations for the operation files.
+    - `gnoblin-control-focus.c` — focus and menu contexts, pointer buttons and trusted shortcuts.
+    - `gnoblin-control-input-config.c` — native input configuration, tablet and orientation lock, and monitor privacy.
+    - `gnoblin-control-wire.c` — client buffers and JSON or variant encoding.
+    - `gnoblin-control-input-routing.c` — capability snapshots, input devices, and input decisions.
+    - `gnoblin-control-dispatch.c` — operation dispatch, shortcut capture and session lock.
+    - `gnoblin-control-publish.c` — window, appearance, privacy and location snapshots and publication.
+    - `gnoblin-control-events.c` — touchpad actions, config and native events, and socket focus.
+    - `gnoblin-control-text-snap.c` — socket text insertion and snap commits.
+    - `gnoblin-control-launches.c` — launch tracking.
+    - `gnoblin-control-monitors.c` — monitor snapshots, the on-screen display and window properties.
+    - `gnoblin-control-queue.c` — runtime queues, animation and read APIs, and UI sessions.
+    - `gnoblin-control-requests.c` — the socket request handler.
+    - `gnoblin-control-signals.c` — response writing and Mutter signal watches.
+    - `gnoblin-control-connection.c` — client connections and request reading.
+    - `gnoblin-control-runtime-channel.c` — the channel to the runtime worker: dispatch, flush and republish.
+    - `gnoblin-control-api.c` — the public `gnoblin_native_control_*` functions.
+    - `gnoblin-control-runtime.c` — runtime worker protocol helpers: reload document comparison, resume matching, config results, queue flushing and request cancel.
     - `gnoblin-control-command.c` — command spawning: the single spawn worker, child-exit watches, and `command.run` argument parsing.
     - `gnoblin-control-capture.c` — the `command.capture` operation.
-    - `gnoblin-control-runtime.c` — runtime worker protocol helpers: reload document comparison, resume matching, config results, queue flushing and request cancel.
     - `windows/` — window rules, window drag and snap offers, workspace and
       monitor snapshots, and layer snapshots with their events.
 - `cursor/` — cursor theme and Hyprcursor support.
