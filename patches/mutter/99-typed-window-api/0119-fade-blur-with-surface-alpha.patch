@@ -24,10 +24,31 @@ index f54afbc0f0..5bc4273013 100644
  #define CLUTTER_EFFECT_NODE(obj)                (G_TYPE_CHECK_INSTANCE_CAST ((obj), CLUTTER_TYPE_EFFECT_NODE, ClutterEffectNode))
  #define CLUTTER_IS_EFFECT_NODE(obj)             (G_TYPE_CHECK_INSTANCE_TYPE ((obj), CLUTTER_TYPE_EFFECT_NODE))
 diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-paint-nodes.c
-index af5bcd7d82..70804506bc 100644
+index af5bcd7d82..330aa9eef6 100644
 --- a/clutter/clutter/clutter-paint-nodes.c
 +++ b/clutter/clutter/clutter-paint-nodes.c
-@@ -1843,3 +1843,60 @@ clutter_blur_node_new_from_framebuffer (CoglFramebuffer *framebuffer,
+@@ -1505,11 +1505,16 @@ add_blur_framebuffer_effect (CoglPipeline *pipeline,
+   if (saturation == 1.0f && noise == 0.0f)
+     return;
+ 
+-  snippet = cogl_snippet_new (COGL_SNIPPET_HOOK_FRAGMENT,
+-                              blur_framebuffer_effect_declarations,
+-                              blur_framebuffer_effect_source);
++  /* Cogl keys generated programs by snippet pointer. Share one snippet so
++   * every blur node reuses a single program instead of compiling a new one. */
++  static CoglSnippet *shared_snippet;
++
++  if (!shared_snippet)
++    shared_snippet = cogl_snippet_new (COGL_SNIPPET_HOOK_FRAGMENT,
++                                       blur_framebuffer_effect_declarations,
++                                       blur_framebuffer_effect_source);
++  snippet = shared_snippet;
+   cogl_pipeline_add_snippet (pipeline, snippet);
+-  g_object_unref (snippet);
+ 
+   saturation_uniform =
+     cogl_pipeline_get_uniform_location (pipeline,
+@@ -1843,3 +1848,62 @@ clutter_blur_node_new_from_framebuffer (CoglFramebuffer *framebuffer,
  
    return node;
  }
@@ -57,6 +78,7 @@ index af5bcd7d82..70804506bc 100644
 +                                  CoglTexture      *mask,
 +                                  float             gain)
 +{
++  static CoglSnippet *mask_snippet;
 +  ClutterLayerNode *layer_node;
 +  CoglPipeline *pipeline;
 +  CoglSnippet *snippet;
@@ -74,11 +96,12 @@ index af5bcd7d82..70804506bc 100644
 +  cogl_pipeline_set_layer_combine (pipeline, 1,
 +                                   "RGBA = REPLACE (PREVIOUS)", NULL);
 +
-+  snippet = cogl_snippet_new (COGL_SNIPPET_HOOK_FRAGMENT,
-+                              blur_alpha_mask_declarations,
-+                              blur_alpha_mask_source);
++  if (!mask_snippet)
++    mask_snippet = cogl_snippet_new (COGL_SNIPPET_HOOK_FRAGMENT,
++                                     blur_alpha_mask_declarations,
++                                     blur_alpha_mask_source);
++  snippet = mask_snippet;
 +  cogl_pipeline_add_snippet (pipeline, snippet);
-+  g_object_unref (snippet);
 +
 +  gain_uniform = cogl_pipeline_get_uniform_location (pipeline,
 +                                                     "blur_alpha_mask_gain");
