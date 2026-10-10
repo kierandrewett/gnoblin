@@ -64,7 +64,7 @@ their fallback behavior.
 ## Verify a change
 
 Use the [devkit](/devkit) to inspect the rendered result with the shell client
-that owns the layer surface. `just test-all` builds the standalone session and
-runs native runtime checks; it does not test a shell client's rendered blur.
+that owns the layer surface. `make` builds the standalone session and `make test`
+runs native runtime checks; neither tests a shell client's rendered blur.
 See [testing](/testing) for available checks and their limits.
 Provide the matching Bingux effects module through `QML_IMPORT_PATH`.

@@ -42,6 +42,15 @@ def install_monolithic_compositor(prefix, inputs):
     shutil.copy2(inputs["GNOBLIN_BINARY"], compositor)
 
 
+def write_public_entries(prefix):
+    """Write the list of public files, as the build does after it installs the session."""
+    subprocess.run(
+        ["cmake", f"-DGNOBLIN_PREFIX={prefix}", "-P", str(ROOT / "cmake/write-public-entries.cmake")],
+        check=True,
+        capture_output=True,
+    )
+
+
 class IsolationTests(unittest.TestCase):
     def test_source_install_removes_known_legacy_shell_files_only(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -64,7 +73,7 @@ class IsolationTests(unittest.TestCase):
             install_monolithic_compositor(prefix, inputs)
 
             subprocess.run(
-                ["bash", str(ROOT / "scripts/install-session.sh"), str(prefix)],
+                ["cmake", f"-DGNOBLIN_PREFIX={prefix}", "-P", str(ROOT / "cmake/install-session.cmake")],
                 env={**os.environ, **inputs},
                 check=True,
                 capture_output=True,
@@ -74,77 +83,75 @@ class IsolationTests(unittest.TestCase):
                 self.assertFalse((prefix / relative).exists(), relative)
             self.assertEqual(marker.read_text(), "preserve local data\n")
 
-    def test_local_registration_preserves_stock_units(self):
+    def test_install_copies_a_staged_build_and_keeps_stock_units(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
-            prefix = base / "runtime"
+            # The prefix has its own parent, as /usr/local/lib/gnoblin does. The loader check hides that parent in a
+            # private mount namespace, so the stage must not be inside it.
+            prefix = base / "prefixes/runtime"
+            prefix.parent.mkdir()
+            stage = base / "stage"
             config = base / "config"
             units = config / "systemd/user"
             units.mkdir(parents=True)
             stock = units / "org.gnome.Shell@wayland.service"
             stock.write_text("stock GNOME unit\n")
+            # An old registration linked the units from the source directory. They must go, because they win over
+            # the installed copy. A link that does not point into a Gnoblin prefix must stay.
+            old_unit = units / "gnoblin-idle.service"
+            old_unit.symlink_to("/old/checkout/install/lib/systemd/user/gnoblin-idle.service")
+            foreign = units / "gnoblin-session.target"
+            foreign.symlink_to("/somewhere/else/session.target")
             fake_bin = base / "bin"
             fake_bin.mkdir()
             systemctl = fake_bin / "systemctl"
-            systemctl.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$TEST_SYSTEMCTL_LOG"\n')
+            systemctl.write_text('#!/bin/sh\nprintf "systemctl %s\\n" "$*" >> "$TEST_CALLS"\n')
             systemctl.chmod(0o755)
             sudo = fake_bin / "sudo"
-            sudo.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> "$TEST_SYSTEMCTL_LOG"\n')
+            sudo.write_text(
+                '#!/bin/sh\nprintf "sudo %s\\n" "$*" >> "$TEST_CALLS"\n[ "$1" = tar ] && cat > /dev/null\nexit 0\n'
+            )
             sudo.chmod(0o755)
-            dbus_update_environment = fake_bin / "dbus-update-activation-environment"
-            dbus_update_environment.write_text("#!/bin/sh\nexit 0\n")
-            dbus_update_environment.chmod(0o755)
-            gnome_session = fake_bin / "gnome-session"
-            gnome_session.write_text("#!/bin/sh\nexit 0\n")
-            gnome_session.chmod(0o755)
             env = {
                 **os.environ,
                 "HOME": str(base / "home"),
                 "XDG_CONFIG_HOME": str(config),
                 "GNOBLIN_LIBDIR": "lib64",
+                "GNOBLIN_BIN_DIR": str(base / "usr-local-bin"),
+                "GNOBLIN_SYSTEM_ROOT": str(base / "usr"),
                 "PATH": f"{fake_bin}:{os.environ['PATH']}",
-                "TEST_SYSTEMCTL_LOG": str(base / "calls"),
+                "TEST_CALLS": str(base / "calls"),
             }
             inputs = session_build_inputs(base)
-            install_monolithic_compositor(prefix, inputs)
+            # The build puts the runtime below the stage, as DESTDIR does.
+            staged = stage / prefix.relative_to("/")
+            install_monolithic_compositor(staged, inputs)
             env.update(inputs)
+            env["GNOBLIN_STAGE_ROOT"] = str(stage)
             subprocess.run(
-                ["bash", str(ROOT / "scripts/install-session.sh"), str(prefix)],
+                ["cmake", f"-DGNOBLIN_PREFIX={prefix}", "-P", str(ROOT / "cmake/install-session.cmake")],
                 env=env,
                 check=True,
                 capture_output=True,
             )
-            subprocess.run(
-                ["bash", str(ROOT / "scripts/register-session.sh"), str(prefix)],
+            write_public_entries(staged)
+            result = subprocess.run(
+                ["bash", str(ROOT / "scripts/register-session.sh"), str(prefix), str(stage)],
                 env=env,
                 check=True,
                 capture_output=True,
-            )
-            self.assertEqual(stock.read_text(), "stock GNOME unit\n")
-            core_registration = (base / "calls").read_text()
-            self.assertIn("gnoblin-session.target", core_registration)
-            self.assertNotIn("gnoblin-recovery.service", core_registration)
-            self.assertNotIn("xdg-desktop-portal-gnoblin.service", core_registration)
-            for relative in (
-                "lib/systemd/user/xdg-desktop-portal-gnoblin.service",
-                "libexec/xdg-desktop-portal-gnoblin",
-                "share/xdg-desktop-portal/portals/gnoblin.portal",
-                "share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service",
-            ):
-                destination = prefix / relative
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                destination.write_text("portal fixture\n")
-            subprocess.run(
-                ["bash", str(ROOT / "scripts/register-session.sh"), str(prefix)],
-                env=env,
-                check=True,
-                capture_output=True,
+                text=True,
             )
             self.assertEqual(stock.read_text(), "stock GNOME unit\n")
             calls = (base / "calls").read_text()
             self.assertNotIn("org.gnome.Shell", calls)
-            self.assertIn("gnoblin-session.target", calls)
-            self.assertIn("xdg-desktop-portal-gnoblin.service", calls)
+            self.assertIn(f"sudo tar -C {prefix} --no-overwrite-dir -xpf -", calls)
+            self.assertIn(f"{base}/usr/lib/systemd/user/gnoblin-session.target", calls)
+            self.assertIn(f"ln -sfn {prefix}/bin/gnoblinctl {base}/usr-local-bin/gnoblinctl", calls)
+            self.assertNotIn("xdg-desktop-portal-gnoblin.service", calls)
+            self.assertFalse(old_unit.is_symlink())
+            self.assertTrue(foreign.is_symlink())
+            self.assertIn("Left", result.stderr)
 
     def test_rejects_stock_files_and_capabilities(self):
         for path in (
@@ -348,8 +355,8 @@ class IsolationTests(unittest.TestCase):
         self.assertIn("BuildRequires: pkgconfig(gsettings-desktop-schemas) >= 49.1", gnoblin)
         self.assertIn("BuildRequires:  pkgconfig(lua)", gnoblin)
         self.assertIn("Requires:       gsettings-desktop-schemas >= 49.1", gnoblin)
-        component_build = (ROOT / "scripts/build-component.sh").read_text()
-        self.assertIn('export GI_GIR_PATH="$installed_prefix/share/gir-1.0', component_build)
+        component_build = (ROOT / "cmake/component-build.cmake").read_text()
+        self.assertIn('component_env_prepend(GI_GIR_PATH "${installed_prefix}/share/gir-1.0")', component_build)
         runtime_env = (ROOT / "src/tools/gnoblin-env.sh").read_text()
         self.assertNotIn("GI_TYPELIB_PATH", runtime_env)
         build_order = [
@@ -363,21 +370,20 @@ class IsolationTests(unittest.TestCase):
 
     def test_system_install_defaults_to_official_copr(self):
         installer = (ROOT / "scripts/install-system.sh").read_text()
-        justfile = (ROOT / "Justfile").read_text()
+        makefile = (ROOT / "Makefile").read_text()
         self.assertIn("SOURCE=copr", installer)
         self.assertIn('dnf copr enable -y "$copr"', installer)
         self.assertIn('dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"', installer)
         self.assertIn('packages=("gnoblin:$META_VERSION"', installer)
         self.assertIn("gnoblin) project=gnoblin", installer)
         self.assertIn("install --refresh gnoblin", (ROOT / ".github/workflows/verify.yml").read_text())
-        self.assertIn("install-fedora:", justfile)
-        self.assertIn("./scripts/install-system.sh", justfile)
-        self.assertNotIn('"--local-rpms"', justfile)
+        # No task passes a local RPM option to the COPR installer.
+        self.assertNotIn("--local-rpms", makefile)
         self.assertIn("scripts/legacy/gnome-session@gnoblin.target.d.conf", installer)
 
     def test_system_installer_removes_only_the_exact_legacy_gnome_dropin(self):
         installer = (ROOT / "scripts/install-system.sh").read_text()
-        session_installer = (ROOT / "scripts/install-session.sh").read_text()
+        session_installer = (ROOT / "cmake/install-session.cmake").read_text()
 
         self.assertNotIn("gnoblin-recovery.service", installer)
         self.assertIn('cmp -s "$LEGACY_GNOME_SESSION_DROPIN"', installer)

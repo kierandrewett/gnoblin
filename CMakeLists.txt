@@ -152,7 +152,8 @@ add_custom_target(gnoblinctl-identity
     $<$<NOT:$<BOOL:${GNOBLIN_WITH_PORTAL}>>:--without-portal>
     --ini-output "${CMAKE_BINARY_DIR}/gnoblin-version.ini"
   BYPRODUCTS "${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
-    "${CMAKE_BINARY_DIR}/gnoblin-version.ini")
+    "${CMAKE_BINARY_DIR}/gnoblin-version.ini"
+  COMMENT "Write the build identity")
 add_dependencies(gnoblinctl gnoblinctl-identity)
 target_compile_definitions(gnoblinctl PRIVATE
   GNOBLIN_NATIVE_CONTROL_API_MAJOR=${GNOBLIN_NATIVE_CONTROL_API_MAJOR}
@@ -191,9 +192,13 @@ if(GNOBLIN_VECTOR_CURSORS)
   list(APPEND GNOBLIN_REQUIREMENTS_OPTIONS --with-vector-cursors)
 endif()
 
+# The source steps (prepare, patch, overlay) are script-mode CMake files. See cmake/source-step.cmake.
+set(GNOBLIN_SOURCE_STEP "${PROJECT_SOURCE_DIR}/cmake/source-step.cmake")
+
 foreach(name IN ITEMS mutter xdg-desktop-portal-gnome)
   add_custom_target("prepare-${name}-source"
-    COMMAND "${PROJECT_SOURCE_DIR}/scripts/prepare-build-sources.sh" "${GNOBLIN_SOURCE_MODE}" "${name}"
+    COMMAND "${CMAKE_COMMAND}" -DACTION=prepare "-DSOURCE_MODE=${GNOBLIN_SOURCE_MODE}" "-DPROJECTS=${name}"
+      -P "${GNOBLIN_SOURCE_STEP}"
     WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
     USES_TERMINAL
     COMMENT "Prepare pinned ${name} source")
@@ -204,8 +209,8 @@ foreach(name IN ITEMS mutter xdg-desktop-portal-gnome)
     COMMENT "Check ${name} development libraries")
 endforeach()
 add_custom_target(prepare-gsettings-desktop-schemas-source
-  COMMAND "${PROJECT_SOURCE_DIR}/scripts/prepare-build-sources.sh"
-    "${GNOBLIN_SOURCE_MODE}" gsettings-desktop-schemas
+  COMMAND "${CMAKE_COMMAND}" -DACTION=prepare "-DSOURCE_MODE=${GNOBLIN_SOURCE_MODE}"
+    -DPROJECTS=gsettings-desktop-schemas -P "${GNOBLIN_SOURCE_STEP}"
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
   USES_TERMINAL
   COMMENT "Prepare pinned gsettings-desktop-schemas metadata source")
@@ -227,15 +232,26 @@ function(gnoblin_component name)
     PATCH_COMMAND ""
     CONFIGURE_COMMAND ""
     BUILD_ALWAYS TRUE
-    BUILD_COMMAND "${PROJECT_SOURCE_DIR}/scripts/build-component.sh" "${name}"
-      "${PROJECT_SOURCE_DIR}" "${CMAKE_BINARY_DIR}" "${GNOBLIN_PREFIX}"
-      "${GNOBLIN_LIBDIR}" "${GNOBLIN_BUILD_TYPE}" "${GNOBLIN_DEVKIT}" "${GNOBLIN_JOBS}" "${GNOBLIN_SOURCE_MODE}"
-      "${GNOBLIN_STAGE_ROOT}" "${GNOBLIN_XWAYLAND}"
-      "${GNOBLIN_VECTOR_CURSORS}"
+    BUILD_COMMAND "${CMAKE_COMMAND}" "-DNAME=${name}" "-DROOT=${PROJECT_SOURCE_DIR}"
+      "-DBUILD_ROOT=${CMAKE_BINARY_DIR}" "-DPREFIX=${GNOBLIN_PREFIX}" "-DLIBDIR=${GNOBLIN_LIBDIR}"
+      "-DBUILDTYPE=${GNOBLIN_BUILD_TYPE}" "-DDEVKIT=${GNOBLIN_DEVKIT}" "-DJOBS=${GNOBLIN_JOBS}"
+      "-DSTAGE_ROOT=${GNOBLIN_STAGE_ROOT}" "-DXWAYLAND=${GNOBLIN_XWAYLAND}"
+      "-DVECTOR_CURSORS=${GNOBLIN_VECTOR_CURSORS}" "-DPYTHON=${Python3_EXECUTABLE}"
+      -P "${PROJECT_SOURCE_DIR}/cmake/component-build.cmake"
     INSTALL_COMMAND ""
     DEPENDS "check-${name}-requirements" ${COMPONENT_UNPARSED_ARGUMENTS}
     EXCLUDE_FROM_ALL "${exclude_from_all}"
     USES_TERMINAL_BUILD TRUE)
+  if(GNOBLIN_SOURCE_MODE STREQUAL "checkout")
+    # Reset the submodule to its tag and apply the overlay and patches, but only when their inputs changed.
+    ExternalProject_Add_Step("${name}" gnoblin-sources
+      COMMAND "${CMAKE_COMMAND}" -DACTION=component-sources "-DPROJECT=${name}" "-DBUILD_ROOT=${CMAKE_BINARY_DIR}"
+        -P "${GNOBLIN_SOURCE_STEP}"
+      DEPENDEES patch
+      DEPENDERS configure
+      ALWAYS TRUE
+      USES_TERMINAL TRUE)
+  endif()
 endfunction()
 
 gnoblin_component(mutter prepare-gsettings-desktop-schemas-source)
@@ -248,7 +264,8 @@ add_custom_target(gnoblin-session
     "GNOBLINCTL_BINARY=$<TARGET_FILE:gnoblinctl>"
     "GNOBLIN_IDENTITY_FILE=${CMAKE_BINARY_DIR}/gnoblinctl-identity.json"
     "GNOBLIN_VERSION_METADATA_FILE=${CMAKE_BINARY_DIR}/gnoblin-version.ini"
-    "${PROJECT_SOURCE_DIR}/scripts/install-session.sh" "${GNOBLIN_PREFIX}"
+    "${CMAKE_COMMAND}" "-DGNOBLIN_PREFIX=${GNOBLIN_PREFIX}" "-DGNOBLIN_BINARY_DIR=${CMAKE_BINARY_DIR}"
+    -P "${PROJECT_SOURCE_DIR}/cmake/install-session.cmake"
   DEPENDS mutter gnoblin-idle gnoblinctl
   USES_TERMINAL
   COMMENT "Install the standalone Gnoblin session")
@@ -263,15 +280,25 @@ add_custom_target(standalone-session ALL DEPENDS gnoblin-session xdg-desktop-por
 if(NOT GNOBLIN_LAYOUT MATCHES "^(private|system)$")
   message(FATAL_ERROR "GNOBLIN_LAYOUT must be private or system")
 endif()
+# The public files are found in the finished prefix and listed in share/gnoblin/public-entries.txt, so "make install" and
+# the system layout both work from what was built. See cmake/public-entries.cmake.
+add_custom_target(gnoblin-public-entries ALL
+  COMMAND "${CMAKE_COMMAND}" "-DGNOBLIN_PREFIX=${GNOBLIN_PREFIX}" "-DGNOBLIN_STAGE_ROOT=${GNOBLIN_STAGE_ROOT}"
+    -P "${PROJECT_SOURCE_DIR}/cmake/write-public-entries.cmake"
+  COMMENT "List the public files")
+add_dependencies(gnoblin-public-entries gnoblin-session)
+if(GNOBLIN_WITH_PORTAL)
+  add_dependencies(gnoblin-public-entries xdg-desktop-portal-gnome)
+endif()
+add_dependencies(standalone-session gnoblin-public-entries)
+
 add_custom_target(gnoblin-system-layout
   COMMAND "${CMAKE_COMMAND}" -E env "GNOBLIN_STAGE_ROOT=${GNOBLIN_STAGE_ROOT}"
-    "${PROJECT_SOURCE_DIR}/scripts/install-system-layout.sh" "${GNOBLIN_PREFIX}" "${GNOBLIN_SYSTEM_PREFIX}"
+    "${CMAKE_COMMAND}" "-DGNOBLIN_PRIVATE_PREFIX=${GNOBLIN_PREFIX}" "-DGNOBLIN_SYSTEM_PREFIX=${GNOBLIN_SYSTEM_PREFIX}"
+    -P "${PROJECT_SOURCE_DIR}/cmake/system-layout.cmake"
   USES_TERMINAL
   COMMENT "Install the system layout")
-add_dependencies(gnoblin-system-layout gnoblin-session)
-if(GNOBLIN_WITH_PORTAL)
-  add_dependencies(gnoblin-system-layout xdg-desktop-portal-gnome)
-endif()
+add_dependencies(gnoblin-system-layout gnoblin-public-entries)
 
 # One target that builds every test program, plus gnoblinctl, which the CLI tests run. It collects the targets whose names
 # end in -test, so a test added later is built without a change to any workflow. Run it, then ctest.

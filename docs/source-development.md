@@ -10,7 +10,7 @@ The default command builds the standalone session. It uses the portal frontend
 and backend installed on your system:
 
 ```sh
-./build.sh
+make
 ```
 
 To include Gnoblin's GTK-based portal backend, use:
@@ -31,7 +31,7 @@ To rebuild one upstream component, select its CMake target:
 ```
 
 Each target prepares its pinned source and checks its own development
-dependencies. Use the default command after rebuilding to install the complete
+dependencies. Use the default command after rebuilding to write the complete
 session into the selected prefix.
 
 Native compositor changes require a fresh session. A Lua config reload does not
@@ -43,8 +43,13 @@ the [runtime API reference](/config/runtime-api) and [event catalog](/config/lua
 Build the nested viewer when needed and start a private Gnoblin session:
 
 ```sh
-./build.sh --preview
+make preview
 ```
+
+`make preview` runs the build that `make` wrote to `build/stage`, so run `make`
+first. It shows the stage at the install prefix inside a private mount
+namespace, which needs no root access and leaves the host unchanged. Inside the
+preview, the directory above the prefix shows only the staged build.
 
 The preview uses a temporary home, config, data, cache, state, runtime
 directory, and D-Bus session. It still uses the host Wayland display and may
@@ -53,7 +58,15 @@ sandbox. See the [devkit guide](/devkit) for options and isolation details.
 
 ## Choose a prefix
 
-The default build prefix is `./install`, with libraries in `lib64`.
+`make` builds for the prefix `/usr/local/lib/gnoblin`. Set `PREFIX=DIR` to use
+another prefix. The binaries have the prefix compiled in, so use the same
+`PREFIX` for `make` and `make install`.
+
+- `make install` copies the build to the prefix.
+- `make clean` deletes `build/` but leaves the installed copy.
+
+`./build.sh` is separate. Its default build prefix is `./install`, with libraries
+in `lib64`.
 
 ```sh
 GNOBLIN_LIBDIR=lib ./build.sh --prefix /tmp/gnoblin
@@ -62,7 +75,8 @@ GNOBLIN_LIBDIR=lib ./build.sh --prefix /tmp/gnoblin
 
 `GNOBLIN_LIBDIR` is relative to the prefix. Use the same prefix for subsequent
 build and preview commands. System prefixes `/usr` and `/usr/local` are
-rejected. To add the built session to your login screen, run:
+rejected. To add a prefix that already holds the runtime to your login screen,
+without a copy, run:
 
 ```sh
 ./build.sh --prefix /tmp/gnoblin --register-session
@@ -81,11 +95,11 @@ See [permission policy](/guides/permissions) when testing remote access.
 Run deterministic checks and the native runtime tests with:
 
 ```sh
-just check
-just test-runtime
+make check
+make test
 ```
 
-Use `just test-preview` for an isolated live session. It requires a working
+Use `tests/test-gnoblin-devkit.sh` for an isolated live session. It requires a working
 Wayland desktop and a current build. A successful build or CTest run does not
 verify login on a real seat; see [hardware verification](real-hardware-verification.md).
 

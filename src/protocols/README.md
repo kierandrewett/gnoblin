@@ -1,7 +1,7 @@
 # Wayland Protocol Overlays
 
 `src/protocols/` contains Gnoblin-owned Mutter overlay code. These sources are
-not built in place. `scripts/copy-overlay.sh` copies the paths declared by each
+not built in place. The `overlay` step in `cmake/source-step.cmake` copies the paths declared by each
 `manifest` into the Mutter checkout before the patch stack adds Meson and
 startup wiring.
 
@@ -38,7 +38,6 @@ remains XML only and does not register a global.
 6. Add a focused protocol client under `tests/` and include it in
    `tests/test-protocol-boundaries.sh`.
 
-Run `just test-protocols` for protocol contracts,
-`just test-stock-gnome` for session scoping, and
-`just test-protocol-gating` for the configuration gate. Run
-`just test-window-manager` on a real host before release.
+Run `tests/test-protocol-boundaries.sh` for the protocol contracts and
+`tests/test-protocol-gating.sh` for the configuration gate. Run
+`tests/test-window-manager.sh` on a real host before release.

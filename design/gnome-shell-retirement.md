@@ -6,14 +6,14 @@ GNOME Shell build or compatibility layer.
 ## Build boundary
 
 The source build prepares and builds Mutter and `xdg-desktop-portal-gnome`.
-`scripts/prepare-build-sources.sh` and `scripts/apply-patches.sh` accept only
+The `prepare` and `apply-patches` steps in `cmake/source-step.cmake` accept only
 those projects. The GNOME Shell patch tree is not applied, built, packaged, or
 included in the standalone session. Shell patches that remain in the checkout
 are migration history, not active runtime behavior.
 
 Package-isolation checks that install stock GNOME are intentional: they prove
 that installing Gnoblin does not replace a user's GNOME packages. The old
-Shell files removed by `scripts/install-session.sh` are upgrade cleanup for a
+Shell files removed by `cmake/install-session.cmake` are upgrade cleanup for a
 private prefix and should remain until that cleanup is no longer needed.
 
 The old app-shard harness in `tests/e2e/run-app-shard-container.sh` and

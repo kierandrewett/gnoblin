@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class SessionEnvironmentTests(unittest.TestCase):
     def test_desktop_installs_the_c_guardian_as_the_login_command(self):
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        installer = (ROOT / "scripts/install-session.sh").read_text()
+        installer = (ROOT / "cmake/install-session.cmake").read_text()
         desktop = (ROOT / "src/data/session/gnoblin.desktop").read_text()
         runtime = (ROOT / "src/session/gnoblin-runtime.c").read_text()
         portal_policy = (ROOT / "src/permissions/gnoblin-portal-policy.c").read_text()
@@ -26,7 +26,12 @@ class SessionEnvironmentTests(unittest.TestCase):
             runtime.index('g_unsetenv("GNOME_SHELL_SESSION_MODE")'), runtime.index("run_activation_update(sync)")
         )
         self.assertLess(runtime.index("clear_session_mode[]"), runtime.index("run_activation_update(sync)"))
-        self.assertLess(runtime.index("run_activation_update(sync)"), runtime.index("reset_online_accounts_services()"))
+        # Stale D-Bus activated services of the previous session are stopped after the environment is correct.
+        activation = runtime[runtime.index("static gboolean activate_session(") :]
+        activation = activation[: activation.index("\nstatic ", 10)]
+        self.assertLess(
+            activation.index("run_activation_update(sync)"), activation.index("stop_stale_dbus_services();")
+        )
         self.assertIn('"dbus-*-org.gnome.OnlineAccounts@*.service"', runtime)
         self.assertIn('"dbus-*-org.gnome.Identity@*.service"', runtime)
         # Meson builds the compositor and the guardian as one executable through the
@@ -37,13 +42,15 @@ class SessionEnvironmentTests(unittest.TestCase):
         monolithic = (ROOT / "patches/mutter/zz-monolithic-compositor/0001-build-monolithic-gnoblin.patch").read_text()
         self.assertIn("gnoblin_root / 'src/session/gnoblin-runtime.c'", monolithic)
         self.assertIn("gnoblin = executable('gnoblin',", monolithic)
-        self.assertIn('rm -f \\\n    "$INSTALL_PREFIX/libexec/gnoblin-runtime"', installer)
+        self.assertIn("libexec/gnoblin-runtime", installer)
         self.assertIn("Exec=gnoblin", desktop)
         self.assertIn("gnoblin: runtime supervisor:", runtime)
         self.assertIn("spawn_compositor(compositor_path", runtime)
         self.assertIn("return ok;", runtime)
         self.assertNotIn("return ok || !required;", runtime)
-        guardian = runtime[runtime.index("static int session_guardian_main(") : runtime.index("\nint gnoblin_runtime_main(")]
+        guardian = runtime[
+            runtime.index("static int session_guardian_main(") : runtime.index("\nint gnoblin_runtime_main(")
+        ]
         self.assertIn("g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR, NULL)", guardian)
         self.assertLess(
             guardian.index("g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR"),
@@ -60,9 +67,11 @@ class SessionEnvironmentTests(unittest.TestCase):
         worker = runtime[
             runtime.index("static int runtime_worker_main(") : runtime.index("static GPid spawn_runtime_worker(")
         ]
-        self.assertLess(worker.index("gnoblin_config_load_runtime_salvaged("), worker.index("send_config(&runtime, document"))
+        self.assertLess(
+            worker.index("gnoblin_config_load_runtime_salvaged("), worker.index("send_config(&runtime, document")
+        )
         self.assertLess(worker.index("send_config(&runtime, document"), worker.index("const guint8 started = 2;"))
-        self.assertNotIn('install -Dm755 "$GNOBLIN_RUNTIME_BINARY"', installer)
+        self.assertNotIn("GNOBLIN_RUNTIME_BINARY", installer)
         verify = (ROOT / ".github/workflows/verify.yml").read_text()
         self.assertIn('test ! -e "$GNOBLIN_TARBALL_TREE/install/libexec/gnoblin-runtime"', verify)
         self.assertFalse((ROOT / "src/tools/gnoblin").exists())

@@ -173,7 +173,7 @@ def main() -> int:
     rewrite_generated(updated)
     validate(updated, upstream=True)
     print(
-        f"updated {MANIFEST.relative_to(ROOT)} to GNOME {args.major}; rebase patches and run just check-gnome-version"
+        f"updated {MANIFEST.relative_to(ROOT)} to GNOME {args.major}; rebase patches and run ./scripts/gnome-versions.py check --upstream"
     )
     return 0
 

@@ -3,10 +3,13 @@
 set -euo pipefail
 cd -- "$(dirname -- "$(realpath -- "$0")")"
 
-blue='' green='' dim='' reset='' red='' err_reset=''
+blue='' green='' yellow='' bold='' dim='' reset='' out_red='' red='' err_reset=''
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
     blue=$'\033[1;36m'
     green=$'\033[1;32m'
+    yellow=$'\033[1;33m'
+    bold=$'\033[1m'
+    out_red=$'\033[1;31m'
     dim=$'\033[2m'
     reset=$'\033[0m'
 fi
@@ -38,7 +41,7 @@ The build does not change system packages.
   --destdir DIR       Install below DIR, as a package build root. Nothing outside DIR changes.
   --verbose           Stream every build command and its output
   --dry-run           Show stages without changing files
-  --target NAME       Build a CMake target (default: gnoblin-session)
+  --target NAME       Build a CMake target (default: standalone-session)
   --register-session  Add the standalone Gnoblin login
   --preview           Open the compositor viewer and terminal; start a sample
                       Waybar panel when Waybar is installed.
@@ -194,7 +197,7 @@ if "$portal_selected" && "$with_portal" && "$target_selected"; then
     exit 2
 fi
 if ! "$with_portal" && ! "$target_selected"; then
-    target=gnoblin-session
+    target=gnoblin-public-entries
 fi
 case "$layout" in
     private | system) ;;
@@ -241,7 +244,7 @@ if "$register_session"; then
         exit 2
     fi
     if [ ! -f "$prefix/share/wayland-sessions/gnoblin.desktop" ]; then
-        echo 'No source build found. Run ./build.sh first.' >&2
+        printf 'No build found in %s. Run make first, then make install.\n' "$prefix" >&2
         exit 1
     fi
     exec ./scripts/register-session.sh "$prefix"
@@ -254,24 +257,79 @@ if "$preview"; then
     exec ./scripts/run-gnoblin-devkit.sh "$terminal"
 fi
 if "$dry_run"; then
-    printf 'Build Gnoblin from pinned sources.\n'
-    printf '  Output: %s\n' "$prefix"
-    echo "  Layout: $layout"
+    mutter_version="$(./scripts/gnome-versions.py get mutter version 2>/dev/null || echo unknown)"
+    portal_version="$(./scripts/gnome-versions.py get xdg-desktop-portal-gnome version 2>/dev/null || echo unknown)"
+    mutter_patches="$(find patches/mutter -name '*.patch' 2>/dev/null | wc -l)"
+    portal_patches="$(find patches/xdg-desktop-portal-gnome -name '*.patch' 2>/dev/null | wc -l)"
+    printf 'Gnoblin build plan. Nothing has been changed.\n\nSettings\n'
+    case "$source_mode" in
+        checkout) echo '  Sources:         the pinned submodules of this checkout' ;;
+        *) echo '  Sources:         the component archives of a source bundle' ;;
+    esac
+    printf '  Output prefix:   %s\n' "$prefix"
+    printf '  Build directory: %s\n' "$build_dir"
+    echo "  Layout:          $layout"
     if [ "$layout" = system ]; then
-        echo "  System prefix: $system_prefix"
+        echo "  System prefix:   $system_prefix"
     fi
     if [ -n "$destdir" ]; then
-        echo "  Install root: $destdir"
+        echo "  Install root:    $destdir"
     fi
-    echo "  Ninja target: $target"
+    echo "  Ninja target:    $target"
     if "$with_portal"; then
-        echo '  Gnoblin portal backend: included by default'
+        echo '  Portal backend:  included'
     else
-        echo '  Gnoblin portal backend: omitted'
+        echo '  Portal backend:  omitted'
     fi
-    echo "  XWayland: $xwayland"
-    echo "  Vector cursor theme: $vector_cursors"
-    echo "  Development viewer: ${GNOBLIN_DEVKIT:-disabled}"
+    echo "  XWayland:        $xwayland"
+    echo "  Vector cursors:  $vector_cursors"
+    echo "  Nested viewer:   ${GNOBLIN_DEVKIT:-disabled}"
+    if "$target_selected"; then
+        printf '\nThe steps depend on the target %s, so no plan is printed. Run without --target for the full plan.\n' "$target"
+        exit 0
+    fi
+    printf '\nSteps, in order\n'
+    step=1
+    plan_step() {
+        printf '  %d. %s\n' "$step" "$1"
+        step=$((step + 1))
+    }
+    plan_step "Check the tools: cmake, ninja, meson, pkg-config, python3$([ "$source_mode" = checkout ] && echo ', git' || echo ', tar, xz')."
+    plan_step "Configure CMake in $build_dir."
+    if [ "$source_mode" = checkout ]; then
+        plan_step "Prepare the pinned sources. Mutter $mutter_version is reset to its upstream tag, then the overlay is copied and the $mutter_patches patches in patches/mutter are applied as commits."
+        "$with_portal" && plan_step "Do the same for the portal backend $portal_version, with its $portal_patches patches."
+    else
+        plan_step "Unpack the component archives from the bundle's sources/ directory. They already carry the overlay and the patches."
+    fi
+    plan_step "Check that the development libraries the pinned sources need are installed."
+    plan_step "Build Mutter with Meson and install it into the prefix. This is the long step."
+    plan_step "Build gnoblinctl and gnoblin-idle."
+    plan_step "Install the session files into the prefix: the login entry, the systemd units, the man pages and the compiled schemas."
+    "$with_portal" && plan_step "Build the portal backend and install it into the prefix."
+    if [ "$layout" = system ]; then
+        plan_step "Publish the public entries under $system_prefix: command links, session file, units, portal and polkit files, man pages."
+    fi
+    printf '\nWrites\n'
+    if [ -n "$destdir" ]; then
+        printf '  %s%s (the install root, nothing else outside it)\n' "$destdir" "$prefix"
+    else
+        printf '  %s\n' "$prefix"
+    fi
+    echo "  $build_dir and the rest of build/ (logs, temporary files)"
+    if [ "$source_mode" = checkout ]; then
+        if "$with_portal"; then
+            echo '  subprojects/mutter and the portal backend (reset to the pinned tag and patched)'
+        else
+            echo '  subprojects/mutter (reset to the pinned tag and patched)'
+        fi
+    fi
+    printf '\nDoes not touch\n'
+    echo '  your login screen entry (run ./build.sh --register-session, or make install)'
+    echo '  your PATH commands and man page links (the same step makes those)'
+    if [ -z "$destdir" ] && [ "$layout" = private ]; then
+        echo '  /usr and other system paths'
+    fi
     exit 0
 fi
 tools=(cmake ninja meson pkg-config python3)
@@ -299,72 +357,117 @@ export TMPDIR="$PWD/build/tmp"
 mkdir -p "$TMPDIR" build/logs
 log="$PWD/build/logs/build-$(date +%Y%m%d-%H%M%S)-$$.log"
 : >"$log"
-printf '%sBuild log:%s %s\n' "$dim" "$reset" "$log"
+gnoblin_version="$(./scripts/gnoblin-version.py get version 2>/dev/null || true)"
+printf '%sBuilding Gnoblin%s%s\n' "$bold" "${gnoblin_version:+ $gnoblin_version}" "$reset"
+printf '  %-8s %s\n' Prefix "${destdir:+$destdir}$prefix" Log "${log#"$PWD"/}"
+progress_tty=0
+if [ -t 1 ] && [ "${TERM:-dumb}" != dumb ]; then
+    progress_tty=1
+fi
+total_warnings=0
+step_log_offset=0
+SECONDS=0
 
 run_step() {
-    local label="$1" status
+    local label="$1" status started count warning_file took
     shift
-    printf '\n%s==>%s %s\n' "$blue" "$reset" "$label"
+    started=$SECONDS
+    printf '\n%s==>%s %s%s%s\n' "$blue" "$reset" "$bold" "$label" "$reset"
     printf '\n== %s ==\n' "$label" >>"$log"
+    step_log_offset="$(stat -c %s "$log")"
+    warning_file="$TMPDIR/warnings.$$"
+    : >"$warning_file"
     set +e
     if "$verbose"; then
         "$@" 2>&1 | tee -a "$log"
         status=${PIPESTATUS[0]}
     else
+        # Show one line for each top-level step, one progress line for the long Meson builds, and every error. Count
+        # the compiler warnings instead of printing them: the log has them all.
         "$@" 2>&1 | tee -a "$log" | awk \
-            -v blue="$blue" -v dim="$dim" -v reset="$reset" '
+            -v dim="$dim" -v reset="$reset" -v red="$out_red" -v tty="$progress_tty" -v warning_file="$warning_file" '
+            function close_progress() {
+                if (open && tty) printf "\n"
+                open = 0
+            }
             /^\[[0-9]+\/[0-9]+\]/ {
                 split(substr($1, 2, length($1) - 2), step, "/")
                 done = step[1] + 0
                 total = step[2] + 0
+                text = $0
+                sub(/^\[[0-9]+\/[0-9]+\] */, "", text)
+                # CMake prints its own re-check as a two step graph first. It is not the list of steps.
+                if (text ~ /^Re-checking globbed directories/) next
                 if (!top_total) top_total = total
                 if (total == top_total) {
-                    print blue "   " $0 reset
-                    nested_name = ""
+                    close_progress()
                     nested_total = 0
                     last_bucket = -1
-                    if ($0 ~ /Performing build step for/) {
-                        nested_name = $NF
-                        gsub(/[^[:alnum:]_-]/, "", nested_name)
+                    # CMake prints a step for every stage of an external project. Only the build stage matters here.
+                    if (text ~ /^(Completed|No [a-z]+ step|Creating directories for|Performing (configure|install|update|patch|download|mkdir|test))/) next
+                    if (text ~ /^Performing build step for \x27/) {
+                        name = text
+                        sub(/^Performing build step for \x27/, "", name)
+                        sub(/\x27.*/, "", name)
+                        text = "Build " name
                     }
+                    if (text ~ /^Performing gnoblin-sources step for \x27/) {
+                        name = text
+                        sub(/^Performing gnoblin-sources step for \x27/, "", name)
+                        sub(/\x27.*/, "", name)
+                        text = "Patch " name " sources"
+                    }
+                    printf "  %s\n", text
                 } else {
-                    if (!nested_name) nested_name = "Nested build"
                     if (total != nested_total) {
                         nested_total = total
                         last_bucket = -1
                     }
-                    bucket = int(done * 10 / total)
-                    if (bucket > last_bucket && bucket > 0) {
-                        printf "%s   %s: %d%% (%d/%d steps)%s\n", dim, nested_name,
-                            int(done * 100 / total), done, total, reset
-                        last_bucket = bucket
+                    pct = int(done * 100 / total)
+                    if (tty) {
+                        printf "\r\033[K    %s%s %3d%%  (%d of %d)%s", dim, name, pct, done, total, reset
+                        open = 1
+                    } else {
+                        bucket = int(done * 4 / total)
+                        if (bucket > last_bucket && bucket > 0) {
+                            printf "    %s%s %d%% (%d of %d)%s\n", dim, name, pct, done, total, reset
+                            last_bucket = bucket
+                        }
                     }
                 }
                 fflush()
                 next
             }
-            /^FAILED:|: (fatal )?error:|: warning:|: ERROR:|^ninja: build stopped/ {
-                print "   " $0
-                fflush()
-                next
-            }
-            /^-- (Configuring|Generating) done|^-- Build files have been written/ {
-                print "   " $0
+            /: warning:/ { warnings++; next }
+            /^FAILED:|: (fatal )?error:|: ERROR:|^ninja: build stopped/ {
+                close_progress()
+                print "  " red $0 reset
                 fflush()
                 next
             }
             { next }
+            END {
+                close_progress()
+                print warnings + 0 > warning_file
+            }
         '
         status=${PIPESTATUS[0]}
     fi
     set -e
+    count="$(cat "$warning_file" 2>/dev/null || echo 0)"
+    rm -f -- "$warning_file"
+    total_warnings=$((total_warnings + ${count:-0}))
+    if [ "$status" -eq 0 ]; then
+        took=$((SECONDS - started))
+        printf '  %sdone in %ss%s\n' "$dim" "$took" "$reset"
+    fi
     return "$status"
 }
 
 fail_step() {
-    printf '\n%s%s failed%s (exit %s). Full output: %s\n' \
-        "$red" "$1" "$err_reset" "$2" "$log" >&2
-    tail -n 30 "$log" >&2
+    printf '\n%s%s failed%s (exit %s). The end of its output:\n\n' "$red" "$1" "$err_reset" "$2" >&2
+    tail -c "+$((step_log_offset + 1))" "$log" | tail -n 20 | sed 's/^/  /' >&2
+    printf '\nFull log: %s\n' "${log#"$PWD"/}" >&2
     exit "$2"
 }
 
@@ -390,13 +493,8 @@ if run_step 'Build Gnoblin' cmake --build "$build_dir" --parallel "$jobs" --targ
 else
     fail_step 'Build Gnoblin' "$?"
 fi
-printf '\n%sBuild and install complete%s\n' "$green" "$reset"
-printf 'Prefix: %s\n' "$prefix"
-if [ -n "$destdir" ]; then
-    printf 'Install root: %s\n' "$destdir"
-fi
-if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ] || [ "$target" = gnoblin-system-layout ]; then
-    printf 'Installed runtime:\n'
+# Check that the install is complete. Say nothing when it is, and stop with the missing file when it is not.
+if [ "$target" = gnoblin-session ] || [ "$target" = gnoblin-public-entries ] || [ "$target" = standalone-session ] || [ "$target" = gnoblin-system-layout ]; then
     artifacts=(
         bin/gnoblin
         bin/gnoblinctl
@@ -404,6 +502,7 @@ if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ] || [ "$
         share/wayland-sessions/gnoblin.desktop
         lib/systemd/user/gnoblin-session.target
         lib/systemd/user/gnoblin-idle.service
+        share/gnoblin/public-entries.txt
     )
     if "$with_portal" && [ "$target" != gnoblin-session ]; then
         artifacts+=(libexec/xdg-desktop-portal-gnoblin)
@@ -413,39 +512,56 @@ if [ "$target" = gnoblin-session ] || [ "$target" = standalone-session ] || [ "$
             printf 'Missing expected install artifact: %s\n' "$destdir$prefix/$artifact" >&2
             exit 1
         fi
-        printf '  %s\n' "$artifact"
     done
-    if ! "$with_portal"; then
-        printf 'Portal backend: omitted\n'
-    fi
     if [ "$layout" = system ]; then
-        printf 'Public entries (system layout):\n'
-        public_entries=(
-            bin/gnoblin
-            bin/gnoblinctl
-            share/wayland-sessions/gnoblin.desktop
-            share/xdg-desktop-portal/gnoblin-portals.conf
-            lib/systemd/user/gnoblin-session.target
-            lib/systemd/user/gnoblin-idle.service
-        )
-        for entry in "${public_entries[@]}"; do
+        for entry in bin/gnoblin bin/gnoblinctl share/wayland-sessions/gnoblin.desktop \
+            share/xdg-desktop-portal/gnoblin-portals.conf lib/systemd/user/gnoblin-session.target \
+            lib/systemd/user/gnoblin-idle.service; do
             if [ ! -e "$destdir$system_prefix/$entry" ] && [ ! -L "$destdir$system_prefix/$entry" ]; then
                 printf 'Missing expected public entry: %s\n' "$destdir$system_prefix/$entry" >&2
                 exit 1
             fi
-            printf '  %s/%s\n' "$system_prefix" "$entry"
         done
-    else
-        printf 'Login registration: use ./build.sh --register-session\n'
     fi
 fi
-if [ "$layout" = system ]; then
-    :
-elif [ "$prefix" = "$PWD/install" ]; then
-    printf 'Try it: ./build.sh --preview\n'
-    printf 'Add it to your login screen: ./build.sh --register-session\n'
+
+# The summary: what was built, the warning count if there is one, and what to run next. One row per fact.
+if [ "$SECONDS" -ge 60 ]; then
+    took="$((SECONDS / 60))m $((SECONDS % 60))s"
 else
-    printf 'Try it: ./build.sh --prefix %q --preview\n' "$prefix"
-    printf 'Add it to your login screen: ./build.sh --prefix %q --register-session\n' "$prefix"
+    took="${SECONDS}s"
 fi
-printf 'Full output: %s\n' "$log"
+row() { printf '  %-10s %s\n' "$1" "$2"; }
+warn_row() { printf '  %s%-10s %s%s\n' "$yellow" "$1" "$2" "$reset"; }
+
+printf '\n%sBuilt Gnoblin%s%s in %s\n\n' "$green" "${gnoblin_version:+ $gnoblin_version}" "$reset" "$took"
+if [ -n "$destdir" ]; then
+    row Staged "$destdir$prefix"
+else
+    row Installed "$prefix"
+fi
+if [ "$layout" = system ]; then
+    row Public "${destdir:+$destdir}$system_prefix"
+fi
+if [ "$total_warnings" -gt 0 ]; then
+    warn_row Warnings "$total_warnings compiler warnings, listed in ${log#"$PWD"/}"
+fi
+
+if [ "$layout" = private ]; then
+    # make builds for its PREFIX into a stage and installs from there. Another build has no make target, so name the
+    # build.sh commands.
+    if [ -n "${GNOBLIN_VIA_MAKE:-}" ]; then
+        preview_command='make preview'
+        register_command='make install'
+        register_note="Copy it to $prefix and add it to the login screen"
+    elif [ -z "$destdir" ]; then
+        preview_command="./build.sh --prefix $(printf '%q' "$prefix") --preview"
+        register_command="./build.sh --prefix $(printf '%q' "$prefix") --register-session"
+        register_note="Add it to the login screen"
+    fi
+    if [ -n "${register_command:-}" ]; then
+        printf '\n%sNext%s\n' "$bold" "$reset"
+        printf '  %-16s %s\n' "$preview_command" "Try it in a window"
+        printf '  %-16s %s\n' "$register_command" "$register_note"
+    fi
+fi

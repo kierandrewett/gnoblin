@@ -52,7 +52,7 @@ class OpenSUSEPackagingTests(unittest.TestCase):
         self.assertNotIn("gnoblin-recovery", content)
         self.assertIn("BuildRequires:  pkgconfig(xkbcommon)", content)
         self.assertIn("./build.sh --layout system", content)
-        install = (ROOT / "scripts/install-session.sh").read_text()
+        install = (ROOT / "cmake/install-session.cmake").read_text()
         self.assertIn("systemd-user/gnoblin-session.target", install)
         self.assertIn("does not require GNOME Shell or GJS", normalized_content)
         self.assertNotIn("org.gnome.Shell@wayland.service", content)

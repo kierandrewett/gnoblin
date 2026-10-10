@@ -47,7 +47,7 @@ jobs:
       GIT_COMMITTER_EMAIL: release@gnoblin.local
     steps:
       - name: Install release tools
-        run: dnf -y install git meson patch tar xz
+        run: dnf -y install cmake git meson patch tar xz
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}

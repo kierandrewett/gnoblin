@@ -5,7 +5,7 @@
 #        tests/system-layout.test.sh --stage STAGE_ROOT
 #
 # With BUILT_PREFIX, a private prefix made by ./build.sh (default: ./install), the test copies it into a scratch stage
-# root as /usr/lib/gnoblin and runs scripts/install-system-layout.sh on it. With --stage, it checks a stage root that
+# root as /usr/lib/gnoblin and runs cmake/system-layout.cmake on it. With --stage, it checks a stage root that
 # ./build.sh --layout system --destdir STAGE_ROOT made, so it tests the real build output. Either way it checks:
 #   - every absolute /usr and /etc path in the %files sections of the RPM specs exists in the stage root;
 #   - the command links, the session file, the polkit action and the schema cache are right;
@@ -62,7 +62,7 @@ check() {
     if ! "$STAGED_BY_BUILD"; then
         mkdir -p "$STAGE$PRIVATE"
         cp -a "$BUILT/." "$STAGE$PRIVATE/"
-        GNOBLIN_LAYOUT_GEOCLUE=1 GNOBLIN_STAGE_ROOT="$STAGE" "$ROOT/scripts/install-system-layout.sh" "$PRIVATE" /usr >/dev/null
+        GNOBLIN_LAYOUT_GEOCLUE=1 GNOBLIN_STAGE_ROOT="$STAGE" cmake -DGNOBLIN_PRIVATE_PREFIX="$PRIVATE" -DGNOBLIN_SYSTEM_PREFIX=/usr -P "$ROOT/cmake/system-layout.cmake" >/dev/null
     fi
 
     # The recipes' own file lists are the contract. Take every literal /usr and /etc path from their %files sections.
@@ -99,7 +99,7 @@ check() {
 
     if ! "$STAGED_BY_BUILD"; then
         before="$(cd "$STAGE" && find . \( -type f -o -type l \) -print0 | sort -z | xargs -0 sha256sum 2>/dev/null | sha256sum)"
-        GNOBLIN_LAYOUT_GEOCLUE=1 GNOBLIN_STAGE_ROOT="$STAGE" "$ROOT/scripts/install-system-layout.sh" "$PRIVATE" /usr >/dev/null
+        GNOBLIN_LAYOUT_GEOCLUE=1 GNOBLIN_STAGE_ROOT="$STAGE" cmake -DGNOBLIN_PRIVATE_PREFIX="$PRIVATE" -DGNOBLIN_SYSTEM_PREFIX=/usr -P "$ROOT/cmake/system-layout.cmake" >/dev/null
         after="$(cd "$STAGE" && find . \( -type f -o -type l \) -print0 | sort -z | xargs -0 sha256sum 2>/dev/null | sha256sum)"
         check "a second run changes nothing" "$after" "$before"
 
@@ -107,7 +107,7 @@ check() {
         PLAIN="$(mktemp -d "${TMPDIR:-/tmp}/gnoblin-layout-plain.XXXXXX")"
         mkdir -p "$PLAIN$PRIVATE"
         cp -a "$BUILT/." "$PLAIN$PRIVATE/"
-        GNOBLIN_STAGE_ROOT="$PLAIN" "$ROOT/scripts/install-system-layout.sh" "$PRIVATE" /usr >/dev/null
+        GNOBLIN_STAGE_ROOT="$PLAIN" cmake -DGNOBLIN_PRIVATE_PREFIX="$PRIVATE" -DGNOBLIN_SYSTEM_PREFIX=/usr -P "$ROOT/cmake/system-layout.cmake" >/dev/null
         check "GeoClue is left out unless the recipe asks for it" \
             "$([ -e "$PLAIN/etc/geoclue/conf.d/50-gnoblin.conf" ] && echo present || echo absent)" "absent"
         rm -rf -- "$PLAIN"

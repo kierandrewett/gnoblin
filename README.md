@@ -88,14 +88,18 @@ required.
 ## Get started
 
 Download the source tarball from a [Gnoblin release](https://github.com/kierandrewett/gnoblin/releases),
-extract it, and run `./build.sh` from the extracted directory. A Git checkout
+extract it, and run `make` from the extracted directory. A Git checkout
 uses the same command. The build uses compatible development libraries from
-your distribution and keeps the compositor and native runtime in a private
-prefix. Add `--with-portal` to build Gnoblin's GTK-based portal backend too.
+your distribution. `make` builds the compositor and native runtime for
+`/usr/local/lib/gnoblin` and installs nothing. The build includes Gnoblin's
+GTK-based portal backend.
 
-After building, run `./build.sh --register-session` to add the lean login to
-the session picker. The [source instructions](docs/install-source.md) cover
-prerequisites and login setup.
+After building, run `make install`. It asks for sudo, copies the build to
+`/usr/local/lib/gnoblin` and adds the lean login to the session picker. The
+install is permanent, so you can then delete the source directory. The
+[source instructions](docs/install-source.md) cover prerequisites and login
+setup. `make preview` tries the build in a window first, and
+`./build.sh --dry-run` shows what a build would change before you run it.
 
 [Install](docs/installation.md) on Fedora, Arch, openSUSE, NixOS or from source, or
 [try a nested session](docs/devkit.md) without logging out.

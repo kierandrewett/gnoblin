@@ -9,22 +9,35 @@ the Bingux repository.
 
 First install the dependencies listed in the
 [source installation guide](docs/install-source.md).
-Build the pinned upstream sources into a separate prefix:
+Build the pinned upstream sources for the install prefix:
 
 ```sh
-./build.sh
+GNOBLIN_DEVKIT=enabled ./build.sh --dry-run   # read what make will change
+make                   # build for /usr/local/lib/gnoblin into build/stage, with the nested viewer; installs nothing
+make preview           # run the staged build in a nested window, without root
+make install           # after make: copy the build to the prefix and add the login entry (asks for sudo)
 ```
+
+`./build.sh` is the build, and `make` is a short way to run it with
+`--prefix`, `--destdir build/stage` and the build directory `build/make`.
+Set `PREFIX=DIR` to use another prefix, and use the same value for `make` and
+`make install`. A plain `./build.sh` still builds a private prefix in
+`./install`. The [scripts map](scripts/README.md)
+says what each script does and who runs it.
 
 Run the fast checks before sending a change:
 
 ```sh
-just check
-just test-session
+make check
+make test    # build the tests, then run the CTest suites
 ```
 
-Use `just test-all` for a fresh build plus the full headless suite. Use `just test-release` only
-when the real-host and RPM gates are required. The testing guide records which
+Run `tests/test-window-manager.sh` only when the real-host and RPM gates are required. The testing guide records which
 checks need a real seat, hardware or a running private session.
+
+Before you merge a change to `release.yml`, the packages or their generator, run
+`gh workflow run release.yml --ref BRANCH -f dry_run=true`. The package jobs and install
+checks run only on `main` and on tags, so a pull request does not reach them.
 
 Strict scheduled and manually dispatched app E2E failures create or update a
 Beads/GitHub compatibility issue with the failed outcomes and workflow
@@ -52,7 +65,7 @@ build or patch GNOME Shell. For uncommitted tracked changes, use
 For a patch that follows existing patches on the same lines, use a temporary
 subproject worktree. Apply the earlier patches, stage that state as the baseline,
 make the new edit, then export with `--source-tree WORKTREE --against-index`.
-`scripts/apply-patches.sh` checks every patch header before use.
+The `apply-patches` step (`cmake/source-step.cmake`) checks every patch header before use.
 
 ## Packaging
 

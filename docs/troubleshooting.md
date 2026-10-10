@@ -11,8 +11,8 @@ For Fedora, check the session package:
 rpm -q gnoblin
 ```
 
-For source builds, run `./build.sh --register-session` after building.
-It asks for sudo to add the login entry. See [session registration](install-source.md#login-session).
+For source builds, run `make` and then `make install`.
+It asks for sudo to copy the build to its prefix and add the login entry. See [session registration](install-source.md#login-session).
 
 ## The source build returns to the login screen
 
@@ -34,21 +34,23 @@ Also check the session journal:
 journalctl -b --no-pager -g gnoblin
 ```
 
-If it reports a missing Gnoblin or Mutter library, run `./build.sh` to install
-the current build. Meson installs the executable with paths to its private
-libraries. Copying an executable directly from `build/` can leave build-directory
-library paths that fail under the login manager.
+If it reports a missing Gnoblin or Mutter library, run `make` and then
+`make install` to install the current build. The binaries have the install
+prefix compiled in. Copying an executable directly from `build/` can leave
+build-directory library paths that fail under the login manager. The `PREFIX`
+for `make` and `make install` must be the same.
 
-Session registration checks that the installed executable can load its
-libraries without a developer's `LD_LIBRARY_PATH`. Register again only if the
-build prefix or login entry changed.
+`make install` checks that the executable can load its libraries without a
+developer's `LD_LIBRARY_PATH`. Run it again after a rebuild or if the login
+entry changed.
 
-Keep the extracted source directory after registration; the login entry runs
-its private binaries from that directory.
+The install does not need the source directory. If you installed with an older
+version of the build, run `make install` again. It removes the old links in your
+home directory that point into the source directory.
 
 Gnoblin does not register with GDM through GNOME Session. Its login entry must
 use `X-GDM-SessionRegisters=false`. If GDM reports “Session never registered,”
-update the entry with `./build.sh --register-session`.
+update the entry with `make install`.
 
 If no configuration exists, Gnoblin loads its built-in Lua configuration. Run
 `gnoblinctl init` to create an editable configuration tree from the copy

@@ -12,14 +12,16 @@ removal checks before they can be called package candidates.
 
 Download the `gnoblin-*-source.tar.xz` asset from a
 [Gnoblin release](https://github.com/kierandrewett/gnoblin/releases), extract
-it, and run `./build.sh` inside the extracted directory. This is the primary
+it, and run `make` inside the extracted directory. This is the primary
 installation path. It needs development libraries at the versions required by
 the pinned sources, but does not need Git or an installed GNOME Shell package.
 See [source build prerequisites and login setup](install-source.md).
 
-After building, `./build.sh --register-session` adds the lean login entry.
+After building, `make install` copies the build to `/usr/local/lib/gnoblin` and
+adds the lean login entry. The install does not need the source directory.
 GNOME Session and Settings Daemon are optional for this source install.
-Run `./install/bin/gnoblin --version` to see the installed Gnoblin version,
+
+Run `gnoblin --version` to see the installed Gnoblin version,
 source Git remote and commit, and when the build ran. Distribution
 packages also expose this command as `gnoblin --version`.
 Add `--json` after `--version` for a machine-readable build identity.
@@ -27,11 +29,10 @@ Add `--json` after `--version` for a machine-readable build identity.
 Gnoblin has two manual pages, `gnoblin(1)` and `gnoblinctl(1)`:
 
 - A package installs them, so `man gnoblin` works after you install it.
-- A source build puts them in `install/share/man`.
-- `./build.sh --register-session` links them into the `share/man` directory
-  beside the bin directory that holds the `gnoblinctl` link, which is
-  `~/.local/share/man` by default. `man` finds that directory from your `PATH`.
-- Without that step, read one with `man -M ./install/share/man gnoblinctl`.
+- `make install` copies them to `/usr/share/man/man1`, so `man gnoblin` and
+  `man gnoblinctl` work after it.
+- Before `make install`, read one with
+  `man -M build/stage/usr/local/lib/gnoblin/share/man gnoblinctl`.
 
 `gnoblin` is both the login command and the package to install. Its
 Gnoblin runs as the login session and does not require a systemd user manager.
