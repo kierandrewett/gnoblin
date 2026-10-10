@@ -219,7 +219,7 @@ pkgdesc='Optional GTK-based portal backend for Gnoblin sessions'
 arch=('x86_64')
 url='{PROJECT_URL}'
 license=('LGPL-2.1-or-later')
-makedepends=('base-devel' 'gettext' 'glib2-devel' 'glycin' 'gsettings-desktop-schemas' 'gtk4>=4.20.0' 'libadwaita' 'meson' 'ninja' 'pkgconf' 'xdg-desktop-portal>=1.20.0')
+makedepends=('base-devel' 'gettext' 'glib2-devel' 'glycin' 'gsettings-desktop-schemas' 'gtk4>=4.20.0' 'json-glib' 'libadwaita' 'meson' 'ninja' 'pkgconf' 'xdg-desktop-portal>=1.20.0')
 depends=({" ".join(requirements)} 'glycin' 'libadwaita' 'libsecret')
 
 source=("xdg-desktop-portal-gnome-$pkgver.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/xdg-desktop-portal-gnome-$pkgver.tar.xz")
