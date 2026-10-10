@@ -49,10 +49,9 @@ Settings Daemon are not package requirements. The source tarball remains the
 primary install route until a distribution package passes its login gate.
 
 The optional `gnoblin-portal` package provides Gnoblin's GTK-based backend.
-Users can choose another portal instead. The optional integration subpackage
-adds GVfs, GNOME Keyring, and user-directory setup. The GTK folder-name updater
-is separate. Neither package installs applications.
-Arch publishes it as a separate metadata-only PKGBUILD and package archive.
+Users can choose another portal instead. Packages do not install
+applications. [Use GNOME applications](gnome-apps.md) lists the shared desktop
+services to install with your package manager.
 
 ## Prepare the source tarball
 
@@ -135,6 +134,29 @@ the Mutter and portal source archives first, then source RPMs and binary package
 The main tarball builds with `make` and does not need Git or submodules.
 The Fedora source RPM and openSUSE jobs use the component archives inside that
 tarball, after checking the published source assets' SHA-256 sums.
+
+### Release assets
+
+Each release page lists these files. `SHA256SUMS` covers every other file.
+
+| Asset name                                                        | What it is                                            | Used by           |
+| ----------------------------------------------------------------- | ----------------------------------------------------- | ----------------- |
+| `gnoblin-<version>-gnome-<gnome>-source.tar.xz`                   | Complete source tarball, built with `make`            | All distributions |
+| `mutter-<gnome>.tar.xz`                                           | Patched Mutter source archive                         | RPM and Arch      |
+| `xdg-desktop-portal-gnome-<gnome>.tar.xz`                         | Patched portal backend source archive                 | RPM and Arch      |
+| `gnoblin-<version>.PKGBUILD`                                      | Arch recipe for `gnoblin`                             | Arch              |
+| `gnoblin-portal-<portal-version>.PKGBUILD`                        | Arch recipe for `gnoblin-portal`                      | Arch              |
+| `gnoblin-<version>-<pkgrel>-x86_64.pkg.tar.zst`                   | Arch package built from the recipe                    | Arch              |
+| `gnoblin-portal-<portal-version>-<pkgrel>-x86_64.pkg.tar.zst`     | Arch portal package built from the recipe             | Arch              |
+| `gnoblin-<version>-<release>.fc<N>.src.rpm`                       | Fedora source RPM for `gnoblin`, built by COPR        | Fedora            |
+| `gnoblin-portal-<portal-version>-<release>.fc<N>.src.rpm`         | Fedora source RPM for `gnoblin-portal`, built by COPR | Fedora            |
+| `gnoblin-<version>-<release>.tumbleweed.x86_64.rpm`               | Binary RPM for `gnoblin`                              | openSUSE          |
+| `gnoblin-portal-<portal-version>-<release>.tumbleweed.x86_64.rpm` | Binary RPM for `gnoblin-portal`                       | openSUSE          |
+| `SHA256SUMS`                                                      | SHA-256 checksums of all other assets                 | All distributions |
+
+`<gnome>` and `<portal-version>` are the pinned GNOME version, for example
+`51.0`. `<pkgrel>` and `<release>` are separate packaging counters for Arch and
+RPM, so they do not match each other.
 
 A release tag creates a versioned release. A push to `main`, or a manual run
 without a tag, builds and tests everything and publishes nothing. A manual run
