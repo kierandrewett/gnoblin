@@ -107,7 +107,7 @@ index 3fc274ded..c7c57b7bb 100644
 +  gnoblin_root / 'src/portal/backend/gnoblin-portal-policy.c',
 +)
 +gnoblin_session_sources = files(
-+  gnoblin_root / 'src/session/gnoblin-entrypoint.c',
++  gnoblin_root / 'src/main.c',
 +  gnoblin_root / 'src/session/gnoblin-runtime.c',
 +  gnoblin_root / 'src/session/gnoblin-autostart.c',
 +  gnoblin_root / 'src/session/gnoblin-runtime-spawn.c',

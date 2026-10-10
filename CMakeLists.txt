@@ -129,7 +129,7 @@ configure_file(
   COPYONLY)
 
 endif()
-add_executable(gnoblin-idle src/session/gnoblin-idle.c)
+add_executable(gnoblin-idle src/idle.c)
 target_link_libraries(gnoblin-idle PRIVATE PkgConfig::GNOBLIN_CONTROL)
 add_executable(gnoblinctl src/cli/gnoblinctl.c)
 target_link_libraries(gnoblinctl PRIVATE

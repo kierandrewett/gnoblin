@@ -4,6 +4,18 @@ Gnoblin's session runs a Lua supervisor alongside its Mutter compositor.
 Gnoblin owns the runtime, compositor plugin, protocols, configuration, and
 session services in this tree. It does not launch GNOME Shell or require GJS.
 
+## Entry points
+
+Each program starts in one file. Start reading there.
+
+| Program               | Entry file                           | What it does                                                                                                |
+| --------------------- | ------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `gnoblin`             | `main.c`                             | Runs the Lua supervisor from `session/`. With `--gnoblin-runtime-fd` it runs the Mutter compositor instead. |
+| `gnoblin-idle`        | `idle.c`                             | The idle service that the user session target starts.                                                       |
+| `gnoblinctl`          | `cli/gnoblinctl.c`                   | The command line client for the control socket.                                                             |
+| compositor plugin     | `compositor/plugin/gnoblin-plugin.c` | The Mutter plugin loaded into the compositor.                                                               |
+| frame renderer client | `tools/frame-renderer/client.c`      | The example client for the window frame protocol.                                                           |
+
 ## Layout
 
 Each directory holds one area of the product. Directories that hold overlay
@@ -46,8 +58,8 @@ tree (Mutter or the GNOME portal backend).
     - `grants/` — the portal grant cache and `grant.*` operations.
 - `protocols/` — Mutter overlays for Gnoblin's Wayland protocols. The
   directory manifests describe the files copied into the pinned Mutter tree.
-- `session/` — the Lua runtime supervisor, compositor startup, and idle
-  service.
+- `session/` — the Lua runtime supervisor, compositor startup, autostart, and
+  scheduling priority.
 - `tools/` — the `gnoblin` login launcher, environment setup, configuration
   seeder, and the frame renderer client.
 
