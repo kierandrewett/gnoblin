@@ -67,8 +67,8 @@ install_output() {
     done
 }
 
-"$ROOT/packaging/opensuse/check-buildrequires.sh" gnoblin-portal --install
-build gnoblin-portal.spec
+"$ROOT/packaging/opensuse/check-buildrequires.sh" xdg-desktop-portal-gnoblin --install
+build xdg-desktop-portal-gnoblin.spec
 "$ROOT/packaging/opensuse/check-buildrequires.sh" gnoblin --install
 build gnoblin.spec --define "gnoblin_version $gnoblin_version"
 

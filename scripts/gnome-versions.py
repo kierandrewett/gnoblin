@@ -62,7 +62,7 @@ def generated_values(data: dict) -> Tuple[Tuple[Path, str, str], ...]:
     schemas = components["gsettings-desktop-schemas"]
     portal = components["xdg-desktop-portal-gnome"]
     return (
-        (ROOT / "packaging/rpm/gnoblin-portal.spec", r"(?m)^Version:\s+(\S+)$", portal["version"]),
+        (ROOT / "packaging/rpm/xdg-desktop-portal-gnoblin.spec", r"(?m)^Version:\s+(\S+)$", portal["version"]),
         (
             ROOT / "flake.nix",
             r"gitlab\.gnome\.org/GNOME/mutter\.git\?rev=([0-9a-f]{40})",

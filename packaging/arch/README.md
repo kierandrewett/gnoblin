@@ -2,7 +2,7 @@
 
 The `gnoblin` package builds the standalone session and Mutter under
 `/usr/lib/gnoblin`. The GTK-based portal backend is available separately as
-`gnoblin-portal`; you can install a different portal backend instead. The
+`xdg-desktop-portal-gnoblin`; you can install a different portal backend instead. The
 desktop schemas come from Arch and must meet the pinned source's minimum.
 
 It never replaces, provides, or conflicts with Arch's `mutter` or
@@ -17,7 +17,7 @@ Each release publishes these paired assets:
 
 - `gnoblin-<version>-gnome-<gnome-version>-source.tar.xz`
 - `gnoblin-<version>.PKGBUILD`
-- `gnoblin-portal-<portal-version>.PKGBUILD`
+- `xdg-desktop-portal-gnoblin-<portal-version>.PKGBUILD`
 - `xdg-desktop-portal-gnome-<gnome-version>.tar.xz`
 
 The source archive includes the tracked Gnoblin tree, the materialised,

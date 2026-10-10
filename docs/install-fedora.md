@@ -16,12 +16,12 @@ sudo dnf --setopt=install_weak_deps=False install --refresh gnoblin
 `gnoblin` installs the Lua-supervised session, its private Mutter runtime, and
 the portal route for Gnoblin sessions. The session and compositor run from one
 `gnoblin` executable. It does not install GNOME Shell, GJS, or a portal
-backend. Install `gnoblin-portal` to add Gnoblin's GTK-based backend.
+backend. Install `xdg-desktop-portal-gnoblin` to add Gnoblin's GTK-based backend.
 The route uses it when installed and otherwise selects another installed
 backend.
 
 To route individual interfaces to other backends, use the Lua config. Install
-the backend with `sudo dnf install gnoblin-portal`; this command skips packages
+the backend with `sudo dnf install xdg-desktop-portal-gnoblin`; this command skips packages
 recommended by dependencies. Install optional services you need using the
 commands below.
 
@@ -77,10 +77,10 @@ Continue with [configuration](/config).
 sudo dnf upgrade --refresh gnoblin
 ```
 
-If you installed `gnoblin-portal`, update it separately:
+If you installed `xdg-desktop-portal-gnoblin`, update it separately:
 
 ```sh
-sudo dnf upgrade --refresh gnoblin-portal
+sudo dnf upgrade --refresh xdg-desktop-portal-gnoblin
 ```
 
 Log out and back in to load the updated compositor.
@@ -93,8 +93,8 @@ Log into GNOME or another session first, then run:
 sudo dnf remove gnoblin
 ```
 
-If you installed `gnoblin-portal`, remove it with
-`sudo dnf remove gnoblin-portal`.
+If you installed `xdg-desktop-portal-gnoblin`, remove it with
+`sudo dnf remove xdg-desktop-portal-gnoblin`.
 
 Your shell and personal configuration are separate. Remove your desktop shell separately if you no longer want it.
 

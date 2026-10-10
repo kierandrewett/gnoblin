@@ -15,7 +15,7 @@
 
 - Portal routing is already configurable per interface through `gnoblin.configure.portals`; supported backend IDs include `gtk`, `gnome`, `kde`, and `gnoblin`.
 - The session's default `portals.conf` prefers the `gnoblin` backend and falls back to any installed backend. A Lua override can route individual interfaces to stock GNOME, KDE, GTK, or Gnoblin backends.
-- `gnoblin-portal` is currently a separate optional package built from the `xdg-desktop-portal-gnome` subproject. It currently has GTK 4 and libadwaita build/runtime dependencies.
+- `xdg-desktop-portal-gnoblin` is currently a separate optional package built from the `xdg-desktop-portal-gnome` subproject. It currently has GTK 4 and libadwaita build/runtime dependencies.
 - Gnoblin-specific portal sources live under `src/permissions/`. `src/permissions/manifest` overlays policy, identity, file chooser, email, inhibition, and portal service metadata into the upstream GNOME backend source.
 - Gnoblin Mutter has corresponding policy and identity overlays. Its native control currently recognizes the backend bus name `org.freedesktop.impl.portal.desktop.gnoblin` for permission and persistent-grant operations.
 - The public permissions guide states that Gnoblin Lua permission rules apply only when the Gnoblin portal backend handles the request. They do not control requests routed to a different backend, direct Mutter calls, or every portal interface.

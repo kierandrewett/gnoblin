@@ -31,7 +31,7 @@ for package in "$portal_srpm" "$meta_srpm"; do
         exit 1
     }
 done
-[[ "$(rpm -qp --qf '%{NAME}' "$portal_srpm")" == gnoblin-portal ]]
+[[ "$(rpm -qp --qf '%{NAME}' "$portal_srpm")" == xdg-desktop-portal-gnoblin ]]
 [[ "$(rpm -qp --qf '%{NAME}' "$meta_srpm")" == gnoblin ]]
 # copr-cli waits by default. Build each dependency in all supported Fedora
 # chroots before starting its dependent package; any failed chroot stops here.

@@ -76,8 +76,8 @@ should be proposed upstream rather than maintained only as Gnoblin patches.
 
 | Part       | Current dependency                          | Reason it remains                                                                                                                                                                                                                                            |
 | ---------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Compositor | Mutter 51                                   | Current patches add Gnoblin protocols, input, rendering, configuration, and native control. The compositor role is built into the single `gnoblin` executable.                                                                                                  |
-| Session    | `gnoblin`; optional systemd user targets     | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open.                                                                          |
+| Compositor | Mutter 51                                   | Current patches add Gnoblin protocols, input, rendering, configuration, and native control. The compositor role is built into the single `gnoblin` executable.                                                                                               |
+| Session    | `gnoblin`; optional systemd user targets    | A durable `gnoblin` guardian owns Mutter and session lifecycle; its restartable supervisor owns Lua policy and runtime API dispatch. Real-seat lifecycle verification remains open.                                                                          |
 | Shell host | Separate Wayland clients                    | Shell projects own presentation and use Gnoblin's native Lua-backed control API. GNOME Shell and GJS are outside the supported session.                                                                                                                      |
 | Portals    | `xdg-desktop-portal` plus Gnoblin's backend | The generic frontend routes requests to the selected backend.                                                                                                                                                                                                |
 | Settings   | `gsettings-desktop-schemas >= 49.1`         | Shared schemas provide Mutter types and defaults. Lua can override window, pointer, keyboard, tablet, touchpad, Xwayland, and privacy-screen preferences; omitted input options retain GSettings values for compatibility. GeoClue keeps per-field fallback. |
@@ -144,7 +144,7 @@ to 5000 ms and accepts `0` to disable the check.
 `compositor.locate_pointer`. Mutter owns the key event and visual effect; Lua
 owns the configured key name and whether the effect is enabled.
 
-The session package does not require `gnoblin-portal`; users can install and
+The session package does not require `xdg-desktop-portal-gnoblin`; users can install and
 select another XDG portal backend. The GTK-based Gnoblin backend is a separate
 optional package and requires the generic portal frontend. GNOME's backend can
 coexist for an existing GNOME login. The default source build does not prepare

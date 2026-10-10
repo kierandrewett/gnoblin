@@ -42,7 +42,7 @@ own backend selection.
 
 Gnoblin's optional backend handles file selection, Settings, screen sharing,
 remote desktop, and inhibition. Its file chooser uses GTK4. Install
-`gnoblin-portal` to use it. The core session package already routes Gnoblin to
+`xdg-desktop-portal-gnoblin` to use it. The core session package already routes Gnoblin to
 this backend when installed, with another installed backend as fallback.
 
 Choose another backend or mix backends in your normal Lua config; see

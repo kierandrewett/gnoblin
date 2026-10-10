@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build source RPMs from previously prepared Gnoblin release sources.
 set -euo pipefail
-if [[ $# != 3 || "$1" != gnoblin-portal && "$1" != gnoblin ]]; then
-    echo "Usage: $0 <gnoblin-portal|gnoblin> <prepared-source-directory> <output-directory>" >&2
+if [[ $# != 3 || "$1" != xdg-desktop-portal-gnoblin && "$1" != gnoblin ]]; then
+    echo "Usage: $0 <xdg-desktop-portal-gnoblin|gnoblin> <prepared-source-directory> <output-directory>" >&2
     exit 2
 fi
 project="$1"
