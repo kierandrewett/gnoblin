@@ -2,10 +2,10 @@
 
 Gnoblin installs alongside Fedora's GNOME packages:
 
-| Package          | Contents                                                     |
-| ---------------- | ------------------------------------------------------------ |
-| `gnoblin`        | Single compositor, Lua supervisor, runtime tools and session |
-| `gnoblin-portal` | Portal backend selected by the Gnoblin session               |
+| Package                      | Contents                                                     |
+| ---------------------------- | ------------------------------------------------------------ |
+| `gnoblin`                    | Single compositor, Lua supervisor, runtime tools and session |
+| `xdg-desktop-portal-gnoblin` | Portal backend selected by the Gnoblin session               |
 
 Binaries, libraries, schemas and upstream service definitions stay under
 `/usr/lib/gnoblin`. Private libraries do not provide dependencies for Fedora's

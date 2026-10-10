@@ -7,7 +7,7 @@ major version. Check [source build prerequisites](install-source.md) before
 choosing a release asset.
 
 The `gnoblin` RPM contains the compositor and session. The
-`gnoblin-portal` RPM is optional.
+`xdg-desktop-portal-gnoblin` RPM is optional.
 Gnoblin runs as a standalone Lua session and does not install GNOME Shell or
 GJS. Keep a working session available while installing. See
 [platform support](platform-support.md).
@@ -29,7 +29,7 @@ sudo zypper install --allow-unsigned-rpm \
 To use Gnoblin's GTK-based portal backend, install its RPM too:
 
 ```sh
-sudo zypper install --allow-unsigned-rpm ./gnoblin-rpms/gnoblin-portal-[0-9]*.rpm
+sudo zypper install --allow-unsigned-rpm ./gnoblin-rpms/xdg-desktop-portal-gnoblin-[0-9]*.rpm
 ```
 
 The core `gnoblin` package installs the default route for Gnoblin sessions.
@@ -51,9 +51,9 @@ Log into another session first. Then remove the Gnoblin packages you installed:
 
 ```sh
 sudo zypper remove \
-  gnoblin gnoblin-portal
+  gnoblin xdg-desktop-portal-gnoblin
 ```
 
 Your existing GNOME packages remain installed.
 Gnoblin and GNOME use the backend selected for each session. Install
-`gnoblin-portal` only if you want Gnoblin's GTK-based backend.
+`xdg-desktop-portal-gnoblin` only if you want Gnoblin's GTK-based backend.

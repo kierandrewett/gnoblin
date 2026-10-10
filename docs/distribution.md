@@ -11,7 +11,7 @@ as supported until its graphical-session gate has passed.
 
 Gnoblin installs as its own session and can coexist with GNOME.
 
-- RPM names: `gnoblin`, the optional `gnoblin-portal`, and the optional
+- RPM names: `gnoblin`, the optional `xdg-desktop-portal-gnoblin`, and the optional
   `gnoblin-geoclue-integration` subpackage.
 - The RPM and Arch `gnoblin` packages contain the single `gnoblin` compositor
   executable, login entry, Lua runtime, session services, and Gnoblin-specific
@@ -48,7 +48,7 @@ installing a source build with `make install` does. GNOME Session and
 Settings Daemon are not package requirements. The source tarball remains the
 primary install route until a distribution package passes its login gate.
 
-The optional `gnoblin-portal` package provides Gnoblin's GTK-based backend.
+The optional `xdg-desktop-portal-gnoblin` package provides Gnoblin's GTK-based backend.
 Users can choose another portal instead. Packages do not install
 applications. [Use GNOME applications](gnome-apps.md) lists the shared desktop
 services to install with your package manager.
@@ -139,20 +139,20 @@ tarball, after checking the published source assets' SHA-256 sums.
 
 Each release page lists these files. `SHA256SUMS` covers every other file.
 
-| Asset name                                                        | What it is                                            | Used by           |
-| ----------------------------------------------------------------- | ----------------------------------------------------- | ----------------- |
-| `gnoblin-<version>-gnome-<gnome>-source.tar.xz`                   | Complete source tarball, built with `make`            | All distributions |
-| `mutter-<gnome>.tar.xz`                                           | Patched Mutter source archive                         | RPM and Arch      |
-| `xdg-desktop-portal-gnome-<gnome>.tar.xz`                         | Patched portal backend source archive                 | RPM and Arch      |
-| `gnoblin-<version>.PKGBUILD`                                      | Arch recipe for `gnoblin`                             | Arch              |
-| `gnoblin-portal-<portal-version>.PKGBUILD`                        | Arch recipe for `gnoblin-portal`                      | Arch              |
-| `gnoblin-<version>-<pkgrel>-x86_64.pkg.tar.zst`                   | Arch package built from the recipe                    | Arch              |
-| `gnoblin-portal-<portal-version>-<pkgrel>-x86_64.pkg.tar.zst`     | Arch portal package built from the recipe             | Arch              |
-| `gnoblin-<version>-<release>.fc<N>.src.rpm`                       | Fedora source RPM for `gnoblin`, built by COPR        | Fedora            |
-| `gnoblin-portal-<portal-version>-<release>.fc<N>.src.rpm`         | Fedora source RPM for `gnoblin-portal`, built by COPR | Fedora            |
-| `gnoblin-<version>-<release>.tumbleweed.x86_64.rpm`               | Binary RPM for `gnoblin`                              | openSUSE          |
-| `gnoblin-portal-<portal-version>-<release>.tumbleweed.x86_64.rpm` | Binary RPM for `gnoblin-portal`                       | openSUSE          |
-| `SHA256SUMS`                                                      | SHA-256 checksums of all other assets                 | All distributions |
+| Asset name                                                                    | What it is                                                        | Used by           |
+| ----------------------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------- |
+| `gnoblin-<version>-gnome-<gnome>-source.tar.xz`                               | Complete source tarball, built with `make`                        | All distributions |
+| `mutter-<gnome>.tar.xz`                                                       | Patched Mutter source archive                                     | RPM and Arch      |
+| `xdg-desktop-portal-gnome-<gnome>.tar.xz`                                     | Patched portal backend source archive                             | RPM and Arch      |
+| `gnoblin-<version>.PKGBUILD`                                                  | Arch recipe for `gnoblin`                                         | Arch              |
+| `xdg-desktop-portal-gnoblin-<portal-version>.PKGBUILD`                        | Arch recipe for `xdg-desktop-portal-gnoblin`                      | Arch              |
+| `gnoblin-<version>-<pkgrel>-x86_64.pkg.tar.zst`                               | Arch package built from the recipe                                | Arch              |
+| `xdg-desktop-portal-gnoblin-<portal-version>-<pkgrel>-x86_64.pkg.tar.zst`     | Arch portal package built from the recipe                         | Arch              |
+| `gnoblin-<version>-<release>.fc<N>.src.rpm`                                   | Fedora source RPM for `gnoblin`, built by COPR                    | Fedora            |
+| `xdg-desktop-portal-gnoblin-<portal-version>-<release>.fc<N>.src.rpm`         | Fedora source RPM for `xdg-desktop-portal-gnoblin`, built by COPR | Fedora            |
+| `gnoblin-<version>-<release>.tumbleweed.x86_64.rpm`                           | Binary RPM for `gnoblin`                                          | openSUSE          |
+| `xdg-desktop-portal-gnoblin-<portal-version>-<release>.tumbleweed.x86_64.rpm` | Binary RPM for `xdg-desktop-portal-gnoblin`                       | openSUSE          |
+| `SHA256SUMS`                                                                  | SHA-256 checksums of all other assets                             | All distributions |
 
 `<gnome>` and `<portal-version>` are the pinned GNOME version, for example
 `51.0`. `<pkgrel>` and `<release>` are separate packaging counters for Arch and

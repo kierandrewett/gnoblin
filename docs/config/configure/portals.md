@@ -36,7 +36,7 @@ disables that portal interface and must be used by itself.
 
 The Gnoblin session installation provides a desktop-specific default that
 prefers `gnoblin`, then tries any installed backend. The optional
-`gnoblin-portal` package supplies that backend. The portal service selects the
+`xdg-desktop-portal-gnoblin` package supplies that backend. The portal service selects the
 Gnoblin file only in a Gnoblin session; other desktop sessions keep their own
 portal configuration.
 

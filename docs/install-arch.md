@@ -27,7 +27,7 @@ testing this package path.
 
 The core package installs the default portal route for Gnoblin sessions but
 does not include a backend. The release also provides an optional
-`gnoblin-portal` PKGBUILD and matching source archive.
+`xdg-desktop-portal-gnoblin` PKGBUILD and matching source archive.
 
 Build the optional package with `makepkg -si` if you want Gnoblin's GTK
 backend. The default route uses it when installed and otherwise selects
