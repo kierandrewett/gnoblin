@@ -2,7 +2,11 @@
 """Check that the packaged login entry is the C session supervisor."""
 
 from pathlib import Path
+import sys
 import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _sources import RUNTIME_SOURCES  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +17,7 @@ class SessionEnvironmentTests(unittest.TestCase):
         cmake = (ROOT / "CMakeLists.txt").read_text()
         installer = (ROOT / "cmake/install-session.cmake").read_text()
         desktop = (ROOT / "src/data/session/gnoblin.desktop").read_text()
-        runtime = (ROOT / "src/session/gnoblin-runtime.c").read_text()
+        runtime = RUNTIME_SOURCES.read_text()
         portal_policy = (ROOT / "src/portal/backend/gnoblin-portal-policy.c").read_text()
         portal_session = portal_policy[
             portal_policy.index("static gboolean is_gnoblin_session(") : portal_policy.index(
@@ -27,7 +31,7 @@ class SessionEnvironmentTests(unittest.TestCase):
         )
         self.assertLess(runtime.index("clear_session_mode[]"), runtime.index("run_activation_update(sync)"))
         # Stale D-Bus activated services of the previous session are stopped after the environment is correct.
-        activation = runtime[runtime.index("static gboolean activate_session(") :]
+        activation = runtime[runtime.index("gboolean activate_session(") :]
         activation = activation[: activation.index("\nstatic ", 10)]
         self.assertLess(
             activation.index("run_activation_update(sync)"), activation.index("stop_stale_dbus_services();")
@@ -64,9 +68,7 @@ class SessionEnvironmentTests(unittest.TestCase):
             guardian.index("if (!devkit && !activate_session())"),
             guardian.index("spawn_compositor(compositor_path"),
         )
-        worker = runtime[
-            runtime.index("static int runtime_worker_main(") : runtime.index("static GPid spawn_runtime_worker(")
-        ]
+        worker = runtime[runtime.index("int runtime_worker_main(") : runtime.index("GPid spawn_runtime_worker(")]
         self.assertLess(
             worker.index("gnoblin_config_load_runtime_salvaged("), worker.index("send_config(&runtime, document")
         )

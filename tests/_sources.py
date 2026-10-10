@@ -74,3 +74,17 @@ CONFIG_SOURCES = JoinedSources(
         "gnoblin-config-salvage.c",
     ],
 )
+RUNTIME_SOURCES = JoinedSources(
+    SRC_DIR / "session",
+    [
+        "gnoblin-runtime-diagnostics.c",
+        "gnoblin-runtime-environment.c",
+        "gnoblin-runtime-packets.c",
+        "gnoblin-runtime-events.c",
+        "gnoblin-runtime-compositor.c",
+        "gnoblin-runtime-worker.c",
+        "gnoblin-runtime-autostart.c",
+        "gnoblin-runtime-supervisor.c",
+        "gnoblin-runtime.c",
+    ],
+)

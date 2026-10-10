@@ -8,11 +8,11 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _sources import control_header, control_source, overlay_manifests, LUA_SOURCES  # noqa: E402
+from _sources import control_header, control_source, overlay_manifests, LUA_SOURCES, RUNTIME_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 LUA = LUA_SOURCES
-SESSION = ROOT / "src/session/gnoblin-runtime.c"
+SESSION = RUNTIME_SOURCES
 CLI_FILES = sorted((ROOT / "src/cli").glob("gnoblinctl*.c"))
 PAD_HELP_PATCH = ROOT / "patches/mutter/99-typed-window-api/0085-emit-tablet-pad-help-without-layout.patch"
 
@@ -664,7 +664,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_session_logout_waits_for_matching_compositor_success(self):
         lua = (LUA_SOURCES).read_text()
-        runtime = (ROOT / "src/session/gnoblin-runtime.c").read_text()
+        runtime = (RUNTIME_SOURCES).read_text()
         source = control_source()
         operation = function_body(
             source,
@@ -673,7 +673,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         completion = function_body(
             runtime,
-            "static gboolean handle_completion(",
+            "gboolean handle_completion(",
             "static gboolean dispatch_parent_event(",
         )
 
@@ -1287,7 +1287,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         runtime_handler = function_body(
             SESSION.read_text(),
-            "static gboolean handle_event(",
+            "gboolean handle_event(",
             "static gboolean dispatch_parent_event(",
         )
         lua_dispatch = function_body(

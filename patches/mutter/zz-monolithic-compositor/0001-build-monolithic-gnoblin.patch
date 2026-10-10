@@ -21,7 +21,7 @@ diff --git a/src/meson.build b/src/meson.build
 index 3fc274ded..c7c57b7bb 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -1224,30 +1224,114 @@ libmutter_dep = declare_dependency(
+@@ -1224,30 +1224,122 @@ libmutter_dep = declare_dependency(
    ],
  )
  
@@ -130,6 +130,14 @@ index 3fc274ded..c7c57b7bb 100644
 +)
 +gnoblin_session_sources = files(
 +  gnoblin_root / 'src/main.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-diagnostics.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-environment.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-packets.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-events.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-compositor.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-worker.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-autostart.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-supervisor.c',
 +  gnoblin_root / 'src/session/gnoblin-runtime.c',
 +  gnoblin_root / 'src/session/gnoblin-autostart.c',
 +  gnoblin_root / 'src/session/gnoblin-runtime-spawn.c',
