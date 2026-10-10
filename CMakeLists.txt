@@ -131,7 +131,24 @@ configure_file(
 endif()
 add_executable(gnoblin-idle src/idle.c)
 target_link_libraries(gnoblin-idle PRIVATE PkgConfig::GNOBLIN_CONTROL)
-add_executable(gnoblinctl src/cli/gnoblinctl.c)
+add_executable(gnoblinctl
+    src/cli/gnoblinctl-args.c
+    src/cli/gnoblinctl-cli.c
+    src/cli/gnoblinctl-client.c
+    src/cli/gnoblinctl-dispatch.c
+    src/cli/gnoblinctl-json.c
+    src/cli/gnoblinctl-lua-animation.c
+    src/cli/gnoblinctl-lua-api.c
+    src/cli/gnoblinctl-lua-contexts.c
+    src/cli/gnoblinctl-lua-core.c
+    src/cli/gnoblinctl-lua-desktop.c
+    src/cli/gnoblinctl-lua-events.c
+    src/cli/gnoblinctl-lua-session.c
+    src/cli/gnoblinctl-lua-shortcuts.c
+    src/cli/gnoblinctl-lua-windows.c
+    src/cli/gnoblinctl-output.c
+    src/cli/gnoblinctl.c)
+target_include_directories(gnoblinctl PRIVATE src/cli)
 target_link_libraries(gnoblinctl PRIVATE
   gnoblin-config-core PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_LUA)
 add_test(NAME gnoblinctl-cli

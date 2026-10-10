@@ -13,7 +13,7 @@ from _sources import control_header, control_source, overlay_manifests  # noqa: 
 ROOT = Path(__file__).resolve().parents[1]
 LUA = ROOT / "src/config/lua/gnoblin-lua.c"
 SESSION = ROOT / "src/session/gnoblin-runtime.c"
-CLI = ROOT / "src/cli/gnoblinctl.c"
+CLI_FILES = sorted((ROOT / "src/cli").glob("gnoblinctl*.c"))
 PAD_HELP_PATCH = ROOT / "patches/mutter/99-typed-window-api/0085-emit-tablet-pad-help-without-layout.patch"
 
 
@@ -230,7 +230,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         lua_source = LUA.read_text()
         session = SESSION.read_text()
-        cli = CLI.read_text()
+        cli = "".join(path.read_text() for path in CLI_FILES)
         connected = function_body(
             source,
             "static gboolean client_connected(",
