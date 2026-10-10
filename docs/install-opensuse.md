@@ -16,20 +16,20 @@ GJS. Keep a working session available while installing. See
 
 Download the RPM assets from the
 [latest Gnoblin release](https://github.com/kierandrewett/gnoblin/releases),
-if it includes files named `opensuse-*.rpm`. Install the runtime RPMs
+if it includes files named `*.tumbleweed.x86_64.rpm`. Install the runtime RPMs
 together. With GitHub CLI:
 
 ```sh
 mkdir -p gnoblin-rpms
-gh release download --repo kierandrewett/gnoblin --pattern 'opensuse-*.rpm' --dir gnoblin-rpms
+gh release download --repo kierandrewett/gnoblin --pattern 'gnoblin-*.tumbleweed.x86_64.rpm' --dir gnoblin-rpms
 sudo zypper install --allow-unsigned-rpm \
-  ./gnoblin-rpms/opensuse-gnoblin-[0-9]*.rpm
+  ./gnoblin-rpms/gnoblin-[0-9]*.rpm
 ```
 
 To use Gnoblin's GTK-based portal backend, install its RPM too:
 
 ```sh
-sudo zypper install --allow-unsigned-rpm ./gnoblin-rpms/opensuse-gnoblin-portal-[0-9]*.rpm
+sudo zypper install --allow-unsigned-rpm ./gnoblin-rpms/gnoblin-portal-[0-9]*.rpm
 ```
 
 The core `gnoblin` package installs the default route for Gnoblin sessions.

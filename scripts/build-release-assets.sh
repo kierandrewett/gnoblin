@@ -58,7 +58,7 @@ SOURCE_BUNDLE="$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-source.tar.
 install -m 0644 -- "$SOURCE_BUNDLE" "$SOURCES/gnoblin-$GNOBLIN_VERSION-source.tar.xz"
 SOURCE_BUNDLE_SHA256="$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')"
 python3 "$ROOT/scripts/sync-package-manifest.py" arch-release \
-    --output "$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION.PKGBUILD" \
+    --output "$OUTPUT/gnoblin-$GNOBLIN_VERSION.PKGBUILD" \
     --source-sha256 "$SOURCE_BUNDLE_SHA256" \
     --release-tag "$PUBLIC_RELEASE_TAG"
 PORTAL_SOURCE_SHA256="$(sha256sum "$OUTPUT/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" | awk '{print $1}')"

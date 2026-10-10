@@ -16,7 +16,7 @@ versions are available, build and install as your normal user:
 
 ```sh
 cd ~/Downloads
-mv gnoblin-*-gnome-*.PKGBUILD PKGBUILD
+mv gnoblin-[0-9]*.PKGBUILD PKGBUILD
 makepkg -si
 ```
 

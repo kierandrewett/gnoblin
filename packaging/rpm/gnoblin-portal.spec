@@ -6,7 +6,7 @@
 
 Name:           gnoblin-portal
 Version:        51.0
-Release:        2.gnoblin%{?dist}
+Release:        2%{?dist}
 Summary:        Gnoblin desktop portal backend
 License:        LGPL-2.1-or-later
 URL:            https://github.com/kierandrewett/gnoblin

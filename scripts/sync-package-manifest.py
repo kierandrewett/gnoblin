@@ -146,6 +146,7 @@ makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gcr-4' 'ge
 depends=({" ".join(dependencies)})
 conflicts=({" ".join(f"'{name}'" for name in replaced_packages)})
 replaces=({" ".join(f"'{name}'" for name in replaced_packages)})
+options=('!debug')
 
 source=("$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz")
 sha256sums=('{source_sha256}')
@@ -207,6 +208,7 @@ url='{PROJECT_URL}'
 license=('LGPL-2.1-or-later')
 makedepends=('base-devel' 'gettext' 'glib2-devel' 'glycin' 'gsettings-desktop-schemas' 'gtk4>=4.20.0' 'json-glib' 'libadwaita' 'meson' 'ninja' 'pkgconf' 'xdg-desktop-portal>=1.20.0')
 depends=({" ".join(requirements)} 'glycin' 'libadwaita' 'libsecret')
+options=('!debug')
 
 source=("xdg-desktop-portal-gnome-$pkgver.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/xdg-desktop-portal-gnome-$pkgver.tar.xz")
 sha256sums=('{source_sha256}')

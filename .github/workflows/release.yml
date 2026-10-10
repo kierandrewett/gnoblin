@@ -451,8 +451,11 @@ jobs:
               ! -name '*-debuginfo-*' ! -name '*-debugsource-*' -print0
           )
           (("${#rpms[@]}" > 0))
+          # Name the files like the Fedora assets: <package>-<version>-<release>.<tag>.<arch>.rpm
           for rpm in "${rpms[@]}"; do
-            cp -- "$rpm" "release-assets/opensuse-$(basename "$rpm")"
+            name="$(basename "$rpm")"
+            [[ $name =~ ^(.+)\.([^.]+)\.rpm$ ]]
+            cp -- "$rpm" "release-assets/${BASH_REMATCH[1]}.tumbleweed.${BASH_REMATCH[2]}.rpm"
           done
       - name: Checksum all release assets
         run: |
