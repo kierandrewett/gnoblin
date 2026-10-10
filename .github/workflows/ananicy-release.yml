@@ -84,7 +84,7 @@ jobs:
           cd packaging/ananicy
           tar --transform "s,^,gnoblin-ananicy-rules-$VERSION/," -czf "$top/SOURCES/gnoblin-ananicy-rules-$VERSION.tar.gz" 99-gnoblin.types 99-gnoblin.rules
           rpmbuild --define "_topdir $top" -ba gnoblin-ananicy-rules.spec
-          rpmlint "$top"/RPMS/noarch/*.rpm
+          rpmlint -r gnoblin-ananicy-rules.rpmlintrc "$top"/RPMS/noarch/*.rpm
       - name: Install and remove
         run: |
           rpm -ivh --nodeps rpmbuild/RPMS/noarch/gnoblin-ananicy-rules-*.rpm
