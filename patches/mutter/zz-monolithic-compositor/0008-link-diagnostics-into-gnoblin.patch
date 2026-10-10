@@ -7,22 +7,22 @@ diff --git a/src/meson.build b/src/meson.build
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -1299,10 +1299,25 @@
-   gnoblin_root / 'src/permissions',
-   gnoblin_root / 'src/native-control',
+   gnoblin_root / 'src/portal/backend', gnoblin_root / 'src/input',
+   gnoblin_root / 'src/control',
  )
 +gnoblin_diagnostic_sources = files(
-+  gnoblin_root / 'src/compositor/gnoblin-plugin.c',
-+  gnoblin_root / 'src/compositor/gnoblin-plugin-ui.cpp',
-+  gnoblin_root / 'src/compositor/gnoblin-recovery-panel.cpp',
-+  gnoblin_root / 'src/compositor/gnoblin-console-panel.cpp',
-+  gnoblin_root / 'src/compositor/gnoblin-imgui-overlay.cpp',
++  gnoblin_root / 'src/compositor/plugin/gnoblin-plugin.c',
++  gnoblin_root / 'src/compositor/plugin/gnoblin-plugin-ui.cpp',
++  gnoblin_root / 'src/compositor/plugin/gnoblin-recovery-panel.cpp',
++  gnoblin_root / 'src/compositor/plugin/gnoblin-console-panel.cpp',
++  gnoblin_root / 'src/compositor/plugin/gnoblin-imgui-overlay.cpp',
 +  gnoblin_root / 'subprojects/imgui/imgui.cpp',
 +  gnoblin_root / 'subprojects/imgui/imgui_draw.cpp',
 +  gnoblin_root / 'subprojects/imgui/imgui_tables.cpp',
 +  gnoblin_root / 'subprojects/imgui/imgui_widgets.cpp',
 +)
 +gnoblin_diagnostic_includes = include_directories(
-+  gnoblin_root / 'src/compositor',
++  gnoblin_root / 'src/compositor/plugin',
 +  gnoblin_root / 'subprojects/imgui',
 +)
  gnoblin = executable('gnoblin',
@@ -103,7 +103,7 @@ diff --git a/src/compositor/plugins/meson.build b/src/compositor/plugins/meson.b
 -)
 -gnoblin_imgui_includes = include_directories(
 -  gnoblin_imgui_root,
--  gnoblin_root / 'src/native-control',
+-  gnoblin_root / 'src/control',
 -)
 -
 -gnoblin_plugin = shared_module('gnoblin',

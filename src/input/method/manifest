@@ -1,2 +1,3 @@
+# project source destination
 mutter gnoblin-ibus-input-method.c src/backends/gnoblin-ibus-input-method.c
 mutter gnoblin-ibus-input-method.h src/backends/gnoblin-ibus-input-method.h

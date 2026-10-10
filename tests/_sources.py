@@ -1,17 +1,18 @@
 """Shared source readers for tests that assert on the native control sources.
 
-The control code lives in gnoblin-native-control.c plus any gnoblin-control-*.c
-files next to it. Tests read the combined text through these helpers.
+The control code lives in src/control/gnoblin-native-control.c plus any gnoblin-control-*.c
+files under src/. Tests read the combined text through these helpers.
 """
 
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CONTROL_DIR = ROOT / "src/native-control"
+SRC_DIR = ROOT / "src"
+CONTROL_DIR = SRC_DIR / "control"
 
 
 def _combined(main_name: str, pattern: str) -> str:
-    paths = [CONTROL_DIR / main_name, *sorted(CONTROL_DIR.glob(pattern))]
+    paths = [CONTROL_DIR / main_name, *sorted(SRC_DIR.rglob(pattern))]
     return "".join(path.read_text() for path in paths)
 
 
@@ -21,3 +22,8 @@ def control_source() -> str:
 
 def control_header() -> str:
     return _combined("gnoblin-native-control.h", "gnoblin-control-*.h")
+
+
+def overlay_manifests() -> str:
+    """Every overlay manifest under src/, joined. Tests look for one line in the set."""
+    return "".join(path.read_text() for path in sorted(SRC_DIR.rglob("manifest")))

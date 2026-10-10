@@ -1,8 +1,8 @@
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
 #endif
-#include "../native-control/gnoblin-runtime-protocol.h"
-#include "../native-control/gnoblin-input-config.h"
+#include "../control/gnoblin-runtime-protocol.h"
+#include "../input/gnoblin-input-config.h"
 #include "gnoblin-runtime-spawn.h"
 #include "gnoblin-priority.h"
 #include "gnoblin-autostart.h"

@@ -1,0 +1,9 @@
+# project source destination
+mutter gnoblin-keybinding-catalog.c src/core/gnoblin-keybinding-catalog.c
+mutter gnoblin-keybinding-catalog.h src/core/gnoblin-keybinding-catalog.h
+mutter gnoblin-touchpad-router.c src/core/gnoblin-touchpad-router.c
+mutter gnoblin-touchpad-router.h src/core/gnoblin-touchpad-router.h
+mutter gnoblin-input-disposition.c src/core/gnoblin-input-disposition.c
+mutter gnoblin-input-disposition.h src/core/gnoblin-input-disposition.h
+mutter gnoblin-control-input-sources.c src/core/gnoblin-control-input-sources.c
+mutter gnoblin-control-shortcuts.c src/core/gnoblin-control-shortcuts.c

@@ -1,0 +1,5 @@
+# project source destination
+xdg-desktop-portal-gnome gnoblin.portal.in data/gnoblin.portal.in
+xdg-desktop-portal-gnome org.freedesktop.impl.portal.desktop.gnoblin.service.in data/org.freedesktop.impl.portal.desktop.gnoblin.service.in
+xdg-desktop-portal-gnome xdg-desktop-portal-gnoblin.service.in data/xdg-desktop-portal-gnoblin.service.in
+xdg-desktop-portal-gnome xdg-desktop-portal-gnoblin.desktop.in.in data/xdg-desktop-portal-gnoblin.desktop.in.in

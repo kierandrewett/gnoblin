@@ -20,10 +20,10 @@ if(NOT GNOBLIN_LUA_FOUND)
   message(FATAL_ERROR
     "Lua 5.4 or newer development files are required for the Gnoblin runtime. Install the development package (for example: Fedora lua-devel, Debian/Ubuntu liblua5.4-dev, or Arch lua) and make its pkg-config metadata and headers available. The Lua command-line interpreter alone is not sufficient.")
 endif()
-file(STRINGS "${PROJECT_SOURCE_DIR}/src/native-control/gnoblin-native-control.h"
+file(STRINGS "${PROJECT_SOURCE_DIR}/src/control/gnoblin-native-control.h"
   GNOBLIN_NATIVE_CONTROL_API_MAJOR_LINE
   REGEX "^#define GNOBLIN_NATIVE_CONTROL_API_MAJOR [0-9]+$")
-file(STRINGS "${PROJECT_SOURCE_DIR}/src/native-control/gnoblin-native-control.h"
+file(STRINGS "${PROJECT_SOURCE_DIR}/src/control/gnoblin-native-control.h"
   GNOBLIN_NATIVE_CONTROL_API_MINOR_LINE
   REGEX "^#define GNOBLIN_NATIVE_CONTROL_API_MINOR [0-9]+$")
 if(NOT GNOBLIN_NATIVE_CONTROL_API_MAJOR_LINE OR NOT GNOBLIN_NATIVE_CONTROL_API_MINOR_LINE)
@@ -38,17 +38,17 @@ set(GNOBLIN_LIBDIR "lib64" CACHE STRING "Library directory under the prefix")
 enable_testing()
 add_executable(native-touchpad-router-test
   tests/native-touchpad-router-test.c
-  src/native-control/gnoblin-touchpad-router.c)
+  src/input/gnoblin-touchpad-router.c)
 target_link_libraries(native-touchpad-router-test PRIVATE PkgConfig::GNOBLIN_GIO m)
 add_test(NAME native-touchpad-router COMMAND native-touchpad-router-test)
 add_executable(native-input-disposition-test
   tests/native-input-disposition-test.c
-  src/native-control/gnoblin-input-disposition.c)
+  src/input/gnoblin-input-disposition.c)
 target_link_libraries(native-input-disposition-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME native-input-disposition COMMAND native-input-disposition-test)
 add_executable(runtime-protocol-test
   tests/runtime-protocol-test.c
-  src/native-control/gnoblin-runtime-protocol.c)
+  src/control/gnoblin-runtime-protocol.c)
 target_link_libraries(runtime-protocol-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME runtime-protocol COMMAND runtime-protocol-test)
 set_tests_properties(runtime-protocol PROPERTIES TIMEOUT 10)
@@ -60,18 +60,18 @@ add_test(NAME runtime-spawn COMMAND runtime-spawn-test)
 add_executable(autostart-protocol-test
   tests/autostart-protocol-test.c
   src/session/gnoblin-autostart.c
-  src/native-control/gnoblin-runtime-protocol.c)
+  src/control/gnoblin-runtime-protocol.c)
 target_link_libraries(autostart-protocol-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME autostart-protocol COMMAND autostart-protocol-test)
 add_executable(runtime-cache-test
   tests/runtime-cache-test.c
-  src/native-control/gnoblin-runtime-cache.c)
+  src/control/gnoblin-runtime-cache.c)
 target_link_libraries(runtime-cache-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME runtime-cache COMMAND runtime-cache-test)
 add_executable(lua-pattern-test
   tests/lua-pattern-test.c
-  src/config/gnoblin-lua-pattern.c)
-target_include_directories(lua-pattern-test PRIVATE src/config)
+  src/config/lua/gnoblin-lua-pattern.c)
+target_include_directories(lua-pattern-test PRIVATE src/config/lua)
 target_link_libraries(lua-pattern-test PRIVATE PkgConfig::GNOBLIN_GIO)
 add_test(NAME lua-pattern COMMAND lua-pattern-test)
 if(GNOBLIN_LUA_FOUND)
@@ -94,16 +94,16 @@ if(GNOBLIN_LUA_FOUND)
   set(GNOBLIN_CONFIG_SOURCES
     src/config/gnoblin-config.c
     "${GNOBLIN_DEFAULT_CONFIG_C}"
-    src/native-control/gnoblin-input-config.c
-    src/config/gnoblin-lua.c
-    src/config/gnoblin-lua-pattern.c
+    src/input/gnoblin-input-config.c
+    src/config/lua/gnoblin-lua.c
+    src/config/lua/gnoblin-lua-pattern.c
     src/config/gnoblin-glob.c
-    src/native-control/gnoblin-keybinding-catalog.c
-    src/permissions/gnoblin-portal-identity.c
-    src/permissions/gnoblin-portal-policy.c)
+    src/input/gnoblin-keybinding-catalog.c
+    src/portal/backend/gnoblin-portal-identity.c
+    src/portal/backend/gnoblin-portal-policy.c)
   add_library(gnoblin-config-core STATIC ${GNOBLIN_CONFIG_SOURCES})
   target_include_directories(gnoblin-config-core PUBLIC
-    src/config src/permissions src/native-control)
+    src/config src/config/lua src/control src/input src/session src/portal/backend)
   target_compile_definitions(gnoblin-config-core PUBLIC
     GNOBLIN_NATIVE_CONTROL_API_MAJOR=${GNOBLIN_NATIVE_CONTROL_API_MAJOR}
     GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR})
@@ -131,7 +131,7 @@ configure_file(
 endif()
 add_executable(gnoblin-idle src/session/gnoblin-idle.c)
 target_link_libraries(gnoblin-idle PRIVATE PkgConfig::GNOBLIN_CONTROL)
-add_executable(gnoblinctl src/tools/gnoblinctl.c)
+add_executable(gnoblinctl src/cli/gnoblinctl.c)
 target_link_libraries(gnoblinctl PRIVATE
   gnoblin-config-core PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_LUA)
 add_test(NAME gnoblinctl-cli

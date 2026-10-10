@@ -1,0 +1,12 @@
+# project source destination
+mutter gnoblin-native-control.c src/core/gnoblin-native-control.c
+mutter gnoblin-native-control.h src/core/gnoblin-native-control.h
+mutter meta-x11-display-private.h src/meta/meta-x11-display-private.h
+mutter gnoblin-runtime-protocol.c src/core/gnoblin-runtime-protocol.c
+mutter gnoblin-runtime-protocol.h src/core/gnoblin-runtime-protocol.h
+mutter gnoblin-runtime-cache.c src/core/gnoblin-runtime-cache.c
+mutter gnoblin-runtime-cache.h src/core/gnoblin-runtime-cache.h
+mutter gnoblin-control-internal.h src/core/gnoblin-control-internal.h
+mutter gnoblin-control-capture.c src/core/gnoblin-control-capture.c
+mutter gnoblin-control-command.c src/core/gnoblin-control-command.c
+mutter gnoblin-control-runtime.c src/core/gnoblin-control-runtime.c

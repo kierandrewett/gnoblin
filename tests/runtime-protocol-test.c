@@ -1,4 +1,4 @@
-#include "../src/native-control/gnoblin-runtime-protocol.h"
+#include "../src/control/gnoblin-runtime-protocol.h"
 
 #include <sys/socket.h>
 #include <unistd.h>

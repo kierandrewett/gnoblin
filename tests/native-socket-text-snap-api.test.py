@@ -8,12 +8,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _sources import control_header, control_source  # noqa: E402
+from _sources import control_header, control_source, overlay_manifests  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-LUA = ROOT / "src/config/gnoblin-lua.c"
+LUA = ROOT / "src/config/lua/gnoblin-lua.c"
 SESSION = ROOT / "src/session/gnoblin-runtime.c"
-CLI = ROOT / "src/tools/gnoblinctl.c"
+CLI = ROOT / "src/cli/gnoblinctl.c"
 PAD_HELP_PATCH = ROOT / "patches/mutter/99-typed-window-api/0085-emit-tablet-pad-help-without-layout.patch"
 
 
@@ -462,7 +462,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "static void privacy_pipewire_state_changed(",
             "static void privacy_refresh_state(",
         )
-        monitor = (ROOT / "src/native-control/gnoblin-pipewire-monitor.c").read_text()
+        monitor = (ROOT / "src/agents/gnoblin-pipewire-monitor.c").read_text()
         capability = function_body(
             source,
             "static GVariant* capability_snapshot_record(",
@@ -663,7 +663,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertLess(patch.index("token->consumed = TRUE"), patch.index("meta_window_activate_full"))
 
     def test_session_logout_waits_for_matching_compositor_success(self):
-        lua = (ROOT / "src/config/gnoblin-lua.c").read_text()
+        lua = (ROOT / "src/config/lua/gnoblin-lua.c").read_text()
         runtime = (ROOT / "src/session/gnoblin-runtime.c").read_text()
         source = control_source()
         operation = function_body(
@@ -1096,7 +1096,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        overlay_manifest = (ROOT / "src/native-control/manifest").read_text()
+        overlay_manifest = overlay_manifests()
         lua = LUA.read_text()
         mutter_patch = (ROOT / "patches/mutter/99-typed-window-api/0064-native-window-unminimize.patch").read_text()
         handler = function_body(

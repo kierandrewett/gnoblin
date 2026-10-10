@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class FocusPolicyContractTests(unittest.TestCase):
     def test_lua_runtime_defaults_new_window_focus_to_strict(self):
-        source = (ROOT / "src/config/gnoblin-lua.c").read_text()
+        source = (ROOT / "src/config/lua/gnoblin-lua.c").read_text()
         self.assertIn('{"focus_new_windows", "prevent", FALSE, 0, FOCUS_STRING}', source)
         self.assertIn('{"focus-new-windows", "prevent"}', source)
 

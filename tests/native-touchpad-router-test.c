@@ -1,6 +1,6 @@
 #include <gio/gio.h>
 
-#include "../src/native-control/gnoblin-touchpad-router.h"
+#include "../src/input/gnoblin-touchpad-router.h"
 
 static GVariant* variant(const char* text) {
     g_autoptr(GError) error = NULL;

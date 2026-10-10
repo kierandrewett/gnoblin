@@ -1,6 +1,6 @@
 #include <gio/gio.h>
 
-#include "../src/native-control/gnoblin-input-disposition.h"
+#include "../src/input/gnoblin-input-disposition.h"
 
 static GHashTable* dispositions(void) {
     return g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
