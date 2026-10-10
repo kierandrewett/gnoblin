@@ -1,0 +1,16 @@
+# shellcheck shell=bash
+restart_ananicy() {
+    systemctl try-restart ananicy-cpp.service >/dev/null 2>&1 || true
+}
+
+post_install() {
+    restart_ananicy
+}
+
+post_upgrade() {
+    restart_ananicy
+}
+
+post_remove() {
+    restart_ananicy
+}

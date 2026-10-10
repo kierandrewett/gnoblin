@@ -200,6 +200,40 @@ A line such as `gnoblin-guardian: scheduling policy 5->0, nice 16->-11`
 shows that Gnoblin corrected the inherited priority. If the policy is still
 `SCHED_IDLE`, check that `rtkit-daemon` is running.
 
+### Ananicy-cpp rules {#ananicy-cpp-rules}
+
+Ananicy-cpp's default rules rank `gdm`, `gdm-wayland-session` and
+`gdm-session-worker` as background work (nice 16, idle I/O, `SCHED_IDLE`).
+A Gnoblin session started by gdm inherits that class.
+
+Gnoblin tries to reset it at startup, but an unprivileged process cannot leave the idle class, and
+RealtimeKit corrects only the thread that asks. A busy machine then makes the
+compositor and shell freeze or drop frames, while GNOME is unaffected because
+the same rules rank `gnome-shell` as low latency.
+
+Install the `gnoblin-ananicy-rules` package from the
+[latest `gnoblin-ananicy-v*` release](https://github.com/kierandrewett/gnoblin/releases?q=gnoblin-ananicy):
+
+```sh
+sudo dnf install ./gnoblin-ananicy-rules-VERSION-1.noarch.rpm        # Fedora
+sudo pacman -U gnoblin-ananicy-rules-VERSION-1-any.pkg.tar.zst       # Arch Linux
+```
+
+On another distribution, copy `99-gnoblin.types` and `99-gnoblin.rules` from the
+release tarball to `/etc/ananicy.d/` and run `sudo systemctl restart ananicy-cpp`.
+
+The rules give the `gnoblin`, `quickshell` and `bingux-frame` processes
+normal scheduling with nice -5. Ananicy-cpp does not let a drop-in file replace
+its own rules for `gdm`, so the rules name the Gnoblin processes. Log out and
+back in, then confirm with:
+
+```sh
+chrt -p "$(pgrep -ox gnoblin)"
+```
+
+The policy should be `SCHED_OTHER`. Remove the two files from
+`/etc/ananicy.d/`, or the package, to return to the daemon's defaults.
+
 ## The session ended and returned to the login screen
 
 If the compositor stops on its own, every Wayland app stops with it, because
