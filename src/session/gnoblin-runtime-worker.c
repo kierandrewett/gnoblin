@@ -267,6 +267,7 @@ int runtime_worker_main(int argc, char** argv) {
     gnoblin_config_set_focus_policy_changed_callback(focus_policy_committed, &runtime);
     gnoblin_config_set_permission_policy_changed_callback(permission_policy_committed, &runtime);
     runtime.loop = g_main_loop_new(NULL, FALSE);
+    gnoblin_priority_notice_start();
     RuntimeSignal sigterm = {.runtime = &runtime, .signal_number = SIGTERM};
     RuntimeSignal sigint = {.runtime = &runtime, .signal_number = SIGINT};
     g_unix_signal_add(SIGTERM, runtime_signal_received, &sigterm);

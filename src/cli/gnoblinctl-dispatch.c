@@ -386,7 +386,7 @@ JsonNode* dispatch(Cli* cli, GError** error) {
         method = "session.lock";
     else if (is(command, "status"))
         method = "session.status";
-    else if (is(command, "logout"))
+    else if (is(command, "logout") || (is(command, "session") && is(action, "logout")))
         method = "session.logout";
     else if (is(command, "ping"))
         op = "ping";

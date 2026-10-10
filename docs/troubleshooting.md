@@ -200,6 +200,27 @@ A line such as `gnoblin-guardian: scheduling policy 5->0, nice 16->-11`
 shows that Gnoblin corrected the inherited priority. If the policy is still
 `SCHED_IDLE`, check that `rtkit-daemon` is running.
 
+### Ananicy-cpp rules
+
+Ananicy-cpp's default rules rank `gdm`, `gdm-wayland-session` and
+`gdm-session-worker` as background work (nice 16, idle I/O, `SCHED_IDLE`).
+The compositor, the shell and every app started from them inherit that class,
+and RealtimeKit corrects only the thread that asks. A busy machine then makes
+the whole desktop freeze, while GNOME is unaffected because the same rules
+rank `gnome-shell` as low latency.
+
+`make install` adds two files to `/etc/ananicy.d` when that directory exists:
+
+- `99-gnoblin.types` defines the priority classes.
+- `99-gnoblin.rules` gives the session normal priority and the compositor,
+  `quickshell` and `bingux-frame` nice -10. It also restarts `ananicy-cpp`.
+
+To install them without a full install, copy both files from
+`packaging/ananicy/` to `/etc/ananicy.d/` and run
+`sudo systemctl restart ananicy-cpp`. Log out and back in, because running
+processes keep the class they inherited. Delete the two files to return to the
+daemon's defaults.
+
 ## The session ended and returned to the login screen
 
 If the compositor stops on its own, every Wayland app stops with it, because

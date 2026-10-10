@@ -35,6 +35,7 @@ case "$PREFIX" in
         exit 2
         ;;
 esac
+GNOBLIN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$STAGE$PREFIX"
 if [ ! -d "$SRC" ]; then
     echo "Gnoblin build does not exist: $SRC" >&2
@@ -229,6 +230,19 @@ PY
             ;;
     esac
 done
+
+# ananicy-cpp's default rules mark gdm and its children as background work (nice 16, SCHED_IDLE), and the whole
+# session inherits that class. Where the daemon is installed, add rules that give the session normal priority and the
+# compositor a higher one. They are plain data files, and removing them restores the daemon's defaults.
+if [ -d /etc/ananicy.d ]; then
+    for rule_file in 99-gnoblin.types 99-gnoblin.rules; do
+        install_public_file "$GNOBLIN_ROOT/packaging/ananicy/$rule_file" "/etc/ananicy.d/$rule_file"
+    done
+    if systemctl is-active --quiet ananicy-cpp 2>/dev/null; then
+        sudo systemctl restart ananicy-cpp
+        echo '  Restarted ananicy-cpp. Log out and back in so the session starts with the new priorities.'
+    fi
+fi
 
 # An earlier install linked these from the source directory. Such a link wins over the system copy and would run the
 # old build, so remove the links that point into a Gnoblin prefix. Anything else belongs to the user and stays.
