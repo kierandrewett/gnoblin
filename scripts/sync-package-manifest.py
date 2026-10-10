@@ -91,19 +91,6 @@ def render_rpm(manifest: dict) -> str:
         ),
     ]
     obsolete_packages = [f"Obsoletes:      {name} < {next_major}" for name in gnoblin.get("replaces", [])]
-    integration = manifest["packages"]["gnoblin-gnome-integration"]
-    integration_same_major, integration_exact, integration_native = dependency_closure(
-        manifest, "gnoblin-gnome-integration"
-    )
-    del integration_same_major, integration_native
-    integration_requires = [
-        *(f"Requires:       {name} = {epoch}:{manifest['packages'][name]['version']}" for name in integration_exact),
-        *(
-            f"Requires:       {package_name}" + (f" >= {minimum}" if minimum is not None else "")
-            for name in integration["requires"]
-            for package_name, minimum in [native_requirement(manifest, name, "rpm")]
-        ),
-    ]
     template = (ROOT / "packaging/rpm/gnoblin.spec.in").read_text()
     replacements = {
         "@VERSION@": version,
@@ -112,7 +99,6 @@ def render_rpm(manifest: dict) -> str:
         "@GNOME_MAJOR@": str(manifest["release"]["gnomeMajor"]),
         "@OBSOLETES@": "\n".join(obsolete_packages),
         "@RUNTIME_REQUIRES@": "\n".join(runtime_requirements),
-        "@INTEGRATION_REQUIRES@": "\n".join(integration_requires),
     }
     for placeholder, value in replacements.items():
         template = template.replace(placeholder, value)
@@ -160,6 +146,7 @@ makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gcr-4' 'ge
 depends=({" ".join(dependencies)})
 conflicts=({" ".join(f"'{name}'" for name in replaced_packages)})
 replaces=({" ".join(f"'{name}'" for name in replaced_packages)})
+options=('!debug')
 
 source=("$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz")
 sha256sums=('{source_sha256}')
@@ -219,8 +206,9 @@ pkgdesc='Optional GTK-based portal backend for Gnoblin sessions'
 arch=('x86_64')
 url='{PROJECT_URL}'
 license=('LGPL-2.1-or-later')
-makedepends=('base-devel' 'gettext' 'glib2-devel' 'glycin' 'gsettings-desktop-schemas' 'gtk4>=4.20.0' 'libadwaita' 'meson' 'ninja' 'pkgconf' 'xdg-desktop-portal>=1.20.0')
+makedepends=('base-devel' 'gettext' 'glib2-devel' 'glycin' 'gsettings-desktop-schemas' 'gtk4>=4.20.0' 'json-glib' 'libadwaita' 'meson' 'ninja' 'pkgconf' 'xdg-desktop-portal>=1.20.0')
 depends=({" ".join(requirements)} 'glycin' 'libadwaita' 'libsecret')
+options=('!debug')
 
 source=("xdg-desktop-portal-gnome-$pkgver.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/xdg-desktop-portal-gnome-$pkgver.tar.xz")
 sha256sums=('{source_sha256}')
@@ -248,36 +236,11 @@ package() {{
 """
 
 
-def render_arch_integration(manifest: dict) -> str:
-    version = manifest["packages"]["gnoblin-gnome-integration"]["version"]
-    requirements = manifest["packages"]["gnoblin-gnome-integration"]["requires"]
-    dependencies = [
-        "'gnoblin'",
-        *(f"'{native_requirement(manifest, name, 'arch')[0]}'" for name in requirements),
-    ]
-    return f"""# Generated from packaging/native-packages.json; do not edit.
-# shellcheck shell=bash disable=SC2034
-pkgname=gnoblin-gnome-integration
-pkgver={version}
-pkgrel=1
-pkgdesc='Optional GNOME application services for Gnoblin'
-arch=('any')
-url='{PROJECT_URL}'
-license=('GPL-2.0-or-later')
-depends=({" ".join(dependencies)})
-
-package() {{
-    :
-}}
-"""
-
-
 def outputs(manifest: dict) -> dict[Path, str]:
     return {
         ROOT / "packaging/rpm/gnoblin.spec": render_rpm(manifest),
         ROOT / "packaging/arch/PKGBUILD": render_arch(manifest),
         ROOT / "packaging/arch/portal/PKGBUILD": render_arch_portal(manifest),
-        ROOT / "packaging/arch/gnome-integration/PKGBUILD": render_arch_integration(manifest),
     }
 
 

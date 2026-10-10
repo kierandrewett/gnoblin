@@ -11,6 +11,7 @@ makedepends=('base-devel' 'cmake' 'desktop-file-utils' 'egl-wayland' 'gcr-4' 'ge
 depends=('adwaita-cursors' 'dbus' 'dconf' 'gcr-4' 'glib2>=2.86.0' 'gsettings-desktop-schemas>=49.1' 'ibus' 'json-glib' 'libinput>=1.30.0' 'lua>=5.4' 'pipewire>=1.4.11' 'polkit' 'systemd-libs' 'wayland>=1.25' 'wireplumber' 'libcanberra' 'libdisplay-info' 'libei' 'libnm' 'polkit' 'startup-notification')
 conflicts=('gnoblin-mutter' 'gnoblin-mutter-devel')
 replaces=('gnoblin-mutter' 'gnoblin-mutter-devel')
+options=('!debug')
 
 source=("$pkgname-$pkgver-gnome-51.0-source.tar.xz::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v$pkgver/$pkgname-$pkgver-gnome-51.0-source.tar.xz")
 sha256sums=('SKIP')

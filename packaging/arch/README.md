@@ -16,8 +16,8 @@ files.
 Each release publishes these paired assets:
 
 - `gnoblin-<version>-gnome-<gnome-version>-source.tar.xz`
-- `gnoblin-<version>-gnome-<gnome-version>.PKGBUILD`
-- `gnoblin-portal-<gnome-version>.PKGBUILD`
+- `gnoblin-<version>.PKGBUILD`
+- `gnoblin-portal-<portal-version>.PKGBUILD`
 - `xdg-desktop-portal-gnome-<gnome-version>.tar.xz`
 
 The source archive includes the tracked Gnoblin tree, the materialised,

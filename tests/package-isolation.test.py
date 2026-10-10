@@ -239,7 +239,6 @@ class IsolationTests(unittest.TestCase):
         self.assertIn("'xdg-desktop-portal>=1.20.0'", portal_arch)
         self.assertIn("systemd-libs", packages["gnoblin"]["requires"])
         self.assertNotIn("systemd", packages["gnoblin"]["requires"])
-        self.assertEqual(packages["gnoblin-gnome-integration"]["requiresExact"], ["gnoblin"])
 
     def test_source_install_rejects_shared_prefixes_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -321,8 +320,7 @@ class IsolationTests(unittest.TestCase):
 
     def test_geoclue_agent_authorization_is_an_optional_rpm_package(self):
         expanded = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin.spec")], text=True)
-        base_package = expanded.split("%package -n gnoblin-gnome-integration", 1)[0]
-        integration = expanded.split("%package -n gnoblin-geoclue-integration", 1)[1]
+        base_package, integration = expanded.split("%package -n gnoblin-geoclue-integration", 1)
         self.assertNotRegex(base_package, r"(?m)^Requires:\s+geoclue2(?:\s|$)")
         self.assertIn("Requires:       geoclue2 >= 2.7.2", integration)
         self.assertIn("/etc/geoclue/conf.d/50-gnoblin.conf", integration)

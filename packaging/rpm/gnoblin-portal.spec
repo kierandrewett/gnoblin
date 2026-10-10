@@ -6,7 +6,7 @@
 
 Name:           gnoblin-portal
 Version:        51.0
-Release:        2.gnoblin%{?dist}
+Release:        2%{?dist}
 Summary:        Gnoblin desktop portal backend
 License:        LGPL-2.1-or-later
 URL:            https://github.com/kierandrewett/gnoblin
@@ -23,6 +23,7 @@ BuildRequires:  pkgconfig(glycin-2)
 BuildRequires:  pkgconfig(gsettings-desktop-schemas)
 BuildRequires:  pkgconfig(gtk4) >= 4.20.0
 BuildRequires:  pkgconfig(gtk4-unix-print)
+BuildRequires:  pkgconfig(json-glib-1.0)
 BuildRequires:  pkgconfig(libadwaita-1) >= 1.7
 BuildRequires:  pkgconfig(xdg-desktop-portal) >= 1.20.0
 Requires:       gtk4 >= 4.20.0

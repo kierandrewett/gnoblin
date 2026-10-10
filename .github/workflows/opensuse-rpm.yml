@@ -149,13 +149,10 @@ jobs:
             \) | sort
           )
           test "${#runtime_rpms[@]}" -eq 1
-          integration_rpm="$(find rpms -type f -name 'gnoblin-gnome-integration-*.rpm' -print -quit)"
-          test -n "$integration_rpm"
           python3 scripts/check-rpm-isolation.py "${component_rpms[@]}"
           zypper --non-interactive install --no-recommends --allow-unsigned-rpm "${runtime_rpms[@]}"
           rpm -q gnoblin
           ! rpm -q gnoblin-portal
-          ! rpm -q gnoblin-gnome-integration
           test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           test "$(rpm -qf --qf '%{NAME}' /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
@@ -176,11 +173,6 @@ jobs:
           for stock_package in gdm gnome-session gnome-shell mutter gnome-settings-daemon xdg-desktop-portal-gnome; do
             ! rpm -q "$stock_package" >/dev/null 2>&1
           done
-          zypper --non-interactive install --no-recommends --allow-unsigned-rpm "$integration_rpm"
-          rpm -q gnoblin-gnome-integration gvfs gnome-keyring xdg-user-dirs
-          for stock_package in gdm gnome-session gnome-shell mutter gnome-settings-daemon xdg-desktop-portal-gnome; do
-            ! rpm -q "$stock_package" >/dev/null 2>&1
-          done
       - name: Install stock GNOME beside Gnoblin
         run: |
           zypper --non-interactive install --no-recommends \
@@ -190,7 +182,7 @@ jobs:
       - name: Remove Gnoblin and reverify stock GNOME
         run: |
           zypper --non-interactive remove \
-            gnoblin-gnome-integration gnoblin gnoblin-portal
+            gnoblin gnoblin-portal
           ! test -e /usr/share/wayland-sessions/gnoblin.desktop
           ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
           ! test -e /usr/lib/systemd/user/gnoblin-session.target
