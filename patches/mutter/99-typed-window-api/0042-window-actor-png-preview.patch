@@ -145,7 +145,7 @@ index 4a733e95..169b659f 100644
 +  texture = cogl_texture_2d_new_with_format (cogl_context,
 +                                              pixel_width,
 +                                              pixel_height,
-+                                              COGL_PIXEL_FORMAT_ARGB_8888_PRE);
++                                              COGL_PIXEL_FORMAT_ARGB32_NATIVE);
 +  if (!texture)
 +    {
 +      g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
@@ -177,7 +177,7 @@ index 4a733e95..169b659f 100644
 +  bitmap = cogl_bitmap_new_with_malloc_buffer (cogl_context,
 +                                                pixel_width,
 +                                                pixel_height,
-+                                                COGL_PIXEL_FORMAT_ARGB_8888_PRE,
++                                                COGL_PIXEL_FORMAT_ARGB32_NATIVE,
 +                                                NULL);
 +  if (!bitmap)
 +    {
