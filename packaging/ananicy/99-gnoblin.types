@@ -1,0 +1,13 @@
+# Scheduling class for the Gnoblin compositor and shell under ananicy-cpp.
+#
+# ananicy-cpp's default rules rank gdm and its children as background work (nice 16,
+# idle I/O, SCHED_IDLE), and a Gnoblin session started by gdm inherits that class. The
+# compositor and shell then run only when no other task wants the CPU, and the desktop
+# freezes or drops frames while a build or another heavy job runs. A rule for the
+# process by name applies the class again after it starts. 99-gnoblin.rules assigns it.
+#
+# A drop-in file cannot replace the daemon's own rules for gdm, so these rules name
+# the Gnoblin processes instead.
+#
+# Processes started by the compositor inherit its nice value, so the value is modest.
+{ "type": "Gnoblin_Compositor", "nice": -5, "sched": "other", "ioclass": "best-effort", "ionice": 0 }

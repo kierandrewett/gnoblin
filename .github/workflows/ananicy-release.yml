@@ -1,0 +1,163 @@
+name: Ananicy rules package
+
+# Builds the gnoblin-ananicy-rules RPM, Arch package and tarball. A gnoblin-ananicy-v* tag publishes them to a
+# GitHub release. Pull requests and manual runs build and test them without publishing anything. This tag does not match
+# the gnoblin-v* tags that start the Gnoblin release workflow.
+
+on:
+  push:
+    tags:
+      - "gnoblin-ananicy-v*"
+  pull_request:
+    paths:
+      - "packaging/ananicy/**"
+      - ".github/workflows/ananicy-release.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the version
+        id: version
+        run: |
+          spec_version="$(sed -n 's/^Version:[[:space:]]*//p' packaging/ananicy/gnoblin-ananicy-rules.spec)"
+          arch_version="$(sed -n 's/^pkgver=//p' packaging/ananicy/PKGBUILD)"
+          if [ -z "$spec_version" ] || [ "$spec_version" != "$arch_version" ]; then
+            echo "The spec version ($spec_version) and the PKGBUILD version ($arch_version) must match." >&2
+            exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/gnoblin-ananicy-v* ]] && [ "$GITHUB_REF_NAME" != "gnoblin-ananicy-v$spec_version" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version $spec_version." >&2
+            exit 1
+          fi
+          echo "version=$spec_version" >> "$GITHUB_OUTPUT"
+      - name: Validate the rule files
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          def entries(path):
+              result = []
+              for number, line in enumerate(Path(path).read_text().splitlines(), 1):
+                  line = line.strip()
+                  if line and not line.startswith("#"):
+                      try:
+                          result.append(json.loads(line))
+                      except json.JSONDecodeError as error:
+                          raise SystemExit(f"{path}:{number}: {error}")
+              return result
+
+          types = {entry["type"] for entry in entries("packaging/ananicy/99-gnoblin.types")}
+          rules = entries("packaging/ananicy/99-gnoblin.rules")
+          assert types and rules, "both files need entries"
+          for rule in rules:
+              assert rule["type"] in types, f"rule {rule['name']} uses unknown type {rule['type']}"
+          print(f"{len(types)} type(s), {len(rules)} rule(s)")
+          PY
+
+  rpm:
+    needs: check
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install build tools
+        run: dnf -y install rpm-build rpmlint tar gzip
+      - uses: actions/checkout@v4
+      - name: Build
+        env:
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          top="$PWD/rpmbuild"
+          mkdir -p "$top/SOURCES"
+          cd packaging/ananicy
+          tar --transform "s,^,gnoblin-ananicy-rules-$VERSION/," -czf "$top/SOURCES/gnoblin-ananicy-rules-$VERSION.tar.gz" 99-gnoblin.types 99-gnoblin.rules
+          rpmbuild --define "_topdir $top" -ba gnoblin-ananicy-rules.spec
+          rpmlint "$top"/RPMS/noarch/*.rpm
+      - name: Install and remove
+        run: |
+          rpm -ivh --nodeps rpmbuild/RPMS/noarch/gnoblin-ananicy-rules-*.rpm
+          test -f /etc/ananicy.d/99-gnoblin.types
+          test -f /etc/ananicy.d/99-gnoblin.rules
+          rpm -e gnoblin-ananicy-rules
+          test ! -e /etc/ananicy.d/99-gnoblin.rules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: |
+            rpmbuild/RPMS/noarch/*.rpm
+            rpmbuild/SRPMS/*.src.rpm
+
+  arch:
+    needs: check
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install build tools
+        run: pacman -Syu --noconfirm --needed base-devel git
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          useradd -m builder
+          cp -r packaging/ananicy /home/builder/ananicy
+          chown -R builder /home/builder/ananicy
+          su builder -c 'cd ~/ananicy && makepkg -f --noconfirm'
+      - name: Install and remove
+        run: |
+          pacman -U --noconfirm /home/builder/ananicy/*.pkg.tar.zst
+          test -f /etc/ananicy.d/99-gnoblin.rules
+          pacman -R --noconfirm gnoblin-ananicy-rules
+          test ! -e /etc/ananicy.d/99-gnoblin.rules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch
+          path: /home/builder/ananicy/*.pkg.tar.zst
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/gnoblin-ananicy-v')
+    needs: [check, rpm, arch]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.check.outputs.version }}
+        run: |
+          mkdir release
+          cp artifacts/rpm/RPMS/noarch/*.rpm artifacts/rpm/SRPMS/*.src.rpm release/ 2>/dev/null || cp artifacts/rpm/*/*.rpm release/
+          cp artifacts/arch/*.pkg.tar.zst release/
+          tar --transform "s,^,gnoblin-ananicy-rules-$VERSION/," -czf "release/gnoblin-ananicy-rules-$VERSION.tar.gz" \
+            -C packaging/ananicy 99-gnoblin.types 99-gnoblin.rules README.md
+          (cd release && sha256sum * > SHA256SUMS)
+          ls -l release
+          cat > notes.md <<'NOTES'
+          Ananicy-cpp rules for the Gnoblin compositor and shell. Ananicy-cpp's default rules rank `gdm` and its children as
+          background work, and a Gnoblin session started by gdm inherits that class. These rules give the `gnoblin`,
+          `quickshell` and `bingux-frame` processes normal scheduling, so the desktop does not freeze or drop frames while other
+          programs use the CPU. They have no effect without ananicy-cpp.
+
+          - Fedora and RPM systems: `sudo dnf install ./gnoblin-ananicy-rules-*.noarch.rpm`
+          - Arch Linux: `sudo pacman -U gnoblin-ananicy-rules-*-any.pkg.tar.zst`
+          - Anything else: copy the two files in the tarball to `/etc/ananicy.d/` and restart `ananicy-cpp`
+
+          Log out and back in afterwards. See the [troubleshooting page](https://github.com/kierandrewett/gnoblin/blob/main/docs/troubleshooting.md#ananicy-cpp-rules).
+          NOTES
+          gh release create "$GITHUB_REF_NAME" release/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "Gnoblin Ananicy rules $VERSION" --notes-file notes.md --latest=false

@@ -1,0 +1,5 @@
+# Give the Gnoblin compositor and shell normal scheduling with a small priority boost.
+# See 99-gnoblin.types.
+{ "name": "gnoblin", "type": "Gnoblin_Compositor" }
+{ "name": "quickshell", "type": "Gnoblin_Compositor" }
+{ "name": "bingux-frame", "type": "Gnoblin_Compositor" }
