@@ -30,10 +30,9 @@ void meta_gnoblin_window_effects_clear_rounded_clip(ClutterActor* actor);
  * finite, normalized RGBA. */
 void meta_gnoblin_window_effects_set_rounded_border(ClutterActor* actor, double width,
                                                     const double color[4]);
-void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent,
-                                                     const double bounds[4], double radius,
-                                                     double exponent, double width,
-                                                     const double color[4]);
+void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent, const double bounds[4],
+                                                    double radius, double exponent, double width,
+                                                    const double color[4]);
 
 /*
  * Detect client-rendered rounded corner cutouts from the shaped texture. The
@@ -45,8 +44,7 @@ void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent,
  * found.
  */
 gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* texture_actor,
-                                                ClutterActor* effect_actor,
-                                                double insets[4]);
+                                                ClutterActor* effect_actor, double insets[4]);
 
 /* Enable conservative filling of detected transparent CSD corner pixels. */
 void meta_gnoblin_window_effects_set_csd_reconstruction(ClutterActor* actor, gboolean enabled,

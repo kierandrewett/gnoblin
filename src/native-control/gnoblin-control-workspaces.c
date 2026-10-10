@@ -364,7 +364,8 @@ JsonNode* gnoblin_control_monitor_snapshot_json(GnoblinNativeControl* control,
         JsonObject* monitor = json_node_get_object(record);
         json_object_set_int_member(monitor, "revision", control->state_revision);
         /* The work area is the monitor minus the space that panels reserve with exclusive zones.
-         * It is what a window can use, so a shell or a person can see why a window stops where it does. */
+         * It is what a window can use, so a shell or a person can see why a window stops where it
+         * does. */
         int monitor_index = (int)json_object_get_int_member_with_default(monitor, "index", -1);
         MtkRectangle work_area;
         if (active_workspace && monitor_index >= 0) {
@@ -458,8 +459,7 @@ gboolean gnoblin_control_publish_monitor_changes(GnoblinNativeControl* control, 
     if (control->monitor_state_initialized) {
         static const char* properties[] = {
             "id",      "index", "x",    "y",     "width",  "height",       "primary",   "scale",
-            "enabled", "name",  "make", "model", "serial", "refresh_rate", "transform",
-            "work_area",
+            "enabled", "name",  "make", "model", "serial", "refresh_rate", "transform", "work_area",
         };
         GHashTableIter iter;
         gpointer key;

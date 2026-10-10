@@ -60,13 +60,13 @@ const char* gnoblin_native_control_input_policy_error(MetaDisplay* display);
 /* The compositor plugin owns the ImGui panel and registers this narrow
  * bridge. Lua operations use it without a Mutter builtin keybinding. */
 META_EXPORT
-void gnoblin_native_control_set_console_toggle_handler(
-    MetaDisplay* display, GnoblinNativeConsoleToggleFunc handler, gpointer user_data);
+void gnoblin_native_control_set_console_toggle_handler(MetaDisplay* display,
+                                                       GnoblinNativeConsoleToggleFunc handler,
+                                                       gpointer user_data);
 META_EXPORT
 gboolean gnoblin_native_control_toggle_console(MetaDisplay* display, GError** error);
 META_EXPORT
-gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display,
-                                                   const ClutterEvent* event,
+gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display, const ClutterEvent* event,
                                                    ClutterActor* event_actor);
 META_EXPORT
 gboolean gnoblin_native_control_overlay_modifier_pressed(MetaDisplay* display,
@@ -112,9 +112,9 @@ guint64 gnoblin_native_control_console_complete(MetaDisplay* display, const char
 /* Request the same validated configuration reload used by gnoblinctl reload. */
 META_EXPORT
 guint64 gnoblin_native_control_reload_runtime_config(MetaDisplay* display,
-                                                      GnoblinNativeRuntimeResponseFunc callback,
-                                                      gpointer user_data, GDestroyNotify destroy,
-                                                      GError** error);
+                                                     GnoblinNativeRuntimeResponseFunc callback,
+                                                     gpointer user_data, GDestroyNotify destroy,
+                                                     GError** error);
 /* Cancelling owns no callback delivery, but releases its user data on the
  * compositor main loop. Safe to call from a panel's teardown path. */
 META_EXPORT

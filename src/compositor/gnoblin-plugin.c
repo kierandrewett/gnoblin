@@ -50,9 +50,9 @@ struct _MetaGnoblinPluginClass {
 };
 
 #define META_TYPE_GNOBLIN_PLUGIN (meta_gnoblin_plugin_get_type())
-#define META_GNOBLIN_PLUGIN(obj) \
+#define META_GNOBLIN_PLUGIN(obj)                                                                   \
     (G_TYPE_CHECK_INSTANCE_CAST((obj), META_TYPE_GNOBLIN_PLUGIN, MetaGnoblinPlugin))
-#define META_GNOBLIN_PLUGIN_CLASS(klass) \
+#define META_GNOBLIN_PLUGIN_CLASS(klass)                                                           \
     (G_TYPE_CHECK_CLASS_CAST((klass), META_TYPE_GNOBLIN_PLUGIN, MetaGnoblinPluginClass))
 
 G_DEFINE_TYPE(MetaGnoblinPlugin, meta_gnoblin_plugin, META_TYPE_PLUGIN);
@@ -80,14 +80,12 @@ static void gnoblin_plugin_update_backgrounds(MetaGnoblinPlugin* self) {
     }
 }
 
-static void gnoblin_plugin_monitors_changed(MetaMonitorManager* manager,
-                                             MetaGnoblinPlugin* self) {
+static void gnoblin_plugin_monitors_changed(MetaMonitorManager* manager, MetaGnoblinPlugin* self) {
     (void)manager;
     gnoblin_plugin_update_backgrounds(self);
 }
 
-static gboolean
-gnoblin_plugin_session_is_locked(MetaGnoblinPlugin* self) {
+static gboolean gnoblin_plugin_session_is_locked(MetaGnoblinPlugin* self) {
     MetaDisplay* display = meta_plugin_get_display(META_PLUGIN(self));
     MetaContext* context = meta_display_get_context(display);
     MetaWaylandCompositor* compositor = meta_context_get_wayland_compositor(context);
@@ -95,9 +93,8 @@ gnoblin_plugin_session_is_locked(MetaGnoblinPlugin* self) {
     return compositor && meta_wayland_session_lock_is_active(compositor);
 }
 
-static gboolean
-gnoblin_plugin_stage_captured_event(ClutterActor* stage, ClutterEvent* event,
-                                    MetaGnoblinPlugin* self) {
+static gboolean gnoblin_plugin_stage_captured_event(ClutterActor* stage, ClutterEvent* event,
+                                                    MetaGnoblinPlugin* self) {
     (void)stage;
 
     /* Diagnostic UI must never accept or observe input in a locked session. */
@@ -106,15 +103,13 @@ gnoblin_plugin_stage_captured_event(ClutterActor* stage, ClutterEvent* event,
         return CLUTTER_EVENT_PROPAGATE;
     }
 
-    return gnoblin_plugin_ui_handle_event(self->diagnostics_ui, event)
-               ? CLUTTER_EVENT_STOP
-               : CLUTTER_EVENT_PROPAGATE;
+    return gnoblin_plugin_ui_handle_event(self->diagnostics_ui, event) ? CLUTTER_EVENT_STOP
+                                                                       : CLUTTER_EVENT_PROPAGATE;
 }
 
-static void
-gnoblin_plugin_session_lock_changed(MetaWaylandCompositor* compositor,
-                                    MetaWaylandSessionLockState state,
-                                    gpointer user_data) {
+static void gnoblin_plugin_session_lock_changed(MetaWaylandCompositor* compositor,
+                                                MetaWaylandSessionLockState state,
+                                                gpointer user_data) {
     (void)compositor;
     MetaGnoblinPlugin* self = user_data;
 
@@ -122,8 +117,7 @@ gnoblin_plugin_session_lock_changed(MetaWaylandCompositor* compositor,
                                          state != META_WAYLAND_SESSION_LOCK_UNLOCKED);
 }
 
-static gboolean
-gnoblin_plugin_toggle_console_bridge(MetaDisplay* display, gpointer user_data) {
+static gboolean gnoblin_plugin_toggle_console_bridge(MetaDisplay* display, gpointer user_data) {
     MetaGnoblinPlugin* self = user_data;
     if (!self || display != meta_plugin_get_display(META_PLUGIN(self)) ||
         gnoblin_plugin_session_is_locked(self))
@@ -157,25 +151,23 @@ static void gnoblin_plugin_start(MetaPlugin* plugin) {
      * popup, input-panel, and feedback groups. Layer-shell overlay surfaces
      * share the top-window group, so parenting this actor there lets a shell
      * cover recovery and console UI. */
-    self->diagnostics_ui = gnoblin_plugin_ui_new(
-        meta_backend_get_stage(backend), display);
-    self->stage_capture_id = g_signal_connect(
-        meta_backend_get_stage(backend), "captured-event",
-        G_CALLBACK(gnoblin_plugin_stage_captured_event), self);
+    self->diagnostics_ui = gnoblin_plugin_ui_new(meta_backend_get_stage(backend), display);
+    self->stage_capture_id =
+        g_signal_connect(meta_backend_get_stage(backend), "captured-event",
+                         G_CALLBACK(gnoblin_plugin_stage_captured_event), self);
     self->wayland_compositor = meta_context_get_wayland_compositor(context);
     if (self->wayland_compositor)
         self->session_lock_callback_id = meta_wayland_session_lock_add_state_changed_callback(
             self->wayland_compositor, gnoblin_plugin_session_lock_changed, self, NULL);
     gnoblin_plugin_ui_set_session_locked(self->diagnostics_ui,
                                          gnoblin_plugin_session_is_locked(self));
-    gnoblin_native_control_set_console_toggle_handler(
-        display, gnoblin_plugin_toggle_console_bridge, self);
+    gnoblin_native_control_set_console_toggle_handler(display, gnoblin_plugin_toggle_console_bridge,
+                                                      self);
 
     clutter_actor_show(meta_backend_get_stage(backend));
 }
 
-static void
-meta_gnoblin_plugin_dispose(GObject* object) {
+static void meta_gnoblin_plugin_dispose(GObject* object) {
     MetaGnoblinPlugin* self = META_GNOBLIN_PLUGIN(object);
     MetaDisplay* display = meta_plugin_get_display(META_PLUGIN(self));
     gnoblin_native_control_set_console_toggle_handler(display, NULL, NULL);
@@ -189,7 +181,7 @@ meta_gnoblin_plugin_dispose(GObject* object) {
     }
     if (self->wayland_compositor && self->session_lock_callback_id != 0) {
         meta_wayland_session_lock_remove_state_changed_callback(self->wayland_compositor,
-                                                                 self->session_lock_callback_id);
+                                                                self->session_lock_callback_id);
         self->session_lock_callback_id = 0;
         self->wayland_compositor = NULL;
     }

@@ -15,6 +15,6 @@ G_BEGIN_DECLS
  * through untouched. Text-input-v3 clients get preedit and commit from it.
  */
 META_EXPORT
-void gnoblin_ibus_input_method_install (MetaBackend *backend);
+void gnoblin_ibus_input_method_install(MetaBackend* backend);
 
 G_END_DECLS

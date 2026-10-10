@@ -160,8 +160,8 @@ static void test_context_cancel_and_config_change(void) {
     g_assert_true(handle(router, normal,
                          "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",
                          "unlocked", &matched));
-    g_assert_true(
-        handle(router, normal, "{'gesture': <'swipe'>, 'phase': <'cancel'>}", "unlocked", &matched));
+    g_assert_true(handle(router, normal, "{'gesture': <'swipe'>, 'phase': <'cancel'>}", "unlocked",
+                         &matched));
     assert_no_match(matched);
     g_assert_true(handle(router, normal,
                          "{'gesture': <'swipe'>, 'phase': <'begin'>, 'fingers': <int64 3>}",

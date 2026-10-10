@@ -81,7 +81,7 @@ static void gnoblin_control_prompt_iface_init(GcrPromptInterface* iface);
 G_DEFINE_TYPE_WITH_CODE(GnoblinControlPrompt, gnoblin_control_prompt, G_TYPE_OBJECT,
                         G_IMPLEMENT_INTERFACE(GCR_TYPE_PROMPT, gnoblin_control_prompt_iface_init))
 
-#define GNOBLIN_CONTROL_PROMPT(obj) \
+#define GNOBLIN_CONTROL_PROMPT(obj)                                                                \
     (G_TYPE_CHECK_INSTANCE_CAST((obj), gnoblin_control_prompt_get_type(), GnoblinControlPrompt))
 
 enum {
@@ -381,8 +381,7 @@ static GcrPromptReply prompt_confirm_finish(GcrPrompt* prompt, GAsyncResult* res
                                             GError** error) {
     g_return_val_if_fail(g_task_is_valid(result, prompt), GCR_PROMPT_REPLY_CANCEL);
     gssize reply = g_task_propagate_int(G_TASK(result), error);
-    return reply == GCR_PROMPT_REPLY_CONTINUE ? GCR_PROMPT_REPLY_CONTINUE
-                                              : GCR_PROMPT_REPLY_CANCEL;
+    return reply == GCR_PROMPT_REPLY_CONTINUE ? GCR_PROMPT_REPLY_CONTINUE : GCR_PROMPT_REPLY_CANCEL;
 }
 
 static void prompt_close(GcrPrompt* prompt) {
@@ -499,8 +498,8 @@ static void broker_bus_ready(GObject* source, GAsyncResult* result, gpointer use
     gcr_system_prompter_register(broker->prompter, connection);
     broker->ref_count += 2;
     broker->system_name_id = g_bus_own_name_on_connection(
-        connection, SYSTEM_PROMPTER_NAME, G_BUS_NAME_OWNER_FLAGS_DO_NOT_QUEUE,
-        broker_name_acquired, broker_name_lost, broker, broker_name_user_data_free);
+        connection, SYSTEM_PROMPTER_NAME, G_BUS_NAME_OWNER_FLAGS_DO_NOT_QUEUE, broker_name_acquired,
+        broker_name_lost, broker, broker_name_user_data_free);
     broker->private_name_id = g_bus_own_name_on_connection(
         connection, PRIVATE_PROMPTER_NAME, G_BUS_NAME_OWNER_FLAGS_DO_NOT_QUEUE,
         broker_name_acquired, broker_name_lost, broker, broker_name_user_data_free);
@@ -516,8 +515,8 @@ static void prompts_start(GnoblinNativeControl* control) {
     broker->cancellable = g_cancellable_new();
     /* gcr-prompter serves both names from one prompter object in single mode, because only
      * one object can answer on /org/gnome/keyring/Prompter. */
-    broker->prompter = gcr_system_prompter_new(GCR_SYSTEM_PROMPTER_SINGLE,
-                                               gnoblin_control_prompt_get_type());
+    broker->prompter =
+        gcr_system_prompter_new(GCR_SYSTEM_PROMPTER_SINGLE, gnoblin_control_prompt_get_type());
     control->prompt_broker = broker;
     active_control = control;
     g_bus_get(G_BUS_TYPE_SESSION, broker->cancellable, broker_bus_ready, broker);
@@ -574,10 +573,9 @@ void gnoblin_control_prompts_stop(GnoblinNativeControl* control) {
 
 void gnoblin_control_prompts_note_recipient(GnoblinNativeControl* control, gint64 request_id,
                                             guint64 client_id) {
-    PendingPrompt* pending =
-        request_id > 0 && control->pending_prompts
-            ? g_hash_table_lookup(control->pending_prompts, &request_id)
-            : NULL;
+    PendingPrompt* pending = request_id > 0 && control->pending_prompts
+                                 ? g_hash_table_lookup(control->pending_prompts, &request_id)
+                                 : NULL;
     if (pending) {
         guint64* client_key = g_new(guint64, 1);
         *client_key = client_id;
@@ -609,8 +607,8 @@ GVariant* gnoblin_control_prompts_operation(GnoblinNativeControl* control, const
                     "%s requires a positive request_id", method);
         return NULL;
     }
-    PendingPrompt* pending =
-        control->pending_prompts ? g_hash_table_lookup(control->pending_prompts, &request_id)
+    PendingPrompt* pending = control->pending_prompts
+                                 ? g_hash_table_lookup(control->pending_prompts, &request_id)
                                  : NULL;
     if (!pending) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
@@ -647,10 +645,9 @@ GVariant* gnoblin_control_prompts_operation(GnoblinNativeControl* control, const
                 return NULL;
             }
         }
-        if (!prompt_optional_boolean(arguments, "confirmed", &confirmed_present, &confirmed,
-                                     method, error) ||
-            !prompt_optional_boolean(arguments, "choice", &choice_present, &choice, method,
-                                     error))
+        if (!prompt_optional_boolean(arguments, "confirmed", &confirmed_present, &confirmed, method,
+                                     error) ||
+            !prompt_optional_boolean(arguments, "choice", &choice_present, &choice, method, error))
             return NULL;
         if (pending->kind == PROMPT_KIND_PASSWORD && (!password_present || confirmed_present)) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -672,8 +669,8 @@ GVariant* gnoblin_control_prompts_operation(GnoblinNativeControl* control, const
             prompt->password = gcr_secure_memory_strdup(password);
             g_task_return_boolean(task, TRUE);
         } else {
-            g_task_return_int(task, confirmed ? GCR_PROMPT_REPLY_CONTINUE
-                                              : GCR_PROMPT_REPLY_CANCEL);
+            g_task_return_int(task,
+                              confirmed ? GCR_PROMPT_REPLY_CONTINUE : GCR_PROMPT_REPLY_CANCEL);
         }
         pending_prompt_end(pending, "answered");
     } else {

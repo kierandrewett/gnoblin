@@ -89,8 +89,8 @@ static gboolean native_command_started(gpointer user_data) {
     run->pid = start->pid;
     start->pid = 0;
     g_child_watch_add(run->pid, native_command_finished, run);
-    g_message("gnoblin-%s: started %s (queue %.1f ms, spawn %.1f ms)", start->category,
-              start->name, (start->spawn_started_us - start->queued_at_us) / 1000.0,
+    g_message("gnoblin-%s: started %s (queue %.1f ms, spawn %.1f ms)", start->category, start->name,
+              (start->spawn_started_us - start->queued_at_us) / 1000.0,
               (start->spawn_finished_us - start->spawn_started_us) / 1000.0);
     return G_SOURCE_REMOVE;
 }
@@ -169,8 +169,8 @@ gboolean gnoblin_control_command_spawn(char** argv, GPid* pid, GError** error) {
     if (result == 0)
         return TRUE;
 fail_actions:
-    g_set_error(error, G_IO_ERROR, g_io_error_from_errno(result), "could not spawn %s: %s",
-                argv[0], g_strerror(result));
+    g_set_error(error, G_IO_ERROR, g_io_error_from_errno(result), "could not spawn %s: %s", argv[0],
+                g_strerror(result));
     return FALSE;
 fail:
     posix_spawn_file_actions_destroy(&actions);
@@ -201,7 +201,8 @@ static void native_command_spawn_worker(gpointer data, gpointer user_data) {
 static gpointer native_command_executor_init(gpointer unused) {
     GError* error = NULL;
     (void)unused;
-    native_command_executor = g_thread_pool_new(native_command_spawn_worker, NULL, 1, FALSE, &error);
+    native_command_executor =
+        g_thread_pool_new(native_command_spawn_worker, NULL, 1, FALSE, &error);
     if (!native_command_executor) {
         g_warning("gnoblin-shortcut: could not create command executor: %s", error->message);
         g_clear_error(&error);
@@ -219,7 +220,7 @@ void gnoblin_control_launch_command(const char* category, const char* name, char
 /* Queueing is the only synchronous command outcome.  Spawn and child exit run
  * on the existing command worker and are intentionally reported to the log. */
 gboolean gnoblin_control_queue_command(const char* category, const char* name, char** argv,
-                                     GError** error) {
+                                       GError** error) {
     if (!category || !*category || !name || !*name || !argv || !argv[0] || !*argv[0]) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "command needs a category, name, and nonempty argv[0]");
@@ -227,11 +228,11 @@ gboolean gnoblin_control_queue_command(const char* category, const char* name, c
     }
     if (g_atomic_int_add(&native_command_pending_count, 1) >= MAX_PENDING_NATIVE_COMMANDS) {
         g_atomic_int_add(&native_command_pending_count, -1);
-        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE,
-                            "command queue is full");
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NO_SPACE, "command queue is full");
         return FALSE;
     }
-    GThreadPool* executor = g_once(&native_command_executor_once, native_command_executor_init, NULL);
+    GThreadPool* executor =
+        g_once(&native_command_executor_once, native_command_executor_init, NULL);
     if (!executor) {
         g_atomic_int_add(&native_command_pending_count, -1);
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_FAILED,

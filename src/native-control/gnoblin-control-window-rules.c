@@ -993,11 +993,10 @@ void gnoblin_control_place_window_by_rules(GnoblinNativeControl* control, MetaWi
         if (!workspace)
             g_warning("gnoblin-window-rule: workspace id '%s' not present for %s", wanted, title);
     } else if (number) {
-        gint64 position = g_variant_is_of_type(number, G_VARIANT_TYPE_INT64)
-                              ? g_variant_get_int64(number)
-                              : g_variant_is_of_type(number, G_VARIANT_TYPE_INT32)
-                                    ? g_variant_get_int32(number)
-                                    : 0;
+        gint64 position =
+            g_variant_is_of_type(number, G_VARIANT_TYPE_INT64)   ? g_variant_get_int64(number)
+            : g_variant_is_of_type(number, G_VARIANT_TYPE_INT32) ? g_variant_get_int32(number)
+                                                                 : 0;
         if (position >= 1 && position <= meta_workspace_manager_get_n_workspaces(manager))
             workspace = meta_workspace_manager_get_workspace_by_index(manager, position - 1);
         if (!workspace)
@@ -1033,9 +1032,8 @@ static void native_window_rule_blur_update(MetaWindow* window, MetaSurfaceActor*
             area = (MtkRectangle){0, 0, 0, 0};
     }
 
-    g_autoptr(MtkRegion) region = area.width > 0 && area.height > 0
-                                      ? mtk_region_create_rectangle(&area)
-                                      : NULL;
+    g_autoptr(MtkRegion) region =
+        area.width > 0 && area.height > 0 ? mtk_region_create_rectangle(&area) : NULL;
     meta_surface_actor_set_rule_background_blur(surface, region != NULL, radius, region);
 }
 
@@ -1317,10 +1315,9 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     for (guint i = 0; i < G_N_ELEMENTS(padding); i++)
         has_padding |= fabs(padding[i]) > 0.001;
     double csd_insets[4] = {0, 0, 0, 0};
-    gboolean csd_detected =
-        clip_enabled && remove_csd && !has_padding && !window->minimized &&
-        meta_gnoblin_window_effects_detect_csd(CLUTTER_ACTOR(actor), CLUTTER_ACTOR(surface),
-                                               csd_insets);
+    gboolean csd_detected = clip_enabled && remove_csd && !has_padding && !window->minimized &&
+                            meta_gnoblin_window_effects_detect_csd(
+                                CLUTTER_ACTOR(actor), CLUTTER_ACTOR(surface), csd_insets);
     if (clip_enabled && g_str_equal(mode, "auto") && !csd_detected &&
         native_corner_toolkit_should_skip(control, window, skip_libadwaita, skip_libhandy))
         clip_enabled = FALSE;
@@ -1339,8 +1336,10 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         meta_gnoblin_window_frame_get_effect_geometry(window, &outer_geometry)) {
         const double extents[4] = {
             visible_geometry.y - outer_geometry.y,
-            (outer_geometry.x + outer_geometry.width) - (visible_geometry.x + visible_geometry.width),
-            (outer_geometry.y + outer_geometry.height) - (visible_geometry.y + visible_geometry.height),
+            (outer_geometry.x + outer_geometry.width) -
+                (visible_geometry.x + visible_geometry.width),
+            (outer_geometry.y + outer_geometry.height) -
+                (visible_geometry.y + visible_geometry.height),
             visible_geometry.x - outer_geometry.x,
         };
         for (guint i = 0; i < 4; i++) {
@@ -1362,10 +1361,9 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
      * window with rounding disabled must not keep rounded frame corners. */
     g_variant_dict_insert(&frame_style, "radius", "d", clip_enabled ? radius : 0.);
     g_variant_dict_insert(&frame_style, "exponent", "d", exponent);
-    g_variant_dict_insert(&frame_style, "border-width", "d",
-                          effect_enabled ? border_width : 0.);
-    g_variant_dict_insert(&frame_style, "border-color", "(dddd)", border_color[0],
-                          border_color[1], border_color[2], border_color[3]);
+    g_variant_dict_insert(&frame_style, "border-width", "d", effect_enabled ? border_width : 0.);
+    g_variant_dict_insert(&frame_style, "border-color", "(dddd)", border_color[0], border_color[1],
+                          border_color[2], border_color[3]);
     g_autoptr(GVariant) frame_style_options = g_variant_ref_sink(g_variant_dict_end(&frame_style));
     meta_gnoblin_window_frame_style(window, frame_style_options);
     g_autoptr(GError) frame_error = NULL;

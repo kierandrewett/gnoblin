@@ -185,9 +185,9 @@ static CoglPipeline* window_shadow_create_pipeline(ClutterOffscreenEffect* effec
     g_string_append(code,
                     "cogl_color_out=mix(resultA,resultB,gnoblin_shadow_progress)*cogl_color_in;");
 
-/* Cogl identifies a snippet by pointer, not by source text. A new snippet per
- * window makes a new GPU program per window even when the text is identical.
- * Keep one snippet per shader kind for the life of the process. */
+    /* Cogl identifies a snippet by pointer, not by source text. A new snippet per
+     * window makes a new GPU program per window even when the text is identical.
+     * Keep one snippet per shader kind for the life of the process. */
     static CoglSnippet* snippet;
     if (!snippet)
         snippet = cogl_snippet_new(COGL_SNIPPET_HOOK_FRAGMENT, declarations->str, code->str);
@@ -555,9 +555,8 @@ gboolean meta_gnoblin_window_effects_set_shader(ClutterActor* surface_actor,
     /* Rule refreshes run on focus and geometry changes. The source describes
      * the program variant; dimensions and configured values are uniforms, so
      * retain a matching effect instead of compiling a new program each time. */
-    if (existing &&
-        g_strcmp0(g_object_get_data(G_OBJECT(existing), WINDOW_SHADER_SOURCE_KEY), function_source) ==
-            0) {
+    if (existing && g_strcmp0(g_object_get_data(G_OBJECT(existing), WINDOW_SHADER_SOURCE_KEY),
+                              function_source) == 0) {
         ClutterShaderEffect* shader = CLUTTER_SHADER_EFFECT(existing);
         const float size[2] = {(float)logical_width, (float)logical_height};
         const float width = (float)logical_width;
@@ -599,8 +598,8 @@ gboolean meta_gnoblin_window_effects_set_shader(ClutterActor* surface_actor,
     /* The actor sinks floating ClutterActorMeta instances; keep one local ref
      * so the autoptr releases only our reference after the actor takes its own. */
     g_object_ref_sink(replacement);
-    g_object_set_data_full(G_OBJECT(replacement), WINDOW_SHADER_SOURCE_KEY, g_strdup(function_source),
-                           g_free);
+    g_object_set_data_full(G_OBJECT(replacement), WINDOW_SHADER_SOURCE_KEY,
+                           g_strdup(function_source), g_free);
     clutter_actor_add_effect_with_name(surface_actor, WINDOW_SHADER_EFFECT_NAME, replacement);
     return TRUE;
 }
@@ -840,8 +839,7 @@ static gboolean detect_csd_insets(const guint8* pixels, int width, int height, d
 }
 
 gboolean meta_gnoblin_window_effects_detect_csd(ClutterActor* texture_actor,
-                                                ClutterActor* effect_actor,
-                                                double insets[4]) {
+                                                ClutterActor* effect_actor, double insets[4]) {
     CsdProbeCache* cache;
     MetaShapedTexture* texture;
     g_autoptr(GBytes) pixels_bytes = NULL;
@@ -932,168 +930,169 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
                                                   CoglTexture* texture) {
     CoglPipeline* pipeline = CLUTTER_OFFSCREEN_EFFECT_CLASS(meta_gnoblin_rounded_clip_parent_class)
                                  ->create_pipeline(effect, texture);
-/* Cogl identifies a snippet by pointer, not by source text. A new snippet per
- * window makes a new GPU program per window even when the text is identical.
- * Keep one snippet per shader kind for the life of the process. */
+    /* Cogl identifies a snippet by pointer, not by source text. A new snippet per
+     * window makes a new GPU program per window even when the text is identical.
+     * Keep one snippet per shader kind for the life of the process. */
     static CoglSnippet* snippet;
     if (!snippet)
         snippet = cogl_snippet_new(
-        COGL_SNIPPET_HOOK_FRAGMENT,
-        "uniform vec4 gnoblin_rounded_clip_bounds;"
-        "uniform vec4 gnoblin_rounded_clip_texture_bounds;"
-        "uniform float gnoblin_rounded_clip_radius;"
-        "uniform float gnoblin_rounded_clip_exponent;"
-        "uniform float gnoblin_rounded_clip_automatic;"
-        "uniform float gnoblin_rounded_clip_csd;"
-        "uniform vec4 gnoblin_rounded_clip_csd_insets;"
-        "uniform float gnoblin_rounded_clip_border_width;"
-        "uniform vec4 gnoblin_rounded_clip_border_color;"
-        "uniform float gnoblin_rounded_clip_outline_only;"
-        "float sourceAlpha(vec2 point){"
-        "vec2 uv=(point-gnoblin_rounded_clip_texture_bounds.xy)/"
-        "(gnoblin_rounded_clip_texture_bounds.zw-gnoblin_rounded_clip_texture_bounds.xy);"
-        "return texture2D(cogl_sampler0,clamp(uv,vec2(0.0),vec2(1.0))).a;}"
-        "vec4 sourcePixel(vec2 point){"
-        "vec2 uv=(point-gnoblin_rounded_clip_texture_bounds.xy)/"
-        "(gnoblin_rounded_clip_texture_bounds.zw-gnoblin_rounded_clip_texture_bounds.xy);"
-        "vec4 pixel=texture2D(cogl_sampler0,clamp(uv,vec2(0.0),vec2(1.0)));"
-        "return vec4(pixel.rgb/max(pixel.a,0.00001),pixel.a);}"
-        "float roundedCoverage(vec2 point,vec4 box,float radius,float exponent){"
-        "if(point.x<box.x||point.y<box.y||point.x>box.z||point.y>box.w)return 0.0;"
-        "vec2 halfSize=(box.zw-box.xy)*0.5;"
-        "radius=min(radius,min(halfSize.x,halfSize.y));"
-        "if(radius<0.5)return 1.0;"
-        "vec2 q=max(abs(point-(box.xy+halfSize))-(halfSize-vec2(radius)),vec2(0.0));"
-        "float distance=pow(pow(q.x/max(radius,0.001),exponent)+"
-        "pow(q.y/max(radius,0.001),exponent),1.0/exponent)*radius;"
-        "return 1.0-smoothstep(radius-0.5,radius+0.5,distance);}"
-        "vec4 flatPatch(vec2 point){"
-        "vec4 a=sourcePixel(point+vec2(-1.0,-1.0));"
-        "vec4 b=sourcePixel(point+vec2(1.0,-1.0));"
-        "vec4 c=sourcePixel(point+vec2(-1.0,1.0));"
-        "vec4 d=sourcePixel(point+vec2(1.0,1.0));"
-        "vec4 spread=max(max(a,b),max(c,d))-min(min(a,b),min(c,d));"
-        "if(max(max(spread.r,spread.g),spread.b)>0.08||spread.a>0.06)return vec4(0.0);"
-        "return (a+b+c+d)*0.25;}"
-        "bool sameBackground(vec4 a,vec4 b){"
-        "vec4 delta=abs(a-b);"
-        "return min(a.a,b.a)>0.2&&max(max(delta.r,delta.g),delta.b)<0.06&&delta.a<0.06;}"
-        "vec4 cornerBackground(vec2 point,bool right,bool bottom){"
-        "vec2 direction=vec2(right?-1.0:1.0,bottom?-1.0:1.0);"
-        "vec2 origin=vec2(right?gnoblin_rounded_clip_bounds.z:gnoblin_rounded_clip_bounds.x,"
-        "bottom?gnoblin_rounded_clip_bounds.w:gnoblin_rounded_clip_bounds.y);"
-        "vec2 inset=vec2(right?gnoblin_rounded_clip_csd_insets.y:gnoblin_rounded_clip_csd_insets.w,"
-        "bottom?gnoblin_rounded_clip_csd_insets.z:gnoblin_rounded_clip_csd_insets.x);"
-        "vec2 pa=origin+direction*vec2(inset.x+4.0,4.0);"
-        "vec2 pb=origin+direction*vec2(4.0,inset.y+4.0);"
-        "vec2 pc=origin+direction*(inset+vec2(4.0));"
-        "vec4 a=flatPatch(pa),b=flatPatch(pb),c=flatPatch(pc);"
-        "if(!sameBackground(a,b)){"
-        "if(sameBackground(a,c)){b=c;pb=pc;}"
-        "else if(sameBackground(b,c)){a=c;pa=pc;}"
-        "else return vec4(0.0);}"
-        "float da=distance(point,pa),db=distance(point,pb);"
-        "return mix(a,b,da/max(da+db,0.001));}"
-        "bool squareCorner(vec2 point,float radius){"
-        "vec2 middle=(gnoblin_rounded_clip_bounds.xy+"
-        "gnoblin_rounded_clip_bounds.zw)*0.5;"
-        "vec2 direction=vec2(point.x<middle.x?1.0:-1.0,"
-        "point.y<middle.y?1.0:-1.0);"
-        "vec2 origin=vec2(point.x<middle.x?gnoblin_rounded_clip_bounds.x:"
-        "gnoblin_rounded_clip_bounds.z,point.y<middle.y?"
-        "gnoblin_rounded_clip_bounds.y:gnoblin_rounded_clip_bounds.w);"
-        "float inset=min(radius,8.0);"
-        "float reference=sourceAlpha(origin+direction*inset);"
-        "float diagonal=sourceAlpha(origin+direction*0.75);"
-        "float horizontal=sourceAlpha(origin+direction*vec2(inset,0.75));"
-        "float vertical=sourceAlpha(origin+direction*vec2(0.75,inset));"
-        "return reference>0.02&&min(diagonal,min(horizontal,vertical))>=reference*0.85;}",
-        "vec2 p=gnoblin_rounded_clip_texture_bounds.xy+"
-        "cogl_tex_coord_in[0].st*(gnoblin_rounded_clip_texture_bounds.zw-"
-        "gnoblin_rounded_clip_texture_bounds.xy);"
-        "vec2 half_size=(gnoblin_rounded_clip_bounds.zw-"
-        "gnoblin_rounded_clip_bounds.xy)*0.5;"
-        "float radius=min(gnoblin_rounded_clip_radius,min(half_size.x,half_size.y));"
-        "if(radius>0.0){"
-        "vec2 q=max(abs(p-(gnoblin_rounded_clip_bounds.xy+half_size))-"
-        "(half_size-vec2(radius)),vec2(0.0));"
-        "float distance=pow(pow(q.x/radius,gnoblin_rounded_clip_exponent)+"
-        "pow(q.y/radius,gnoblin_rounded_clip_exponent),"
-        "1.0/gnoblin_rounded_clip_exponent)*radius;"
-        "bool corner=q.x>0.0&&q.y>0.0;"
-        "bool right=p.x>(gnoblin_rounded_clip_bounds.x+"
-        "gnoblin_rounded_clip_bounds.z)*0.5;"
-        "bool bottom=p.y>(gnoblin_rounded_clip_bounds.y+"
-        "gnoblin_rounded_clip_bounds.w)*0.5;"
-        "float insetX=right?gnoblin_rounded_clip_csd_insets.y:"
-        "gnoblin_rounded_clip_csd_insets.w;"
-        "float insetY=bottom?gnoblin_rounded_clip_csd_insets.z:"
-        "gnoblin_rounded_clip_csd_insets.x;"
-        "float extendX=insetX+sqrt(2.0*insetX)+2.0;"
-        "float extendY=insetY+sqrt(2.0*insetY)+2.0;"
-        "bool csdCorner=gnoblin_rounded_clip_csd>0.5&&"
-        "(right?gnoblin_rounded_clip_bounds.z-p.x:"
-        "p.x-gnoblin_rounded_clip_bounds.x)<extendX&&"
-        "(bottom?gnoblin_rounded_clip_bounds.w-p.y:"
-        "p.y-gnoblin_rounded_clip_bounds.y)<extendY;"
-        "if(csdCorner){"
-        "vec4 fill=cornerBackground(p,right,bottom);"
-        "vec2 dx=vec2(1.5,0.0),dy=vec2(0.0,1.5);"
-        "float edgeAlpha=min(min(sourceAlpha(p-dx),sourceAlpha(p+dx)),"
-        "min(sourceAlpha(p-dy),sourceAlpha(p+dy)));"
-        "edgeAlpha=min(edgeAlpha,min(min(sourceAlpha(p-dx-dy),sourceAlpha(p+dx-dy)),"
-        "min(sourceAlpha(p-dx+dy),sourceAlpha(p+dx+dy))));"
-        "if(fill.a>0.2&&edgeAlpha<fill.a*0.98)"
-        "cogl_color_out=vec4(fill.rgb*fill.a,fill.a)*cogl_color_in;}"
-        "bool preserve=gnoblin_rounded_clip_automatic>0.5&&corner&&"
-        "!squareCorner(p,radius)&&!csdCorner;"
-        "float coverage=preserve?1.0:1.0-smoothstep(radius-0.5,radius+0.5,distance);"
-        "float borderWidth=gnoblin_rounded_clip_border_width;"
-        "if(abs(borderWidth)>0.01){"
-        "float borderCoverage;"
-        "if(borderWidth>0.0){"
-        "vec4 innerBounds=gnoblin_rounded_clip_bounds+"
-        "vec4(borderWidth,borderWidth,-borderWidth,-borderWidth);"
-        "float innerRadius=max(0.0,radius-borderWidth);"
-        "borderCoverage=max(0.0,coverage-roundedCoverage(p,innerBounds,innerRadius,"
-        "gnoblin_rounded_clip_exponent));}"
-        "else{"
-        "float outsideWidth=-borderWidth;"
-        "vec4 outerBounds=gnoblin_rounded_clip_bounds+"
-        "vec4(-outsideWidth,-outsideWidth,outsideWidth,outsideWidth);"
-        "float outerCoverage=roundedCoverage(p,outerBounds,radius+outsideWidth,"
-        "gnoblin_rounded_clip_exponent);"
-        "borderCoverage=max(0.0,outerCoverage-coverage);}"
-        "float borderAlpha=borderCoverage*gnoblin_rounded_clip_border_color.a;"
-        "vec4 border=vec4(gnoblin_rounded_clip_border_color.rgb*borderAlpha,borderAlpha);"
-        "cogl_color_out=border*cogl_color_in+"
-        "cogl_color_out*coverage*(1.0-borderAlpha);"
-        "if(gnoblin_rounded_clip_outline_only>0.5)cogl_color_out=border*cogl_color_in;}"
-        "else cogl_color_out*=coverage;}"
-        "else{"
-        "float coverage=roundedCoverage(p,gnoblin_rounded_clip_bounds,0.0,"
-        "gnoblin_rounded_clip_exponent);"
-        "float borderWidth=gnoblin_rounded_clip_border_width;"
-        "if(abs(borderWidth)>0.01){"
-        "float borderCoverage;"
-        "if(borderWidth>0.0){"
-        "vec4 innerBounds=gnoblin_rounded_clip_bounds+"
-        "vec4(borderWidth,borderWidth,-borderWidth,-borderWidth);"
-        "borderCoverage=max(0.0,coverage-roundedCoverage(p,innerBounds,0.0,"
-        "gnoblin_rounded_clip_exponent));}"
-        "else{"
-        "float outsideWidth=-borderWidth;"
-        "vec4 outerBounds=gnoblin_rounded_clip_bounds+"
-        "vec4(-outsideWidth,-outsideWidth,outsideWidth,outsideWidth);"
-        "float outerCoverage=roundedCoverage(p,outerBounds,0.0,"
-        "gnoblin_rounded_clip_exponent);"
-        "borderCoverage=max(0.0,outerCoverage-coverage);}"
-        "float borderAlpha=borderCoverage*gnoblin_rounded_clip_border_color.a;"
-        "vec4 border=vec4(gnoblin_rounded_clip_border_color.rgb*borderAlpha,borderAlpha);"
-        "cogl_color_out=border*cogl_color_in+"
-        "cogl_color_out*coverage*(1.0-borderAlpha);"
-        "if(gnoblin_rounded_clip_outline_only>0.5)cogl_color_out=border*cogl_color_in;}"
-        "else cogl_color_out*=coverage;} ");
+            COGL_SNIPPET_HOOK_FRAGMENT,
+            "uniform vec4 gnoblin_rounded_clip_bounds;"
+            "uniform vec4 gnoblin_rounded_clip_texture_bounds;"
+            "uniform float gnoblin_rounded_clip_radius;"
+            "uniform float gnoblin_rounded_clip_exponent;"
+            "uniform float gnoblin_rounded_clip_automatic;"
+            "uniform float gnoblin_rounded_clip_csd;"
+            "uniform vec4 gnoblin_rounded_clip_csd_insets;"
+            "uniform float gnoblin_rounded_clip_border_width;"
+            "uniform vec4 gnoblin_rounded_clip_border_color;"
+            "uniform float gnoblin_rounded_clip_outline_only;"
+            "float sourceAlpha(vec2 point){"
+            "vec2 uv=(point-gnoblin_rounded_clip_texture_bounds.xy)/"
+            "(gnoblin_rounded_clip_texture_bounds.zw-gnoblin_rounded_clip_texture_bounds.xy);"
+            "return texture2D(cogl_sampler0,clamp(uv,vec2(0.0),vec2(1.0))).a;}"
+            "vec4 sourcePixel(vec2 point){"
+            "vec2 uv=(point-gnoblin_rounded_clip_texture_bounds.xy)/"
+            "(gnoblin_rounded_clip_texture_bounds.zw-gnoblin_rounded_clip_texture_bounds.xy);"
+            "vec4 pixel=texture2D(cogl_sampler0,clamp(uv,vec2(0.0),vec2(1.0)));"
+            "return vec4(pixel.rgb/max(pixel.a,0.00001),pixel.a);}"
+            "float roundedCoverage(vec2 point,vec4 box,float radius,float exponent){"
+            "if(point.x<box.x||point.y<box.y||point.x>box.z||point.y>box.w)return 0.0;"
+            "vec2 halfSize=(box.zw-box.xy)*0.5;"
+            "radius=min(radius,min(halfSize.x,halfSize.y));"
+            "if(radius<0.5)return 1.0;"
+            "vec2 q=max(abs(point-(box.xy+halfSize))-(halfSize-vec2(radius)),vec2(0.0));"
+            "float distance=pow(pow(q.x/max(radius,0.001),exponent)+"
+            "pow(q.y/max(radius,0.001),exponent),1.0/exponent)*radius;"
+            "return 1.0-smoothstep(radius-0.5,radius+0.5,distance);}"
+            "vec4 flatPatch(vec2 point){"
+            "vec4 a=sourcePixel(point+vec2(-1.0,-1.0));"
+            "vec4 b=sourcePixel(point+vec2(1.0,-1.0));"
+            "vec4 c=sourcePixel(point+vec2(-1.0,1.0));"
+            "vec4 d=sourcePixel(point+vec2(1.0,1.0));"
+            "vec4 spread=max(max(a,b),max(c,d))-min(min(a,b),min(c,d));"
+            "if(max(max(spread.r,spread.g),spread.b)>0.08||spread.a>0.06)return vec4(0.0);"
+            "return (a+b+c+d)*0.25;}"
+            "bool sameBackground(vec4 a,vec4 b){"
+            "vec4 delta=abs(a-b);"
+            "return min(a.a,b.a)>0.2&&max(max(delta.r,delta.g),delta.b)<0.06&&delta.a<0.06;}"
+            "vec4 cornerBackground(vec2 point,bool right,bool bottom){"
+            "vec2 direction=vec2(right?-1.0:1.0,bottom?-1.0:1.0);"
+            "vec2 origin=vec2(right?gnoblin_rounded_clip_bounds.z:gnoblin_rounded_clip_bounds.x,"
+            "bottom?gnoblin_rounded_clip_bounds.w:gnoblin_rounded_clip_bounds.y);"
+            "vec2 "
+            "inset=vec2(right?gnoblin_rounded_clip_csd_insets.y:gnoblin_rounded_clip_csd_insets.w,"
+            "bottom?gnoblin_rounded_clip_csd_insets.z:gnoblin_rounded_clip_csd_insets.x);"
+            "vec2 pa=origin+direction*vec2(inset.x+4.0,4.0);"
+            "vec2 pb=origin+direction*vec2(4.0,inset.y+4.0);"
+            "vec2 pc=origin+direction*(inset+vec2(4.0));"
+            "vec4 a=flatPatch(pa),b=flatPatch(pb),c=flatPatch(pc);"
+            "if(!sameBackground(a,b)){"
+            "if(sameBackground(a,c)){b=c;pb=pc;}"
+            "else if(sameBackground(b,c)){a=c;pa=pc;}"
+            "else return vec4(0.0);}"
+            "float da=distance(point,pa),db=distance(point,pb);"
+            "return mix(a,b,da/max(da+db,0.001));}"
+            "bool squareCorner(vec2 point,float radius){"
+            "vec2 middle=(gnoblin_rounded_clip_bounds.xy+"
+            "gnoblin_rounded_clip_bounds.zw)*0.5;"
+            "vec2 direction=vec2(point.x<middle.x?1.0:-1.0,"
+            "point.y<middle.y?1.0:-1.0);"
+            "vec2 origin=vec2(point.x<middle.x?gnoblin_rounded_clip_bounds.x:"
+            "gnoblin_rounded_clip_bounds.z,point.y<middle.y?"
+            "gnoblin_rounded_clip_bounds.y:gnoblin_rounded_clip_bounds.w);"
+            "float inset=min(radius,8.0);"
+            "float reference=sourceAlpha(origin+direction*inset);"
+            "float diagonal=sourceAlpha(origin+direction*0.75);"
+            "float horizontal=sourceAlpha(origin+direction*vec2(inset,0.75));"
+            "float vertical=sourceAlpha(origin+direction*vec2(0.75,inset));"
+            "return reference>0.02&&min(diagonal,min(horizontal,vertical))>=reference*0.85;}",
+            "vec2 p=gnoblin_rounded_clip_texture_bounds.xy+"
+            "cogl_tex_coord_in[0].st*(gnoblin_rounded_clip_texture_bounds.zw-"
+            "gnoblin_rounded_clip_texture_bounds.xy);"
+            "vec2 half_size=(gnoblin_rounded_clip_bounds.zw-"
+            "gnoblin_rounded_clip_bounds.xy)*0.5;"
+            "float radius=min(gnoblin_rounded_clip_radius,min(half_size.x,half_size.y));"
+            "if(radius>0.0){"
+            "vec2 q=max(abs(p-(gnoblin_rounded_clip_bounds.xy+half_size))-"
+            "(half_size-vec2(radius)),vec2(0.0));"
+            "float distance=pow(pow(q.x/radius,gnoblin_rounded_clip_exponent)+"
+            "pow(q.y/radius,gnoblin_rounded_clip_exponent),"
+            "1.0/gnoblin_rounded_clip_exponent)*radius;"
+            "bool corner=q.x>0.0&&q.y>0.0;"
+            "bool right=p.x>(gnoblin_rounded_clip_bounds.x+"
+            "gnoblin_rounded_clip_bounds.z)*0.5;"
+            "bool bottom=p.y>(gnoblin_rounded_clip_bounds.y+"
+            "gnoblin_rounded_clip_bounds.w)*0.5;"
+            "float insetX=right?gnoblin_rounded_clip_csd_insets.y:"
+            "gnoblin_rounded_clip_csd_insets.w;"
+            "float insetY=bottom?gnoblin_rounded_clip_csd_insets.z:"
+            "gnoblin_rounded_clip_csd_insets.x;"
+            "float extendX=insetX+sqrt(2.0*insetX)+2.0;"
+            "float extendY=insetY+sqrt(2.0*insetY)+2.0;"
+            "bool csdCorner=gnoblin_rounded_clip_csd>0.5&&"
+            "(right?gnoblin_rounded_clip_bounds.z-p.x:"
+            "p.x-gnoblin_rounded_clip_bounds.x)<extendX&&"
+            "(bottom?gnoblin_rounded_clip_bounds.w-p.y:"
+            "p.y-gnoblin_rounded_clip_bounds.y)<extendY;"
+            "if(csdCorner){"
+            "vec4 fill=cornerBackground(p,right,bottom);"
+            "vec2 dx=vec2(1.5,0.0),dy=vec2(0.0,1.5);"
+            "float edgeAlpha=min(min(sourceAlpha(p-dx),sourceAlpha(p+dx)),"
+            "min(sourceAlpha(p-dy),sourceAlpha(p+dy)));"
+            "edgeAlpha=min(edgeAlpha,min(min(sourceAlpha(p-dx-dy),sourceAlpha(p+dx-dy)),"
+            "min(sourceAlpha(p-dx+dy),sourceAlpha(p+dx+dy))));"
+            "if(fill.a>0.2&&edgeAlpha<fill.a*0.98)"
+            "cogl_color_out=vec4(fill.rgb*fill.a,fill.a)*cogl_color_in;}"
+            "bool preserve=gnoblin_rounded_clip_automatic>0.5&&corner&&"
+            "!squareCorner(p,radius)&&!csdCorner;"
+            "float coverage=preserve?1.0:1.0-smoothstep(radius-0.5,radius+0.5,distance);"
+            "float borderWidth=gnoblin_rounded_clip_border_width;"
+            "if(abs(borderWidth)>0.01){"
+            "float borderCoverage;"
+            "if(borderWidth>0.0){"
+            "vec4 innerBounds=gnoblin_rounded_clip_bounds+"
+            "vec4(borderWidth,borderWidth,-borderWidth,-borderWidth);"
+            "float innerRadius=max(0.0,radius-borderWidth);"
+            "borderCoverage=max(0.0,coverage-roundedCoverage(p,innerBounds,innerRadius,"
+            "gnoblin_rounded_clip_exponent));}"
+            "else{"
+            "float outsideWidth=-borderWidth;"
+            "vec4 outerBounds=gnoblin_rounded_clip_bounds+"
+            "vec4(-outsideWidth,-outsideWidth,outsideWidth,outsideWidth);"
+            "float outerCoverage=roundedCoverage(p,outerBounds,radius+outsideWidth,"
+            "gnoblin_rounded_clip_exponent);"
+            "borderCoverage=max(0.0,outerCoverage-coverage);}"
+            "float borderAlpha=borderCoverage*gnoblin_rounded_clip_border_color.a;"
+            "vec4 border=vec4(gnoblin_rounded_clip_border_color.rgb*borderAlpha,borderAlpha);"
+            "cogl_color_out=border*cogl_color_in+"
+            "cogl_color_out*coverage*(1.0-borderAlpha);"
+            "if(gnoblin_rounded_clip_outline_only>0.5)cogl_color_out=border*cogl_color_in;}"
+            "else cogl_color_out*=coverage;}"
+            "else{"
+            "float coverage=roundedCoverage(p,gnoblin_rounded_clip_bounds,0.0,"
+            "gnoblin_rounded_clip_exponent);"
+            "float borderWidth=gnoblin_rounded_clip_border_width;"
+            "if(abs(borderWidth)>0.01){"
+            "float borderCoverage;"
+            "if(borderWidth>0.0){"
+            "vec4 innerBounds=gnoblin_rounded_clip_bounds+"
+            "vec4(borderWidth,borderWidth,-borderWidth,-borderWidth);"
+            "borderCoverage=max(0.0,coverage-roundedCoverage(p,innerBounds,0.0,"
+            "gnoblin_rounded_clip_exponent));}"
+            "else{"
+            "float outsideWidth=-borderWidth;"
+            "vec4 outerBounds=gnoblin_rounded_clip_bounds+"
+            "vec4(-outsideWidth,-outsideWidth,outsideWidth,outsideWidth);"
+            "float outerCoverage=roundedCoverage(p,outerBounds,0.0,"
+            "gnoblin_rounded_clip_exponent);"
+            "borderCoverage=max(0.0,outerCoverage-coverage);}"
+            "float borderAlpha=borderCoverage*gnoblin_rounded_clip_border_color.a;"
+            "vec4 border=vec4(gnoblin_rounded_clip_border_color.rgb*borderAlpha,borderAlpha);"
+            "cogl_color_out=border*cogl_color_in+"
+            "cogl_color_out*coverage*(1.0-borderAlpha);"
+            "if(gnoblin_rounded_clip_outline_only>0.5)cogl_color_out=border*cogl_color_in;}"
+            "else cogl_color_out*=coverage;} ");
     cogl_pipeline_add_snippet(pipeline, snippet);
     return pipeline;
 }
@@ -1254,10 +1253,9 @@ void meta_gnoblin_window_effects_set_rounded_border(ClutterActor* actor, double 
     clutter_effect_queue_repaint(CLUTTER_EFFECT(clip));
 }
 
-void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent,
-                                                     const double bounds[4], double radius,
-                                                     double exponent, double width,
-                                                     const double color[4]) {
+void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent, const double bounds[4],
+                                                    double radius, double exponent, double width,
+                                                    const double color[4]) {
     ClutterActor* outline;
     MetaGnoblinRoundedClip* clip;
     ClutterEffect* effect;
@@ -1267,8 +1265,7 @@ void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent,
     g_return_if_fail(CLUTTER_IS_ACTOR(parent));
     outline = g_object_get_data(G_OBJECT(parent), WINDOW_OUTLINE_ACTOR_KEY);
     if (!bounds || !color || !isfinite(radius) || !isfinite(exponent) || !isfinite(width) ||
-        radius < 0 || fabs(width) <= 0.001 || bounds[2] <= bounds[0] ||
-        bounds[3] <= bounds[1]) {
+        radius < 0 || fabs(width) <= 0.001 || bounds[2] <= bounds[0] || bounds[3] <= bounds[1]) {
         if (outline) {
             g_object_set_data(G_OBJECT(parent), WINDOW_OUTLINE_ACTOR_KEY, NULL);
             clutter_actor_destroy(outline);
@@ -1303,7 +1300,7 @@ void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent,
     /* Keep an effect for a square outline. Its zero radius is restored below;
      * the public rounded-clip setter intentionally removes zero-radius clips. */
     meta_gnoblin_window_effects_set_rounded_clip(outline, MAX(radius, 0.001), exponent, FALSE,
-                                                  padding);
+                                                 padding);
     meta_gnoblin_window_effects_set_rounded_border(outline, width, color);
     effect = clutter_actor_get_effect(outline, ROUNDED_CLIP_EFFECT_NAME);
     if (!effect || !META_IS_GNOBLIN_ROUNDED_CLIP(effect))

@@ -145,7 +145,8 @@ typedef struct {
     gboolean input_dispatching;
     gboolean api_calling;
     gboolean ignore_config_loads;
-    /* Login: an included file that fails is skipped and reported instead of ending the whole load. */
+    /* Login: an included file that fails is skipped and reported instead of ending the whole load.
+     */
     gboolean skip_failed_files;
     GPtrArray* skipped_files;
     gboolean embedded_defaults;
@@ -446,9 +447,9 @@ static const char* lua_error_text(lua_State* state) {
 
 static void record_runtime_callback_error(const char* scope, const char* detail) {
     g_free(runtime_callback_error);
-    runtime_callback_error = g_strdup_printf("Lua %s was disabled after an error: %s",
-                                             scope ? scope : "callback",
-                                             detail ? detail : "Lua configuration failed");
+    runtime_callback_error =
+        g_strdup_printf("Lua %s was disabled after an error: %s", scope ? scope : "callback",
+                        detail ? detail : "Lua configuration failed");
 }
 
 char* gnoblin_config_take_runtime_callback_error(void) {
@@ -1252,9 +1253,10 @@ static int compare_entry_names(gconstpointer left, gconstpointer right) {
     return g_strcmp0(*(const char* const*)left, *(const char* const*)right);
 }
 
-/* Entries are appended to an ordered list, and that order reaches the input handlers that Mutter compares with a
- * replacement worker's configuration. Lua randomises its string hash seed for each process, so lua_next order
- * differs between the original worker and its replacement. Visit the names in sorted order instead. */
+/* Entries are appended to an ordered list, and that order reaches the input handlers that Mutter
+ * compares with a replacement worker's configuration. Lua randomises its string hash seed for each
+ * process, so lua_next order differs between the original worker and its replacement. Visit the
+ * names in sorted order instead. */
 static void merge_named_entries(lua_State* state, int list, int entries) {
     list = lua_absindex(state, list);
     entries = lua_absindex(state, entries);
@@ -2316,7 +2318,8 @@ static int lua_generic_api_action(lua_State* state) {
         g_variant_builder_add(&action, "{sv}", "request_id", g_variant_new_int64(request_id));
         g_variant_builder_add(&action, "{sv}", "method", g_variant_new_string(method));
         g_variant_builder_add(&action, "{sv}", "arguments", g_variant_builder_end(&arguments));
-        g_ptr_array_add(config->runtime_actions, g_variant_ref_sink(g_variant_builder_end(&action)));
+        g_ptr_array_add(config->runtime_actions,
+                        g_variant_ref_sink(g_variant_builder_end(&action)));
         config->actions_in_dispatch++;
         push_operation_handle(state, config, request_id, method);
         return 1;
@@ -2409,12 +2412,13 @@ static int lua_generic_api_action(lua_State* state) {
         } else if (g_str_equal(method, "auth.respond")) {
             lua_getfield(state, 1, "response");
             size_t length = 0;
-            const char* text = lua_type(state, -1) == LUA_TSTRING ? lua_tolstring(state, -1, &length)
-                                                                   : NULL;
+            const char* text =
+                lua_type(state, -1) == LUA_TSTRING ? lua_tolstring(state, -1, &length) : NULL;
             gboolean valid_response = text && length <= 4096 && g_utf8_validate(text, length, NULL);
             lua_pop(state, 1);
             if (!valid_response)
-                return luaL_error(state, "auth.respond needs a UTF-8 response string up to 4096 bytes");
+                return luaL_error(state,
+                                  "auth.respond needs a UTF-8 response string up to 4096 bytes");
         }
     }
 
@@ -2436,15 +2440,14 @@ static int lua_generic_api_action(lua_State* state) {
         if (respond) {
             lua_getfield(state, 1, "password");
             size_t length = 0;
-            const char* text = lua_type(state, -1) == LUA_TSTRING
-                                   ? lua_tolstring(state, -1, &length)
-                                   : NULL;
-            gboolean valid_password =
-                lua_isnil(state, -1) || (text && length <= 4096 && g_utf8_validate(text, length, NULL));
+            const char* text =
+                lua_type(state, -1) == LUA_TSTRING ? lua_tolstring(state, -1, &length) : NULL;
+            gboolean valid_password = lua_isnil(state, -1) || (text && length <= 4096 &&
+                                                               g_utf8_validate(text, length, NULL));
             lua_pop(state, 1);
             if (!valid_password)
-                return luaL_error(state,
-                                  "prompt.respond password must be a UTF-8 string up to 4096 bytes");
+                return luaL_error(
+                    state, "prompt.respond password must be a UTF-8 string up to 4096 bytes");
             lua_getfield(state, 1, "confirmed");
             gboolean valid_confirmed = lua_isnil(state, -1) || lua_isboolean(state, -1);
             lua_pop(state, 1);
@@ -3401,8 +3404,8 @@ static gboolean is_keybinding_action_name(const char* key) {
     return !previous_underscore;
 }
 
-/* Deprecated enum spellings and their current names. A key can appear in several sections, so only values that
- * no other setting uses are listed. Old spellings stay valid for one release. */
+/* Deprecated enum spellings and their current names. A key can appear in several sections, so only
+ * values that no other setting uses are listed. Old spellings stay valid for one release. */
 static const char* deprecated_enum_replacement(const char* key, const char* value) {
     static const struct {
         const char* key;
@@ -3495,17 +3498,20 @@ static void push_settings(lua_State* state, int source, const char* parent, int 
             luaL_error(state, "duplicate setting after snake_case conversion");
         lua_pop(state, 1);
         const char* key = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
-        gboolean callback_binding = keybinding_depth == 2 && parent &&
+        gboolean callback_binding =
+            keybinding_depth == 2 && parent &&
             (g_str_equal(parent, "pointer") || g_str_equal(parent, "keyboard"));
-        int child_keybinding_depth = callback_binding ? 3
+        int child_keybinding_depth = callback_binding                     ? 3
                                      : key && !strcmp(key, "keybindings") ? 1
-                                     : keybinding_depth == 1            ? 2
-                                                                        : 0;
-        /* Rewrite deprecated enum spellings to their current names so snapshots and events report the new ones. */
+                                     : keybinding_depth == 1              ? 2
+                                                                          : 0;
+        /* Rewrite deprecated enum spellings to their current names so snapshots and events report
+         * the new ones. */
         if (key && lua_type(state, -2) == LUA_TSTRING) {
             const char* replacement = deprecated_enum_replacement(key, lua_tostring(state, -2));
             if (replacement) {
-                /* The stack holds the source key, the value, then the converted key. Swap the value. */
+                /* The stack holds the source key, the value, then the converted key. Swap the
+                 * value. */
                 lua_pushstring(state, replacement);
                 lua_replace(state, -3);
             }
@@ -3531,19 +3537,21 @@ static int lua_shortcut_input_callback(lua_State* state) {
     return 1;
 }
 
-static void clear_configured_input_binding(lua_State* state, const char* group,
-                                           const char* name) {
+static void clear_configured_input_binding(lua_State* state, const char* group, const char* name) {
     int base = lua_gettop(state);
     lua_getglobal(state, "gnoblin");
     int api = lua_gettop(state);
     lua_getfield(state, api, "_configured_input_bindings");
-    if (!lua_istable(state, -1)) goto done;
+    if (!lua_istable(state, -1))
+        goto done;
     lua_getfield(state, -1, group);
-    if (!lua_istable(state, -1)) goto done;
+    if (!lua_istable(state, -1))
+        goto done;
     int group_index = lua_gettop(state);
     lua_getfield(state, group_index, name);
     const char* id = lua_tostring(state, -1);
-    if (!id) goto done;
+    if (!id)
+        goto done;
     lua_getfield(state, api, "_input_handlers");
     if (lua_istable(state, -1)) {
         lua_pushnil(state);
@@ -3558,10 +3566,11 @@ static void clear_configured_input_binding(lua_State* state, const char* group,
         for (lua_Integer i = 1; i <= count; i++) {
             lua_rawgeti(state, handlers, i);
             lua_getfield(state, -1, "id");
-            gboolean matches = lua_type(state, -1) == LUA_TSTRING &&
-                               g_str_equal(lua_tostring(state, -1), id);
+            gboolean matches =
+                lua_type(state, -1) == LUA_TSTRING && g_str_equal(lua_tostring(state, -1), id);
             lua_pop(state, 2);
-            if (!matches) continue;
+            if (!matches)
+                continue;
             for (lua_Integer j = i; j < count; j++) {
                 lua_rawgeti(state, handlers, j + 1);
                 lua_rawseti(state, handlers, j);
@@ -3577,8 +3586,8 @@ done:
     lua_settop(state, base);
 }
 
-static void remember_configured_input_binding(lua_State* state, const char* group,
-                                              const char* name, int id_index) {
+static void remember_configured_input_binding(lua_State* state, const char* group, const char* name,
+                                              int id_index) {
     id_index = lua_absindex(state, id_index);
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "_configured_input_bindings");
@@ -3600,9 +3609,10 @@ static void remember_configured_input_binding(lua_State* state, const char* grou
     lua_pop(state, 3);
 }
 
-/* String keys of the table at INDEX in sorted order. Lua randomises its string hash seed for each process, so lua_next
- * order differs between a worker and its replacement; registering in that order would make the input handler list
- * differ and Mutter would reject the replacement's resume. A key that is not a string raises ERROR_MESSAGE. */
+/* String keys of the table at INDEX in sorted order. Lua randomises its string hash seed for each
+ * process, so lua_next order differs between a worker and its replacement; registering in that
+ * order would make the input handler list differ and Mutter would reject the replacement's resume.
+ * A key that is not a string raises ERROR_MESSAGE. */
 static GPtrArray* sorted_string_keys(lua_State* state, int index, const char* error_message) {
     index = lua_absindex(state, index);
     GPtrArray* keys = g_ptr_array_new_with_free_func(g_free);
@@ -3634,8 +3644,8 @@ static void register_keyboard_binding_callbacks(lua_State* state, int config_ind
         return;
     }
     int bindings = lua_absindex(state, -1);
-    g_autoptr(GPtrArray) names =
-        sorted_string_keys(state, bindings, "keyboard binding declarations need snake_case names and tables");
+    g_autoptr(GPtrArray) names = sorted_string_keys(
+        state, bindings, "keyboard binding declarations need snake_case names and tables");
     for (guint position = 0; position < names->len; position++) {
         const char* name = g_ptr_array_index(names, position);
         lua_getfield(state, bindings, name);
@@ -3713,7 +3723,8 @@ static void register_pointer_binding_callbacks(lua_State* state, int config_inde
         }
         lua_getfield(state, bindings, name);
         if (!lua_istable(state, -1)) {
-            /* Build the message in Lua memory first: NAME belongs to the array that is freed next. */
+            /* Build the message in Lua memory first: NAME belongs to the array that is freed next.
+             */
             luaL_where(state, 1);
             lua_pushfstring(state, "pointer binding '%s' must be a table", name);
             lua_concat(state, 2);
@@ -3764,38 +3775,53 @@ static void register_pointer_binding_callbacks(lua_State* state, int config_inde
     lua_pop(state, 1); /* pointer bindings */
 }
 
-/* Warn about a top-level key that gnoblin.configure does not know. A typo such as window_managment otherwise does
- * nothing and gives no feedback. This is a warning, not an error, so a config written for a newer Gnoblin still loads.
- * The names are the documented sections, after push_settings has turned underscores into dashes. */
+/* Warn about a top-level key that gnoblin.configure does not know. A typo such as window_managment
+ * otherwise does nothing and gives no feedback. This is a warning, not an error, so a config
+ * written for a newer Gnoblin still loads. The names are the documented sections, after
+ * push_settings has turned underscores into dashes. */
 static void warn_unknown_configure_sections(lua_State* state, int table) {
     static const char* const known[] = {
-        "keybindings", "window-management", "compositor", "input", "input-sources", "monitors",
-        "touchpad-gestures", "permissions", "location", "prompts", "auth", "portals", "layer-shell",
-        "protocols", "frame-renderers", "cursor", "xwayland", "shortcuts", "autostart", "workspaces",
-        "window-rules", "animations", NULL,
+        "keybindings",  "window-management", "compositor",  "input",     "input-sources",
+        "monitors",     "touchpad-gestures", "permissions", "location",  "prompts",
+        "auth",         "portals",           "layer-shell", "protocols", "frame-renderers",
+        "cursor",       "xwayland",          "shortcuts",   "autostart", "workspaces",
+        "window-rules", "animations",        NULL,
     };
     static const char* const known_protocols[] = {
-        "wlr-layer-shell", "ext-foreign-toplevel-list", "wlr-foreign-toplevel-management", "xdg-decoration",
-        "kde-server-decoration", "window-frame-renderer", "wlr-screencopy", "ext-background-effect-v1",
-        "blur-fade", "ext-data-control", "ext-idle-notify", "wlr-gamma-control",
-        "wlr-output-power-management", "ext-session-lock", NULL,
+        "wlr-layer-shell",
+        "ext-foreign-toplevel-list",
+        "wlr-foreign-toplevel-management",
+        "xdg-decoration",
+        "kde-server-decoration",
+        "window-frame-renderer",
+        "wlr-screencopy",
+        "ext-background-effect-v1",
+        "blur-fade",
+        "ext-data-control",
+        "ext-idle-notify",
+        "wlr-gamma-control",
+        "wlr-output-power-management",
+        "ext-session-lock",
+        NULL,
     };
     table = lua_absindex(state, table);
     lua_pushnil(state);
     while (lua_next(state, table)) {
         const char* section = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
         if (section && !g_strv_contains(known, section))
-            g_warning("gnoblin.configure: unknown section \"%s\" is ignored; check the spelling against "
-                      "the documented sections",
-                      section);
+            g_warning(
+                "gnoblin.configure: unknown section \"%s\" is ignored; check the spelling against "
+                "the documented sections",
+                section);
         if (section && !strcmp(section, "protocols") && lua_istable(state, -1)) {
             lua_pushnil(state);
             while (lua_next(state, -2)) {
                 if (lua_type(state, -2) == LUA_TSTRING &&
                     !g_strv_contains(known_protocols, lua_tostring(state, -2)))
-                    g_warning("gnoblin.configure: unknown protocol \"%s\" is ignored; check the spelling "
-                              "against the documented protocol names",
-                              lua_tostring(state, -2));
+                    g_warning(
+                        "gnoblin.configure: unknown protocol \"%s\" is ignored; check the spelling "
+                        "against the documented protocol names",
+                        lua_tostring(state, -2));
                 lua_pop(state, 1);
             }
         }
@@ -3807,7 +3833,8 @@ static int lua_configure(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     luaL_checktype(state, 1, LUA_TTABLE);
     if (config && config->input_dispatching)
-        return luaL_error(state, "configuration changes are unavailable in an input policy handler");
+        return luaL_error(state,
+                          "configuration changes are unavailable in an input policy handler");
     register_pointer_binding_callbacks(state, 1, config);
     register_keyboard_binding_callbacks(state, 1, config);
     push_settings(state, 1, NULL, 0, 0);
@@ -3826,22 +3853,22 @@ static int lua_configure_call(lua_State* state) {
  * function remains in this Lua runtime. */
 static int lua_input_on(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (!config || lua_gettop(state) != 2 || !lua_istable(state, 1) ||
-        !lua_isfunction(state, 2))
+    if (!config || lua_gettop(state) != 2 || !lua_istable(state, 1) || !lua_isfunction(state, 2))
         return luaL_error(state, "gnoblin.input.on requires a match table and handler function");
     if (config->input_dispatching)
         return luaL_error(state, "input handlers cannot be registered from an input callback");
     lua_getfield(state, 1, "type");
     const char* type = lua_tostring(state, -1);
-    static const char* const types[] = {"key", "button", "motion", "scroll",
+    static const char* const types[] = {"key",   "button", "motion",  "scroll",
                                         "touch", "tablet", "gesture", NULL};
     gboolean valid_type = FALSE;
     for (guint i = 0; types[i]; i++)
         valid_type |= type && g_str_equal(type, types[i]);
     lua_pop(state, 1);
     if (!valid_type)
-        return luaL_error(state,
-                          "input handler type must be key, button, motion, scroll, touch, tablet, or gesture");
+        return luaL_error(
+            state,
+            "input handler type must be key, button, motion, scroll, touch, tablet, or gesture");
     if (config->next_input_handler_id == G_MAXUINT)
         return luaL_error(state, "input handler ID space is exhausted");
     g_autofree char* id = g_strdup_printf("input-%u", ++config->next_input_handler_id);
@@ -4065,8 +4092,9 @@ static void install_named_view(lua_State* state, const char* key) {
     lua_setfield(state, -2, key);
 }
 
-/* Mirrors parse_autostart_entries in gnoblin-runtime.c. The session guardian rejects the same entries, so a bad entry
- * fails the reload here with the entry named, and the previous config stays active. */
+/* Mirrors parse_autostart_entries in gnoblin-runtime.c. The session guardian rejects the same
+ * entries, so a bad entry fails the reload here with the entry named, and the previous config stays
+ * active. */
 static void validate_autostart_entries(lua_State* state, int list, lua_Integer count) {
     for (lua_Integer i = 1; i <= count; i++) {
         lua_rawgeti(state, list, i);
@@ -4091,8 +4119,10 @@ static void validate_autostart_entries(lua_State* state, int list, lua_Integer c
                 luaL_error(state, "autostart \"%s\" has a field that is not named", name);
             const char* field = lua_tostring(state, -2);
             if (strcmp(field, "name") && strcmp(field, "command") && strcmp(field, "when"))
-                luaL_error(state, "autostart \"%s\" has an unsupported field \"%s\"; use name, command or when",
-                           name, field);
+                luaL_error(
+                    state,
+                    "autostart \"%s\" has an unsupported field \"%s\"; use name, command or when",
+                    name, field);
             lua_pop(state, 1);
         }
         lua_getfield(state, entry, "when");
@@ -4106,8 +4136,8 @@ static void validate_autostart_entries(lua_State* state, int list, lua_Integer c
         for (lua_Integer arg = 1; arg <= (lua_Integer)lua_rawlen(state, -1); arg++) {
             lua_rawgeti(state, -1, arg);
             if (lua_type(state, -1) != LUA_TSTRING || (arg == 1 && !lua_rawlen(state, -1)))
-                luaL_error(state, "autostart \"%s\" command item %d must be a string%s", name, (int)arg,
-                           arg == 1 ? " that is not empty" : "");
+                luaL_error(state, "autostart \"%s\" command item %d must be a string%s", name,
+                           (int)arg, arg == 1 ? " that is not empty" : "");
             lua_pop(state, 1);
         }
         lua_settop(state, entry - 1);
@@ -4195,8 +4225,7 @@ static int lua_declare(lua_State* state) {
 static gboolean evaluate_path(lua_State*, LuaConfig*, const char*, gboolean, GError**);
 static gboolean evaluate_embedded_path(lua_State*, LuaConfig*, const char*, GError**);
 
-static char* embedded_relative_path(const char* current_path, const char* pattern,
-                                    GError** error) {
+static char* embedded_relative_path(const char* current_path, const char* pattern, GError** error) {
     static const char prefix[] = "/gnoblin-builtin/";
     if (g_path_is_absolute(pattern) || g_str_has_prefix(pattern, "~/")) {
         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
@@ -6036,11 +6065,10 @@ static int protected_eval(lua_State* state) {
 
     install_api(state, run->config);
     if (run->source) {
-        if (luaL_loadbufferx(state, run->source, run->source_length,
-                             "@<built-in init.lua>", "t") != LUA_OK ||
+        if (luaL_loadbufferx(state, run->source, run->source_length, "@<built-in init.lua>", "t") !=
+                LUA_OK ||
             lua_pcall(state, 0, 0, 0) != LUA_OK) {
-            g_set_error(&run->error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s",
-                        lua_error_text(state));
+            g_set_error(&run->error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s", lua_error_text(state));
             lua_pop(state, 1);
             return 0;
         }
@@ -6115,8 +6143,7 @@ GVariant* gnoblin_config_default_document(void) {
         lua_pushlightuserdata(state, &run);
         lua_pushcclosure(state, protected_eval, 1);
         if (lua_pcall(state, 0, 0, 0) != LUA_OK) {
-            g_set_error(&run.error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s",
-                        lua_error_text(state));
+            g_set_error(&run.error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s", lua_error_text(state));
             lua_pop(state, 1);
         }
         lua_close(state);
@@ -6909,8 +6936,7 @@ GVariant* gnoblin_config_load_runtime_fallback(const char* path, GVariant* docum
     if (!defaults)
         return NULL;
     LuaRuntime* runtime = pending_runtime;
-    g_autoptr(GVariant) input_handlers =
-        g_variant_lookup_value(defaults, "input-handlers", NULL);
+    g_autoptr(GVariant) input_handlers = g_variant_lookup_value(defaults, "input-handlers", NULL);
     GVariantDict recovered;
     g_variant_dict_init(&recovered, document);
     if (input_handlers)
@@ -7534,8 +7560,8 @@ GVariant* gnoblin_config_dispatch_input(GVariant* payload, GError** error) {
         return NULL;
     }
     g_autoptr(GVariant) event = g_variant_lookup_value(payload, "event", G_VARIANT_TYPE_VARDICT);
-    g_autoptr(GVariant) handler_ids = g_variant_lookup_value(payload, "handler_ids",
-                                                              G_VARIANT_TYPE_STRING_ARRAY);
+    g_autoptr(GVariant) handler_ids =
+        g_variant_lookup_value(payload, "handler_ids", G_VARIANT_TYPE_STRING_ARRAY);
     if (!event || !handler_ids) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                             "input policy request requires event and handler_ids");
@@ -7545,14 +7571,12 @@ GVariant* gnoblin_config_dispatch_input(GVariant* payload, GError** error) {
     LuaConfig* config = &active_runtime->config;
     guint64 focus_handle = 0, native_generation = 0;
     gint64 focus_expiry = 0;
-    gboolean has_focus = g_variant_lookup(payload, "focus_context_handle", "t", &focus_handle) &&
-                         focus_handle &&
-                         g_variant_lookup(payload, "focus_context_generation", "t",
-                                          &native_generation) &&
-                         native_generation &&
-                         g_variant_lookup(payload, "focus_context_expires_at_us", "x",
-                                          &focus_expiry) &&
-                         focus_expiry > g_get_monotonic_time();
+    gboolean has_focus =
+        g_variant_lookup(payload, "focus_context_handle", "t", &focus_handle) && focus_handle &&
+        g_variant_lookup(payload, "focus_context_generation", "t", &native_generation) &&
+        native_generation &&
+        g_variant_lookup(payload, "focus_context_expires_at_us", "x", &focus_expiry) &&
+        focus_expiry > g_get_monotonic_time();
     if (has_focus) {
         config->dispatch_focus_handle = focus_handle;
         config->dispatch_focus_generation = active_runtime->generation;
@@ -7617,7 +7641,8 @@ GVariant* gnoblin_config_dispatch_input(GVariant* payload, GError** error) {
                 handler_failed = TRUE;
             lua_getfield(state, -1, "action");
             returned = lua_tostring(state, -1);
-            if (returned && (g_str_equal(returned, "forward") || g_str_equal(returned, "consume"))) {
+            if (returned &&
+                (g_str_equal(returned, "forward") || g_str_equal(returned, "consume"))) {
                 g_free(action);
                 action = g_strdup(returned);
                 g_free(selected);
@@ -7935,8 +7960,8 @@ static GVariant* console_inspection_node(lua_State* state, const char* label, in
                 g_autoptr(GString) child_label = g_string_new(NULL);
                 console_append_inspection_value(child_label, state, -2, inspection);
                 inspection->nodes++;
-                g_autoptr(GVariant) child = console_inspection_node(state, child_label->str, -1,
-                                                                     depth + 1, inspection);
+                g_autoptr(GVariant) child =
+                    console_inspection_node(state, child_label->str, -1, depth + 1, inspection);
                 g_variant_builder_add_value(&children, child);
                 child_count++;
                 lua_pop(state, 1); /* value; lua_next retains key */
@@ -7971,8 +7996,7 @@ static GVariant* console_inspection(lua_State* state, int first, int values) {
     for (int i = 0; i < values && i < 8; i++) {
         inspection.nodes++;
         g_autofree char* label = g_strdup_printf("%d", i + 1);
-        g_autoptr(GVariant) node = console_inspection_node(state, label, first + i, 0,
-                                                            &inspection);
+        g_autoptr(GVariant) node = console_inspection_node(state, label, first + i, 0, &inspection);
         g_variant_builder_add_value(&nodes, node);
     }
     if (values > 8) {
@@ -8040,8 +8064,8 @@ static const char* console_completion_token_start(const char* source) {
 /* Parse only an identifier chain. In particular, no brackets, calls, string
  * indexing, or operators reach the Lua VM. `segments` resolves the receiver
  * and `prefix` selects fields from it. */
-static gboolean console_completion_parse(const char* source, GPtrArray* segments,
-                                         char** prefix, gboolean* method) {
+static gboolean console_completion_parse(const char* source, GPtrArray* segments, char** prefix,
+                                         gboolean* method) {
     const char* token = console_completion_token_start(source);
     gsize length = strlen(token);
     if (length > MAX_CONSOLE_COMPLETION_TOKEN_BYTES)
@@ -8089,8 +8113,7 @@ static gboolean console_completion_parse(const char* source, GPtrArray* segments
 
 /* Raw field reads deliberately bypass __index. Readonly snapshot userdata has
  * two explicitly owned uservalues: data first, then Gnoblin method members. */
-static gboolean console_completion_push_field(lua_State* state, int object,
-                                              const char* field) {
+static gboolean console_completion_push_field(lua_State* state, int object, const char* field) {
     object = lua_absindex(state, object);
     if (lua_istable(state, object)) {
         lua_pushstring(state, field);
@@ -8118,13 +8141,11 @@ static gboolean console_completion_push_field(lua_State* state, int object,
     return FALSE;
 }
 
-static void console_completion_add(GPtrArray* completions, GHashTable* seen,
-                                   const char* receiver, const char* key, gsize key_length,
-                                   lua_State* state, int value, gboolean readonly,
-                                   gboolean method) {
-    if (!g_utf8_validate(key, key_length, NULL) ||
-        (method && !lua_isfunction(state, value)) || g_hash_table_contains(seen, key) ||
-        completions->len >= MAX_CONSOLE_COMPLETIONS)
+static void console_completion_add(GPtrArray* completions, GHashTable* seen, const char* receiver,
+                                   const char* key, gsize key_length, lua_State* state, int value,
+                                   gboolean readonly, gboolean method) {
+    if (!g_utf8_validate(key, key_length, NULL) || (method && !lua_isfunction(state, value)) ||
+        g_hash_table_contains(seen, key) || completions->len >= MAX_CONSOLE_COMPLETIONS)
         return;
     g_hash_table_add(seen, g_strdup(key));
     ConsoleCompletion* completion = g_new0(ConsoleCompletion, 1);
@@ -8132,23 +8153,20 @@ static void console_completion_add(GPtrArray* completions, GHashTable* seen,
                             ? g_strdup_printf(method ? "%s:%s" : "%s.%s", receiver, key)
                             : g_strdup(key);
     completion->detail = g_strdup_printf("Lua %s", lua_typename(state, lua_type(state, value)));
-    completion->documentation = g_strdup(readonly ? "Read-only Gnoblin snapshot member"
-                                                   : "Live Lua environment member");
+    completion->documentation =
+        g_strdup(readonly ? "Read-only Gnoblin snapshot member" : "Live Lua environment member");
     g_ptr_array_add(completions, completion);
 }
 
-static gboolean console_completion_key_matches(const char* key, gsize length,
-                                               const char* prefix) {
+static gboolean console_completion_key_matches(const char* key, gsize length, const char* prefix) {
     gsize prefix_length = strlen(prefix);
-    return key && length <= MAX_CONSOLE_COMPLETION_TOKEN_BYTES &&
-           !memchr(key, '\0', length) && prefix_length <= length &&
-           memcmp(key, prefix, prefix_length) == 0 &&
+    return key && length <= MAX_CONSOLE_COMPLETION_TOKEN_BYTES && !memchr(key, '\0', length) &&
+           prefix_length <= length && memcmp(key, prefix, prefix_length) == 0 &&
            console_completion_identifier(key, length);
 }
 
-static void console_completion_collect_table(lua_State* state, int table,
-                                             const char* receiver, const char* prefix,
-                                             gboolean readonly, gboolean method,
+static void console_completion_collect_table(lua_State* state, int table, const char* receiver,
+                                             const char* prefix, gboolean readonly, gboolean method,
                                              GPtrArray* completions, GHashTable* seen,
                                              guint* visits) {
     int base = lua_gettop(state);
@@ -8160,8 +8178,8 @@ static void console_completion_collect_table(lua_State* state, int table,
             size_t length = 0;
             const char* key = lua_tolstring(state, -2, &length);
             if (console_completion_key_matches(key, length, prefix))
-                console_completion_add(completions, seen, receiver, key, length, state, -1, readonly,
-                                       method);
+                console_completion_add(completions, seen, receiver, key, length, state, -1,
+                                       readonly, method);
         }
         lua_pop(state, 1);
     }
@@ -8224,24 +8242,23 @@ GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
             lua_remove(state, -2);
     }
 
-    g_autoptr(GPtrArray) completions =
-        g_ptr_array_new_with_free_func(console_completion_free);
+    g_autoptr(GPtrArray) completions = g_ptr_array_new_with_free_func(console_completion_free);
     g_autoptr(GHashTable) seen = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     guint visits = 0;
     g_autofree char* receiver = NULL;
     if (segments->len)
         receiver = console_completion_receiver(segments);
     if (resolved && lua_istable(state, -1)) {
-        console_completion_collect_table(state, -1, receiver, prefix, FALSE, method,
-                                         completions, seen, &visits);
+        console_completion_collect_table(state, -1, receiver, prefix, FALSE, method, completions,
+                                         seen, &visits);
     } else if (resolved && lua_type(state, -1) == LUA_TUSERDATA &&
                luaL_testudata(state, -1, LUA_READONLY_SNAPSHOT_METATABLE)) {
         /* Snapshot fields use dot notation; its callable method table uses colon
          * notation so completion preserves the implicit receiver contract. */
         int slot = method ? 2 : 1;
         if (lua_getiuservalue(state, -1, slot) == LUA_TTABLE)
-            console_completion_collect_table(state, -1, receiver, prefix, TRUE, method,
-                                             completions, seen, &visits);
+            console_completion_collect_table(state, -1, receiver, prefix, TRUE, method, completions,
+                                             seen, &visits);
         lua_pop(state, 1);
     }
     g_ptr_array_sort(completions, console_completion_compare);
@@ -8276,8 +8293,7 @@ static void console_reject_actions(LuaRuntime* runtime, guint action_start, cons
     LuaConfig* config = &runtime->config;
     if (action_start >= config->runtime_actions->len)
         return;
-    g_autoptr(GPtrArray) dropped =
-        g_ptr_array_new_with_free_func((GDestroyNotify)g_variant_unref);
+    g_autoptr(GPtrArray) dropped = g_ptr_array_new_with_free_func((GDestroyNotify)g_variant_unref);
     for (guint i = action_start; i < config->runtime_actions->len; i++)
         g_ptr_array_add(dropped, g_variant_ref(g_ptr_array_index(config->runtime_actions, i)));
     g_ptr_array_set_size(config->runtime_actions, action_start);
@@ -8344,14 +8360,13 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
     g_autoptr(GError) document_error = NULL;
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "config");
-    g_autoptr(GVariant) document =
-        variant_from_lua(state, -1, 0, FALSE, 0, &document_error);
+    g_autoptr(GVariant) document = variant_from_lua(state, -1, 0, FALSE, 0, &document_error);
     lua_pop(state, 2);
     if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT) ||
         !gnoblin_config_validate_document(document, &document_error) ||
         !g_variant_equal(document, runtime->document)) {
-        const char* message = document_error ? document_error->message
-                                             : "console code may not modify gnoblin.config";
+        const char* message =
+            document_error ? document_error->message : "console code may not modify gnoblin.config";
         lua_getglobal(state, "gnoblin");
         push_variant(state, runtime->document);
         lua_setfield(state, -2, "config");
@@ -8373,8 +8388,9 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
     }
     if (values > 8)
         g_string_append(rendered, "\n…");
-    const char* type = values == 1 ? lua_typename(state, lua_type(state, base + 1))
-                                   : values == 0 ? "nil" : "values";
+    const char* type = values == 1   ? lua_typename(state, lua_type(state, base + 1))
+                       : values == 0 ? "nil"
+                                     : "values";
     guint operations = config->runtime_actions->len - action_start;
     g_autoptr(GVariant) inspection = console_inspection(state, base + 1, values);
     lua_settop(state, base);
@@ -8444,11 +8460,10 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
     guint action_start = config->runtime_actions->len;
     config->actions_in_dispatch = 0;
     config->api_calling = TRUE;
-    gboolean native_operation = g_str_has_prefix(method, "workspace.") ||
-                                g_str_has_prefix(method, "window.") ||
-                                g_str_equal(method, "input.select") ||
-                                g_str_equal(method, "command.run") ||
-                                g_str_equal(method, "command.capture");
+    gboolean native_operation =
+        g_str_has_prefix(method, "workspace.") || g_str_has_prefix(method, "window.") ||
+        g_str_equal(method, "input.select") || g_str_equal(method, "command.run") ||
+        g_str_equal(method, "command.capture");
     int stack_base = lua_gettop(state);
     if (native_operation) {
         lua_pushlightuserdata(state, config);

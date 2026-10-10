@@ -10,7 +10,8 @@
 #define GNOBLIN_COMPOSITOR_IFACE "org.gnoblin.Compositor"
 static const char* capabilities[] = {"screen-cast", "remote-desktop", "input-capture",
                                      "screenshot",  "access",         NULL};
-/* "default" is the deprecated spelling of "inherit". Both are accepted in a config; only "inherit" is reported. */
+/* "default" is the deprecated spelling of "inherit". Both are accepted in a config; only "inherit"
+ * is reported. */
 static const char* levels[] = {"inherit", "default", "ask", "allow", "deny", NULL};
 static const char* reported_levels[] = {"inherit", "ask", "allow", "deny", NULL};
 static const char* devices[] = {"keyboard", "pointer", "touchscreen", NULL};

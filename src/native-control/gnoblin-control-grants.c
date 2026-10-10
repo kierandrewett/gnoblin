@@ -121,7 +121,7 @@ static void portal_grant_cache_apply(GnoblinNativeControl* control, const char* 
     if (!current) {
         control->portal_grant_revision++;
         gnoblin_control_publish_runtime_snapshot(control, "portal-grants", NULL,
-                                        control->portal_grant_revision);
+                                                 control->portal_grant_revision);
         portal_grant_fetch_snapshot(control);
         return;
     }
@@ -312,7 +312,7 @@ static void portal_backend_owner_changed(GDBusConnection* connection, const char
         control->portal_grant_revision++;
         g_clear_pointer(&control->portal_grant_snapshot, g_variant_unref);
         gnoblin_control_publish_runtime_snapshot(control, "portal-grants", NULL,
-                                        control->portal_grant_revision);
+                                                 control->portal_grant_revision);
     } else if (!g_str_equal(old_owner, new_owner)) {
         control->portal_grant_retry_count = 0;
         portal_grant_fetch_snapshot(control);
@@ -349,7 +349,7 @@ void gnoblin_control_activity_publish(GnoblinNativeControl* control, gboolean av
     if (control->session_activity_revision < G_MAXUINT64)
         control->session_activity_revision++;
     gnoblin_control_publish_runtime_snapshot(control, "session-activity", snapshot,
-                                    control->session_activity_revision);
+                                             control->session_activity_revision);
     guint64 sequence = ++control->event_sequence;
     gint64 time = g_get_monotonic_time();
     GVariantBuilder event_builder;
@@ -621,10 +621,10 @@ static void portal_grant_call_done(GObject* source_object, GAsyncResult* result,
                                 "portal returned an invalid revoke response");
         }
         g_autoptr(JsonNode) json_value = value ? gnoblin_control_json_from_variant(value) : NULL;
-        gnoblin_control_dispatch_operation_completion_full(control, pending->operation_id, pending->method,
-                                           value != NULL, json_value,
-                                           value ? NULL : gnoblin_control_operation_error_code(error),
-                                           value ? NULL : error->message, dispatch_lua);
+        gnoblin_control_dispatch_operation_completion_full(
+            control, pending->operation_id, pending->method, value != NULL, json_value,
+            value ? NULL : gnoblin_control_operation_error_code(error),
+            value ? NULL : error->message, dispatch_lua);
     }
 
     control->pending_portal_grant_ops--;
@@ -647,11 +647,11 @@ static void portal_grant_bus_ready(GObject* source_object, GAsyncResult* result,
         return;
     }
     if (!connection) {
-        gnoblin_control_dispatch_operation_completion_full(control, pending->operation_id, pending->method, FALSE,
-                                           NULL, gnoblin_control_operation_error_code(error),
-                                           error ? error->message : "session bus is unavailable",
-                                           gnoblin_control_config_generation(control) ==
-                                               pending->runtime_generation);
+        gnoblin_control_dispatch_operation_completion_full(
+            control, pending->operation_id, pending->method, FALSE, NULL,
+            gnoblin_control_operation_error_code(error),
+            error ? error->message : "session bus is unavailable",
+            gnoblin_control_config_generation(control) == pending->runtime_generation);
         control->pending_portal_grant_ops--;
         pending_portal_grant_operation_free(pending);
         gnoblin_control_maybe_free_stopped(control);

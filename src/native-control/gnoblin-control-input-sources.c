@@ -400,8 +400,8 @@ static void dispatch_input_source_operation(GnoblinNativeControl* control, gint6
             result = gnoblin_control_json_from_variant(record);
         }
     }
-    gnoblin_control_dispatch_operation_completion_full(control, request_id, method, ok, result, error_code, message,
-                                       TRUE);
+    gnoblin_control_dispatch_operation_completion_full(control, request_id, method, ok, result,
+                                                       error_code, message, TRUE);
 }
 
 static void remember_completed_window_input_source(GnoblinNativeControl* control,
@@ -709,7 +709,8 @@ static void input_source_keymap_set_done(GObject* source_object, GAsyncResult* r
                   meta_backend_get_keymap_description(control->backend) == pending->description
                       ? "matches"
                       : "differs",
-                  (guint)meta_backend_get_keymap_layout_group(control->backend), (guint)pending->group);
+                  (guint)meta_backend_get_keymap_layout_group(control->backend),
+                  (guint)pending->group);
     if (confirmed) {
         g_clear_pointer(&control->input_keymap_description, meta_keymap_description_unref);
         control->input_keymap_description = meta_keymap_description_ref(pending->description);
@@ -730,13 +731,13 @@ static void input_source_keymap_set_done(GObject* source_object, GAsyncResult* r
     gnoblin_control_publish_input_source_changes(control, control->state_revision);
     remember_completed_window_input_source(control, pending, confirmed);
     if (!pending->internal_restore)
-        dispatch_input_source_operation(control, pending->request_id, pending->method,
-                                        pending->selected_type, confirmed,
-                                        confirmed ? pending->selected_id : NULL,
-                                        confirmed ? NULL : gnoblin_control_operation_error_code(error),
-                                        confirmed ? NULL
-                                        : error   ? error->message
-                                                  : "keymap request failed");
+        dispatch_input_source_operation(
+            control, pending->request_id, pending->method, pending->selected_type, confirmed,
+            confirmed ? pending->selected_id : NULL,
+            confirmed ? NULL : gnoblin_control_operation_error_code(error),
+            confirmed ? NULL
+            : error   ? error->message
+                      : "keymap request failed");
     /* Focus may have changed while Mutter was completing the request. Reconcile
      * only after reporting the selection result, so its result reflects the
      * source that was actually confirmed for the requesting window. */
@@ -745,8 +746,9 @@ static void input_source_keymap_set_done(GObject* source_object, GAsyncResult* r
     pending_input_source_free(pending);
 }
 
-gboolean gnoblin_control_select_xkb_source(GnoblinNativeControl* control, const char* id, gint64 request_id,
-                                  const char* method, gboolean internal_restore, GError** error) {
+gboolean gnoblin_control_select_xkb_source(GnoblinNativeControl* control, const char* id,
+                                           gint64 request_id, const char* method,
+                                           gboolean internal_restore, GError** error) {
     NativeInputSource* selected = input_source_by_id(control, id);
     if (!selected) {
         g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -851,7 +853,8 @@ static void complete_ibus_input_source_selection(GnoblinNativeControl* control,
     if (!control->stopping && !pending->internal_restore)
         dispatch_input_source_operation(control, pending->request_id, pending->method, "ibus",
                                         confirmed, confirmed ? pending->selected_id : NULL,
-                                        confirmed ? NULL : gnoblin_control_operation_error_code(error),
+                                        confirmed ? NULL
+                                                  : gnoblin_control_operation_error_code(error),
                                         confirmed ? NULL
                                         : error   ? error->message
                                                   : "IBus selection was not confirmed");
@@ -1023,7 +1026,8 @@ void gnoblin_control_input_source_restore_focused(GnoblinNativeControl* control)
     gboolean started =
         g_str_equal(remembered->type, "ibus")
             ? select_ibus_source(control, remembered->id, 0, "input.select_source", TRUE, &error)
-            : gnoblin_control_select_xkb_source(control, remembered->id, 0, "input.select_source", TRUE, &error);
+            : gnoblin_control_select_xkb_source(control, remembered->id, 0, "input.select_source",
+                                                TRUE, &error);
     if (!started && error && !g_error_matches(error, G_IO_ERROR, G_IO_ERROR_BUSY))
         g_debug("gnoblin-native-control: cannot restore input source for window %s: %s", window_id,
                 error->message);

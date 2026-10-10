@@ -409,8 +409,9 @@ G_GNUC_INTERNAL guint64 gnoblin_control_config_revision(GnoblinNativeControl* co
 G_GNUC_INTERNAL void gnoblin_control_send_response(Client* client, char* response);
 G_GNUC_INTERNAL gboolean gnoblin_control_focus_token_random(char token[65]);
 G_GNUC_INTERNAL GVariant* gnoblin_control_capability_snapshot(GnoblinNativeControl* control);
-G_GNUC_INTERNAL GVariant* gnoblin_control_capability_snapshot_record(
-    GnoblinNativeControl* control, const NativeCapability* native_capability);
+G_GNUC_INTERNAL GVariant*
+gnoblin_control_capability_snapshot_record(GnoblinNativeControl* control,
+                                           const NativeCapability* native_capability);
 G_GNUC_INTERNAL const NativeCapability* gnoblin_control_capability_by_id(const char* id);
 G_GNUC_INTERNAL GVariant* gnoblin_control_variant_from_json(JsonNode* node);
 G_GNUC_INTERNAL GVariant* gnoblin_control_native_config_document(GnoblinNativeControl* control);
@@ -430,19 +431,19 @@ G_GNUC_INTERNAL GVariant* gnoblin_control_auth_operation(GnoblinNativeControl* c
                                                          const char* method, GVariant* arguments,
                                                          guint64 client_id, GError** error);
 
-/* gnoblin-control-prompts.c: keyring and GPG passphrase prompter (prompt.respond, prompt.cancel). */
+/* gnoblin-control-prompts.c: keyring and GPG passphrase prompter (prompt.respond, prompt.cancel).
+ */
 G_GNUC_INTERNAL void gnoblin_control_prompts_init(GnoblinNativeControl* control);
 G_GNUC_INTERNAL void gnoblin_control_prompts_apply_config(GnoblinNativeControl* control,
                                                           GVariant* config);
 G_GNUC_INTERNAL void gnoblin_control_prompts_stop(GnoblinNativeControl* control);
 G_GNUC_INTERNAL gboolean gnoblin_control_prompts_available(GnoblinNativeControl* control);
-G_GNUC_INTERNAL const char* gnoblin_control_prompts_unavailable_reason(
-    GnoblinNativeControl* control);
+G_GNUC_INTERNAL const char*
+gnoblin_control_prompts_unavailable_reason(GnoblinNativeControl* control);
 G_GNUC_INTERNAL void gnoblin_control_prompts_note_recipient(GnoblinNativeControl* control,
                                                             gint64 request_id, guint64 client_id);
 G_GNUC_INTERNAL GVariant* gnoblin_control_prompts_operation(GnoblinNativeControl* control,
-                                                            const char* method,
-                                                            GVariant* arguments,
+                                                            const char* method, GVariant* arguments,
                                                             guint64 client_id, GError** error);
 
 /* gnoblin-control-capture.c: command.capture. */
@@ -456,15 +457,14 @@ G_GNUC_INTERNAL gboolean gnoblin_control_capture_begin(GnoblinNativeControl* con
 G_GNUC_INTERNAL void gnoblin_control_publish_privacy_snapshot(GnoblinNativeControl* control,
                                                               gboolean changed);
 G_GNUC_INTERNAL void gnoblin_control_pending_location_authorization_free(gpointer user_data);
-G_GNUC_INTERNAL void gnoblin_control_clear_pending_location_authorizations(
-    GnoblinNativeControl* control);
+G_GNUC_INTERNAL void
+gnoblin_control_clear_pending_location_authorizations(GnoblinNativeControl* control);
 G_GNUC_INTERNAL void gnoblin_control_location_agent_create(GnoblinNativeControl* control);
 G_GNUC_INTERNAL void gnoblin_control_privacy_new_handle(MetaRemoteAccessController* controller,
                                                         MetaRemoteAccessHandle* handle,
                                                         gpointer user_data);
 G_GNUC_INTERNAL GVariant* gnoblin_control_stop_privacy_sessions(GnoblinNativeControl* control,
-                                                                gboolean recording,
-                                                                GError** error);
+                                                                gboolean recording, GError** error);
 
 /* gnoblin-control-grants.c: portal grant cache, grant operations and session activity. */
 G_GNUC_INTERNAL void gnoblin_control_portal_grants_watch(GnoblinNativeControl* control);
@@ -476,8 +476,8 @@ G_GNUC_INTERNAL void gnoblin_control_activity_publish(GnoblinNativeControl* cont
 /* gnoblin-control-input-sources.c: XKB and IBus input sources. */
 G_GNUC_INTERNAL void gnoblin_control_window_input_source_free(gpointer data);
 G_GNUC_INTERNAL GVariant* gnoblin_control_input_source_snapshot(GnoblinNativeControl* control);
-G_GNUC_INTERNAL NativeInputSource* gnoblin_control_current_input_source(
-    GnoblinNativeControl* control);
+G_GNUC_INTERNAL NativeInputSource*
+gnoblin_control_current_input_source(GnoblinNativeControl* control);
 G_GNUC_INTERNAL gboolean gnoblin_control_input_sources_refresh(GnoblinNativeControl* control,
                                                                GVariant* document);
 G_GNUC_INTERNAL void gnoblin_control_input_sources_release(GnoblinNativeControl* control);
@@ -505,8 +505,7 @@ G_GNUC_INTERNAL char** gnoblin_control_command_run_argv(GVariant* arguments, GEr
 G_GNUC_INTERNAL gboolean gnoblin_control_monitor_property_changed(JsonObject* previous,
                                                                   JsonObject* current,
                                                                   const char* property);
-G_GNUC_INTERNAL gboolean gnoblin_control_workspace_signal_subscribed(
-    GnoblinNativeControl* control);
+G_GNUC_INTERNAL gboolean gnoblin_control_workspace_signal_subscribed(GnoblinNativeControl* control);
 G_GNUC_INTERNAL void gnoblin_control_clear_object_signal_watches(GObject* object,
                                                                  GArray* handler_ids);
 G_GNUC_INTERNAL void gnoblin_control_refresh_object_signal_watches(GnoblinNativeControl* control,
@@ -530,18 +529,18 @@ G_GNUC_INTERNAL void gnoblin_control_publish_workspace_changes(GnoblinNativeCont
 G_GNUC_INTERNAL gboolean gnoblin_control_publish_monitor_changes(GnoblinNativeControl* control,
                                                                  JsonNode* snapshot,
                                                                  guint64 revision);
-G_GNUC_INTERNAL void gnoblin_control_clear_workspace_manager_signal_watches(
-    GnoblinNativeControl* control);
-G_GNUC_INTERNAL void gnoblin_control_refresh_workspace_manager_signal_watches(
-    GnoblinNativeControl* control);
-G_GNUC_INTERNAL void gnoblin_control_clear_all_workspace_signal_watches(
-    GnoblinNativeControl* control);
-G_GNUC_INTERNAL void gnoblin_control_refresh_all_workspace_signal_watches(
-    GnoblinNativeControl* control);
-G_GNUC_INTERNAL void gnoblin_control_clear_monitor_manager_signal_watches(
-    GnoblinNativeControl* control);
-G_GNUC_INTERNAL void gnoblin_control_refresh_monitor_manager_signal_watches(
-    GnoblinNativeControl* control);
+G_GNUC_INTERNAL void
+gnoblin_control_clear_workspace_manager_signal_watches(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void
+gnoblin_control_refresh_workspace_manager_signal_watches(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void
+gnoblin_control_clear_all_workspace_signal_watches(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void
+gnoblin_control_refresh_all_workspace_signal_watches(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void
+gnoblin_control_clear_monitor_manager_signal_watches(GnoblinNativeControl* control);
+G_GNUC_INTERNAL void
+gnoblin_control_refresh_monitor_manager_signal_watches(GnoblinNativeControl* control);
 
 /* gnoblin-control-layers.c: layer snapshots, layer events and input-device change events. */
 G_GNUC_INTERNAL void gnoblin_control_layer_state_free(gpointer data);
@@ -567,28 +566,32 @@ G_GNUC_INTERNAL guint gnoblin_control_dynamic_shortcut_count(GnoblinNativeContro
                                                              Client* owner);
 G_GNUC_INTERNAL NativeDynamicShortcut* gnoblin_control_find_dynamic_shortcut(Client* owner,
                                                                              const char* id);
-G_GNUC_INTERNAL NativeDynamicShortcut* gnoblin_control_find_runtime_dynamic_shortcut(
-    GnoblinNativeControl* control, const char* owner_id, const char* id);
+G_GNUC_INTERNAL NativeDynamicShortcut*
+gnoblin_control_find_runtime_dynamic_shortcut(GnoblinNativeControl* control, const char* owner_id,
+                                              const char* id);
 G_GNUC_INTERNAL void gnoblin_control_remove_dynamic_shortcut(GnoblinNativeControl* control,
                                                              NativeDynamicShortcut* shortcut);
 G_GNUC_INTERNAL void gnoblin_control_clear_client_dynamic_shortcuts(Client* client);
-G_GNUC_INTERNAL void gnoblin_control_clear_runtime_dynamic_shortcuts(
-    GnoblinNativeControl* control, const char* reason);
-G_GNUC_INTERNAL void gnoblin_control_clear_configured_capture_shortcut(
-    GnoblinNativeControl* control, const char* reason);
+G_GNUC_INTERNAL void gnoblin_control_clear_runtime_dynamic_shortcuts(GnoblinNativeControl* control,
+                                                                     const char* reason);
+G_GNUC_INTERNAL void
+gnoblin_control_clear_configured_capture_shortcut(GnoblinNativeControl* control,
+                                                  const char* reason);
 G_GNUC_INTERNAL gboolean gnoblin_control_dynamic_shortcut_id_valid(const char* id);
-G_GNUC_INTERNAL gboolean gnoblin_control_dynamic_shortcut_accelerator_valid(
-    const char* accelerator);
-G_GNUC_INTERNAL NativeDynamicShortcut* gnoblin_control_arm_bare_super_shortcut(
-    GnoblinNativeControl* control, const char* id, const char* owner_id, Client* client,
-    guint64 session_id, GError** error);
+G_GNUC_INTERNAL gboolean
+gnoblin_control_dynamic_shortcut_accelerator_valid(const char* accelerator);
+G_GNUC_INTERNAL NativeDynamicShortcut*
+gnoblin_control_arm_bare_super_shortcut(GnoblinNativeControl* control, const char* id,
+                                        const char* owner_id, Client* client, guint64 session_id,
+                                        GError** error);
 G_GNUC_INTERNAL char* gnoblin_control_dynamic_shortcut_bind(Client* client, const char* request_id,
                                                             JsonObject* arguments);
 G_GNUC_INTERNAL char* gnoblin_control_dynamic_shortcut_unbind(Client* client,
                                                               const char* request_id,
                                                               JsonObject* arguments);
-G_GNUC_INTERNAL char* gnoblin_control_dynamic_shortcut_request_end_session(
-    Client* client, const char* request_id, JsonObject* arguments);
+G_GNUC_INTERNAL char* gnoblin_control_dynamic_shortcut_request_end_session(Client* client,
+                                                                           const char* request_id,
+                                                                           JsonObject* arguments);
 
 /* gnoblin-control-window-rules.c: window rules, frame style, shadows, shaders and the corner
  * toolkit probe. */
@@ -605,8 +608,8 @@ G_GNUC_INTERNAL void gnoblin_control_window_shader_file_free(gpointer data);
 G_GNUC_INTERNAL void gnoblin_control_window_drag_free(gpointer data);
 G_GNUC_INTERNAL void gnoblin_control_cancel_window_drags(GnoblinNativeControl* control,
                                                          const char* reason);
-G_GNUC_INTERNAL void gnoblin_control_window_drag_client_disconnected(
-    GnoblinNativeControl* control, guint64 client_id);
+G_GNUC_INTERNAL void gnoblin_control_window_drag_client_disconnected(GnoblinNativeControl* control,
+                                                                     guint64 client_id);
 G_GNUC_INTERNAL gboolean gnoblin_control_drag_monitor_snapshot(GnoblinNativeControl* control,
                                                                MetaWindow* window,
                                                                char** monitor_id,
@@ -620,8 +623,7 @@ G_GNUC_INTERNAL gboolean gnoblin_control_rect_contains(const MtkRectangle* outer
                                                        const MtkRectangle* inner);
 G_GNUC_INTERNAL gboolean gnoblin_control_variant_rect(GVariant* value, MtkRectangle* rect);
 G_GNUC_INTERNAL gboolean gnoblin_control_snap_offer_set_targets(NativeWindowDrag* drag,
-                                                                GVariant* targets,
-                                                                GError** error);
+                                                                GVariant* targets, GError** error);
 G_GNUC_INTERNAL gboolean gnoblin_control_runtime_window_snap_offer(GnoblinNativeControl* control,
                                                                    GVariant* arguments,
                                                                    guint64 owner_generation,
@@ -643,19 +645,18 @@ G_GNUC_INTERNAL gboolean gnoblin_control_runtime_send_config_result(
     GnoblinNativeControl* control, guint64 transaction_id, gboolean accepted, guint64 revision,
     guint64 generation, const char* message, GError** error);
 G_GNUC_INTERNAL void gnoblin_control_runtime_clear_queue(GQueue* queue);
-G_GNUC_INTERNAL GHashTable* gnoblin_control_runtime_event_subscriptions_from_payload(
-    GVariant* payload, GError** error);
+G_GNUC_INTERNAL GHashTable*
+gnoblin_control_runtime_event_subscriptions_from_payload(GVariant* payload, GError** error);
 G_GNUC_INTERNAL gboolean gnoblin_control_runtime_event_subscriptions_equal(GHashTable* left,
                                                                            GHashTable* right);
 G_GNUC_INTERNAL void gnoblin_control_runtime_add_display_environment(GVariantBuilder* hello);
-G_GNUC_INTERNAL gboolean gnoblin_control_runtime_resume_snapshot_matches(
-    GnoblinNativeControl* control, GVariant* payload);
+G_GNUC_INTERNAL gboolean
+gnoblin_control_runtime_resume_snapshot_matches(GnoblinNativeControl* control, GVariant* payload);
 G_GNUC_INTERNAL gboolean gnoblin_control_runtime_reject_resume(GnoblinNativeControl* control,
-                                                               const char* message,
-                                                               GError** error);
-G_GNUC_INTERNAL gboolean gnoblin_control_runtime_flush_state_snapshots(
-    GnoblinNativeControl* control, GError** error);
-G_GNUC_INTERNAL gboolean gnoblin_control_runtime_flush_pending_events(
-    GnoblinNativeControl* control, GError** error);
-G_GNUC_INTERNAL gboolean gnoblin_control_runtime_send_worker_suspended(
-    GnoblinNativeControl* control, GError** error);
+                                                               const char* message, GError** error);
+G_GNUC_INTERNAL gboolean
+gnoblin_control_runtime_flush_state_snapshots(GnoblinNativeControl* control, GError** error);
+G_GNUC_INTERNAL gboolean gnoblin_control_runtime_flush_pending_events(GnoblinNativeControl* control,
+                                                                      GError** error);
+G_GNUC_INTERNAL gboolean
+gnoblin_control_runtime_send_worker_suspended(GnoblinNativeControl* control, GError** error);

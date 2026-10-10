@@ -9,9 +9,10 @@ static gboolean input_number(GVariant* value, double* number) {
         *number = (double)g_variant_get_int64(value);
         return TRUE;
     }
-    /* Normalisation writes int32 and uint32 values (drag-threshold, double-click-time, repeat delay). A replacement
-     * worker normalises Mutter's accepted document again, so these must read back unchanged. Before, an int32 read
-     * back as 0, Mutter saw a different document and rejected the replacement worker. */
+    /* Normalisation writes int32 and uint32 values (drag-threshold, double-click-time, repeat
+     * delay). A replacement worker normalises Mutter's accepted document again, so these must read
+     * back unchanged. Before, an int32 read back as 0, Mutter saw a different document and rejected
+     * the replacement worker. */
     if (g_variant_is_of_type(value, G_VARIANT_TYPE_INT32)) {
         *number = (double)g_variant_get_int32(value);
         return TRUE;
@@ -23,8 +24,9 @@ static gboolean input_number(GVariant* value, double* number) {
     return FALSE;
 }
 
-/* The Lua layer can hand over any shape. Values that do not have the expected shape pass through unchanged, so the
- * validation in the compositor reports them by name. Iterating a value of the wrong type would abort the worker. */
+/* The Lua layer can hand over any shape. Values that do not have the expected shape pass through
+ * unchanged, so the validation in the compositor reports them by name. Iterating a value of the
+ * wrong type would abort the worker. */
 static gboolean input_is_table(GVariant* value) {
     return g_variant_is_of_type(value, G_VARIANT_TYPE_VARDICT);
 }

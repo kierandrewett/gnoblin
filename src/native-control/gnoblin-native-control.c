@@ -296,7 +296,6 @@ typedef struct {
     JsonNode* state;
 } NativeUiSession;
 
-
 typedef struct {
     guint64 request_id;
     guint64 generation;
@@ -1058,16 +1057,14 @@ static void native_shortcut_activated(MetaDisplay* display, guint action, gpoint
     GnoblinNativeControl* control = user_data;
     for (guint i = 0; i < control->shortcuts->len; i++) {
         NativeShortcut* shortcut = g_ptr_array_index(control->shortcuts, i);
-        if (!shortcut->overlay && shortcut->action == action && !shortcut->release)
-            {
-                /* Clutter event milliseconds share the monotonic clock and
-                 * wrap at 32 bits. Unsigned subtraction preserves that wrap. */
-                guint32 age_ms = (guint32)(g_get_monotonic_time() / 1000) - timestamp;
-                if (age_ms < 10000)
-                    g_message("gnoblin-shortcut: %s input-to-dispatch %u ms",
-                              shortcut->name, age_ms);
-                gnoblin_control_launch_command("shortcut", shortcut->name, shortcut->argv);
-            }
+        if (!shortcut->overlay && shortcut->action == action && !shortcut->release) {
+            /* Clutter event milliseconds share the monotonic clock and
+             * wrap at 32 bits. Unsigned subtraction preserves that wrap. */
+            guint32 age_ms = (guint32)(g_get_monotonic_time() / 1000) - timestamp;
+            if (age_ms < 10000)
+                g_message("gnoblin-shortcut: %s input-to-dispatch %u ms", shortcut->name, age_ms);
+            gnoblin_control_launch_command("shortcut", shortcut->name, shortcut->argv);
+        }
     }
 }
 
@@ -1175,10 +1172,8 @@ void gnoblin_native_control_pointer_binding_activated(MetaDisplay* display, Meta
                           g_variant_new_boolean(meta_window_allows_move(window)));
     g_variant_builder_add(&window_payload, "{sv}", "resizable",
                           g_variant_new_boolean(meta_window_allows_resize(window)));
-    g_variant_builder_add(&pointer_payload, "{sv}", "x",
-                          g_variant_new_double(context->pointer_x));
-    g_variant_builder_add(&pointer_payload, "{sv}", "y",
-                          g_variant_new_double(context->pointer_y));
+    g_variant_builder_add(&pointer_payload, "{sv}", "x", g_variant_new_double(context->pointer_x));
+    g_variant_builder_add(&pointer_payload, "{sv}", "y", g_variant_new_double(context->pointer_y));
     g_variant_builder_add(&pointer_payload, "{sv}", "button", g_variant_new_uint32(button));
     g_variant_builder_add(&payload, "{sv}", "binding", g_variant_new_string(binding));
     g_variant_builder_add(&payload, "{sv}", "window", g_variant_builder_end(&window_payload));
@@ -1799,7 +1794,8 @@ static gboolean apply_configured_capture_shortcut(GnoblinNativeControl* control,
         guint64 session_id = ++control->next_shortcut_session_id;
         if (!session_id)
             session_id = ++control->next_shortcut_session_id;
-        if (!gnoblin_control_arm_bare_super_shortcut(control, capture_name, owner_id, NULL, session_id, error))
+        if (!gnoblin_control_arm_bare_super_shortcut(control, capture_name, owner_id, NULL,
+                                                     session_id, error))
             return FALSE;
     }
     return TRUE;
@@ -2250,21 +2246,22 @@ static GVariant* merge_native_actions(GVariant* base, GVariant* document,
     return g_variant_ref_sink(g_variant_dict_end(&groups));
 }
 
-static gboolean apply_native_keybindings(GnoblinNativeControl* control, GVariant* document, GError** error) {
-    g_autoptr(GVariant) input_handlers = document
-        ? g_variant_lookup_value(document, "input-handlers", G_VARIANT_TYPE("av")) : NULL;
+static gboolean apply_native_keybindings(GnoblinNativeControl* control, GVariant* document,
+                                         GError** error) {
+    g_autoptr(GVariant) input_handlers =
+        document ? g_variant_lookup_value(document, "input-handlers", G_VARIANT_TYPE("av")) : NULL;
     for (gsize i = 0; input_handlers && i < g_variant_n_children(input_handlers); i++) {
         g_autoptr(GVariant) boxed = g_variant_get_child_value(input_handlers, i);
         g_autoptr(GVariant) handler = g_variant_get_variant(boxed);
-        g_autoptr(GVariant) match = g_variant_lookup_value(handler, "match", G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) match =
+            g_variant_lookup_value(handler, "match", G_VARIANT_TYPE_VARDICT);
         const char *accelerator = NULL, *type = NULL;
         if (match && g_variant_lookup(match, "accelerator", "&s", &accelerator) &&
             (!g_variant_lookup(match, "type", "&s", &type) ||
              !meta_keybindings_gnoblin_accelerator_valid(control->display, accelerator,
                                                          g_str_equal(type, "button")))) {
             g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
-                        "invalid input handler accelerator: %s",
-                        accelerator);
+                        "invalid input handler accelerator: %s", accelerator);
             return FALSE;
         }
     }
@@ -2378,8 +2375,7 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
     g_autoptr(GVariant) declarations =
         document ? g_variant_lookup_value(document, "shortcuts", NULL) : NULL;
     if (!declarations)
-        declarations =
-            g_variant_ref_sink(g_variant_new_array(G_VARIANT_TYPE_VARIANT, NULL, 0));
+        declarations = g_variant_ref_sink(g_variant_new_array(G_VARIANT_TYPE_VARIANT, NULL, 0));
     if (!g_variant_is_of_type(declarations, G_VARIANT_TYPE("av")) ||
         g_variant_n_children(declarations) > 256) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -2544,8 +2540,7 @@ static gboolean start_native_shortcuts(GnoblinNativeControl* control, GVariant* 
                          G_CALLBACK(native_shortcut_activated), control);
         g_signal_connect(control->display, "accelerator-deactivated",
                          G_CALLBACK(native_shortcut_deactivated), control);
-        g_signal_connect(control->display, "overlay-key",
-                         G_CALLBACK(native_overlay_key), control);
+        g_signal_connect(control->display, "overlay-key", G_CALLBACK(native_overlay_key), control);
         control->shortcut_handlers_connected = TRUE;
     }
     g_autoptr(GVariant) shortcut_snapshot = native_shortcut_snapshot(control);
@@ -3592,8 +3587,7 @@ static GVariant* variant_from_json(JsonNode* node) {
         g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
         for (GList* item = members; item; item = item->next) {
             const char* key = item->data;
-            g_autoptr(GVariant) value =
-                variant_from_json(json_object_get_member(object, key));
+            g_autoptr(GVariant) value = variant_from_json(json_object_get_member(object, key));
             if (value)
                 g_variant_builder_add(&builder, "{sv}", key, value);
         }
@@ -3833,24 +3827,32 @@ static GVariant* input_device_record(GnoblinNativeControl* control, ClutterInput
 static const char* native_input_event_type(const ClutterEvent* event) {
     switch (clutter_event_type(event)) {
     case CLUTTER_KEY_PRESS:
-    case CLUTTER_KEY_RELEASE: return "key";
+    case CLUTTER_KEY_RELEASE:
+        return "key";
     case CLUTTER_BUTTON_PRESS:
-    case CLUTTER_BUTTON_RELEASE: return "button";
-    case CLUTTER_MOTION: return "motion";
-    case CLUTTER_SCROLL: return "scroll";
+    case CLUTTER_BUTTON_RELEASE:
+        return "button";
+    case CLUTTER_MOTION:
+        return "motion";
+    case CLUTTER_SCROLL:
+        return "scroll";
     case CLUTTER_TOUCH_BEGIN:
     case CLUTTER_TOUCH_UPDATE:
     case CLUTTER_TOUCH_END:
-    case CLUTTER_TOUCH_CANCEL: return "touch";
+    case CLUTTER_TOUCH_CANCEL:
+        return "touch";
     case CLUTTER_PAD_BUTTON_PRESS:
     case CLUTTER_PAD_BUTTON_RELEASE:
     case CLUTTER_PAD_RING:
     case CLUTTER_PAD_STRIP:
-    case CLUTTER_PAD_DIAL: return "tablet";
+    case CLUTTER_PAD_DIAL:
+        return "tablet";
     case CLUTTER_TOUCHPAD_SWIPE:
     case CLUTTER_TOUCHPAD_PINCH:
-    case CLUTTER_TOUCHPAD_HOLD: return "gesture";
-    default: return NULL;
+    case CLUTTER_TOUCHPAD_HOLD:
+        return "gesture";
+    default:
+        return NULL;
     }
 }
 
@@ -3858,35 +3860,47 @@ static const char* native_input_event_phase(const ClutterEvent* event) {
     switch (clutter_event_type(event)) {
     case CLUTTER_KEY_PRESS:
     case CLUTTER_BUTTON_PRESS:
-    case CLUTTER_PAD_BUTTON_PRESS: return "press";
+    case CLUTTER_PAD_BUTTON_PRESS:
+        return "press";
     case CLUTTER_KEY_RELEASE:
     case CLUTTER_BUTTON_RELEASE:
-    case CLUTTER_PAD_BUTTON_RELEASE: return "release";
-    case CLUTTER_TOUCH_BEGIN: return "begin";
+    case CLUTTER_PAD_BUTTON_RELEASE:
+        return "release";
+    case CLUTTER_TOUCH_BEGIN:
+        return "begin";
     case CLUTTER_TOUCH_UPDATE:
     case CLUTTER_MOTION:
     case CLUTTER_SCROLL:
     case CLUTTER_PAD_RING:
     case CLUTTER_PAD_STRIP:
-    case CLUTTER_PAD_DIAL: return "update";
-    case CLUTTER_TOUCH_END: return "end";
-    case CLUTTER_TOUCH_CANCEL: return "cancel";
+    case CLUTTER_PAD_DIAL:
+        return "update";
+    case CLUTTER_TOUCH_END:
+        return "end";
+    case CLUTTER_TOUCH_CANCEL:
+        return "cancel";
     case CLUTTER_TOUCHPAD_SWIPE:
     case CLUTTER_TOUCHPAD_PINCH:
     case CLUTTER_TOUCHPAD_HOLD:
         switch (clutter_event_get_gesture_phase(event)) {
-        case CLUTTER_TOUCHPAD_GESTURE_PHASE_BEGIN: return "begin";
-        case CLUTTER_TOUCHPAD_GESTURE_PHASE_UPDATE: return "update";
-        case CLUTTER_TOUCHPAD_GESTURE_PHASE_END: return "end";
-        case CLUTTER_TOUCHPAD_GESTURE_PHASE_CANCEL: return "cancel";
-        default: return NULL;
+        case CLUTTER_TOUCHPAD_GESTURE_PHASE_BEGIN:
+            return "begin";
+        case CLUTTER_TOUCHPAD_GESTURE_PHASE_UPDATE:
+            return "update";
+        case CLUTTER_TOUCHPAD_GESTURE_PHASE_END:
+            return "end";
+        case CLUTTER_TOUCHPAD_GESTURE_PHASE_CANCEL:
+            return "cancel";
+        default:
+            return NULL;
         }
-    default: return NULL;
+    default:
+        return NULL;
     }
 }
 
-static gboolean native_input_selector_uint32(GVariant* match, const char* key,
-                                              guint32* value, gboolean* present) {
+static gboolean native_input_selector_uint32(GVariant* match, const char* key, guint32* value,
+                                             gboolean* present) {
     g_autoptr(GVariant) candidate = g_variant_lookup_value(match, key, NULL);
     *present = candidate != NULL;
     if (!candidate)
@@ -3905,15 +3919,14 @@ static gboolean native_input_selector_uint32(GVariant* match, const char* key,
     return FALSE;
 }
 
-static gboolean native_input_match(GnoblinNativeControl* control, GVariant* match,
-                                   const char* type, const char* device_id,
-                                   const char* phase, const ClutterEvent* event) {
+static gboolean native_input_match(GnoblinNativeControl* control, GVariant* match, const char* type,
+                                   const char* device_id, const char* phase,
+                                   const ClutterEvent* event) {
     const char *wanted_type = NULL, *wanted_device = NULL, *wanted_phase = NULL;
     guint32 value = 0;
     gboolean present = FALSE;
     if (!match || !g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT) ||
-        !g_variant_lookup(match, "type", "&s", &wanted_type) ||
-        !g_str_equal(wanted_type, type))
+        !g_variant_lookup(match, "type", "&s", &wanted_type) || !g_str_equal(wanted_type, type))
         return FALSE;
     if (g_variant_lookup(match, "device-id", "&s", &wanted_device) &&
         !g_str_equal(wanted_device, device_id))
@@ -3933,8 +3946,7 @@ static gboolean native_input_match(GnoblinNativeControl* control, GVariant* matc
     const char* accelerator = NULL;
     if (g_variant_lookup(match, "accelerator", "&s", &accelerator) &&
         (!accelerator || !control ||
-         !meta_keybindings_gnoblin_event_matches_accelerator(control->display, event,
-                                                              accelerator)))
+         !meta_keybindings_gnoblin_event_matches_accelerator(control->display, event, accelerator)))
         return FALSE;
     return TRUE;
 }
@@ -3976,12 +3988,13 @@ static void native_input_accept_request(GnoblinNativeControl* control, guint64 i
 }
 
 static gboolean native_input_operation_allowed(GnoblinNativeControl* control, guint64 id) {
-    NativeAcceptedInputRequest* accepted = control->accepted_input_requests
-        ? g_hash_table_lookup(control->accepted_input_requests, &id) : NULL;
+    NativeAcceptedInputRequest* accepted =
+        control->accepted_input_requests
+            ? g_hash_table_lookup(control->accepted_input_requests, &id)
+            : NULL;
     return id && accepted && accepted->generation == native_config_generation(control) &&
-           accepted->expires_at_us > g_get_monotonic_time() &&
-           !control->input_policy_bypassed && !control->runtime_worker_suspended &&
-           !control->runtime_recovery_failed &&
+           accepted->expires_at_us > g_get_monotonic_time() && !control->input_policy_bypassed &&
+           !control->runtime_worker_suspended && !control->runtime_recovery_failed &&
            !(control->wayland_compositor &&
              meta_wayland_session_lock_is_active(control->wayland_compositor));
 }
@@ -3995,11 +4008,12 @@ static char* native_input_held_key(GnoblinNativeControl* control, const ClutterE
     if (type == CLUTTER_BUTTON_PRESS || type == CLUTTER_BUTTON_RELEASE ||
         type == CLUTTER_PAD_BUTTON_PRESS || type == CLUTTER_PAD_BUTTON_RELEASE)
         return g_strdup_printf("button:%s:%u", id, clutter_event_get_button(event));
-    if (type == CLUTTER_TOUCH_BEGIN || type == CLUTTER_TOUCH_UPDATE ||
-        type == CLUTTER_TOUCH_END || type == CLUTTER_TOUCH_CANCEL) {
+    if (type == CLUTTER_TOUCH_BEGIN || type == CLUTTER_TOUCH_UPDATE || type == CLUTTER_TOUCH_END ||
+        type == CLUTTER_TOUCH_CANCEL) {
         ClutterEventSequence* sequence = clutter_event_get_event_sequence(event);
-        return sequence ? g_strdup_printf("touch:%s:%d", id,
-                                           clutter_event_sequence_get_slot(sequence)) : NULL;
+        return sequence
+                   ? g_strdup_printf("touch:%s:%d", id, clutter_event_sequence_get_slot(sequence))
+                   : NULL;
     }
     if (type == CLUTTER_TOUCHPAD_SWIPE || type == CLUTTER_TOUCHPAD_PINCH ||
         type == CLUTTER_TOUCHPAD_HOLD)
@@ -4010,7 +4024,8 @@ static char* native_input_held_key(GnoblinNativeControl* control, const ClutterE
 static gboolean native_input_is_terminal(const ClutterEvent* event) {
     ClutterEventType type = clutter_event_type(event);
     if (type == CLUTTER_KEY_RELEASE || type == CLUTTER_BUTTON_RELEASE ||
-        type == CLUTTER_PAD_BUTTON_RELEASE || type == CLUTTER_TOUCH_END || type == CLUTTER_TOUCH_CANCEL)
+        type == CLUTTER_PAD_BUTTON_RELEASE || type == CLUTTER_TOUCH_END ||
+        type == CLUTTER_TOUCH_CANCEL)
         return TRUE;
     if (type == CLUTTER_TOUCHPAD_SWIPE || type == CLUTTER_TOUCHPAD_PINCH ||
         type == CLUTTER_TOUCHPAD_HOLD) {
@@ -4087,8 +4102,10 @@ static void native_input_issue_focus_context(GnoblinNativeControl* control,
             g_variant_builder_add(&rect, "{sv}", "height", g_variant_new_int32(frame.height));
             g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string(id));
             g_variant_builder_add(&record, "{sv}", "frame", g_variant_builder_end(&rect));
-            g_variant_builder_add(&record, "{sv}", "movable", g_variant_new_boolean(meta_window_allows_move(window)));
-            g_variant_builder_add(&record, "{sv}", "resizable", g_variant_new_boolean(meta_window_allows_resize(window)));
+            g_variant_builder_add(&record, "{sv}", "movable",
+                                  g_variant_new_boolean(meta_window_allows_move(window)));
+            g_variant_builder_add(&record, "{sv}", "resizable",
+                                  g_variant_new_boolean(meta_window_allows_resize(window)));
             pending->target_window = g_variant_ref_sink(g_variant_builder_end(&record));
         }
     }
@@ -4101,8 +4118,10 @@ static void native_input_issue_focus_context(GnoblinNativeControl* control,
 
 static void native_pending_input_free(gpointer data) {
     NativePendingInputEvent* pending = data;
-    if (!pending) return;
-    if (pending->event) clutter_event_free(pending->event);
+    if (!pending)
+        return;
+    if (pending->event)
+        clutter_event_free(pending->event);
     g_clear_object(&pending->actor);
     g_clear_pointer(&pending->handler_ids, g_variant_unref);
     g_clear_pointer(&pending->target_window, g_variant_unref);
@@ -4118,22 +4137,27 @@ static gboolean native_input_send_head(GnoblinNativeControl* control) {
      * Lua. Replay them locally, preserving any already decided stream. */
     while (!g_queue_is_empty(control->pending_input_events)) {
         NativePendingInputEvent* queued = g_queue_peek_head(control->pending_input_events);
-        if (g_variant_n_children(queued->handler_ids)) break;
+        if (g_variant_n_children(queued->handler_ids))
+            break;
         g_autofree char* key = native_input_held_key(control, queued->event);
         gpointer disposition = key && control->held_input_dispositions
-            ? g_hash_table_lookup(control->held_input_dispositions, key) : NULL;
-        gboolean consume = queued->reserved_press ||
-                           (disposition && GPOINTER_TO_INT(disposition) != 1);
+                                   ? g_hash_table_lookup(control->held_input_dispositions, key)
+                                   : NULL;
+        gboolean consume =
+            queued->reserved_press || (disposition && GPOINTER_TO_INT(disposition) != 1);
         if (key && native_input_is_stream_begin(queued->event) && control->held_input_dispositions)
             g_hash_table_replace(control->held_input_dispositions, g_strdup(key),
-                GINT_TO_POINTER(queued->reserved_press ? 3 : consume ? 2 : 1));
+                                 GINT_TO_POINTER(queued->reserved_press ? 3
+                                                 : consume              ? 2
+                                                                        : 1));
         if (key && native_input_is_terminal(queued->event) && control->held_input_dispositions)
             g_hash_table_remove(control->held_input_dispositions, key);
         g_queue_pop_head(control->pending_input_events);
         meta_display_resume_input_event(control->display, queued->event, queued->actor, consume);
         native_pending_input_free(queued);
     }
-    if (g_queue_is_empty(control->pending_input_events)) return TRUE;
+    if (g_queue_is_empty(control->pending_input_events))
+        return TRUE;
     NativePendingInputEvent* pending = g_queue_peek_head(control->pending_input_events);
     if (pending->dispatched)
         return TRUE;
@@ -4144,23 +4168,30 @@ static gboolean native_input_send_head(GnoblinNativeControl* control) {
     g_variant_builder_add(&event, "{sv}", "type", g_variant_new_string(type ? type : "unknown"));
     g_variant_builder_add(&event, "{sv}", "phase",
                           g_variant_new_string(native_input_event_phase(pending->event) ?: ""));
-    g_variant_builder_add(&event, "{sv}", "time", g_variant_new_uint32(clutter_event_get_time(pending->event)));
-    g_variant_builder_add(&event, "{sv}", "modifiers", g_variant_new_uint32(clutter_event_get_state(pending->event)));
-    g_variant_builder_add(&event, "{sv}", "device_id",
-                          g_variant_new_string(device ? native_input_device_id(control, device) : ""));
+    g_variant_builder_add(&event, "{sv}", "time",
+                          g_variant_new_uint32(clutter_event_get_time(pending->event)));
+    g_variant_builder_add(&event, "{sv}", "modifiers",
+                          g_variant_new_uint32(clutter_event_get_state(pending->event)));
+    g_variant_builder_add(
+        &event, "{sv}", "device_id",
+        g_variant_new_string(device ? native_input_device_id(control, device) : ""));
     if (type && g_str_equal(type, "key")) {
-        g_variant_builder_add(&event, "{sv}", "keycode", g_variant_new_uint32(clutter_event_get_key_code(pending->event)));
-        g_variant_builder_add(&event, "{sv}", "symbol", g_variant_new_uint32(clutter_event_get_key_symbol(pending->event)));
+        g_variant_builder_add(&event, "{sv}", "keycode",
+                              g_variant_new_uint32(clutter_event_get_key_code(pending->event)));
+        g_variant_builder_add(&event, "{sv}", "symbol",
+                              g_variant_new_uint32(clutter_event_get_key_symbol(pending->event)));
     }
     if (clutter_event_type(pending->event) == CLUTTER_BUTTON_PRESS ||
         clutter_event_type(pending->event) == CLUTTER_BUTTON_RELEASE ||
         clutter_event_type(pending->event) == CLUTTER_PAD_BUTTON_PRESS ||
         clutter_event_type(pending->event) == CLUTTER_PAD_BUTTON_RELEASE)
-        g_variant_builder_add(&event, "{sv}", "button", g_variant_new_uint32(clutter_event_get_button(pending->event)));
+        g_variant_builder_add(&event, "{sv}", "button",
+                              g_variant_new_uint32(clutter_event_get_button(pending->event)));
     if (type && g_str_equal(type, "touch")) {
         ClutterEventSequence* sequence = clutter_event_get_event_sequence(pending->event);
         if (sequence)
-            g_variant_builder_add(&event, "{sv}", "slot", g_variant_new_int32(clutter_event_sequence_get_slot(sequence)));
+            g_variant_builder_add(&event, "{sv}", "slot",
+                                  g_variant_new_int32(clutter_event_sequence_get_slot(sequence)));
     }
     if (pending->target_window)
         g_variant_builder_add(&event, "{sv}", "window", pending->target_window);
@@ -4169,17 +4200,25 @@ static gboolean native_input_send_head(GnoblinNativeControl* control) {
         clutter_event_get_scroll_delta(pending->event, &dx, &dy);
         g_variant_builder_add(&event, "{sv}", "dx", g_variant_new_double(dx));
         g_variant_builder_add(&event, "{sv}", "dy", g_variant_new_double(dy));
-        g_variant_builder_add(&event, "{sv}", "direction", g_variant_new_uint32(clutter_event_get_scroll_direction(pending->event)));
+        g_variant_builder_add(
+            &event, "{sv}", "direction",
+            g_variant_new_uint32(clutter_event_get_scroll_direction(pending->event)));
     }
     if (type && g_str_equal(type, "gesture")) {
         double dx = 0, dy = 0;
         clutter_event_get_gesture_motion_delta(pending->event, &dx, &dy);
         g_variant_builder_add(&event, "{sv}", "dx", g_variant_new_double(dx));
         g_variant_builder_add(&event, "{sv}", "dy", g_variant_new_double(dy));
-        g_variant_builder_add(&event, "{sv}", "fingers", g_variant_new_uint32(clutter_event_get_touchpad_gesture_finger_count(pending->event)));
+        g_variant_builder_add(
+            &event, "{sv}", "fingers",
+            g_variant_new_uint32(clutter_event_get_touchpad_gesture_finger_count(pending->event)));
         if (clutter_event_type(pending->event) == CLUTTER_TOUCHPAD_PINCH) {
-            g_variant_builder_add(&event, "{sv}", "scale", g_variant_new_double(clutter_event_get_gesture_pinch_scale(pending->event)));
-            g_variant_builder_add(&event, "{sv}", "angle_delta", g_variant_new_double(clutter_event_get_gesture_pinch_angle_delta(pending->event)));
+            g_variant_builder_add(
+                &event, "{sv}", "scale",
+                g_variant_new_double(clutter_event_get_gesture_pinch_scale(pending->event)));
+            g_variant_builder_add(
+                &event, "{sv}", "angle_delta",
+                g_variant_new_double(clutter_event_get_gesture_pinch_angle_delta(pending->event)));
         }
     }
     if (type && g_str_equal(type, "tablet")) {
@@ -4202,7 +4241,8 @@ static gboolean native_input_send_head(GnoblinNativeControl* control) {
     g_variant_builder_init(&payload, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&payload, "{sv}", "handler_ids", pending->handler_ids);
     g_variant_builder_add(&payload, "{sv}", "event", g_variant_builder_end(&event));
-    g_variant_builder_add(&payload, "{sv}", "config_generation", g_variant_new_uint64(pending->generation));
+    g_variant_builder_add(&payload, "{sv}", "config_generation",
+                          g_variant_new_uint64(pending->generation));
     if (pending->focus_context_handle) {
         g_variant_builder_add(&payload, "{sv}", "focus_context_handle",
                               g_variant_new_uint64(pending->focus_context_handle));
@@ -4213,11 +4253,13 @@ static gboolean native_input_send_head(GnoblinNativeControl* control) {
     }
     g_autoptr(GVariant) built = g_variant_ref_sink(g_variant_builder_end(&payload));
     g_autoptr(GError) error = NULL;
-    if (!native_runtime_send(control, GNOBLIN_RUNTIME_PACKET_INPUT, pending->request_id, built, &error)) {
+    if (!native_runtime_send(control, GNOBLIN_RUNTIME_PACKET_INPUT, pending->request_id, built,
+                             &error)) {
         control->input_policy_bypassed = TRUE;
         native_input_clear_requests(control);
         g_free(control->input_policy_error);
-        control->input_policy_error = g_strdup("Lua input policy runtime is unavailable; bypassing until reload");
+        control->input_policy_error =
+            g_strdup("Lua input policy runtime is unavailable; bypassing until reload");
         g_warning("gnoblin-input: cannot send Lua input decision request: %s",
                   error ? error->message : "unknown error");
         return FALSE;
@@ -4233,16 +4275,18 @@ static void native_input_forward_all(GnoblinNativeControl* control, gboolean con
     while (!g_queue_is_empty(control->pending_input_events)) {
         NativePendingInputEvent* pending = g_queue_pop_head(control->pending_input_events);
         g_autofree char* stream_key = native_input_held_key(control, pending->event);
-        gpointer disposition = stream_key && control->held_input_dispositions
-            ? g_hash_table_lookup(control->held_input_dispositions, stream_key) : NULL;
+        gpointer disposition =
+            stream_key && control->held_input_dispositions
+                ? g_hash_table_lookup(control->held_input_dispositions, stream_key)
+                : NULL;
         /* On fail-open, do not leak events from a stream that Lua already
          * consumed. A release-only reservation also stays consumed: its press
          * was never delivered, so forwarding the release would orphan it. */
         gboolean consume = first && consume_head;
         if (disposition)
             consume = GPOINTER_TO_INT(disposition) != 1;
-        if (stream_key && native_input_is_stream_begin(pending->event) &&
-            !disposition && control->held_input_dispositions)
+        if (stream_key && native_input_is_stream_begin(pending->event) && !disposition &&
+            control->held_input_dispositions)
             g_hash_table_replace(control->held_input_dispositions, g_strdup(stream_key),
                                  GINT_TO_POINTER(consume ? 2 : 1));
         if (stream_key && native_input_is_terminal(pending->event) &&
@@ -4287,10 +4331,12 @@ static void native_input_cancel_pending(GnoblinNativeControl* control, gboolean 
 static gboolean native_input_decision_timeout(gpointer data) {
     GnoblinNativeControl* control = data;
     control->input_decision_timeout_id = 0;
-    if (!control || control->stopping) return G_SOURCE_REMOVE;
+    if (!control || control->stopping)
+        return G_SOURCE_REMOVE;
     control->input_policy_bypassed = TRUE;
     g_free(control->input_policy_error);
-    control->input_policy_error = g_strdup("Lua input policy decision exceeded 16ms; bypassing until reload");
+    control->input_policy_error =
+        g_strdup("Lua input policy decision exceeded 16ms; bypassing until reload");
     g_warning("gnoblin-input: %s", control->input_policy_error);
     native_input_cancel_pending(control, TRUE);
     return G_SOURCE_REMOVE;
@@ -4298,13 +4344,13 @@ static gboolean native_input_decision_timeout(gpointer data) {
 
 static gboolean native_input_handle_decision(GnoblinNativeControl* control,
                                              const GnoblinRuntimePacket* packet, GError** error) {
-    if (!control || !control->pending_input_events || g_queue_is_empty(control->pending_input_events))
+    if (!control || !control->pending_input_events ||
+        g_queue_is_empty(control->pending_input_events))
         return TRUE; /* late decision after timeout/reload */
     NativePendingInputEvent* pending = g_queue_peek_head(control->pending_input_events);
     guint64 generation = 0;
     const char* action = NULL;
-    if (!packet->request_id || !pending->dispatched ||
-        packet->request_id != pending->request_id ||
+    if (!packet->request_id || !pending->dispatched || packet->request_id != pending->request_id ||
         !g_variant_lookup(packet->payload, "config_generation", "t", &generation) ||
         generation != pending->generation || generation != native_config_generation(control) ||
         !g_variant_lookup(packet->payload, "action", "&s", &action) ||
@@ -4329,8 +4375,10 @@ static gboolean native_input_handle_decision(GnoblinNativeControl* control,
     g_queue_pop_head(control->pending_input_events);
     gboolean consume = g_str_equal(action, "consume");
     g_autofree char* stream_key = native_input_held_key(control, pending->event);
-    gpointer prior_disposition = stream_key && control->held_input_dispositions
-        ? g_hash_table_lookup(control->held_input_dispositions, stream_key) : NULL;
+    gpointer prior_disposition =
+        stream_key && control->held_input_dispositions
+            ? g_hash_table_lookup(control->held_input_dispositions, stream_key)
+            : NULL;
     if (prior_disposition)
         consume = GPOINTER_TO_INT(prior_disposition) != 1;
     if (pending->reserved_press)
@@ -4339,33 +4387,37 @@ static gboolean native_input_handle_decision(GnoblinNativeControl* control,
     if (pending->held_disposition_key && control->held_input_dispositions)
         g_hash_table_replace(control->held_input_dispositions,
                              g_steal_pointer(&pending->held_disposition_key),
-                             GINT_TO_POINTER(pending->reserved_press ? 3 : consume ? 2 : 1));
-    if (stream_key && native_input_is_terminal(pending->event) &&
-        control->held_input_dispositions)
+                             GINT_TO_POINTER(pending->reserved_press ? 3
+                                             : consume               ? 2
+                                                                     : 1));
+    if (stream_key && native_input_is_terminal(pending->event) && control->held_input_dispositions)
         g_hash_table_remove(control->held_input_dispositions, stream_key);
     meta_display_resume_input_event(control->display, pending->event, pending->actor, consume);
     native_pending_input_free(pending);
     if (!g_queue_is_empty(control->pending_input_events)) {
         NativePendingInputEvent* next = g_queue_peek_head(control->pending_input_events);
         next->request_id = ++control->next_input_request_id;
-        if (!next->request_id) next->request_id = ++control->next_input_request_id;
+        if (!next->request_id)
+            next->request_id = ++control->next_input_request_id;
         if (!native_input_send_head(control))
             native_input_forward_all(control, FALSE);
         else if (!g_queue_is_empty(control->pending_input_events))
-            control->input_decision_timeout_id = g_timeout_add(16, native_input_decision_timeout, control);
+            control->input_decision_timeout_id =
+                g_timeout_add(16, native_input_decision_timeout, control);
     }
     return TRUE;
 }
 
-void gnoblin_native_control_set_console_toggle_handler(
-    MetaDisplay* display, GnoblinNativeConsoleToggleFunc handler, gpointer user_data) {
+void gnoblin_native_control_set_console_toggle_handler(MetaDisplay* display,
+                                                       GnoblinNativeConsoleToggleFunc handler,
+                                                       gpointer user_data) {
     if (!display)
         return;
     NativeConsoleToggleBridge* bridge = g_new0(NativeConsoleToggleBridge, 1);
     bridge->handler = handler;
     bridge->user_data = user_data;
-    g_object_set_data_full(G_OBJECT(display), NATIVE_CONSOLE_TOGGLE_BRIDGE_DATA_KEY,
-                           bridge, g_free);
+    g_object_set_data_full(G_OBJECT(display), NATIVE_CONSOLE_TOGGLE_BRIDGE_DATA_KEY, bridge,
+                           g_free);
     GnoblinNativeControl* control =
         g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY);
     if (control) {
@@ -4403,8 +4455,8 @@ const char* gnoblin_native_control_input_policy_error(MetaDisplay* display) {
 }
 
 static void native_input_discard_stale_stream_disposition(GnoblinNativeControl* control,
-                                                           const ClutterEvent* event,
-                                                           const char* held_key) {
+                                                          const ClutterEvent* event,
+                                                          const char* held_key) {
     if (!control || !event)
         return;
     gnoblin_input_disposition_discard_stale(
@@ -4412,15 +4464,16 @@ static void native_input_discard_stale_stream_disposition(GnoblinNativeControl* 
         (clutter_event_get_flags(event) & CLUTTER_EVENT_FLAG_REPEATED) != 0);
 }
 
-gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display,
-                                                   const ClutterEvent* event,
+gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display, const ClutterEvent* event,
                                                    ClutterActor* event_actor) {
-    GnoblinNativeControl* control = display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
+    GnoblinNativeControl* control =
+        display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
     const char* type = event ? native_input_event_type(event) : NULL;
     if (!control || control->stopping)
         return FALSE;
     if (!meta_display_gnoblin_input_policy_allowed(display) ||
-        (control->wayland_compositor && meta_wayland_session_lock_is_active(control->wayland_compositor))) {
+        (control->wayland_compositor &&
+         meta_wayland_session_lock_is_active(control->wayland_compositor))) {
         native_input_cancel_pending(control, FALSE);
         return FALSE;
     }
@@ -4429,7 +4482,8 @@ gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display,
         if (control->pending_input_events->length >= 256) {
             control->input_policy_bypassed = TRUE;
             g_free(control->input_policy_error);
-            control->input_policy_error = g_strdup("Lua input policy queue overflow; bypassing until reload");
+            control->input_policy_error =
+                g_strdup("Lua input policy queue overflow; bypassing until reload");
             native_input_cancel_pending(control, TRUE);
             return FALSE;
         }
@@ -4449,8 +4503,10 @@ gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display,
         return FALSE;
     g_autofree char* held_key = native_input_held_key(control, event);
     native_input_discard_stale_stream_disposition(control, event, held_key);
-    gpointer active_disposition = held_key && control->held_input_dispositions
-        ? g_hash_table_lookup(control->held_input_dispositions, held_key) : NULL;
+    gpointer active_disposition =
+        held_key && control->held_input_dispositions
+            ? g_hash_table_lookup(control->held_input_dispositions, held_key)
+            : NULL;
     if (control->input_policy_bypassed || control->runtime_worker_suspended ||
         control->runtime_recovery_failed || !control->runtime_hello_sent) {
         if (active_disposition) {
@@ -4465,7 +4521,8 @@ gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display,
         return FALSE;
     }
     g_autoptr(GVariant) document = native_config_document(control);
-    g_autoptr(GVariant) handlers = document ? g_variant_lookup_value(document, "input-handlers", NULL) : NULL;
+    g_autoptr(GVariant) handlers =
+        document ? g_variant_lookup_value(document, "input-handlers", NULL) : NULL;
     if (!handlers || !g_variant_is_of_type(handlers, G_VARIANT_TYPE("av")))
         return FALSE;
     ClutterInputDevice* device = clutter_event_get_source_device(event);
@@ -4473,27 +4530,31 @@ gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display,
     const char* phase = native_input_event_phase(event);
     if (!phase)
         return FALSE;
-    gboolean shortcuts_inhibited = display->focus_window &&
-        meta_window_shortcuts_inhibited(display->focus_window, device);
-    gboolean preserve_order = control->pending_input_events &&
-                              !g_queue_is_empty(control->pending_input_events);
+    gboolean shortcuts_inhibited =
+        display->focus_window && meta_window_shortcuts_inhibited(display->focus_window, device);
+    gboolean preserve_order =
+        control->pending_input_events && !g_queue_is_empty(control->pending_input_events);
     GVariantBuilder ids;
     g_variant_builder_init(&ids, G_VARIANT_TYPE("as"));
     guint matches = 0;
     gboolean release_reservation = FALSE;
     for (gsize i = 0; i < g_variant_n_children(handlers); i++) {
         g_autoptr(GVariant) boxed = g_variant_get_child_value(handlers, i);
-        g_autoptr(GVariant) handler = g_variant_is_of_type(boxed, G_VARIANT_TYPE_VARIANT) ? g_variant_get_variant(boxed) : g_variant_ref(boxed);
+        g_autoptr(GVariant) handler = g_variant_is_of_type(boxed, G_VARIANT_TYPE_VARIANT)
+                                          ? g_variant_get_variant(boxed)
+                                          : g_variant_ref(boxed);
         const char* id = NULL;
-        g_autoptr(GVariant) match = g_variant_lookup_value(handler, "match", G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) match =
+            g_variant_lookup_value(handler, "match", G_VARIANT_TYPE_VARDICT);
         if (!match)
             continue;
         gboolean allow_when_shortcuts_inhibited = FALSE;
         g_variant_lookup(match, "allow-when-shortcuts-inhibited", "b",
                          &allow_when_shortcuts_inhibited);
         const char* configured_phase = NULL;
-        if (held_key && (clutter_event_type(event) == CLUTTER_KEY_PRESS ||
-                         clutter_event_type(event) == CLUTTER_BUTTON_PRESS) &&
+        if (held_key &&
+            (clutter_event_type(event) == CLUTTER_KEY_PRESS ||
+             clutter_event_type(event) == CLUTTER_BUTTON_PRESS) &&
             g_variant_lookup(match, "phase", "&s", &configured_phase) &&
             g_str_equal(configured_phase, "release") &&
             (!shortcuts_inhibited || allow_when_shortcuts_inhibited) &&
@@ -4534,14 +4595,16 @@ gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display,
     if (control->pending_input_events->length >= 256) {
         control->input_policy_bypassed = TRUE;
         g_free(control->input_policy_error);
-        control->input_policy_error = g_strdup("Lua input policy queue overflow; bypassing until reload");
+        control->input_policy_error =
+            g_strdup("Lua input policy queue overflow; bypassing until reload");
         g_warning("gnoblin-input: %s", control->input_policy_error);
         native_input_cancel_pending(control, TRUE);
         return FALSE;
     }
     NativePendingInputEvent* pending = g_new0(NativePendingInputEvent, 1);
     pending->request_id = ++control->next_input_request_id;
-    if (!pending->request_id) pending->request_id = ++control->next_input_request_id;
+    if (!pending->request_id)
+        pending->request_id = ++control->next_input_request_id;
     pending->generation = native_config_generation(control);
     pending->event = clutter_event_copy(event);
     pending->actor = event_actor ? g_object_ref(event_actor) : NULL;
@@ -4558,7 +4621,8 @@ gboolean gnoblin_native_control_filter_input_event(MetaDisplay* display,
             return TRUE;
         }
         if (!g_queue_is_empty(control->pending_input_events))
-            control->input_decision_timeout_id = g_timeout_add(16, native_input_decision_timeout, control);
+            control->input_decision_timeout_id =
+                g_timeout_add(16, native_input_decision_timeout, control);
     }
     return TRUE;
 }
@@ -4633,8 +4697,7 @@ const char* gnoblin_control_operation_error_code(const GError* error) {
 void gnoblin_control_dispatch_operation_completion_full(GnoblinNativeControl* control,
                                                         gint64 request_id, const char* method,
                                                         gboolean ok, JsonNode* result,
-                                                        const char* error_code,
-                                                        const char* message,
+                                                        const char* error_code, const char* message,
                                                         gboolean dispatch_lua) {
     if (request_id <= 0)
         return;
@@ -4729,8 +4792,8 @@ void gnoblin_control_dispatch_operation_completion_full(GnoblinNativeControl* co
 static void dispatch_operation_completion(GnoblinNativeControl* control, gint64 request_id,
                                           const char* method, gboolean ok, JsonNode* result,
                                           const char* error_code, const char* message) {
-    gnoblin_control_dispatch_operation_completion_full(control, request_id, method, ok, result, error_code, message,
-                                       TRUE);
+    gnoblin_control_dispatch_operation_completion_full(control, request_id, method, ok, result,
+                                                       error_code, message, TRUE);
 }
 
 static void native_control_maybe_free_stopped(GnoblinNativeControl* control) {
@@ -4780,7 +4843,8 @@ gboolean gnoblin_control_focus_token_random(char token[65]) {
     return focus_token_random(token);
 }
 
-void gnoblin_control_clear_pending_grant_delivery(GnoblinNativeControl* control, gint64 request_id) {
+void gnoblin_control_clear_pending_grant_delivery(GnoblinNativeControl* control,
+                                                  gint64 request_id) {
     clear_pending_grant_delivery(control, request_id);
 }
 
@@ -6627,7 +6691,8 @@ gboolean gnoblin_native_control_take_window_drag_snap(MetaDisplay* display, guin
         drag->owner_generation != control->runtime_generation ||
         drag->expires_at_us <= g_get_monotonic_time() ||
         drag->settings_revision != native_config_revision(control) ||
-        !gnoblin_control_window_drag_refresh(control, drag, window, release_x, release_y, modifiers) ||
+        !gnoblin_control_window_drag_refresh(control, drag, window, release_x, release_y,
+                                             modifiers) ||
         (control->wayland_compositor &&
          meta_wayland_session_lock_is_active(control->wayland_compositor)))
         return FALSE;
@@ -6930,7 +6995,8 @@ GVariant* gnoblin_native_control_create_snap_context(MetaDisplay* display, guint
     g_autofree char* window_id = native_window_id(window);
     g_autofree char* monitor_id = NULL;
     MtkRectangle monitor_rect, work_area;
-    if (!gnoblin_control_drag_monitor_snapshot(control, window, &monitor_id, &monitor_rect, &work_area)) {
+    if (!gnoblin_control_drag_monitor_snapshot(control, window, &monitor_id, &monitor_rect,
+                                               &work_area)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                             "focused window has no current monitor");
         return NULL;
@@ -7376,32 +7442,40 @@ GVariant* gnoblin_native_control_begin_window_grab(MetaDisplay* display, const c
 
     MetaGrabOp op;
     if (!resize) {
-        op = context.pointer_binding ? META_GRAB_OP_MOVING_UNCONSTRAINED
-                                     : META_GRAB_OP_KEYBOARD_MOVING |
-                                           META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
+        op = context.pointer_binding
+                 ? META_GRAB_OP_MOVING_UNCONSTRAINED
+                 : META_GRAB_OP_KEYBOARD_MOVING | META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
     } else if (g_str_equal(edge, "north")) {
-        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_N : META_GRAB_OP_KEYBOARD_RESIZING_N) |
-             META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
+        op =
+            (context.pointer_binding ? META_GRAB_OP_RESIZING_N : META_GRAB_OP_KEYBOARD_RESIZING_N) |
+            META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
     } else if (g_str_equal(edge, "south")) {
-        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_S : META_GRAB_OP_KEYBOARD_RESIZING_S) |
-             META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
+        op =
+            (context.pointer_binding ? META_GRAB_OP_RESIZING_S : META_GRAB_OP_KEYBOARD_RESIZING_S) |
+            META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
     } else if (g_str_equal(edge, "east")) {
-        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_E : META_GRAB_OP_KEYBOARD_RESIZING_E) |
-             META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
+        op =
+            (context.pointer_binding ? META_GRAB_OP_RESIZING_E : META_GRAB_OP_KEYBOARD_RESIZING_E) |
+            META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
     } else if (g_str_equal(edge, "west")) {
-        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_W : META_GRAB_OP_KEYBOARD_RESIZING_W) |
-             META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
+        op =
+            (context.pointer_binding ? META_GRAB_OP_RESIZING_W : META_GRAB_OP_KEYBOARD_RESIZING_W) |
+            META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
     } else if (g_str_equal(edge, "north_east")) {
-        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_NE : META_GRAB_OP_KEYBOARD_RESIZING_NE) |
+        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_NE
+                                      : META_GRAB_OP_KEYBOARD_RESIZING_NE) |
              META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
     } else if (g_str_equal(edge, "north_west")) {
-        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_NW : META_GRAB_OP_KEYBOARD_RESIZING_NW) |
+        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_NW
+                                      : META_GRAB_OP_KEYBOARD_RESIZING_NW) |
              META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
     } else if (g_str_equal(edge, "south_east")) {
-        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_SE : META_GRAB_OP_KEYBOARD_RESIZING_SE) |
+        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_SE
+                                      : META_GRAB_OP_KEYBOARD_RESIZING_SE) |
              META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
     } else if (g_str_equal(edge, "south_west")) {
-        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_SW : META_GRAB_OP_KEYBOARD_RESIZING_SW) |
+        op = (context.pointer_binding ? META_GRAB_OP_RESIZING_SW
+                                      : META_GRAB_OP_KEYBOARD_RESIZING_SW) |
              META_GRAB_OP_WINDOW_FLAG_UNCONSTRAINED;
     } else {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -7456,11 +7530,11 @@ GVariant* gnoblin_native_control_begin_window_grab(MetaDisplay* display, const c
     ClutterSprite* sprite =
         clutter_backend_get_pointer_sprite(clutter_backend, CLUTTER_STAGE(stage_actor));
     graphene_point_t pointer_origin = GRAPHENE_POINT_INIT(context.pointer_x, context.pointer_y);
-    gboolean began = context.pointer_binding
-                         ? meta_window_begin_pointer_grab_op(
-                               target, op, sprite, context.timestamp, &pointer_origin,
-                               context.pointer_button)
-                         : meta_window_begin_grab_op(target, op, sprite, context.timestamp, NULL);
+    gboolean began =
+        context.pointer_binding
+            ? meta_window_begin_pointer_grab_op(target, op, sprite, context.timestamp,
+                                                &pointer_origin, context.pointer_button)
+            : meta_window_begin_grab_op(target, op, sprite, context.timestamp, NULL);
     if (!began) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_BUSY,
                             "Mutter could not start the interactive window operation");
@@ -8016,7 +8090,8 @@ static void native_show_osd_requested(MetaDisplay* display, gint monitor_index,
     if (!control || control->stopping || control->display != display)
         return;
     g_autoptr(GError) snapshot_error = NULL;
-    g_autoptr(JsonNode) monitor_snapshot = gnoblin_control_monitor_snapshot_json(control, FALSE, &snapshot_error);
+    g_autoptr(JsonNode) monitor_snapshot =
+        gnoblin_control_monitor_snapshot_json(control, FALSE, &snapshot_error);
     g_autofree char* monitor_id = native_monitor_id_for_index(monitor_snapshot, monitor_index);
     g_autoptr(GVariant) output_names =
         native_monitor_output_names_for_index(control, monitor_index);
@@ -8062,7 +8137,8 @@ void gnoblin_native_control_locate_pointer(MetaDisplay* display) {
     g_autofree char* monitor_id = native_monitor_id_for_index(monitor_snapshot, monitor_index);
     if (monitor_id)
         g_variant_builder_add(&fields, "{sv}", "monitor_id", g_variant_new_string(monitor_id));
-    g_autoptr(GVariant) output_names = native_monitor_output_names_for_index(control, monitor_index);
+    g_autoptr(GVariant) output_names =
+        native_monitor_output_names_for_index(control, monitor_index);
     if (output_names)
         g_variant_builder_add(&fields, "{sv}", "output_names", output_names);
     g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&fields));
@@ -8466,8 +8542,6 @@ static gboolean runtime_config_values_equal(GVariant* left, GVariant* right) {
     return gnoblin_control_runtime_config_values_equal(left, right);
 }
 
-
-
 static char* queue_runtime_api_request_internal(Client* client, const char* request_id,
                                                 const char* method, GVariant* arguments,
                                                 const char* kind, const char* legacy_window_action,
@@ -8529,8 +8603,7 @@ static guint64 queue_native_runtime_request(GnoblinNativeControl* control, const
                             "a runtime response callback is required");
         return 0;
     }
-    if (!control || control->stopping || !control->supervised_runtime ||
-        control->runtime_fd < 0) {
+    if (!control || control->stopping || !control->supervised_runtime || control->runtime_fd < 0) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_CLOSED,
                             "Gnoblin runtime channel is unavailable");
         return 0;
@@ -8594,9 +8667,10 @@ guint64 gnoblin_native_control_console_eval(MetaDisplay* display, const char* co
                                         user_data, destroy, error);
 }
 
-guint64 gnoblin_native_control_console_complete(
-    MetaDisplay* display, const char* source, GnoblinNativeRuntimeResponseFunc callback,
-    gpointer user_data, GDestroyNotify destroy, GError** error) {
+guint64 gnoblin_native_control_console_complete(MetaDisplay* display, const char* source,
+                                                GnoblinNativeRuntimeResponseFunc callback,
+                                                gpointer user_data, GDestroyNotify destroy,
+                                                GError** error) {
     GnoblinNativeControl* control =
         display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
     if (!source || !g_utf8_validate(source, -1, NULL) || strlen(source) > 16 * 1024) {
@@ -8612,9 +8686,10 @@ guint64 gnoblin_native_control_console_complete(
                                         user_data, destroy, error);
 }
 
-guint64 gnoblin_native_control_reload_runtime_config(
-    MetaDisplay* display, GnoblinNativeRuntimeResponseFunc callback, gpointer user_data,
-    GDestroyNotify destroy, GError** error) {
+guint64 gnoblin_native_control_reload_runtime_config(MetaDisplay* display,
+                                                     GnoblinNativeRuntimeResponseFunc callback,
+                                                     gpointer user_data, GDestroyNotify destroy,
+                                                     GError** error) {
     GnoblinNativeControl* control =
         display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
     GVariantBuilder arguments;
@@ -8623,7 +8698,6 @@ guint64 gnoblin_native_control_reload_runtime_config(
     return queue_native_runtime_request(control, "reload", "runtime.reload_config", payload,
                                         callback, user_data, destroy, error);
 }
-
 
 static gboolean json_integer(JsonNode* node, gint64* value) {
     if (!node || !JSON_NODE_HOLDS_VALUE(node))
@@ -10003,7 +10077,8 @@ static char* handle_request(Client* client, const char* data, gsize length) {
             return encode_response(id, NULL, "input source reads do not accept arguments");
         client->track_input_sources = TRUE;
         client->input_sources_api_minor = client->api_minor;
-        gnoblin_control_publish_input_source_changes(client->control, client->control->state_revision);
+        gnoblin_control_publish_input_source_changes(client->control,
+                                                     client->control->state_revision);
         if (!client->control->supervised_runtime)
             return encode_response(id, NULL, "Lua supervisor is not connected");
         GVariantBuilder empty;
@@ -10091,16 +10166,19 @@ static gboolean publish_windows(gpointer user_data) {
     guint64 revision = control->state_revision;
     control->publish_id = 0;
     g_autoptr(GError) workspace_error = NULL;
-    g_autoptr(JsonNode) workspace_json = gnoblin_control_workspace_snapshot_json(control, &workspace_error);
+    g_autoptr(JsonNode) workspace_json =
+        gnoblin_control_workspace_snapshot_json(control, &workspace_error);
     if (!workspace_json)
         g_warning("gnoblin-native-control: cannot publish workspaces: %s",
                   workspace_error ? workspace_error->message : "workspace listing unavailable");
     g_autoptr(GError) error = NULL;
     g_autoptr(JsonNode) snapshot_json = window_snapshot_json(control, TRUE, &error);
     g_autoptr(GError) monitor_error = NULL;
-    g_autoptr(JsonNode) monitor_json = gnoblin_control_monitor_snapshot_json(control, TRUE, &monitor_error);
+    g_autoptr(JsonNode) monitor_json =
+        gnoblin_control_monitor_snapshot_json(control, TRUE, &monitor_error);
     g_autoptr(GError) layer_error = NULL;
-    g_autoptr(JsonNode) layer_json = gnoblin_control_layer_snapshot_json(control, TRUE, &layer_error);
+    g_autoptr(JsonNode) layer_json =
+        gnoblin_control_layer_snapshot_json(control, TRUE, &layer_error);
     g_autoptr(GVariant) capabilities = capability_snapshot(control);
     native_publish_runtime_snapshot(control, "capabilities", capabilities, revision);
     g_autoptr(GVariant) input_devices = input_device_snapshot(control);
@@ -10361,7 +10439,7 @@ void gnoblin_control_clear_object_signal_watches(GObject* object, GArray* handle
 }
 
 void gnoblin_control_refresh_object_signal_watches(GnoblinNativeControl* control, GObject* object,
-                                          const char* source, GArray* handler_ids) {
+                                                   const char* source, GArray* handler_ids) {
     gnoblin_control_clear_object_signal_watches(object, handler_ids);
     if (!control || !object || !source || !handler_ids)
         return;
@@ -10459,13 +10537,13 @@ void gnoblin_control_refresh_object_signal_watches(GnoblinNativeControl* control
 static void clear_display_signal_watches(GnoblinNativeControl* control) {
     if (control && control->display)
         gnoblin_control_clear_object_signal_watches(G_OBJECT(control->display),
-                                    control->display_signal_handler_ids);
+                                                    control->display_signal_handler_ids);
 }
 
 static void refresh_display_signal_watches(GnoblinNativeControl* control) {
     if (control && control->display)
-        gnoblin_control_refresh_object_signal_watches(control, G_OBJECT(control->display), "display",
-                                      control->display_signal_handler_ids);
+        gnoblin_control_refresh_object_signal_watches(
+            control, G_OBJECT(control->display), "display", control->display_signal_handler_ids);
 }
 
 static gboolean workspace_signal_subscribed(GnoblinNativeControl* control) {
@@ -10511,25 +10589,26 @@ gboolean gnoblin_control_workspace_signal_subscribed(GnoblinNativeControl* contr
 static void clear_backend_signal_watches(GnoblinNativeControl* control) {
     if (control && control->backend)
         gnoblin_control_clear_object_signal_watches(G_OBJECT(control->backend),
-                                    control->backend_signal_handler_ids);
+                                                    control->backend_signal_handler_ids);
 }
 
 static void refresh_backend_signal_watches(GnoblinNativeControl* control) {
     if (control && control->backend)
-        gnoblin_control_refresh_object_signal_watches(control, G_OBJECT(control->backend), "backend",
-                                      control->backend_signal_handler_ids);
+        gnoblin_control_refresh_object_signal_watches(
+            control, G_OBJECT(control->backend), "backend", control->backend_signal_handler_ids);
 }
 
 static void clear_cursor_tracker_signal_watches(GnoblinNativeControl* control) {
     if (control && control->cursor_tracker)
         gnoblin_control_clear_object_signal_watches(G_OBJECT(control->cursor_tracker),
-                                    control->cursor_tracker_signal_handler_ids);
+                                                    control->cursor_tracker_signal_handler_ids);
 }
 
 static void refresh_cursor_tracker_signal_watches(GnoblinNativeControl* control) {
     if (control && control->cursor_tracker)
-        gnoblin_control_refresh_object_signal_watches(control, G_OBJECT(control->cursor_tracker), "cursor-tracker",
-                                      control->cursor_tracker_signal_handler_ids);
+        gnoblin_control_refresh_object_signal_watches(control, G_OBJECT(control->cursor_tracker),
+                                                      "cursor-tracker",
+                                                      control->cursor_tracker_signal_handler_ids);
 }
 
 static void refresh_window_signal_watches(GnoblinNativeControl* control, MetaWindow* window) {
@@ -10537,7 +10616,8 @@ static void refresh_window_signal_watches(GnoblinNativeControl* control, MetaWin
         return;
     GArray* handler_ids = g_hash_table_lookup(control->window_signal_handler_ids, window);
     if (handler_ids)
-        gnoblin_control_refresh_object_signal_watches(control, G_OBJECT(window), "window", handler_ids);
+        gnoblin_control_refresh_object_signal_watches(control, G_OBJECT(window), "window",
+                                                      handler_ids);
 }
 
 static void refresh_all_window_signal_watches(GnoblinNativeControl* control) {
@@ -10548,7 +10628,8 @@ static void refresh_all_window_signal_watches(GnoblinNativeControl* control) {
     gpointer handler_ids;
     g_hash_table_iter_init(&iter, control->window_signal_handler_ids);
     while (g_hash_table_iter_next(&iter, &window, &handler_ids))
-        gnoblin_control_refresh_object_signal_watches(control, G_OBJECT(window), "window", handler_ids);
+        gnoblin_control_refresh_object_signal_watches(control, G_OBJECT(window), "window",
+                                                      handler_ids);
 }
 
 static void native_refresh_all_mutter_signal_watches(GnoblinNativeControl* control) {
@@ -10694,7 +10775,8 @@ static void input_device_removed(ClutterSeat* seat, ClutterInputDevice* device,
         gpointer key;
         g_hash_table_iter_init(&held, control->held_input_dispositions);
         while (g_hash_table_iter_next(&held, &key, NULL))
-            if (strstr(key, part)) g_hash_table_iter_remove(&held);
+            if (strstr(key, part))
+                g_hash_table_iter_remove(&held);
     }
     g_hash_table_remove(control->input_device_ids, device);
     schedule_windows(control);
@@ -11136,7 +11218,8 @@ static GVariant* native_runtime_shortcut_operation(GnoblinNativeControl* control
     const char* id = NULL;
     if (g_str_equal(method, "shortcut.session.end")) {
         gint64 signed_session_id = 0;
-        if (!g_variant_lookup(arguments, "id", "&s", &id) || !gnoblin_control_dynamic_shortcut_id_valid(id) ||
+        if (!g_variant_lookup(arguments, "id", "&s", &id) ||
+            !gnoblin_control_dynamic_shortcut_id_valid(id) ||
             !g_variant_lookup(arguments, "session_id", "x", &signed_session_id) ||
             signed_session_id <= 0) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -11146,7 +11229,8 @@ static GVariant* native_runtime_shortcut_operation(GnoblinNativeControl* control
         guint64 session_id = (guint64)signed_session_id;
         guint64 generation = native_config_generation(control);
         g_autofree char* owner_id = g_strdup_printf("lua:%" G_GUINT64_FORMAT, generation);
-        NativeDynamicShortcut* shortcut = gnoblin_control_find_runtime_dynamic_shortcut(control, owner_id, id);
+        NativeDynamicShortcut* shortcut =
+            gnoblin_control_find_runtime_dynamic_shortcut(control, owner_id, id);
         if (!shortcut || !shortcut->active || shortcut->session_id != session_id) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                                 "shortcut session is no longer active for this Lua binding");
@@ -11161,14 +11245,16 @@ static GVariant* native_runtime_shortcut_operation(GnoblinNativeControl* control
         return g_variant_ref_sink(g_variant_builder_end(&result));
     }
     if (g_str_equal(method, "shortcut.unbind")) {
-        if (!g_variant_lookup(arguments, "id", "&s", &id) || !gnoblin_control_dynamic_shortcut_id_valid(id)) {
+        if (!g_variant_lookup(arguments, "id", "&s", &id) ||
+            !gnoblin_control_dynamic_shortcut_id_valid(id)) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
                                 "shortcut.unbind requires a valid id");
             return NULL;
         }
         guint64 generation = native_config_generation(control);
         g_autofree char* owner_id = g_strdup_printf("lua:%" G_GUINT64_FORMAT, generation);
-        NativeDynamicShortcut* shortcut = gnoblin_control_find_runtime_dynamic_shortcut(control, owner_id, id);
+        NativeDynamicShortcut* shortcut =
+            gnoblin_control_find_runtime_dynamic_shortcut(control, owner_id, id);
         if (!shortcut) {
             g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND,
                                 "shortcut ID is not registered by this Lua runtime");
@@ -11187,7 +11273,8 @@ static GVariant* native_runtime_shortcut_operation(GnoblinNativeControl* control
     const char* trigger = "press";
     const char* mode = "passive";
     gboolean capture_input = FALSE;
-    if (!g_variant_lookup(arguments, "id", "&s", &id) || !gnoblin_control_dynamic_shortcut_id_valid(id) ||
+    if (!g_variant_lookup(arguments, "id", "&s", &id) ||
+        !gnoblin_control_dynamic_shortcut_id_valid(id) ||
         !g_variant_lookup(arguments, "accelerator", "&s", &accelerator) ||
         !gnoblin_control_dynamic_shortcut_accelerator_valid(accelerator)) {
         g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
@@ -11221,7 +11308,8 @@ static GVariant* native_runtime_shortcut_operation(GnoblinNativeControl* control
     NativeDynamicShortcut* shortcut = NULL;
     if (g_str_equal(accelerator, "Super")) {
         guint64 session_id = (guint64)operation_id;
-        shortcut = gnoblin_control_arm_bare_super_shortcut(control, id, owner_id, NULL, session_id, error);
+        shortcut =
+            gnoblin_control_arm_bare_super_shortcut(control, id, owner_id, NULL, session_id, error);
         if (!shortcut)
             return NULL;
     } else {
@@ -11267,7 +11355,6 @@ static gboolean native_runtime_flush_pending_events(GnoblinNativeControl* contro
     return gnoblin_control_runtime_flush_pending_events(control, error);
 }
 
-
 static void native_runtime_fail_pending_requests(GnoblinNativeControl* control,
                                                  const char* reason) {
     if (!control || !control->pending_runtime_requests)
@@ -11288,8 +11375,7 @@ static void native_runtime_fail_pending_requests(GnoblinNativeControl* control,
         if (pending->discard_response)
             continue;
         if (pending->callback) {
-            pending->callback(FALSE, NULL,
-                              reason ? reason : "Lua worker stopped before replying",
+            pending->callback(FALSE, NULL, reason ? reason : "Lua worker stopped before replying",
                               pending->callback_data);
             continue;
         }
@@ -11329,8 +11415,9 @@ static void native_runtime_suspend_worker(GnoblinNativeControl* control) {
         return;
     control->runtime_worker_suspended = TRUE;
     control->runtime_hello_sent = FALSE;
-    native_input_cancel_pending(control, !(control->wayland_compositor &&
-        meta_wayland_session_lock_is_active(control->wayland_compositor)));
+    native_input_cancel_pending(
+        control, !(control->wayland_compositor &&
+                   meta_wayland_session_lock_is_active(control->wayland_compositor)));
     /* The host discards output through the acknowledgement. Drop queued
      * fragments first so an old message cannot continue after SUSPENDED. */
     gnoblin_runtime_writer_reset(control->runtime_writer);
@@ -11364,10 +11451,6 @@ static GHashTable* native_runtime_event_subscriptions_from_payload(GVariant* pay
     return gnoblin_control_runtime_event_subscriptions_from_payload(payload, error);
 }
 
-
-
-
-
 static gboolean native_runtime_republish_full_state(GnoblinNativeControl* control, GError** error) {
     guint64 revision = control->state_revision;
     g_autoptr(GError) snapshot_error = NULL;
@@ -11383,7 +11466,8 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
 
     g_clear_error(&snapshot_error);
     {
-        g_autoptr(JsonNode) workspaces = gnoblin_control_workspace_snapshot_json(control, &snapshot_error);
+        g_autoptr(JsonNode) workspaces =
+            gnoblin_control_workspace_snapshot_json(control, &snapshot_error);
         (void)workspaces;
         if (!workspaces)
             g_warning("gnoblin-native-control: cannot restore workspace snapshot: %s",
@@ -11391,7 +11475,8 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
     }
 
     g_clear_error(&snapshot_error);
-    g_autoptr(JsonNode) monitors = gnoblin_control_monitor_snapshot_json(control, TRUE, &snapshot_error);
+    g_autoptr(JsonNode) monitors =
+        gnoblin_control_monitor_snapshot_json(control, TRUE, &snapshot_error);
     if (!monitors)
         g_warning("gnoblin-native-control: cannot restore monitor snapshot: %s",
                   snapshot_error ? snapshot_error->message : "monitor listing unavailable");
@@ -11400,7 +11485,8 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
     native_monitor_privacy_screen_publish(control);
 
     g_clear_error(&snapshot_error);
-    g_autoptr(JsonNode) layers = gnoblin_control_layer_snapshot_json(control, TRUE, &snapshot_error);
+    g_autoptr(JsonNode) layers =
+        gnoblin_control_layer_snapshot_json(control, TRUE, &snapshot_error);
     if (!layers)
         g_warning("gnoblin-native-control: cannot restore layer snapshot: %s",
                   snapshot_error ? snapshot_error->message : "layer listing unavailable");
@@ -11571,7 +11657,6 @@ static GVariant* native_set_monitor_privacy_screen(GnoblinNativeControl* control
                                                         control->monitor_privacy_screen_revision);
 }
 
-
 static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
                                                 GnoblinRuntimePacket* packet, GError** error) {
     if (!control || control->stopping) {
@@ -11606,9 +11691,11 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
         g_str_has_prefix(method, "auth.") || g_str_has_prefix(method, "prompt."))
         g_variant_lookup(packet->payload, "client_id", "t", &client_id);
     guint64 input_request_id = 0;
-    g_autoptr(GVariant) input_scope = g_variant_lookup_value(packet->payload, "input_request_id", NULL);
-    if (input_scope && (!g_variant_lookup(packet->payload, "input_request_id", "t", &input_request_id) ||
-                        !native_input_operation_allowed(control, input_request_id))) {
+    g_autoptr(GVariant) input_scope =
+        g_variant_lookup_value(packet->payload, "input_request_id", NULL);
+    if (input_scope &&
+        (!g_variant_lookup(packet->payload, "input_request_id", "t", &input_request_id) ||
+         !native_input_operation_allowed(control, input_request_id))) {
         g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
                             "input operation belongs to a retired decision");
     }
@@ -11673,7 +11760,7 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
         guint64 owner_generation = 0;
         if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation) ||
             !gnoblin_control_runtime_window_snap_offer(control, arguments, owner_generation,
-                                              &operation_error)) {
+                                                       &operation_error)) {
             if (!operation_error)
                 g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_PERMISSION_DENIED,
                                     "window.snap.offer requires the active runtime generation");
@@ -11774,7 +11861,8 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
         result =
             native_location_authorize_operation(control, arguments, client_id, &operation_error);
     } else if (g_str_has_prefix(method, "auth.")) {
-        result = gnoblin_control_auth_operation(control, method, arguments, client_id, &operation_error);
+        result =
+            gnoblin_control_auth_operation(control, method, arguments, client_id, &operation_error);
     } else if (g_str_has_prefix(method, "prompt.")) {
         result = gnoblin_control_prompts_operation(control, method, arguments, client_id,
                                                    &operation_error);
@@ -11888,8 +11976,9 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
     else {
         GVariantBuilder error_record;
         g_variant_builder_init(&error_record, G_VARIANT_TYPE_VARDICT);
-        g_variant_builder_add(&error_record, "{sv}", "code",
-                              g_variant_new_string(gnoblin_control_operation_error_code(operation_error)));
+        g_variant_builder_add(
+            &error_record, "{sv}", "code",
+            g_variant_new_string(gnoblin_control_operation_error_code(operation_error)));
         g_variant_builder_add(&error_record, "{sv}", "message",
                               g_variant_new_string(operation_error ? operation_error->message
                                                                    : "native operation failed"));
@@ -11901,9 +11990,10 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
         return FALSE;
 
     g_autoptr(JsonNode) json_result = result ? json_from_variant(result) : NULL;
-    gnoblin_control_dispatch_operation_completion_full(control, operation_id, method, result != NULL, json_result,
-                                       gnoblin_control_operation_error_code(operation_error),
-                                       operation_error ? operation_error->message : NULL, FALSE);
+    gnoblin_control_dispatch_operation_completion_full(
+        control, operation_id, method, result != NULL, json_result,
+        gnoblin_control_operation_error_code(operation_error),
+        operation_error ? operation_error->message : NULL, FALSE);
     return TRUE;
 }
 
@@ -12034,15 +12124,15 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
             } else {
                 gpointer pending_key = NULL;
                 gpointer pending_value = NULL;
-                if (!g_hash_table_lookup_extended (control->pending_runtime_requests,
-                                                   &packet.request_id,
-                                                   &pending_key, &pending_value)) {
-                    g_set_error_literal (&error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                                         "runtime API response lost its pending request");
+                if (!g_hash_table_lookup_extended(control->pending_runtime_requests,
+                                                  &packet.request_id, &pending_key,
+                                                  &pending_value)) {
+                    g_set_error_literal(&error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                                        "runtime API response lost its pending request");
                     goto api_response_done;
                 }
-                g_hash_table_steal (control->pending_runtime_requests, &packet.request_id);
-                g_free (pending_key);
+                g_hash_table_steal(control->pending_runtime_requests, &packet.request_id);
+                g_free(pending_key);
                 pending = pending_value;
                 if (ok && pending->legacy_window_action) {
                     if (!pending->legacy_window_id ||
@@ -12071,10 +12161,9 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                     /* The packet and result are owned by the runtime reader.
                      * The callback is synchronous on the compositor main
                      * loop, so borrowing the result is safe until it returns. */
-                    pending->callback(ok, result, ok ? NULL
-                                                      : (message ? message
-                                                                 : "runtime API request failed"),
-                                      pending->callback_data);
+                    pending->callback(
+                        ok, result, ok ? NULL : (message ? message : "runtime API request failed"),
+                        pending->callback_data);
                 } else {
                     Client* client = pending->client;
                     if (!client->closing) {
@@ -12083,8 +12172,7 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                             client,
                             encode_response(
                                 pending->request_id, json,
-                                ok ? NULL
-                                   : (message ? message : "runtime API request failed")));
+                                ok ? NULL : (message ? message : "runtime API request failed")));
                         client->pending_deferred_requests--;
                         process_buffer(client);
                     } else if (client->pending_deferred_requests > 0) {
@@ -12092,11 +12180,10 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                     }
                     client_maybe_free(client);
                 }
-                pending_runtime_request_free (pending);
+                pending_runtime_request_free(pending);
                 handled = TRUE;
             }
-        api_response_done:
-            ;
+        api_response_done:;
         } else if (packet.type == GNOBLIN_RUNTIME_PACKET_CONFIG) {
             GVariant* document =
                 g_variant_lookup_value(packet.payload, "document", G_VARIANT_TYPE_VARDICT);
@@ -12169,8 +12256,9 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                         gnoblin_control_runtime_reload_documents_valid(previous_document, document);
                     gboolean apply_ok = supported;
                     if (!supported)
-                        g_set_error_literal(&config_error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
-                                            "configuration transaction has no valid active snapshot");
+                        g_set_error_literal(
+                            &config_error, G_IO_ERROR, G_IO_ERROR_INVALID_DATA,
+                            "configuration transaction has no valid active snapshot");
                     /* Protocol advertisement reads the bootstrap cache, so update it before the
                      * apply steps run. Otherwise each reload applies the previous protocols. */
                     else if (bootstrap_runtime_cache &&
@@ -12187,9 +12275,8 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                     else if (!replace_native_shortcuts(control, document, &config_error))
                         apply_ok = FALSE;
                     else {
-                        g_autoptr(GVariant) renderers =
-                            g_variant_lookup_value(document, "frame-renderers",
-                                                   G_VARIANT_TYPE_VARDICT);
+                        g_autoptr(GVariant) renderers = g_variant_lookup_value(
+                            document, "frame-renderers", G_VARIANT_TYPE_VARDICT);
                         if (!meta_gnoblin_frame_renderers_configure(renderers, FALSE,
                                                                     &config_error))
                             apply_ok = FALSE;
@@ -12209,14 +12296,14 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                             if (!apply_native_input(control, context, previous_document,
                                                     &rollback_error))
                                 rollback_failed = TRUE;
-                            if (!apply_native_keybindings(control, previous_document, &rollback_error))
+                            if (!apply_native_keybindings(control, previous_document,
+                                                          &rollback_error))
                                 rollback_failed = TRUE;
                             if (!replace_native_shortcuts(control, previous_document,
                                                           &rollback_error))
                                 rollback_failed = TRUE;
-                            g_autoptr(GVariant) previous_renderers =
-                                g_variant_lookup_value(previous_document, "frame-renderers",
-                                                       G_VARIANT_TYPE_VARDICT);
+                            g_autoptr(GVariant) previous_renderers = g_variant_lookup_value(
+                                previous_document, "frame-renderers", G_VARIANT_TYPE_VARDICT);
                             if (!meta_gnoblin_frame_renderers_configure(previous_renderers, FALSE,
                                                                         &rollback_error))
                                 rollback_failed = TRUE;
@@ -12232,17 +12319,18 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                     }
                 }
                 if (handled && runtime_generation > previous_runtime_generation) {
-                    native_input_cancel_pending(
-                        control, !(control->wayland_compositor &&
-                                   meta_wayland_session_lock_is_active(control->wayland_compositor)));
+                    native_input_cancel_pending(control, !(control->wayland_compositor &&
+                                                           meta_wayland_session_lock_is_active(
+                                                               control->wayland_compositor)));
                     /* A reload may replace only the Lua worker, leaving the
                      * settings revision unchanged. Do not retain a keyboard
                      * capture whose owner belongs to the old generation. */
                     if (control->active_shortcut_session)
                         dynamic_shortcut_end_session(control, control->active_shortcut_session,
                                                      "config_reloaded");
-                    stop_native_shortcut_capture(control, TRUE, FALSE, NULL, "reloaded",
-                                                 "shortcut capture cancelled because configuration reloaded");
+                    stop_native_shortcut_capture(
+                        control, TRUE, FALSE, NULL, "reloaded",
+                        "shortcut capture cancelled because configuration reloaded");
                     control->input_policy_bypassed = FALSE;
                     g_clear_pointer(&control->input_policy_error, g_free);
                     gnoblin_control_cancel_window_drags(control, "config_reloaded");
@@ -12256,20 +12344,25 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
                             &control->wayland_compositor->xwayland_manager);
 #endif
                     if (input_sources_changed) {
-                        gnoblin_control_publish_input_source_changes(control, control->state_revision);
+                        gnoblin_control_publish_input_source_changes(control,
+                                                                     control->state_revision);
                         gnoblin_control_input_source_restore_focused(control);
-                        /* The startup selection runs against the bootstrap config, which has no input sources, so
-                         * the list from the first accepted config arrives with nothing current. The same happens
-                         * when a reload drops the current source. Make the first configured source current. */
+                        /* The startup selection runs against the bootstrap config, which has no
+                         * input sources, so the list from the first accepted config arrives with
+                         * nothing current. The same happens when a reload drops the current source.
+                         * Make the first configured source current. */
                         if (control->input_sources && control->input_sources->len > 0 &&
                             !gnoblin_control_current_input_source(control) &&
                             control->pending_input_source_ops == 0) {
                             NativeInputSource* first = g_ptr_array_index(control->input_sources, 0);
                             g_autoptr(GError) select_error = NULL;
-                            if (!gnoblin_control_select_xkb_source(control, first->id, 0, "config.input_sources",
-                                                                   FALSE, &select_error))
-                                g_warning("gnoblin-native-control: could not select the first input source %s: %s",
-                                          first->id, select_error ? select_error->message : "unknown error");
+                            if (!gnoblin_control_select_xkb_source(control, first->id, 0,
+                                                                   "config.input_sources", FALSE,
+                                                                   &select_error))
+                                g_warning("gnoblin-native-control: could not select the first "
+                                          "input source %s: %s",
+                                          first->id,
+                                          select_error ? select_error->message : "unknown error");
                         }
                         schedule_windows(control);
                     }
@@ -12288,8 +12381,8 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
             if (handled) {
                 gboolean events_changed =
                     !control->runtime_event_subscriptions || !next_event_subscriptions ||
-                    !gnoblin_control_runtime_event_subscriptions_equal(control->runtime_event_subscriptions,
-                                                              next_event_subscriptions);
+                    !gnoblin_control_runtime_event_subscriptions_equal(
+                        control->runtime_event_subscriptions, next_event_subscriptions);
                 if (events_changed) {
                     g_clear_pointer(&control->runtime_event_subscriptions, g_hash_table_unref);
                     control->runtime_event_subscriptions =
@@ -12306,9 +12399,9 @@ static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointe
             g_clear_pointer(&document, g_variant_unref);
             if (packet.request_id > 0) {
                 const char* message = config_error ? config_error->message : NULL;
-                handled =
-                    gnoblin_control_runtime_send_config_result(control, packet.request_id, handled, revision,
-                                                      runtime_generation, message, &error);
+                handled = gnoblin_control_runtime_send_config_result(
+                    control, packet.request_id, handled, revision, runtime_generation, message,
+                    &error);
             } else if (config_error) {
                 g_propagate_error(&error, g_steal_pointer(&config_error));
             }
@@ -12468,8 +12561,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     control->clients = g_hash_table_new(g_direct_hash, g_direct_equal);
     control->ui_sessions =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_ui_session_free);
-    control->window_shader_files =
-        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, gnoblin_control_window_shader_file_free);
+    control->window_shader_files = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+                                                         gnoblin_control_window_shader_file_free);
     control->pending_runtime_requests =
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, pending_runtime_request_free);
     control->pending_location_authorizations = g_hash_table_new_full(
@@ -12499,17 +12592,17 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     control->privacy_handles =
         g_hash_table_new_full(g_direct_hash, g_direct_equal, g_object_unref, NULL);
     control->privacy_revision = 1;
-    control->dynamic_shortcuts =
-        g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL, gnoblin_control_dynamic_shortcut_free);
+    control->dynamic_shortcuts = g_hash_table_new_full(g_direct_hash, g_direct_equal, NULL,
+                                                       gnoblin_control_dynamic_shortcut_free);
     control->touchpad_router = gnoblin_touchpad_router_new();
     control->focus_contexts = g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, g_free);
-    control->window_input_sources =
-        g_hash_table_new_full(g_str_hash, g_str_equal, g_free, gnoblin_control_window_input_source_free);
+    control->window_input_sources = g_hash_table_new_full(g_str_hash, g_str_equal, g_free,
+                                                          gnoblin_control_window_input_source_free);
     control->menu_contexts =
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, native_menu_context_free);
     control->text_targets = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-    control->window_drags =
-        g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, gnoblin_control_window_drag_free);
+    control->window_drags = g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free,
+                                                  gnoblin_control_window_drag_free);
     control->snap_contexts =
         g_hash_table_new_full(g_str_hash, g_str_equal, g_free, native_snap_context_free);
     control->snap_restore_frames =
@@ -12690,7 +12783,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         g_warning("gnoblin-native-control: cannot seed Lua workspace snapshot: %s",
                   workspace_error ? workspace_error->message : "workspace listing unavailable");
     else {
-        control->workspace_state = gnoblin_control_workspace_state_from_snapshot(initial_workspaces);
+        control->workspace_state =
+            gnoblin_control_workspace_state_from_snapshot(initial_workspaces);
         control->workspace_state_initialized = TRUE;
     }
     initial_monitors = gnoblin_control_monitor_snapshot_json(control, TRUE, &monitor_error);
@@ -12727,7 +12821,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     control->last_published_input_source =
         initial_current_source ? g_strdup(initial_current_source->id) : NULL;
     initial_input_devices = json_from_variant(input_devices);
-    control->input_device_state = gnoblin_control_input_device_state_from_snapshot(initial_input_devices);
+    control->input_device_state =
+        gnoblin_control_input_device_state_from_snapshot(initial_input_devices);
     control->input_device_state_initialized = TRUE;
 #ifdef HAVE_REMOTE_DESKTOP
     control->pipewire_monitor =
@@ -12750,7 +12845,8 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     if (control->input_sources && control->input_sources->len > 0 &&
         !control->input_keymap_description) {
         NativeInputSource* first = g_ptr_array_index(control->input_sources, 0);
-        if (!gnoblin_control_select_xkb_source(control, first->id, 0, "input.select_source", FALSE, error))
+        if (!gnoblin_control_select_xkb_source(control, first->id, 0, "input.select_source", FALSE,
+                                               error))
             goto fail;
     }
     if (!apply_native_input(control, context, document, error))

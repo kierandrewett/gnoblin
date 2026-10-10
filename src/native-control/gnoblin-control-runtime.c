@@ -36,8 +36,8 @@ gboolean gnoblin_control_xwayland_server_flags_changed(GVariant* current, GVaria
     gboolean candidate_empty =
         !candidate_extensions || g_variant_n_children(candidate_extensions) == 0;
     return current_empty != candidate_empty ||
-           (!current_empty && !gnoblin_control_runtime_config_values_equal(current_extensions,
-                                                           candidate_extensions));
+           (!current_empty &&
+            !gnoblin_control_runtime_config_values_equal(current_extensions, candidate_extensions));
 }
 
 gboolean gnoblin_control_runtime_reload_documents_valid(GVariant* current, GVariant* candidate) {
@@ -45,15 +45,14 @@ gboolean gnoblin_control_runtime_reload_documents_valid(GVariant* current, GVari
      * second, incomplete list of settings that can reload: native settings
      * are reapplied from the candidate document and the Lua runtime is
      * replaced transactionally below. */
-    return current && candidate &&
-           g_variant_is_of_type(current, G_VARIANT_TYPE_VARDICT) &&
+    return current && candidate && g_variant_is_of_type(current, G_VARIANT_TYPE_VARDICT) &&
            g_variant_is_of_type(candidate, G_VARIANT_TYPE_VARDICT);
 }
 
 gboolean gnoblin_control_runtime_send_config_result(GnoblinNativeControl* control,
-                                                  guint64 transaction_id, gboolean accepted,
-                                                  guint64 revision, guint64 generation,
-                                                  const char* message, GError** error) {
+                                                    guint64 transaction_id, gboolean accepted,
+                                                    guint64 revision, guint64 generation,
+                                                    const char* message, GError** error) {
     GVariantBuilder builder;
     g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&builder, "{sv}", "accepted", g_variant_new_boolean(accepted));
@@ -62,8 +61,8 @@ gboolean gnoblin_control_runtime_send_config_result(GnoblinNativeControl* contro
     if (message && *message)
         g_variant_builder_add(&builder, "{sv}", "error", g_variant_new_string(message));
     g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&builder));
-    return gnoblin_control_runtime_send(control, GNOBLIN_RUNTIME_PACKET_CONFIG_RESULT, transaction_id,
-                               payload, error);
+    return gnoblin_control_runtime_send(control, GNOBLIN_RUNTIME_PACKET_CONFIG_RESULT,
+                                        transaction_id, payload, error);
 }
 
 void gnoblin_control_runtime_clear_queue(GQueue* queue) {
@@ -99,7 +98,7 @@ void gnoblin_control_runtime_add_display_environment(GVariantBuilder* hello) {
 static gboolean config_values_equal_at(GVariant* left, GVariant* right, GString* path);
 
 gboolean gnoblin_control_runtime_resume_snapshot_matches(GnoblinNativeControl* control,
-                                                       GVariant* payload) {
+                                                         GVariant* payload) {
     g_autoptr(GVariant) document =
         g_variant_lookup_value(payload, "document", G_VARIANT_TYPE_VARDICT);
     g_autoptr(GVariant) current_document =
@@ -111,12 +110,13 @@ gboolean gnoblin_control_runtime_resume_snapshot_matches(GnoblinNativeControl* c
     guint64 generation = 0;
     guint64 operation_id_watermark = 0;
     guint64 current_revision = gnoblin_runtime_cache_get_settings_revision(control->runtime_cache);
-    /* Name the first field that differs. The rejection otherwise only says that the state does not match. */
+    /* Name the first field that differs. The rejection otherwise only says that the state does not
+     * match. */
     const char* mismatch = NULL;
     if (!subscriptions || !control->runtime_event_subscriptions)
         mismatch = "event subscriptions are missing";
-    else if (!gnoblin_control_runtime_event_subscriptions_equal(subscriptions,
-                                                                 control->runtime_event_subscriptions))
+    else if (!gnoblin_control_runtime_event_subscriptions_equal(
+                 subscriptions, control->runtime_event_subscriptions))
         mismatch = "event subscriptions differ";
     else if (!document || !current_document)
         mismatch = "the document is missing";
@@ -147,7 +147,7 @@ gboolean gnoblin_control_runtime_resume_snapshot_matches(GnoblinNativeControl* c
 }
 
 gboolean gnoblin_control_runtime_reject_resume(GnoblinNativeControl* control, const char* message,
-                                             GError** error) {
+                                               GError** error) {
     GVariantBuilder builder;
     g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&builder, "{sv}", "resume_rejected", g_variant_new_boolean(TRUE));
@@ -179,18 +179,20 @@ gboolean gnoblin_native_control_cancel_runtime_request(MetaDisplay* display, gui
     return TRUE;
 }
 
-/* Compares two configuration values. When PATH is set, it receives the key path of the first difference and both
- * values, so a rejected worker resume can say what differed. */
+/* Compares two configuration values. When PATH is set, it receives the key path of the first
+ * difference and both values, so a rejected worker resume can say what differed. */
 static gboolean config_values_equal_at(GVariant* left, GVariant* right, GString* path) {
     if (!left || !right) {
         if (path)
-            g_string_append_printf(path, " [%s]", !left ? "missing in the worker" : "missing in the accepted state");
+            g_string_append_printf(
+                path, " [%s]", !left ? "missing in the worker" : "missing in the accepted state");
         return FALSE;
     }
     if (!g_variant_type_equal(g_variant_get_type(left), g_variant_get_type(right))) {
         if (path)
             g_string_append_printf(path, " [worker type %s, accepted type %s]",
-                                   g_variant_get_type_string(left), g_variant_get_type_string(right));
+                                   g_variant_get_type_string(left),
+                                   g_variant_get_type_string(right));
         return FALSE;
     }
 
@@ -203,7 +205,9 @@ static gboolean config_values_equal_at(GVariant* left, GVariant* right, GString*
     if (g_variant_is_of_type(left, G_VARIANT_TYPE_VARDICT)) {
         if (g_variant_n_children(left) != g_variant_n_children(right)) {
             if (path)
-                g_string_append_printf(path, " [worker has %" G_GSIZE_FORMAT " keys, accepted has %" G_GSIZE_FORMAT "]",
+                g_string_append_printf(path,
+                                       " [worker has %" G_GSIZE_FORMAT
+                                       " keys, accepted has %" G_GSIZE_FORMAT "]",
                                        g_variant_n_children(left), g_variant_n_children(right));
             return FALSE;
         }
@@ -229,7 +233,9 @@ static gboolean config_values_equal_at(GVariant* left, GVariant* right, GString*
     if (g_variant_is_container(left)) {
         if (g_variant_n_children(left) != g_variant_n_children(right)) {
             if (path)
-                g_string_append_printf(path, " [worker has %" G_GSIZE_FORMAT " items, accepted has %" G_GSIZE_FORMAT "]",
+                g_string_append_printf(path,
+                                       " [worker has %" G_GSIZE_FORMAT
+                                       " items, accepted has %" G_GSIZE_FORMAT "]",
                                        g_variant_n_children(left), g_variant_n_children(right));
             return FALSE;
         }
@@ -263,7 +269,7 @@ gboolean gnoblin_control_runtime_config_values_equal(GVariant* left, GVariant* r
 }
 
 gboolean gnoblin_control_runtime_flush_state_snapshots(GnoblinNativeControl* control,
-                                                     GError** error) {
+                                                       GError** error) {
     while (control->pending_runtime_states && !g_queue_is_empty(control->pending_runtime_states)) {
         GVariant* payload = g_queue_pop_head(control->pending_runtime_states);
         gboolean sent =
@@ -275,7 +281,8 @@ gboolean gnoblin_control_runtime_flush_state_snapshots(GnoblinNativeControl* con
     return TRUE;
 }
 
-gboolean gnoblin_control_runtime_flush_pending_events(GnoblinNativeControl* control, GError** error) {
+gboolean gnoblin_control_runtime_flush_pending_events(GnoblinNativeControl* control,
+                                                      GError** error) {
     while (control->pending_runtime_events && !g_queue_is_empty(control->pending_runtime_events)) {
         GVariant* packet = g_queue_pop_head(control->pending_runtime_events);
         gboolean sent =
@@ -288,7 +295,7 @@ gboolean gnoblin_control_runtime_flush_pending_events(GnoblinNativeControl* cont
 }
 
 gboolean gnoblin_control_runtime_send_worker_suspended(GnoblinNativeControl* control,
-                                                     GError** error) {
+                                                       GError** error) {
     guint64 revision = gnoblin_runtime_cache_get_settings_revision(control->runtime_cache);
     g_autoptr(GVariant) document = gnoblin_runtime_cache_get_document(control->runtime_cache);
     if (!document) {
@@ -315,11 +322,12 @@ gboolean gnoblin_control_runtime_send_worker_suspended(GnoblinNativeControl* con
     g_variant_builder_add(&builder, "{sv}", "document", document);
     g_variant_builder_add(&builder, "{sv}", "runtime_events", g_variant_builder_end(&events));
     g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&builder));
-    return gnoblin_control_runtime_send(control, GNOBLIN_RUNTIME_PACKET_WORKER_SUSPENDED, 0, payload, error);
+    return gnoblin_control_runtime_send(control, GNOBLIN_RUNTIME_PACKET_WORKER_SUSPENDED, 0,
+                                        payload, error);
 }
 
 GHashTable* gnoblin_control_runtime_event_subscriptions_from_payload(GVariant* payload,
-                                                                   GError** error) {
+                                                                     GError** error) {
     g_autoptr(GVariant) events =
         g_variant_lookup_value(payload, "runtime_events", G_VARIANT_TYPE("as"));
     if (!events) {

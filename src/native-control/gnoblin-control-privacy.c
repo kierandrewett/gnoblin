@@ -79,7 +79,7 @@ static void publish_privacy_snapshot(GnoblinNativeControl* control, gboolean cha
     g_clear_pointer(&control->privacy_snapshot, g_variant_unref);
     control->privacy_snapshot = snapshot;
     gnoblin_control_publish_runtime_snapshot(control, "privacy", control->privacy_snapshot,
-                                    control->privacy_revision);
+                                             control->privacy_revision);
 
     if (!changed)
         return;
@@ -202,7 +202,7 @@ static void privacy_location_state_changed(GnoblinLocationAgent* agent, gboolean
         control->state_revision++;
         g_autoptr(GVariant) capabilities = gnoblin_control_capability_snapshot(control);
         gnoblin_control_publish_runtime_snapshot(control, "capabilities", capabilities,
-                                        control->state_revision);
+                                                 control->state_revision);
         const NativeCapability* changed = gnoblin_control_capability_by_id("location-agent");
         if (changed) {
             GVariantBuilder event;
@@ -233,7 +233,7 @@ static void privacy_handle_stopped(MetaRemoteAccessHandle* handle, gpointer user
 }
 
 void gnoblin_control_privacy_new_handle(MetaRemoteAccessController* controller,
-                               MetaRemoteAccessHandle* handle, gpointer user_data) {
+                                        MetaRemoteAccessHandle* handle, gpointer user_data) {
     GnoblinNativeControl* control = user_data;
     if (!control || control->stopping || !handle ||
         g_hash_table_contains(control->privacy_handles, handle))
@@ -245,7 +245,7 @@ void gnoblin_control_privacy_new_handle(MetaRemoteAccessController* controller,
 }
 
 GVariant* gnoblin_control_stop_privacy_sessions(GnoblinNativeControl* control, gboolean recording,
-                                              GError** error) {
+                                                GError** error) {
     g_autoptr(GPtrArray) handles = g_ptr_array_new_with_free_func(g_object_unref);
     GHashTableIter iter;
     gpointer key;

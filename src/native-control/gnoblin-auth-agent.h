@@ -33,12 +33,11 @@ typedef struct {
     void (*message)(GnoblinAuthAgent* agent, GnoblinAuthRequest* request, const char* text,
                     gboolean is_error, gpointer user_data);
     /* The request ended. No further calls for it are accepted. */
-    void (*finished)(GnoblinAuthAgent* agent, GnoblinAuthRequest* request,
-                     GnoblinAuthResult result, gpointer user_data);
+    void (*finished)(GnoblinAuthAgent* agent, GnoblinAuthRequest* request, GnoblinAuthResult result,
+                     gpointer user_data);
 } GnoblinAuthCallbacks;
 
-GnoblinAuthAgent* gnoblin_auth_agent_new(const GnoblinAuthCallbacks* callbacks,
-                                         gpointer user_data);
+GnoblinAuthAgent* gnoblin_auth_agent_new(const GnoblinAuthCallbacks* callbacks, gpointer user_data);
 /* Registers with polkit for this login session. Returns FALSE and sets error when polkit
  * is unreachable, the session is unknown, or another agent already owns the session. */
 gboolean gnoblin_auth_agent_start(GnoblinAuthAgent* agent, GError** error);

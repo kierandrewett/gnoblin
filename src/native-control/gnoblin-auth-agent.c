@@ -210,8 +210,7 @@ static void on_session_show_info(PolkitAgentSession* session, const char* text,
     session_message(user_data, text, FALSE);
 }
 
-static void on_session_completed(PolkitAgentSession* session, gboolean gained,
-                                 gpointer user_data) {
+static void on_session_completed(PolkitAgentSession* session, gboolean gained, gpointer user_data) {
     request_finish(user_data, gained ? GNOBLIN_AUTH_RESULT_AUTHORIZED : GNOBLIN_AUTH_RESULT_DENIED);
 }
 
@@ -283,10 +282,10 @@ gboolean gnoblin_auth_request_begin(GnoblinAuthRequest* request, guint identity_
         g_signal_connect(request->session, "request", G_CALLBACK(on_session_request), request);
     request->session_handlers[1] = g_signal_connect(request->session, "show-error",
                                                     G_CALLBACK(on_session_show_error), request);
-    request->session_handlers[2] = g_signal_connect(request->session, "show-info",
-                                                    G_CALLBACK(on_session_show_info), request);
-    request->session_handlers[3] = g_signal_connect(request->session, "completed",
-                                                    G_CALLBACK(on_session_completed), request);
+    request->session_handlers[2] =
+        g_signal_connect(request->session, "show-info", G_CALLBACK(on_session_show_info), request);
+    request->session_handlers[3] =
+        g_signal_connect(request->session, "completed", G_CALLBACK(on_session_completed), request);
     polkit_agent_session_initiate(request->session);
     return TRUE;
 }
@@ -387,8 +386,8 @@ GnoblinAuthAgent* gnoblin_auth_agent_new(const GnoblinAuthCallbacks* callbacks,
     if (callbacks)
         agent->callbacks = *callbacks;
     agent->user_data = user_data;
-    agent->requests = g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free,
-                                            request_unref_notify);
+    agent->requests =
+        g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, request_unref_notify);
     return agent;
 }
 
@@ -416,9 +415,9 @@ gboolean gnoblin_auth_agent_start(GnoblinAuthAgent* agent, GError** error) {
     GnoblinPolkitListener* listener = g_object_new(gnoblin_polkit_listener_get_type(), NULL);
     listener->agent = agent;
     agent->stopping = FALSE;
-    agent->registration = polkit_agent_listener_register(
-        POLKIT_AGENT_LISTENER(listener), POLKIT_AGENT_REGISTER_FLAGS_NONE, subject, NULL, NULL,
-        error);
+    agent->registration = polkit_agent_listener_register(POLKIT_AGENT_LISTENER(listener),
+                                                         POLKIT_AGENT_REGISTER_FLAGS_NONE, subject,
+                                                         NULL, NULL, error);
     if (!agent->registration) {
         listener->agent = NULL;
         g_object_unref(listener);
