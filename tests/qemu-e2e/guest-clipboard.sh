@@ -18,8 +18,9 @@ XAUTHORITY="$(ls /run/user/"$(id -u)"/.mutter-Xwaylandauth.* 2>/dev/null | head 
 export DISPLAY=:0 XAUTHORITY
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
 CLICK="${GNOBLIN_CLICK_SCRIPT:-/tmp/guest-click.py}"
-F="$HOME/.config/gnoblin/config/99-test-clipboard.lua"
+F="$HOME/.config/gnoblin/conf.d/99-test-clipboard.lua"
 fail=0
+mkdir -p "$(dirname "$F")"
 trap 'rm -f "$F" /tmp/clip-result.txt /tmp/clip-image.png; "$G" config reload >/dev/null 2>&1; pkill -x wl-copy' EXIT
 
 check() {

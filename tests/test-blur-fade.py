@@ -62,6 +62,8 @@ ShellRoot {
   WlrLayershell.layer: WlrLayer.Top
   WlrLayershell.namespace: "effect-mask"
   color: "transparent"
+  // Keep the material away from the surface origin. The alpha-mask texture
+  // coordinates must be derived from the content box, not this item rect.
   Rectangle { id: panel; x: 64; y: 64; width: 192; height: 96; radius: 16; color: "#80303030" }
  }
 }
@@ -119,16 +121,19 @@ try:
     )
     if os.environ.get("GNOBLIN_TEST_CLIENT_FADE") == "1":
         for alpha in (1, 0.75, 0.5, 0.25, 0.1, 0.01, 0, 0.5, 1):
-            subprocess.run([qs, "-p", str(qml), "ipc", "call", "fade", "set", "--", str(alpha)], check=True)
+            subprocess.run([qs, "ipc", "-p", str(qml), "call", "fade", "set", str(alpha)], check=True)
             time.sleep(0.2)
             actual = capture(f"client-fade-{alpha}.png")
             expected = Image.blend(background, after, alpha)
-            delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop((72, 72, 248, 152)))
+            # This crop covers the offset material plus transparent surface pixels.
+            # A mask mapped from the item bounds instead of the content box shifts
+            # its blur and fails the single-composition comparison.
+            delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop((56, 56, 264, 168)))
             assert max(delta.mean) < 2, ("client fade", alpha, delta.mean)
         print("PASS: client-rendered opacity fades the background and panel together", flush=True)
         for actor_alpha, client_alpha in ((0.5, 0.75), (0.25, 0.5), (0.75, 0.1), (1, 1)):
             (root / "fade").write_text(str(actor_alpha))
-            subprocess.run([qs, "-p", str(qml), "ipc", "call", "fade", "set", "--", str(client_alpha)], check=True)
+            subprocess.run([qs, "ipc", "-p", str(qml), "call", "fade", "set", str(client_alpha)], check=True)
             time.sleep(0.2)
             actual = capture("combined-fade.png")
             expected = Image.blend(background, after, round(actor_alpha * 255) / 255 * client_alpha)

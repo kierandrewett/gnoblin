@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Guest: measure how much of a striped wallpaper shows through a translucent window with and without a blur rule.
 set -u
-export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+XDG_RUNTIME_DIR="/run/user/$(id -u)"
+export XDG_RUNTIME_DIR
 export WAYLAND_DISPLAY=wayland-0
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
-CONFIG="$HOME/.config/gnoblin/config/99-test-blur.lua"
+CONFIG="$HOME/.config/gnoblin/conf.d/99-test-blur.lua"
+mkdir -p "$(dirname "$CONFIG")"
 
 python3 - <<'PY'
 import struct
@@ -47,8 +49,8 @@ print(max(reds) - min(reds))
 PY
 }
 
-nohup swaybg -i /tmp/stripes.png -m stretch >/dev/null 2>&1 < /dev/null &
-nohup foot -T blur-test -o colors.alpha=0.5 >/dev/null 2>&1 < /dev/null &
+nohup swaybg -i /tmp/stripes.png -m stretch >/dev/null 2>&1 </dev/null &
+nohup foot -T blur-test -o colors.alpha=0.5 >/dev/null 2>&1 </dev/null &
 sleep 4
 before="$(contrast)"
 echo "contrast without a blur rule: $before"
@@ -64,5 +66,5 @@ else
 fi
 pkill -x swaybg
 pkill -f "foot -T blur-test"
-printf -- '-- disabled\n' > "$CONFIG"
+printf -- '-- disabled\n' >"$CONFIG"
 "$G" config reload | tail -1
