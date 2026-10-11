@@ -364,11 +364,13 @@ gboolean activate_session(void) {
         "WAYLAND_DISPLAY=", "DISPLAY=", "XAUTHORITY=", "GNOME_SETUP_DISPLAY=", NULL};
     save_identity_environment();
     run_activation_update(clear_display);
-    const char* unset_display[] = {"systemctl",           "--user",  "unset-environment",
-                                   "WAYLAND_DISPLAY",     "DISPLAY", "XAUTHORITY",
-                                   "GNOME_SETUP_DISPLAY", NULL};
+    /* One call clears the display variables and the previous session's mode. */
+    const char* unset_stale[] = {
+        "systemctl", "--user",     "unset-environment",   "WAYLAND_DISPLAY",
+        "DISPLAY",   "XAUTHORITY", "GNOME_SETUP_DISPLAY", "GNOME_SHELL_SESSION_MODE",
+        NULL};
     if (session_systemd_available)
-        run_command(unset_display, FALSE);
+        run_command(unset_stale, FALSE);
     const char* sync[] = {"GNOME_SHELL_SESSION_MODE",
                           "XDG_CONFIG_HOME",
                           "XDG_CURRENT_DESKTOP",
@@ -381,10 +383,6 @@ gboolean activate_session(void) {
                           "XAUTHORITY",
                           NULL};
     g_unsetenv("GNOME_SHELL_SESSION_MODE");
-    const char* clear_session_mode[] = {"systemctl", "--user", "unset-environment",
-                                        "GNOME_SHELL_SESSION_MODE", NULL};
-    if (session_systemd_available)
-        run_command(clear_session_mode, FALSE);
     run_activation_update(sync);
     if (session_systemd_available) {
         /* A lingering user manager keeps the environment and some services of
@@ -407,9 +405,13 @@ gboolean activate_session(void) {
         run_command(clear_private, FALSE);
         const char* reload[] = {"systemctl", "--user", "daemon-reload", NULL};
         /* Integrate with graphical-session.target when systemd is available;
-         * the compositor runtime and Lua autostart do not depend on this path. */
+         * the compositor runtime and Lua autostart do not depend on this path.
+         * Installing the units already reloads the manager, so a reload on every
+         * login (about 0.3 s of manager work here) only happens if the target
+         * cannot be started without it. */
         const char* start[] = {"systemctl", "--user", "start", "gnoblin-session.target", NULL};
-        if (!run_command(reload, FALSE) || !run_command(start, FALSE))
+        if (!run_command(start, FALSE) &&
+            (!run_command(reload, FALSE) || !run_command(start, FALSE)))
             g_warning("gnoblin: systemd user-session integration could not be activated");
     }
     return TRUE;
