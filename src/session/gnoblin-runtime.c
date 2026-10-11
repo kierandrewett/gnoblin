@@ -178,15 +178,6 @@ static int session_guardian_main(int argc, char** argv) {
             close(guardian.session_log_fd);
         return EXIT_FAILURE;
     }
-    if (!devkit && !activate_session()) {
-        session_diagnostic_event(&guardian, "activate-session failed");
-        if (compositor_log_fd >= 0)
-            close(compositor_log_fd);
-        if (guardian.session_log_fd >= 0)
-            close(guardian.session_log_fd);
-        return EXIT_FAILURE;
-    }
-
     /* The guardian owns the lifecycle name even while supervisors restart. */
     g_autoptr(GDBusConnection) lifecycle_bus = claim_session_lifecycle_bus();
     struct sigaction action = {.sa_handler = host_signal_handler};
@@ -238,6 +229,19 @@ static int session_guardian_main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
     session_diagnostic_event(&guardian, "compositor spawned pid=%d", (int)guardian.compositor_pid);
+    /* Activating the systemd and D-Bus session runs a dozen short commands. Do it while the
+     * compositor starts, not before it: the compositor needs none of the result, and waiting
+     * here put about a quarter of a second between login and the first frame. */
+    if (!devkit && !activate_session()) {
+        session_diagnostic_event(&guardian, "activate-session failed");
+        terminate_and_reap(&guardian);
+        close(guardian.channel_fd);
+        if (compositor_log_fd >= 0)
+            close(compositor_log_fd);
+        if (guardian.session_log_fd >= 0)
+            close(guardian.session_log_fd);
+        return EXIT_FAILURE;
+    }
     g_autofree char* executable = g_file_read_link("/proc/self/exe", NULL);
     if (!executable) {
         g_printerr("gnoblin: could not locate installed executable\n");
