@@ -16,6 +16,7 @@ root.mkdir(parents=True, exist_ok=True)
 config = root / "init.lua"
 gnoblinctl = os.environ.get("GNOBLINCTL") or shutil.which("gnoblinctl") or "gnoblinctl"
 background = (32, 80, 128)
+headerbar = (246, 245, 244)
 
 
 def configure(remove_csd):
@@ -73,7 +74,17 @@ ShellRoot {
         title: "CSD reconstruction fixture"
         implicitWidth: 320; implicitHeight: 240
         color: "transparent"
-        Rectangle { anchors.fill: parent; color: "white"; radius: 40 }
+        // Files has a headerbar that is visibly different from its body. Keep
+        // both inside the same rounded client surface so the reconstruction
+        // samples must choose the top-edge colour for a transparent top corner.
+        Rectangle {
+            width: parent.width; height: 72
+            color: "#f6f5f4"; radius: 40
+        }
+        Rectangle {
+            y: 36; width: parent.width; height: parent.height - y
+            color: "white"; radius: 40
+        }
     }
 }
 """
@@ -114,12 +125,12 @@ with (root / "csd-reconstruction-client.log").open("w") as log:
         restored = None
         for _ in range(100):
             restored = capture(box)
-            if restored.getpixel((8, client_top + 8)) == (255, 255, 255):
+            if restored.getpixel((8, client_top + 8)) == headerbar:
                 break
             time.sleep(0.1)
 
-        assert restored.getpixel((8, client_top + 8)) == (255, 255, 255), (
-            "native CSD reconstruction did not fill the transparent corner",
+        assert restored.getpixel((8, client_top + 8)) == headerbar, (
+            "native CSD reconstruction did not use the GTK headerbar colour",
             restored.getpixel((8, client_top + 8)),
         )
         assert restored.getpixel((160, client_top + 120)) == (255, 255, 255), "reconstruction changed the window body"

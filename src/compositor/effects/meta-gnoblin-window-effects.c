@@ -1016,7 +1016,12 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
             "if(!sameBackground(a,b)){"
             "if(sameBackground(a,c)){b=c;pb=pc;}"
             "else if(sameBackground(b,c)){a=c;pa=pc;}"
-            "else return vec4(0.0);}"
+            "else{"
+            /* A headerbar and the body below it can differ, so the two edge
+             * patches disagree. The patch along the nearer horizontal edge
+             * still holds the colour that reaches the corner. */
+            "if(a.a>0.2)return a;"
+            "return vec4(0.0);}}"
             "float da=distance(point,pa),db=distance(point,pb);"
             "return mix(a,b,da/max(da+db,0.001));}"
             "bool squareCorner(vec2 point,float radius){"
