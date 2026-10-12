@@ -41,6 +41,11 @@ The `layer` field controls stacking order:
 - `on_demand` requests focus when the surface needs keyboard input.
 - `exclusive` keeps keyboard focus while the surface is mapped.
 
+Pointer input follows the surface's `wl_surface` input region independently of
+keyboard focus. A surface with `keyboard_interactive = "none"` can still accept
+clicks. Retained panels can expand or clear their input regions when opening
+or closing; they do not need to request keyboard focus to receive clicks.
+
 `gnoblin.layers.animation_policy(namespace)` returns the effective enter and
 exit phases and `window_shadow` for a layer namespace. The namespace must be 1
 to 128 UTF-8 bytes. Without an animation override, each phase uses its first enabled event

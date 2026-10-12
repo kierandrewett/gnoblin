@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 12 Oct 2026 03:12:00 +0100
+Subject: [PATCH] mutter: invalidate pointer caches when surface input regions change
+
+A cached clear area may belong to an underlying surface while an overlay
+expands its input region. Refresh every view on region changes, retaining
+the immediate focused-surface update for shrinking regions.
+
+---
+diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
+--- a/src/compositor/meta-surface-actor.c
++++ b/src/compositor/meta-surface-actor.c
+@@ -792,7 +792,14 @@
+       ClutterActor *stage = clutter_actor_get_stage (actor);
+ 
+       if (stage)
+-        clutter_stage_maybe_invalidate_focus (CLUTTER_STAGE (stage), actor);
++        {
++          /* Expanding an input region can cover a sprite focused on another
++           * actor. Its cached clear area must be rebuilt too, not just the
++           * sprites already focused on this surface. */
++          clutter_stage_invalidate_devices (CLUTTER_STAGE (stage));
++          clutter_stage_schedule_update (CLUTTER_STAGE (stage));
++          clutter_stage_maybe_invalidate_focus (CLUTTER_STAGE (stage), actor);
++        }
+     }
+ }
+ 
+diff --git a/clutter/clutter/clutter-stage-private.h b/clutter/clutter/clutter-stage-private.h
+--- a/clutter/clutter/clutter-stage-private.h
++++ b/clutter/clutter/clutter-stage-private.h
+@@ -145,6 +145,7 @@
+                                                       gpointer             user_data,
+                                                       GDestroyNotify       user_data_destroy);
+ 
++CLUTTER_EXPORT
+ void clutter_stage_invalidate_devices (ClutterStage *stage);
+ 
+ GPtrArray * clutter_stage_get_active_gestures_array (ClutterStage *self);
