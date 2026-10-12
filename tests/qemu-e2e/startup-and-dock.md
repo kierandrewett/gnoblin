@@ -23,6 +23,41 @@ to identify session handoff and first visible surfaces. This autologin capture
 does not measure time from a credential click; its sampling interval limits
 the precision of visible-transition timings.
 
+To also observe startup generations and public control IPC, add
+`--observe-readiness`:
+
+```sh
+python3 tests/qemu-e2e/session-startup.py RUN_DIRECTORY --observe-readiness
+```
+
+For each cycle, the runner records pre-restart native compositor identities
+whose command line includes `--gnoblin-runtime-fd=` and the unique Quickshell
+process whose command line names the `/bingux/shell` configuration. A
+background poll runs during frame capture and records guest monotonic process
+start times, host request and response times, `gnoblinctl ping`, and
+`binguxctl ipc shell status`.
+
+The probe supplies the guest session bus and
+runtime directory and searches the guest user's Gnoblin and Bingux executable
+directories.
+
+A cycle is marked `observed` only when one poll contains:
+
+- Exactly one new native compositor and one new main shell generation.
+- A successful `gnoblinctl ping` response (`pong`).
+- Shell status JSON with boolean `controls`, `calendar`, and `notifications` fields.
+
+The old compositor and shell generations must be absent from that poll.
+A missing or ambiguous baseline, failed probes, or absent new generations is
+recorded as `incomplete`.
+
+These milestones show that new processes and their control interfaces respond.
+They do not establish that any surface is displayed, that wallpaper changed
+visibly, or that the desktop accepts user input. A wallpaper already retained
+on screen is not observable as a new wallpaper appearance in this capture.
+The default capture behavior is unchanged when `--observe-readiness` is not
+specified.
+
 ## Click the dock
 
 ```sh
