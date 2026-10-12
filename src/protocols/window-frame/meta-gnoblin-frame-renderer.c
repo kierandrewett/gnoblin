@@ -65,6 +65,10 @@ struct _Frame {
     float last_title_click_x, last_title_click_y;
     guint actions[3], n_buttons;
     guint timeout;
+    guint map_timeout;
+    MetaPlugin* map_plugin; /* borrowed while the actor owns this frame */
+    MetaWindowActor* map_actor;
+    gboolean map_started;
     gboolean external;
     char* model_key;
     char* style;
@@ -77,6 +81,89 @@ static gboolean stopping;
 static void update_frame(Frame* frame);
 static void offer_frame(Frame* frame);
 static void start_renderer(Renderer* renderer);
+
+/* Completing a map can synchronously destroy its actor (and this Frame).
+ * Always leave frame/protocol callbacks before completing Mutter's effect. */
+typedef struct {
+    MetaPlugin* plugin;
+    MetaWindowActor* actor;
+    gulong destroy_handler;
+    gboolean destroyed;
+} MapCompletion;
+
+static void map_actor_destroyed(ClutterActor* actor, MapCompletion* completion) {
+    completion->destroyed = TRUE;
+}
+
+static gboolean complete_map_idle(gpointer data) {
+    MapCompletion* completion = data;
+    if (!completion->destroyed)
+        meta_plugin_map_completed(completion->plugin, completion->actor);
+    return G_SOURCE_REMOVE;
+}
+
+static void free_map_completion(gpointer data) {
+    MapCompletion* completion = data;
+    if (g_signal_handler_is_connected(completion->actor, completion->destroy_handler))
+        g_signal_handler_disconnect(completion->actor, completion->destroy_handler);
+    g_object_unref(completion->actor);
+    g_object_unref(completion->plugin);
+    g_free(completion);
+}
+
+static void release_map(Frame* frame) {
+    if (frame->map_timeout) {
+        g_source_remove(frame->map_timeout);
+        frame->map_timeout = 0;
+    }
+    if (!frame->map_actor)
+        return;
+    MapCompletion* completion = g_new0(MapCompletion, 1);
+    completion->plugin = g_object_ref(frame->map_plugin);
+    completion->actor = g_object_ref(frame->map_actor);
+    completion->destroy_handler =
+        g_signal_connect(completion->actor, "destroy", G_CALLBACK(map_actor_destroyed), completion);
+    frame->map_plugin = NULL;
+    frame->map_actor = NULL;
+    g_idle_add_full(G_PRIORITY_DEFAULT, complete_map_idle, completion, free_map_completion);
+}
+
+static gboolean initial_frame_timeout(gpointer data) {
+    Frame* frame = data;
+    frame->map_timeout = 0;
+    release_map(frame);
+    return G_SOURCE_REMOVE;
+}
+
+gboolean meta_gnoblin_frame_renderer_prepare_map(MetaPlugin* plugin, MetaWindowActor* actor) {
+    MetaWindow* window = meta_window_actor_get_meta_window(actor);
+    Frame* frame = g_object_get_data(G_OBJECT(window), "gnoblin-native-frame");
+    if (frame && frame->map_actor)
+        return TRUE; /* Do not replace the absolute deadline on re-entry. */
+    if (frame && frame->map_started)
+        return FALSE;
+    /* Wayland's geometry sync normally runs only after map. Prepare the
+     * committed frame now, without freezing application surface commits. */
+    meta_gnoblin_window_frame_sync_renderer(window);
+    frame = g_object_get_data(G_OBJECT(window), "gnoblin-native-frame");
+    if (!frame || frame->external || !frame->renderer || !frame->renderer->client ||
+        !clutter_actor_is_visible(frame->root))
+        return FALSE;
+    frame->map_plugin = plugin;
+    frame->map_actor = actor;
+    frame->map_started = TRUE;
+    /* Absolute launch-to-first-buffer budget: configure/focus churn must not
+     * extend it. This also covers child launch before the manager binds. */
+    frame->map_timeout = g_timeout_add(2000, initial_frame_timeout, frame);
+    return TRUE;
+}
+
+void meta_gnoblin_frame_renderer_cancel_map(MetaWindowActor* actor) {
+    MetaWindow* window = meta_window_actor_get_meta_window(actor);
+    Frame* frame = window ? g_object_get_data(G_OBJECT(window), "gnoblin-native-frame") : NULL;
+    if (frame)
+        release_map(frame);
+}
 
 static void apply_titlebar_action(Frame* frame, GDesktopTitlebarAction action, float x, float y) {
     MetaWindow* window = frame->window;
@@ -557,10 +644,19 @@ static void detach_frame(Frame* frame) {
     }
     fallback(frame);
     g_clear_pointer(&frame->model_key, g_free);
+    release_map(frame);
 }
 
 static void frame_destroyed(ClutterActor* actor, gpointer data) {
     Frame* frame = data;
+    /* The parent actor is already being destroyed; there is no map effect to
+     * finish on it. Remove the callback before freeing its frame. */
+    if (frame->map_timeout) {
+        g_source_remove(frame->map_timeout);
+        frame->map_timeout = 0;
+    }
+    frame->map_actor = NULL;
+    frame->map_plugin = NULL;
     ClutterActor* parent = clutter_actor_get_parent(actor);
     /* The outline is a sibling of the server frame so it can surround both
      * frame and client without clipping the shadow. Remove it with the frame.
@@ -717,6 +813,7 @@ static void update_frame(Frame* frame) {
             CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), NULL, 0, 2, 0,
             outline_color);
         clutter_actor_hide(frame->root);
+        release_map(frame);
         return;
     }
     clutter_actor_show(frame->root);
@@ -915,6 +1012,7 @@ static void role_post_apply(MetaWaylandSurfaceRole* role, MetaWaylandSurfaceStat
     clutter_actor_show(
         CLUTTER_ACTOR(meta_wayland_actor_surface_get_actor(META_WAYLAND_ACTOR_SURFACE(role))));
     clutter_actor_queue_redraw(frame->root);
+    release_map(frame);
 }
 static void role_dispose(GObject* object) {
     FrameRole* self = (FrameRole*)object;
@@ -928,6 +1026,7 @@ static void role_dispose(GObject* object) {
         self->frame = NULL;
         frame->role = NULL;
         clutter_actor_queue_redraw(frame->root);
+        release_map(frame);
     }
     G_OBJECT_CLASS(frame_role_parent_class)->dispose(object);
 }
@@ -1102,6 +1201,13 @@ static void renderer_exited(GObject* process, GAsyncResult* result, gpointer dat
     if (renderer->client) {
         meta_wayland_client_destroy(renderer->client);
         g_clear_object(&renderer->client);
+    }
+    /* A child can exit before binding the manager, so manager_destroyed is
+     * insufficient to release windows waiting for their first frame. */
+    for (GList* l = frames; l; l = l->next) {
+        Frame* frame = l->data;
+        if (frame->renderer == renderer)
+            release_map(frame);
     }
     if (!stopping && !renderer->retired && renderer->attempts < 4)
         renderer->retry = g_timeout_add(250u << renderer->attempts, retry_renderer, renderer);

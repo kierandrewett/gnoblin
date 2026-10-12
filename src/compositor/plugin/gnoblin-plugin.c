@@ -27,6 +27,7 @@
 #include "core/gnoblin-animation.h"
 #include "core/gnoblin-native-control.h"
 #include "wayland/meta-wayland-session-lock.h"
+#include "wayland/meta-gnoblin-frame-renderer.h"
 #ifdef HAVE_IBUS
 #include "backends/gnoblin-ibus-input-method.h"
 #endif
@@ -192,8 +193,8 @@ static void meta_gnoblin_plugin_dispose(GObject* object) {
 }
 
 static void gnoblin_plugin_map(MetaPlugin* plugin, MetaWindowActor* actor) {
-    /* No asynchronous effect is active, so release Mutter's map lifecycle now. */
-    meta_plugin_map_completed(plugin, actor);
+    if (!meta_gnoblin_frame_renderer_prepare_map(plugin, actor))
+        meta_plugin_map_completed(plugin, actor);
 }
 
 static void gnoblin_plugin_minimize(MetaPlugin* plugin, MetaWindowActor* actor) {
@@ -223,6 +224,7 @@ static void gnoblin_plugin_size_changed(MetaPlugin* plugin, MetaWindowActor* act
 }
 
 static void gnoblin_plugin_kill_window_effects(MetaPlugin* plugin, MetaWindowActor* actor) {
+    meta_gnoblin_frame_renderer_cancel_map(actor);
     meta_gnoblin_animation_cancel_window_effects(plugin, actor);
 }
 

@@ -44,6 +44,43 @@ Beads/GitHub compatibility issue with the failed outcomes and workflow
 artifacts. Treat those outcomes as triage evidence until the artifacts show
 whether the cause is Gnoblin, an application or the test environment.
 
+For first-frame presentation changes, run the pixel fixture in a disposable
+devkit. It needs GTK4 Python bindings, Pillow, `grim`, and a frame renderer.
+Use a prefix built for that location; a copied supervisor can still launch its
+compiled compositor path. The fixture checks the worker executable and loaded
+Mutter library before recording pixels.
+
+Build the renderer fixture that acknowledges configuration without supplying
+a buffer:
+
+```sh
+mkdir -p /var/tmp/frame-no-buffer
+wayland-scanner client-header src/protocols/window-frame/gnoblin-window-frame-v1.xml \
+  /var/tmp/frame-no-buffer/gnoblin-window-frame-v1-client-protocol.h
+wayland-scanner private-code src/protocols/window-frame/gnoblin-window-frame-v1.xml \
+  /var/tmp/frame-no-buffer/protocol.c
+cc -Wall -Wextra -Werror -Wno-unused-parameter -I/var/tmp/frame-no-buffer \
+  tests/frame-bind-no-buffer.c /var/tmp/frame-no-buffer/protocol.c \
+  $(pkg-config --cflags --libs wayland-client) -o /var/tmp/frame-no-buffer/client
+```
+
+Then run the pixel fixture:
+
+```sh
+GNOBLIN_PREFIX="$PWD/install" \
+GNOBLIN_FRAME_RENDERER="$(command -v bingux-frame)" \
+GNOBLIN_FRAME_BIND_NO_BUFFER=/var/tmp/frame-no-buffer/client \
+GNOBLIN_DEVKIT_EXEC="python3 $PWD/tests/frame-first-presentation.py /var/tmp/frame-presentation" \
+  scripts/run-gnoblin-devkit.sh
+```
+
+The fixture checks cold and delayed presentation, paused-renderer resize,
+renderer failure, timeout, close during startup, and minimize cancellation.
+Screenshots, window states, renderer wire logs, and process identity are saved
+in the artifact directory. Use a fresh directory for each run. GTK startup
+that exceeds the two-second deadline should take fallback; record that timing
+separately from a successful first custom presentation.
+
 ## Boundaries
 
 Keep upstream submodules at their pinned commits. Put Gnoblin overlays in
