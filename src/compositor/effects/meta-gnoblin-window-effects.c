@@ -57,6 +57,8 @@ typedef struct {
     gboolean queued_has_bezier;
     double queued_bezier[4];
     double actor_bounds[4];
+    CoglPipeline* render_pipeline;
+    gboolean cache_enabled;
 } MetaGnoblinWindowShadowEffect;
 
 typedef struct {
@@ -143,18 +145,24 @@ static CoglPipeline* window_shadow_create_pipeline(ClutterOffscreenEffect* effec
                     "vec2 halfSize=size*0.5;"
                     "float radius=min(gnoblin_shadow_radius,min(halfSize.x,halfSize.y));"
                     "vec2 d=abs(point-(gnoblin_shadow_bounds.xy+halfSize))-halfSize+vec2(radius);"
+                    "if(max(d.x,d.y)>min(0.0,radius-0.5)){"
                     "vec2 q=max(d,vec2(0.0));"
                     "float longest=max(q.x,q.y);"
                     "float cornerDistance=longest<0.001?0.0:longest*"
                     "pow(pow(q.x/longest,gnoblin_shadow_exponent)+"
                     "pow(q.y/longest,gnoblin_shadow_exponent),1.0/gnoblin_shadow_exponent);"
                     "float shapeDistance=min(max(d.x,d.y),0.0)+cornerDistance-radius;"
-                    "float clipCoverage=clamp(0.5-shapeDistance,0.0,1.0);");
+                    "float clipCoverage=clamp(0.5-shapeDistance,0.0,1.0);"
+                    "if(clipCoverage<1.0){");
 
+    /* In the rectangular interior q is zero, so shapeDistance is max(d)-radius.
+     * Skip the distance calculation where coverage is already known to be one,
+     * then skip covered corner pixels too. At a settled transition only one
+     * layer stack contributes; keep both for interpolation and overshoot. */
     for (guint i = 0; i < META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS; i++) {
         g_string_append_printf(
             code,
-            "if(gnoblin_shadow_color_a%u.a>0.0){"
+            "if(gnoblin_shadow_progress!=1.0&&gnoblin_shadow_color_a%u.a>0.0){"
             "vec4 g=gnoblin_shadow_geometry_a%u,c=gnoblin_shadow_color_a%u;"
             "vec2 hs=halfSize+vec2(g.z);if(min(hs.x,hs.y)>0.0){"
             "float layerRadius=min(max(0.0,gnoblin_shadow_radius+g.z),min(hs.x,hs.y));"
@@ -167,7 +175,7 @@ static CoglPipeline* window_shadow_create_pipeline(ClutterOffscreenEffect* effec
             "1.0/(1.0+exp(clamp(3.4*dist/g.w,-30.0,30.0)));"
             "float alpha=c.a*density*(1.0-clipCoverage);"
             "vec4 layer=vec4(c.rgb*alpha,alpha);resultA=layer+resultA*(1.0-layer.a);}}"
-            "if(gnoblin_shadow_color_b%u.a>0.0){"
+            "if(gnoblin_shadow_progress!=0.0&&gnoblin_shadow_color_b%u.a>0.0){"
             "vec4 g=gnoblin_shadow_geometry_b%u,c=gnoblin_shadow_color_b%u;"
             "vec2 hs=halfSize+vec2(g.z);if(min(hs.x,hs.y)>0.0){"
             "float layerRadius=min(max(0.0,gnoblin_shadow_radius+g.z),min(hs.x,hs.y));"
@@ -183,6 +191,8 @@ static CoglPipeline* window_shadow_create_pipeline(ClutterOffscreenEffect* effec
             i, i, i, i, i, i);
     }
     g_string_append(code,
+                    "}"
+                    "}"
                     "cogl_color_out=mix(resultA,resultB,gnoblin_shadow_progress)*cogl_color_in;");
 
     /* Cogl identifies a snippet by pointer, not by source text. A new snippet per
@@ -219,11 +229,9 @@ static void window_shadow_set_uniform_layers(
     }
 }
 
-static void window_shadow_paint_target(ClutterOffscreenEffect* effect, ClutterPaintNode* node,
-                                       ClutterPaintContext* paint_context) {
+static void window_shadow_update_uniforms(ClutterOffscreenEffect* effect, CoglPipeline* pipeline) {
     MetaGnoblinWindowShadowEffect* shadow = META_GNOBLIN_WINDOW_SHADOW_EFFECT(effect);
     ClutterActor* actor = clutter_actor_meta_get_actor(CLUTTER_ACTOR_META(effect));
-    CoglPipeline* pipeline = clutter_offscreen_effect_get_pipeline(effect);
     graphene_rect_t target;
     float bounds[4];
     float texture_bounds[4];
@@ -263,6 +271,61 @@ static void window_shadow_paint_target(ClutterOffscreenEffect* effect, ClutterPa
         cogl_pipeline_set_uniform_1f(
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_shadow_progress"), 0.f);
     }
+}
+
+/* Render into the effect's existing texture, rather than rerunning the analytic
+ * shader when that texture is composed on every client-content frame. The
+ * actor is dirtied only by shadow geometry/style changes and transitions. */
+static void window_shadow_paint_target(ClutterOffscreenEffect* effect, ClutterPaintNode* node,
+                                       ClutterPaintContext* paint_context) {
+    MetaGnoblinWindowShadowEffect* shadow = META_GNOBLIN_WINDOW_SHADOW_EFFECT(effect);
+    graphene_rect_t target;
+    ClutterPaintNode* draw;
+    if (!clutter_offscreen_effect_get_target_rect(effect, &target))
+        return;
+    if (shadow->cache_enabled) {
+        window_shadow_update_uniforms(effect, shadow->render_pipeline);
+        draw = clutter_pipeline_node_new(shadow->render_pipeline);
+    } else {
+        /* Keep the original live-shader path if the tiny source texture cannot
+         * be allocated. Never sample the framebuffer we are drawing into. */
+        CoglColor white;
+        cogl_color_init_from_4f(&white, 1.f, 1.f, 1.f, 1.f);
+        draw = clutter_color_node_new(&white);
+    }
+    clutter_paint_node_set_static_name(draw, "Gnoblin shadow pixels");
+    clutter_paint_node_add_rectangle(draw,
+                                     &(ClutterActorBox){target.origin.x, target.origin.y,
+                                                        target.origin.x + target.size.width,
+                                                        target.origin.y + target.size.height});
+    clutter_paint_node_add_child(node, draw);
+    clutter_paint_node_unref(draw);
+}
+
+static CoglPipeline* window_shadow_cache_create_pipeline(ClutterOffscreenEffect* effect,
+                                                         CoglTexture* texture) {
+    MetaGnoblinWindowShadowEffect* shadow = META_GNOBLIN_WINDOW_SHADOW_EFFECT(effect);
+    const guint8 pixel[] = {255, 255, 255, 255};
+    g_autoptr(GError) error = NULL;
+    g_autoptr(CoglTexture) white = cogl_texture_2d_new_from_data(
+        cogl_texture_get_context(texture), 1, 1, COGL_PIXEL_FORMAT_RGBA_8888_PRE, 4, pixel, &error);
+    g_clear_object(&shadow->render_pipeline);
+    shadow->cache_enabled = white != NULL;
+    if (!white) {
+        g_warning("Could not prepare shadow cache; using live shader: %s", error->message);
+        return window_shadow_create_pipeline(effect, texture);
+    }
+    shadow->render_pipeline = window_shadow_create_pipeline(effect, white);
+    return CLUTTER_OFFSCREEN_EFFECT_CLASS(meta_gnoblin_window_shadow_effect_parent_class)
+        ->create_pipeline(effect, texture);
+}
+
+static void window_shadow_paint_cached_target(ClutterOffscreenEffect* effect,
+                                              ClutterPaintNode* node,
+                                              ClutterPaintContext* paint_context) {
+    MetaGnoblinWindowShadowEffect* shadow = META_GNOBLIN_WINDOW_SHADOW_EFFECT(effect);
+    if (!shadow->cache_enabled)
+        window_shadow_update_uniforms(effect, clutter_offscreen_effect_get_pipeline(effect));
     CLUTTER_OFFSCREEN_EFFECT_CLASS(meta_gnoblin_window_shadow_effect_parent_class)
         ->paint_target(effect, node, paint_context);
 }
@@ -276,6 +339,7 @@ static void window_shadow_effect_dispose(GObject* object) {
     }
     g_clear_pointer(&shadow->easing, g_free);
     g_clear_pointer(&shadow->queued_easing, g_free);
+    g_clear_object(&shadow->render_pipeline);
     G_OBJECT_CLASS(meta_gnoblin_window_shadow_effect_parent_class)->dispose(object);
 }
 
@@ -284,8 +348,8 @@ meta_gnoblin_window_shadow_effect_class_init(MetaGnoblinWindowShadowEffectClass*
     GObjectClass* object_class = G_OBJECT_CLASS(klass);
     ClutterOffscreenEffectClass* effect_class = CLUTTER_OFFSCREEN_EFFECT_CLASS(klass);
     object_class->dispose = window_shadow_effect_dispose;
-    effect_class->create_pipeline = window_shadow_create_pipeline;
-    effect_class->paint_target = window_shadow_paint_target;
+    effect_class->create_pipeline = window_shadow_cache_create_pipeline;
+    effect_class->paint_target = window_shadow_paint_cached_target;
 }
 
 static void meta_gnoblin_window_shadow_effect_init(MetaGnoblinWindowShadowEffect* shadow) {
@@ -294,11 +358,50 @@ static void meta_gnoblin_window_shadow_effect_init(MetaGnoblinWindowShadowEffect
     shadow->easing = g_strdup("linear");
 }
 
+typedef struct {
+    ClutterActor parent;
+} MetaGnoblinWindowShadowActor;
+typedef struct {
+    ClutterActorClass parent_class;
+} MetaGnoblinWindowShadowActorClass;
+static GType meta_gnoblin_window_shadow_actor_get_type(void);
+G_DEFINE_TYPE(MetaGnoblinWindowShadowActor, meta_gnoblin_window_shadow_actor, CLUTTER_TYPE_ACTOR)
+
+static void window_shadow_actor_paint_node(ClutterActor* actor, ClutterPaintNode* node,
+                                           ClutterPaintContext* paint_context) {
+    ClutterEffect* effect = clutter_actor_get_effect(actor, WINDOW_SHADOW_EFFECT_NAME);
+    if (effect && META_IS_GNOBLIN_WINDOW_SHADOW_EFFECT(effect))
+        window_shadow_paint_target(CLUTTER_OFFSCREEN_EFFECT(effect), node, paint_context);
+}
+
+static gboolean window_shadow_actor_get_paint_volume(ClutterActor* actor,
+                                                     ClutterPaintVolume* volume) {
+    return clutter_paint_volume_set_from_allocation(volume, actor);
+}
+
+static void meta_gnoblin_window_shadow_actor_class_init(MetaGnoblinWindowShadowActorClass* klass) {
+    ClutterActorClass* actor_class = CLUTTER_ACTOR_CLASS(klass);
+    actor_class->paint_node = window_shadow_actor_paint_node;
+    actor_class->get_paint_volume = window_shadow_actor_get_paint_volume;
+}
+
+static void meta_gnoblin_window_shadow_actor_init(MetaGnoblinWindowShadowActor* actor) {}
+
+static void window_shadow_queue_redraw(MetaGnoblinWindowShadowEffect* shadow) {
+    ClutterActor* actor = clutter_actor_meta_get_actor(CLUTTER_ACTOR_META(shadow));
+    if (actor)
+        clutter_actor_queue_redraw(actor);
+}
+
 static void window_shadow_layout(ClutterActor* parent, ClutterActor* actor,
                                  MetaGnoblinWindowShadowEffect* effect, const double bounds[4],
                                  guint padding) {
     const double width = MAX(0., bounds[2] - bounds[0]);
     const double height = MAX(0., bounds[3] - bounds[1]);
+    if (memcmp(effect->actor_bounds, bounds, sizeof(effect->actor_bounds)) == 0 &&
+        effect->bounds[0] == padding && effect->bounds[2] == padding + width &&
+        effect->bounds[3] == padding + height)
+        return;
     effect->bounds[0] = padding;
     effect->bounds[1] = padding;
     effect->bounds[2] = padding + width;
@@ -340,7 +443,7 @@ static void window_shadow_timeline_new_frame(ClutterTimeline* timeline, gint ela
                                              gpointer user_data) {
     MetaGnoblinWindowShadowEffect* shadow = user_data;
     shadow->progress = shadow_ease_progress(shadow, elapsed / (double)shadow->duration_ms);
-    clutter_effect_queue_repaint(CLUTTER_EFFECT(shadow));
+    window_shadow_queue_redraw(shadow);
 }
 
 static void window_shadow_timeline_completed(ClutterTimeline* timeline, gpointer user_data) {
@@ -375,7 +478,7 @@ static void window_shadow_timeline_completed(ClutterTimeline* timeline, gpointer
             window_shadow_layout(parent, shadow_actor, shadow, shadow->actor_bounds,
                                  shadow->target_padding);
     }
-    clutter_effect_queue_repaint(CLUTTER_EFFECT(shadow));
+    window_shadow_queue_redraw(shadow);
 }
 
 static void
@@ -646,9 +749,8 @@ void meta_gnoblin_window_effects_set_window_shadow(
 
     shadow_actor = g_object_get_data(G_OBJECT(window_actor), WINDOW_SHADOW_ACTOR_KEY);
     if (!shadow_actor) {
-        shadow_actor = clutter_actor_new();
+        shadow_actor = g_object_new(meta_gnoblin_window_shadow_actor_get_type(), NULL);
         clutter_actor_set_reactive(shadow_actor, FALSE);
-        clutter_actor_set_background_color(shadow_actor, &COGL_COLOR_INIT(255, 255, 255, 255));
         effect = g_object_new(META_TYPE_GNOBLIN_WINDOW_SHADOW_EFFECT, NULL);
         g_object_ref_sink(effect);
         clutter_actor_add_effect_with_name(shadow_actor, WINDOW_SHADOW_EFFECT_NAME,
@@ -671,6 +773,10 @@ void meta_gnoblin_window_effects_set_window_shadow(
     if (!effect)
         return;
 
+    const gboolean shape_changed =
+        effect->radius != CLAMP(radius, 0., 4096.) || effect->exponent != CLAMP(exponent, 2., 6.);
+    const gboolean layers_changed =
+        !window_shadow_layers_equal(effect, layer_geometry, layer_color, n_layers);
     effect->radius = CLAMP(radius, 0., 4096.);
     effect->exponent = CLAMP(exponent, 2., 6.);
     effect->target_padding = window_shadow_padding(layer_geometry, n_layers);
@@ -679,7 +785,7 @@ void meta_gnoblin_window_effects_set_window_shadow(
     effect->current_padding = padding;
     window_shadow_layout(window_actor, shadow_actor, effect, bounds, padding);
 
-    if (!window_shadow_layers_equal(effect, layer_geometry, layer_color, n_layers)) {
+    if (layers_changed) {
         if (effect->timeline && transition && transition->duration_ms > 0) {
             effect->queued = TRUE;
             memcpy(effect->queued_geometry, layer_geometry, sizeof(effect->queued_geometry));
@@ -701,7 +807,8 @@ void meta_gnoblin_window_effects_set_window_shadow(
     } else {
         effect->queued = FALSE;
     }
-    clutter_effect_queue_repaint(CLUTTER_EFFECT(effect));
+    if (shape_changed || layers_changed)
+        window_shadow_queue_redraw(effect);
 }
 
 typedef struct {

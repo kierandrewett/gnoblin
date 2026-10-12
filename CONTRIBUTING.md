@@ -20,6 +20,7 @@ make install           # after make: copy the build to the prefix and add the lo
 
 `./build.sh` is the build, and `make` is a short way to run it with
 `--prefix`, `--destdir build/stage` and the build directory `build/make`.
+
 Set `PREFIX=DIR` to use another prefix, and use the same value for `make` and
 `make install`. A plain `./build.sh` still builds a private prefix in
 `./install`. The [scripts map](scripts/README.md)
@@ -192,3 +193,97 @@ require a working GitHub connection and issue-write access. To commit offline,
 explicitly skip this hook once with
 `SKIP=beads-github-sync git commit ...`, then sync before the next commit. See
 `.beads/README.md` for filing and importing issues.
+
+## Shadow shader checks
+
+For shadow rendering changes, run the GPU fixture in a Python environment
+with `moderngl` and `numpy` installed:
+
+```sh
+python3 tests/window-shadow-gpu.py --report /var/tmp/shadow-gpu.json
+```
+
+The fixture compiles the compositor's generated GLSL in an EGL context.
+Atomic counters check that settled shadows skip the unused animation state
+and that covered pixels skip shadow layers. It does not launch a compositor.
+The shader also skips corner-distance math in the fully covered rectangular
+interior. Compare hardware and software timing when changing these branches.
+
+Use `--reference-source /path/to/previous-window-effects.c` to compare pixels
+through transition endpoints, interpolation, overshoot, and corner shapes.
+GPU and wall timings describe this shader alone.
+
+Use `--device-index N` to select another EGL device. Check the reported
+renderer before comparing hardware and software results. Keep native-session
+pressure checks separate: record actual observer scheduling, frame callbacks,
+input receipt, memory pressure, and whether each load process remained alive.
+A frame callback does not prove that a frame reached the display.
+
+## Native shadow cache checks
+
+Run these checks in a disposable native VM with a live Gnoblin session,
+`grim`, Pillow, and passwordless `sudo perf`. The compositor library must
+retain the `window_shadow_paint_target` symbol.
+
+### Build the paced client
+
+Build the client against your installed Wayland development packages:
+
+```sh
+mkdir -p /var/tmp/shadow-client
+wayland-scanner client-header \
+  /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml \
+  /var/tmp/shadow-client/xdg-shell-client-protocol.h
+wayland-scanner private-code \
+  /usr/share/wayland-protocols/stable/xdg-shell/xdg-shell.xml \
+  /var/tmp/shadow-client/xdg-shell-protocol.c
+cc -I/var/tmp/shadow-client tests/window-shadow-client.c \
+  /var/tmp/shadow-client/xdg-shell-protocol.c \
+  $(pkg-config --cflags --libs wayland-client glib-2.0) \
+  -o /var/tmp/shadow-client/client
+```
+
+### Count settled shadow renders
+
+```sh
+python3 tests/window-shadow-cache.py /var/tmp/shadow-cache-check \
+  --client /var/tmp/shadow-client/client
+```
+
+Use a new artifact directory for each run. Set `XDG_RUNTIME_DIR` and
+`WAYLAND_DISPLAY` for the test seat if they differ from the defaults. Use
+`--prefix` when Gnoblin is installed outside `/usr/local/lib/gnoblin`.
+
+The fixture checks frame callbacks and counts actual shadow renders for
+eight seconds after the window settles. An unchanged shadow should need
+at most two renders. Use `--reference` to record the pre-cache failure.
+The fixture removes its perf probe and closes its client on exit.
+
+### Check invalidation and pixels
+
+The fixture requires one monitor at the origin. It scales screenshot
+coordinates with that monitor and injects focus clicks through Mutter's
+RemoteDesktop test session.
+
+The VM config must load
+`conf.d/**/*.lua` from `~/.config/gnoblin/init.lua`. Run:
+
+```sh
+python3 tests/window-shadow-cache-state.py /var/tmp/shadow-cache-states \
+  --client /var/tmp/shadow-client/client
+```
+
+The fixture temporarily adds a rule for its own client and removes that rule
+on exit. It checks:
+
+- Corner shape and shadow geometry, colour, padding, and multiple layers.
+- Disable/re-enable and animated shadow changes.
+- Minimize/restore, opacity changes, and focus cycles.
+
+Compare settled PNGs with the same fixture on the pre-cache build. The
+transition midpoint is timing-dependent; compare its endpoints and confirm
+intermediate pixels change.
+
+Run the same checks at each display scale being changed. Keep
+transformed-window and pressure evidence separate from these single-seat
+checks. Both fixtures take a seat lock and refuse to overlap each other.
