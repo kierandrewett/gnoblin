@@ -204,16 +204,21 @@ shows that Gnoblin corrected the inherited priority. If the policy is still
 
 Ananicy-cpp's default rules rank `gdm`, `gdm-wayland-session` and
 `gdm-session-worker` as background work (nice 16, idle I/O, `SCHED_IDLE`).
-The compositor, the shell and every app started from them inherit that class,
-and RealtimeKit corrects only the thread that asks. A busy machine then makes
-the whole desktop freeze, while GNOME is unaffected because the same rules
-rank `gnome-shell` as low latency.
+Without a matching rule, child processes can inherit that class.
+RealtimeKit corrects only the thread that asks. This can delay desktop frames
+and input under CPU load. The daemon's GNOME rule gives `gnome-shell` a
+separate low-latency class; check your installed rules for its actual priority.
 
 `make install` adds two files to `/etc/ananicy.d` when that directory exists:
 
 - `99-gnoblin.types` defines the priority classes.
-- `99-gnoblin.rules` gives the session normal priority and the compositor,
-  `quickshell` and `bingux-frame` nice -10. It also restarts `ananicy-cpp`.
+- `99-gnoblin.rules` selects `SCHED_OTHER` and nice `-5` for `gnoblin`,
+  `quickshell` and `bingux-frame`. Installation also restarts `ananicy-cpp`.
+
+Ordinary commands launched through `gnoblin.commands.run` or
+`gnoblin.commands.capture` drop an inherited negative nice value to `0`.
+External process rules can change it afterward. Helpers launched directly by
+a shell use that shell's launch path and can inherit its priority.
 
 To install them without a full install, copy both files from
 `packaging/ananicy/` to `/etc/ananicy.d/` and run

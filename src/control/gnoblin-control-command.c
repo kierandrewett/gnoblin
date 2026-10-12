@@ -13,6 +13,7 @@
 #include <signal.h>
 #include <spawn.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <unistd.h>
 
 #define MAX_PENDING_NATIVE_COMMANDS 64
@@ -186,6 +187,11 @@ static void native_command_spawn_worker(gpointer data, gpointer user_data) {
     start->queued_at_us = job->queued_at_us;
     start->spawn_started_us = g_get_monotonic_time();
     g_autoptr(GError) error = NULL;
+    /* This exclusive worker never returns to GLib's shared pool. Reset before
+     * every spawn in case a process-wide priority daemon boosted it again.
+     * Keep a deliberately positive nice; raising it may require privileges. */
+    if (getpriority(PRIO_PROCESS, 0) < 0 && setpriority(PRIO_PROCESS, 0, 0) != 0)
+        g_warning("gnoblin-command: could not reset worker nice: %s", g_strerror(errno));
     if (!gnoblin_control_command_spawn(job->argv, &start->pid, &error))
         start->error_message = g_strdup(error->message);
     start->spawn_finished_us = g_get_monotonic_time();
@@ -201,8 +207,7 @@ static void native_command_spawn_worker(gpointer data, gpointer user_data) {
 static gpointer native_command_executor_init(gpointer unused) {
     GError* error = NULL;
     (void)unused;
-    native_command_executor =
-        g_thread_pool_new(native_command_spawn_worker, NULL, 1, FALSE, &error);
+    native_command_executor = g_thread_pool_new(native_command_spawn_worker, NULL, 1, TRUE, &error);
     if (!native_command_executor) {
         g_warning("gnoblin-shortcut: could not create command executor: %s", error->message);
         g_clear_error(&error);

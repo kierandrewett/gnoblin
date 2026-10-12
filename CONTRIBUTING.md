@@ -97,6 +97,20 @@ in the run directory. Its temporary rule and owned Files process are removed
 on exit. These software-VM checks do not replace hardware or scaled-output
 verification.
 
+For command-priority changes, run `python3 tests/command-child-priority.py`.
+The probe links the real command and capture sources without a compositor.
+It checks repeated launches, the caller's priority, and a shared GTask worker.
+Use `--build-only /var/tmp/command-priority` to keep the executable for a
+separate run at nice `-5`. A run with nonnegative nice does not prove that
+commands drop an inherited boost; the probe reports that missing check.
+
+In a disposable session, also launch an unclassified helper through
+`gnoblin.commands.run` and `gnoblin.commands.capture`. Record its actual nice
+and scheduler policy, the compositor's per-thread priorities, and the loaded
+runtime identity before and after the change. External priority rules can
+override both the observer and the helper. This check proves command priority
+isolation, not responsiveness under load.
+
 ## Boundaries
 
 Keep upstream submodules at their pinned commits. Put Gnoblin overlays in
