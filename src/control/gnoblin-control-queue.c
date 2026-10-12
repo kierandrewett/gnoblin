@@ -1,4 +1,5 @@
 #include "gnoblin-native-control-private.h"
+#include "core/stack.h"
 
 gboolean native_api_animation_read_method(const char* method) {
     return method &&
@@ -371,6 +372,8 @@ void native_ui_session_free(gpointer data) {
     if (!session)
         return;
     g_clear_pointer(&session->state, json_node_unref);
+    g_clear_pointer(&session->surface, g_free);
+    g_clear_pointer(&session->companions, g_strfreev);
     g_free(session);
 }
 
@@ -382,6 +385,135 @@ static gboolean native_ui_session_name_is_valid(const char* name) {
             return FALSE;
     }
     return TRUE;
+}
+
+/* Parse ordering once per publish. Invalid metadata stays shell-owned data.
+ * Disjoint namespace sets make declarations independent and prevent cycles. */
+static void native_ui_session_parse_order(NativeUiSession* session) {
+    g_clear_pointer(&session->surface, g_free);
+    g_clear_pointer(&session->companions, g_strfreev);
+    session->companions_above = FALSE;
+    JsonObject* state = json_node_get_object(session->state);
+    JsonNode* visible = json_object_get_member(state, "visible");
+    JsonNode* surface = json_object_get_member(state, "surface");
+    JsonNode* companions = json_object_get_member(state, "companions");
+    JsonNode* above = json_object_get_member(state, "companionsAbove");
+    if (!visible || !JSON_NODE_HOLDS_VALUE(visible) ||
+        json_node_get_value_type(visible) != G_TYPE_BOOLEAN || !json_node_get_boolean(visible) ||
+        !surface || !JSON_NODE_HOLDS_VALUE(surface) ||
+        json_node_get_value_type(surface) != G_TYPE_STRING || !companions ||
+        !JSON_NODE_HOLDS_ARRAY(companions) ||
+        (above &&
+         (!JSON_NODE_HOLDS_VALUE(above) || json_node_get_value_type(above) != G_TYPE_BOOLEAN)))
+        return;
+    const char* name = json_node_get_string(surface);
+    JsonArray* members = json_node_get_array(companions);
+    guint count = json_array_get_length(members);
+    if (!name || !*name || strlen(name) > 128 || !count || count > 32)
+        return;
+    g_autoptr(GHashTable) seen = g_hash_table_new(g_str_hash, g_str_equal);
+    g_autoptr(GPtrArray) parsed = g_ptr_array_new_with_free_func(g_free);
+    for (guint i = 0; i < count; i++) {
+        JsonNode* member = json_array_get_element(members, i);
+        if (!JSON_NODE_HOLDS_VALUE(member) || json_node_get_value_type(member) != G_TYPE_STRING)
+            return;
+        const char* companion = json_node_get_string(member);
+        if (!companion || !*companion || strlen(companion) > 128 || g_str_equal(companion, name))
+            return;
+        if (g_hash_table_add(seen, (gpointer)companion))
+            g_ptr_array_add(parsed, g_strdup(companion));
+    }
+    g_ptr_array_add(parsed, NULL);
+    session->surface = g_strdup(name);
+    session->companions = (char**)g_ptr_array_steal(parsed, NULL);
+    session->companions_above = above && json_node_get_boolean(above);
+}
+
+static void ui_namespace_count(GHashTable* counts, const char* name) {
+    guint count = GPOINTER_TO_UINT(g_hash_table_lookup(counts, name));
+    g_hash_table_insert(counts, (gpointer)name, GUINT_TO_POINTER(count + 1));
+}
+
+static const char* ui_layer_namespace(MetaWindow* window) {
+    if (!window || window->unmanaging || !meta_window_is_in_stack(window) ||
+        window->type != META_WINDOW_DOCK || window->transient_for ||
+        !g_object_get_data(G_OBJECT(window), "gnoblin-layer-surface") ||
+        !meta_wayland_surface_get_buffer(meta_window_get_wayland_surface(window)))
+        return NULL;
+    return g_object_get_data(G_OBJECT(window), "gnoblin-layer-namespace");
+}
+
+static gint ui_layer_compare_position(gconstpointer left, gconstpointer right) {
+    const MetaWindow* a = left;
+    const MetaWindow* b = right;
+    return (a->stack_position > b->stack_position) - (a->stack_position < b->stack_position);
+}
+
+void gnoblin_native_control_constrain_layer_windows(MetaDisplay* display, GList* windows,
+                                                    GnoblinLayerConstraintFunc add, gpointer data) {
+    GnoblinNativeControl* control =
+        display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
+    if (!control || control->stopping || !control->ui_sessions ||
+        (control->wayland_compositor &&
+         meta_wayland_session_lock_is_active(control->wayland_compositor)))
+        return;
+    g_autoptr(GHashTable) counts = NULL;
+    GHashTableIter iter;
+    gpointer value;
+    g_hash_table_iter_init(&iter, control->ui_sessions);
+    while (g_hash_table_iter_next(&iter, NULL, &value)) {
+        NativeUiSession* session = value;
+        if (!session->surface)
+            continue;
+        if (!counts)
+            counts = g_hash_table_new(g_str_hash, g_str_equal);
+        ui_namespace_count(counts, session->surface);
+        for (guint i = 0; session->companions[i]; i++)
+            ui_namespace_count(counts, session->companions[i]);
+    }
+    if (!counts)
+        return;
+    g_hash_table_iter_init(&iter, control->ui_sessions);
+    while (g_hash_table_iter_next(&iter, NULL, &value)) {
+        NativeUiSession* session = value;
+        if (!session->surface)
+            continue;
+        gboolean conflict = GPOINTER_TO_UINT(g_hash_table_lookup(counts, session->surface)) > 1;
+        g_autoptr(GHashTable) companions = g_hash_table_new(g_str_hash, g_str_equal);
+        for (guint i = 0; session->companions[i]; i++) {
+            conflict |= GPOINTER_TO_UINT(g_hash_table_lookup(counts, session->companions[i])) > 1;
+            g_hash_table_add(companions, session->companions[i]);
+        }
+        if (conflict)
+            continue;
+        for (GList* base_item = windows; base_item; base_item = base_item->next) {
+            MetaWindow* base = base_item->data;
+            if (g_strcmp0(ui_layer_namespace(base), session->surface) != 0)
+                continue;
+            GList* selected = NULL;
+            for (GList* item = windows; item; item = item->next) {
+                MetaWindow* window = item->data;
+                const char* name = ui_layer_namespace(window);
+                if (window == base || !name || !g_hash_table_contains(companions, name) ||
+                    window->layer != base->layer ||
+                    meta_window_get_monitor(window) != meta_window_get_monitor(base))
+                    continue;
+                selected = g_list_prepend(selected, window);
+            }
+            /* A star of above/base constraints can reverse companions when
+             * the base is raised. Preserve their authoritative current order
+             * as a chain, including multiple surfaces with one namespace. */
+            selected = g_list_sort(selected, ui_layer_compare_position);
+            for (GList* item = selected; item; item = item->next) {
+                MetaWindow* window = item->data;
+                add(session->companions_above ? window : base,
+                    session->companions_above ? base : window, data);
+                if (item->next)
+                    add(item->next->data, window, data);
+            }
+            g_list_free(selected);
+        }
+    }
 }
 
 static char* native_ui_session_encode_event(const char* event, const char* name, const char* member,
@@ -425,11 +557,16 @@ void native_ui_sessions_client_disconnected(GnoblinNativeControl* control, guint
             g_ptr_array_add(owned_names, g_strdup(key));
     }
     g_autoptr(JsonNode) cleared_state = json_node_new(JSON_NODE_NULL);
+    gboolean order_changed = FALSE;
     for (guint i = 0; i < owned_names->len; i++) {
         const char* name = g_ptr_array_index(owned_names, i);
+        NativeUiSession* session = g_hash_table_lookup(control->ui_sessions, name);
+        order_changed |= session->surface != NULL;
         g_hash_table_remove(control->ui_sessions, name);
         native_ui_session_broadcast_state(control, name, cleared_state);
     }
+    if (order_changed)
+        meta_stack_update_transient(control->display->stack);
     g_ptr_array_unref(owned_names);
 }
 
@@ -532,8 +669,19 @@ char* handle_ui_session_request(Client* client, JsonObject* request) {
             session->owner_client_id = client->client_id;
             g_hash_table_insert(client->control->ui_sessions, g_strdup(name), session);
         }
+        g_autofree char* previous_surface = g_strdup(session->surface);
+        g_auto(GStrv) previous_companions = g_strdupv(session->companions);
+        gboolean previous_above = session->companions_above;
         g_clear_pointer(&session->state, json_node_unref);
         session->state = json_node_copy(payload);
+        native_ui_session_parse_order(session);
+        if (g_strcmp0(previous_surface, session->surface) != 0 ||
+            (previous_companions == NULL) != (session->companions == NULL) ||
+            (previous_companions && session->companions &&
+             !g_strv_equal((const char* const*)previous_companions,
+                           (const char* const*)session->companions)) ||
+            previous_above != session->companions_above)
+            meta_stack_update_transient(client->control->display->stack);
         native_ui_session_broadcast_state(client->control, name, session->state);
         return native_ui_session_reply(id);
     }

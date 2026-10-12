@@ -46,6 +46,11 @@ keyboard focus. A surface with `keyboard_interactive = "none"` can still accept
 clicks. Retained panels can expand or clear their input regions when opening
 or closing; they do not need to request keyboard focus to receive clicks.
 
+Pointer clicks can raise a layer surface within its layer. Exclusive keyboard
+focus also raises a popup when it opens. A shell can keep companion surfaces
+above or below an overlay using [UI-session state](../compositor-bridge.md#api-version-175-shell-ui-sessions).
+Those constraints apply to pointer raises too.
+
 `gnoblin.layers.animation_policy(namespace)` returns the effective enter and
 exit phases and `window_shadow` for a layer namespace. The namespace must be 1
 to 128 UTF-8 bytes. Without an animation override, each phase uses its first enabled event

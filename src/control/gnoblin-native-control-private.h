@@ -118,6 +118,9 @@ typedef struct {
 typedef struct {
     guint64 owner_client_id;
     JsonNode* state;
+    char* surface;
+    char** companions;
+    gboolean companions_above;
 } NativeUiSession;
 typedef struct {
     guint64 request_id;

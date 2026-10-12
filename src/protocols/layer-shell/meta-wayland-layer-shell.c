@@ -1207,8 +1207,6 @@ static void meta_wayland_layer_surface_post_apply_state(MetaWaylandSurfaceRole* 
     if (surface_role_class->post_apply_state)
         surface_role_class->post_apply_state(surface_role, pending);
 
-    gnoblin_native_control_layer_changed(display_from_surface(surface));
-
     if (meta_wayland_surface_get_buffer(surface)) {
         MtkRectangle mon = get_monitor_layout(layer_surface);
         /* A size request is not a new buffer. Anchor the pixels committed by
@@ -1244,6 +1242,7 @@ static void meta_wayland_layer_surface_post_apply_state(MetaWaylandSurfaceRole* 
             ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
             focus_exclusive_layer_surface(layer_surface, surface, window);
     }
+    gnoblin_native_control_layer_changed(display_from_surface(surface), window);
 }
 
 static MetaWaylandSurface*

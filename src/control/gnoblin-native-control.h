@@ -43,7 +43,11 @@ void gnoblin_native_control_pointer_binding_activated(MetaDisplay* display, Meta
 META_EXPORT
 void gnoblin_native_control_track_layer_window(MetaDisplay* display, MetaWindow* window);
 META_EXPORT
-void gnoblin_native_control_layer_changed(MetaDisplay* display);
+void gnoblin_native_control_layer_changed(MetaDisplay* display, MetaWindow* window);
+/* Add shell companion relations to Mutter's authoritative stack constraints. */
+typedef void (*GnoblinLayerConstraintFunc)(MetaWindow* above, MetaWindow* below, gpointer data);
+void gnoblin_native_control_constrain_layer_windows(MetaDisplay* display, GList* windows,
+                                                    GnoblinLayerConstraintFunc add, gpointer data);
 /* Recompute a window's rule blur after its size or layer-shell layer changes. */
 void gnoblin_control_refresh_window_rule_blur(MetaWindow* window);
 

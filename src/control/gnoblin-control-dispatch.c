@@ -1,4 +1,5 @@
 #include "gnoblin-native-control-private.h"
+#include "core/stack.h"
 
 const char* gnoblin_control_operation_error_code(const GError* error) {
     if (!error)
@@ -585,6 +586,8 @@ void native_session_lock_changed(MetaWaylandCompositor* compositor,
         stop_native_shortcut_capture(user_data, TRUE, FALSE, NULL, "denied",
                                      "shortcut capture cancelled because the session locked");
     }
+    /* Companion constraints never participate in the lock screen stack. */
+    meta_stack_update_transient(control->display->stack);
     const char* state_name = native_session_lock_state_name(state);
 
     guint64 sequence = ++control->event_sequence;

@@ -1,4 +1,5 @@
 #include "gnoblin-native-control-private.h"
+#include "core/stack.h"
 
 static void add_window_signal_identity(GVariantBuilder* payload, MetaWindow* window);
 
@@ -584,11 +585,20 @@ void gnoblin_native_control_track_layer_window(MetaDisplay* display, MetaWindow*
     track_window(control, window);
 }
 
-void gnoblin_native_control_layer_changed(MetaDisplay* display) {
+void gnoblin_native_control_layer_changed(MetaDisplay* display, MetaWindow* window) {
     GnoblinNativeControl* control =
         display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
     if (!control || control->stopping)
         return;
+    MetaWaylandSurface* surface = meta_window_get_wayland_surface(window);
+    gboolean mapped = surface && meta_wayland_surface_get_buffer(surface);
+    gpointer monitor = GINT_TO_POINTER(meta_window_get_monitor(window) + 2);
+    gboolean was_mapped = g_object_get_data(G_OBJECT(window), "gnoblin-ui-layer-mapped") != NULL;
+    gpointer previous_monitor = g_object_get_data(G_OBJECT(window), "gnoblin-ui-layer-monitor");
+    g_object_set_data(G_OBJECT(window), "gnoblin-ui-layer-mapped", GINT_TO_POINTER(mapped));
+    g_object_set_data(G_OBJECT(window), "gnoblin-ui-layer-monitor", monitor);
+    if (mapped != was_mapped || (mapped && monitor != previous_monitor))
+        meta_stack_update_transient(display->stack);
     schedule_windows(control);
 }
 
