@@ -332,3 +332,27 @@ injected key with the received `KEY` event.
 Frame callback cadence is recorded, but it does not prove presentation to the
 display. Cleanup stops the RemoteDesktop session, load units, and client after
 a failed assertion or interruption.
+
+## Heap allocation attribution
+
+Analyze heaptrack traces without merging backtraces:
+
+```sh
+heaptrack_print -f /path/to/complete-trace.zst --merge-backtraces 0 \
+  --print-allocators 0 --print-temporary 0 --print-leaks 1 -n 20
+```
+
+Heaptrack 1.5 can merge unrelated unresolved addresses into one unknown
+allocation site. That row does not identify a common owner, and merged peaks
+can be inaccurate. Keep separate traces when attributing memory.
+
+Save the profiled process's `/proc/PID/maps` and `/proc/PID/smaps` while it is
+alive, including before and after opening panels. Use the containing mapping
+and its file offset to resolve an unknown address. A mapping alone does not
+prove a function name or which object owns an allocation.
+
+Let the owned process exit and the trace writer finish before analysis.
+Allocations still live when recording ends are not proof of a leak. Heaptrack
+also changes timing and memory use; measure responsiveness and process-tree
+PSS plus SwapPss separately without instrumentation. Do not add individual
+allocation-site peaks to estimate live memory.
