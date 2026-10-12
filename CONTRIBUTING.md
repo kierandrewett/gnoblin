@@ -194,6 +194,31 @@ explicitly skip this hook once with
 `SKIP=beads-github-sync git commit ...`, then sync before the next commit. See
 `.beads/README.md` for filing and importing issues.
 
+## CSD pixel ownership checks
+
+Run the CSD sampling fixture against a built Cogl 51 prefix with Clang's
+sanitizer runtime available:
+
+```sh
+CC=clang PKG_CONFIG_PATH="$PWD/build/make/pkgconfig" \
+LD_LIBRARY_PATH="$PWD/build/stage/usr/local/lib/gnoblin/lib64/mutter-51" \
+  python3 tests/csd-pixel-lifetime.py --sanitize
+```
+
+The fixture applies the CSD patches to disposable pinned source and compiles
+the actual `meta_shaped_texture_get_pixels` function. It uses real Cogl host
+bitmaps with bounded readback substitutes. It checks early dimension rejection,
+premultiplied RGBA byte identity, tight and padded strides, direct and fallback
+paths, map failure, and delayed final release.
+
+Renderer and transform functions must remain unchanged. No compositor or
+display is started.
+
+Add `--baseline --test /csd/reject-before-readback` to reproduce the old late
+dimension check, or `--baseline --test /csd/direct-tight` to reproduce the extra
+copy. Both should fail. GPU rendering still needs the existing real-session
+`tests/test-window-csd-reconstruction.py` fixture inside an isolated devkit.
+
 ## Shadow shader checks
 
 For shadow rendering changes, run the GPU fixture in a Python environment
