@@ -81,6 +81,21 @@ in the artifact directory. Use a fresh directory for each run. GTK startup
 that exceeds the two-second deadline should take fallback; record that timing
 separately from a successful first custom presentation.
 
+For GTK corner and border changes, use an installed Bingux session in a
+disposable QEMU VM. It needs Nautilus in the guest, Pillow on the host, and one
+1280×800 output at scale 1. Close Files before running:
+
+```sh
+python3 tests/qemu-e2e/files-csd-corners.py /path/to/qemu-e2e/run
+```
+
+The fixture checks sixteen reconstructed corners against their local GTK
+background, unchanged opaque content, four continuous border edges, and
+maximize/restore. It saves screenshots, pixel crops, window state and assertions
+in the run directory. Its temporary rule and owned Files process are removed
+on exit. These software-VM checks do not replace hardware or scaled-output
+verification.
+
 ## Boundaries
 
 Keep upstream submodules at their pinned commits. Put Gnoblin overlays in
