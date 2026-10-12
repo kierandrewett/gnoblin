@@ -333,6 +333,68 @@ Frame callback cadence is recorded, but it does not prove presentation to the
 display. Cleanup stops the RemoteDesktop session, load units, and client after
 a failed assertion or interruption.
 
+## Native backdrop blur cache checks
+
+Run the allocation and pixel fixture in an empty, disposable devkit.
+It requires Quickshell, Pillow, `grim`, GDB with Python support, and permission
+to attach GDB to the test compositor. Set `--prefix` and `--quickshell` if needed.
+
+### Compare rendering and allocations
+
+Capture the reference build, then compare the candidate build against it:
+
+```sh
+GNOBLIN_PREFIX=/usr/local/lib/gnoblin \
+GNOBLIN_DEVKIT_EXEC="python3 $PWD/tests/native-blur-cache.py /var/tmp/blur-cache-reference --reference" \
+  scripts/run-staged.sh /usr/local/lib/gnoblin /path/to/reference-stage \
+  scripts/run-clean-devkit.sh
+GNOBLIN_PREFIX=/usr/local/lib/gnoblin \
+GNOBLIN_DEVKIT_EXEC="python3 $PWD/tests/native-blur-cache.py /var/tmp/blur-cache-check --compare /var/tmp/blur-cache-reference" \
+  scripts/run-staged.sh /usr/local/lib/gnoblin "$PWD/build/stage" \
+  scripts/run-clean-devkit.sh
+```
+
+Use fresh artifact directories and leave `GNOBLIN_DEVKIT_CONFIG_SOURCE` unset.
+The fixture verifies the worker executable and records loaded library hashes.
+
+The fixture checks:
+
+- Changing backdrop pixels and alpha fades.
+- Resize capture bounds, target replacement, and radius changes.
+- Resource release on disable, hide, and close, followed by re-enable or show.
+
+At fixed geometry, one panel should allocate four blur textures once.
+Alpha changes must reuse them. Disable, hide, and close must release them.
+The comparison allows at most one RGB level of difference per channel.
+
+### Check capture failure and recovery
+
+Compile the test-only preload shim and run it inside the disposable devkit:
+
+```sh
+cc -shared -fPIC -Wall -Wextra -Werror tests/native-blur-capture-failure.c \
+  $(pkg-config --cflags --libs glib-2.0) -ldl -o /var/tmp/blur-capture-failure.so
+LD_PRELOAD=/var/tmp/blur-capture-failure.so \
+GNOBLIN_TEST_BLUR_BLIT_FAIL=/var/tmp/blur-capture-failure.marker \
+GNOBLIN_PREFIX=/usr/local/lib/gnoblin \
+GNOBLIN_DEVKIT_EXEC="python3 $PWD/tests/native-blur-cache.py /var/tmp/blur-capture-check --capture-failure-marker /var/tmp/blur-capture-failure.marker" \
+  scripts/run-staged.sh /usr/local/lib/gnoblin "$PWD/build/stage" \
+  scripts/run-clean-devkit.sh
+```
+
+The marker must be absent before the run. The fixture warms the blur before
+creating the marker. A failed capture must leave the current backdrop visible.
+Removing the marker must restore blur.
+
+The preload library changes only the test processes and returns a Cogl failure.
+It does not reproduce driver exhaustion.
+
+### Measure responsiveness separately
+
+GDB changes timing, so measure responsiveness separately in a native VM
+without the debugger. This fixture does not prove clone rendering,
+allocation-failure recovery, or long-run driver memory behavior.
+
 ## Heap allocation attribution
 
 Analyze heaptrack traces without merging backtraces:

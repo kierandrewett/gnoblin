@@ -1,0 +1,346 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 8 Oct 2026 21:00:00 +0100
+Subject: [PATCH] Reuse native backdrop blur targets without retaining paint state
+
+---
+diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-paint-nodes.c
+index 330aa9e..54cafef 100644
+--- a/clutter/clutter/clutter-paint-nodes.c
++++ b/clutter/clutter/clutter-paint-nodes.c
+@@ -1365,6 +1365,11 @@ struct _ClutterBlurCache
+   CoglFramebuffer *offscreen;
+   CoglPipeline *pipeline;
+   ClutterBlur *blur;
++  CoglFramebuffer *capture_framebuffer;
++  CoglPipeline *capture_pipeline;
++  unsigned int source_width;
++  unsigned int source_height;
++  unsigned int users;
+   unsigned int width;
+   unsigned int height;
+   float radius;
+@@ -1378,6 +1383,8 @@ clutter_blur_cache_finalize (GObject *object)
+   ClutterBlurCache *cache = CLUTTER_BLUR_CACHE (object);
+ 
+   g_clear_object (&cache->resources);
++  g_clear_object (&cache->capture_pipeline);
++  g_clear_object (&cache->capture_framebuffer);
+   g_clear_pointer (&cache->blur, clutter_blur_free);
+   g_clear_object (&cache->pipeline);
+   g_clear_object (&cache->offscreen);
+@@ -1574,6 +1581,12 @@ clutter_blur_node_post_draw (ClutterPaintNode    *node,
+         {
+           g_warning ("Failed to capture blur node framebuffer: %s",
+                      error->message);
++          /* Balance the layer's pre_draw without compositing the previous
++           * cached blur. The current backdrop stays visible on failure. */
++          cogl_framebuffer_pop_matrix (layer_node->offscreen);
++          clutter_paint_context_pop_framebuffer (paint_context);
++          clutter_paint_context_pop_target_color_state (paint_context);
++          return;
+         }
+       else if (blur_node->capture_framebuffer)
+         {
+@@ -1611,6 +1624,8 @@ clutter_blur_node_finalize (ClutterPaintNode *node)
+   g_clear_object (&blur_node->source_framebuffer);
+   g_clear_object (&blur_node->capture_framebuffer);
+   g_clear_object (&blur_node->capture_pipeline);
++  if (blur_node->cache)
++    blur_node->cache->users--;
+   g_clear_object (&blur_node->cache);
+ 
+   CLUTTER_PAINT_NODE_CLASS (clutter_blur_node_parent_class)->finalize (node);
+@@ -1699,6 +1714,7 @@ clutter_blur_node_new_cached (unsigned int      width,
+       layer_node->pipeline = g_object_ref (cache->pipeline);
+       blur_node->blur = cache->blur;
+       blur_node->cache = g_object_ref (cache);
++      cache->users++;
+       return (ClutterPaintNode *) blur_node;
+     }
+ 
+@@ -1751,6 +1767,7 @@ clutter_blur_node_new_cached (unsigned int      width,
+   cache->blur = blur;
+   blur_node->blur = blur;
+   blur_node->cache = g_object_ref (cache);
++  cache->users++;
+   g_set_object (&owner->resources, cache);
+   owner->builds++;
+ 
+@@ -1790,6 +1807,36 @@ clutter_blur_node_new_from_framebuffer (CoglFramebuffer *framebuffer,
+                                         float            noise,
+                                         uint8_t          opacity)
+ {
++  g_autoptr (ClutterBlurCache) cache = clutter_blur_cache_new ();
++
++  return clutter_blur_node_new_from_framebuffer_cached (framebuffer,
++                                                       src_x, src_y,
++                                                       width, height,
++                                                       radius, saturation,
++                                                       noise, opacity, cache);
++}
++
++/* Only targets are retained. Every node captures and blurs its current source.
++ * A generation in use by another node is never overwritten, including during
++ * clone or nested painting. The owner's single slot keeps resize history bounded.
++ */
++ClutterPaintNode *
++clutter_blur_node_new_from_framebuffer_cached (CoglFramebuffer *framebuffer,
++                                               int              src_x,
++                                               int              src_y,
++                                               unsigned int     width,
++                                               unsigned int     height,
++                                               float            radius,
++                                               float            saturation,
++                                               float            noise,
++                                               uint8_t          opacity,
++                                               ClutterBlurCache *owner)
++{
++  g_autoptr (ClutterBlurCache) candidate = NULL;
++  ClutterBlurCache *resources;
++  gboolean reuse;
++  gboolean busy;
++  CoglPipeline *pipeline;
+   ClutterPaintNode *node;
+   ClutterBlurNode *blur_node;
+   ClutterLayerNode *layer_node;
+@@ -1806,6 +1853,7 @@ clutter_blur_node_new_from_framebuffer (CoglFramebuffer *framebuffer,
+   g_return_val_if_fail (radius >= 0.0, NULL);
+   g_return_val_if_fail (saturation >= 0.0, NULL);
+   g_return_val_if_fail (noise >= 0.0, NULL);
++  g_return_val_if_fail (CLUTTER_IS_BLUR_CACHE (owner), NULL);
+ 
+   downscale_factor =
+     clutter_blur_calculate_downscale_factor (width, height, radius);
+@@ -1813,7 +1861,19 @@ clutter_blur_node_new_from_framebuffer (CoglFramebuffer *framebuffer,
+   scaled_height = MAX (1u, (unsigned int) floorf (height / downscale_factor));
+   scaled_radius = radius / downscale_factor;
+ 
+-  node = clutter_blur_node_new (scaled_width, scaled_height, scaled_radius);
++  resources = owner->resources;
++  busy = resources && resources->users > 0;
++  reuse = resources && !busy &&
++    resources->width == scaled_width && resources->height == scaled_height &&
++    resources->radius == scaled_radius &&
++    resources->source_width == width && resources->source_height == height &&
++    cogl_framebuffer_get_context (resources->offscreen) ==
++      cogl_framebuffer_get_context (framebuffer);
++  if (!reuse)
++    candidate = clutter_blur_cache_new ();
++
++  node = clutter_blur_node_new_cached (scaled_width, scaled_height,
++                                       scaled_radius, reuse ? owner : candidate);
+   if (!node)
+     return NULL;
+ 
+@@ -1826,14 +1886,44 @@ clutter_blur_node_new_from_framebuffer (CoglFramebuffer *framebuffer,
+ 
+   if (downscale_factor > 1.0f)
+     {
+-      if (!create_blur_capture_render_objects (blur_node, width, height))
++      if (reuse)
++        {
++          blur_node->capture_framebuffer =
++            g_object_ref (blur_node->cache->capture_framebuffer);
++          blur_node->capture_pipeline =
++            g_object_ref (blur_node->cache->capture_pipeline);
++        }
++      else
++        {
++          if (!create_blur_capture_render_objects (blur_node, width, height))
++            {
++              clutter_paint_node_unref (node);
++              return NULL;
++            }
++          g_set_object (&blur_node->cache->capture_framebuffer,
++                        blur_node->capture_framebuffer);
++          g_set_object (&blur_node->cache->capture_pipeline,
++                        blur_node->capture_pipeline);
++        }
++    }
++
++  if (!reuse)
++    {
++      blur_node->cache->source_width = width;
++      blur_node->cache->source_height = height;
++      /* Publish only after every target has allocated successfully. */
++      if (!busy)
+         {
+-          clutter_paint_node_unref (node);
+-          return NULL;
++          g_set_object (&owner->resources, blur_node->cache);
++          owner->builds++;
+         }
+     }
+ 
+   layer_node = CLUTTER_LAYER_NODE (blur_node);
++  /* Opacity, snippets, uniforms and masks belong to this paint, not the cache. */
++  pipeline = cogl_pipeline_copy (layer_node->pipeline);
++  g_set_object (&layer_node->pipeline, pipeline);
++  g_object_unref (pipeline);
+   layer_node->skip_color_state_transform = TRUE;
+ 
+   add_blur_framebuffer_effect (layer_node->pipeline,
+diff --git a/clutter/clutter/clutter-paint-nodes.h b/clutter/clutter/clutter-paint-nodes.h
+index aa20533..b7cb5d1 100644
+--- a/clutter/clutter/clutter-paint-nodes.h
++++ b/clutter/clutter/clutter-paint-nodes.h
+@@ -201,4 +201,17 @@ ClutterPaintNode * clutter_blur_node_new_cached (unsigned int      width,
+                                                 float             radius,
+                                                 ClutterBlurCache *cache);
+ 
++/* Reuses one resource generation; source pixels and paint state stay node-local. */
++CLUTTER_EXPORT
++ClutterPaintNode * clutter_blur_node_new_from_framebuffer_cached (CoglFramebuffer *framebuffer,
++                                                                  int              src_x,
++                                                                  int              src_y,
++                                                                  unsigned int     width,
++                                                                  unsigned int     height,
++                                                                  float            radius,
++                                                                  float            saturation,
++                                                                  float            noise,
++                                                                  uint8_t          opacity,
++                                                                  ClutterBlurCache *cache);
++
+ G_END_DECLS
+diff --git a/src/compositor/meta-background-effect.c b/src/compositor/meta-background-effect.c
+index 796c350..f9e26a0 100644
+--- a/src/compositor/meta-background-effect.c
++++ b/src/compositor/meta-background-effect.c
+@@ -602,7 +602,8 @@ meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node,
+                                           float                   noise,
+                                           uint8_t                 opacity,
+                                           CoglTexture            *alpha_mask,
+-                                          float                   alpha_mask_gain)
++                                          float                   alpha_mask_gain,
++                                          ClutterBlurCache       *cache)
+ {
+   ClutterActor *stage;
+   CoglFramebuffer *source_framebuffer;
+@@ -697,15 +698,16 @@ meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node,
+     return;
+ 
+   blur_node =
+-    clutter_blur_node_new_from_framebuffer (source_framebuffer,
+-                                            source_rect.x,
+-                                            source_rect.y,
+-                                            source_rect.width,
+-                                            source_rect.height,
+-                                            blur_radius,
+-                                            saturation,
+-                                            noise,
+-                                            opacity);
++    clutter_blur_node_new_from_framebuffer_cached (source_framebuffer,
++                                                   source_rect.x,
++                                                   source_rect.y,
++                                                   source_rect.width,
++                                                   source_rect.height,
++                                                   blur_radius,
++                                                   saturation,
++                                                   noise,
++                                                   opacity,
++                                                   cache);
+   if (!blur_node)
+     return;
+ 
+diff --git a/src/compositor/meta-background-effect.h b/src/compositor/meta-background-effect.h
+index 32c5961..8ab7960 100644
+--- a/src/compositor/meta-background-effect.h
++++ b/src/compositor/meta-background-effect.h
+@@ -43,4 +43,5 @@ void meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node
+                                                float                   noise,
+                                                uint8_t                 opacity,
+                                                CoglTexture            *alpha_mask,
+-                                               float                   alpha_mask_gain);
++                                               float                   alpha_mask_gain,
++                                               ClutterBlurCache       *cache);
+diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
+index 89bf8d9..4ce0aaf 100644
+--- a/src/compositor/meta-surface-actor.c
++++ b/src/compositor/meta-surface-actor.c
+@@ -56,6 +56,7 @@ typedef struct _MetaSurfaceActorPrivate
+   float rule_blur_radius;
+   gboolean rule_blur_enabled;
+   MetaBackgroundBlur *background_blur;
++  ClutterBlurCache *background_blur_cache;
+ 
+   /* MetaCullable regions, see that documentation for more details */
+   MtkRegion *unobscured_region;
+@@ -351,6 +352,7 @@ meta_surface_actor_dispose (GObject *object)
+   MetaSurfaceActorPrivate *priv =
+     meta_surface_actor_get_instance_private (self);
+ 
++  g_clear_object (&priv->background_blur_cache);
+   g_clear_pointer (&priv->pending_damage, mtk_region_unref);
+   g_clear_pointer (&priv->input_region, mtk_region_unref);
+   g_clear_pointer (&priv->background_blur,
+@@ -533,15 +535,24 @@ sync_background_blur (MetaSurfaceActor *surface_actor)
+                    meta_background_blur_destroy);
+ 
+   if (!priv->compositor)
+-    return;
++    {
++      g_clear_object (&priv->background_blur_cache);
++      return;
++    }
+ 
+   blur_region = get_effective_blur (surface_actor, &blur_radius);
+   if (!blur_region)
+-    return;
++    {
++      g_clear_object (&priv->background_blur_cache);
++      return;
++    }
+ 
+-  if (!clutter_actor_is_mapped (actor) &&
+-      !clutter_actor_has_mapped_clones (actor))
+-    return;
++  if (!clutter_actor_is_mapped (actor))
++    {
++      g_clear_object (&priv->background_blur_cache);
++      if (!clutter_actor_has_mapped_clones (actor))
++        return;
++    }
+ 
+   priv->background_blur =
+     meta_background_blur_new (actor, blur_region, blur_radius);
+@@ -911,6 +922,8 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+   MetaShapedTexture *texture;
+   MetaMultiTexture *multi;
+   CoglTexture *mask;
++  g_autoptr (ClutterBlurCache) clone_cache = NULL;
++  ClutterBlurCache *cache;
+ 
+   if (!priv->compositor)
+     return;
+@@ -931,6 +944,20 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+   multi = texture ? meta_shaped_texture_get_texture (texture) : NULL;
+   mask = multi && meta_multi_texture_is_simple (multi) ?
+     meta_multi_texture_get_plane (multi, 0) : NULL;
++  /* Clones may render this surface at another scale or inside another
++   * offscreen. Give those paints transient targets and keep the surface slot
++   * dedicated to its ordinary output. */
++  if (clutter_actor_is_in_clone_paint (CLUTTER_ACTOR (surface_actor)))
++    {
++      clone_cache = clutter_blur_cache_new ();
++      cache = clone_cache;
++    }
++  else
++    {
++      if (!priv->background_blur_cache)
++        priv->background_blur_cache = clutter_blur_cache_new ();
++      cache = priv->background_blur_cache;
++    }
+   meta_background_effect_paint_blur_region (root_node,
+                                             CLUTTER_ACTOR (surface_actor),
+                                             paint_context,
+@@ -944,7 +971,8 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+                                             noise,
+                                             opacity,
+                                             mask,
+-                                            BLUR_ALPHA_MASK_GAIN);
++                                            BLUR_ALPHA_MASK_GAIN,
++                                            cache);
+ }
+ 
+ void
