@@ -395,6 +395,32 @@ GDB changes timing, so measure responsiveness separately in a native VM
 without the debugger. This fixture does not prove clone rendering,
 allocation-failure recovery, or long-run driver memory behavior.
 
+### Check cache construction and allocation failure
+
+Run the constructor preload probe separately, without GDB:
+
+```sh
+cc -shared -fPIC -Wall -Wextra -Werror tests/native-blur-state.c \
+  $(pkg-config --cflags --libs gobject-2.0) -ldl -o /var/tmp/blur-state.so
+LD_PRELOAD=/var/tmp/blur-state.so \
+GNOBLIN_TEST_BLUR_STATE_REPORT=/var/tmp/blur-state.json \
+GNOBLIN_PREFIX=/usr/local/lib/gnoblin \
+GNOBLIN_DEVKIT_EXEC="python3 $PWD/tests/native-blur-cache.py /var/tmp/blur-state-check --state-report /var/tmp/blur-state.json" \
+  scripts/run-staged.sh /usr/local/lib/gnoblin "$PWD/build/stage" \
+  scripts/run-clean-devkit.sh
+```
+
+Use fresh report and artifact paths. The probe runs inside the test compositor
+with its real framebuffer and Cogl context. It checks:
+
+- Fixed geometry reuses targets; simultaneous live nodes receive separate targets.
+- Different capture widths that share a downscaled size replace the capture target.
+- Failure at each constructor framebuffer allocation preserves the warmed cache.
+- Recovery reuses the original geometry, and final release destroys every tracked texture.
+
+The probe constructs nodes without painting them. It does not check painted
+clones, lazy blur-pass allocations during painting, or physical driver exhaustion.
+
 ## Heap allocation attribution
 
 Analyze heaptrack traces without merging backtraces:

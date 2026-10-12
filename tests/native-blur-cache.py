@@ -27,7 +27,11 @@ parser.add_argument("--quickshell", default="qs")
 parser.add_argument("--reference", action="store_true")
 parser.add_argument("--compare", type=Path)
 parser.add_argument("--capture-failure-marker", type=Path, help="Gate the test-only capture failure preload shim")
+parser.add_argument("--state-report", type=Path, help="Run the constructor preload probe without GDB")
 args = parser.parse_args()
+assert not (args.state_report and (args.capture_failure_marker or args.reference or args.compare)), (
+    "constructor checks must run separately from debugger and pixel comparison checks"
+)
 assert platform.machine() == "x86_64", "GDB allocation arguments use the x86-64 calling convention"
 art = args.artifacts.resolve()
 art.mkdir(parents=True, exist_ok=False)
@@ -138,6 +142,36 @@ ShellRoot {
  }
 }
 """)
+
+if args.state_report:
+    state_path = args.state_report.resolve()
+    assert not state_path.exists(), "use a fresh constructor report path"
+    assert Path(os.environ["GNOBLIN_TEST_BLUR_STATE_REPORT"]).resolve() == state_path
+    identity()
+    configure(24)
+    with (art / "quickshell.log").open("w") as client_log:
+        client = subprocess.Popen([args.quickshell, "-p", str(qml)], stdout=client_log, stderr=client_log)
+        try:
+            deadline = time.monotonic() + 20
+            while not state_path.exists():
+                assert client.poll() is None, "constructor fixture client exited"
+                assert time.monotonic() < deadline, "constructor preload probe was not called"
+                time.sleep(0.1)
+            state = json.loads(state_path.read_text())
+            (art / "result.json").write_text(json.dumps(state, indent=2) + "\n")
+            assert state["status"] == "passed", state
+            assert state["scaled_size_collision"]["checked"]
+            assert state["injected_stage_failures"] == state["successful_replacement_allocation_stages"] > 0
+            assert state["live_target_textures_after_final_release"] == 0
+            assert state["weak_texture_releases_total"] == state["tracked_texture_creations"]
+            screen("after-constructor-checks")
+            print(json.dumps(state), flush=True)
+        finally:
+            client.terminate()
+            client.wait(timeout=5)
+            shutil.copyfile(os.environ["GNOBLIN_DEVKIT_RUNTIME_LOG"], art / "runtime.log")
+    raise SystemExit(0)
+
 # Register before creating surfaces so all cache generations are tracked.
 gdb_script = art / "count.gdb"
 gdb_script.write_text(
