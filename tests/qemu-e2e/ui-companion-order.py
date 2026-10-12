@@ -321,6 +321,13 @@ def main():
             assert record["layer"] == "overlay" and record["keyboard_interactive"] == "none", record
             assert record["geometry"] == dict(x=120 + index * 100, y=140 + index * 60, width=420, height=300), record
         ordinary("baseline")
+        # Pointer entry into an exposed part of a lower layer must not promote
+        # it above another panel. Keep click-to-raise in ordinary() separate.
+        raise_tile("C")
+        move((600, 230))
+        assert ipc("hover") == [False, True, False]
+        move((400, 320))
+        check("pointer-entry-keeps-layer-order", "C")
         for shared_namespace in (False, True):
             if shared_namespace:
                 ipc("namespace", "true")
