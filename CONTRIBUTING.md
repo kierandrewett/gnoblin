@@ -358,15 +358,25 @@ recovery. The memory unit is capped at 1900 MiB. Each load unit has a 75-second
 cap. The CPU helper has four workers: its parent and three children. Change a
 duration only when their sum remains within that runtime cap.
 
+Use one monitor at origin 0,0. The fixture reads its dimensions from Mutter's
+DisplayConfig interface and resets the pointer through the lower-right corner
+to avoid opening GNOME's overview through its upper-left hot corner.
+
 The client is 320 by 240 pixels. `--focus-x` and `--focus-y` default to the
 existing 220,220 target. Supply its actual on-screen position when the
 compositor places it elsewhere. The check sends a key after clicking and fails
 if the client does not receive it.
 
-`observer-policy.json` records the observer scheduling policy. `phases.json`
-contains guest-monotonic and client-`START` boundaries. `samples.json` records
-D-Bus round trips, PSI, memory, and unit liveness. `inputs.json` pairs each
-injected key with the received `KEY` event.
+`observer-policy.json` records the observer scheduling policy. The paced client
+is launched through `nice` and `chrt` without Python `preexec_fn`; its PID,
+process start time, nice value, and scheduler are checked after `START` and on
+every sample. The check fails if the client is not nice 0 with `SCHED_OTHER`,
+including when another service changes its policy during the run. A passing
+artifact therefore reports observed policy at those checkpoints, not a promise
+that another service cannot change it between samples. `phases.json` contains
+guest-monotonic and client-`START` boundaries. `samples.json` records client
+policy alongside D-Bus round trips, PSI, memory, and unit liveness.
+`inputs.json` pairs each injected key with the received `KEY` event.
 
 Frame callback cadence is recorded, but it does not prove presentation to the
 display. Cleanup stops the RemoteDesktop session, load units, and client after
