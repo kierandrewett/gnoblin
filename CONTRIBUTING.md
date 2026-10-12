@@ -287,3 +287,48 @@ intermediate pixels change.
 Run the same checks at each display scale being changed. Keep
 transformed-window and pressure evidence separate from these single-seat
 checks. Both fixtures take a seat lock and refuse to overlap each other.
+
+## Guest pressure check
+
+Run this only in a disposable QEMU guest with a live Gnoblin session. It starts
+bounded CPU and memory systemd units, drives the paced client through Mutter's
+RemoteDesktop input path, and writes a new artifact directory.
+
+Build the paced client with the command above. Build the bounded guest load
+helper from the checked-in source:
+
+```sh
+cc -O2 -Wall -Wextra tests/qemu-e2e/pressure-load.c \
+  -o /var/tmp/shadow-client/gnoblin-pressure-load
+sudo install -Dm755 /var/tmp/shadow-client/gnoblin-pressure-load \
+  /usr/local/libexec/gnoblin-pressure-load
+sudo restorecon /usr/local/libexec/gnoblin-pressure-load
+```
+
+Use passwordless `sudo` for `chrt`, `renice`, `systemd-run`, and
+`systemctl`:
+
+```sh
+python3 tests/qemu-e2e/guest-pressure.py /var/tmp/gnoblin-pressure \
+  --client /var/tmp/shadow-client/client \
+  --load-probe /usr/local/libexec/gnoblin-pressure-load
+```
+
+The defaults are 8 seconds baseline, 40 seconds combined load, and 5 seconds
+recovery. The memory unit is capped at 1900 MiB. Each load unit has a 75-second
+cap. The CPU helper has four workers: its parent and three children. Change a
+duration only when their sum remains within that runtime cap.
+
+The client is 320 by 240 pixels. `--focus-x` and `--focus-y` default to the
+existing 220,220 target. Supply its actual on-screen position when the
+compositor places it elsewhere. The check sends a key after clicking and fails
+if the client does not receive it.
+
+`observer-policy.json` records the observer scheduling policy. `phases.json`
+contains guest-monotonic and client-`START` boundaries. `samples.json` records
+D-Bus round trips, PSI, memory, and unit liveness. `inputs.json` pairs each
+injected key with the received `KEY` event.
+
+Frame callback cadence is recorded, but it does not prove presentation to the
+display. Cleanup stops the RemoteDesktop session, load units, and client after
+a failed assertion or interruption.
