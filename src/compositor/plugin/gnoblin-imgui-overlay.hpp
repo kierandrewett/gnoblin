@@ -43,5 +43,7 @@ void gnoblin_imgui_overlay_set_pointer(GnoblinImGuiOverlay* overlay, float x, fl
                                        gboolean left_down, gboolean right_down,
                                        gboolean middle_down);
 void gnoblin_imgui_overlay_add_text(GnoblinImGuiOverlay* overlay, const char* utf8);
+/* Wheel movement in lines; positive scrolls up. */
+void gnoblin_imgui_overlay_add_scroll(GnoblinImGuiOverlay* overlay, float dx, float dy);
 
 G_END_DECLS

@@ -101,6 +101,7 @@ def main():
                     extract(
                         (plugin / "gnoblin-imgui-overlay.cpp").read_text(), "void gnoblin_imgui_overlay_set_pointer("
                     ),
+                    extract((plugin / "gnoblin-plugin-ui.cpp").read_text(), "static gboolean console_take_key("),
                     extract((plugin / "gnoblin-plugin-ui.cpp").read_text(), "gboolean gnoblin_plugin_ui_handle_event("),
                 ]
             )

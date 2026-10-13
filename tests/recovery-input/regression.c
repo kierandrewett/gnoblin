@@ -232,7 +232,7 @@ static gboolean diagnostics(const ClutterEvent* e, gpointer data) {
 
 #if PATCHED
 #include "gnoblin-plugin-input.h"
-static GnoblinPluginInput input = {diagnostics, NULL};
+static GnoblinPluginInput input = {diagnostics, NULL, NULL};
 #endif
 
 static void _clutter_stage_queue_event(ClutterStage* s, ClutterEvent* e, gboolean copy) {

@@ -168,9 +168,12 @@ static void update_visibility(GnoblinPluginUi* ui) {
 
 static void draw_panels(GnoblinImGuiOverlay* overlay, void* user_data) {
     auto* ui = static_cast<GnoblinPluginUi*>(user_data);
-    gnoblin_recovery_panel_draw(overlay, ui->recovery.get());
+    /* The console is modal and covers the notice's position; drawing both made
+     * the notice show through the console. The notice returns when it closes. */
     if (ui->console->visible())
         ui->console->draw_frame(overlay);
+    else
+        gnoblin_recovery_panel_draw(overlay, ui->recovery.get());
 }
 
 static void console_visibility_changed(GnoblinPluginUi* ui) {
@@ -255,6 +258,9 @@ static bool console_inspection_node(GVariant* dictionary, guint depth, guint* no
         return false;
     (*node_count)++;
     g_variant_lookup(dictionary, "has_more", "b", &destination->has_more);
+    gint32 more = 0;
+    if (g_variant_lookup(dictionary, "more", "i", &more) && more > 0)
+        destination->more = static_cast<std::uint32_t>(more);
 
     g_autoptr(GVariant) children =
         g_variant_lookup_value(dictionary, "children", G_VARIANT_TYPE("aa{sv}"));
@@ -300,24 +306,48 @@ static std::vector<GnoblinConsoleInspectorNode> console_inspection_nodes(GVarian
     return nodes;
 }
 
+/* Lua prefixes errors with the chunk name and line, "(gnoblin console):1: ". One-line input makes
+ * that noise, so the console shows the message alone. */
+static std::string strip_console_chunk(const char* message) {
+    static const char prefix[] = "(gnoblin console):";
+    std::string text = message;
+    if (text.compare(0, sizeof(prefix) - 1, prefix) != 0)
+        return text;
+    std::size_t index = sizeof(prefix) - 1;
+    while (index < text.size() && g_ascii_isdigit(text[index]))
+        index++;
+    if (text.compare(index, 2, ": ") == 0)
+        return text.substr(index + 2);
+    return text;
+}
+
 static GnoblinConsoleResult runtime_result(gboolean success, GVariant* result, const char* error) {
     GnoblinConsoleResult converted;
     converted.success = success;
     if (!success)
-        converted.error = error ? error : "runtime request failed";
+        converted.error = strip_console_chunk(error ? error : "runtime request failed");
     else if (result != nullptr) {
         const char* value = nullptr;
         if (g_variant_lookup(result, "value", "&s", &value) && value)
             converted.value = value;
         else
             converted.value = "nil";
-        const char* type = nullptr;
-        if (g_variant_lookup(result, "type", "&s", &type) && type)
-            converted.value += "\n(type: " + std::string(type) + ")";
         gint64 operations = 0;
         if (g_variant_lookup(result, "operations", "x", &operations) && operations > 0)
             converted.value += "\n" + std::to_string(operations) + " runtime operation(s) queued";
         converted.inspection = console_inspection_nodes(result);
+        /* A single result is already printed above. Its tree is only worth showing when the value
+         * can be expanded, and then without a wrapper row that repeats the value. */
+        if (converted.inspection.size() == 1) {
+            GnoblinConsoleInspectorNode only = std::move(converted.inspection.front());
+            converted.inspection = std::move(only.children);
+            if (only.has_more) {
+                GnoblinConsoleInspectorNode marker;
+                marker.more = only.more;
+                marker.has_more = true;
+                converted.inspection.push_back(std::move(marker));
+            }
+        }
     }
     return converted;
 }
@@ -504,8 +534,12 @@ GnoblinPluginUi* gnoblin_plugin_ui_new(ClutterActor* parent, MetaDisplay* displa
             break;
         }
     }
-    GnoblinRecoveryPanelActions actions = {
-        open_config_folder, ui->terminal.empty() ? nullptr : open_terminal, reload_config, ui};
+    /* "Open config" hands the folder to whatever application is registered for directories
+     * (a file manager). Without one the request would fail silently, so offer no button. */
+    g_autoptr(GAppInfo) folder_handler = g_app_info_get_default_for_type("inode/directory", FALSE);
+    GnoblinRecoveryPanelActions actions = {folder_handler ? open_config_folder : nullptr,
+                                           ui->terminal.empty() ? nullptr : open_terminal,
+                                           reload_config, ui};
     gnoblin_recovery_panel_set_actions(ui->recovery.get(), &actions);
     gnoblin_imgui_overlay_set_draw_callback(ui->overlay, draw_panels, ui, nullptr);
     load_recovery_marker(ui);
@@ -564,6 +598,40 @@ void gnoblin_plugin_ui_set_session_locked(GnoblinPluginUi* ui, gboolean locked) 
 
 gboolean gnoblin_plugin_ui_console_visible(GnoblinPluginUi* ui) {
     return ui != nullptr && ui->console->visible();
+}
+
+/* Feed one key event to the console. */
+static gboolean console_take_key(GnoblinPluginUi* ui, const ClutterEvent* event) {
+    const gboolean pressed = clutter_event_type(event) == CLUTTER_KEY_PRESS;
+    const gboolean consumed = ui->console->handle_key(
+        clutter_event_get_key_symbol(event), clutter_event_get_state(event), pressed,
+        (clutter_event_get_flags(event) & CLUTTER_EVENT_FLAG_REPEATED) != 0);
+    if (pressed) {
+        const gunichar character = clutter_event_get_key_unicode(event);
+        if (character != 0 && !g_unichar_iscntrl(character)) {
+            char text[7] = {};
+            const int length = g_unichar_to_utf8(character, text);
+            text[length] = '\0';
+            ui->console->add_text(text);
+        }
+    }
+    return consumed || pressed;
+}
+
+gboolean gnoblin_plugin_ui_handle_key_event(GnoblinPluginUi* ui, const ClutterEvent* event) {
+    if (ui == nullptr || ui->session_locked || !ui->console->visible())
+        return FALSE;
+    const ClutterEventType type = clutter_event_type(event);
+    if (type != CLUTTER_KEY_PRESS && type != CLUTTER_KEY_RELEASE)
+        return FALSE;
+    /* Switching to another console stays available. */
+    const guint keyval = clutter_event_get_key_symbol(event);
+    const ClutterModifierType state = clutter_event_get_state(event);
+    if (keyval >= CLUTTER_KEY_F1 && keyval <= CLUTTER_KEY_F12 && (state & CLUTTER_CONTROL_MASK) &&
+        (state & CLUTTER_MOD1_MASK))
+        return FALSE;
+    console_take_key(ui, event);
+    return TRUE;
 }
 
 gboolean gnoblin_plugin_ui_handle_event(GnoblinPluginUi* ui, const ClutterEvent* event) {
@@ -633,21 +701,39 @@ gboolean gnoblin_plugin_ui_handle_event(GnoblinPluginUi* ui, const ClutterEvent*
                                               ui->recovery_buttons & (1u << 2));
         return TRUE;
     }
+    case CLUTTER_SCROLL: {
+        float dx = 0.0f, dy = 0.0f;
+        switch (clutter_event_get_scroll_direction(event)) {
+        case CLUTTER_SCROLL_UP:
+            dy = 1.0f;
+            break;
+        case CLUTTER_SCROLL_DOWN:
+            dy = -1.0f;
+            break;
+        case CLUTTER_SCROLL_LEFT:
+            dx = 1.0f;
+            break;
+        case CLUTTER_SCROLL_RIGHT:
+            dx = -1.0f;
+            break;
+        case CLUTTER_SCROLL_SMOOTH: {
+            double delta_x = 0.0, delta_y = 0.0;
+            clutter_event_get_scroll_delta(event, &delta_x, &delta_y);
+            dx = static_cast<float>(-delta_x);
+            dy = static_cast<float>(-delta_y);
+            break;
+        }
+        default:
+            break;
+        }
+        if (modal)
+            gnoblin_imgui_overlay_add_scroll(ui->overlay, dx, dy);
+        return TRUE;
+    }
     case CLUTTER_KEY_PRESS:
     case CLUTTER_KEY_RELEASE: {
-        const gboolean pressed = clutter_event_type(event) == CLUTTER_KEY_PRESS;
-        const gboolean consumed = ui->console->handle_key(clutter_event_get_key_symbol(event),
-                                                          clutter_event_get_state(event), pressed);
-        if (pressed) {
-            const gunichar character = clutter_event_get_key_unicode(event);
-            if (character != 0 && !g_unichar_iscntrl(character)) {
-                char text[7] = {};
-                const int length = g_unichar_to_utf8(character, text);
-                text[length] = '\0';
-                ui->console->add_text(text);
-            }
-        }
-        return consumed || pressed;
+        /* While the console is open its keys are taken earlier, before keybindings. */
+        return console_take_key(ui, event) || ui->console->visible();
     }
     default:
         return TRUE;

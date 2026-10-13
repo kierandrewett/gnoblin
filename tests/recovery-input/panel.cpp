@@ -13,7 +13,7 @@ struct Console {
     bool visible() const {
         return false;
     }
-    bool handle_key(guint, ClutterModifierType, gboolean) {
+    bool handle_key(guint, ClutterModifierType, gboolean, bool = false) {
         return false;
     }
     void add_text(const char*) {}
@@ -28,6 +28,7 @@ struct GnoblinPluginUi {
 static GnoblinPluginUi* ui;
 
 void gnoblin_imgui_overlay_queue_redraw(GnoblinImGuiOverlay*) {}
+void gnoblin_imgui_overlay_add_scroll(GnoblinImGuiOverlay*, float, float) {}
 #include "ui-input.inc"
 
 static void no_action(void*) {}

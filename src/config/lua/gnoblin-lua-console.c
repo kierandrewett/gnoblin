@@ -122,6 +122,7 @@ static GVariant* console_inspection_node(lua_State* state, const char* label, in
                                          guint depth, ConsoleInspection* inspection) {
     index = lua_absindex(state, index);
     gboolean has_more = FALSE;
+    gint32 more = 0;
     g_autoptr(GString) value = g_string_new(NULL);
     console_append_inspection_value(value, state, index, inspection);
 
@@ -143,7 +144,13 @@ static GVariant* console_inspection_node(lua_State* state, const char* label, in
                 if (child_count >= MAX_CONSOLE_INSPECTION_CHILDREN ||
                     inspection->nodes >= MAX_CONSOLE_INSPECTION_NODES) {
                     has_more = TRUE;
-                    lua_pop(state, 1); /* value; retain key only until stack reset */
+                    /* Count what is left so the console can say how much it did not list. */
+                    more = 1;
+                    lua_pop(state, 1); /* value; the key stays for lua_next */
+                    while (more < G_MAXINT32 && lua_next(state, table)) {
+                        more++;
+                        lua_pop(state, 1);
+                    }
                     break;
                 }
                 g_autoptr(GString) child_label = g_string_new(NULL);
@@ -171,6 +178,7 @@ static GVariant* console_inspection_node(lua_State* state, const char* label, in
     g_variant_builder_add(&node, "{sv}", "value", g_variant_new_string(value->str));
     g_variant_builder_add(&node, "{sv}", "children", g_variant_builder_end(&children));
     g_variant_builder_add(&node, "{sv}", "has_more", g_variant_new_boolean(has_more));
+    g_variant_builder_add(&node, "{sv}", "more", g_variant_new_int32(more));
     return g_variant_ref_sink(g_variant_builder_end(&node));
 }
 

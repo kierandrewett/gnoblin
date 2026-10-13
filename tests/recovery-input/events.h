@@ -31,6 +31,15 @@ typedef enum {
     CLUTTER_EVENT_LAST
 } ClutterEventType;
 typedef guint ClutterModifierType;
+typedef enum {
+    CLUTTER_SCROLL_UP,
+    CLUTTER_SCROLL_DOWN,
+    CLUTTER_SCROLL_LEFT,
+    CLUTTER_SCROLL_RIGHT,
+    CLUTTER_SCROLL_SMOOTH
+} ClutterScrollDirection;
+typedef guint ClutterEventFlags;
+#define CLUTTER_EVENT_FLAG_REPEATED (1u << 3)
 typedef struct {
     ClutterEventType type;
     float x, y;
@@ -48,6 +57,16 @@ static inline void clutter_event_get_coords(const ClutterEvent* e, float* x, flo
     *y = e->y;
 }
 static inline ClutterModifierType clutter_event_get_state(const ClutterEvent* e) {
+    return 0;
+}
+static inline ClutterScrollDirection clutter_event_get_scroll_direction(const ClutterEvent* e) {
+    return CLUTTER_SCROLL_UP;
+}
+static inline void clutter_event_get_scroll_delta(const ClutterEvent* e, double* dx, double* dy) {
+    *dx = 0;
+    *dy = 0;
+}
+static inline ClutterEventFlags clutter_event_get_flags(const ClutterEvent* e) {
     return 0;
 }
 static inline guint clutter_event_get_key_symbol(const ClutterEvent* e) {

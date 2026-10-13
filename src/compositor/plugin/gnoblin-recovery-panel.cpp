@@ -4,6 +4,7 @@
 
 #include <imgui.h>
 
+#include <algorithm>
 #include <cfloat>
 #include <string>
 
@@ -77,16 +78,39 @@ bool gnoblin_recovery_panel_contains(const GnoblinRecoveryPanel* panel, float x,
            y < panel->position.y + panel->size.y;
 }
 
+namespace {
+constexpr float kContentWidth = 440.0f;
+constexpr float kDetailsMaxHeight = 150.0f;
+
+ImVec4 rgb(unsigned hex, float alpha = 1.0f) {
+    return ImVec4(((hex >> 16) & 0xff) / 255.0f, ((hex >> 8) & 0xff) / 255.0f,
+                  (hex & 0xff) / 255.0f, alpha);
+}
+
+/* Neutral grey with one accent and two severity colours, so the notice reads as
+ * a warning without borrowing any shell's palette. */
+const ImVec4 kWarning = rgb(0xe5a50a);
+const ImVec4 kDanger = rgb(0xff8080);
+const ImVec4 kQuiet = rgb(0x9a9a9a);
+
+void paragraph(const char* text, const ImVec4* colour = nullptr) {
+    if (colour != nullptr)
+        ImGui::PushStyleColor(ImGuiCol_Text, *colour);
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + kContentWidth);
+    ImGui::TextUnformatted(text);
+    ImGui::PopTextWrapPos();
+    if (colour != nullptr)
+        ImGui::PopStyleColor();
+}
+} // namespace
+
 static void draw_configuration_notice(const GnoblinRecoveryPanel* panel) {
     if (panel->fallback_source == GnoblinRecoveryFallbackSource::None)
         return;
 
-    /* The panel header already says "Configuration recovery active". */
-    if (panel->fallback_source == GnoblinRecoveryFallbackSource::LastKnownGood)
-        ImGui::TextWrapped("Gnoblin started with your last working configuration.");
-    else
-        ImGui::TextWrapped("Gnoblin started with its built-in default configuration.");
-    ImGui::TextDisabled("Fix your configuration, then run: gnoblinctl reload");
+    paragraph(panel->fallback_source == GnoblinRecoveryFallbackSource::LastKnownGood
+                  ? "Running your last working configuration."
+                  : "Running the built-in default configuration.");
 }
 
 static void draw_shell_notice(const GnoblinRecoveryPanel* panel) {
@@ -94,26 +118,49 @@ static void draw_shell_notice(const GnoblinRecoveryPanel* panel) {
         return;
 
     if (panel->fallback_source != GnoblinRecoveryFallbackSource::None)
-        ImGui::Separator();
-    ImGui::TextUnformatted("Shell unavailable");
-    ImGui::Indent();
-    ImGui::TextWrapped("Gnoblin is running, but no shell layer is active.");
-    ImGui::TextDisabled("Start your shell or correct its configuration.");
-    ImGui::Unindent();
+        ImGui::Spacing();
+    ImGui::TextColored(kWarning, "No shell layer is active.");
+    paragraph("Start your shell or correct its configuration.", &kQuiet);
 }
 
+/* The supervisor's message is often a Lua traceback. The first line is the
+ * error itself, so it is coloured; the rest is context. */
 static void draw_error_notice(const GnoblinRecoveryPanel* panel) {
     if (panel->error_message.empty())
         return;
 
     if (panel->fallback_source != GnoblinRecoveryFallbackSource::None || panel->shell_missing)
-        ImGui::Separator();
-    ImGui::TextUnformatted("Details");
-    ImGui::Indent();
-    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 440.0f);
-    ImGui::TextUnformatted(panel->error_message.c_str());
-    ImGui::PopTextWrapPos();
-    ImGui::Unindent();
+        ImGui::Spacing();
+
+    const std::string& message = panel->error_message;
+    const std::string::size_type split = message.find('\n');
+    const std::string first = message.substr(0, split);
+    const std::string rest = split == std::string::npos ? "" : message.substr(split + 1);
+
+    const ImVec2 padding(10.0f, 8.0f);
+    const float wrap = kContentWidth - padding.x * 2;
+    float text_height = ImGui::CalcTextSize(first.c_str(), nullptr, false, wrap).y;
+    if (!rest.empty())
+        text_height += ImGui::GetStyle().ItemSpacing.y +
+                       ImGui::CalcTextSize(rest.c_str(), nullptr, false, wrap).y;
+    const float height = std::min(text_height + padding.y * 2, kDetailsMaxHeight);
+
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, padding);
+    ImGui::PushStyleColor(ImGuiCol_ChildBg, rgb(0x161616));
+    ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(kDanger.x, kDanger.y, kDanger.z, 0.35f));
+    if (ImGui::BeginChild("##details", ImVec2(kContentWidth, height), ImGuiChildFlags_Borders)) {
+        ImGui::PushStyleColor(ImGuiCol_Text, kDanger);
+        ImGui::TextWrapped("%s", first.c_str());
+        ImGui::PopStyleColor();
+        if (!rest.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, kQuiet);
+            ImGui::TextWrapped("%s", rest.c_str());
+            ImGui::PopStyleColor();
+        }
+    }
+    ImGui::EndChild();
+    ImGui::PopStyleColor(2);
+    ImGui::PopStyleVar();
 }
 
 static bool draw_action_button(const char* label, GnoblinRecoveryPanelActionFunc action,
@@ -140,30 +187,38 @@ void gnoblin_recovery_panel_draw(GnoblinImGuiOverlay* overlay, GnoblinRecoveryPa
         return;
 
     constexpr float margin = 14.0f;
-    constexpr float width = 500.0f;
+    const ImGuiStyle& style = ImGui::GetStyle();
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(ImVec2(viewport->WorkPos.x + margin, viewport->WorkPos.y + margin),
                             ImGuiCond_Always);
-    ImGui::SetNextWindowSizeConstraints(ImVec2(320.0f, 0.0f), ImVec2(width, FLT_MAX));
-    ImGui::SetNextWindowBgAlpha(0.94f);
+    const float window_width = kContentWidth + 32.0f;
+    ImGui::SetNextWindowSizeConstraints(ImVec2(window_width, 0.0f), ImVec2(window_width, FLT_MAX));
 
-    constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
-                                       ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                                       ImGuiWindowFlags_AlwaysAutoResize;
-    bool open = true;
-    if (ImGui::Begin("Gnoblin recovery", &open, flags)) {
+    const bool failed = panel->fallback_source == GnoblinRecoveryFallbackSource::None &&
+                        !panel->error_message.empty();
+    const ImVec4 tone = failed ? kDanger : kWarning;
+
+    constexpr ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(16.0f, 12.0f));
+    const bool open = ImGui::Begin("Gnoblin recovery", nullptr, flags);
+    ImGui::PopStyleVar();
+    if (open) {
+        const float x0 = ImGui::GetCursorPosX();
+
         if (panel->fallback_source != GnoblinRecoveryFallbackSource::None)
-            ImGui::TextUnformatted("Configuration recovery active");
+            ImGui::TextColored(tone, "Configuration failed to load");
         else if (!panel->error_message.empty())
-            ImGui::TextUnformatted("Gnoblin error");
+            ImGui::TextColored(tone, "Gnoblin error");
         else
-            ImGui::TextUnformatted("Gnoblin needs attention");
-        ImGui::Separator();
+            ImGui::TextColored(tone, "Gnoblin needs attention");
         draw_configuration_notice(panel);
         draw_shell_notice(panel);
         draw_error_notice(panel);
 
-        ImGui::Spacing();
+        ImGui::Dummy(ImVec2(0.0f, 2.0f));
         const bool action_ran = draw_action_button("Open config", panel->actions.open_config_folder,
                                                    panel->actions.user_data);
         ImGui::SameLine();
@@ -175,20 +230,17 @@ void gnoblin_recovery_panel_draw(GnoblinImGuiOverlay* overlay, GnoblinRecoveryPa
         if (action_ran || terminal_opened || reload_requested)
             queue_panel_redraw(overlay);
 
-        ImGui::SameLine();
+        const float dismiss_width = ImGui::CalcTextSize("Dismiss").x + style.FramePadding.x * 2;
+        ImGui::SameLine(x0 + kContentWidth - dismiss_width);
         if (ImGui::Button("Dismiss")) {
             gnoblin_recovery_panel_dismiss(panel);
             queue_panel_redraw(overlay);
         }
         if (!panel->actions.open_config_folder && !panel->actions.open_terminal &&
             !panel->actions.reload_config)
-            ImGui::TextDisabled("Recovery actions are unavailable in this session.");
+            ImGui::TextColored(kQuiet, "Recovery actions are unavailable in this session.");
     }
     panel->position = ImGui::GetWindowPos();
     panel->size = ImGui::GetWindowSize();
     ImGui::End();
-    if (!open) {
-        gnoblin_recovery_panel_dismiss(panel);
-        queue_panel_redraw(overlay);
-    }
 }
