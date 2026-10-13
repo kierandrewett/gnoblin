@@ -23,7 +23,7 @@
       "version": "0.1.10"
     },
     "xdg-desktop-portal-gnoblin": {
-      "requires": ["gtk4", "json-glib", "xdg-desktop-portal"],
+      "requires": ["gdk-pixbuf", "gtk4", "json-glib", "libpipewire", "xdg-desktop-portal"],
       "source": "xdg-desktop-portal-gnome",
       "version": "51.0"
     }
@@ -57,6 +57,13 @@
       "names": {
         "arch": "dconf",
         "rpm": "dconf"
+      }
+    },
+    "gdk-pixbuf": {
+      "minVersion": null,
+      "names": {
+        "arch": "gdk-pixbuf2",
+        "rpm": "gdk-pixbuf2"
       }
     },
     "glib": {
@@ -127,6 +134,13 @@
       "names": {
         "arch": "libinput",
         "rpm": "libinput"
+      }
+    },
+    "libpipewire": {
+      "minVersion": null,
+      "names": {
+        "arch": "libpipewire",
+        "rpm": "pipewire-libs"
       }
     },
     "lua": {

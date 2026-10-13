@@ -3,6 +3,7 @@
   stdenv,
   gcc16Stdenv ? stdenv,
   glib,
+  gdk-pixbuf,
   json-glib,
   libsysprof-capture,
   libxkbcommon,
@@ -27,6 +28,7 @@
   gvdbSrc,
   hyprcursor,
   libglycin,
+  pipewire,
   ibus,
   gcr_4,
   polkit,
@@ -126,8 +128,10 @@ let
       (old.prePatch or "") + copyOverlay "xdg-desktop-portal-gnome" + addSubproject gxdpSrc "libgxdp";
     nativeBuildInputs = (old.nativeBuildInputs or [ ]) ++ [ git ];
     buildInputs = (old.buildInputs or [ ]) ++ [
+      gdk-pixbuf
       json-glib
       libglycin
+      pipewire
     ];
     mesonFlags = (old.mesonFlags or [ ]) ++ [
       "-Ddbus_service_dir=${placeholder "out"}/share/dbus-1/services"

@@ -17,6 +17,7 @@ BuildRequires:  gettext
 BuildRequires:  meson
 BuildRequires:  ninja-build
 BuildRequires:  pkgconfig(fontconfig)
+BuildRequires:  pkgconfig(gdk-pixbuf-2.0)
 BuildRequires:  pkgconfig(gio-unix-2.0)
 BuildRequires:  pkgconfig(glib-2.0) >= 2.76
 BuildRequires:  pkgconfig(glycin-2)
@@ -25,6 +26,7 @@ BuildRequires:  pkgconfig(gtk4) >= 4.20.0
 BuildRequires:  pkgconfig(gtk4-unix-print)
 BuildRequires:  pkgconfig(json-glib-1.0)
 BuildRequires:  pkgconfig(libadwaita-1) >= 1.7
+BuildRequires:  pkgconfig(libpipewire-0.3)
 BuildRequires:  pkgconfig(xdg-desktop-portal) >= 1.20.0
 Requires:       gtk4 >= 4.20.0
 Requires:       xdg-desktop-portal >= 1.20.0
