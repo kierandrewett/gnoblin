@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 13 Oct 2026 03:00:00 +0000
+Subject: [PATCH] backend: refresh cursors when stream inhibition changes
+
+Adding an embedded area or monitor stream previously changed only the
+inhibitor list. A stationary hardware cursor retained an empty software
+overlay, so FORCE_CURSORS could paint a frame without the cursor. Removing
+the stream likewise left the renderer stale until another cursor update.
+
+Use the existing update_cursors() traversal after each list mutation. It
+invalidates and refreshes all active sprites, tolerates sprites without a
+renderer, and lets the native renderer evaluate the remaining inhibitors.
+Hidden and metadata streams do not enter this path.
+
+Base: 138a14fbeef09d49ebf5be8a0cb83b042dd5c841 (Mutter 51.0)
+---
+ src/backends/meta-backend.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/src/backends/meta-backend.c b/src/backends/meta-backend.c
+--- a/src/backends/meta-backend.c
++++ b/src/backends/meta-backend.c
+@@ -1957,6 +1957,10 @@
+ 
+   priv->hw_cursor_inhibitors = g_list_prepend (priv->hw_cursor_inhibitors,
+                                                inhibitor);
++
++  /* Embedded streams need the software overlay before their first frame,
++   * even when no pointer motion follows the inhibition change. */
++  update_cursors (backend);
+ }
+ 
+ void
+@@ -1967,6 +1971,9 @@
+ 
+   priv->hw_cursor_inhibitors = g_list_remove (priv->hw_cursor_inhibitors,
+                                               inhibitor);
++
++  /* Re-evaluate every sprite against the remaining inhibitors. */
++  update_cursors (backend);
+ }
+ 
+ void
