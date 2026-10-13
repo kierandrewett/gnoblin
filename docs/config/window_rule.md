@@ -130,17 +130,17 @@ Omitted values inherit shell settings. `in` needs brackets because it is a Lua k
 
 ## Frame fields
 
-| Field                 | Default                             | Values                                               |
-| --------------------- | ----------------------------------- | ---------------------------------------------------- |
-| `mode`                | `"off"`                             | `"off"`, `"auto"`, `"prefer-server"`, `"replace"`    |
-| `extents`             | `{32, 1, 1, 1}`                     | Top/right/bottom/left frame size; integers 0–256     |
-| `crop`                | `{0, 0, 0, 0}`                      | Removed client margins; same order and range         |
-| `renderer`            | `"native"`                          | Registered service name                              |
-| `style`               | `"default"`                         | Style understood by that renderer                    |
-| `background`          | `"#242424"`                         | Active background colour                             |
-| `foreground`          | `"#eeeeee"`                         | Foreground colour                                    |
-| `inactive_background` | `"#303030"`                         | Unfocused background colour                          |
-| `button_layout`       | `{"minimize", "maximize", "close"}` | Ordered buttons, without duplicates; `{}` hides them |
+| Field                 | Default                             | Values                                                    |
+| --------------------- | ----------------------------------- | --------------------------------------------------------- |
+| `mode`                | `"off"`                             | `"off"`, `"auto"`, `"prefer-server"`, `"replace"`         |
+| `extents`             | `{32, 1, 1, 1}`                     | Top/right/bottom/left frame size; integers 0–256          |
+| `crop`                | `{0, 0, 0, 0}`                      | Removed client margins; same order and range              |
+| `renderer`            | `"native"`                          | Registered service name                                   |
+| `style`               | `"default"`                         | Style understood by that renderer                         |
+| `background`          | `"#242424"`                         | Active background colour                                  |
+| `foreground`          | `"#eeeeee"`                         | Foreground colour                                         |
+| `inactive_background` | `"#303030"`                         | Unfocused background colour                               |
+| `button_layout`       | `{"minimize", "maximize", "close"}` | Native-frame buttons, without duplicates; `{}` hides them |
 
 The generic default mode is `off`. GTK Wayland windows that create a KDE
 server-decoration object use `auto` behavior by default and receive Gnoblin's
@@ -154,9 +154,13 @@ visible bounds and applies Gnoblin's configured border and shadow there. It
 does not estimate margin sizes. An app that omits visible bounds uses its full
 surface.
 
-`frame.button_layout` sets the buttons drawn by that window's frame renderer.
-For Mutter's global server-side button order, see
-[window management settings](/config/configure/window_management#titlebar-button-placement).
+`frame.button_layout` sets the right-side buttons in Gnoblin's built-in native
+frame, including the fallback shown while an external renderer is unavailable.
+It is not sent to external renderers. Those renderers use their own layout
+settings; Bingux follows GTK settings or its `--button-layout` argument.
+
+The global `window_management.button_layout` preference does not control these
+frames. See [titlebar button placement](/config/configure/window_management#titlebar-button-placement).
 
 See the [window frames guide](/guides/window_frames) for frame modes and
 extents. Register renderers with
