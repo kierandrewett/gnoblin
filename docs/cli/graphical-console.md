@@ -17,6 +17,9 @@ While the console is open it is modal: keyboard shortcuts and keybindings do not
 every key goes to the console. Ctrl+Alt+F1 to F12 still switch to another virtual console.
 Escape and Alt+F2 close it even if you have bound the console to another key.
 
+Pointer and touch input does not reach windows or shell surfaces while the console is open, and
+they lose their hover state.
+
 `gnoblin.console.toggle()` (Native API 1.77+) takes no arguments and queues a
 visibility toggle.
 It is unavailable while the session is locked. Bind it in a loaded Lua config:
@@ -47,7 +50,7 @@ a panel below the list describes the highlighted one, including the keys of a ta
 Typing a call, for example `gnoblin.workspaces.create(`, shows that function's parameters under the
 input with the current one marked. Inside a table argument, the keys it accepts are suggested.
 
-Press Tab to take the highlighted suggestion. Use Up and Down to move through the list; Enter
+Press Tab to take the highlighted suggestion, or Shift+Tab to move up the list. Use Up and Down to move through the list; Enter
 then takes the chosen suggestion, and otherwise runs what you typed. Escape hides the list.
 
 A result that is a table or window record starts collapsed. Click its row, anywhere across

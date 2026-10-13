@@ -190,6 +190,8 @@ class GnoblinConsolePanel {
      * character, or text typed just before them would be lost. */
     bool enter_requested_ = false;
     bool tab_requested_ = false;
+    /* Tab was pressed before the suggestions arrived: take the first one when they do. */
+    bool accept_on_arrival_ = false;
     /* Where the completion list is drawn: above the input, inside the screen. */
     bool completion_scroll_ = false;
     float input_anchor_x_ = 0.0f;

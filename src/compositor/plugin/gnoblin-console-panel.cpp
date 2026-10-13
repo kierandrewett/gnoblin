@@ -5,6 +5,7 @@
 #include "gnoblin-console-panel.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -201,13 +202,23 @@ bool GnoblinConsolePanel::handle_key(guint keyval, ClutterModifierType modifiers
         return true;
     }
 
-    if (imgui_key != ImGuiKey_None)
-        io.AddKeyEvent(imgui_key, true);
-    if (keyval == CLUTTER_KEY_Tab) {
-        tab_requested_ = true;
+    /* Tab belongs to the suggestions. Handing it to ImGui would move keyboard focus off the input
+     * line, so it is not forwarded. Shift+Tab steps back through the list. */
+    if (keyval == CLUTTER_KEY_Tab || keyval == CLUTTER_KEY_ISO_Left_Tab) {
+        if (keyval == CLUTTER_KEY_ISO_Left_Tab || (modifiers & CLUTTER_SHIFT_MASK) != 0) {
+            const int count = static_cast<int>(completions_.size());
+            if (completion_visible_ && count > 0) {
+                completion_index_ = (completion_index_ + count - 1) % count;
+                completion_scroll_ = true;
+            }
+        } else {
+            tab_requested_ = true;
+        }
         queue_redraw();
         return true;
     }
+    if (imgui_key != ImGuiKey_None)
+        io.AddKeyEvent(imgui_key, true);
     if (keyval == CLUTTER_KEY_Up || keyval == CLUTTER_KEY_Down) {
         if (completion_visible_) {
             const int count = static_cast<int>(completions_.size());
@@ -266,6 +277,7 @@ const ImVec4 kStringColour = rgb(0xe9a07a);
 const ImVec4 kNumberColour = rgb(0xa6d189);
 const ImVec4 kKeywordColour = rgb(0x6cb6ff);
 const ImVec4 kFunctionColour = rgb(0x6fd7c8);
+const ImVec4 kTypeColour = rgb(0xe5c07b);
 
 /* Every expandable row, and every leaf, highlights across the full width on hover. */
 constexpr ImGuiTreeNodeFlags kTreeFlags = ImGuiTreeNodeFlags_SpanFullWidth;
@@ -303,6 +315,191 @@ std::string function_text(const std::string& value) {
     if (!starts_with(value, "<function(") || value.size() < 11 || value.back() != '>')
         return "fn";
     return "fn" + value.substr(9, value.size() - 10);
+}
+
+using Span = std::pair<std::string, ImVec4>;
+
+bool is_identifier_char(char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+}
+
+/* The end of a type that starts at "start": it runs to a comma, closing bracket or the end of
+ * the text that is not inside brackets of its own, as in "fun(event: Event): Result|nil". */
+std::size_t type_end(const std::string& text, std::size_t start) {
+    int depth = 0;
+    char quote = 0;
+    for (std::size_t i = start; i < text.size(); i++) {
+        const char c = text[i];
+        if (quote) {
+            if (c == quote)
+                quote = 0;
+            continue;
+        }
+        if (c == '"' || c == '\'')
+            quote = c;
+        else if (c == '(' || c == '<' || c == '{' || c == '[')
+            depth++;
+        else if (c == ')' || c == '>' || c == '}' || c == ']') {
+            if (depth == 0)
+                return i;
+            depth--;
+        } else if (c == ',' && depth == 0)
+            return i;
+    }
+    return text.size();
+}
+
+/* Colours "(name: type, other?: type): result" from the opening parenthesis at index i and
+ * returns the index after it. Names are keys, types are types, punctuation is quiet. */
+std::size_t signature_spans(const std::string& text, std::size_t i, std::vector<Span>* out) {
+    auto push = [out](std::string part, const ImVec4& colour) {
+        if (!part.empty())
+            out->emplace_back(std::move(part), colour);
+    };
+    push("(", kQuietColour);
+    i++;
+    while (i < text.size() && text[i] != ')') {
+        while (i < text.size() && text[i] == ' ')
+            push(" ", kQuietColour), i++;
+        std::size_t name_end = i;
+        while (name_end < text.size() &&
+               (is_identifier_char(text[name_end]) || text[name_end] == '?'))
+            name_end++;
+        if (text.compare(i, 3, "...") == 0)
+            name_end = i + 3;
+        push(text.substr(i, name_end - i), kKeyColour);
+        i = name_end;
+        if (i < text.size() && text[i] == ':') {
+            push(": ", kQuietColour);
+            i++;
+            while (i < text.size() && text[i] == ' ')
+                i++;
+            const std::size_t end = type_end(text, i);
+            push(text.substr(i, end - i), kTypeColour);
+            i = end;
+        }
+        if (i < text.size() && text[i] == ',') {
+            push(", ", kQuietColour);
+            i++;
+            while (i < text.size() && text[i] == ' ')
+                i++;
+        } else if (i < text.size() && text[i] != ')') {
+            push(text.substr(i, 1), kQuietColour); // keep going on text this does not expect
+            i++;
+        }
+    }
+    if (i < text.size()) {
+        push(")", kQuietColour);
+        i++;
+    }
+    if (i < text.size() && text[i] == ':') {
+        push(": ", kQuietColour);
+        i++;
+        while (i < text.size() && text[i] == ' ')
+            i++;
+        const std::size_t end = type_end(text, i);
+        push(text.substr(i, end - i), kTypeColour);
+        i = end;
+    }
+    return i;
+}
+
+/* Colours a result summary such as "{ list: fn(filter?: WindowFilter): Window[], n: 3 }": keys,
+ * functions with their signatures, strings, numbers and keywords each get their own colour. */
+std::vector<Span> highlight(const std::string& text) {
+    std::vector<Span> out;
+    auto push = [&out](std::string part, const ImVec4& colour) {
+        if (!part.empty())
+            out.emplace_back(std::move(part), colour);
+    };
+    bool key_position = true;
+    std::size_t i = 0;
+    while (i < text.size()) {
+        const char c = text[i];
+        if (c == ' ') {
+            push(" ", kQuietColour);
+            i++;
+        } else if (c == '"') {
+            std::size_t end = i + 1;
+            while (end < text.size() && text[end] != '"')
+                end += text[end] == '\\' ? 2 : 1;
+            end = std::min(end + 1, text.size());
+            push(text.substr(i, end - i), kStringColour);
+            i = end;
+            key_position = false;
+        } else if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
+            std::size_t end = i;
+            while (end < text.size() && is_identifier_char(text[end]))
+                end++;
+            const std::string word = text.substr(i, end - i);
+            std::size_t next = end;
+            while (next < text.size() && text[next] == ' ')
+                next++;
+            if (word == "fn" && end < text.size() && text[end] == '(') {
+                push(word, kFunctionColour);
+                i = signature_spans(text, end, &out);
+                key_position = false;
+                continue;
+            }
+            if (word == "fn") {
+                push(word, kFunctionColour);
+            } else if (key_position && next < text.size() && text[next] == ':') {
+                push(word, kKeyColour);
+            } else if (word == "true" || word == "false") {
+                push(word, kKeywordColour);
+            } else {
+                push(word, kQuietColour);
+            }
+            i = end;
+            key_position = false;
+        } else if (std::isdigit(static_cast<unsigned char>(c)) ||
+                   (c == '-' && i + 1 < text.size() &&
+                    std::isdigit(static_cast<unsigned char>(text[i + 1])))) {
+            std::size_t end = i + 1;
+            while (end < text.size() &&
+                   (std::isalnum(static_cast<unsigned char>(text[end])) || text[end] == '.'))
+                end++;
+            push(text.substr(i, end - i), kNumberColour);
+            i = end;
+            key_position = false;
+        } else {
+            /* Punctuation, and any multi-byte character such as the ellipsis, as one unit. */
+            std::size_t length = 1;
+            while (i + length < text.size() &&
+                   (static_cast<unsigned char>(text[i + length]) & 0xc0) == 0x80)
+                length++;
+            push(text.substr(i, length), kQuietColour);
+            key_position = c == '{' || c == '[' || c == ',';
+            i += length;
+        }
+    }
+    return out;
+}
+
+void draw_spans(const std::vector<Span>& spans) {
+    bool first = true;
+    for (const auto& span : spans) {
+        if (!first)
+            ImGui::SameLine(0.0f, 0.0f);
+        first = false;
+        ImGui::PushStyleColor(ImGuiCol_Text, span.second);
+        ImGui::TextUnformatted(span.first.c_str());
+        ImGui::PopStyleColor();
+    }
+}
+
+void draw_highlighted(const std::string& text) {
+    draw_spans(highlight(text));
+}
+
+/* "(a: T): R", the argument list of a function, drawn in colour. */
+void draw_signature_text(const std::string& signature) {
+    std::vector<Span> spans;
+    if (!signature.empty() && signature[0] == '(')
+        signature_spans(signature, 0, &spans);
+    else
+        spans.emplace_back(signature, kTypeColour);
+    draw_spans(spans);
 }
 
 std::string plain_key(const std::string& label) {
@@ -520,7 +717,7 @@ void GnoblinConsolePanel::draw() {
                     ImGui::SameLine(0.0f, 0.0f);
                     const std::string summary =
                         table_preview(row.inspection, false, 0, ImGui::GetContentRegionAvail().x);
-                    ImGui::TextColored(kQuietColour, "%s", summary.c_str());
+                    draw_highlighted(summary);
                     if (open) {
                         for (std::size_t child = 0; child < row.inspection.size(); child++)
                             draw_node(row.inspection[child],
@@ -528,11 +725,13 @@ void GnoblinConsolePanel::draw() {
                         ImGui::TreePop();
                     }
                 } else {
-                    if (!row.text.empty())
-                        marked_row(
-                            "<", kQuietColour,
-                            (is_function_value(row.text) ? function_text(row.text) : row.text)
-                                .c_str());
+                    if (!row.text.empty() && is_function_value(row.text)) {
+                        ImGui::TextColored(kQuietColour, "<");
+                        ImGui::SameLine(0.0f, 8.0f);
+                        draw_highlighted(function_text(row.text));
+                    } else if (!row.text.empty()) {
+                        marked_row("<", kQuietColour, row.text.c_str());
+                    }
                     for (std::size_t child = 0; child < row.inspection.size(); child++) {
                         ImGui::Indent(16.0f);
                         draw_node(row.inspection[child],
@@ -599,7 +798,7 @@ void GnoblinConsolePanel::draw() {
         ImGui::SetCursorPos(ImVec2(kInset, input_top + input_height));
         ImGui::TextColored(kQuietColour, "<");
         ImGui::SameLine(0.0f, 8.0f);
-        ImGui::TextColored(kQuietColour, "%s", preview_text_.c_str());
+        draw_highlighted(preview_text_);
     }
     input_width_ = ImGui::GetItemRectSize().x;
 
@@ -615,8 +814,11 @@ void GnoblinConsolePanel::draw() {
             accept_completion();
         else if (enter)
             submit();
-        else
+        else {
+            /* Tab before the suggestions have arrived takes the first one when they do. */
+            accept_on_arrival_ = tab;
             complete();
+        }
     }
     if (completion_visible_ && completion_source_ != input_.data())
         completion_visible_ = false;
@@ -658,7 +860,14 @@ void GnoblinConsolePanel::draw_signature() {
         ImGuiWindowFlags_NoInputs;
     if (ImGui::Begin("##console-signature", nullptr, flags)) {
         ImGui::PushTextWrapPos(wrap);
-        ImGui::TextUnformatted(signature_.title.c_str());
+        {
+            const std::size_t open = signature_.title.find('(');
+            ImGui::TextColored(kFunctionColour, "%s", signature_.title.substr(0, open).c_str());
+            if (open != std::string::npos) {
+                ImGui::SameLine(0.0f, 0.0f);
+                draw_signature_text(signature_.title.substr(open));
+            }
+        }
         if (!signature_.summary.empty())
             ImGui::TextColored(kQuietColour, "%s", signature_.summary.c_str());
         if (!signature_.rows.empty())
@@ -670,7 +879,9 @@ void GnoblinConsolePanel::draw_signature() {
             ImGui::SameLine(0.0f, 6.0f);
             ImGui::TextColored(kKeyColour, "%s", row.label.c_str());
             ImGui::SameLine(0.0f, 0.0f);
-            ImGui::TextColored(kQuietColour, ": %s", row.type.c_str());
+            ImGui::TextColored(kQuietColour, ": ");
+            ImGui::SameLine(0.0f, 0.0f);
+            ImGui::TextColored(kTypeColour, "%s", row.type.c_str());
             if (!row.description.empty()) {
                 ImGui::SameLine(0.0f, 10.0f);
                 ImGui::TextColored(kQuietColour, "%s", row.description.c_str());
@@ -718,7 +929,7 @@ void GnoblinConsolePanel::draw_completions() {
             }
             if (!completions_[i].detail.empty()) {
                 ImGui::SameLine(column);
-                ImGui::TextColored(kQuietColour, "%s", completions_[i].detail.c_str());
+                draw_signature_text(completions_[i].detail);
             }
             ImGui::PopID();
             if (selected && completion_scroll_)
@@ -744,10 +955,19 @@ void GnoblinConsolePanel::draw_completions() {
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 6.0f));
     if (ImGui::Begin("##console-completion-doc", nullptr, flags | ImGuiWindowFlags_NoInputs)) {
         ImGui::PushTextWrapPos(wrap - 16.0f);
-        if (!generic)
-            ImGui::TextUnformatted(
-                (chosen.label + (starts_with(chosen.detail, "(") ? "" : ": ") + chosen.detail)
-                    .c_str());
+        if (!generic) {
+            if (starts_with(chosen.detail, "(")) {
+                ImGui::TextColored(kFunctionColour, "%s", chosen.label.c_str());
+                ImGui::SameLine(0.0f, 0.0f);
+                draw_signature_text(chosen.detail);
+            } else {
+                ImGui::TextColored(kKeyColour, "%s", chosen.label.c_str());
+                ImGui::SameLine(0.0f, 0.0f);
+                ImGui::TextColored(kQuietColour, ": ");
+                ImGui::SameLine(0.0f, 0.0f);
+                ImGui::TextColored(kTypeColour, "%s", chosen.detail.c_str());
+            }
+        }
         ImGui::TextColored(kQuietColour, "%s", chosen.documentation.c_str());
         ImGui::PopTextWrapPos();
     }
@@ -843,6 +1063,9 @@ void GnoblinConsolePanel::complete() {
                 completion_chosen_ = false;
                 completion_scroll_ = true;
                 completion_visible_ = !completions_.empty();
+                if (accept_on_arrival_ && completion_visible_)
+                    accept_completion();
+                accept_on_arrival_ = false;
                 queue_redraw();
             });
     queue_redraw();
@@ -870,6 +1093,8 @@ void GnoblinConsolePanel::request_preview() {
                 text = "table " + table_preview(result.inspection, false, 0);
             else
                 text = result.value.substr(0, result.value.find('\n'));
+            if (is_function_value(text))
+                text = function_text(text);
         }
         if (text != preview_text_) {
             preview_text_ = std::move(text);
@@ -978,12 +1203,13 @@ void GnoblinConsolePanel::draw_node(const GnoblinConsoleInspectorNode& node,
                 ? table_preview(node.children, node.has_more, 0, ImGui::GetContentRegionAvail().x)
             : is_function_value(node.value) ? function_text(node.value)
                                             : node.value;
-        ImGui::PushStyleColor(ImGuiCol_Text, table_like ? kQuietColour : value_colour(node.value));
-        if (node.children.empty())
+        if (table_like || is_function_value(node.value)) {
+            draw_highlighted(shown_value);
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Text, value_colour(node.value));
             ImGui::TextWrapped("%s", shown_value.c_str());
-        else
-            ImGui::TextUnformatted(shown_value.c_str());
-        ImGui::PopStyleColor();
+            ImGui::PopStyleColor();
+        }
     }
     if (!node.children.empty() && expanded) {
         for (std::size_t i = 0; i < node.children.size(); i++)

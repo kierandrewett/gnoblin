@@ -22,6 +22,10 @@ typedef struct {
 } MetaWaylandPointer;
 typedef struct {
     MetaWaylandPointer* pointer;
+} MetaWaylandSeat;
+typedef struct {
+    MetaWaylandPointer* pointer;
+    MetaWaylandSeat* seat;
 } MetaWaylandCompositor;
 typedef struct {
     GObject parent;
@@ -46,10 +50,12 @@ static MetaDisplay* display;
 static ClutterContext context;
 static MetaWindow window;
 static MetaWaylandPointer pointer;
-static MetaWaylandCompositor compositor = {&pointer};
+static MetaWaylandSeat seat = {&pointer};
+static MetaWaylandCompositor compositor = {&pointer, &seat};
 static gboolean locked, captured, grabbed, replay, consumed, policy_queued, binding;
 static guint ui_calls, stage_calls, client_buttons, client_motion, seat_updates, window_presses;
-static guint policy_calls;
+static guint policy_calls, pointer_focus_clears;
+static gboolean console_modal;
 
 #define HAVE_WAYLAND 1
 #define IS_KEY_EVENT(t) ((t) == CLUTTER_KEY_PRESS || (t) == CLUTTER_KEY_RELEASE)
@@ -143,6 +149,10 @@ static gboolean meta_wayland_text_input_update(MetaWaylandTextInput* t, const Cl
     return FALSE;
 }
 static void meta_display_handle_sticky_mouse_focus_event(MetaDisplay* d, const ClutterEvent* e) {}
+static void meta_wayland_pointer_focus_surface(MetaWaylandPointer* p, void* surface) {
+    pointer_focus_clears++;
+    p->focus_surface = surface;
+}
 static void meta_wayland_compositor_update(MetaWaylandCompositor* c, const ClutterEvent* e) {
     seat_updates++;
 }
@@ -232,7 +242,10 @@ static gboolean diagnostics(const ClutterEvent* e, gpointer data) {
 
 #if PATCHED
 #include "gnoblin-plugin-input.h"
-static GnoblinPluginInput input = {diagnostics, NULL, NULL};
+static gboolean modal(gpointer data) {
+    return console_modal;
+}
+static GnoblinPluginInput input = {diagnostics, NULL, NULL, modal};
 #endif
 
 static void _clutter_stage_queue_event(ClutterStage* s, ClutterEvent* e, gboolean copy) {
@@ -250,7 +263,8 @@ static ClutterEventFilter filter;
 static void setup(void) {
     locked = captured = grabbed = replay = consumed = policy_queued = binding = FALSE;
     ui_calls = stage_calls = client_buttons = client_motion = seat_updates = window_presses =
-        policy_calls = 0;
+        policy_calls = pointer_focus_clears = 0;
+    console_modal = FALSE;
     static GType display_type;
     if (!display_type)
         display_type = g_type_register_static_simple(
@@ -402,6 +416,32 @@ static void test_replay_allowed(void) {
     cleanup();
 }
 
+/* While the console is open the pointer belongs to it: no client gets hover, enter, motion or
+ * buttons, the seat is not updated, and the client that had pointer focus loses it. */
+static void test_console_modal(void) {
+    setup();
+    console_modal = TRUE;
+    send_event(CLUTTER_MOTION, 700, 500);
+    send_event(CLUTTER_BUTTON_PRESS, 700, 500);
+    send_event(CLUTTER_BUTTON_RELEASE, 700, 500);
+    send_event(CLUTTER_SCROLL, 700, 500);
+    g_assert_cmpuint(ui_calls, ==, 4);
+    g_assert_cmpuint(seat_updates, ==, 0);
+    g_assert_cmpuint(client_buttons, ==, 0);
+    g_assert_cmpuint(client_motion, ==, 0);
+    g_assert_cmpuint(window_presses, ==, 0);
+    g_assert_null(pointer.focus_surface);
+    g_assert_cmpuint(pointer_focus_clears, ==, 4);
+    /* Closing the console hands the pointer straight back to clients. */
+    console_modal = FALSE;
+    pointer.focus_surface = &window;
+    send_event(CLUTTER_BUTTON_PRESS, 700, 500);
+    send_event(CLUTTER_BUTTON_RELEASE, 700, 500);
+    g_assert_cmpuint(client_buttons, ==, 2);
+    g_assert_cmpuint(pointer_focus_clears, ==, 4);
+    cleanup();
+}
+
 static void test_detached(void) {
     setup();
 #if PATCHED
@@ -427,6 +467,7 @@ int main(int argc, char** argv) {
     g_test_add_func("/recovery/no-client-no-duplicate", test_no_client_no_duplicate);
     g_test_add_func("/recovery/dismissed-passes-through", test_dismissed_passes_through);
     g_test_add_func("/recovery/replay-allowed", test_replay_allowed);
+    g_test_add_func("/recovery/console-modal-pointer", test_console_modal);
     g_test_add_func("/recovery/detached", test_detached);
     return g_test_run();
 }

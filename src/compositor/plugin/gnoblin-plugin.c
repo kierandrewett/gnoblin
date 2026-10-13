@@ -119,6 +119,13 @@ static gboolean gnoblin_plugin_handle_event(const ClutterEvent* event, gpointer 
                                                                        : CLUTTER_EVENT_PROPAGATE;
 }
 
+static gboolean gnoblin_plugin_is_modal(gpointer user_data) {
+    MetaGnoblinPlugin* self = user_data;
+
+    return !gnoblin_plugin_session_is_locked(self) &&
+           gnoblin_plugin_ui_console_visible(self->diagnostics_ui);
+}
+
 static gboolean gnoblin_plugin_handle_key(const ClutterEvent* event, gpointer user_data) {
     MetaGnoblinPlugin* self = user_data;
 
@@ -174,8 +181,8 @@ static void gnoblin_plugin_start(MetaPlugin* plugin) {
      * share the top-window group, so parenting this actor there lets a shell
      * cover recovery and console UI. */
     self->diagnostics_ui = gnoblin_plugin_ui_new(meta_backend_get_stage(backend), display);
-    self->input =
-        (GnoblinPluginInput){gnoblin_plugin_handle_event, self, gnoblin_plugin_handle_key};
+    self->input = (GnoblinPluginInput){gnoblin_plugin_handle_event, self, gnoblin_plugin_handle_key,
+                                       gnoblin_plugin_is_modal};
     gnoblin_plugin_input_attach(G_OBJECT(display), &self->input);
     self->wayland_compositor = meta_context_get_wayland_compositor(context);
     if (self->wayland_compositor)
