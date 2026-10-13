@@ -129,6 +129,21 @@ package provides. Without them, a session starts but behaves differently:
 Check the portal backend with `systemctl --user is-active
 xdg-desktop-portal-gnoblin` and `coredumpctl list | rg portal-gnoblin`.
 
+## Watch the guest
+
+`scripts/qemu-e2e start` runs the guest without a visible display and exposes it
+only over VNC and QMP. Set `GNOBLIN_QEMU_WINDOW=1` to open the guest screen in a
+window on the host desktop as well:
+
+```sh
+GNOBLIN_QEMU_WINDOW=1 scripts/qemu-e2e start "$run"
+```
+
+The window uses QEMU's GTK display. With the default GL video it keeps the
+virgl path, and it also works with `GNOBLIN_QEMU_VIDEO=plain`. VNC, QMP
+screenshots and the guest command channel behave the same either way. The host
+session needs a running graphical display.
+
 ## Test more than one monitor
 
 `scripts/qemu-e2e start` gives the guest one display. Set

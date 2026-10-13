@@ -3,6 +3,7 @@
 #
 # This script never writes to the base disk. Guest installation and validation
 # use SSH agent/key authentication only; it does not accept or store passwords.
+# shellcheck disable=SC2054,SC2155
 set -euo pipefail
 
 readonly ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -120,11 +121,11 @@ start() {
     # window effects.  egl-headless is available on current QEMU builds but
     # some hosts lack a compatible EGL renderer; retain a recorded plain VGA
     # fallback so a run remains usable and its evidence says what was tested.
-    local -a video=( -device virtio-vga-gl -display egl-headless )
+    local -a video=(-device virtio-vga-gl -display egl-headless)
     # GNOBLIN_QEMU_VIDEO=plain boots a software virtio GPU. Use it to tell a guest GPU fault
     # (for example virgl after a suspend) from a compositor fault.
     if [[ "${GNOBLIN_QEMU_VIDEO:-gl}" == plain ]]; then
-        video=( -device virtio-vga -display none )
+        video=(-device virtio-vga -display none)
     fi
     # A virtio-gpu head beyond the first stays disconnected until a VNC client
     # attaches and negotiates a size, so add one extra (non-GL: QEMU allows only one GL GPU) virtio GPU per extra
@@ -132,13 +133,21 @@ start() {
     # it as a second DRM card. Each extra GPU gets its own VNC console.
     local -a extra_display=()
     local outputs="${GNOBLIN_QEMU_OUTPUTS:-1}" extra
-    if (( outputs > 1 )); then
-        video=( -device virtio-vga-gl,id=gpu0 -display egl-headless )
+    if ((outputs > 1)); then
+        video=(-device virtio-vga-gl,id=gpu0 -display egl-headless)
         for extra in $(seq 1 $((outputs - 1))); do
-            extra_display+=( -device "virtio-gpu-pci,id=gpu${extra}"
-                             -vnc "127.0.0.1:$((vnc_port - 5900 + extra)),display=gpu${extra}" )
+            extra_display+=(-device "virtio-gpu-pci,id=gpu${extra}"
+                -vnc "127.0.0.1:$((vnc_port - 5900 + extra)),display=gpu${extra}")
         done
     fi
+    # GNOBLIN_QEMU_WINDOW=1 shows the guest screen in a window on the host desktop. The VNC server
+    # stays available either way.
+    if [[ -n "${GNOBLIN_QEMU_WINDOW:-}" ]]; then
+        video=("${video[@]/egl-headless/gtk,gl=on,show-menubar=off}")
+        video=("${video[@]/none/gtk,show-menubar=off}")
+    fi
+    local -a fallback_display=(-display none)
+    [[ -n "${GNOBLIN_QEMU_WINDOW:-}" ]] && fallback_display=(-display gtk,show-menubar=off)
     local renderer="virtio-vga-gl/egl-headless"
     [[ "${GNOBLIN_QEMU_VIDEO:-gl}" == plain ]] && renderer="virtio-vga/plain"
     printf '%s\n' "$renderer" >"$(run_file "$run" renderer)"
@@ -169,7 +178,7 @@ start() {
         qemu-system-x86_64 \
             -name "gnoblin-e2e" -machine q35,accel=kvm -cpu host -smp "$VCPUS" -m "$MEMORY_MIB" \
             -drive "file=$(run_file "$run" guest-overlay.qcow2),if=virtio,format=qcow2,cache=writeback,discard=unmap" \
-            -device virtio-vga -display none -vnc "127.0.0.1:$((vnc_port - 5900))" \
+            -device virtio-vga "${fallback_display[@]}" -vnc "127.0.0.1:$((vnc_port - 5900))" \
             -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${ssh_port}-:22" -device virtio-net-pci,netdev=net0 \
             -virtfs "local,path=${source_root},mount_tag=gnoblin-src,security_model=none,readonly=on" \
             -qmp "unix:$(run_file "$run" qmp.sock),server=on,wait=off" -serial "file:$(run_file "$run" serial.log)" \
@@ -232,7 +241,7 @@ stop() {
     local run="$1"
     local qmp="$(run_file "$run" qmp.sock)"
     if [[ -S "$qmp" ]]; then
-        printf '{"execute":"qmp_capabilities"}\n{"execute":"system_powerdown"}\n' | \
+        printf '{"execute":"qmp_capabilities"}\n{"execute":"system_powerdown"}\n' |
             socat - UNIX-CONNECT:"$qmp" >/dev/null 2>&1 || true
     fi
     if [[ -r "$(run_file "$run" qemu.pid)" ]]; then
@@ -247,11 +256,52 @@ stop() {
 }
 
 case "${1:-}" in
-    prepare) shift; prepare "$@" ;;
-    start) shift; (($# == 1)) || { usage >&2; exit 2; }; start "$1" ;;
-    sync-prefix) shift; (($# == 2)) || { usage >&2; exit 2; }; sync_prefix "$1" "$2" ;;
-    guest) shift; (($# >= 3)) || { usage >&2; exit 2; }; guest "$@" ;;
-    collect) shift; (($# == 1)) || { usage >&2; exit 2; }; collect "$1" ;;
-    stop) shift; (($# == 1)) || { usage >&2; exit 2; }; stop "$1" ;;
-    *) usage >&2; exit 2 ;;
+    prepare)
+        shift
+        prepare "$@"
+        ;;
+    start)
+        shift
+        (($# == 1)) || {
+            usage >&2
+            exit 2
+        }
+        start "$1"
+        ;;
+    sync-prefix)
+        shift
+        (($# == 2)) || {
+            usage >&2
+            exit 2
+        }
+        sync_prefix "$1" "$2"
+        ;;
+    guest)
+        shift
+        (($# >= 3)) || {
+            usage >&2
+            exit 2
+        }
+        guest "$@"
+        ;;
+    collect)
+        shift
+        (($# == 1)) || {
+            usage >&2
+            exit 2
+        }
+        collect "$1"
+        ;;
+    stop)
+        shift
+        (($# == 1)) || {
+            usage >&2
+            exit 2
+        }
+        stop "$1"
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
 esac
