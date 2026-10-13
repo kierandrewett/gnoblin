@@ -3,6 +3,7 @@
 
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
+#include <glib-unix.h>
 #include <json-glib/json-glib.h>
 #include <string.h>
 #include <unistd.h>
@@ -61,6 +62,13 @@ typedef struct {
     guint logind_lock_signal;
     guint screensaver_registration;
     guint activity_registration;
+    GSocketConnection* lock_connection;
+    GSource* lock_source;
+    GString* lock_pending;
+    guint lock_retry;
+    gboolean screensaver_active_known;
+    gboolean screensaver_active;
+    gboolean gnome_owned;
     gboolean name_lost;
     gboolean activity_available;
     gboolean activity_idle;
@@ -223,6 +231,10 @@ static gboolean run_gnoblinctl(const char* first, const char* second, char** sta
 
 /* TRUE when the compositor holds any lock state other than unlocked, so a locker is or was in
  * charge. A second lock request then has nothing to do, as in GNOME's screen shield. */
+static gboolean lock_state_active(const char* state) {
+    return !g_str_equal(state, "unlocked");
+}
+
 static gboolean session_lock_active(GError** error) {
     g_autofree char* output = NULL;
     g_autoptr(JsonParser) parser = json_parser_new();
@@ -239,7 +251,7 @@ static gboolean session_lock_active(GError** error) {
     }
     const char* state = json_object_get_string_member_with_default(json_node_get_object(root),
                                                                    "lock_state", "unlocked");
-    return !g_str_equal(state, "unlocked");
+    return lock_state_active(state);
 }
 
 static gboolean request_session_lock(GError** error) {
@@ -263,6 +275,150 @@ static gboolean gnome_screensaver_owned(IdleService* service) {
     if (reply)
         g_variant_get(reply, "(b)", &owned);
     return owned;
+}
+
+static void publish_screen_saver_active(IdleService* service, gboolean active) {
+    gboolean changed = service->screensaver_active_known && service->screensaver_active != active;
+    service->screensaver_active_known = TRUE;
+    service->screensaver_active = active;
+    if (changed)
+        g_dbus_connection_emit_signal(service->session_bus, NULL, SCREENSAVER_PATH,
+                                      SCREENSAVER_NAME, "ActiveChanged",
+                                      g_variant_new("(b)", active), NULL);
+}
+
+static void disconnect_lock_monitor(IdleService* service);
+
+static void update_screen_saver_owner(IdleService* service, gboolean owned) {
+    service->gnome_owned = owned;
+    if (owned) {
+        g_autoptr(GVariant) reply =
+            call_screen_saver(service, "GetActive", NULL, G_VARIANT_TYPE("(b)"), NULL);
+        if (reply) {
+            gboolean active;
+            g_variant_get(reply, "(b)", &active);
+            publish_screen_saver_active(service, active);
+        }
+    } else if (service->lock_connection) {
+        /* Discard events queued while GNOME owned the source. Reconnect for a current
+         * snapshot rather than publishing a potentially stale native boolean. */
+        disconnect_lock_monitor(service);
+    }
+}
+
+static gboolean retry_lock_monitor(gpointer data);
+
+static void disconnect_lock_monitor(IdleService* service) {
+    if (service->lock_source) {
+        g_source_destroy(service->lock_source);
+        g_clear_pointer(&service->lock_source, g_source_unref);
+    }
+    g_clear_object(&service->lock_connection);
+    g_string_truncate(service->lock_pending, 0);
+    /* Losing the observer is not an unlock. Keep the last reported boolean until a fresh
+     * snapshot or event arrives. The retry interval is transport recovery, not lock policy. */
+    if (!service->lock_retry)
+        service->lock_retry = g_timeout_add_seconds(1, retry_lock_monitor, service);
+}
+
+static gboolean process_lock_message(IdleService* service, const char* line) {
+    g_autoptr(JsonParser) parser = json_parser_new();
+    if (!json_parser_load_from_data(parser, line, -1, NULL) ||
+        !JSON_NODE_HOLDS_OBJECT(json_parser_get_root(parser)))
+        return FALSE;
+    JsonObject* message = json_node_get_object(json_parser_get_root(parser));
+    JsonNode* event_node = json_object_get_member(message, "event");
+    if (!event_node || json_node_get_value_type(event_node) != G_TYPE_STRING)
+        return FALSE;
+    const char* event = json_node_get_string(event_node);
+    const char* state_key;
+    if (g_str_equal(event, "gnoblin.session.lock-state-changed")) {
+        state_key = "state";
+    } else if (g_str_equal(event, "reply")) {
+        JsonNode* result = json_object_get_member(message, "result");
+        if (!result || !JSON_NODE_HOLDS_OBJECT(result))
+            return FALSE;
+        message = json_node_get_object(result);
+        state_key = "lock_state";
+        /* An unavailable lock snapshot has no state; it does not confirm an unlock. */
+        if (!json_object_has_member(message, state_key))
+            return TRUE;
+    } else {
+        /* Native control greets every connection before acknowledging subscriptions.
+         * Neither record carries lock state. Errors still require a fresh subscription. */
+        return g_str_equal(event, "hello") || g_str_equal(event, "subscribed");
+    }
+    JsonNode* state = json_object_get_member(message, state_key);
+    if (!state || json_node_get_value_type(state) != G_TYPE_STRING)
+        return FALSE;
+    /* Match GetActive: covering, locked and failsafe are all active. */
+    if (!service->gnome_owned)
+        publish_screen_saver_active(service, lock_state_active(json_node_get_string(state)));
+    return TRUE;
+}
+
+static gboolean on_lock_socket_ready(GSocket* socket, GIOCondition condition, gpointer data) {
+    IdleService* service = data;
+    g_autoptr(GError) error = NULL;
+    char buffer[4096];
+    gssize count = g_socket_receive(socket, buffer, sizeof buffer, NULL, &error);
+    if (count < 0 && g_error_matches(error, G_IO_ERROR, G_IO_ERROR_WOULD_BLOCK))
+        return G_SOURCE_CONTINUE;
+    if (count <= 0)
+        goto disconnected;
+    g_string_append_len(service->lock_pending, buffer, count);
+    if (service->lock_pending->len > 64 * 1024)
+        goto disconnected;
+    char* end;
+    while ((end = memchr(service->lock_pending->str, '\n', service->lock_pending->len))) {
+        gsize length = end - service->lock_pending->str;
+        g_autofree char* line = g_strndup(service->lock_pending->str, length);
+        g_string_erase(service->lock_pending, 0, length + 1);
+        if (!process_lock_message(service, line))
+            goto disconnected;
+    }
+    return G_SOURCE_CONTINUE;
+
+disconnected:
+    disconnect_lock_monitor(service);
+    return G_SOURCE_REMOVE;
+}
+
+static gboolean retry_lock_monitor(gpointer data) {
+    IdleService* service = data;
+    const char* configured_path = g_getenv("GNOBLIN_COMPOSITOR_SOCKET");
+    const char* runtime = g_getenv("XDG_RUNTIME_DIR");
+    g_autofree char* fallback = runtime ? NULL : g_strdup_printf("/run/user/%u", (guint)getuid());
+    g_autofree char* default_path =
+        g_build_filename(runtime ? runtime : fallback, "gnoblin/compositor-v1.sock", NULL);
+    g_autoptr(GSocketAddress) address =
+        g_unix_socket_address_new(configured_path ? configured_path : default_path);
+    g_autoptr(GSocketClient) client = g_socket_client_new();
+    g_socket_client_set_timeout(client, 1);
+    g_autoptr(GSocketConnection) connection =
+        g_socket_client_connect(client, G_SOCKET_CONNECTABLE(address), NULL, NULL);
+    if (!connection)
+        return G_SOURCE_CONTINUE;
+
+    /* Subscribe before reading the snapshot, on the same ordered stream. A lock transition
+     * between the two requests cannot be lost or replayed after a newer snapshot. */
+    const char requests[] =
+        "{\"op\":\"events\",\"api_version\":{\"major\":1,\"minor\":29},"
+        "\"events\":[\"gnoblin.session.lock-state-changed\"]}\n"
+        "{\"op\":\"api\",\"api_version\":{\"major\":1,\"minor\":29},"
+        "\"id\":\"lock-state\",\"method\":\"session.status\",\"arguments\":{}}\n";
+    if (!g_output_stream_write_all(g_io_stream_get_output_stream(G_IO_STREAM(connection)), requests,
+                                   sizeof requests - 1, NULL, NULL, NULL))
+        return G_SOURCE_CONTINUE;
+    service->lock_connection = g_steal_pointer(&connection);
+    GSocket* socket = g_socket_connection_get_socket(service->lock_connection);
+    g_socket_set_timeout(socket, 0);
+    g_socket_set_blocking(socket, FALSE);
+    service->lock_source = g_socket_create_source(socket, G_IO_IN | G_IO_HUP | G_IO_ERR, NULL);
+    g_source_set_callback(service->lock_source, G_SOURCE_FUNC(on_lock_socket_ready), service, NULL);
+    g_source_attach(service->lock_source, NULL);
+    service->lock_retry = 0;
+    return G_SOURCE_REMOVE;
 }
 
 /* The graphical session of this user, as logind names it. This service runs in the user manager,
@@ -364,6 +520,8 @@ static void on_name_owner_changed(GDBusConnection* connection, const char* sende
     const char *name, *old_owner, *new_owner;
 
     g_variant_get(parameters, "(&s&s&s)", &name, &old_owner, &new_owner);
+    if (g_str_equal(name, GNOME_SCREENSAVER_NAME))
+        update_screen_saver_owner(service, new_owner[0] != '\0');
     if (name[0] != ':' || new_owner[0] != '\0')
         return;
     g_hash_table_foreach_remove(service->inhibitors, remove_disconnected_inhibitor, (gpointer)name);
@@ -501,12 +659,14 @@ static void on_screen_saver_active_changed(GDBusConnection* connection, const ch
     IdleService* service = data;
     gboolean active;
     g_variant_get(parameters, "(b)", &active);
-    g_dbus_connection_emit_signal(service->session_bus, NULL, SCREENSAVER_PATH, SCREENSAVER_NAME,
-                                  "ActiveChanged", g_variant_new("(b)", active), NULL);
+    publish_screen_saver_active(service, active);
 }
 
 static void on_name_acquired(GDBusConnection* connection, const char* name, gpointer data) {
     IdleService* service = data;
+    update_screen_saver_owner(service, gnome_screensaver_owned(service));
+    if (retry_lock_monitor(service) == G_SOURCE_CONTINUE)
+        service->lock_retry = g_timeout_add_seconds(1, retry_lock_monitor, service);
     service->idle_name_watch =
         g_bus_watch_name_on_connection(connection, MUTTER_NAME, G_BUS_NAME_WATCHER_FLAGS_NONE,
                                        on_idle_appeared, on_idle_vanished, service, NULL);
@@ -519,11 +679,19 @@ static void on_name_lost(GDBusConnection* connection, const char* name, gpointer
     g_main_loop_quit(service->loop);
 }
 
+static gboolean on_shutdown(gpointer data) {
+    IdleService* service = data;
+    g_main_loop_quit(service->loop);
+    return G_SOURCE_CONTINUE;
+}
+
 int main(int argc, char** argv) {
     IdleService service = {0};
     g_autoptr(GDBusNodeInfo) node = NULL;
     g_autoptr(GError) error = NULL;
     guint name_id;
+    guint terminate_id;
+    guint interrupt_id;
 
     service.session_bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
     if (!service.session_bus)
@@ -559,10 +727,18 @@ int main(int argc, char** argv) {
         service.system_bus, "org.freedesktop.login1", "org.freedesktop.login1.Session", "Lock",
         NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_logind_lock, &service, NULL);
     service.loop = g_main_loop_new(NULL, FALSE);
+    service.lock_pending = g_string_new(NULL);
+    terminate_id = g_unix_signal_add(SIGTERM, on_shutdown, &service);
+    interrupt_id = g_unix_signal_add(SIGINT, on_shutdown, &service);
     name_id = g_bus_own_name_on_connection(service.session_bus, SCREENSAVER_NAME,
                                            G_BUS_NAME_OWNER_FLAGS_NONE, on_name_acquired,
                                            on_name_lost, &service, NULL);
     g_main_loop_run(service.loop);
+    g_source_remove(terminate_id);
+    g_source_remove(interrupt_id);
+    disconnect_lock_monitor(&service);
+    g_source_remove(service.lock_retry);
+    g_string_free(service.lock_pending, TRUE);
     g_bus_unown_name(name_id);
     if (service.idle_name_watch)
         g_bus_unwatch_name(service.idle_name_watch);
