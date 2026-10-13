@@ -76,6 +76,14 @@ void GnoblinConsolePanel::set_visible(bool visible) {
     if (visible_ == visible)
         return;
     visible_ = visible;
+    {
+        /* Modifiers are tracked from key events; start each session without any held. */
+        ImGui::SetCurrentContext(gnoblin_imgui_overlay_get_context(overlay_));
+        ImGuiIO& io = ImGui::GetIO();
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        io.AddKeyEvent(ImGuiMod_Shift, false);
+        io.AddKeyEvent(ImGuiMod_Alt, false);
+    }
     if (!visible) {
         ++*completion_generation_;
         completion_visible_ = false;
@@ -84,7 +92,9 @@ void GnoblinConsolePanel::set_visible(bool visible) {
         scroll_to_bottom_ = true;
         focus_input_ = true;
         completion_requested_ = input_.data();
+        preview_requested_ = input_.data();
     }
+    ImGui::GetIO().MouseDrawCursor = visible;
     if (callbacks_.visibility_changed)
         callbacks_.visibility_changed();
     queue_redraw();
@@ -121,6 +131,30 @@ bool GnoblinConsolePanel::handle_key(guint keyval, ClutterModifierType modifiers
 
     ImGui::SetCurrentContext(gnoblin_imgui_overlay_get_context(overlay_));
     ImGuiIO& io = ImGui::GetIO();
+    /* A key event carries the modifiers held before it, so the release of a modifier still shows
+     * it as held, and its press does not. Left stale, ImGui ignores clicks on result rows (it
+     * refuses them while a modifier is down) after the console is opened with Alt+F2. */
+    {
+        const guint mask = [keyval]() -> guint {
+            switch (keyval) {
+            case CLUTTER_KEY_Shift_L:
+            case CLUTTER_KEY_Shift_R:
+                return CLUTTER_SHIFT_MASK;
+            case CLUTTER_KEY_Control_L:
+            case CLUTTER_KEY_Control_R:
+                return CLUTTER_CONTROL_MASK;
+            case CLUTTER_KEY_Alt_L:
+            case CLUTTER_KEY_Alt_R:
+            case CLUTTER_KEY_Meta_L:
+            case CLUTTER_KEY_Meta_R:
+                return CLUTTER_MOD1_MASK;
+            default:
+                return 0;
+            }
+        }();
+        modifiers =
+            static_cast<ClutterModifierType>(pressed ? (modifiers | mask) : (modifiers & ~mask));
+    }
     io.AddKeyEvent(ImGuiMod_Ctrl, (modifiers & CLUTTER_CONTROL_MASK) != 0);
     io.AddKeyEvent(ImGuiMod_Shift, (modifiers & CLUTTER_SHIFT_MASK) != 0);
     io.AddKeyEvent(ImGuiMod_Alt, (modifiers & CLUTTER_MOD1_MASK) != 0);
@@ -257,8 +291,37 @@ ImVec4 value_colour(const std::string& value) {
     return ImGui::GetStyleColorVec4(ImGuiCol_Text);
 }
 
-/* A short inline summary of a table, like a browser's "Object { a: 1, b: {…} }". Entries past the
- * cap are a childless node with no label. */
+std::string plain_key(const std::string& label) {
+    if (label.size() >= 2 && label.front() == '"' && label.back() == '"')
+        return label.substr(1, label.size() - 2);
+    return label;
+}
+
+/* A table whose keys are 1..n in order is an array. */
+bool is_array(const std::vector<GnoblinConsoleInspectorNode>& children) {
+    std::size_t expected = 1;
+    for (const auto& child : children) {
+        if (child.label.empty() && child.has_more)
+            continue;
+        if (child.label != std::to_string(expected++))
+            return false;
+    }
+    return expected > 1;
+}
+
+std::string table_preview(const std::vector<GnoblinConsoleInspectorNode>& children, bool more,
+                          int depth);
+
+std::string value_preview(const GnoblinConsoleInspectorNode& node, int depth) {
+    if (!node.children.empty() || starts_with(node.value, "<table"))
+        return table_preview(node.children, node.has_more, depth);
+    if (starts_with(node.value, "<function") || starts_with(node.value, "<cfunction"))
+        return "fn";
+    return node.value;
+}
+
+/* A short inline summary, like a browser's "Object { a: 1, b: {…} }" and "[1, 2, 3]". Entries past
+ * the cap are a childless node with no label. */
 std::string table_preview(const std::vector<GnoblinConsoleInspectorNode>& children, bool more,
                           int depth) {
     std::vector<const GnoblinConsoleInspectorNode*> entries;
@@ -268,33 +331,48 @@ std::string table_preview(const std::vector<GnoblinConsoleInspectorNode>& childr
         else
             entries.push_back(&child);
     }
+    const bool array = is_array(children);
+    const char* open = array ? "[" : "{";
+    const char* close = array ? "]" : "}";
     if (entries.empty())
-        return more ? "{…}" : "{}";
+        return more ? std::string(open) + "…" + close : std::string(open) + close;
     if (depth > 0)
-        return "{…}";
-    std::string out = "{ ";
+        return std::string(open) + "…" + close;
+    std::string out = std::string(open) + " ";
     std::size_t shown = 0;
     for (const auto* child : entries) {
         if (shown == 5)
             break;
-        std::string key = child->label;
-        if (key.size() >= 2 && key.front() == '"' && key.back() == '"')
-            key = key.substr(1, key.size() - 2);
-        std::string value;
-        if (!child->children.empty() || starts_with(child->value, "<table"))
-            value = table_preview(child->children, child->has_more, depth + 1);
-        else if (starts_with(child->value, "<function") || starts_with(child->value, "<cfunction"))
-            value = "fn";
-        else
-            value = child->value;
         if (shown > 0)
             out += ", ";
-        out += key + ": " + value;
+        out += array ? value_preview(*child, depth + 1)
+                     : plain_key(child->label) + ": " + value_preview(*child, depth + 1);
         shown++;
     }
     if (shown < entries.size() || more)
         out += ", …";
-    return out + " }";
+    return out + " " + close;
+}
+
+/* True for text that only walks a table by name, such as "gnoblin.windows": evaluating it cannot
+ * run anything, so the console shows its value as a preview while it is typed. */
+bool is_plain_path(const std::string& text) {
+    if (text.empty() || text.size() > 200)
+        return false;
+    bool segment_start = true;
+    for (char c : text) {
+        if (c == '.') {
+            if (segment_start)
+                return false;
+            segment_start = true;
+        } else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' ||
+                   (!segment_start && c >= '0' && c <= '9')) {
+            segment_start = false;
+        } else {
+            return false;
+        }
+    }
+    return !segment_start;
 }
 
 /* An error spans the full width on a dark red band, as in Chrome's console. */
@@ -366,7 +444,10 @@ void GnoblinConsolePanel::draw() {
             lines++;
     lines = std::min(lines, kMaxInputLines);
     const float input_height = lines * ImGui::GetTextLineHeight() + kRowPadding * 2;
-    const float input_top = height - input_height;
+    /* A greyed line under the input shows the value of what is typed, when that is safe to know. */
+    const float preview_height =
+        preview_text_.empty() ? 0.0f : ImGui::GetTextLineHeight() + kRowPadding;
+    const float input_top = height - input_height - preview_height;
 
     /* Transcript. */
     ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
@@ -483,7 +564,13 @@ void GnoblinConsolePanel::draw() {
                               ImGuiInputTextFlags_WordWrap);
     ImGui::PopStyleVar(2);
     input_anchor_x_ = ImGui::GetItemRectMin().x;
-    input_anchor_y_ = ImGui::GetItemRectMax().y;
+    input_anchor_y_ = ImGui::GetItemRectMax().y + preview_height;
+    if (preview_height > 0.0f) {
+        ImGui::SetCursorPos(ImVec2(kInset, input_top + input_height));
+        ImGui::TextColored(kQuietColour, "<");
+        ImGui::SameLine(0.0f, 8.0f);
+        ImGui::TextColored(kQuietColour, "%s", preview_text_.c_str());
+    }
     input_width_ = ImGui::GetItemRectSize().x;
 
     if ((enter_requested_ || tab_requested_) &&
@@ -513,6 +600,11 @@ void GnoblinConsolePanel::draw() {
             ++*completion_generation_;
         } else
             complete();
+    }
+    if (ImGui::GetCurrentContext()->InputEventsQueue.Size == 0 &&
+        preview_requested_ != input_.data()) {
+        preview_requested_ = input_.data();
+        request_preview();
     }
     ImGui::End();
 
@@ -566,6 +658,7 @@ void GnoblinConsolePanel::submit() {
     reload_input_ = true;
     focus_input_ = true;
     completion_visible_ = false;
+    preview_text_.clear();
     if (source == ":help") {
         append_result(source, {true, console_help(), {}, {}});
         return;
@@ -639,6 +732,36 @@ void GnoblinConsolePanel::complete() {
             queue_redraw();
         });
     queue_redraw();
+}
+
+void GnoblinConsolePanel::request_preview() {
+    ++*preview_generation_;
+    if (!is_plain_path(preview_requested_) || !callbacks_.evaluate || pending_) {
+        if (!preview_text_.empty()) {
+            preview_text_.clear();
+            queue_redraw();
+        }
+        return;
+    }
+    const std::uint64_t generation = *preview_generation_;
+    const std::weak_ptr<std::uint64_t> lifetime = preview_generation_;
+    const std::string source = preview_requested_;
+    callbacks_.evaluate(source, [this, lifetime, generation, source](GnoblinConsoleResult result) {
+        const auto current = lifetime.lock();
+        if (!current || *current != generation || !visible_ || source != input_.data())
+            return;
+        std::string text;
+        if (result.success && !result.value.empty()) {
+            if (!result.inspection.empty())
+                text = "table " + table_preview(result.inspection, false, 0);
+            else
+                text = result.value.substr(0, result.value.find('\n'));
+        }
+        if (text != preview_text_) {
+            preview_text_ = std::move(text);
+            queue_redraw();
+        }
+    });
 }
 
 void GnoblinConsolePanel::accept_completion() {
@@ -723,7 +846,7 @@ void GnoblinConsolePanel::draw_node(const GnoblinConsoleInspectorNode& node,
         node.children.empty() && node.value.empty() && node.label.empty() && node.has_more;
     ImGui::PushStyleColor(ImGuiCol_Text, placeholder ? kQuietColour : kKeyColour);
     /* A node cut off at the cap shows how many entries were left out. */
-    const std::string shown = !placeholder    ? node.label
+    const std::string shown = !placeholder    ? plain_key(node.label)
                               : node.more > 0 ? "… " + std::to_string(node.more) + " more"
                                               : "…";
     /* Leaves use the same row as expandable nodes, so labels line up and hover alike. */

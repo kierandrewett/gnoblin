@@ -125,6 +125,7 @@ class GnoblinConsolePanel {
     void draw_node(const GnoblinConsoleInspectorNode& node, const std::string& id);
     void draw_completions();
     void queue_redraw();
+    void request_preview();
 
     GnoblinImGuiOverlay* overlay_;
     GnoblinConsoleCallbacks callbacks_;
@@ -144,6 +145,10 @@ class GnoblinConsolePanel {
     int scroll_request_pages_ = 0;
     /* The input text completions were last requested for, so typing asks once the text settles. */
     std::string completion_requested_;
+    /* Value of the typed text when it is a plain name, shown greyed under the input. */
+    std::string preview_text_;
+    std::string preview_requested_;
+    std::shared_ptr<std::uint64_t> preview_generation_ = std::make_shared<std::uint64_t>(0);
     /* Set once the user moves in the list; Enter then accepts, otherwise it submits. */
     bool completion_chosen_ = false;
     float transcript_height_ = 0.0f;

@@ -20,6 +20,7 @@
 #include "meta/meta-background.h"
 #include "meta/compositor.h"
 #include "meta/meta-context.h"
+#include "meta/meta-cursor-tracker.h"
 #include "meta/meta-monitor-manager.h"
 #include "meta/meta-plugin.h"
 #include "meta/keybindings.h"
@@ -285,6 +286,37 @@ static void meta_gnoblin_plugin_class_init(MetaGnoblinPluginClass* klass) {
 
 static void meta_gnoblin_plugin_init(MetaGnoblinPlugin* self) {
     (void)self;
+}
+
+/* The modal console draws its own pointer (an arrow, or a text cursor over the input) so the shape
+ * follows what is under it. The real one is hidden while it is open. */
+void gnoblin_plugin_hide_pointer(MetaDisplay* display, gboolean hide) {
+    static MetaCursorTracker* hidden_on = NULL;
+    MetaBackend* backend = meta_context_get_backend(meta_display_get_context(display));
+    MetaCursorTracker* tracker = backend ? meta_backend_get_cursor_tracker(backend) : NULL;
+
+    if (!tracker)
+        return;
+    if (hide && !hidden_on) {
+        meta_cursor_tracker_inhibit_cursor_visibility(tracker);
+        hidden_on = tracker;
+    } else if (!hide && hidden_on) {
+        meta_cursor_tracker_uninhibit_cursor_visibility(hidden_on);
+        hidden_on = NULL;
+    }
+}
+
+gboolean gnoblin_plugin_get_pointer(MetaDisplay* display, float* x, float* y) {
+    MetaBackend* backend = meta_context_get_backend(meta_display_get_context(display));
+    MetaCursorTracker* tracker = backend ? meta_backend_get_cursor_tracker(backend) : NULL;
+    graphene_point_t point;
+
+    if (!tracker)
+        return FALSE;
+    meta_cursor_tracker_get_pointer(tracker, &point, NULL);
+    *x = point.x;
+    *y = point.y;
+    return TRUE;
 }
 
 float gnoblin_plugin_paint_scale(ClutterPaintContext* paint_context) {

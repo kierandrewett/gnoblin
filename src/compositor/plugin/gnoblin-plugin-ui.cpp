@@ -177,6 +177,14 @@ static void draw_panels(GnoblinImGuiOverlay* overlay, void* user_data) {
 }
 
 static void console_visibility_changed(GnoblinPluginUi* ui) {
+    const bool open = ui->console->visible();
+    gnoblin_plugin_hide_pointer(ui->display, open);
+    if (open) {
+        /* The console draws the pointer; place it where the real one is. */
+        float x = 0.0f, y = 0.0f;
+        if (gnoblin_plugin_get_pointer(ui->display, &x, &y))
+            gnoblin_imgui_overlay_set_pointer(ui->overlay, x, y, FALSE, FALSE, FALSE);
+    }
     update_visibility(ui);
 }
 
