@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 13 Oct 2026 01:15:00 +0000
+Subject: [PATCH] mdk: signal the viewer when its compositor parent dies
+
+The viewer normally quits through its RemoteDesktop disconnect callbacks.
+It creates its own session with setsid(), so compositor process-group
+cleanup does not own the activated viewer.
+
+Install PR_SET_PDEATHSIG(SIGTERM) for the direct child as a termination
+fallback independent of D-Bus delivery and viewer main-loop progress.
+Check the parent PID after setup to cover death before signal installation,
+and exit before exec if the lifetime link cannot be established.
+
+The spawning thread is the compositor main thread. Keep HAVE_SYS_PRCTL
+guards and allocation-free child setup. SIGTERM delivery does not promise
+unconditional bounded exit or reaping. This safeguard alone does not
+establish the cause or resolution of the historical orphan in #191.
+
+---
+diff --git a/src/core/meta-mdk.c b/src/core/meta-mdk.c
+--- a/src/core/meta-mdk.c
++++ b/src/core/meta-mdk.c
+@@ -20,6 +20,12 @@
+ 
+ #include "config.h"
+ 
++#ifdef HAVE_SYS_PRCTL
++#include <signal.h>
++#include <sys/prctl.h>
++#include <unistd.h>
++#endif
++
+ #include "core/meta-mdk.h"
+ 
+ #include "backends/meta-remote-desktop.h"
+@@ -52,6 +58,21 @@
+   GSubprocess *devkit_process;
+   GCancellable *devkit_process_cancellable;
+ };
++
++#ifdef HAVE_SYS_PRCTL
++static void
++set_devkit_parent_death_signal (gpointer user_data)
++{
++  pid_t expected_parent = GPOINTER_TO_INT (user_data);
++
++  /* The parent may have exited between fork() and installing the signal.
++   * Fail closed if the lifetime link cannot be established.
++   */
++  if (prctl (PR_SET_PDEATHSIG, SIGTERM) < 0 ||
++      getppid () != expected_parent)
++    _exit (127);
++}
++#endif
+ 
+ G_DEFINE_TYPE (MetaMdk, meta_mdk, G_TYPE_OBJECT)
+ 
+@@ -140,6 +161,14 @@
+     }
+ 
+   launcher = g_subprocess_launcher_new (G_SUBPROCESS_FLAGS_NONE);
++#ifdef HAVE_SYS_PRCTL
++  /* PDEATHSIG follows the creating thread. The enabled signals dispatch from
++   * the D-Bus name-owner context on the long-lived compositor main thread.
++   */
++  g_subprocess_launcher_set_child_setup (launcher,
++                                         set_devkit_parent_death_signal,
++                                         GINT_TO_POINTER (getpid ()), NULL);
++#endif
+ 
+   if (mdk->external_wayland_display)
+     {
