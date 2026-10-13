@@ -1095,7 +1095,12 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
             "radius=min(radius,min(halfSize.x,halfSize.y));"
             "if(radius<0.5)return 1.0;"
             "vec2 q=max(abs(point-(box.xy+halfSize))-(halfSize-vec2(radius)),vec2(0.0));"
-            "float distance=pow(pow(q.x/max(radius,0.001),exponent)+"
+            /* On a straight edge or in the interior, the superellipse distance
+             * is the remaining axis. Reserve powers for the curved corners. */
+            "float distance;"
+            "if(q.x==0.0)distance=q.y;"
+            "else if(q.y==0.0)distance=q.x;"
+            "else distance=pow(pow(q.x/max(radius,0.001),exponent)+"
             "pow(q.y/max(radius,0.001),exponent),1.0/exponent)*radius;"
             "return 1.0-smoothstep(radius-0.5,radius+0.5,distance);}"
             "vec4 flatPatch(vec2 point){"
@@ -1154,7 +1159,11 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
             "if(radius>0.0){"
             "vec2 q=max(abs(p-(gnoblin_rounded_clip_bounds.xy+half_size))-"
             "(half_size-vec2(radius)),vec2(0.0));"
-            "float distance=pow(pow(q.x/radius,gnoblin_rounded_clip_exponent)+"
+            /* Match roundedCoverage's axis shortcut for the outer boundary. */
+            "float distance;"
+            "if(q.x==0.0)distance=q.y;"
+            "else if(q.y==0.0)distance=q.x;"
+            "else distance=pow(pow(q.x/radius,gnoblin_rounded_clip_exponent)+"
             "pow(q.y/radius,gnoblin_rounded_clip_exponent),"
             "1.0/gnoblin_rounded_clip_exponent)*radius;"
             "bool corner=q.x>0.0&&q.y>0.0;"

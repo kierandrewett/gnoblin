@@ -258,6 +258,12 @@ pressure checks separate: record actual observer scheduling, frame callbacks,
 input receipt, memory pressure, and whether each load process remained alive.
 A frame callback does not prove that a frame reached the display.
 
+For rounded window and border shader changes, use `--kind rounded` with
+`--reference-source`. This checks pixels and counts executed powers in both
+the outer boundary and inset border calculations. See
+[`tests/window-rounded-gpu.md`](tests/window-rounded-gpu.md) for the covered
+cases and timing limits. Verify GTK corner fill in a native session separately.
+
 ## Native shadow cache checks
 
 Run these checks in a disposable native VM with a live Gnoblin session,

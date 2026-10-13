@@ -35,7 +35,7 @@ mkdir -p "$(dirname "$CONFIG")"
 mkdir -p "$ARTIFACT_DIR"
 cat >"$CONFIG" <<'EOF'
 gnoblin.window_rule {
-    match = {type = "window", layer = "^gnoblin-blur-fade-panel$"},
+    match = {type = "layer", layer = "^gnoblin%-blur%-fade%-panel$"},
     blur = 24,
 }
 EOF
@@ -53,7 +53,8 @@ ShellRoot {
 
     PanelWindow {
         anchors { top: true; bottom: true; left: true; right: true }
-        WlrLayershell.layer: WlrLayer.Background
+        // Cover the session wallpaper without changing its managed client.
+        WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.namespace: "gnoblin-blur-fade-pattern"
         color: "black"
         Grid {
@@ -75,7 +76,7 @@ ShellRoot {
         implicitWidth: 1280
         implicitHeight: 800
         surfaceFormat.opaque: false
-        WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "gnoblin-blur-fade-panel"
         color: "transparent"
         Rectangle {
@@ -109,14 +110,30 @@ from PIL import Image, ImageChops, ImageStat
 root = os.environ["GNOBLIN_BLUR_ARTIFACT_DIR"]
 background = Image.open(os.path.join(root, "0.png")).convert("RGB")
 full = Image.open(os.path.join(root, "100.png")).convert("RGB")
-crop = (56, 56, 264, 168)
+crop = (100, 90, 225, 140)
+# The background colour and backdrop blur each blend with their own alpha.
+# Test proportional blur strength after removing the known colour attenuation;
+# fading a settled screenshot would incorrectly require one combined blend.
+panel_alpha = 128 / 255
+background_contrast = ImageStat.Stat(background.crop(crop)).stddev[0]
+full_contrast = ImageStat.Stat(full.crop(crop)).stddev[0]
+if background_contrast < 80:
+    raise SystemExit("FAIL checker background is not visible beneath the panel")
+full_blur = 1 - full_contrast / ((1 - panel_alpha) * background_contrast)
+if full_blur < 0.25:
+    raise SystemExit(f"FAIL panel background is not blurred: strength {full_blur}")
 for percent in (25, 50, 75):
     actual = Image.open(os.path.join(root, f"{percent}.png")).convert("RGB")
-    expected = Image.blend(background, full, percent / 100)
-    delta = ImageStat.Stat(ImageChops.difference(actual, expected).crop(crop))
-    if max(delta.mean) > 2 or max(high for low, high in delta.extrema) > 5:
-        raise SystemExit(f"FAIL blur and panel alpha diverge at {percent}%: {delta.mean}, {delta.extrema}")
-    print(f"pixel fade {percent}%: mean error {delta.mean}; max error {[high for low, high in delta.extrema]}")
+    progress = percent / 100
+    contrast = ImageStat.Stat(actual.crop(crop)).stddev[0]
+    blur = 1 - contrast / ((1 - panel_alpha * progress) * background_contrast)
+    if abs(blur - full_blur * progress) > 0.02:
+        raise SystemExit(f"FAIL blur and panel alpha diverge at {percent}%: strength {blur}, full {full_blur}")
+    # Transparent buffer pixels must not blur the checker outside the panel.
+    outside = ImageChops.difference(actual, background).crop((300, 90, 450, 140))
+    if max(high for low, high in outside.getextrema()) > 1:
+        raise SystemExit("FAIL blur escaped the panel background")
+    print(f"pixel fade {percent}%: blur strength {blur:.4f}; expected {full_blur * progress:.4f}")
 print("PASS: layer blur and panel background follow the same 0-100% opacity fade")
 print(f"pixel captures: {root}")
 PY
