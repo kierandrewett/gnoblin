@@ -106,6 +106,8 @@ struct _MetaWaylandLayerSurface {
     int last_sent_height;
     uint32_t initial_layer;
     gulong output_destroyed_handler_id;
+    MetaMonitorManager* monitor_manager;
+    gulong monitors_changed_handler_id;
     guint destroy_window_idle_id;
     gboolean closed;
     MetaWaylandEventHandler* menu_keyboard_handler;
@@ -311,6 +313,15 @@ static void release_menu_keyboard(MetaWaylandLayerSurface* layer_surface) {
     meta_wayland_input_detach_event_handler(meta_wayland_seat_get_input(surface->compositor->seat),
                                             layer_surface->menu_keyboard_handler);
     layer_surface->menu_keyboard_handler = NULL;
+}
+
+static void disconnect_layer_surface_monitors(MetaWaylandLayerSurface* layer_surface) {
+    if (layer_surface->monitor_manager && layer_surface->monitors_changed_handler_id)
+        g_clear_signal_handler(&layer_surface->monitors_changed_handler_id,
+                               layer_surface->monitor_manager);
+
+    layer_surface->monitors_changed_handler_id = 0;
+    layer_surface->monitor_manager = NULL;
 }
 
 static void close_layer_surface(MetaWaylandLayerSurface* layer_surface,
@@ -804,6 +815,7 @@ static void close_layer_surface(MetaWaylandLayerSurface* layer_surface,
         return;
 
     release_menu_keyboard(layer_surface);
+    disconnect_layer_surface_monitors(layer_surface);
     layer_surface->closed = TRUE;
 
     window = meta_wayland_surface_get_window(surface);
@@ -849,6 +861,37 @@ static void move_resize_layer_window(MetaWindow* window, MtkRectangle geom) {
     window->unconstrained_rect = geom;
     window->unconstrained_rect_valid = TRUE;
     window->placed = TRUE;
+}
+
+/* Mutter leaves desktop-type windows alone when the monitor layout changes, and background
+ * and bottom layer surfaces are desktop windows. Without this they keep the size of the old
+ * mode: a wallpaper stays at the previous resolution after the output is resized. Surfaces
+ * on higher layers are dock windows, which Mutter already resizes through configure. */
+static void layer_surface_handle_monitors_changed(MetaMonitorManager* manager,
+                                                  MetaWaylandLayerSurface* layer_surface) {
+    MetaWaylandSurface* surface;
+    MetaWindow* window;
+    MtkRectangle mon;
+    MtkRectangle geom;
+
+    (void)manager;
+    if (layer_surface->closed || !layer_surface->resource || !layer_surface->configured)
+        return;
+
+    surface = meta_wayland_surface_role_get_surface(META_WAYLAND_SURFACE_ROLE(layer_surface));
+    window = surface ? meta_wayland_surface_get_window(surface) : NULL;
+    if (!window || window->type != META_WINDOW_DESKTOP)
+        return;
+
+    mon = get_monitor_layout(layer_surface);
+    geom = calculate_geometry(layer_surface, mon);
+    if (geom.width != layer_surface->last_sent_width ||
+        geom.height != layer_surface->last_sent_height)
+        send_configure(layer_surface, geom.width, geom.height);
+
+    /* Keep the committed buffer on the right monitor until the client supplies the resized one. */
+    if (meta_wayland_surface_get_buffer(surface))
+        move_resize_layer_window(window, calculate_geometry_for_buffer(layer_surface, mon, TRUE));
 }
 
 /* ---- zwlr_layer_surface_v1 requests ------------------------------ */
@@ -1291,6 +1334,7 @@ static void meta_wayland_layer_surface_finalize(GObject* object) {
     MetaWaylandLayerSurface* layer_surface = META_WAYLAND_LAYER_SURFACE(object);
 
     disconnect_layer_surface_output(layer_surface);
+    disconnect_layer_surface_monitors(layer_surface);
     g_clear_pointer(&layer_surface->resource, wl_resource_destroy);
     if (layer_surface->destroy_window_idle_id)
         g_clear_handle_id(&layer_surface->destroy_window_idle_id, g_source_remove);
@@ -1377,6 +1421,13 @@ static void layer_shell_get_layer_surface(struct wl_client* client, struct wl_re
             g_signal_connect(layer_surface->output, "output-destroyed",
                              G_CALLBACK(layer_surface_handle_output_destroyed), layer_surface);
     }
+
+    disconnect_layer_surface_monitors(layer_surface);
+    layer_surface->monitor_manager = meta_backend_get_monitor_manager(
+        meta_context_get_backend(meta_wayland_compositor_get_context(surface->compositor)));
+    layer_surface->monitors_changed_handler_id =
+        g_signal_connect(layer_surface->monitor_manager, "monitors-changed-internal",
+                         G_CALLBACK(layer_surface_handle_monitors_changed), layer_surface);
 
     layer_surface->resource = wl_resource_create(client, &zwlr_layer_surface_v1_interface,
                                                  wl_resource_get_version(resource), id);
