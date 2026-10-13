@@ -88,9 +88,9 @@ static void console_append_inspection_value(GString* output, lua_State* state, i
         g_string_append(output, "…");
         added = output->len - before;
     }
-    if (inspection->text_bytes + added > MAX_CONSOLE_RESULT_BYTES) {
-        gsize available = inspection->text_bytes < MAX_CONSOLE_RESULT_BYTES
-                              ? MAX_CONSOLE_RESULT_BYTES - inspection->text_bytes
+    if (inspection->text_bytes + added > MAX_CONSOLE_INSPECTION_TEXT_BYTES) {
+        gsize available = inspection->text_bytes < MAX_CONSOLE_INSPECTION_TEXT_BYTES
+                              ? MAX_CONSOLE_INSPECTION_TEXT_BYTES - inspection->text_bytes
                               : 0;
         console_truncate_utf8(output, before + available);
         g_string_append(output, "…");
@@ -118,6 +118,20 @@ static gboolean console_push_inspection_table(lua_State* state, int index) {
     return FALSE;
 }
 
+/* Number of entries in a table the inspector does not walk, so the console can say how many it
+ * left out instead of a bare ellipsis. */
+static gint32 console_count_entries(lua_State* state, int table) {
+    gint32 count = 0;
+    lua_pushnil(state);
+    while (count < G_MAXINT32 && lua_next(state, table)) {
+        count++;
+        lua_pop(state, 1);
+    }
+    if (lua_gettop(state) > table)
+        lua_pop(state, 1);
+    return count;
+}
+
 static GVariant* console_inspection_node(lua_State* state, const char* label, int index,
                                          guint depth, ConsoleInspection* inspection) {
     index = lua_absindex(state, index);
@@ -128,14 +142,19 @@ static GVariant* console_inspection_node(lua_State* state, const char* label, in
 
     GVariantBuilder children;
     g_variant_builder_init(&children, G_VARIANT_TYPE("aa{sv}"));
-    if (inspection->nodes >= MAX_CONSOLE_INSPECTION_NODES) {
-        has_more = TRUE;
-    } else if (depth < MAX_CONSOLE_INSPECTION_DEPTH &&
-               console_push_inspection_table(state, index)) {
+    if (inspection->nodes >= MAX_CONSOLE_INSPECTION_NODES ||
+        depth >= MAX_CONSOLE_INSPECTION_DEPTH) {
+        has_more = lua_istable(state, index) || lua_isuserdata(state, index);
+        if (has_more && console_push_inspection_table(state, index)) {
+            more = console_count_entries(state, lua_absindex(state, -1));
+            lua_pop(state, 1);
+        }
+    } else if (console_push_inspection_table(state, index)) {
         int table = lua_absindex(state, -1);
         const void* identity = lua_topointer(state, table);
         if (!identity || g_hash_table_contains(inspection->seen, identity)) {
-            has_more = TRUE;
+            /* Already shown above, so listing it again would loop. */
+            g_string_append(value, " (circular)");
         } else {
             g_hash_table_add(inspection->seen, (gpointer)identity);
             guint child_count = 0;

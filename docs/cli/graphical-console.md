@@ -44,9 +44,13 @@ Press Tab to take the highlighted suggestion. Use Up and Down to move through th
 then takes the chosen suggestion, and otherwise runs what you typed. Escape hides the list.
 
 A result that is a table or window record starts collapsed. Click its row, anywhere across
-the width, to expand it. Expanded entries are read-only and bounded; a table with more entries
-than are listed ends with a line such as `… 12 more`. Cycles are marked. Expanding does not
-execute Lua code. Errors show the message alone, for example `attempt to index a nil value`.
+the width, to expand it. Entries are listed alphabetically, and the summary on the row lists as
+many as fit the width.
+
+Expanded entries are read-only and limited to eight levels and 4,000 entries. A table cut off
+by that limit ends with a line such as `… 12 more`, which gives the number left out. A table
+that contains itself is marked `(circular)`. Expanding does not execute Lua code. Errors show
+the message alone, for example `attempt to index a nil value`.
 
 It keeps the last 200 submitted commands in
 `$XDG_STATE_HOME/gnoblin/console-history.ini`, or

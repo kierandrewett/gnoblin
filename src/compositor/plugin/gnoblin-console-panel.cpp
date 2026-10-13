@@ -309,7 +309,7 @@ bool is_array(const std::vector<GnoblinConsoleInspectorNode>& children) {
 }
 
 std::string table_preview(const std::vector<GnoblinConsoleInspectorNode>& children, bool more,
-                          int depth);
+                          int depth, float width = 0.0f);
 
 std::string value_preview(const GnoblinConsoleInspectorNode& node, int depth) {
     if (!node.children.empty() || starts_with(node.value, "<table"))
@@ -320,9 +320,11 @@ std::string value_preview(const GnoblinConsoleInspectorNode& node, int depth) {
 }
 
 /* A short inline summary, like a browser's "Object { a: 1, b: {…} }" and "[1, 2, 3]". Entries past
- * the cap are a childless node with no label. */
+ * the cap are a childless node with no label. A top-level summary lists as many entries as fit in
+ * the given width in pixels and only then ends in an ellipsis; without a width it lists five. A
+ * nested table lists up to four entries, and one nested deeper is just its brackets. */
 std::string table_preview(const std::vector<GnoblinConsoleInspectorNode>& children, bool more,
-                          int depth) {
+                          int depth, float width) {
     std::vector<const GnoblinConsoleInspectorNode*> entries;
     for (const auto& child : children) {
         if (child.label.empty() && child.has_more)
@@ -335,17 +337,22 @@ std::string table_preview(const std::vector<GnoblinConsoleInspectorNode>& childr
     const char* close = array ? "]" : "}";
     if (entries.empty())
         return more ? std::string(open) + "…" + close : std::string(open) + close;
-    if (depth > 0)
+    if (depth >= 2)
         return std::string(open) + "…" + close;
+    const std::size_t limit = depth > 0 ? 4 : (width > 0.0f ? entries.size() : 5);
+    const std::string tail = std::string(", … ") + close;
     std::string out = std::string(open) + " ";
     std::size_t shown = 0;
     for (const auto* child : entries) {
-        if (shown == 5)
+        if (shown == limit)
             break;
-        if (shown > 0)
-            out += ", ";
-        out += array ? value_preview(*child, depth + 1)
-                     : plain_key(child->label) + ": " + value_preview(*child, depth + 1);
+        std::string item = array
+                               ? value_preview(*child, depth + 1)
+                               : plain_key(child->label) + ": " + value_preview(*child, depth + 1);
+        std::string candidate = shown > 0 ? out + ", " + item : out + item;
+        if (width > 0.0f && shown > 0 && ImGui::CalcTextSize((candidate + tail).c_str()).x > width)
+            break;
+        out = std::move(candidate);
         shown++;
     }
     if (shown < entries.size() || more)
@@ -487,11 +494,12 @@ void GnoblinConsolePanel::draw() {
                     /* A result that can be expanded starts collapsed, as in a browser console. */
                     ImGui::TextColored(kQuietColour, "<");
                     ImGui::SameLine(0.0f, 8.0f);
-                    const std::string summary = table_preview(row.inspection, false, 0);
                     const bool open = ImGui::TreeNodeEx("##result", kTreeFlags, "");
                     ImGui::SameLine(0.0f, 0.0f);
                     ImGui::TextColored(kKeywordColour, "table ");
                     ImGui::SameLine(0.0f, 0.0f);
+                    const std::string summary =
+                        table_preview(row.inspection, false, 0, ImGui::GetContentRegionAvail().x);
                     ImGui::TextColored(kQuietColour, "%s", summary.c_str());
                     if (open) {
                         for (std::size_t child = 0; child < row.inspection.size(); child++)
@@ -855,8 +863,11 @@ void GnoblinConsolePanel::draw_node(const GnoblinConsoleInspectorNode& node,
     const bool table_like = !node.children.empty() || starts_with(node.value, "<table");
     if (table_like || !node.value.empty()) {
         ImGui::SameLine(0.0f, 8.0f);
+        const bool circular = node.value.find("(circular)") != std::string::npos;
         const std::string shown_value =
-            table_like ? table_preview(node.children, node.has_more, 0)
+            circular ? std::string("(circular)")
+            : table_like
+                ? table_preview(node.children, node.has_more, 0, ImGui::GetContentRegionAvail().x)
             : (starts_with(node.value, "<function") || starts_with(node.value, "<cfunction"))
                 ? std::string("fn")
                 : node.value;

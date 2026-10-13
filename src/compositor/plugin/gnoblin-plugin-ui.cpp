@@ -2,6 +2,7 @@
 
 #include "gnoblin-plugin-ui.h"
 
+#include <algorithm>
 #include <cstring>
 #include <cstdint>
 #include <functional>
@@ -234,8 +235,8 @@ static void runtime_request_destroy(gpointer data) {
 }
 
 constexpr guint kConsoleInspectionMaximumDepth = 8;
-constexpr guint kConsoleInspectionMaximumNodes = 256;
-constexpr guint kConsoleInspectionMaximumChildren = 64;
+constexpr guint kConsoleInspectionMaximumNodes = 4000;
+constexpr guint kConsoleInspectionMaximumChildren = 512;
 constexpr gsize kConsoleInspectionMaximumTextBytes = 4096;
 
 static bool console_inspection_string(GVariant* dictionary, const char* key,
@@ -247,6 +248,41 @@ static bool console_inspection_string(GVariant* dictionary, const char* key,
         return false;
     *destination = value;
     return true;
+}
+
+/* Lua walks a table in hash order, which changes between runs. Show keys alphabetically instead.
+ * Numeric keys, as in an array, sort by value and come before names; a node with no label (the
+ * "… N more" marker) stays last. */
+static void sort_console_children(std::vector<GnoblinConsoleInspectorNode>* children) {
+    auto key = [](const GnoblinConsoleInspectorNode& node) {
+        std::string text = node.label;
+        if (text.size() >= 2 && text.front() == '"' && text.back() == '"')
+            text = text.substr(1, text.size() - 2);
+        return text;
+    };
+    auto number = [](const std::string& text, double* value) {
+        char* end = nullptr;
+        *value = g_ascii_strtod(text.c_str(), &end);
+        return !text.empty() && end && *end == '\0';
+    };
+    std::stable_sort(
+        children->begin(), children->end(),
+        [&](const GnoblinConsoleInspectorNode& a, const GnoblinConsoleInspectorNode& b) {
+            if (a.label.empty() != b.label.empty())
+                return b.label.empty();
+            const std::string left = key(a), right = key(b);
+            double left_number = 0, right_number = 0;
+            const bool left_is = number(left, &left_number);
+            const bool right_is = number(right, &right_number);
+            if (left_is != right_is)
+                return left_is;
+            if (left_is)
+                return left_number < right_number;
+            g_autofree char* left_fold = g_utf8_casefold(left.c_str(), -1);
+            g_autofree char* right_fold = g_utf8_casefold(right.c_str(), -1);
+            const int order = g_utf8_collate(left_fold, right_fold);
+            return order != 0 ? order < 0 : left < right;
+        });
 }
 
 static bool console_inspection_node(GVariant* dictionary, guint depth, guint* node_count,
@@ -282,6 +318,7 @@ static bool console_inspection_node(GVariant* dictionary, guint depth, guint* no
     g_autoptr(GVariant) remaining = g_variant_iter_next_value(&iterator);
     if (remaining)
         destination->has_more = true;
+    sort_console_children(&destination->children);
     return true;
 }
 
