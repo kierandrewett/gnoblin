@@ -153,7 +153,7 @@ In a Gnoblin session, `"prevent"` makes Mutter use its focus-stealing checks.
 See [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/52-focus-transfer/0001-honour-app-activation.patch)
 for this session-specific behavior, or read
 [Mutter's focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/).
-See the [focus prevention guide](/focus-transfer) for a ready-to-use config
+See the [focus prevention guide](/shell-api/focus-activation) for a ready-to-use config
 example.
 
 Declare named workspaces in the top-level `workspaces` field of
@@ -177,7 +177,7 @@ See the
 [workspace rules guide](/guides/window_rules#workspaces) for matching and
 placement examples, and the
 [writing workspace recipe](/recipes/writing-workspace) for runtime automation.
-See the [Lua runtime API](/config/runtime-api) for all callable runtime methods.
+See the [Lua runtime API](/shell-api/) for all callable runtime methods.
 
 For example, use pointer-follow focus and declare two persistent workspaces:
 

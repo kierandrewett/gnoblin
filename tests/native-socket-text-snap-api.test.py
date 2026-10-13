@@ -15,6 +15,8 @@ LUA = LUA_SOURCES
 SESSION = RUNTIME_SOURCES
 CLI_FILES = sorted((ROOT / "src/cli").glob("gnoblinctl*.c"))
 PAD_HELP_PATCH = ROOT / "patches/mutter/99-typed-window-api/0085-emit-tablet-pad-help-without-layout.patch"
+EVENT_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/events").glob("*.md")))
+BRIDGE_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/bridge").glob("*.md")))
 
 
 def function_body(source: str, signature: str, end_marker: str) -> str:
@@ -219,7 +221,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         self.assertIn(
             "gnoblin.appearance.color-scheme-changed",
-            (ROOT / "docs/config/lua-events.md").read_text(),
+            EVENT_DOCS,
         )
 
     def test_appearance_color_scheme_read_uses_shared_lua_snapshot_at_api_170(self):
@@ -292,8 +294,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         ):
             with self.subTest(event=event):
                 self.assertIn(f'"{event}"', events)
-                self.assertIn(event, (ROOT / "docs/config/lua-events.md").read_text())
-                self.assertIn(event, (ROOT / "docs/compositor-bridge.md").read_text())
+                self.assertIn(event, EVENT_DOCS)
+                self.assertIn(event, BRIDGE_DOCS)
         self.assertIn('"layer-lifecycle-events"', source)
         self.assertIn('g_str_has_prefix(name, "gnoblin.layer.") && client->api_minor < 71', subscription)
         self.assertIn("layer lifecycle events require API version 1.71", subscription)
@@ -1333,7 +1335,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             'if (g_str_equal(op, "windows"))',
         )
         patch = (ROOT / "patches/mutter/99-typed-window-api" / "0076-report-xdg-activation-denied.patch").read_text()
-        docs = (ROOT / "docs/config/lua-events.md").read_text()
+        docs = EVENT_DOCS
 
         self.assertGreaterEqual(api_minor(header), 69)
         self.assertIn('"gnoblin.window.activation-denied"', events)

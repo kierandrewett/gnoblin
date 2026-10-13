@@ -36,7 +36,7 @@ session into the selected prefix.
 
 Native compositor changes require a fresh session. A Lua config reload does not
 load rebuilt libraries. For Lua API methods, events, and operation results, use
-the [runtime API reference](/config/runtime-api) and [event catalog](/config/lua-events).
+the [runtime API reference](/shell-api/) and [event catalog](/events/).
 
 ## Preview a change
 

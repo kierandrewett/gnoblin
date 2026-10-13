@@ -4,7 +4,7 @@ Gnoblin reports window-menu requests to the active shell. The shell draws the
 menu as its own Wayland surface and chooses which actions to show.
 
 Subscribe to `gnoblin.window.menu-requested` through the
-[compositor bridge](/compositor-bridge#api-127-shell-presentation-requests).
+[compositor bridge](/bridge/#api-127-shell-presentation-requests).
 The event includes:
 
 - `window_id`: stable ID of the window that requested the menu;
@@ -16,7 +16,7 @@ Use it with `window.begin_move` or `window.begin_resize` if the shell offers
 those actions. The context is tied to the requesting window, expires after
 five seconds, and is revoked on disconnect or session lock. Application menu
 requests are informational and do not include this capability. See the
-[menu action details](/compositor-bridge#api-130-wm-menu-actions).
+[menu action details](/bridge/#api-130-wm-menu-actions).
 
 Use the supplied `window_id` for other window operations; do not target the
 currently focused window after the menu opens. Read the live window record to

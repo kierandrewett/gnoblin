@@ -30,5 +30,5 @@ Runtime Lua can temporarily override this setting with
 `gnoblin.monitors.set_privacy_screen(value)`. Passing `"inherit"` clears that
 runtime override and restores this configured value. If the config omits
 `privacy_screen`, `"inherit"` follows the system preference. See the
-[runtime monitor API](/config/runtime-api#monitor-privacy-screens) for snapshots and change
+[runtime monitor API](/shell-api/#monitor-privacy-screens) for snapshots and change
 events.

@@ -4,11 +4,11 @@
 
 The native Mutter runtime exposes the latest window state directly:
 
-| Lua call                        | Arguments                                                                   | Result                                |
-| ------------------------------- | --------------------------------------------------------------------------- | ------------------------------------- |
-| `gnoblin.windows.list(filter?)` | Optional `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` filters | Read-only window snapshots            |
-| `gnoblin.windows.focused()`     | None                                                                        | Read-only window snapshot or `nil`    |
-| `gnoblin.windows.by_id(id)`     | Stable string window ID                                                     | Read-only window snapshot or `nil`    |
+| Lua call                        | Arguments                                                                   | Result                             |
+| ------------------------------- | --------------------------------------------------------------------------- | ---------------------------------- |
+| `gnoblin.windows.list(filter?)` | Optional `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` filters | Read-only window snapshots         |
+| `gnoblin.windows.focused()`     | None                                                                        | Read-only window snapshot or `nil` |
+| `gnoblin.windows.by_id(id)`     | Stable string window ID                                                     | Read-only window snapshot or `nil` |
 
 Window filter values:
 
@@ -49,13 +49,13 @@ Each method returns an `Operation` handle.
 | `window:toggle_minimize()`                     | None                                              | Minimize or restore the window.                           |
 | `window:unminimize()`                          | None                                              | Remove minimization without changing maximization.        |
 | `window:restore()`                             | None                                              | Remove minimization and maximization.                     |
-| `window:restore_or_minimize()`                  | None                                              | Unmaximize, restore the pre-snap frame, or minimize.      |
+| `window:restore_or_minimize()`                 | None                                              | Unmaximize, restore the pre-snap frame, or minimize.      |
 | `window:set_maximized(enabled)`                | Boolean                                           | Set maximization.                                         |
 | `window:set_fullscreen(enabled)`               | Boolean                                           | Set fullscreen.                                           |
 | `window:set_above(enabled)`                    | Boolean                                           | Set the above state.                                      |
 | `window:set_sticky(enabled)`                   | Boolean                                           | Set visibility across workspaces.                         |
-| `window:move(position)`                        | `{x, y}`; integers from −100000 to 100000 each     | Move in logical desktop pixels.                           |
-| `window:resize(size)`                          | `{width, height}`; integers from 1 to 32768        | Resize in logical pixels.                                 |
+| `window:move(position)`                        | `{x, y}`; integers from −100000 to 100000 each    | Move in logical desktop pixels.                           |
+| `window:resize(size)`                          | `{width, height}`; integers from 1 to 32768       | Resize in logical pixels.                                 |
 | `window:move_to_workspace(selector, options?)` | Workspace selector; optional `follow` boolean     | Move this window and optionally activate the destination. |
 | `window:move_to_monitor(target)`               | Monitor connector ID or `{id = ID}`               | Move this window to an active monitor.                    |
 | `window:thumbnail(size)`                       | `{width = integer 1–480, height = integer 1–320}` | Capture a bounded compositor-rendered PNG preview.        |
@@ -77,8 +77,7 @@ bindings, synthetic input, input-method events, or repeated key presses. Direct
 `Window:focus`, `Window:begin_move`, and `Window:begin_resize` calls without a
 context remain denied.
 
-For socket operation names and argument fields, see the [compositor bridge](/compositor-bridge).
-
+For socket operation names and argument fields, see the [compositor bridge](/bridge/).
 
 ## Compositor requests
 
@@ -107,7 +106,7 @@ hides the token and sends the operation over the event's connection. App-menu
 events do not receive a `MenuContext`.
 
 The token expires after five seconds and is consumed on every matching attempt,
-including malformed arguments. The [compositor bridge](/compositor-bridge)
+including malformed arguments. The [compositor bridge](/bridge/)
 documents the socket form. Gnoblin rechecks the window and lock state before
 using a fresh Mutter timestamp.
 

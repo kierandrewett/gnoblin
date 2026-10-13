@@ -11,7 +11,7 @@ print(settings.compositor["locate-pointer"])
 ```
 
 Use this to inspect earlier settings while a config is loading. For runtime
-reads, prefer the immutable [`gnoblin.settings`](/config/runtime-api) snapshot.
+reads, prefer the immutable [`gnoblin.settings`](/shell-api/) snapshot.
 For named entries you want to edit or loop over, use
 [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) or
 [`gnoblin.configure.autostart`](/config/configure/autostart). See

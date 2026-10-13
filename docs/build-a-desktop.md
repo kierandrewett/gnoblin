@@ -17,8 +17,8 @@ Bingux is one separate project built on these interfaces.
 _Bingux is one separate shell example; Gnoblin provides the compositor and window management._
 
 The [configuration reference](/config/configure) describes the Lua
-settings. The [CLI](gnoblinctl.md) is convenient for commands; the
-[compositor bridge](compositor-bridge.md) supplies subscriptions and shortcuts
+settings. The [CLI](cli/index.md) is convenient for commands; the
+[compositor bridge](bridge/index.md) supplies subscriptions and shortcuts
 to a long-running shell. [Wayland protocols](wayland-protocols.md) serve native
 clients, and [Lua event handlers](user-scripts.md) react to compositor events.
 
@@ -66,7 +66,7 @@ timing and named entries.
 
 Waybar's Sway and Hyprland modules expect those compositors' own IPC and do
 not gain that IPC merely by running under Gnoblin. Configure supported generic
-modules or write a module using [window data](compositor-bridge.md#windows-and-controls).
+modules or write a module using [window data](bridge/index.md#windows-and-controls).
 
 ## Give each visible function an owner
 
@@ -117,5 +117,5 @@ login session.
 
 - [Window rules](/guides/window_rules), [effects](/guides/window_effects) and [frames](/guides/window_frames)
 - [Shell integration](shell-integration.md), [window menus](/guides/window_menu) and [snapping](/guides/window_snapping)
-- [Protocol catalog](wayland-protocols.md) and [compositor bridge](compositor-bridge.md)
+- [Protocol catalog](wayland-protocols.md) and [compositor bridge](bridge/index.md)
 - [Troubleshooting](troubleshooting.md) when a component does not appear

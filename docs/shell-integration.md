@@ -1,7 +1,7 @@
 # Integrate a desktop shell
 
 These APIs are for shell authors. The
-[compositor bridge](/compositor-bridge) provides live compositor state and
+[compositor bridge](/bridge/) provides live compositor state and
 operations. Desktop configuration starts with [the configuration guide](/config).
 For the Bingux-specific transition from the compatibility bridge, see the
 [standalone migration guide](/migrate-bingux).
@@ -53,7 +53,7 @@ Choose a window interface based on what the shell needs:
 | ---------------------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`ext_foreign_toplevel_list_v1`](wayland-protocols.md)     | A portable, read-only window list    | Mapped windows, identifier, title and app ID. The identifier lasts only while the window is mapped; no active state or control requests.                                              |
 | [`zwlr_foreign_toplevel_manager_v1`](wayland-protocols.md) | A protocol-based taskbar or switcher | Title, app ID and state; requests for activation, close, minimize, maximize and fullscreen. Check state events for results. Gnoblin omits optional `output_enter` and `output_leave`. |
-| [Compositor bridge](compositor-bridge.md)                  | A Gnoblin-specific shell             | Live window snapshots, actions, previews, workspaces and input sessions over Gnoblin's runtime socket.                                                                                |
+| [Compositor bridge](bridge/index.md)                       | A Gnoblin-specific shell             | Live window snapshots, actions, previews, workspaces and input sessions over Gnoblin's runtime socket.                                                                                |
 
 See the [Wayland protocol catalogue](wayland-protocols.md) for advertised globals
 and versions. For persistent keybindings, use the [Lua shortcut config](/config/configure/shortcuts).

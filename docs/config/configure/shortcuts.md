@@ -40,7 +40,7 @@ end)
 Input capture is limited to one command-free, action-free bare `Super` entry
 with `trigger = "release"`. It requires the compositor's early modifier hook.
 The entry raises shortcut events; it does not launch a command. See
-[shortcut state and capture](/config/runtime-api#shortcut-state-and-capture)
+[shortcut state and capture](/shell-api/#shortcut-state-and-capture)
 for session events and key event fields.
 
 It also applies named actions from the `wm`, `mutter`, and `wayland` groups.
@@ -72,7 +72,7 @@ your config. It emits shortcut-session events instead of launching a command.
 Runtime bindings can also set `capture_input` when a shell registers the
 binding dynamically. Neither form appears in `gnoblin.shortcuts.list()`;
 static capture declarations use the shortcut-session event API. See
-[shortcut state and capture](/config/runtime-api#shortcut-state-and-capture).
+[shortcut state and capture](/shell-api/#shortcut-state-and-capture).
 
 For a command or action shortcut, set exactly one of `action` or `command`:
 

@@ -57,5 +57,5 @@ palette before the first change event. Other values use the light palette in
 this short example; branch on `default` separately if your shell has its own
 default colors.
 
-See [Lua events](/config/lua-events) for the event fields and
+See [Lua events](/events/) for the event fields and
 [window effects](/guides/window_effects) for border, shadow and blur options.

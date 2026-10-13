@@ -30,7 +30,7 @@ The [configuration API](/config) links each setting to a detailed reference.
 ## Develop
 
 - [Shell integration](/shell-integration)
-- [Compositor bridge](/compositor-bridge)
+- [Compositor bridge](/bridge/)
 - [Wayland protocols](/wayland-protocols)
 
 ## Help

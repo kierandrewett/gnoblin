@@ -57,7 +57,7 @@ for the result and event fields.
 Use [`gnoblin.snapshot()`](/config/snapshot) to inspect the config assembled
 so far.
 
-Use [Lua events](/config/lua-events) to set values from the window under the
+Use [Lua events](/events/) to set values from the window under the
 pointer when the config loads.
 
 To follow GNOME's light or dark preference in window rules, see

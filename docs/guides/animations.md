@@ -90,10 +90,10 @@ Only use properties supported by the event. Values are numbers; lengths and
 translations are logical pixels. `opacity` and `progress` range from 0 to 1.
 Scale is a multiplier where 1 is the original size. `rotation` is in degrees.
 
-| Events                                              | Properties                                                     |
-| --------------------------------------------------- | -------------------------------------------------------------- |
-| Window, dialog and layer events                     | `x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation`, `opacity` |
-| `workspace-switch`, `resize`, `shadow-change`       | `progress`                                                     |
+| Events                                        | Properties                                                     |
+| --------------------------------------------- | -------------------------------------------------------------- |
+| Window, dialog and layer events               | `x`, `y`, `scale`, `scale_x`, `scale_y`, `rotation`, `opacity` |
+| `workspace-switch`, `resize`, `shadow-change` | `progress`                                                     |
 
 | Field                | Meaning and accepted values                                                                                                                   |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -319,4 +319,4 @@ against window or layer targets.
 
 Workspace and shadow transitions animate internal actors or effects and
 cannot currently be previewed against those targets. See
-[gnoblinctl animation commands](/gnoblinctl#animations).
+[gnoblinctl animation commands](/cli/#animations).

@@ -35,7 +35,7 @@ Select Gnoblin at login; the regular GNOME session stays available.
 - **Live configuration.** Edit [one Lua file](docs/config.md) for window rules, shortcuts,
   autostart, protocol gates and animation behavior. Reload applies the settings
   supported by the runtime; startup-only changes need a new session.
-- **Window control and scripting.** [`gnoblinctl`](docs/gnoblinctl.md) exposes windows, workspaces,
+- **Window control and scripting.** [`gnoblinctl`](docs/cli/index.md) exposes windows, workspaces,
   monitors and input sources. Lua callbacks and the user-private compositor
   bridge expose supported runtime state and actions.
 - **External desktop controls.** A separate shell or desktop clients provide

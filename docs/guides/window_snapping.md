@@ -33,7 +33,7 @@ See [drag boundaries](/guides/session_settings#window-drag-boundary) for overlap
 
 ## Shell integration
 
-Use the [bridge socket](/compositor-bridge) to supply a picker. Rectangles
+Use the [bridge socket](/bridge/) to supply a picker. Rectangles
 use logical desktop pixels. Read the work area from Gnoblin; it excludes space
 reserved by panels. `hit` is where pointer release selects a region, while
 `target` is the final window rectangle.

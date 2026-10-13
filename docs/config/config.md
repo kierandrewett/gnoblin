@@ -16,7 +16,7 @@ local locate_pointer = gnoblin.config.compositor["locate-pointer"]
 gnoblin.config.compositor["locate-pointer"] = true
 ```
 
-For reads, prefer the detached, read-only [`gnoblin.settings`](/config/runtime-api)
+For reads, prefer the detached, read-only [`gnoblin.settings`](/shell-api/)
 snapshot. `gnoblin.configure` is the supported way to declare settings;
 direct edits through `gnoblin.config` remain for compatibility and are
 validated with the rest of the config when the file finishes loading.

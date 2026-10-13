@@ -20,8 +20,7 @@ for _, shortcut in ipairs(gnoblin.shortcuts.list()) do
 end
 ```
 
-Use `gnoblin.shortcuts.list()` from Lua; see the [compositor bridge](/compositor-bridge) for socket request details.
-
+Use `gnoblin.shortcuts.list()` from Lua; see the [compositor bridge](/bridge/) for socket request details.
 
 `gnoblin.shortcuts.bind` accepts
 `id` and `accelerator`, with optional `hold`, `trigger`, `mode`, and
@@ -163,7 +162,7 @@ capture, Gnoblin cancels the operation before forwarding keys to that owner.
 The native runtime does not expose key events to Lua.
 
 The socket capability and request contract are documented in the
-[compositor bridge](/compositor-bridge).
+[compositor bridge](/bridge/).
 
 ```lua
 gnoblin.events.once("gnoblin.window.focused", function()
@@ -178,4 +177,4 @@ gnoblin.events.once("gnoblin.window.focused", function()
 end)
 ```
 
-See [`gnoblinctl`](/gnoblinctl) for command-line forms of these operations.
+See [`gnoblinctl`](/cli/) for command-line forms of these operations.

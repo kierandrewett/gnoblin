@@ -84,7 +84,7 @@ Set `pad_buttons = "inherit"` to clear an earlier list and return every button
 to its system action.
 
 The `"help"` action has no built-in overlay. Subscribe to the
-[pad-help event](/config/runtime-api#tablet-pad-help) in your shell.
+[pad-help event](/shell-api/#tablet-pad-help) in your shell.
 
 Enable `keep_aspect` when you want a drawn circle to stay circular across
 different display and tablet shapes.

@@ -28,7 +28,7 @@ manager. A socket caller may receive EOF while the session is closing.
 lock result reports that a subscribed shell client received the request; check
 `session.status()` to confirm the compositor entered a locked state.
 
-The [compositor bridge](/compositor-bridge) documents the socket request format.
+The [compositor bridge](/bridge/) documents the socket request format.
 
 ## Runtime health and reload
 
@@ -149,7 +149,7 @@ unavailable or no client is subscribed. No Lua unlock method is provided.
 
 The lock state is `unlocked`, `covering`, `locked`, or `failsafe`. Only
 `locked` confirms the compositor's lock transition. See the
-[compositor bridge](/compositor-bridge#api-version-121-session-locking)
+[compositor bridge](/bridge/#api-version-121-session-locking)
 for socket subscription and request details.
 
 `gnoblin.session.activity()` returns the latest native idle-monitor sample.
@@ -169,4 +169,4 @@ and monotonic-clock `time`.
 Native sessions provide immediate reads through `gnoblin.windows`,
 `gnoblin.workspaces`, `gnoblin.monitors`, `gnoblin.layers`,
 `gnoblin.input.devices()`, and `gnoblin.capabilities`. See
-[Lua events](/config/lua-events) for event names and callback behavior.
+[Lua events](/events/) for event names and callback behavior.

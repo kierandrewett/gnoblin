@@ -12,8 +12,8 @@ Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and a
 - [`gnoblin.load`](/config/load) — load another Lua config file.
 - [`gnoblin.snapshot`](/config/snapshot) — inspect a copy of the current config.
 - [`gnoblin.array`](/config/array) — mark a Lua table as a list.
-- [`gnoblin.on`](/config/lua-events) — handle compositor and input events.
-- [Lua runtime API](/config/runtime-api) — inspect and control the running session.
+- [`gnoblin.on`](/events/) — handle compositor and input events.
+- [Lua runtime API](/shell-api/) — inspect and control the running session.
 
 The named views [`gnoblin.configure.shortcuts`](/config/configure/shortcuts) and [`gnoblin.configure.autostart`](/config/configure/autostart) read or update entries by name. See the [shortcuts](/guides/shortcuts) and [autostart](/guides/autostart) guides. Lua's `require` loader is covered under [`gnoblin.load`](/config/load).
 
