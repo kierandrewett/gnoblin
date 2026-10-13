@@ -384,9 +384,58 @@ guest-monotonic and client-`START` boundaries. `samples.json` records client
 policy alongside D-Bus round trips, PSI, memory, and unit liveness.
 `inputs.json` pairs each injected key with the received `KEY` event.
 
-Frame callback cadence is recorded, but it does not prove presentation to the
-display. Cleanup stops the RemoteDesktop session, load units, and client after
-a failed assertion or interruption.
+Read `result.json` before interpreting `summary.json`. `lifecycle_passed`
+replaces the former unqualified `passed` field. It means all three phases
+completed, the existing scheduling and liveness checks held at their
+checkpoints, and each phase had usable frame, input, and D-Bus observations.
+Malformed records or inconsistent frame/input timestamps fail this check.
+Exit status zero means this lifecycle check passed.
+
+`performance.status` is always `"not_evaluated"`. There is no performance
+acceptance budget in this harness: even a 450 ms frame p95 can accompany
+`lifecycle_passed: true`. Compare timing evidence against a workload-specific
+budget or reference run with the same VM resources, renderer, display, and
+client pacing. A lifecycle pass cannot establish acceptable rendering speed.
+
+Interpret the per-phase metrics as follows:
+
+- `frame_p95_ms` and `frame_max_ms` measure intervals between client dispatches
+  of Wayland frame callbacks using `CLOCK_MONOTONIC`. They include the client's
+  deliberate 16.667 ms wait before its next commit, client scheduling, and
+  compositor delay. They measure neither GPU execution nor presentation.
+- `frame_callbacks` counts callback records; `frame_intervals` counts usable
+  deltas. The first callback's zero sentinel is excluded from interval metrics.
+  Later deltas must equal the difference between adjacent callback timestamps.
+- Frame intervals belong to the phase containing their ending callback, using
+  `start <= timestamp < end`. `frame_cross_boundary_intervals` counts included
+  intervals that started before that phase. Such intervals retain their full
+  duration. A stall without a subsequent callback has no completed interval;
+  callbacks outside all phases remain only in `frames.log`.
+- `frame_over_100ms` counts intervals strictly longer than 100 ms. This is a
+  diagnostic count, not an acceptance threshold. All p95 values use nearest
+  rank (`ceil(0.95 * sample_count)`); absent observations produce JSON `null`.
+- Input latency runs from just before the D-Bus key injection call to the
+  client's key handler, in the same guest monotonic clock. It belongs to the
+  sending phase even when receipt occurs later. The focus handshake is kept
+  in `inputs.json` but excluded from phase summaries. `dbus_p95_ms` separately
+  measures the RemoteDesktop properties call, not input delivery.
+
+Input presses are paired in stream order. Missing, extra, non-monotonic, or
+early receipts fail lifecycle validation and suppress paired latency metrics;
+raw sends and receipts remain in `inputs.json`. Use an otherwise idle input
+seat: key events carry no injection ID, so a lost press and an unrelated
+replacement press cannot always be distinguished. The probe does not measure
+physical input latency or input-to-presentation latency.
+
+Run the local log-reader and aggregation regression with Python and PyGObject:
+
+```sh
+python3 tests/qemu-e2e/guest-pressure.test.py -v
+```
+
+It starts no VM, compositor, input session, or load process. Cleanup in the
+guest harness stops the RemoteDesktop session, load units, and client after a
+failed assertion or interruption.
 
 ## Native backdrop blur cache checks
 

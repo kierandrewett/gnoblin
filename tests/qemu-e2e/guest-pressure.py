@@ -5,6 +5,8 @@ The paced client writes START (absolute monotonic microseconds), FRAME
 (microseconds since START), and KEY (absolute monotonic microseconds) records.
 Phase boundaries are recorded in both clocks so frame and input observations
 cannot silently be assigned to the pre-focus startup interval.
+The result evaluates lifecycle and observation integrity only. Performance is
+reported as not evaluated: this probe has no rendering acceptance budget.
 """
 
 import argparse
@@ -149,6 +151,8 @@ class ClientLog:
                         "keycode": int(fields[2]),
                         "state": int(fields[3]),
                     }
+                elif fields and fields[0] in ("START", "FRAME", "KEY"):
+                    record = {"kind": "MALFORMED", "line": line.rstrip()}
             except ValueError:
                 record = {"kind": "MALFORMED", "line": line.rstrip()}
             if record:
@@ -306,6 +310,91 @@ def read_meminfo():
     }
 
 
+def summarize_observations(results, rows, phases, sent, records):
+    """Aggregate the captured stream; never infer a rendering performance pass."""
+    results["performance"] = {
+        "status": "not_evaluated",
+        "reason": "No performance acceptance budget; frame callbacks do not measure presentation.",
+    }
+    malformed = [record for record in records if record["kind"] == "MALFORMED"]
+    if malformed:
+        results["errors"].append(f"malformed client records: {len(malformed)}")
+
+    # The first callback has no predecessor. Subsequent deltas must describe
+    # adjacent CLOCK_MONOTONIC callback dispatches, not Wayland's opaque stamp.
+    frame_records = [record for record in records if record["kind"] == "FRAME"]
+    frame_errors = []
+    previous = None
+    for frame in frame_records:
+        timestamp, delta = frame["client_us"], frame["delta_us"]
+        if (
+            timestamp < 0
+            or (previous is None and delta != 0)
+            or (previous is not None and (delta <= 0 or delta != timestamp - previous))
+        ):
+            frame_errors.append(f"inconsistent FRAME timestamp/delta at client_us={timestamp}")
+        previous = timestamp
+    results["errors"].extend(frame_errors)
+    intervals = frame_records[1:] if not frame_errors and not malformed else []
+
+    key_receipts = [
+        record for record in records if record["kind"] == "KEY" and record["keycode"] == KEY_A and record["state"] == 1
+    ]
+    paired = []
+    # There is no sequence ID in wl_keyboard.key. Pair in stream order only
+    # when the complete counts and clocks agree; a missing key shifts all
+    # later pairs. Preserve raw evidence, but publish no guessed latencies.
+    if len(key_receipts) != len(sent):
+        results["errors"].append(f"input receipt mismatch: {len(key_receipts)} received for {len(sent)} sent")
+    elif not malformed:
+        pairs = list(zip(sent, key_receipts))
+        if any(receipt["absolute_us"] < item["sent_absolute_us"] for item, receipt in pairs):
+            results["errors"].append("received KEY timestamp precedes its injected key")
+        elif any(
+            later["absolute_us"] < earlier["absolute_us"] for earlier, later in zip(key_receipts, key_receipts[1:])
+        ) or any(later["sent_absolute_us"] < earlier["sent_absolute_us"] for earlier, later in zip(sent, sent[1:])):
+            results["errors"].append("input timestamps are not monotonic")
+        else:
+            paired = [
+                item
+                | {
+                    "received_absolute_us": receipt["absolute_us"],
+                    "latency_ms": (receipt["absolute_us"] - item["sent_absolute_us"]) / 1000,
+                }
+                for item, receipt in pairs
+            ]
+    for phase in phases:
+        phase_rows = [row for row in rows if row["phase"] == phase["name"]]
+        phase_inputs = [item for item in paired if item["phase"] == phase["name"]]
+        frames = [
+            item for item in frame_records if phase["start_client_us"] <= item["client_us"] < phase["end_client_us"]
+        ]
+        phase_intervals = [
+            item for item in intervals if phase["start_client_us"] <= item["client_us"] < phase["end_client_us"]
+        ]
+        phase.update(
+            {
+                "samples": len(phase_rows),
+                "input_samples": len(phase_inputs),
+                "frame_callbacks": len(frames),
+                "frame_intervals": len(phase_intervals),
+                "frame_cross_boundary_intervals": sum(
+                    frame["client_us"] - frame["delta_us"] < phase["start_client_us"] for frame in phase_intervals
+                ),
+                "frame_p95_ms": percentile([frame["delta_us"] / 1000 for frame in phase_intervals]),
+                "frame_max_ms": max((frame["delta_us"] / 1000 for frame in phase_intervals), default=None),
+                "frame_over_100ms": sum(frame["delta_us"] > 100000 for frame in phase_intervals),
+                "input_p95_ms": percentile([item["latency_ms"] for item in phase_inputs]),
+                "input_max_ms": max((item["latency_ms"] for item in phase_inputs), default=None),
+                "dbus_p95_ms": percentile([row["dbus_rtt_ms"] for row in phase_rows if row["dbus_rtt_ms"] is not None]),
+            }
+        )
+        if phase["samples"] == 0 or phase["input_samples"] == 0 or phase["frame_intervals"] == 0:
+            results["errors"].append(f"insufficient observations in {phase['name']}")
+    results["lifecycle_passed"] = results["lifecycle_passed"] and not results["errors"]
+    return {"sent": sent, "received": key_receipts, "paired": paired}
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifact_directory", type=Path)
@@ -345,7 +434,7 @@ def main():
     seat_lock = (runtime / "gnoblin-shadow-proof.lock").open("w")
     fcntl.flock(seat_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     results = {
-        "passed": False,
+        "lifecycle_passed": False,
         "errors": [],
         "configuration": vars(args)
         | {
@@ -471,7 +560,7 @@ def main():
         for unit in reversed(units):
             run(["sudo", "-n", "systemctl", "stop", unit])
         run_phase("recovery", args.recovery_seconds)
-        results["passed"] = True
+        results["lifecycle_passed"] = True
     except Exception as exc:
         failure = exc
         results["errors"].append(str(exc))
@@ -490,64 +579,16 @@ def main():
             records = client.records
         else:
             records = []
-        key_receipts = [
-            record
-            for record in records
-            if record["kind"] == "KEY" and record["keycode"] == KEY_A and record["state"] == 1
-        ]
-        paired = []
-        for index, item in enumerate(sent):
-            if index < len(key_receipts):
-                receipt = key_receipts[index]
-                paired.append(
-                    item
-                    | {
-                        "received_absolute_us": receipt["absolute_us"],
-                        "latency_ms": (receipt["absolute_us"] - item["sent_absolute_us"]) / 1000,
-                    }
-                )
-        if any(item["latency_ms"] < 0 for item in paired):
-            results["passed"] = False
-            results["errors"].append("received KEY timestamp precedes its injected key")
-        if sent and len(key_receipts) != len(sent):
-            results["passed"] = False
-            results["errors"].append(f"input receipt mismatch: {len(key_receipts)} received for {len(sent)} sent")
-        for phase in phases:
-            phase_rows = [row for row in rows if row["phase"] == phase["name"]]
-            phase_inputs = [item for item in paired if item["phase"] == phase["name"]]
-            frames = [
-                item
-                for item in records
-                if item["kind"] == "FRAME"
-                and phase["start_client_us"] <= item["client_us"] <= phase.get("end_client_us", float("inf"))
-            ]
-            phase.update(
-                {
-                    "samples": len(phase_rows),
-                    "input_samples": len(phase_inputs),
-                    "frame_callbacks": len(frames),
-                    "frame_p95_ms": percentile([frame["delta_us"] / 1000 for frame in frames]),
-                    "frame_max_ms": max((frame["delta_us"] / 1000 for frame in frames), default=None),
-                    "frame_over_100ms": sum(frame["delta_us"] > 100000 for frame in frames),
-                    "input_p95_ms": percentile([item["latency_ms"] for item in phase_inputs]),
-                    "input_max_ms": max((item["latency_ms"] for item in phase_inputs), default=None),
-                    "dbus_p95_ms": percentile(
-                        [row["dbus_rtt_ms"] for row in phase_rows if row["dbus_rtt_ms"] is not None]
-                    ),
-                }
-            )
-            if phase["samples"] == 0 or phase["input_samples"] == 0 or phase["frame_callbacks"] == 0:
-                results["passed"] = False
-                results["errors"].append(f"insufficient observations in {phase['name']}")
+        inputs = summarize_observations(results, rows, phases, sent, records)
         write("samples.json", rows)
         write("phases.json", phases)
-        write("inputs.json", {"sent": sent, "received": key_receipts, "paired": paired})
+        write("inputs.json", inputs)
         write("summary.json", phases)
         write("result.json", results)
     if failure:
         raise failure
-    if not results["passed"]:
-        raise SystemExit("pressure check failed; see result.json")
+    if not results["lifecycle_passed"]:
+        raise SystemExit("pressure lifecycle check failed; see result.json")
 
 
 if __name__ == "__main__":
