@@ -38,8 +38,15 @@ Run `gnoblinctl reload` after saving. The console evaluates Lua against the
 active configuration runtime and sends reload requests through compositor
 control.
 
-Suggestions appear above the input as you type. Completion supports globals and dotted
-member names, such as `gnoblin.windows.`. It does not evaluate the input or call Lua getters.
+Suggestions appear below the input as you type. Completion supports globals and dotted member
+names, such as `gnoblin.windows.`. It does not evaluate the input or call Lua getters.
+
+Each function in the list shows its signature, such as `(filter?: WindowFilter): Window[]`, and
+a panel below the list describes the highlighted one, including the keys of a table argument.
+
+Typing a call, for example `gnoblin.workspaces.create(`, shows that function's parameters under the
+input with the current one marked. Inside a table argument, the keys it accepts are suggested.
+
 Press Tab to take the highlighted suggestion. Use Up and Down to move through the list; Enter
 then takes the chosen suggestion, and otherwise runs what you typed. Escape hides the list.
 
@@ -47,9 +54,10 @@ A result that is a table or window record starts collapsed. Click its row, anywh
 the width, to expand it. Entries are listed alphabetically, and the summary on the row lists as
 many as fit the width.
 
-Functions show their arguments, for example `fn(filter?)`. A `?` marks an optional argument,
-and an argument in braces, such as `fn({name, id?})`, is a table with those keys. A function
-without a known argument list shows as `fn`.
+Functions show their signature, for example `fn(filter?: WindowFilter): Window[]`. A `?`
+marks an optional argument. A function written in Lua shows its parameter names, and a function
+without a known signature shows as `fn`. For editor completion outside the console, see
+[Editor support](/guides/editor_support).
 
 Expanded entries are read-only and limited to eight levels and 4,000 entries. A table cut off
 by that limit ends with a line such as `… 12 more`, which gives the number left out. A table

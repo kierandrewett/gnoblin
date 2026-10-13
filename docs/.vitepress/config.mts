@@ -99,6 +99,7 @@ export default defineConfig({
                         collapsed: true,
                         items: [
                             { text: "Files and Load Order", link: "/guides/files_and_load_order" },
+                            { text: "Editor Support", link: "/guides/editor_support" },
                             { text: "Shortcuts", link: "/guides/shortcuts" },
                             { text: "Autostart", link: "/guides/autostart" },
                             { text: "Appearance", link: "/guides/theming" },

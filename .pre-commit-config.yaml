@@ -12,6 +12,12 @@ repos:
         types: [markdown]
         files: '^docs/.*\.md$'
         require_serial: true
+      - id: lua-api-types
+        name: Lua API types are current
+        entry: python3 scripts/gen-lua-api.py --check
+        language: system
+        files: '^(src/.*\.[ch]|scripts/gen-lua-api\.py)$'
+        pass_filenames: false
       - id: ruff
         name: ruff
         entry: ruff check

@@ -39,120 +39,41 @@ static void console_truncate_utf8(GString* output, gsize length) {
     g_string_truncate(output, length);
 }
 
-/* Argument lists the console shows for functions implemented in C, which carry no parameter names.
- * They follow docs/shell-api and docs/cli/lua.md. A name ending in "?" is optional; a table
- * argument lists its keys. */
+/* Signatures for the public C functions come from the LuaCATS annotations in src/config/lua/api/,
+ * turned into the tables below by scripts/gen-lua-api.py. */
+typedef struct {
+    const char* name;
+    const char* type;
+    gboolean optional;
+    const char* description;
+} ApiMember;
+
+typedef struct {
+    const char* name;
+    const char* summary;
+    const ApiMember* fields;
+    gsize n_fields;
+} ApiClass;
+
 typedef struct {
     const char* path;
-    const char* arguments;
-} ApiSignature;
+    const char* summary;
+    const ApiMember* params;
+    gsize n_params;
+    const char* returns;
+} ApiFunction;
 
-static const ApiSignature api_signatures[] = {
-    {"animation", "spec"},
-    {"array", "table"},
-    {"permission_rule", "rule"},
-    {"window_rule", "rule"},
-    {"layer.list", ""},
-    {"monitor.list", ""},
-    {"events.mutter.on", "name, callback"},
-    {"events.mutter.once", "name, callback"},
-    {"animations.get", "name"},
-    {"animations.inspect", "args"},
-    {"animations.list", ""},
-    {"animations.pause", "args"},
-    {"animations.play", "args"},
-    {"animations.preview", "args"},
-    {"animations.seek", "args"},
-    {"animations.step", "args"},
-    {"animations.stop", "args"},
-    {"animations.surfaces", ""},
-    {"appearance.color_scheme", ""},
-    {"auth.begin", "{request_id, identity?}"},
-    {"auth.cancel", "{request_id}"},
-    {"auth.respond", "{request_id, response}"},
-    {"capabilities.list", ""},
-    {"commands.capture", "options"},
-    {"commands.run", "argv"},
-    {"console.toggle", ""},
-    {"events.on", "name, callback"},
-    {"events.once", "name, callback"},
-    {"focus.history", "filter?"},
-    {"grant.list", ""},
-    {"grant.revoke", "args"},
-    {"input.current_source", ""},
-    {"input.devices", ""},
-    {"input.on", "match, callback"},
-    {"input.orientation_lock", ""},
-    {"input.select_source", "{type, id}"},
-    {"input.set_orientation_lock", "value"},
-    {"input.sources", ""},
-    {"input.text_target", "context"},
-    {"launch.begin", "{token, application, milliseconds?}"},
-    {"launch.end", "{token}"},
-    {"launch.status", ""},
-    {"launches.begin", "options"},
-    {"launches.end", "args"},
-    {"launches.finish", "token"},
-    {"launches.list", ""},
-    {"launches.snapshot", ""},
-    {"layers.animation_policy", "namespace"},
-    {"layers.list", "filter?"},
-    {"load", "path_or_glob"},
-    {"location.authorize_app", "options"},
-    {"monitors.list", ""},
-    {"monitors.primary", ""},
-    {"monitors.privacy_screen", ""},
-    {"monitors.set_privacy_screen", "value"},
-    {"on", "event_name, callback"},
-    {"permissions.check", "args"},
-    {"permissions.list", ""},
-    {"permissions.policy", ""},
-    {"portals.grants", "filter?"},
-    {"privacy.state", ""},
-    {"privacy.stop_recording", ""},
-    {"privacy.stop_sharing", ""},
-    {"prompt.cancel", "args"},
-    {"prompt.respond", "args"},
-    {"runtime.reload_config", ""},
-    {"runtime.status", ""},
-    {"session.activity", ""},
-    {"session.lock", ""},
-    {"session.logout", ""},
-    {"session.status", ""},
-    {"shortcuts.actions", "group?"},
-    {"shortcuts.bind", "args"},
-    {"shortcuts.capture", "options?"},
-    {"shortcuts.end_session", "args"},
-    {"shortcuts.list", ""},
-    {"shortcuts.unbind", "args"},
-    {"snapshot", ""},
-    {"version", ""},
-    {"windows.by_id", "id"},
-    {"windows.focused", ""},
-    {"windows.list", "filter?"},
-    {"windows.snap_context", "context"},
-    {"workspaces.activate", "{id|number}"},
-    {"workspaces.active", ""},
-    {"workspaces.by_id", "id"},
-    {"workspaces.create", "{name, id?, activate?}"},
-    {"workspaces.list", ""},
-    {"workspaces.move_active", "{workspace, follow?}"},
-    {"workspaces.move_window", "{window, workspace, follow?}"},
-    {"workspaces.next", ""},
-    {"workspaces.previous", ""},
-    {"workspaces.remove", "{id|number}"},
-    {"workspaces.rename", "{id|number, name}"},
-};
+#include "gnoblin-lua-signatures.inc"
 
 #define CONSOLE_SIGNATURES_KEY "gnoblin.signatures"
 
-/* Remember each public C function's arguments, keyed by the function itself, so a result shows
- * them wherever it was reached from, such as a local alias of gnoblin.windows.list. Called once
- * the API is installed and before any user code can replace a function. */
+/* Remember each annotated C function's signature, keyed by the function itself, so a result shows
+ * it wherever it was reached from, such as a local alias of gnoblin.windows.list. Called once the
+ * API is installed and before any user code can replace a function. */
 void console_register_signatures(lua_State* state) {
     lua_newtable(state);
-    for (gsize i = 0; i < G_N_ELEMENTS(api_signatures); i++) {
-        g_auto(GStrv) parts = g_strsplit(api_signatures[i].path, ".", -1);
+    for (const ApiFunction* function = api_functions; function->path; function++) {
+        g_auto(GStrv) parts = g_strsplit(function->path, ".", -1);
         lua_getglobal(state, "gnoblin");
         for (guint part = 0; parts[part] && lua_istable(state, -1); part++) {
             lua_pushstring(state, parts[part]);
@@ -160,7 +81,7 @@ void console_register_signatures(lua_State* state) {
             lua_remove(state, -2);
         }
         if (lua_iscfunction(state, -1)) {
-            lua_pushstring(state, api_signatures[i].arguments);
+            lua_pushlightuserdata(state, (void*)function);
             lua_rawset(state, -3);
         } else {
             lua_pop(state, 1);
@@ -169,38 +90,108 @@ void console_register_signatures(lua_State* state) {
     lua_setfield(state, LUA_REGISTRYINDEX, CONSOLE_SIGNATURES_KEY);
 }
 
-/* The argument list of the function at the given index, or NULL when it is not known. Lua
- * functions name their own parameters; C functions are looked up in the table above. */
-static char* console_function_arguments(lua_State* state, int index) {
+static const ApiFunction* console_api_function(lua_State* state, int index) {
     index = lua_absindex(state, index);
+    const ApiFunction* function = NULL;
     if (lua_getfield(state, LUA_REGISTRYINDEX, CONSOLE_SIGNATURES_KEY) == LUA_TTABLE) {
         lua_pushvalue(state, index);
-        if (lua_rawget(state, -2) == LUA_TSTRING) {
-            char* arguments = g_strdup(lua_tostring(state, -1));
-            lua_pop(state, 2);
-            return arguments;
-        }
+        if (lua_rawget(state, -2) == LUA_TLIGHTUSERDATA)
+            function = lua_touserdata(state, -1);
         lua_pop(state, 1);
     }
     lua_pop(state, 1);
+    return function;
+}
+
+static void console_append_parameters(GString* out, const ApiFunction* function) {
+    for (gsize i = 0; i < function->n_params; i++) {
+        const ApiMember* param = &function->params[i];
+        g_string_append_printf(out, "%s%s%s: %s", i ? ", " : "", param->name,
+                               param->optional ? "?" : "", param->type);
+    }
+}
+
+/* The class named by a type such as "WorkspaceArgs", "WorkspaceArgs?" or "Rule|nil"; a union of
+ * several types, an array or a builtin names none. */
+static const ApiClass* console_find_class(const char* type) {
+    g_autofree char* name = g_strdup(type);
+    g_strstrip(name);
+    gsize length = strlen(name);
+    if (length > 4 && g_str_has_suffix(name, "|nil"))
+        name[length - 4] = '\0';
+    length = strlen(name);
+    if (length && name[length - 1] == '?')
+        name[length - 1] = '\0';
+    char* generic = strchr(name, '<');
+    if (generic)
+        *generic = '\0';
+    for (const ApiClass* class = api_classes; class->name; class ++)
+        if (g_str_equal(class->name, name))
+            return class;
+    return NULL;
+}
+
+/* The argument list of the function at the given index as "(a: T, b?: U): R", or NULL when it
+ * is not known. Annotated C functions carry their types; Lua functions name their own
+ * parameters. */
+static char* console_function_arguments(lua_State* state, int index) {
+    index = lua_absindex(state, index);
+    g_autoptr(GString) text = g_string_new("(");
+    const ApiFunction* function = console_api_function(state, index);
+    if (function) {
+        console_append_parameters(text, function);
+        g_string_append_c(text, ')');
+        if (function->returns && *function->returns)
+            g_string_append_printf(text, ": %s", function->returns);
+        return g_string_free(g_steal_pointer(&text), FALSE);
+    }
     if (lua_iscfunction(state, index))
         return NULL;
 
     lua_Debug info;
     lua_pushvalue(state, index);
     lua_getinfo(state, ">u", &info); /* pops the function */
-    g_autoptr(GString) names = g_string_new(NULL);
     lua_pushvalue(state, index);
     for (int parameter = 1; parameter <= info.nparams; parameter++) {
         const char* name = lua_getlocal(state, NULL, parameter);
-        if (names->len > 0)
-            g_string_append(names, ", ");
-        g_string_append(names, name && name[0] != '(' ? name : "?");
+        if (parameter > 1)
+            g_string_append(text, ", ");
+        g_string_append(text, name && name[0] != '(' ? name : "?");
     }
     lua_pop(state, 1);
     if (info.isvararg)
-        g_string_append(names, names->len > 0 ? ", ..." : "...");
-    return g_string_free(g_steal_pointer(&names), FALSE);
+        g_string_append(text, info.nparams > 0 ? ", ..." : "...");
+    g_string_append_c(text, ')');
+    return g_string_free(g_steal_pointer(&text), FALSE);
+}
+
+static void console_append_member(GString* out, const ApiMember* member, const char* indent) {
+    g_string_append_printf(out, "%s%s%s: %s", indent, member->name, member->optional ? "?" : "",
+                           member->type);
+    if (member->description && *member->description)
+        g_string_append_printf(out, "  %s", member->description);
+    g_string_append_c(out, '\n');
+}
+
+/* The summary, then every parameter with its description, with the keys of a table parameter
+ * listed under it. NULL for functions without an annotation. */
+static char* console_function_documentation(lua_State* state, int index) {
+    const ApiFunction* function = console_api_function(state, index);
+    if (!function)
+        return NULL;
+    g_autoptr(GString) text = g_string_new(function->summary);
+    if (function->n_params)
+        g_string_append(text, "\n\n");
+    for (gsize i = 0; i < function->n_params; i++) {
+        console_append_member(text, &function->params[i], "");
+        const ApiClass* class = console_find_class(function->params[i].type);
+        for (gsize field = 0; class && field < class->n_fields; field++)
+            console_append_member(text, &class->fields[field], "    ");
+    }
+    if (function->returns && *function->returns)
+        g_string_append_printf(text, "\nreturns %s", function->returns);
+    g_strchomp(text->str);
+    return g_string_free(g_steal_pointer(&text), FALSE);
 }
 
 /* Rendering deliberately avoids Lua conversion hooks. A console result must
@@ -239,7 +230,7 @@ static void console_append_value(GString* output, lua_State* state, int index) {
     case LUA_TFUNCTION: {
         g_autofree char* arguments = console_function_arguments(state, index);
         if (arguments)
-            g_string_append_printf(output, "<function(%s)>", arguments);
+            g_string_append_printf(output, "<function%s>", arguments);
         else
             g_string_append(output, "<function>");
         break;
@@ -432,7 +423,7 @@ static gboolean console_completion_identifier(const char* text, gsize length) {
 static const char* console_completion_token_start(const char* source) {
     const char* start = source;
     for (const char* cursor = source; *cursor; cursor++) {
-        if (strchr(" \t\n;(){}[]", *cursor))
+        if (strchr(" \t\n;(){}[],=", *cursor))
             start = cursor + 1;
     }
     return start;
@@ -529,9 +520,17 @@ static void console_completion_add(GPtrArray* completions, GHashTable* seen, con
     completion->label = receiver && *receiver
                             ? g_strdup_printf(method ? "%s:%s" : "%s.%s", receiver, key)
                             : g_strdup(key);
-    completion->detail = g_strdup_printf("Lua %s", lua_typename(state, lua_type(state, value)));
-    completion->documentation =
-        g_strdup(readonly ? "Read-only Gnoblin snapshot member" : "Live Lua environment member");
+    g_autofree char* signature =
+        lua_isfunction(state, value) ? console_function_arguments(state, value) : NULL;
+    g_autofree char* documentation =
+        lua_isfunction(state, value) ? console_function_documentation(state, value) : NULL;
+    completion->detail =
+        signature ? g_steal_pointer(&signature)
+                  : g_strdup_printf("Lua %s", lua_typename(state, lua_type(state, value)));
+    completion->documentation = documentation
+                                    ? g_steal_pointer(&documentation)
+                                    : g_strdup(readonly ? "Read-only Gnoblin snapshot member"
+                                                        : "Live Lua environment member");
     g_ptr_array_add(completions, completion);
 }
 
@@ -573,6 +572,148 @@ static char* console_completion_receiver(GPtrArray* segments) {
     return g_string_free(g_steal_pointer(&receiver), FALSE);
 }
 
+/* Where the cursor sits in a function call being typed: the innermost call that is still open. */
+typedef struct {
+    char open;
+    gsize position;
+    guint commas;
+} ConsoleFrame;
+
+typedef struct {
+    gboolean found;
+    char* callee;      /* the dotted name before the opening parenthesis */
+    guint active;      /* zero-based argument being typed */
+    gboolean in_table; /* inside a table constructor within that argument */
+} ConsoleCall;
+
+static ConsoleCall console_call_context(const char* source) {
+    ConsoleCall call = {FALSE, NULL, 0, FALSE};
+    g_autoptr(GArray) frames = g_array_new(FALSE, FALSE, sizeof(ConsoleFrame));
+    char quote = 0;
+    for (gsize i = 0; source[i]; i++) {
+        char c = source[i];
+        if (quote) {
+            if (c == '\\' && source[i + 1])
+                i++;
+            else if (c == quote)
+                quote = 0;
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            quote = c;
+        } else if (c == '-' && source[i + 1] == '-') {
+            while (source[i] && source[i] != '\n')
+                i++;
+            if (!source[i])
+                break;
+        } else if (c == '(' || c == '{' || c == '[') {
+            ConsoleFrame frame = {c, i, 0};
+            g_array_append_val(frames, frame);
+        } else if ((c == ')' || c == '}' || c == ']') && frames->len) {
+            g_array_set_size(frames, frames->len - 1);
+        } else if (c == ',' && frames->len) {
+            g_array_index(frames, ConsoleFrame, frames->len - 1).commas++;
+        }
+    }
+    for (gint i = (gint)frames->len - 1; i >= 0; i--) {
+        ConsoleFrame* frame = &g_array_index(frames, ConsoleFrame, i);
+        if (frame->open != '(')
+            continue;
+        gsize end = frame->position;
+        gsize start = end;
+        while (start > 0 && (g_ascii_isalnum(source[start - 1]) || source[start - 1] == '_' ||
+                             source[start - 1] == '.'))
+            start--;
+        if (start == end || (start > 0 && source[start - 1] == ':'))
+            return call;
+        call.found = TRUE;
+        call.callee = g_strndup(source + start, end - start);
+        call.active = frame->commas;
+        call.in_table = (guint)i + 1 < frames->len &&
+                        g_array_index(frames, ConsoleFrame, frames->len - 1).open == '{';
+        return call;
+    }
+    return call;
+}
+
+/* Push the value reached by a dotted name from the globals. Raw reads only: the lookup must not
+ * run any __index code. */
+static gboolean console_push_path(lua_State* state, const char* path) {
+    g_auto(GStrv) parts = g_strsplit(path, ".", -1);
+    lua_rawgeti(state, LUA_REGISTRYINDEX, LUA_RIDX_GLOBALS);
+    for (guint i = 0; parts[i]; i++) {
+        if (!console_completion_identifier(parts[i], strlen(parts[i])) ||
+            !console_completion_push_field(state, -1, parts[i])) {
+            lua_pop(state, 1);
+            return FALSE;
+        }
+        lua_remove(state, -2);
+    }
+    return TRUE;
+}
+
+static void console_add_help_row(GVariantBuilder* rows, const ApiMember* member, gint32 indent,
+                                 gboolean active) {
+    GVariantBuilder row;
+    g_variant_builder_init(&row, G_VARIANT_TYPE_VARDICT);
+    g_autofree char* label = g_strconcat(member->name, member->optional ? "?" : "", NULL);
+    g_variant_builder_add(&row, "{sv}", "label", g_variant_new_string(label));
+    g_variant_builder_add(&row, "{sv}", "type", g_variant_new_string(member->type));
+    g_variant_builder_add(&row, "{sv}", "description",
+                          g_variant_new_string(member->description ? member->description : ""));
+    g_variant_builder_add(&row, "{sv}", "indent", g_variant_new_int32(indent));
+    g_variant_builder_add(&row, "{sv}", "active", g_variant_new_boolean(active));
+    g_variant_builder_add_value(rows, g_variant_builder_end(&row));
+}
+
+/* Parameter help for the call being typed, or NULL when the callee is not a known function. When
+ * the cursor is inside a table argument, table_class is the class describing its keys. */
+static GVariant* console_signature_help(lua_State* state, const ConsoleCall* call,
+                                        const ApiClass** table_class) {
+    int base = lua_gettop(state);
+    GVariant* help = NULL;
+    if (console_push_path(state, call->callee) && lua_isfunction(state, -1)) {
+        const ApiFunction* function = console_api_function(state, -1);
+        g_autofree char* arguments = console_function_arguments(state, -1);
+        if (arguments) {
+            GVariantBuilder rows, result;
+            g_variant_builder_init(&rows, G_VARIANT_TYPE("aa{sv}"));
+            for (gsize i = 0; function && i < function->n_params; i++) {
+                gboolean active = i == call->active;
+                console_add_help_row(&rows, &function->params[i], 0, active);
+                const ApiClass* class = console_find_class(function->params[i].type);
+                if (active && call->in_table && class)
+                    *table_class = class;
+                if (active && class)
+                    for (gsize field = 0; field < class->n_fields; field++)
+                        console_add_help_row(&rows, &class->fields[field], 1, FALSE);
+            }
+            g_autofree char* title = g_strconcat(call->callee, arguments, NULL);
+            g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&result, "{sv}", "title", g_variant_new_string(title));
+            g_variant_builder_add(&result, "{sv}", "summary",
+                                  g_variant_new_string(function ? function->summary : ""));
+            g_variant_builder_add(&result, "{sv}", "rows", g_variant_builder_end(&rows));
+            help = g_variant_ref_sink(g_variant_builder_end(&result));
+        }
+    }
+    lua_settop(state, base);
+    return help;
+}
+
+/* True when the text ends in a table key being typed: "{na" or "{a = 1, na". */
+static gboolean console_typing_key(const char* source, const char** key) {
+    gsize end = strlen(source);
+    gsize start = end;
+    while (start > 0 && (g_ascii_isalnum(source[start - 1]) || source[start - 1] == '_'))
+        start--;
+    gsize before = start;
+    while (before > 0 && g_ascii_isspace(source[before - 1]))
+        before--;
+    *key = source + start;
+    return before > 0 && (source[before - 1] == '{' || source[before - 1] == ',');
+}
+
 GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
     if (!source || strlen(source) > MAX_CONSOLE_SOURCE_BYTES ||
         !g_utf8_validate(source, -1, NULL)) {
@@ -596,13 +737,9 @@ GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
     g_autoptr(GPtrArray) segments = g_ptr_array_new_with_free_func(g_free);
     g_autofree char* prefix = NULL;
     gboolean method = FALSE;
-    if (!console_completion_parse(source, segments, &prefix, &method)) {
-        GVariantBuilder empty, result;
-        g_variant_builder_init(&empty, G_VARIANT_TYPE("aa{sv}"));
-        g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
-        g_variant_builder_add(&result, "{sv}", "completions", g_variant_builder_end(&empty));
-        return g_variant_ref_sink(g_variant_builder_end(&result));
-    }
+    gboolean parsed = console_completion_parse(source, segments, &prefix, &method);
+    ConsoleCall call = console_call_context(source);
+    g_autofree char* callee = call.callee;
 
     lua_State* state = runtime->state;
     int base = lua_gettop(state);
@@ -610,7 +747,12 @@ GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
     guint operations = config->operations ? g_hash_table_size(config->operations) : 0;
     config->api_calling = TRUE;
     lua_rawgeti(state, LUA_REGISTRYINDEX, LUA_RIDX_GLOBALS);
-    gboolean resolved = lua_istable(state, -1);
+    const char* typed_key = NULL;
+    gboolean key_position = call.found && call.in_table && console_typing_key(source, &typed_key);
+    /* Right after an opening parenthesis or comma there is no name yet: the signature help is the
+     * hint, so list nothing. A table key position lists the table's keys instead of globals. */
+    gboolean resolved = parsed && !key_position && lua_istable(state, -1) &&
+                        !(call.found && !*console_completion_token_start(source));
     for (guint i = 0; resolved && i < segments->len; i++) {
         const char* segment = g_ptr_array_index(segments, i);
         if (!console_completion_push_field(state, -1, segment))
@@ -638,6 +780,21 @@ GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
                                              seen, &visits);
         lua_pop(state, 1);
     }
+    /* Help for the call being typed, and the keys of a table argument as completions. */
+    const ApiClass* table_class = NULL;
+    g_autoptr(GVariant) help =
+        call.found ? console_signature_help(state, &call, &table_class) : NULL;
+    for (gsize i = 0; key_position && table_class && i < table_class->n_fields; i++) {
+        const ApiMember* field = &table_class->fields[i];
+        if (!g_str_has_prefix(field->name, typed_key) ||
+            completions->len >= MAX_CONSOLE_COMPLETIONS)
+            continue;
+        ConsoleCompletion* completion = g_new0(ConsoleCompletion, 1);
+        completion->label = g_strdup(field->name);
+        completion->detail = g_strdup(field->type);
+        completion->documentation = g_strdup(field->description ? field->description : "");
+        g_ptr_array_add(completions, completion);
+    }
     g_ptr_array_sort(completions, console_completion_compare);
 
     lua_settop(state, base);
@@ -663,6 +820,8 @@ GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
     }
     g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&result, "{sv}", "completions", g_variant_builder_end(&values));
+    if (help)
+        g_variant_builder_add(&result, "{sv}", "signature", help);
     return g_variant_ref_sink(g_variant_builder_end(&result));
 }
 

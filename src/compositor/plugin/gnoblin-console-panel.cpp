@@ -87,6 +87,7 @@ void GnoblinConsolePanel::set_visible(bool visible) {
     if (!visible) {
         ++*completion_generation_;
         completion_visible_ = false;
+        signature_ = {};
     }
     if (visible) {
         scroll_to_bottom_ = true;
@@ -180,6 +181,8 @@ bool GnoblinConsolePanel::handle_key(guint keyval, ClutterModifierType modifiers
     if (keyval == CLUTTER_KEY_Escape) {
         if (completion_visible_)
             completion_visible_ = false;
+        else if (!signature_.empty())
+            signature_ = {};
         else
             set_visible(false);
         queue_redraw();
@@ -294,13 +297,12 @@ bool is_function_value(const std::string& value) {
     return starts_with(value, "<function") || starts_with(value, "<cfunction");
 }
 
-/* "<function(a, b)>" is shown as "fn(a, b)"; a function whose arguments are unknown is "fn". */
+/* "<function(a: T): R>" is shown as "fn(a: T): R"; a function whose signature is unknown is "fn".
+ */
 std::string function_text(const std::string& value) {
-    const std::size_t open = value.find('(');
-    const std::size_t close = value.rfind(")>");
-    if (open == std::string::npos || close == std::string::npos || close < open)
+    if (!starts_with(value, "<function(") || value.size() < 11 || value.back() != '>')
         return "fn";
-    return "fn" + value.substr(open, close - open + 1);
+    return "fn" + value.substr(9, value.size() - 10);
 }
 
 std::string plain_key(const std::string& label) {
@@ -625,6 +627,7 @@ void GnoblinConsolePanel::draw() {
         completion_requested_ = input_.data();
         if (completion_requested_.empty()) {
             completion_visible_ = false;
+            signature_ = {};
             ++*completion_generation_;
         } else
             complete();
@@ -636,17 +639,61 @@ void GnoblinConsolePanel::draw() {
     }
     ImGui::End();
 
+    if (!signature_.empty())
+        draw_signature();
     if (completion_visible_)
         draw_completions();
 }
 
-/* Matches the input line: a small list above it, no decoration. */
+/* Parameter help for the call being typed, directly under the input line. The active parameter
+ * is marked; a table parameter lists its keys one level in. */
+void GnoblinConsolePanel::draw_signature() {
+    const float wrap = std::max(input_width_ * 0.6f, 480.0f);
+    ImGui::SetNextWindowPos(ImVec2(input_anchor_x_ - 4.0f, input_anchor_y_ + 2.0f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(360.0f, 0.0f), ImVec2(wrap + 24.0f, FLT_MAX));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 6.0f));
+    constexpr ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoInputs;
+    if (ImGui::Begin("##console-signature", nullptr, flags)) {
+        ImGui::PushTextWrapPos(wrap);
+        ImGui::TextUnformatted(signature_.title.c_str());
+        if (!signature_.summary.empty())
+            ImGui::TextColored(kQuietColour, "%s", signature_.summary.c_str());
+        if (!signature_.rows.empty())
+            ImGui::Spacing();
+        for (const auto& row : signature_.rows) {
+            if (row.indent > 0)
+                ImGui::Indent(18.0f * row.indent);
+            ImGui::TextColored(kKeywordColour, "%s", row.active ? ">" : " ");
+            ImGui::SameLine(0.0f, 6.0f);
+            ImGui::TextColored(kKeyColour, "%s", row.label.c_str());
+            ImGui::SameLine(0.0f, 0.0f);
+            ImGui::TextColored(kQuietColour, ": %s", row.type.c_str());
+            if (!row.description.empty()) {
+                ImGui::SameLine(0.0f, 10.0f);
+                ImGui::TextColored(kQuietColour, "%s", row.description.c_str());
+            }
+            if (row.indent > 0)
+                ImGui::Unindent(18.0f * row.indent);
+        }
+        ImGui::PopTextWrapPos();
+        signature_height_ = ImGui::GetWindowSize().y;
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
+/* Matches the input line: a small list under it, no decoration, with the highlighted entry's
+ * signature and description in a panel below. */
 void GnoblinConsolePanel::draw_completions() {
-    /* Below the input line, over the desktop under the console. */
     const float line = ImGui::GetTextLineHeightWithSpacing();
-    const float room = ImGui::GetMainViewport()->WorkSize.y - input_anchor_y_ - 8.0f;
-    ImGui::SetNextWindowPos(ImVec2(input_anchor_x_ - 4.0f, input_anchor_y_ + 2.0f),
-                            ImGuiCond_Always, ImVec2(0.0f, 0.0f));
+    const float top =
+        input_anchor_y_ + 2.0f + (signature_.empty() ? 0.0f : signature_height_ + 2.0f);
+    const float room = ImGui::GetMainViewport()->WorkSize.y - top - 8.0f;
+    ImGui::SetNextWindowPos(ImVec2(input_anchor_x_ - 4.0f, top), ImGuiCond_Always,
+                            ImVec2(0.0f, 0.0f));
     ImGui::SetNextWindowSizeConstraints(
         ImVec2(std::min(360.0f, input_width_), line * 5 + 8.0f),
         ImVec2(std::max(input_width_ * 0.5f, 360.0f), std::min(line * 12 + 8.0f, room)));
@@ -655,20 +702,57 @@ void GnoblinConsolePanel::draw_completions() {
     constexpr ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
         ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing;
+    /* Labels share a column; each entry's type or signature sits to its right. */
+    float column = 0.0f;
+    for (const auto& item : completions_)
+        column = std::max(column, ImGui::CalcTextSize(item.label.c_str()).x);
+    column = std::min(column, 320.0f) + 24.0f;
+    ImVec2 list_position, list_size;
     if (ImGui::Begin("##console-completions", nullptr, flags)) {
         for (std::size_t i = 0; i < completions_.size(); i++) {
             const bool selected = static_cast<int>(i) == completion_index_;
+            ImGui::PushID(static_cast<int>(i));
             if (ImGui::Selectable(completions_[i].label.c_str(), selected)) {
                 completion_index_ = static_cast<int>(i);
                 accept_completion();
             }
+            if (!completions_[i].detail.empty()) {
+                ImGui::SameLine(column);
+                ImGui::TextColored(kQuietColour, "%s", completions_[i].detail.c_str());
+            }
+            ImGui::PopID();
             if (selected && completion_scroll_)
                 ImGui::SetScrollHereY();
         }
         completion_scroll_ = false;
+        list_position = ImGui::GetWindowPos();
+        list_size = ImGui::GetWindowSize();
     }
     ImGui::End();
     ImGui::PopStyleVar(2);
+
+    if (completion_index_ < 0 || completion_index_ >= static_cast<int>(completions_.size()))
+        return;
+    const auto& chosen = completions_[completion_index_];
+    const bool generic = chosen.documentation == "Live Lua environment member" ||
+                         chosen.documentation == "Read-only Gnoblin snapshot member";
+    if (chosen.documentation.empty() || (generic && starts_with(chosen.detail, "Lua ")))
+        return;
+    const float wrap = std::max(list_size.x, 420.0f);
+    ImGui::SetNextWindowPos(ImVec2(list_position.x, list_position.y + list_size.y + 2.0f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(wrap, 0.0f), ImVec2(wrap, FLT_MAX));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 6.0f));
+    if (ImGui::Begin("##console-completion-doc", nullptr, flags | ImGuiWindowFlags_NoInputs)) {
+        ImGui::PushTextWrapPos(wrap - 16.0f);
+        if (!generic)
+            ImGui::TextUnformatted(
+                (chosen.label + (starts_with(chosen.detail, "(") ? "" : ": ") + chosen.detail)
+                    .c_str());
+        ImGui::TextColored(kQuietColour, "%s", chosen.documentation.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
 }
 
 void GnoblinConsolePanel::submit() {
@@ -686,6 +770,7 @@ void GnoblinConsolePanel::submit() {
     reload_input_ = true;
     focus_input_ = true;
     completion_visible_ = false;
+    signature_ = {};
     preview_text_.clear();
     if (source == ":help") {
         append_result(source, {true, console_help(), {}, {}});
@@ -736,29 +821,30 @@ void GnoblinConsolePanel::complete() {
     const std::uint64_t generation = ++*completion_generation_;
     const std::weak_ptr<std::uint64_t> lifetime = completion_generation_;
     if (callbacks_.complete)
-        callbacks_.complete(source, [this, lifetime, generation,
-                                     source](std::vector<GnoblinConsoleCompletion> result) {
-            const auto current = lifetime.lock();
-            if (!current || *current != generation)
-                return;
-            if (!visible_ || source != input_.data())
-                return;
-            completions_ = std::move(result);
-            /* Names starting with an underscore are internal; list them last. */
-            std::stable_partition(completions_.begin(), completions_.end(),
-                                  [](const GnoblinConsoleCompletion& item) {
-                                      const auto dot = item.label.find_last_of('.');
-                                      const auto leaf = dot == std::string::npos ? 0 : dot + 1;
-                                      return item.label.compare(leaf, 1, "_") != 0;
-                                  });
-            if (completions_.size() > 64)
-                completions_.resize(64);
-            completion_index_ = 0;
-            completion_chosen_ = false;
-            completion_scroll_ = true;
-            completion_visible_ = !completions_.empty();
-            queue_redraw();
-        });
+        callbacks_.complete(
+            source, [this, lifetime, generation, source](GnoblinConsoleHints hints) {
+                const auto current = lifetime.lock();
+                if (!current || *current != generation)
+                    return;
+                if (!visible_ || source != input_.data())
+                    return;
+                completions_ = std::move(hints.completions);
+                signature_ = std::move(hints.signature);
+                /* Names starting with an underscore are internal; list them last. */
+                std::stable_partition(completions_.begin(), completions_.end(),
+                                      [](const GnoblinConsoleCompletion& item) {
+                                          const auto dot = item.label.find_last_of('.');
+                                          const auto leaf = dot == std::string::npos ? 0 : dot + 1;
+                                          return item.label.compare(leaf, 1, "_") != 0;
+                                      });
+                if (completions_.size() > 64)
+                    completions_.resize(64);
+                completion_index_ = 0;
+                completion_chosen_ = false;
+                completion_scroll_ = true;
+                completion_visible_ = !completions_.empty();
+                queue_redraw();
+            });
     queue_redraw();
 }
 
@@ -863,6 +949,7 @@ void GnoblinConsolePanel::history_step(int delta) {
     std::snprintf(input_.data(), input_.size(), "%s", value.c_str());
     completion_requested_ = value;
     completion_visible_ = false;
+    signature_ = {};
     reload_input_ = true;
     focus_input_ = true;
 }

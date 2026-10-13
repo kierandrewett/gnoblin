@@ -30,7 +30,7 @@ struct RuntimeRequest {
 struct CompletionRequest {
     GnoblinPluginUi* ui;
     std::uint64_t id = 0;
-    std::function<void(std::vector<GnoblinConsoleCompletion>)> done;
+    std::function<void(GnoblinConsoleHints)> done;
 };
 
 constexpr gsize kConsoleHistoryLimit = 200;
@@ -389,7 +389,7 @@ static GnoblinConsoleResult runtime_result(gboolean success, GVariant* result, c
     return converted;
 }
 
-static std::vector<GnoblinConsoleCompletion> console_completions(GVariant* result) {
+static std::vector<GnoblinConsoleCompletion> console_completion_list(GVariant* result) {
     constexpr guint maximum_completions = 64;
     std::vector<GnoblinConsoleCompletion> completions;
     g_autoptr(GVariant) entries =
@@ -413,6 +413,41 @@ static std::vector<GnoblinConsoleCompletion> console_completions(GVariant* resul
     return completions;
 }
 
+static GnoblinConsoleSignature console_signature(GVariant* result) {
+    constexpr guint maximum_rows = 64;
+    GnoblinConsoleSignature signature;
+    g_autoptr(GVariant) help = g_variant_lookup_value(result, "signature", G_VARIANT_TYPE_VARDICT);
+    if (!help || !console_inspection_string(help, "title", &signature.title))
+        return {};
+    console_inspection_string(help, "summary", &signature.summary);
+    g_autoptr(GVariant) rows = g_variant_lookup_value(help, "rows", G_VARIANT_TYPE("aa{sv}"));
+    if (!rows)
+        return signature;
+    GVariantIter iterator;
+    g_variant_iter_init(&iterator, rows);
+    while (signature.rows.size() < maximum_rows) {
+        g_autoptr(GVariant) entry = g_variant_iter_next_value(&iterator);
+        if (!entry)
+            break;
+        GnoblinConsoleHelpRow row;
+        if (!g_variant_is_of_type(entry, G_VARIANT_TYPE_VARDICT) ||
+            !console_inspection_string(entry, "label", &row.label) ||
+            !console_inspection_string(entry, "type", &row.type) ||
+            !console_inspection_string(entry, "description", &row.description))
+            continue;
+        gint32 indent = 0;
+        if (g_variant_lookup(entry, "indent", "i", &indent))
+            row.indent = std::clamp<gint32>(indent, 0, 4);
+        g_variant_lookup(entry, "active", "b", &row.active);
+        signature.rows.push_back(std::move(row));
+    }
+    return signature;
+}
+
+static GnoblinConsoleHints console_hints(GVariant* result) {
+    return {console_completion_list(result), console_signature(result)};
+}
+
 static void completion_request_destroy(gpointer data) {
     delete static_cast<CompletionRequest*>(data);
 }
@@ -427,11 +462,11 @@ static void completion_response(gboolean success, GVariant* result, const char* 
         request->done({});
         return;
     }
-    request->done(result ? console_completions(result) : std::vector<GnoblinConsoleCompletion>{});
+    request->done(result ? console_hints(result) : GnoblinConsoleHints{});
 }
 
 static void complete_lua(GnoblinPluginUi* ui, std::string_view source,
-                         std::function<void(std::vector<GnoblinConsoleCompletion>)> done) {
+                         std::function<void(GnoblinConsoleHints)> done) {
     auto* request = new CompletionRequest{ui, 0, std::move(done)};
     const std::string code(source);
     g_autoptr(GError) error = nullptr;
@@ -549,7 +584,7 @@ GnoblinPluginUi* gnoblin_plugin_ui_new(ClutterActor* parent, MetaDisplay* displa
         control_lua(ui, control, std::move(done));
     };
     callbacks.complete = [ui](std::string_view source,
-                              std::function<void(std::vector<GnoblinConsoleCompletion>)> done) {
+                              std::function<void(GnoblinConsoleHints)> done) {
         complete_lua(ui, source, std::move(done));
     };
     if (ui->console_history) {

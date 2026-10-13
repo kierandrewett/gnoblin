@@ -58,10 +58,35 @@ using GnoblinConsoleEvaluateFunc =
 using GnoblinConsoleControlFunc = std::function<void(
     GnoblinConsoleControl control, std::function<void(GnoblinConsoleResult)> done)>;
 
+/* One parameter of the call being typed, or, one level in, a key of its table argument. */
+struct GnoblinConsoleHelpRow {
+    std::string label;
+    std::string type;
+    std::string description;
+    int indent = 0;
+    bool active = false;
+};
+
+/* Parameter help for the call under the cursor. Empty when the cursor is not inside a call to a
+ * function whose signature is known. */
+struct GnoblinConsoleSignature {
+    std::string title;
+    std::string summary;
+    std::vector<GnoblinConsoleHelpRow> rows;
+    bool empty() const {
+        return title.empty();
+    }
+};
+
+struct GnoblinConsoleHints {
+    std::vector<GnoblinConsoleCompletion> completions;
+    GnoblinConsoleSignature signature;
+};
+
 /* Async completion reads names from the runtime without evaluating input.
  * The coordinator completes requests on the compositor thread. */
-using GnoblinConsoleCompleteFunc = std::function<void(
-    std::string_view source, std::function<void(std::vector<GnoblinConsoleCompletion>)> done)>;
+using GnoblinConsoleCompleteFunc =
+    std::function<void(std::string_view source, std::function<void(GnoblinConsoleHints)> done)>;
 
 /* Persistence is injected because settings storage is session policy.  The
  * UI caps the stored command history at 200 entries. */
@@ -124,6 +149,7 @@ class GnoblinConsolePanel {
     void history_step(int delta);
     void draw_node(const GnoblinConsoleInspectorNode& node, const std::string& id);
     void draw_completions();
+    void draw_signature();
     void queue_redraw();
     void request_preview();
 
@@ -135,6 +161,8 @@ class GnoblinConsolePanel {
     std::size_t history_index_ = 0;
     std::string history_draft_;
     std::vector<GnoblinConsoleCompletion> completions_;
+    GnoblinConsoleSignature signature_;
+    float signature_height_ = 0.0f;
     int completion_index_ = 0;
     bool completion_visible_ = false;
     std::shared_ptr<std::uint64_t> completion_generation_ = std::make_shared<std::uint64_t>(0);
