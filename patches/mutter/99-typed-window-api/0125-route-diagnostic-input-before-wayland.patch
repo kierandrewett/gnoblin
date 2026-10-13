@@ -1,4 +1,4 @@
-From: Gnoblin contributors
+From: kierandrewett <kieran@drewett.dev>
 Subject: [PATCH] Route diagnostic input before window and Wayland dispatch
 
 Stage captured-event is downstream of Mutter's Clutter event filter. A
