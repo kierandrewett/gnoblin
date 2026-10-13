@@ -89,12 +89,15 @@ running as the same Unix user.
 | `screen-cast`    | Listed monitors                                           |
 | `remote-desktop` | Listed input devices, monitors and clipboard access       |
 | `input-capture`  | Supported requested input-capture capabilities            |
-| `screenshot`     | Consent; interactive selection still happens              |
+| `screenshot`     | Entire desktop; interactive requests still ask            |
 | `access`         | Generic access consent; dialogs with choices still appear |
 
 `monitors` uses `"primary"` or exact connectors such as `"DP-1"`.
-Unattended capture needs an explicit selection. Missing monitors or incompatible
-source types fail; the backend does not guess another source.
+
+For `screen-cast` and `remote-desktop`, unattended capture needs an explicit
+selection. Missing monitors or incompatible source types fail; the backend
+does not guess another source. `screenshot` captures the entire desktop;
+`monitors` does not restrict its area.
 
 `devices` accepts `keyboard`, `pointer` and `touchscreen`; default is empty.
 `clipboard` defaults to `false`. Requests exceeding these limits fail.

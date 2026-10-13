@@ -12,3 +12,6 @@ xdg-desktop-portal-gnome gnoblin-inhibit.c src/gnoblin-inhibit.c
 xdg-desktop-portal-gnome gnoblin-inhibit.h src/gnoblin-inhibit.h
 xdg-desktop-portal-gnome gnoblin-portal-identity.c src/gnoblin-portal-identity.c
 xdg-desktop-portal-gnome gnoblin-portal-identity.h src/gnoblin-portal-identity.h
+xdg-desktop-portal-gnome gnoblin-screenshot.c src/gnoblin-screenshot.c
+xdg-desktop-portal-gnome gnoblin-screenshot-capture.c src/gnoblin-screenshot-capture.c
+xdg-desktop-portal-gnome gnoblin-screenshot-capture.h src/gnoblin-screenshot-capture.h

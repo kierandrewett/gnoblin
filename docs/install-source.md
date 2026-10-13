@@ -48,9 +48,10 @@ The default build includes Gnoblin's portal backend. Applications continue to
 call the standard portal frontend. You can choose an installed backend for Gnoblin with
 [`gnoblin.configure.portals`](/config/configure/portals).
 
-Gnoblin's backend uses GTK4 and libadwaita for its dialogs and capture
-features. It uses Glycin for wallpaper previews. Build without it with
-`./build.sh --without-portal`.
+Gnoblin's backend uses GTK4 and libadwaita for dialogs, and Glycin for wallpaper
+previews. Screenshots also require the `libpipewire-0.3` and `gdk-pixbuf-2.0`
+development libraries for capture and PNG encoding. Build without the backend
+with `./build.sh --without-portal`.
 
 Gnoblin's portal build supports GTK4 4.20 and `xdg-desktop-portal` 1.20 or
 newer. It bundles the backend interface definitions needed by its pinned
