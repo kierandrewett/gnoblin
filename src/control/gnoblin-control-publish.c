@@ -239,8 +239,9 @@ void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payloa
     remove_private_focus_context(socket_event);
     if (g_str_has_prefix(name, "gnoblin.window."))
         native_window_event_add_compat_aliases(socket_object);
-    g_autofree char* encoded = json_to_string(socket_event, FALSE);
-    g_autofree char* line = g_strconcat(encoded, "\n", NULL);
+    /* json_node_copy() shares the object: preserve the mutations above for
+     * callers (including Lua), but only encode once a client can receive it. */
+    g_autofree char* line = NULL;
     gint64 completed_operation_id = 0;
     gboolean operation_completion = g_str_equal(name, "gnoblin.operation.completed") &&
                                     json_object_has_member(object, "operation_id");
@@ -321,8 +322,13 @@ void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payloa
             subscribed = FALSE;
         if (g_str_equal(name, "gnoblin.pointer.locate-requested") && client->event_api_minor < 80)
             subscribed = FALSE;
-        if (subscribed)
+        if (subscribed) {
+            if (!line) {
+                g_autofree char* encoded = json_to_string(socket_event, FALSE);
+                line = g_strconcat(encoded, "\n", NULL);
+            }
             send_response(client, g_strdup(line));
+        }
     }
     g_list_free(clients);
 }
