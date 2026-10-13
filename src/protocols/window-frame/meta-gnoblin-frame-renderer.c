@@ -65,6 +65,10 @@ struct _Frame {
     float last_title_click_x, last_title_click_y;
     guint actions[3], n_buttons;
     guint timeout;
+    guint map_timeout;
+    MetaPlugin* map_plugin; /* borrowed while the actor owns this frame */
+    MetaWindowActor* map_actor;
+    gboolean map_started;
     gboolean external;
     char* model_key;
     char* style;
@@ -77,6 +81,89 @@ static gboolean stopping;
 static void update_frame(Frame* frame);
 static void offer_frame(Frame* frame);
 static void start_renderer(Renderer* renderer);
+
+/* Completing a map can synchronously destroy its actor (and this Frame).
+ * Always leave frame/protocol callbacks before completing Mutter's effect. */
+typedef struct {
+    MetaPlugin* plugin;
+    MetaWindowActor* actor;
+    gulong destroy_handler;
+    gboolean destroyed;
+} MapCompletion;
+
+static void map_actor_destroyed(ClutterActor* actor, MapCompletion* completion) {
+    completion->destroyed = TRUE;
+}
+
+static gboolean complete_map_idle(gpointer data) {
+    MapCompletion* completion = data;
+    if (!completion->destroyed)
+        meta_plugin_map_completed(completion->plugin, completion->actor);
+    return G_SOURCE_REMOVE;
+}
+
+static void free_map_completion(gpointer data) {
+    MapCompletion* completion = data;
+    if (g_signal_handler_is_connected(completion->actor, completion->destroy_handler))
+        g_signal_handler_disconnect(completion->actor, completion->destroy_handler);
+    g_object_unref(completion->actor);
+    g_object_unref(completion->plugin);
+    g_free(completion);
+}
+
+static void release_map(Frame* frame) {
+    if (frame->map_timeout) {
+        g_source_remove(frame->map_timeout);
+        frame->map_timeout = 0;
+    }
+    if (!frame->map_actor)
+        return;
+    MapCompletion* completion = g_new0(MapCompletion, 1);
+    completion->plugin = g_object_ref(frame->map_plugin);
+    completion->actor = g_object_ref(frame->map_actor);
+    completion->destroy_handler =
+        g_signal_connect(completion->actor, "destroy", G_CALLBACK(map_actor_destroyed), completion);
+    frame->map_plugin = NULL;
+    frame->map_actor = NULL;
+    g_idle_add_full(G_PRIORITY_DEFAULT, complete_map_idle, completion, free_map_completion);
+}
+
+static gboolean initial_frame_timeout(gpointer data) {
+    Frame* frame = data;
+    frame->map_timeout = 0;
+    release_map(frame);
+    return G_SOURCE_REMOVE;
+}
+
+gboolean meta_gnoblin_frame_renderer_prepare_map(MetaPlugin* plugin, MetaWindowActor* actor) {
+    MetaWindow* window = meta_window_actor_get_meta_window(actor);
+    Frame* frame = g_object_get_data(G_OBJECT(window), "gnoblin-native-frame");
+    if (frame && frame->map_actor)
+        return TRUE; /* Do not replace the absolute deadline on re-entry. */
+    if (frame && frame->map_started)
+        return FALSE;
+    /* Wayland's geometry sync normally runs only after map. Prepare the
+     * committed frame now, without freezing application surface commits. */
+    meta_gnoblin_window_frame_sync_renderer(window);
+    frame = g_object_get_data(G_OBJECT(window), "gnoblin-native-frame");
+    if (!frame || frame->external || !frame->renderer || !frame->renderer->client ||
+        !clutter_actor_is_visible(frame->root))
+        return FALSE;
+    frame->map_plugin = plugin;
+    frame->map_actor = actor;
+    frame->map_started = TRUE;
+    /* Absolute launch-to-first-buffer budget: configure/focus churn must not
+     * extend it. This also covers child launch before the manager binds. */
+    frame->map_timeout = g_timeout_add(2000, initial_frame_timeout, frame);
+    return TRUE;
+}
+
+void meta_gnoblin_frame_renderer_cancel_map(MetaWindowActor* actor) {
+    MetaWindow* window = meta_window_actor_get_meta_window(actor);
+    Frame* frame = window ? g_object_get_data(G_OBJECT(window), "gnoblin-native-frame") : NULL;
+    if (frame)
+        release_map(frame);
+}
 
 static void apply_titlebar_action(Frame* frame, GDesktopTitlebarAction action, float x, float y) {
     MetaWindow* window = frame->window;
@@ -140,34 +227,34 @@ static void button_paint(ClutterActor* actor, ClutterPaintNode* node,
         CoglColor translucent;
         cogl_color_init_from_4f(&translucent, 1, 1, 1, .5f);
         cogl_pipeline_set_color(button->pipeline, &translucent);
-/* Cogl identifies a snippet by pointer, not by source text. A new snippet per
- * window makes a new GPU program per window even when the text is identical.
- * Keep one snippet per shader kind for the life of the process. */
+        /* Cogl identifies a snippet by pointer, not by source text. A new snippet per
+         * window makes a new GPU program per window even when the text is identical.
+         * Keep one snippet per shader kind for the life of the process. */
         static CoglSnippet* snippet;
         if (!snippet)
-            snippet =
-            cogl_snippet_new(COGL_SNIPPET_HOOK_FRAGMENT,
-                             "uniform vec4 icon_color; uniform float button_size; uniform float "
-                             "button_action; uniform float button_hover; uniform float "
-                             "button_maximized;"
-                             "float stroke(vec2 p,vec2 a,vec2 b){vec2 q=p-a;vec2 v=b-a;return "
-                             "length(q-v*clamp(dot(q,v)/dot(v,v),0.,1.));}"
-                             "float boxline(vec2 p,vec2 c,vec2 halfsize){vec2 "
-                             "q=abs(p-c)-halfsize;return "
-                             "abs(length(max(q,0.))+min(max(q.x,q.y),0.));}",
-                             "vec2 p=(cogl_tex_coord_in[0].st-vec2(.5))*button_size;float d;"
-                             "if(button_action<2.5)d=min(stroke(p,vec2(-4.,-4.),vec2(4.,4.)),"
-                             "stroke(p,vec2(-4.,4.),vec2(4.,-4.)));"
-                             "else "
-                             "if(button_action<3.5){if(button_maximized>.5)d=min(boxline(p,vec2(-"
-                             "1.,1.),vec2(3.5)),min(stroke(p,vec2(-1.,-5.),vec2(5.,-5.)),stroke("
-                             "p,vec2(5.,-5.),vec2(5.,1.))));else d=boxline(p,vec2(0.),vec2(4.));}"
-                             "else d=stroke(p,vec2(-4.,0.),vec2(4.,0.));"
-                             "float ink=1.-smoothstep(.45,1.05,d);float "
-                             "hover=(1.-smoothstep(11.5,12.5,length(p)))*button_hover;"
-                             "float "
-                             "alpha=(ink+hover*(1.-ink))*icon_color.a;cogl_color_out=vec4(icon_"
-                             "color.rgb*alpha,alpha);");
+            snippet = cogl_snippet_new(
+                COGL_SNIPPET_HOOK_FRAGMENT,
+                "uniform vec4 icon_color; uniform float button_size; uniform float "
+                "button_action; uniform float button_hover; uniform float "
+                "button_maximized;"
+                "float stroke(vec2 p,vec2 a,vec2 b){vec2 q=p-a;vec2 v=b-a;return "
+                "length(q-v*clamp(dot(q,v)/dot(v,v),0.,1.));}"
+                "float boxline(vec2 p,vec2 c,vec2 halfsize){vec2 "
+                "q=abs(p-c)-halfsize;return "
+                "abs(length(max(q,0.))+min(max(q.x,q.y),0.));}",
+                "vec2 p=(cogl_tex_coord_in[0].st-vec2(.5))*button_size;float d;"
+                "if(button_action<2.5)d=min(stroke(p,vec2(-4.,-4.),vec2(4.,4.)),"
+                "stroke(p,vec2(-4.,4.),vec2(4.,-4.)));"
+                "else "
+                "if(button_action<3.5){if(button_maximized>.5)d=min(boxline(p,vec2(-"
+                "1.,1.),vec2(3.5)),min(stroke(p,vec2(-1.,-5.),vec2(5.,-5.)),stroke("
+                "p,vec2(5.,-5.),vec2(5.,1.))));else d=boxline(p,vec2(0.),vec2(4.));}"
+                "else d=stroke(p,vec2(-4.,0.),vec2(4.,0.));"
+                "float ink=1.-smoothstep(.45,1.05,d);float "
+                "hover=(1.-smoothstep(11.5,12.5,length(p)))*button_hover;"
+                "float "
+                "alpha=(ink+hover*(1.-ink))*icon_color.a;cogl_color_out=vec4(icon_"
+                "color.rgb*alpha,alpha);");
         cogl_pipeline_add_snippet(button->pipeline, snippet);
     }
     CoglPipeline* p = button->pipeline;
@@ -222,47 +309,47 @@ G_DEFINE_TYPE(FrameMask, frame_mask, CLUTTER_TYPE_OFFSCREEN_EFFECT)
 static CoglPipeline* mask_pipeline(ClutterOffscreenEffect* effect, CoglTexture* texture) {
     CoglPipeline* pipeline =
         CLUTTER_OFFSCREEN_EFFECT_CLASS(frame_mask_parent_class)->create_pipeline(effect, texture);
-/* Cogl identifies a snippet by pointer, not by source text. A new snippet per
- * window makes a new GPU program per window even when the text is identical.
- * Keep one snippet per shader kind for the life of the process. */
+    /* Cogl identifies a snippet by pointer, not by source text. A new snippet per
+     * window makes a new GPU program per window even when the text is identical.
+     * Keep one snippet per shader kind for the life of the process. */
     static CoglSnippet* snippet;
     if (!snippet)
-        snippet =
-        cogl_snippet_new(COGL_SNIPPET_HOOK_FRAGMENT,
-                         "uniform vec2 frame_size; uniform vec4 frame_content; uniform float "
-                         "frame_radius; uniform float frame_exponent; uniform vec4 "
-                         "frame_texture;",
-                         "vec2 p = frame_texture.xy + cogl_tex_coord_in[0].st * frame_texture.zw;"
-                         "float inside = step(frame_content.x,p.x)*step(frame_content.y,p.y)*"
-                         "step(p.x,frame_content.z)*step(p.y,frame_content.w);"
-                         /* The content hole has concentric bottom corners, not a rectangular
-                          * cutout. Keep the header/content join square. Use separate inset radii
-                          * so unequal side and bottom extents do not change the outer corner
-                          * centre. */
-                         "float side = p.x < frame_size.x*0.5 ? frame_content.x : "
-                         "frame_size.x-frame_content.z;"
-                         "vec2 ir = max(vec2(frame_radius)-vec2(side,"
-                         "frame_size.y-frame_content.w),vec2(0.0));"
-                         "vec2 centre = vec2(p.x < frame_size.x*0.5 ? "
-                         "frame_content.x+ir.x : frame_content.z-ir.x,frame_content.w-ir.y);"
-                         "vec2 iq = vec2(abs(p.x-centre.x),p.y-centre.y);"
-                         "bool corner = p.y > centre.y && (p.x < frame_content.x+ir.x || "
-                         "p.x > frame_content.z-ir.x);"
-                         "if (corner && min(ir.x,ir.y)>0.0) {"
-                         "vec2 n=iq/max(ir,vec2(0.001));"
-                         "float id=pow(pow(n.x,frame_exponent)+pow(n.y,frame_exponent),"
-                         "1.0/frame_exponent);"
-                         "float aa=0.5/min(ir.x,ir.y);"
-                         "inside *= 1.0-smoothstep(1.0-aa,1.0+aa,id); }"
-                         "vec2 q = "
-                         "max(abs(p-frame_size*0.5)-(frame_size*0.5-vec2(frame_radius)),vec2(0.0)"
-                         ");"
-                         "float r = max(frame_radius,0.001);"
-                         "float d = "
-                         "pow(pow(q.x/r,frame_exponent)+pow(q.y/r,frame_exponent),1.0/"
-                         "frame_exponent)*r;"
-                         "float mask = frame_radius < 0.5 ? 1.0 : 1.0-smoothstep(r-0.5,r+0.5,d);"
-                         "cogl_color_out *= (1.0-inside)*mask;");
+        snippet = cogl_snippet_new(
+            COGL_SNIPPET_HOOK_FRAGMENT,
+            "uniform vec2 frame_size; uniform vec4 frame_content; uniform float "
+            "frame_radius; uniform float frame_exponent; uniform vec4 "
+            "frame_texture;",
+            "vec2 p = frame_texture.xy + cogl_tex_coord_in[0].st * frame_texture.zw;"
+            "float inside = step(frame_content.x,p.x)*step(frame_content.y,p.y)*"
+            "step(p.x,frame_content.z)*step(p.y,frame_content.w);"
+            /* The content hole has concentric bottom corners, not a rectangular
+             * cutout. Keep the header/content join square. Use separate inset radii
+             * so unequal side and bottom extents do not change the outer corner
+             * centre. */
+            "float side = p.x < frame_size.x*0.5 ? frame_content.x : "
+            "frame_size.x-frame_content.z;"
+            "vec2 ir = max(vec2(frame_radius)-vec2(side,"
+            "frame_size.y-frame_content.w),vec2(0.0));"
+            "vec2 centre = vec2(p.x < frame_size.x*0.5 ? "
+            "frame_content.x+ir.x : frame_content.z-ir.x,frame_content.w-ir.y);"
+            "vec2 iq = vec2(abs(p.x-centre.x),p.y-centre.y);"
+            "bool corner = p.y > centre.y && (p.x < frame_content.x+ir.x || "
+            "p.x > frame_content.z-ir.x);"
+            "if (corner && min(ir.x,ir.y)>0.0) {"
+            "vec2 n=iq/max(ir,vec2(0.001));"
+            "float id=pow(pow(n.x,frame_exponent)+pow(n.y,frame_exponent),"
+            "1.0/frame_exponent);"
+            "float aa=0.5/min(ir.x,ir.y);"
+            "inside *= 1.0-smoothstep(1.0-aa,1.0+aa,id); }"
+            "vec2 q = "
+            "max(abs(p-frame_size*0.5)-(frame_size*0.5-vec2(frame_radius)),vec2(0.0)"
+            ");"
+            "float r = max(frame_radius,0.001);"
+            "float d = "
+            "pow(pow(q.x/r,frame_exponent)+pow(q.y/r,frame_exponent),1.0/"
+            "frame_exponent)*r;"
+            "float mask = frame_radius < 0.5 ? 1.0 : 1.0-smoothstep(r-0.5,r+0.5,d);"
+            "cogl_color_out *= (1.0-inside)*mask;");
     cogl_pipeline_add_snippet(pipeline, snippet);
     return pipeline;
 }
@@ -557,10 +644,19 @@ static void detach_frame(Frame* frame) {
     }
     fallback(frame);
     g_clear_pointer(&frame->model_key, g_free);
+    release_map(frame);
 }
 
 static void frame_destroyed(ClutterActor* actor, gpointer data) {
     Frame* frame = data;
+    /* The parent actor is already being destroyed; there is no map effect to
+     * finish on it. Remove the callback before freeing its frame. */
+    if (frame->map_timeout) {
+        g_source_remove(frame->map_timeout);
+        frame->map_timeout = 0;
+    }
+    frame->map_actor = NULL;
+    frame->map_plugin = NULL;
     ClutterActor* parent = clutter_actor_get_parent(actor);
     /* The outline is a sibling of the server frame so it can surround both
      * frame and client without clipping the shadow. Remove it with the frame.
@@ -568,6 +664,10 @@ static void frame_destroyed(ClutterActor* actor, gpointer data) {
     if (parent)
         meta_gnoblin_window_effects_set_window_outline(parent, NULL, 0, 2, 0, NULL);
     frames = g_list_remove(frames, frame);
+    /* The strips outlive this handler: destroying the root's children unmaps
+     * them and delivers a leave event, which must not reach the freed frame. */
+    for (int i = 0; i < 4; i++)
+        g_signal_handlers_disconnect_by_data(frame->strips[i], frame);
     if (frame->grab_op_end_handler)
         g_signal_handler_disconnect(frame->window->display, frame->grab_op_end_handler);
     g_signal_handlers_disconnect_by_data(frame->window, frame);
@@ -699,8 +799,7 @@ static void update_frame(Frame* frame) {
     frame->height = rect.height / scale;
     if (frame->width <= 0 || frame->height <= 0) {
         meta_gnoblin_window_effects_set_window_outline(
-            CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), NULL, 0, 2, 0,
-            NULL);
+            CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), NULL, 0, 2, 0, NULL);
         return;
     }
     clutter_actor_set_position(frame->root, (rect.x - buffer.x) / (float)scale,
@@ -714,6 +813,7 @@ static void update_frame(Frame* frame) {
             CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), NULL, 0, 2, 0,
             outline_color);
         clutter_actor_hide(frame->root);
+        release_map(frame);
         return;
     }
     clutter_actor_show(frame->root);
@@ -912,6 +1012,7 @@ static void role_post_apply(MetaWaylandSurfaceRole* role, MetaWaylandSurfaceStat
     clutter_actor_show(
         CLUTTER_ACTOR(meta_wayland_actor_surface_get_actor(META_WAYLAND_ACTOR_SURFACE(role))));
     clutter_actor_queue_redraw(frame->root);
+    release_map(frame);
 }
 static void role_dispose(GObject* object) {
     FrameRole* self = (FrameRole*)object;
@@ -925,6 +1026,7 @@ static void role_dispose(GObject* object) {
         self->frame = NULL;
         frame->role = NULL;
         clutter_actor_queue_redraw(frame->root);
+        release_map(frame);
     }
     G_OBJECT_CLASS(frame_role_parent_class)->dispose(object);
 }
@@ -1099,6 +1201,13 @@ static void renderer_exited(GObject* process, GAsyncResult* result, gpointer dat
     if (renderer->client) {
         meta_wayland_client_destroy(renderer->client);
         g_clear_object(&renderer->client);
+    }
+    /* A child can exit before binding the manager, so manager_destroyed is
+     * insufficient to release windows waiting for their first frame. */
+    for (GList* l = frames; l; l = l->next) {
+        Frame* frame = l->data;
+        if (frame->renderer == renderer)
+            release_map(frame);
     }
     if (!stopping && !renderer->retired && renderer->attempts < 4)
         renderer->retry = g_timeout_add(250u << renderer->attempts, retry_renderer, renderer);

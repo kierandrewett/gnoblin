@@ -6,19 +6,19 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _sources import control_header, control_source  # noqa: E402
+from _sources import control_header, control_source, overlay_manifests, CONFIG_SOURCES, LUA_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 BUILD = ROOT / "CMakeLists.txt"
-LUA = ROOT / "src/config/gnoblin-lua.c"
-CONFIG = ROOT / "src/config/gnoblin-config.c"
+LUA = LUA_SOURCES
+CONFIG = CONFIG_SOURCES
 
 
 class LocationAgentContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.source = (ROOT / "src/native-control/gnoblin-location-agent.c").read_text()
-        cls.header = (ROOT / "src/native-control/gnoblin-location-agent.h").read_text()
+        cls.source = (ROOT / "src/agents/gnoblin-location-agent.c").read_text()
+        cls.header = (ROOT / "src/agents/gnoblin-location-agent.h").read_text()
         cls.control = control_source()
         cls.lua = LUA.read_text()
         cls.config = CONFIG.read_text()
@@ -63,7 +63,7 @@ class LocationAgentContractTests(unittest.TestCase):
         self.assertIn("notify_state(agent, FALSE, FALSE)", self.source)
 
     def test_overlay_and_meson_patch_register_the_module(self):
-        manifest = (ROOT / "src/native-control/manifest").read_text()
+        manifest = overlay_manifests()
         self.assertIn("mutter gnoblin-location-agent.c src/core/gnoblin-location-agent.c", manifest)
         self.assertIn("mutter gnoblin-location-agent.h src/core/gnoblin-location-agent.h", manifest)
         patch_path = ROOT / "patches/mutter/99-typed-window-api/0067-build-location-agent.patch"
@@ -79,7 +79,7 @@ class LocationAgentContractTests(unittest.TestCase):
         )
         self.assertGreaterEqual(api_minor, 65)
         build = BUILD.read_text()
-        self.assertIn("src/native-control/gnoblin-native-control.h", build)
+        self.assertIn("src/control/gnoblin-native-control.h", build)
         self.assertIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}", build)
         self.assertNotIn("GNOBLIN_NATIVE_CONTROL_API_MINOR=64", build)
         self.assertIn('"location.authorize_app"', self.lua)

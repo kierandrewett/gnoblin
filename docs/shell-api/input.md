@@ -188,16 +188,21 @@ is `{accepted = true}`: the command has entered the launch queue. This does not
 confirm that spawning succeeded or that the child exited successfully. Spawn
 and exit failures are reported in Gnoblin's output.
 
+Commands started by `run` or `capture` reset an inherited negative CPU nice
+value to `0`. Positive nice values are retained. This leaves the compositor's
+priority unchanged. A system priority daemon can change command priority
+after launch.
+
 ### Run a command and read its output
 
 `gnoblin.commands.capture(options)` runs a command and returns its standard
 output. Use it to ask a prompt program for an answer.
 
-| Field     | Type              | Default | Meaning                                                   |
-| --------- | ----------------- | ------- | --------------------------------------------------------- |
-| `argv`    | 1-64 strings      | none    | The program and its arguments. The first entry is not empty. |
-| `stdin`   | string            | none    | Text sent to the command, up to 4096 bytes.               |
-| `timeout` | integer, seconds  | `60`    | Time before Gnoblin stops the command. From 1 to 600.     |
+| Field     | Type             | Default | Meaning                                                      |
+| --------- | ---------------- | ------- | ------------------------------------------------------------ |
+| `argv`    | 1-64 strings     | none    | The program and its arguments. The first entry is not empty. |
+| `stdin`   | string           | none    | Text sent to the command, up to 4096 bytes.                  |
+| `timeout` | integer, seconds | `60`    | Time before Gnoblin stops the command. From 1 to 600.        |
 
 The operation succeeds with `{exit_code = integer, stdout = string}` when the
 command exits. A command stopped by a signal reports a negative `exit_code`
@@ -283,7 +288,6 @@ modifier invalidates the target. Ctrl, Alt, Shift, Lock, Meta, and Hyper state
 prevents target creation. Gnoblin keeps at most 128 active text targets per
 compositor; creation fails while the limit is full.
 
-
 ## Pointer and keyboard snapping
 
 Lua pointer callbacks receive a read-only `event.drag` record on the started
@@ -328,7 +332,6 @@ expires with its source focus context and is revoked by lock or config reload.
 The context is available only in a trusted shortcut callback. It expires
 after five seconds and is revoked by session lock or config reload. See the
 [compositor bridge](/compositor-bridge) for the socket contract.
-
 
 ## Tablet-pad help
 

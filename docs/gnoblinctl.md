@@ -35,6 +35,10 @@ Run commands from a terminal inside Gnoblin:
 | ---------------------------------------------- | ------------------------------------------------------------ |
 | `gnoblinctl status`                            | Check the running session and lock-state availability        |
 | `gnoblinctl logout`                            | End the session and return to the login manager              |
+| `gnoblinctl session suspend`                   | Suspend the machine                                          |
+| `gnoblinctl session hibernate`                 | Hibernate the machine                                        |
+| `gnoblinctl session reboot`                    | Restart the machine                                          |
+| `gnoblinctl session poweroff`                  | Shut the machine down                                        |
 | `gnoblinctl session activity`                  | Read the latest idle-monitor sample                          |
 | `gnoblinctl session lock`                      | Ask a subscribed external shell client to lock the session   |
 | `gnoblinctl window list`                       | Find open windows and their IDs                              |

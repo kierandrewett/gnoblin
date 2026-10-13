@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../native-control/gnoblin-runtime-protocol.h"
+#include "../control/gnoblin-runtime-protocol.h"
 
 G_BEGIN_DECLS
 

@@ -71,8 +71,12 @@ gnoblin.window_rule {
 
 Blur ranges from 0 to 100 and sets the blur radius in pixels; 0 turns it off.
 It covers the whole window and is visible only where the app's background is
-translucent. If the app requests its own blur region, that region is used
-instead.
+translucent. If the app requests its own blur region, the rule's radius
+applies to that region instead. An app that clears its region gets no blur.
+
+Layer surfaces on the background layer, such as wallpapers, get blur only in
+a region they request themselves. A `{type = "layer"}` rule therefore leaves
+the wallpaper sharp.
 
 For a terminal, enable background transparency in the terminal's settings
 first. An opaque app will look unchanged.

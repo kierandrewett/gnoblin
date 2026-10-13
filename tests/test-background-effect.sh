@@ -3,7 +3,7 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 testdir="$(mktemp -d /tmp/gnoblin-background-test.XXXXXX)"
 trap 'rm -rf "$testdir"' EXIT
-for name in background-effect layer-shell; do
+for name in background-effect layer-shell blur-fade; do
     if [[ "$name" == background-effect ]]; then
         # The repo does not carry this XML. Use the copy from the wayland-protocols package.
         xml="$root/src/protocols/background-effect/ext-background-effect-v1.xml"
@@ -11,8 +11,13 @@ for name in background-effect layer-shell; do
             protocols_dir="$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null || true)"
             xml="$protocols_dir/staging/ext-background-effect/ext-background-effect-v1.xml"
         fi
+    elif [[ "$name" == blur-fade ]]; then
+        xml="$root/src/protocols/blur-fade/gnoblin-blur-fade-v1.xml"
     else xml="$root/src/protocols/layer-shell/wlr-layer-shell-unstable-v1.xml"; fi
-    [[ -f "$xml" ]] || { echo "missing protocol XML for $name: $xml" >&2; exit 1; }
+    [[ -f "$xml" ]] || {
+        echo "missing protocol XML for $name: $xml" >&2
+        exit 1
+    }
     wayland-scanner client-header "$xml" "$testdir/$name-client.h"
     wayland-scanner private-code "$xml" "$testdir/$name.c"
 done

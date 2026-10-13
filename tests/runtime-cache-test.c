@@ -1,6 +1,6 @@
 #include <glib.h>
 
-#include "../src/native-control/gnoblin-runtime-cache.h"
+#include "../src/control/gnoblin-runtime-cache.h"
 
 static GVariant* make_document(gboolean enabled, gint64 count, double scale, const char* label,
                                const char* const* names) {

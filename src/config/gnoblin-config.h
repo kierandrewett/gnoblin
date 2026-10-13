@@ -171,9 +171,10 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
 char** gnoblin_config_runtime_events(void);
 void gnoblin_config_finish_event(gboolean commit);
 gboolean gnoblin_config_validate_document(GVariant* document, GError** error);
-/* Return `document` with every invalid key or list entry removed, so the valid settings still apply. `ignored`
- * receives one message per removed item ("ignored window-management.focus-mode: <reason>") and is NULL when
- * nothing was removed. Returns NULL with `error` set when the document cannot be repaired. */
+/* Return `document` with every invalid key or list entry removed, so the valid settings still
+ * apply. `ignored` receives one message per removed item ("ignored window-management.focus-mode:
+ * <reason>") and is NULL when nothing was removed. Returns NULL with `error` set when the document
+ * cannot be repaired. */
 GVariant* gnoblin_config_salvage_document(GVariant* document, GPtrArray** ignored, GError** error);
 /* Project gnoblin.configure.portals into the generated XDG portal preferences.
  * `config_home` is NULL to use XDG_CONFIG_HOME. The document must be valid. */

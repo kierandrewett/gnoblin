@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Write the gnoblin(1) and gnoblinctl(1) manual pages.
 
-gnoblinctl(1) is generated from help_entries in src/tools/gnoblinctl.c, the table that the command line help reads, so
+gnoblinctl(1) is generated from help_entries in src/cli/gnoblinctl-cli.c, the table that the command line help reads, so
 the manual page and `gnoblinctl help` cannot disagree about which commands exist or what they do.
 """
 
@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SOURCE = ROOT / "src/tools/gnoblinctl.c"
+SOURCE = ROOT / "src/cli/gnoblinctl-cli.c"
 SITE = "https://gnoblin.org/"
 
 
@@ -42,11 +42,11 @@ def escape(text):
 
 def help_entries():
     source = SOURCE.read_text()
-    start = source.index("static const HelpEntry help_entries[]")
-    end = source.index("static const char* help_summary", start)
+    start = source.index("const HelpEntry help_entries[]")
+    end = source.index("const char* help_summary", start)
     entries = re.findall(r'\{"([a-z-]+)", (NULL|"[a-z-]+"), "([^"]+)"\}', source[start:end])
     if not entries:
-        raise SystemExit("build-man-pages: no help_entries found in src/tools/gnoblinctl.c")
+        raise SystemExit("build-man-pages: no help_entries found in src/cli/gnoblinctl-cli.c")
     commands = {}
     for command, action, summary in entries:
         record = commands.setdefault(command, {"summary": None, "actions": []})

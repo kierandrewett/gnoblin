@@ -73,16 +73,21 @@ See the [protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/pr
 
 ## Slow or failed renderers
 
-App commits never wait for a renderer.
-Geometry changes use native fallback until a matching buffer arrives;
-stale generations cannot replace newer layout.
+App commits never wait for a renderer. On opening, a window using a registered
+renderer waits up to two seconds before its first presentation. A matching
+frame buffer presents the app and frame together. Launch failure, disconnect,
+or timeout releases the window with the built-in frame.
+
+During resize, the last presented custom frame stays visible until a matching
+replacement arrives. Stale generations cannot replace newer layout.
 
 Invalid dimensions or serials disconnect the renderer.
 Process failure triggers bounded backoff, with at most four launch attempts
 per session. Shutdown terminates only Gnoblin's renderer children.
 
-A stalled renderer may keep valid current pixels; native controls remain usable.
-New geometry selects fallback. There is no continuous heartbeat.
+A stalled renderer may keep its last presented pixels; native controls remain
+usable. A disconnected renderer uses the built-in frame. There is no continuous
+heartbeat.
 
 The helper permits two outstanding shared-memory buffers per frame.
 Its full-window canvases need further high-DPI and many-window cost measurements.

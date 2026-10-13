@@ -314,12 +314,18 @@ void meta_gnoblin_window_frame_rect_to_client(MetaWindow* window,
         return;
 
     layout = configuration ? configuration->gnoblin_frame : state->committed;
-    const int scale = configuration ? configuration->scale
-                                    : meta_window_wayland_get_geometry_scale(window);
+    const int scale =
+        configuration ? configuration->scale : meta_window_wayland_get_geometry_scale(window);
     rect->x += (layout.border[3] - layout.crop[3]) * scale;
     rect->y += (layout.border[0] - layout.crop[0]) * scale;
     rect->width += (layout.crop[1] + layout.crop[3] - layout.border[1] - layout.border[3]) * scale;
     rect->height += (layout.crop[0] + layout.crop[2] - layout.border[0] - layout.border[2]) * scale;
+}
+
+void meta_gnoblin_window_frame_sync_renderer(MetaWindow* window) {
+    FrameState* state = g_object_get_data(G_OBJECT(window), "gnoblin-frame");
+    if (state)
+        meta_gnoblin_frame_renderer_sync(window, &state->committed);
 }
 
 void meta_gnoblin_window_frame_sync_actor(MetaWindow* window, ClutterActor* surface) {
@@ -392,8 +398,7 @@ gboolean meta_gnoblin_window_frame_get_visible_geometry(MetaWindow* window,
     return geometry->width > 0 && geometry->height > 0;
 }
 
-gboolean meta_gnoblin_window_frame_get_effect_geometry(MetaWindow* window,
-                                                        MtkRectangle* geometry) {
+gboolean meta_gnoblin_window_frame_get_effect_geometry(MetaWindow* window, MtkRectangle* geometry) {
     FrameState* state;
 
     g_return_val_if_fail(META_IS_WINDOW(window), FALSE);
@@ -607,9 +612,8 @@ static void kde_request_mode(struct wl_client* client, struct wl_resource* resou
     const int policy = window ? effective_policy(window, frame_state(window)) : 1;
     const int applied_mode = d->role_assigned && !d->is_toplevel
                                  ? ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_NONE
-                                 : policy == 2
-                                       ? ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER
-                                       : mode;
+                             : policy == 2 ? ORG_KDE_KWIN_SERVER_DECORATION_MANAGER_MODE_SERVER
+                                           : mode;
     d->preference = mode;
     org_kde_kwin_server_decoration_send_mode(resource, applied_mode);
     d->sent_mode = applied_mode;
@@ -691,13 +695,12 @@ void meta_gnoblin_window_frame_init(MetaWaylandCompositor* compositor) {
     g_signal_new("gnoblin-frame-changed", META_TYPE_WINDOW, G_SIGNAL_RUN_LAST, 0, NULL, NULL, NULL,
                  G_TYPE_NONE, 0);
     g_autoptr(GError) error = NULL;
-    if (!meta_gnoblin_register_protocol_global(
-            compositor, "xdg-decoration", &zxdg_decoration_manager_v1_interface, 1, NULL,
-            bind_manager, &error))
+    if (!meta_gnoblin_register_protocol_global(compositor, "xdg-decoration",
+                                               &zxdg_decoration_manager_v1_interface, 1, NULL,
+                                               bind_manager, &error))
         g_error("Failed to register xdg-decoration: %s", error->message);
-    if (!meta_gnoblin_register_protocol_global(
-            compositor, "kde-server-decoration",
-            &org_kde_kwin_server_decoration_manager_interface, 1, NULL, bind_kde_manager,
-            &error))
+    if (!meta_gnoblin_register_protocol_global(compositor, "kde-server-decoration",
+                                               &org_kde_kwin_server_decoration_manager_interface, 1,
+                                               NULL, bind_kde_manager, &error))
         g_error("Failed to register kde-server-decoration: %s", error->message);
 }

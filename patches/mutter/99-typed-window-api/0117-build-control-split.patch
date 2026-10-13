@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sat, 10 Oct 2026 12:00:00 +0100
+Subject: [PATCH] mutter: build the split native control files
+
+---
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1219,6 +1219,22 @@ libmutter = library(libmutter_name,
+   files('core/gnoblin-control-window-rules.c'),
+   files('core/gnoblin-control-window-drag.c'),
+   files('core/gnoblin-control-runtime.c'),
++  files('core/gnoblin-control-focus.c'),
++  files('core/gnoblin-control-input-config.c'),
++  files('core/gnoblin-control-wire.c'),
++  files('core/gnoblin-control-input-routing.c'),
++  files('core/gnoblin-control-dispatch.c'),
++  files('core/gnoblin-control-publish.c'),
++  files('core/gnoblin-control-events.c'),
++  files('core/gnoblin-control-text-snap.c'),
++  files('core/gnoblin-control-launches.c'),
++  files('core/gnoblin-control-monitors.c'),
++  files('core/gnoblin-control-queue.c'),
++  files('core/gnoblin-control-requests.c'),
++  files('core/gnoblin-control-signals.c'),
++  files('core/gnoblin-control-connection.c'),
++  files('core/gnoblin-control-runtime-channel.c'),
++  files('core/gnoblin-control-api.c'),
+   files('core/gnoblin-touchpad-router.c'),
+   files('core/gnoblin-keybinding-catalog.c'),
+   version: '0.0.0',
+-- 
+2.51.0

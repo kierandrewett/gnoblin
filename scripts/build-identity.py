@@ -49,7 +49,7 @@ def package_version(*packages):
 
 
 def native_api_version():
-    header = (root / "src/native-control/gnoblin-native-control.h").read_text()
+    header = (root / "src/control/gnoblin-native-control.h").read_text()
     major = re.search(r"^#define GNOBLIN_NATIVE_CONTROL_API_MAJOR (\d+)$", header, re.MULTILINE)
     minor = re.search(r"^#define GNOBLIN_NATIVE_CONTROL_API_MINOR (\d+)$", header, re.MULTILINE)
     if not major or not minor:

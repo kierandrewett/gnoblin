@@ -8,10 +8,10 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _sources import control_header, control_source  # noqa: E402
+from _sources import control_header, control_source, LUA_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-LUA = ROOT / "src/config/gnoblin-lua.c"
+LUA = LUA_SOURCES
 DISPATCH_PATCH = ROOT / "patches/mutter/99-typed-window-api/0032-dispatch-shell-session-lock-request.patch"
 
 
@@ -45,8 +45,8 @@ class SessionLockApiTests(unittest.TestCase):
     def test_lock_state_event_comes_from_mutter_state_callback(self):
         source = control_source()
         state_names = source.split("static const char* native_session_lock_state_name(", 1)[1]
-        state_names = state_names.split("static GVariant* native_session_lock_snapshot", 1)[0]
-        body = source.split("static void native_session_lock_changed(", 1)[1]
+        state_names = state_names.split("GVariant* native_session_lock_snapshot", 1)[0]
+        body = source.split("void native_session_lock_changed(", 1)[1]
         body = body.split("GVariant* gnoblin_native_control_request_session_lock(", 1)[0]
 
         for enum, state in (

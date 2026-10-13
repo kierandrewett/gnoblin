@@ -266,6 +266,13 @@ GVariant* meta_wayland_layer_shell_get_snapshot_record(MetaWindow* window, const
     return g_variant_builder_end(&record);
 }
 
+gboolean meta_wayland_layer_shell_is_background(MetaWindow* window) {
+    MetaWaylandLayerSurface* layer_surface =
+        window ? g_object_get_data(G_OBJECT(window), "gnoblin-layer-surface") : NULL;
+    return META_IS_WAYLAND_LAYER_SURFACE(layer_surface) &&
+           layer_surface->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND;
+}
+
 MetaSurfaceActor* meta_wayland_layer_shell_get_actor(MetaWindow* window) {
     MetaWaylandLayerSurface* layer_surface =
         window ? g_object_get_data(G_OBJECT(window), "gnoblin-layer-surface") : NULL;
@@ -642,6 +649,9 @@ static void apply_window_type_and_layer(MetaWaylandLayerSurface* layer_surface,
     meta_window_update_layer(window);
 
     meta_window_on_all_workspaces_changed(window);
+
+    /* Rule blur differs between background and higher layers. */
+    gnoblin_control_refresh_window_rule_blur(window);
 }
 
 static void invalidate_work_areas_for_window(MetaWindow* window) {
@@ -1197,8 +1207,6 @@ static void meta_wayland_layer_surface_post_apply_state(MetaWaylandSurfaceRole* 
     if (surface_role_class->post_apply_state)
         surface_role_class->post_apply_state(surface_role, pending);
 
-    gnoblin_native_control_layer_changed(display_from_surface(surface));
-
     if (meta_wayland_surface_get_buffer(surface)) {
         MtkRectangle mon = get_monitor_layout(layer_surface);
         /* A size request is not a new buffer. Anchor the pixels committed by
@@ -1234,6 +1242,7 @@ static void meta_wayland_layer_surface_post_apply_state(MetaWaylandSurfaceRole* 
             ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE)
             focus_exclusive_layer_surface(layer_surface, surface, window);
     }
+    gnoblin_native_control_layer_changed(display_from_surface(surface), window);
 }
 
 static MetaWaylandSurface*
@@ -1422,9 +1431,8 @@ void meta_wayland_init_layer_shell(MetaWaylandCompositor* compositor) {
         gnoblin_native_control_get_config_bool(NULL, "layer-shell", "preserve-active-window", TRUE);
 
     g_autoptr(GError) error = NULL;
-    if (!meta_gnoblin_register_protocol_global(compositor, "wlr-layer-shell",
-                                               &zwlr_layer_shell_v1_interface,
-                                               META_WLR_LAYER_SHELL_V1_VERSION, compositor,
-                                               bind_layer_shell, &error))
+    if (!meta_gnoblin_register_protocol_global(
+            compositor, "wlr-layer-shell", &zwlr_layer_shell_v1_interface,
+            META_WLR_LAYER_SHELL_V1_VERSION, compositor, bind_layer_shell, &error))
         g_error("Failed to register wlr-layer-shell: %s", error->message);
 }

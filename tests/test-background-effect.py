@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Black-box pixels for ext-background-effect state, regions and subsurfaces."""
+"""Black-box pixels for ext-background-effect state, regions and subsurfaces.
+
+Set GNOBLIN_BLUR_TEST_RULE=1 when the session config has a blurring
+`{type = "layer"}` window rule, as in tests/fixtures/devkit-layer-blur-rule.
+A live effect object with a cleared region must then stay sharp, and only a
+destroyed effect may fall back to the rule's whole-surface blur.
+"""
 
 import os
 from pathlib import Path
@@ -9,7 +15,8 @@ import sys
 import time
 from PIL import Image, ImageChops, ImageStat
 
-assert os.environ.get("WAYLAND_DISPLAY", "").startswith("gnoblin-gs-")
+assert os.environ.get("WAYLAND_DISPLAY", "").startswith(("gnoblin-gs-", "gnoblin-devkit-"))
+rule = os.environ.get("GNOBLIN_BLUR_TEST_RULE") == "1"
 output = Path("/tmp/gnoblin-standard-blur")
 output.mkdir(exist_ok=True)
 process = subprocess.Popen([sys.argv[1], "pixels"], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
@@ -84,7 +91,12 @@ try:
     command("destroy")
     same(applied, capture("destroy-pending"))
     command("commit")
-    same(initial, capture("destroyed"))
+    destroyed = capture("destroyed")
+    if rule:
+        blurred(destroyed, (144, 144, 432, 352))
+        print("PASS: a destroyed effect returns to the window rule's blur", flush=True)
+    else:
+        same(initial, destroyed)
     command("recreate")
     command("full")
     command("commit")
@@ -99,6 +111,22 @@ try:
     blurred(child, (176, 272, 240, 320))
     sharp(child, (280, 272, 312, 320))
     print("PASS: destruction commits, recreation and synchronised subsurface state", flush=True)
+    top = (144, 144, 432, 250)  # above the subsurface created earlier
+    # A fade record scales the blur behind it, so a fading panel and its blur go together.
+    command("full")
+    command("commit")
+    command("fade 0")
+    same(initial.crop(top), capture("fade-0").crop(top))
+    command("fade 50")
+    half = max(ImageStat.Stat(capture("fade-50").crop(top)).stddev)
+    assert 10 < half < 70, ("Expected a half-faded blur", half)
+    command("fade 100")
+    blurred(capture("fade-100"), top)
+    command("unfade")
+    blurred(capture("fade-cleared"), top)
+    print("PASS: blur opacity follows the committed fade record", flush=True)
+    command("clear")
+    command("commit")
     command("manager")
     command("set")
     command("commit")

@@ -56,6 +56,13 @@ Gnoblin leaves the window in place and logs a warning.
 | `workspace`           | `{id = "code"}` or `{number = 1..1024}`; place a new window on a workspace |
 | `frame`               | Frame fields below                                                         |
 
+Blur follows the opacity of the surface it sits behind. When a layer-shell panel
+fades in or out, whether through a `layer-open` animation or its own alpha, the
+blur fades with it. Panels need no extra protocol or setting for this.
+
+If a backdrop capture fails, Gnoblin shows the current backdrop without blur
+for that frame. Blur resumes after the next successful capture.
+
 Uniform names must be valid GLSL-style identifiers; the `gnoblin_` prefix is
 reserved. Values must fit in a finite 32-bit float.
 

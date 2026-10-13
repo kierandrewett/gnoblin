@@ -1,0 +1,10 @@
+# project source destination
+mutter gnoblin-location-agent.c src/core/gnoblin-location-agent.c
+mutter gnoblin-location-agent.h src/core/gnoblin-location-agent.h
+mutter gnoblin-auth-agent.c src/core/gnoblin-auth-agent.c
+mutter gnoblin-auth-agent.h src/core/gnoblin-auth-agent.h
+mutter gnoblin-pipewire-monitor.c src/core/gnoblin-pipewire-monitor.c
+mutter gnoblin-pipewire-monitor.h src/core/gnoblin-pipewire-monitor.h
+mutter gnoblin-control-auth.c src/core/gnoblin-control-auth.c
+mutter gnoblin-control-prompts.c src/core/gnoblin-control-prompts.c
+mutter gnoblin-control-privacy.c src/core/gnoblin-control-privacy.c

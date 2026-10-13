@@ -8,12 +8,12 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _sources import control_header, control_source  # noqa: E402
+from _sources import control_header, control_source, overlay_manifests, LUA_SOURCES, RUNTIME_SOURCES  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-LUA = ROOT / "src/config/gnoblin-lua.c"
-SESSION = ROOT / "src/session/gnoblin-runtime.c"
-CLI = ROOT / "src/tools/gnoblinctl.c"
+LUA = LUA_SOURCES
+SESSION = RUNTIME_SOURCES
+CLI_FILES = sorted((ROOT / "src/cli").glob("gnoblinctl*.c"))
 PAD_HELP_PATCH = ROOT / "patches/mutter/99-typed-window-api/0085-emit-tablet-pad-help-without-layout.patch"
 
 
@@ -33,35 +33,32 @@ def api_minor(header: str) -> int:
 class NativeSocketTextSnapTests(unittest.TestCase):
     def test_configured_shortcut_input_capture_uses_dynamic_bare_super_path(self):
         source = control_source()
-        capture_start = source.index("static gboolean apply_configured_capture_shortcut(")
-        capture_start = source.index("static gboolean apply_configured_capture_shortcut(", capture_start + 1)
-        apply_capture = source[
-            capture_start : source.index("static void dispatch_dynamic_shortcut_activated(", capture_start)
-        ]
+        capture_start = source.index("gboolean apply_configured_capture_shortcut(")
+        apply_capture = source[capture_start : source.index("void dispatch_dynamic_shortcut_activated(", capture_start)]
         start_shortcuts = function_body(
             source,
-            "static gboolean start_native_shortcuts(",
+            "gboolean start_native_shortcuts(",
             "typedef enum {",
         )
         settings_changed = function_body(
             source,
-            "static void native_settings_changed(",
+            "void native_settings_changed(",
             "static gboolean native_touchpad_action_supported(",
         )
         lua_owner = function_body(
             source,
             "static gboolean dynamic_shortcut_routes_to_lua_runtime(",
-            "static void dynamic_shortcut_publish_event(",
+            "void dynamic_shortcut_publish_event(",
         )
         publish_event = function_body(
             source,
-            "static void dynamic_shortcut_publish_event(",
-            "static gboolean issue_focus_context_for_session_key(",
+            "void dynamic_shortcut_publish_event(",
+            "gboolean issue_focus_context_for_session_key(",
         )
         focus_context = function_body(
             source,
-            "static gboolean issue_focus_context_for_session_key(",
-            "static void dynamic_shortcut_end_session(",
+            "gboolean issue_focus_context_for_session_key(",
+            "void dynamic_shortcut_end_session(",
         )
 
         self.assertIn('g_str_equal(binding, "Super")', apply_capture)
@@ -89,13 +86,13 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         methods = function_body(
             source,
-            "static gboolean client_connected(",
+            "gboolean client_connected(",
             "GVariant* gnoblin_native_control_receive_runtime_config(",
         )
         operation = function_body(
             source,
             "static gboolean native_runtime_handle_operation(",
-            "static gboolean native_runtime_fd_ready(",
+            "gboolean native_runtime_fd_ready(",
         )
         self.assertGreaterEqual(api_minor(header), 66)
         self.assertIn('"input.orientation_lock"', methods)
@@ -118,7 +115,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         connected = function_body(
             source,
-            "static gboolean client_connected(",
+            "gboolean client_connected(",
             "GVariant* gnoblin_native_control_receive_runtime_config(",
         )
         methods = connected.split("static const char* methods[] = {", 1)[1].split("NULL,", 1)[0]
@@ -142,7 +139,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         connected = function_body(
             source,
-            "static gboolean client_connected(",
+            "gboolean client_connected(",
             "GVariant* gnoblin_native_control_receive_runtime_config(",
         )
         methods = connected.split("static const char* methods[] = {", 1)[1].split("NULL,", 1)[0]
@@ -162,12 +159,12 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         aliases = function_body(
             source,
             "static void native_window_event_add_compat_aliases(",
-            "static void publish_native_socket_event(",
+            "void publish_native_socket_event(",
         )
         publish = function_body(
             source,
-            "static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
-            "static void native_publish_request_event(",
+            "void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
+            "void native_publish_request_event(",
         )
 
         self.assertIn('{"window", "last"}', aliases)
@@ -188,13 +185,13 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         callback = function_body(
             source,
-            "static void appearance_color_scheme_changed(",
+            "void appearance_color_scheme_changed(",
             "static GVariant* privacy_snapshot_new(",
         )
         snapshot = function_body(
             source,
-            "static GVariant* appearance_snapshot_new(",
-            "static void appearance_color_scheme_changed(",
+            "GVariant* appearance_snapshot_new(",
+            "void appearance_color_scheme_changed(",
         )
         subscription = function_body(
             source,
@@ -203,7 +200,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         events = function_body(
             source,
-            "static const char* native_socket_events[] = {",
+            "const char* native_socket_events[] = {",
             "static const char native_policy_introspection[]",
         )
 
@@ -230,10 +227,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         lua_source = LUA.read_text()
         session = SESSION.read_text()
-        cli = CLI.read_text()
+        cli = "".join(path.read_text() for path in CLI_FILES)
         connected = function_body(
             source,
-            "static gboolean client_connected(",
+            "gboolean client_connected(",
             "GVariant* gnoblin_native_control_receive_runtime_config(",
         )
         startup = function_body(
@@ -243,12 +240,12 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         read_methods = function_body(
             source,
-            "static gboolean native_api_read_method(",
-            "static gboolean runtime_config_values_equal(",
+            "gboolean native_api_read_method(",
+            "gboolean runtime_config_values_equal(",
         )
         appearance_event = function_body(
             source,
-            "static void appearance_color_scheme_changed(",
+            "void appearance_color_scheme_changed(",
             "static GVariant* privacy_snapshot_new(",
         )
 
@@ -278,7 +275,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         events = function_body(
             source,
-            "static const char* native_socket_events[] = {",
+            "const char* native_socket_events[] = {",
             "static const char native_policy_introspection[]",
         )
         subscription = function_body(
@@ -306,18 +303,18 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         events = function_body(
             source,
-            "static const char* native_socket_events[] = {",
+            "const char* native_socket_events[] = {",
             "static const char native_policy_introspection[]",
         )
         publish = function_body(
             source,
-            "static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
-            "static void dispatch_lua_layer_event(",
+            "void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
+            "void dispatch_lua_layer_event(",
         )
         status = function_body(
             source,
-            "static void native_runtime_publish_status(",
-            "static GVariant* appearance_snapshot_new(",
+            "void native_runtime_publish_status(",
+            "GVariant* appearance_snapshot_new(",
         )
         subscription = function_body(
             source,
@@ -331,7 +328,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         runtime_handler = function_body(
             source,
-            "static gboolean native_runtime_fd_ready(",
+            "gboolean native_runtime_fd_ready(",
             "gboolean gnoblin_native_control_dispatch_runtime_event(",
         )
         self.assertGreaterEqual(api_minor(header), 72)
@@ -352,7 +349,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         events = function_body(
             source,
-            "static const char* native_socket_events[] = {",
+            "const char* native_socket_events[] = {",
             "static const char native_policy_introspection[]",
         )
         publish = function_body(
@@ -367,14 +364,14 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         runtime_handler = function_body(
             source,
-            "static gboolean native_runtime_fd_ready(",
+            "gboolean native_runtime_fd_ready(",
             "gboolean gnoblin_native_control_dispatch_runtime_event(",
         )
         runtime_send = function_body(
             source,
-            "static gboolean native_runtime_send(GnoblinNativeControl* control, GnoblinRuntimePacketType type,\n"
-            "                                    guint64 request_id, GVariant* payload, GError** error) {",
-            "static gboolean native_runtime_send_event_packet(",
+            "gboolean native_runtime_send(GnoblinNativeControl* control, GnoblinRuntimePacketType type,\n"
+            "                             guint64 request_id, GVariant* payload, GError** error) {",
+            "gboolean native_runtime_send_event_packet(",
         )
 
         self.assertGreaterEqual(api_minor(header), 76)
@@ -399,7 +396,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         patch = PAD_HELP_PATCH.read_text()
         events = function_body(
             source,
-            "static const char* native_socket_events[] = {",
+            "const char* native_socket_events[] = {",
             "static const char native_policy_introspection[]",
         )
         subscription = function_body(
@@ -414,7 +411,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         callback = function_body(
             source,
-            "static ClutterActor* native_show_pad_osd_requested(",
+            "ClutterActor* native_show_pad_osd_requested(",
             "static gboolean monitor_property_changed(",
         )
 
@@ -441,8 +438,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         publisher = function_body(
             source,
-            "static void publish_layer_changes(",
-            "static void publish_window_changes(",
+            "void publish_layer_changes(",
+            "void publish_window_changes(",
         )
 
         snapshot = startup.index("layer_snapshot_json(control, TRUE, &layer_error)")
@@ -459,14 +456,14 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         callback = function_body(
             source,
-            "static void privacy_pipewire_state_changed(",
+            "void privacy_pipewire_state_changed(",
             "static void privacy_refresh_state(",
         )
-        monitor = (ROOT / "src/native-control/gnoblin-pipewire-monitor.c").read_text()
+        monitor = (ROOT / "src/agents/gnoblin-pipewire-monitor.c").read_text()
         capability = function_body(
             source,
-            "static GVariant* capability_snapshot_record(",
-            "static GVariant* capability_snapshot(",
+            "GVariant* capability_snapshot_record(",
+            "GVariant* capability_snapshot(",
         )
         subscription = function_body(
             source,
@@ -495,7 +492,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_ping_is_a_transport_operation_not_an_api_method(self):
         source = control_source()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         ping = function_body(
             dispatcher,
             'if (g_str_equal(op, "ping")) {',
@@ -508,7 +505,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_stopping_control_rejects_new_requests_but_keeps_ping_available(self):
         source = control_source()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         ping = dispatcher.index('if (g_str_equal(op, "ping"))')
         stopping = dispatcher.index("if (client->control && client->control->stopping)")
         version_handling = dispatcher.index('if (json_object_has_member(request, "api_version")')
@@ -519,18 +516,18 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_runtime_abort_and_stop_drain_deferred_requests(self):
         source = control_source()
-        abort = function_body(source, "static void native_runtime_abort(", "static gboolean native_runtime_send(")
-        drain_start = source.rindex("static void native_runtime_fail_pending_requests(")
+        abort = function_body(source, "void native_runtime_abort(", "gboolean native_runtime_send(")
+        drain_start = source.rindex("void native_runtime_fail_pending_requests(")
         drain_end = source.index("static gboolean native_runtime_send_worker_suspended(", drain_start)
         drain = source[drain_start:drain_end]
         operation = function_body(
             source,
             "static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,",
-            "static gboolean native_runtime_fd_ready(",
+            "gboolean native_runtime_fd_ready(",
         )
         fd_ready = function_body(
             source,
-            "static gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_data) {",
+            "gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_data) {",
             "gboolean gnoblin_native_control_dispatch_runtime_event(",
         )
         stop = function_body(
@@ -568,7 +565,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
     def test_api_128_methods_are_advertised_and_routed_directly(self):
         source = control_source()
         header = control_header()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         direct = dispatcher.split('if (g_str_equal(method, "input.text_target") ||', 1)[1]
         direct = direct.split('if (g_str_equal(method, "window.snap.offer"))', 1)[0]
 
@@ -586,7 +583,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_status_method_is_gated_at_api_129(self):
         source = control_source()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         self.assertIn('g_str_equal(method, "session.status") && client->api_minor < 29', dispatcher)
 
     def test_wm_menu_authority_is_api_130_typed_and_target_bound(self):
@@ -605,8 +602,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         socket_action = function_body(
             source,
-            "static GVariant* native_socket_begin_menu_window_grab(",
-            "static void native_launch_free(",
+            "GVariant* native_socket_begin_menu_window_grab(",
+            "void native_launch_free(",
         )
         native_action = function_body(
             source,
@@ -640,14 +637,14 @@ class NativeSocketTextSnapTests(unittest.TestCase):
     def test_xdg_activation_focus_is_pid_bound_and_api_132(self):
         source = control_source()
         header = control_header()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         focus = function_body(
             source,
-            "static GVariant* native_socket_focus_window(",
-            "static GVariant* native_socket_begin_window_grab(",
+            "GVariant* native_socket_focus_window(",
+            "GVariant* native_socket_begin_window_grab(",
         )
         connected = function_body(
-            source, "static gboolean client_connected(", "GVariant* gnoblin_native_control_receive_runtime_config("
+            source, "gboolean client_connected(", "GVariant* gnoblin_native_control_receive_runtime_config("
         )
         patch = (ROOT / "patches/mutter/99-typed-window-api/0050-focus-with-xdg-activation-token.patch").read_text()
 
@@ -663,17 +660,17 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         self.assertLess(patch.index("token->consumed = TRUE"), patch.index("meta_window_activate_full"))
 
     def test_session_logout_waits_for_matching_compositor_success(self):
-        lua = (ROOT / "src/config/gnoblin-lua.c").read_text()
-        runtime = (ROOT / "src/session/gnoblin-runtime.c").read_text()
+        lua = (LUA_SOURCES).read_text()
+        runtime = (RUNTIME_SOURCES).read_text()
         source = control_source()
         operation = function_body(
             source,
             "static gboolean native_runtime_handle_operation(",
-            "static gboolean native_runtime_fd_ready(",
+            "gboolean native_runtime_fd_ready(",
         )
         completion = function_body(
             runtime,
-            "static gboolean handle_completion(",
+            "gboolean handle_completion(",
             "static gboolean dispatch_parent_event(",
         )
 
@@ -699,7 +696,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
             "void gnoblin_native_control_window_menu_requested(",
             "#define NATIVE_DRAG_MOD_CONTROL",
         )
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
 
         self.assertIn("client->event_api_minor = client->api_minor", dispatcher)
         self.assertIn("client->event_api_minor >= 30", menu_emit)
@@ -709,10 +706,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         consumer = function_body(
             source,
-            "static void native_socket_consume_rejected_menu_context(",
-            "static char* handle_request(",
+            "void native_socket_consume_rejected_menu_context(",
+            "char* handle_request(",
         )
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         version_block = function_body(
             dispatcher,
             'if (json_object_has_member(request, "api_version")',
@@ -749,13 +746,13 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         revoke = function_body(
             source,
-            "static void revoke_menu_contexts(GnoblinNativeControl* control) {",
-            "static guint64 native_menu_context_create(",
+            "void revoke_menu_contexts(GnoblinNativeControl* control) {",
+            "guint64 native_menu_context_create(",
         )
         socket_revoke = function_body(
             source,
-            "static void native_socket_revoke_client_tokens(Client* client) {",
-            "static void prune_focus_contexts(",
+            "void native_socket_revoke_client_tokens(Client* client) {",
+            "void prune_focus_contexts(",
         )
         self.assertIn("g_hash_table_remove_all(control->menu_contexts)", revoke)
         self.assertIn("g_hash_table_remove_all(client->menu_grants)", revoke)
@@ -764,7 +761,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_status_socket_read_stays_available_during_supervisor_recovery(self):
         source = control_source()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         status = function_body(
             dispatcher,
             'if (g_str_equal(method, "session.status")) {',
@@ -772,8 +769,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         reads = function_body(
             source,
-            "static gboolean native_api_read_method(",
-            "static gboolean runtime_config_values_equal(",
+            "gboolean native_api_read_method(",
+            "gboolean runtime_config_values_equal(",
         )
 
         self.assertIn("native_session_lock_snapshot(", status)
@@ -786,7 +783,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         workspace_list = function_body(
             dispatcher,
             'if (g_str_equal(method, "window.list") || g_str_equal(method, "workspace.list")) {',
@@ -809,7 +806,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_window_list_always_uses_lua_snapshot_and_preserves_legacy_shape(self):
         source = control_source()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         window_list = function_body(
             dispatcher,
             'if (g_str_equal(method, "window.list") || g_str_equal(method, "workspace.list")) {',
@@ -830,7 +827,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
     def test_layer_animation_policy_socket_read_uses_supervised_lua_read(self):
         source = control_source()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         generic_read = function_body(
             dispatcher,
             "if (native_api_read_method(method)) {",
@@ -838,8 +835,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         reads = function_body(
             source,
-            "static gboolean native_api_read_method(",
-            "static gboolean runtime_config_values_equal(",
+            "gboolean native_api_read_method(",
+            "gboolean runtime_config_values_equal(",
         )
 
         self.assertIn('g_str_equal(method, "layer.animation_policy")', reads)
@@ -850,10 +847,10 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         connected = function_body(
             source,
-            "static gboolean client_connected(",
+            "gboolean client_connected(",
             "GVariant* gnoblin_native_control_receive_runtime_config(",
         )
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         animation_reads = function_body(
             dispatcher,
             "if (native_api_animation_read_method(method)) {",
@@ -861,8 +858,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         helper = function_body(
             source,
-            "static gboolean native_api_animation_read_method(",
-            "static gboolean native_api_read_method(",
+            "gboolean native_api_animation_read_method(",
+            "gboolean native_api_read_method(",
         )
 
         for method in (
@@ -883,7 +880,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         maybe_free = function_body(
             source,
-            "static void native_control_maybe_free_stopped(GnoblinNativeControl* control) {",
+            "void native_control_maybe_free_stopped(GnoblinNativeControl* control) {",
             "static void clear_pending_grant_delivery(",
         )
         stop = source.split("void gnoblin_native_control_stop(", 1)[1]
@@ -898,18 +895,18 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         pruner = function_body(
             source,
-            "static void prune_focus_contexts(GnoblinNativeControl* control, gint64 now) {",
-            "static gboolean focus_context_expiry_tick(",
+            "void prune_focus_contexts(GnoblinNativeControl* control, gint64 now) {",
+            "gboolean focus_context_expiry_tick(",
         )
         text_target = function_body(
             source,
             "GVariant* gnoblin_native_control_create_text_target(",
-            "static GVariant* native_insert_text_owned(",
+            "GVariant* native_insert_text_owned(",
         )
         snap_context = function_body(
             source,
             "GVariant* gnoblin_native_control_create_snap_context(",
-            "static GVariant* native_socket_create_snap_context(",
+            "GVariant* native_socket_create_snap_context(",
         )
 
         self.assertIn("control->snap_contexts", pruner)
@@ -921,13 +918,13 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         take_grant = function_body(
             source,
-            "static gboolean native_socket_take_focus_grant(",
-            "static GVariant* native_socket_focus_window(",
+            "gboolean native_socket_take_focus_grant(",
+            "GVariant* native_socket_focus_window(",
         )
         create = function_body(
             source,
-            "static GVariant* native_socket_create_text_target(",
-            "static GVariant* native_socket_insert_text(",
+            "GVariant* native_socket_create_text_target(",
+            "GVariant* native_socket_insert_text(",
         )
 
         self.assertLess(
@@ -943,8 +940,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         insert = function_body(
             source,
-            "static GVariant* native_socket_insert_text(",
-            "static gboolean focus_identity_matches(",
+            "GVariant* native_socket_insert_text(",
+            "gboolean focus_identity_matches(",
         )
 
         owner_check = insert.index("stored->socket_owner_client_id != client->client_id")
@@ -956,7 +953,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
         insert_native = function_body(
             source,
-            "static GVariant* native_insert_text_owned(",
+            "GVariant* native_insert_text_owned(",
             "GVariant* gnoblin_native_control_insert_text(",
         )
         self.assertIn("stored->socket_owner_client_id != socket_owner_client_id", insert_native)
@@ -974,7 +971,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         socket_context = function_body(
             source,
-            "static GVariant* native_socket_create_snap_context(",
+            "GVariant* native_socket_create_snap_context(",
             "static GVariant* native_commit_snap_context_owned(",
         )
 
@@ -988,7 +985,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
         socket_snap = function_body(
             source,
-            "static GVariant* native_socket_commit_snap_context(",
+            "GVariant* native_socket_commit_snap_context(",
             "GVariant* gnoblin_native_control_create_text_target(",
         )
         self.assertIn("native_socket_snap_rect(frame_node)", socket_snap)
@@ -999,15 +996,15 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         revoke = function_body(
             source,
-            "static void native_socket_revoke_client_tokens(Client* client) {",
-            "static void prune_focus_contexts(",
+            "void native_socket_revoke_client_tokens(Client* client) {",
+            "void prune_focus_contexts(",
         )
-        client_close = function_body(source, "static void client_close(", "static JsonNode* json_from_variant(")
+        client_close = function_body(source, "void client_close(", "JsonNode* json_from_variant(")
         subscription = function_body(source, 'if (g_str_equal(op, "events"))', 'if (g_str_equal(op, "windows"))')
         focus_revoke = function_body(
             source,
-            "static void revoke_focus_contexts(GnoblinNativeControl* control) {",
-            "static void revoke_text_targets(",
+            "void revoke_focus_contexts(GnoblinNativeControl* control) {",
+            "void revoke_text_targets(",
         )
 
         self.assertIn("control->text_targets", revoke)
@@ -1022,15 +1019,15 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         connected = function_body(
             source,
-            "static gboolean client_connected(",
+            "gboolean client_connected(",
             "GVariant* gnoblin_native_control_receive_runtime_config(",
         )
         read_methods = function_body(
             source,
-            "static gboolean native_api_read_method(const char* method)",
-            "static gboolean runtime_config_values_equal(",
+            "gboolean native_api_read_method(const char* method)",
+            "gboolean runtime_config_values_equal(",
         )
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
 
         for method in (
             "windows.list",
@@ -1096,7 +1093,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        overlay_manifest = (ROOT / "src/native-control/manifest").read_text()
+        overlay_manifest = overlay_manifests()
         lua = LUA.read_text()
         mutter_patch = (ROOT / "patches/mutter/99-typed-window-api/0064-native-window-unminimize.patch").read_text()
         handler = function_body(
@@ -1141,8 +1138,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
 
         request_queue = function_body(
             source,
-            "static char* queue_runtime_api_request_internal(",
-            "static char* queue_runtime_api_request(",
+            "char* queue_runtime_api_request_internal(",
+            "char* queue_runtime_api_request(",
         )
         self.assertIn("pending->legacy_window_action = g_strdup(legacy_window_action)", request_queue)
         self.assertIn("pending->legacy_window_id = g_strdup(legacy_window_id)", request_queue)
@@ -1239,11 +1236,11 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         lua = LUA.read_text()
         connected = function_body(
             source,
-            "static gboolean client_connected(",
+            "gboolean client_connected(",
             "GVariant* gnoblin_native_control_receive_runtime_config(",
         )
         methods = connected.split("static const char* methods[] = {", 1)[1].split("NULL,", 1)[0]
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         socket_method = function_body(
             dispatcher,
             'if (g_str_equal(method, "shortcut.session.end")) {',
@@ -1252,7 +1249,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         runtime_method = function_body(
             source,
             "static GVariant* native_runtime_shortcut_operation(",
-            "static gboolean native_runtime_flush_state_snapshots(",
+            "gboolean native_runtime_flush_state_snapshots(",
         )
 
         self.assertGreaterEqual(api_minor(header), 64)
@@ -1272,22 +1269,22 @@ class NativeSocketTextSnapTests(unittest.TestCase):
     def test_modal_key_events_refresh_focus_authority_from_real_input(self):
         source = control_source()
         header = control_header()
-        capture_start = source.rindex("static void native_shortcut_capture_key(")
+        capture_start = source.rindex("void native_shortcut_capture_key(")
         capture_end = source.index("gboolean gnoblin_native_control_overlay_modifier_pressed(", capture_start)
         capture = source[capture_start:capture_end]
         issue_context = function_body(
             source,
-            "static gboolean issue_focus_context_for_session_key(",
-            "static void dynamic_shortcut_end_session(",
+            "gboolean issue_focus_context_for_session_key(",
+            "void dynamic_shortcut_end_session(",
         )
         runtime_event = function_body(
             source,
-            "static gboolean native_runtime_dispatch_event(",
+            "gboolean native_runtime_dispatch_event(",
             "static GVariant* native_runtime_shortcut_operation(",
         )
         runtime_handler = function_body(
             SESSION.read_text(),
-            "static gboolean handle_event(",
+            "gboolean handle_event(",
             "static gboolean dispatch_parent_event(",
         )
         lua_dispatch = function_body(
@@ -1317,18 +1314,18 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         events = function_body(
             source,
-            "static const char* native_socket_events[] = {",
+            "const char* native_socket_events[] = {",
             "static const char native_policy_introspection[]",
         )
         publish = function_body(
             source,
-            "static void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
-            "static void native_publish_request_event(",
+            "void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payload) {",
+            "void native_publish_request_event(",
         )
         native_event = function_body(
             source,
-            "static void native_native_event(",
-            "static gboolean focus_token_has_valid_shape(",
+            "void native_native_event(",
+            "gboolean focus_token_has_valid_shape(",
         )
         subscription = function_body(
             source,
@@ -1424,8 +1421,8 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         )
         reads = function_body(
             source,
-            "static gboolean native_api_read_method(",
-            "static gboolean runtime_config_values_equal(",
+            "gboolean native_api_read_method(",
+            "gboolean runtime_config_values_equal(",
         )
         lua_read = function_body(
             lua_source,
@@ -1454,12 +1451,12 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         unmanaged = function_body(
             source,
             "static void window_unmanaged(MetaWindow* window, gpointer user_data) {",
-            "static void track_window(",
+            "void track_window(",
         )
         dispatcher = function_body(
             source,
-            "static char* handle_request(",
-            "static void process_buffer(",
+            "char* handle_request(",
+            "void process_buffer(",
         )
         snap = function_body(
             source,
@@ -1504,13 +1501,13 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         dispatcher = function_body(
             source,
-            "static char* handle_request(",
-            "static void process_buffer(",
+            "char* handle_request(",
+            "void process_buffer(",
         )
         operation_dispatch = function_body(
             source,
             "static gboolean native_runtime_handle_operation(",
-            "static gboolean native_runtime_fd_ready(",
+            "gboolean native_runtime_fd_ready(",
         )
 
         self.assertGreaterEqual(api_minor(header), 49)
@@ -1535,7 +1532,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         operation = function_body(
             source,
             "static gboolean native_runtime_handle_operation(",
-            "static gboolean native_runtime_fd_ready(",
+            "gboolean native_runtime_fd_ready(",
         )
 
         self.assertGreaterEqual(api_minor(header), 59)
@@ -1556,7 +1553,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         launch = function_body(
             dispatcher,
             'if (g_str_has_prefix(method, "launch.")) {',
@@ -1592,7 +1589,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         shortcut_list = function_body(
             dispatcher,
             'if (g_str_equal(method, "shortcut.list")) {',
@@ -1610,7 +1607,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         source = control_source()
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         shortcut_actions = function_body(
             dispatcher,
             'if (g_str_equal(method, "shortcut.actions")) {',
@@ -1629,7 +1626,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         lua = LUA.read_text()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         layer_list = function_body(
             dispatcher,
             'if (g_str_equal(method, "layer.list")) {',
@@ -1654,7 +1651,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         lua = LUA.read_text()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         monitor_list = function_body(
             dispatcher,
             'if (g_str_equal(method, "monitor.list")) {',
@@ -1679,7 +1676,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         cmake = (ROOT / "CMakeLists.txt").read_text()
         lua = LUA.read_text()
-        dispatcher = function_body(source, "static char* handle_request(", "static void process_buffer(")
+        dispatcher = function_body(source, "char* handle_request(", "void process_buffer(")
         window_match = function_body(
             dispatcher,
             'if (g_str_equal(method, "window.match")) {',

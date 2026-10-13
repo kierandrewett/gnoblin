@@ -1,0 +1,26 @@
+From: kierandrewett <kieran@drewett.dev>
+Subject: Keep managed layer-shell stacking unchanged on pointer crossing
+
+Mutter raises ordinary dock windows on pointer entry and exit. Layer-shell
+surfaces use the dock type too, but their order must survive motion across
+overlapping panels. Exclude only managed layer surfaces; retain ordinary dock
+hover promotion, explicit layer keyboard acquisition and click-to-raise.
+
+diff --git a/src/core/display.c b/src/core/display.c
+index de19d57b0c..acdad694f5 100644
+--- a/src/core/display.c
++++ b/src/core/display.c
+@@ -3685,7 +3685,12 @@ meta_display_handle_window_enter (MetaDisplay *display,
+       break;
+     }
+ 
+-  if (window && window->type == META_WINDOW_DOCK)
++  /* Layer-shell surfaces have a protocol-defined layer. Promoting them on
++   * pointer entry or exit can cover another panel before its input arrives.
++   * Keep the historical hover promotion for ordinary docks only; layer-shell
++   * still uses explicit keyboard acquisition and ordinary click-to-raise. */
++  if (window && window->type == META_WINDOW_DOCK &&
++      !g_object_get_data (G_OBJECT (window), "gnoblin-layer-surface"))
+     meta_window_raise (window);
+ }
+ 

@@ -65,7 +65,7 @@ assert_archive_source xdg-desktop-portal-gnome subprojects/libgxdp/meson.build
 mkdir -p "$TMP/mutter-archive"
 cmake -DACTION=overlay -DPROJECT=mutter "-DSOURCE_DIR=$TMP/mutter-archive" -DMODE=copy \
     -P "$ROOT/cmake/source-step.cmake" >/dev/null
-cmp "$ROOT/src/native-control/gnoblin-native-control.c" \
+cmp "$ROOT/src/control/gnoblin-native-control.c" \
     "$TMP/mutter-archive/src/core/gnoblin-native-control.c"
 
 # In a real submodule, the copied overlay remains invisible to Git status.
@@ -73,7 +73,7 @@ mkdir -p "$TMP/mutter-checkout"
 git -C "$TMP/mutter-checkout" init -q
 cmake -DACTION=overlay -DPROJECT=mutter "-DSOURCE_DIR=$TMP/mutter-checkout" -DMODE=copy \
     -P "$ROOT/cmake/source-step.cmake" >/dev/null
-cmp "$ROOT/src/native-control/gnoblin-native-control.c" \
+cmp "$ROOT/src/control/gnoblin-native-control.c" \
     "$TMP/mutter-checkout/src/core/gnoblin-native-control.c"
 test -z "$(git -C "$TMP/mutter-checkout" status --porcelain)"
 

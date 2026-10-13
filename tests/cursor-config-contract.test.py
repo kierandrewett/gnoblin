@@ -18,7 +18,7 @@ MUTTER_PATCH = (
 
 class CursorConfigContractTest(unittest.TestCase):
     def test_reload_applies_lua_cursor_settings_and_documented_defaults(self):
-        start = CONTROL.index("static void native_settings_changed(")
+        start = CONTROL.index("void native_settings_changed(")
         end = CONTROL.index("static gboolean native_touchpad_action_supported(", start)
         implementation = CONTROL[start:end]
 

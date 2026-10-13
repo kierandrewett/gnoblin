@@ -164,8 +164,12 @@ extents. It supplies directional cursors and respects non-resizable windows.
 | Resize N/NE/E/SE/S/SW/W/NW | 5–12   |
 
 The protocol action values appear below. Keyboard focus stays with the app.
-Slow or dead renderers do not block application commits: an opted-in window gets
-the native fallback until a matching buffer is ready.
+Slow or dead renderers do not block application commits. First presentation of
+a window with a registered renderer waits up to two seconds for a matching
+frame buffer. Failure or timeout presents the window with the native fallback.
+
+A valid buffer can still replace fallback later. During resize, the previous
+custom frame stays visible while the replacement buffer is pending.
 
 ## Small C helper
 

@@ -1,0 +1,247 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 8 Oct 2026 21:00:00 +0100
+Subject: [PATCH] mutter: fade background blur with the surface alpha
+
+The blur behind a surface is painted through the surface texture alpha, so a
+panel that fades out by committing translucent frames takes its blur with it.
+No client protocol is needed.
+---
+diff --git a/clutter/clutter/clutter-paint-node-private.h b/clutter/clutter/clutter-paint-node-private.h
+index f54afbc0f0..5bc4273013 100644
+--- a/clutter/clutter/clutter-paint-node-private.h
++++ b/clutter/clutter/clutter-paint-node-private.h
+@@ -118,6 +118,11 @@ ClutterPaintNode * clutter_blur_node_new_from_framebuffer          (CoglFramebuf
+                                                                     float                  noise,
+                                                                     uint8_t                opacity);
+ 
++CLUTTER_EXPORT
++void               clutter_blur_node_set_alpha_mask                (ClutterPaintNode      *node,
++                                                                    CoglTexture           *mask,
++                                                                    float                  gain);
++
+ #define CLUTTER_TYPE_EFFECT_NODE                (clutter_effect_node_get_type ())
+ #define CLUTTER_EFFECT_NODE(obj)                (G_TYPE_CHECK_INSTANCE_CAST ((obj), CLUTTER_TYPE_EFFECT_NODE, ClutterEffectNode))
+ #define CLUTTER_IS_EFFECT_NODE(obj)             (G_TYPE_CHECK_INSTANCE_TYPE ((obj), CLUTTER_TYPE_EFFECT_NODE))
+diff --git a/clutter/clutter/clutter-paint-nodes.c b/clutter/clutter/clutter-paint-nodes.c
+index af5bcd7d82..330aa9eef6 100644
+--- a/clutter/clutter/clutter-paint-nodes.c
++++ b/clutter/clutter/clutter-paint-nodes.c
+@@ -1505,11 +1505,16 @@ add_blur_framebuffer_effect (CoglPipeline *pipeline,
+   if (saturation == 1.0f && noise == 0.0f)
+     return;
+ 
+-  snippet = cogl_snippet_new (COGL_SNIPPET_HOOK_FRAGMENT,
+-                              blur_framebuffer_effect_declarations,
+-                              blur_framebuffer_effect_source);
++  /* Cogl keys generated programs by snippet pointer. Share one snippet so
++   * every blur node reuses a single program instead of compiling a new one. */
++  static CoglSnippet *shared_snippet;
++
++  if (!shared_snippet)
++    shared_snippet = cogl_snippet_new (COGL_SNIPPET_HOOK_FRAGMENT,
++                                       blur_framebuffer_effect_declarations,
++                                       blur_framebuffer_effect_source);
++  snippet = shared_snippet;
+   cogl_pipeline_add_snippet (pipeline, snippet);
+-  g_object_unref (snippet);
+ 
+   saturation_uniform =
+     cogl_pipeline_get_uniform_location (pipeline,
+@@ -1843,3 +1848,62 @@ clutter_blur_node_new_from_framebuffer (CoglFramebuffer *framebuffer,
+ 
+   return node;
+ }
++
++
++static const char *blur_alpha_mask_declarations =
++  "uniform float blur_alpha_mask_gain;\n";
++
++static const char *blur_alpha_mask_source =
++  "  cogl_color_out *= clamp (texture2D (cogl_sampler1,\n"
++  "                                      cogl_tex_coord1_in.st).a *\n"
++  "                           blur_alpha_mask_gain, 0.0, 1.0);\n";
++
++/**
++ * clutter_blur_node_set_alpha_mask:
++ * @node: a #ClutterBlurNode
++ * @mask: texture whose alpha channel scales the blurred contents
++ * @gain: multiplier applied to the mask alpha before clamping to [0, 1]
++ *
++ * Makes the blur follow the alpha of @mask wherever it is painted, so a
++ * blur placed behind a translucent surface fades out together with that
++ * surface. Rectangles added to @node afterwards must supply texture
++ * coordinates for two layers: the blurred contents, then @mask.
++ */
++void
++clutter_blur_node_set_alpha_mask (ClutterPaintNode *node,
++                                  CoglTexture      *mask,
++                                  float             gain)
++{
++  static CoglSnippet *mask_snippet;
++  ClutterLayerNode *layer_node;
++  CoglPipeline *pipeline;
++  CoglSnippet *snippet;
++  int gain_uniform;
++
++  g_return_if_fail (CLUTTER_IS_BLUR_NODE (node));
++  g_return_if_fail (COGL_IS_TEXTURE (mask));
++
++  layer_node = CLUTTER_LAYER_NODE (node);
++  pipeline = cogl_pipeline_copy (layer_node->pipeline);
++  cogl_pipeline_set_layer_texture (pipeline, 1, mask);
++  cogl_pipeline_set_layer_filters (pipeline, 1,
++                                   COGL_PIPELINE_FILTER_LINEAR,
++                                   COGL_PIPELINE_FILTER_LINEAR);
++  cogl_pipeline_set_layer_combine (pipeline, 1,
++                                   "RGBA = REPLACE (PREVIOUS)", NULL);
++
++  if (!mask_snippet)
++    mask_snippet = cogl_snippet_new (COGL_SNIPPET_HOOK_FRAGMENT,
++                                     blur_alpha_mask_declarations,
++                                     blur_alpha_mask_source);
++  snippet = mask_snippet;
++  cogl_pipeline_add_snippet (pipeline, snippet);
++
++  gain_uniform = cogl_pipeline_get_uniform_location (pipeline,
++                                                     "blur_alpha_mask_gain");
++  if (gain_uniform > -1)
++    cogl_pipeline_set_uniform_1f (pipeline, gain_uniform, gain);
++
++  g_set_object (&layer_node->pipeline, pipeline);
++  g_object_unref (pipeline);
++}
+diff --git a/src/compositor/meta-background-effect.c b/src/compositor/meta-background-effect.c
+index 9ab395e86f..796c3504f5 100644
+--- a/src/compositor/meta-background-effect.c
++++ b/src/compositor/meta-background-effect.c
+@@ -513,7 +513,8 @@ add_blur_rectangle (ClutterPaintNode           *paint_node,
+                     const MtkRectangle         *source_rect,
+                     const graphene_rect_t      *framebuffer_rect,
+                     const ClutterActorBox      *actor_box,
+-                    const FramebufferTransform *transform)
++                    const FramebufferTransform *transform,
++                    const ClutterActorBox      *mask_box)
+ {
+   float texture_x1;
+   float texture_y1;
+@@ -558,6 +559,27 @@ add_blur_rectangle (ClutterPaintNode           *paint_node,
+       texture_y2 = tmp;
+     }
+ 
++  if (mask_box)
++    {
++      /* The second layer samples the surface itself, whose texture covers
++       * the content box. */
++      float width = mask_box->x2 - mask_box->x1;
++      float height = mask_box->y2 - mask_box->y1;
++      float coords[8] = {
++        texture_x1, texture_y1, texture_x2, texture_y2,
++        (actor_box->x1 - mask_box->x1) / width,
++        (actor_box->y1 - mask_box->y1) / height,
++        (actor_box->x2 - mask_box->x1) / width,
++        (actor_box->y2 - mask_box->y1) / height,
++      };
++
++      clutter_paint_node_add_multitexture_rectangle (paint_node,
++                                                     actor_box,
++                                                     coords,
++                                                     8);
++      return;
++    }
++
+   clutter_paint_node_add_texture_rectangle (paint_node,
+                                             actor_box,
+                                             texture_x1,
+@@ -578,7 +600,9 @@ meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node,
+                                           float                   radius,
+                                           float                   saturation,
+                                           float                   noise,
+-                                          uint8_t                 opacity)
++                                          uint8_t                 opacity,
++                                          CoglTexture            *alpha_mask,
++                                          float                   alpha_mask_gain)
+ {
+   ClutterActor *stage;
+   CoglFramebuffer *source_framebuffer;
+@@ -685,6 +709,9 @@ meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node,
+   if (!blur_node)
+     return;
+ 
++  if (alpha_mask)
++    clutter_blur_node_set_alpha_mask (blur_node, alpha_mask, alpha_mask_gain);
++
+   n_rects = mtk_region_num_rectangles (paint_region);
+   for (int i = 0; i < n_rects; i++)
+     {
+@@ -719,7 +746,8 @@ meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node,
+                           &source_rect,
+                           &framebuffer_rect,
+                           &actor_box,
+-                          &framebuffer_transform);
++                          &framebuffer_transform,
++                          alpha_mask ? content_box : NULL);
+       has_blur_rects = TRUE;
+     }
+ 
+diff --git a/src/compositor/meta-background-effect.h b/src/compositor/meta-background-effect.h
+index 15a02d89bc..32c5961f21 100644
+--- a/src/compositor/meta-background-effect.h
++++ b/src/compositor/meta-background-effect.h
+@@ -41,4 +41,6 @@ void meta_background_effect_paint_blur_region (ClutterPaintNode       *root_node
+                                                float                   radius,
+                                                float                   saturation,
+                                                float                   noise,
+-                                               uint8_t                 opacity);
++                                               uint8_t                 opacity,
++                                               CoglTexture            *alpha_mask,
++                                               float                   alpha_mask_gain);
+diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
+index 677d2f144b..89bf8d98f0 100644
+--- a/src/compositor/meta-surface-actor.c
++++ b/src/compositor/meta-surface-actor.c
+@@ -890,6 +890,8 @@ meta_surface_actor_invalidate_background_blur (MetaSurfaceActor *surface_actor)
+   queue_redraw_for_region (surface_actor, priv->background_blur_sample_region);
+ }
+ 
++#define BLUR_ALPHA_MASK_GAIN 1.25f
++
+ void
+ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+                                              ClutterPaintNode    *root_node,
+@@ -906,6 +908,9 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+   float blur_radius;
+   float saturation;
+   float noise;
++  MetaShapedTexture *texture;
++  MetaMultiTexture *multi;
++  CoglTexture *mask;
+ 
+   if (!priv->compositor)
+     return;
+@@ -918,6 +923,14 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+                                               NULL,
+                                               &saturation,
+                                               &noise);
++  /* The blur is part of the surface: it follows the surface's own alpha, so
++   * a panel that fades out by committing translucent frames takes its blur
++   * with it. No client support is needed. A gain above one reaches full
++   * strength before a translucent background is fully opaque. */
++  texture = meta_surface_actor_get_texture (surface_actor);
++  multi = texture ? meta_shaped_texture_get_texture (texture) : NULL;
++  mask = multi && meta_multi_texture_is_simple (multi) ?
++    meta_multi_texture_get_plane (multi, 0) : NULL;
+   meta_background_effect_paint_blur_region (root_node,
+                                             CLUTTER_ACTOR (surface_actor),
+                                             paint_context,
+@@ -929,7 +942,9 @@ meta_surface_actor_paint_background_effects (MetaSurfaceActor    *surface_actor,
+                                             blur_radius,
+                                             saturation,
+                                             noise,
+-                                            opacity);
++                                            opacity,
++                                            mask,
++                                            BLUR_ALPHA_MASK_GAIN);
+ }
+ 
+ void

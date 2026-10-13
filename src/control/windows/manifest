@@ -1,0 +1,5 @@
+# project source destination
+mutter gnoblin-control-workspaces.c src/core/gnoblin-control-workspaces.c
+mutter gnoblin-control-layers.c src/core/gnoblin-control-layers.c
+mutter gnoblin-control-window-rules.c src/core/gnoblin-control-window-rules.c
+mutter gnoblin-control-window-drag.c src/core/gnoblin-control-window-drag.c

@@ -21,7 +21,7 @@ diff --git a/src/meson.build b/src/meson.build
 index 3fc274ded..c7c57b7bb 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -1224,30 +1224,92 @@ libmutter_dep = declare_dependency(
+@@ -1224,30 +1224,122 @@ libmutter_dep = declare_dependency(
    ],
  )
  
@@ -60,7 +60,7 @@ index 3fc274ded..c7c57b7bb 100644
 +endif
 +gnoblin_json_dep = dependency('json-glib-1.0')
 +
-+gnoblin_api_header = gnoblin_fs.read(gnoblin_root / 'src/native-control/gnoblin-native-control.h')
++gnoblin_api_header = gnoblin_fs.read(gnoblin_root / 'src/control/gnoblin-native-control.h')
 +gnoblin_api_major = ''
 +gnoblin_api_minor = ''
 +foreach api_line : gnoblin_api_header.split('\n')
@@ -97,27 +97,57 @@ index 3fc274ded..c7c57b7bb 100644
 -    mutter_c_args,
 -    '-DG_LOG_DOMAIN="gnoblin-mutter"',
 +gnoblin_config_sources = files(
++  gnoblin_root / 'src/config/gnoblin-config-input.c',
++  gnoblin_root / 'src/config/gnoblin-config-windows.c',
++  gnoblin_root / 'src/config/gnoblin-config-portal.c',
++  gnoblin_root / 'src/config/gnoblin-config-keybindings.c',
++  gnoblin_root / 'src/config/gnoblin-config-validate.c',
 +  gnoblin_root / 'src/config/gnoblin-config.c',
-+  gnoblin_root / 'src/native-control/gnoblin-input-config.c',
-+  gnoblin_root / 'src/config/gnoblin-lua.c',
-+  gnoblin_root / 'src/config/gnoblin-lua-pattern.c',
++  gnoblin_root / 'src/config/gnoblin-config-salvage.c',
++  gnoblin_root / 'src/input/gnoblin-input-config.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-variant.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-merge.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-subscriptions.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-operations.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-contexts.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-animation.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-input.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-named.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-queries.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-state-queries.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-install.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-runtime.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-dispatch.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-console.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-read.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-finish.c',
++  gnoblin_root / 'src/config/lua/gnoblin-lua-pattern.c',
 +  gnoblin_root / 'src/config/gnoblin-glob.c',
-+  gnoblin_root / 'src/native-control/gnoblin-keybinding-catalog.c',
-+  gnoblin_root / 'src/permissions/gnoblin-portal-identity.c',
-+  gnoblin_root / 'src/permissions/gnoblin-portal-policy.c',
++  gnoblin_root / 'src/input/gnoblin-keybinding-catalog.c',
++  gnoblin_root / 'src/portal/backend/gnoblin-portal-identity.c',
++  gnoblin_root / 'src/portal/backend/gnoblin-portal-policy.c',
 +)
 +gnoblin_session_sources = files(
-+  gnoblin_root / 'src/session/gnoblin-entrypoint.c',
++  gnoblin_root / 'src/main.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-diagnostics.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-environment.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-packets.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-events.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-compositor.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-worker.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-autostart.c',
++  gnoblin_root / 'src/session/gnoblin-runtime-supervisor.c',
 +  gnoblin_root / 'src/session/gnoblin-runtime.c',
 +  gnoblin_root / 'src/session/gnoblin-autostart.c',
 +  gnoblin_root / 'src/session/gnoblin-runtime-spawn.c',
 +  gnoblin_root / 'src/session/gnoblin-priority.c',
-+  gnoblin_root / 'src/native-control/gnoblin-runtime-protocol.c',
++  gnoblin_root / 'src/control/gnoblin-runtime-protocol.c',
 +)
 +gnoblin_include_dirs = include_directories(
-+  gnoblin_root / 'src/config',
-+  gnoblin_root / 'src/permissions',
-+  gnoblin_root / 'src/native-control',
++  gnoblin_root / 'src/config', gnoblin_root / 'src/config/lua', gnoblin_root / 'src/session',
++  gnoblin_root / 'src/portal/backend', gnoblin_root / 'src/input',
++  gnoblin_root / 'src/control',
 +)
 +gnoblin = executable('gnoblin',
 +  sources: [files('core/mutter.c'), gnoblin_default_config] +
@@ -158,7 +188,7 @@ index 0b68a3a48..1fdfd9b21 100644
 +)
 +gnoblin_imgui_includes = include_directories(
 +  gnoblin_imgui_root,
-+  gnoblin_root / 'src/native-control',
++  gnoblin_root / 'src/control',
 +)
 +
  gnoblin_plugin = shared_module('gnoblin',

@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] mutter: constrain shell companions in the native window stack
+
+---
+diff --git a/src/compositor/compositor.c b/src/compositor/compositor.c
+index 71ece74440..1bdcc860be 100644
+--- a/src/compositor/compositor.c
++++ b/src/compositor/compositor.c
+@@ -55,6 +55,7 @@
+ #include "compositor/compositor-private.h"
+ 
+ #include "clutter/clutter-mutter.h"
++#include "clutter/clutter-stage-private.h"
+ #include "cogl/cogl.h"
+ #include "compositor/meta-cullable.h"
+ #include "compositor/meta-later-private.h"
+@@ -670,6 +671,13 @@ sync_actor_stacking (MetaCompositor *compositor)
+       clutter_actor_set_child_below_sibling (parent, actor, NULL);
+     }
+   g_list_free (backgrounds);
++
++  /* Restacking can cover the actor under a stationary pointer without moving
++   * either surface or changing its input region. Repick on the next stage
++   * update, after the complete native order has reached the scene. */
++  ClutterStage *stage = CLUTTER_STAGE (meta_backend_get_stage (priv->backend));
++  clutter_stage_invalidate_devices (stage);
++  clutter_stage_schedule_update (stage);
+ }
+ 
+ /*
+diff --git a/src/core/stack.c b/src/core/stack.c
+index 9286b6915a..5d45f506f9 100644
+--- a/src/core/stack.c
++++ b/src/core/stack.c
+@@ -29,6 +29,7 @@
+ #include "config.h"
+ 
+ #include "core/stack.h"
++#include "core/gnoblin-native-control.h"
+ 
+ #include "backends/meta-logical-monitor-private.h"
+ #include "cogl/cogl.h"
+@@ -470,6 +471,14 @@ add_constraint (Constraint **constraints,
+   constraints[below->stack_position] = c;
+ }
+ 
++static void
++add_layer_constraint (MetaWindow *above,
++                      MetaWindow *below,
++                      gpointer    data)
++{
++  add_constraint (data, above, below);
++}
++
+ static void
+ create_constraints (Constraint **constraints,
+                     GList       *windows)
+@@ -788,6 +797,8 @@ stack_do_constrain (MetaStack *stack)
+                         stack->n_positions);
+ 
+   create_constraints (constraints, stack->sorted);
++  gnoblin_native_control_constrain_layer_windows (stack->display, stack->sorted,
++                                                add_layer_constraint, constraints);
+ 
+   graph_constraints (constraints, stack->n_positions);
+ 
