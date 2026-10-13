@@ -196,3 +196,65 @@ Also test a
 sandboxed screenshot client through the public portal: its returned document
 URI must be readable inside that sandbox. The host-app probe cannot prove
 sandbox document export.
+
+## Cold-start consent regression (#143)
+
+`consent-startup.py` exercises the actual frontend and a separately built full
+backend. It uses a private D-Bus daemon with backend activation, a new real
+PermissionStore, a Bubblewrap app identity and real GTK dialogs on Broadway.
+It never operates the desktop's services or permission database.
+
+```sh
+python3 tests/portal-screenshot/consent-startup.py /var/tmp/consent-baseline \
+  --backend /path/to/build/src/xdg-desktop-portal-gnoblin
+python3 tests/portal-screenshot/consent-startup.py /var/tmp/consent-candidate \
+  --backend /path/to/build/src/xdg-desktop-portal-gnoblin \
+  --frontend /path/to/patched/xdg-desktop-portal
+```
+
+Each output directory must be new. The runner requires the normal portal
+build dependencies, a C compiler, PyGObject, Bubblewrap, `dbus-run-session`,
+`gtk4-broadwayd` and `/usr/libexec/xdg-permission-store`. The backend must be
+built with GTK X11 support: the isolated Broadway display uses libgxdp's
+ordinary GTK initialization branch. It does not connect to an X11 server.
+
+The 23 cases cover repeated warm/cold requests, saved approvals and denials,
+policy `inherit`/`ask`/`allow`/`deny`, unavailable policy, dismissal and explicit
+Allow/Deny. Before each cold request, the runner stops only its private backend
+and waits three seconds. The frontend stays alive. A cold request must preserve
+the permission-store and generic Access path of a warm request.
+Required consent must produce a mapped dialog. The runner also checks backend
+Screenshot call counts and permission hints after the dialog response, so an
+early failure cannot substitute for the expected consent or capture route.
+
+The backend's policy client and identity checks are production code. The
+compositor policy endpoint supplies controlled replies. The observer library
+only reports real GTK windows and activates their response signals. No capture
+function is replaced, and no compositor or pixel service is supplied. Approved
+requests therefore fail to capture; this test cannot prove PNG delivery.
+
+`results.json` records each case and `verdict.json` lists parity failures.
+`bus.jsonl` contains timestamped calls and replies, including Access, Screenshot,
+policy decisions and backend owner changes. `run.log` and `processes.log` retain
+process output. Temporary permissions and sandbox metadata remain beneath the
+output directory for inspection.
+
+The unmodified frontend 1.20.4 fails this regression: backend disappearance
+clears its cached Screenshot version, and the next request takes the legacy
+path without consulting stored permissions or calling Access. The merged
+Gnoblin backend asks locally when the frontend permission hint is absent, so
+this test distinguishes missing generic Access from unattended capture.
+
+`consent-frontend-1.20.4.patch` is a candidate for the separate upstream
+`xdg-desktop-portal` frontend. Apply it to a disposable copy of that version's
+source and build it normally with Meson. It retains the negotiated backend
+version for consent decisions across backend restarts. Gnoblin's build does
+not apply this patch, and the runner does not build or install the frontend.
+A backend with a different protocol version needs frontend restart to
+renegotiate.
+
+Use `--backend-version 1` only with a backend that actually advertises version
+`1`. That compatibility control verifies the legacy backend-owned consent route
+in both states; it is not a way to change the backend's advertised version.
+Native Wayland presentation, real compositor policy and sandbox-readable PNGs
+remain main's separate VM checks.
