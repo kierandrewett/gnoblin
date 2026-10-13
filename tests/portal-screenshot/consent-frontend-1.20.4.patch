@@ -1,0 +1,30 @@
+--- a/src/screenshot.c
++++ b/src/screenshot.c
+@@ -61,6 +61,7 @@
+ static XdpDbusImplScreenshot *impl;
+ static XdpDbusImplAccess *access_impl;
+ static guint32 impl_version;
++static guint32 consent_impl_version;
+ static Screenshot *screenshot;
+ 
+ GType screenshot_get_type (void) G_GNUC_CONST;
+@@ -214,7 +215,7 @@
+   parent_window = ((const char *)g_object_get_data (G_OBJECT (request), "parent-window"));
+   options = ((GVariant *)g_object_get_data (G_OBJECT (request), "options"));
+ 
+-  if (xdp_dbus_impl_screenshot_get_version (impl) < 2)
++  if (consent_impl_version < 2)
+     goto query_impl;
+ 
+   permission = xdp_get_permission_sync (app_id, PERMISSION_TABLE, PERMISSION_ID);
+@@ -502,6 +503,10 @@
+   /* Set the version if supported; otherwise fallback to hardcoded version 2 */
+   version = g_dbus_proxy_get_cached_property (G_DBUS_PROXY (impl), "version");
+   impl_version = (version != NULL) ? g_variant_get_uint32 (version) : 2;
++  /* GDBusProxy clears cached properties when the backend loses its name.
++   * Retain the negotiated version: a stopped v2 backend is not a v1 backend
++   * and must not bypass the permission store or Access on reactivation. */
++  consent_impl_version = impl_version;
+ 
+   screenshot = g_object_new (screenshot_get_type (), NULL);
+ 

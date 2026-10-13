@@ -1,0 +1,2 @@
+# Blank unified-diff context lines and the final context line carry a space.
+consent-frontend-1.20.4.patch whitespace=-blank-at-eol,-blank-at-eof
