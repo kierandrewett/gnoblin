@@ -9,14 +9,14 @@ The snapshot includes:
 - `raise_on_click`, `auto_raise`, and `focus_change_on_pointer_rest`.
 - `auto_raise_delay` and `revision`.
 
-| Field                          | Values                          | Default   | Effect                                      |
-| ------------------------------ | ------------------------------- | --------- | ------------------------------------------- |
-| `focus_mode`                   | `click`, `hover`, `hover-strict` | `click`   | Sets how pointer movement changes focus.    |
-| `focus_new_windows`            | `allow`, `prevent`               | `prevent` | Sets focus policy for new windows.          |
-| `raise_on_click`               | Boolean                         | `true`    | Raises a window when clicked.               |
-| `auto_raise`                   | Boolean                         | `false`   | Raises the focused window automatically.    |
-| `auto_raise_delay`             | Integer from 0 to 10000 ms       | `500`     | Sets the automatic raise delay.             |
-| `focus_change_on_pointer_rest` | Boolean                         | `false`   | Changes focus after pointer rest.           |
+| Field                          | Values                           | Default   | Effect                                   |
+| ------------------------------ | -------------------------------- | --------- | ---------------------------------------- |
+| `focus_mode`                   | `click`, `hover`, `hover-strict` | `click`   | Sets how pointer movement changes focus. |
+| `focus_new_windows`            | `allow`, `prevent`               | `prevent` | Sets focus policy for new windows.       |
+| `raise_on_click`               | Boolean                          | `true`    | Raises a window when clicked.            |
+| `auto_raise`                   | Boolean                          | `false`   | Raises the focused window automatically. |
+| `auto_raise_delay`             | Integer from 0 to 10000 ms       | `500`     | Sets the automatic raise delay.          |
+| `focus_change_on_pointer_rest` | Boolean                          | `false`   | Changes focus after pointer rest.        |
 
 The Default column shows the compositor's value when a key is missing. The
 starter config sets `focus_new_windows` to `allow`.
@@ -44,8 +44,6 @@ evaluation. They are unavailable while Gnoblin first loads the config file, so
 call these read methods from a runtime event callback after native startup.
 Calling one before the snapshot is ready raises a Lua error.
 
-
-
 Window snapshot properties are read-only. In the native runtime,
 `Window:focus(context)` requests focus using the context from
 `gnoblin.shortcut.activated`. The callback provides that value only for a
@@ -64,3 +62,22 @@ bindings, synthetic input, input-method events, or repeated key presses. Direct
 context remain denied.
 
 For the socket activation contract, see the [compositor bridge](/compositor-bridge).
+
+## Launching from a layer surface
+
+Shells can use the standard [XDG activation protocol](https://wayland.app/protocols/xdg-activation-v1)
+to launch an application from a panel or popup. Request the token from the
+connection that received the input, with that surface, seat and initiating
+press serial. Commit the request before dismissing or destroying the source
+surface, then pass the returned token to the application.
+
+With `focus_new_windows = "prevent"`, Gnoblin retains a verified launch gesture
+after the source closes. Releasing its key or mouse button does not revoke it.
+A later press, touch start, scroll or session lock does revoke it; unlocking
+does not restore it.
+
+The token expires 15 seconds after the initiating event
+and can authorize focus only once. A returned token alone does not prove that
+the compositor accepted its input context.
+
+`focus_new_windows = "allow"` keeps its permissive activation policy.

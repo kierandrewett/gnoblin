@@ -1,0 +1,546 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 13 Oct 2026 03:08:37 +0000
+Subject: [PATCH] mutter: preserve verified layer activation across dismissal
+
+Preserve verified layer-source authorization at token commitment so a
+launcher can dismiss its popup before the target consumes the token.
+Record actual input delivery because the legacy grab helper also accepts
+focus-enter serials; supplied serial and surface values alone cannot prove
+the initiating input event.
+
+Freeze request arguments at commitment so later setters cannot change the
+validation path. Complete one-shot grants before focus callbacks, and clear
+resource links when the token is freed: the Wayland request object can
+outlive consumption. These lifetime changes make the immutable request
+checks safe after completion and when either object is destroyed first.
+
+---
+diff --git a/src/wayland/meta-wayland-activation.c b/src/wayland/meta-wayland-activation.c
+index 454b3820c2..e10f374e4b 100644
+--- a/src/wayland/meta-wayland-activation.c
++++ b/src/wayland/meta-wayland-activation.c
+@@ -24,6 +24,7 @@
+ #include "meta/prefs.h"
+ #include "meta/util.h"
+ #include "wayland/meta-wayland-session-lock.h"
++#include "wayland/meta-wayland-layer-shell.h"
+ 
+ #include <glib.h>
+ #include <wayland-server.h>
+@@ -36,6 +37,9 @@
+ 
+ typedef struct _MetaXdgActivationToken MetaXdgActivationToken;
+ 
++/* Match the startup sequence lifetime, including a stalled timeout source. */
++#define GNOBLIN_ACTIVATION_LIFETIME_US (15 * G_USEC_PER_SEC)
++
+ struct _MetaWaylandActivation
+ {
+   MetaWaylandCompositor *compositor;
+@@ -43,6 +47,12 @@ struct _MetaWaylandActivation
+   struct wl_list token_list;
+   GHashTable *tokens;
+   GHashTable *pending_activations;
++  MetaWaylandSurface *gnoblin_input_surface; /* weak; never holds a popup open */
++  uint32_t gnoblin_input_serial;
++  uint32_t gnoblin_input_timestamp;
++  gint64 gnoblin_input_expires_at;
++  guint64 gnoblin_input_epoch;
++  gulong gnoblin_lock_changed_id;
+ };
+ 
+ struct _MetaXdgActivationToken
+@@ -60,6 +70,12 @@ struct _MetaXdgActivationToken
+   gulong sequence_timeout_id;
+   gboolean committed;
+   gboolean consumed;
++  struct wl_resource *resource;
++  gboolean gnoblin_seat_owned;
++  gboolean gnoblin_layer_source;
++  gboolean gnoblin_authorized;
++  guint64 gnoblin_input_epoch;
++  gint64 gnoblin_expires_at;
+ };
+ 
+ static MetaDisplay *
+@@ -71,6 +87,111 @@ display_from_activation (MetaWaylandActivation *activation)
+   return meta_context_get_display (context);
+ }
+ 
++/* Record only events actually sent to a client. Seat updates revoke older
++ * grants even when a shortcut consumes the next press before delivery. A
++ * release of the initiating button/key does not revoke its launch. */
++void
++meta_wayland_activation_update_input (MetaWaylandCompositor *compositor,
++                                      const ClutterEvent    *event)
++{
++  MetaWaylandActivation *activation = compositor->activation;
++
++  if (!meta_is_gnoblin_session () || !activation)
++    return;
++
++  switch (clutter_event_type (event))
++    {
++    case CLUTTER_BUTTON_PRESS:
++    case CLUTTER_KEY_PRESS:
++    case CLUTTER_TOUCH_BEGIN:
++    case CLUTTER_SCROLL:
++      activation->gnoblin_input_epoch++;
++      g_clear_weak_pointer (&activation->gnoblin_input_surface);
++      break;
++    default:
++      break;
++    }
++}
++
++void
++meta_wayland_activation_record_input (MetaWaylandSeat    *seat,
++                                      MetaWaylandSurface *surface,
++                                      uint32_t            serial,
++                                      const ClutterEvent *event)
++{
++  MetaWaylandCompositor *compositor = meta_wayland_seat_get_compositor (seat);
++  MetaWaylandActivation *activation = compositor->activation;
++
++  if (!meta_is_gnoblin_session () || !activation)
++    return;
++
++  /* Qt lastInputSerial keeps the initiating press through onClicked/key
++   * release. Do not replace its proof or refresh its lifetime on release. */
++  switch (clutter_event_type (event))
++    {
++    case CLUTTER_BUTTON_PRESS:
++    case CLUTTER_KEY_PRESS:
++    case CLUTTER_TOUCH_BEGIN:
++      break;
++    default:
++      return;
++    }
++
++  g_clear_weak_pointer (&activation->gnoblin_input_surface);
++  if (seat != compositor->seat || !surface ||
++      !meta_wayland_surface_is_layer_shell (surface) ||
++      meta_wayland_session_lock_is_active (compositor) ||
++      (clutter_event_get_flags (event) &
++       (CLUTTER_EVENT_FLAG_REPEATED | CLUTTER_EVENT_FLAG_SYNTHETIC |
++        CLUTTER_EVENT_FLAG_INPUT_METHOD)))
++    return;
++
++  g_set_weak_pointer (&activation->gnoblin_input_surface, surface);
++  activation->gnoblin_input_serial = serial;
++  activation->gnoblin_input_timestamp = clutter_event_get_time (event);
++  activation->gnoblin_input_expires_at =
++    g_get_monotonic_time () + GNOBLIN_ACTIVATION_LIFETIME_US;
++}
++
++static void
++activation_lock_changed (MetaWaylandCompositor       *compositor,
++                          MetaWaylandSessionLockState state,
++                          gpointer                    user_data)
++{
++  MetaWaylandActivation *activation = user_data;
++
++  if (state == META_WAYLAND_SESSION_LOCK_UNLOCKED)
++    return;
++
++  activation->gnoblin_input_epoch++;
++  g_clear_weak_pointer (&activation->gnoblin_input_surface);
++}
++
++static void
++activation_lock_observer_destroyed (gpointer user_data)
++{
++  MetaWaylandActivation *activation = user_data;
++
++  /* The lock controller is finalized before activation during shutdown. */
++  activation->gnoblin_lock_changed_id = 0;
++}
++
++static gboolean token_can_activate (MetaXdgActivationToken *token);
++static void meta_xdg_activation_token_free (MetaXdgActivationToken *token);
++
++static gboolean
++token_is_mutable (struct wl_resource *resource)
++{
++  MetaXdgActivationToken *token = wl_resource_get_user_data (resource);
++
++  if (!meta_is_gnoblin_session () || (token && !token->committed))
++    return TRUE;
++
++  wl_resource_post_error (resource, XDG_ACTIVATION_TOKEN_V1_ERROR_ALREADY_USED,
++                          "Activation token was already committed");
++  return FALSE;
++}
++
+ static void
+ unbind_resource (struct wl_resource *resource)
+ {
+@@ -86,8 +207,12 @@ token_set_serial (struct wl_client   *client,
+   MetaXdgActivationToken *token = wl_resource_get_user_data (resource);
+   MetaWaylandSeat *seat = wl_resource_get_user_data (seat_resource);
+ 
++  if (!token_is_mutable (resource))
++    return;
++
+   token->serial = serial;
+   token->seat = seat;
++  token->gnoblin_seat_owned = wl_resource_get_client (seat_resource) == client;
+ }
+ 
+ static void
+@@ -97,6 +222,9 @@ token_set_app_id (struct wl_client   *client,
+ {
+   MetaXdgActivationToken *token = wl_resource_get_user_data (resource);
+ 
++  if (!token_is_mutable (resource))
++    return;
++
+   g_set_str (&token->app_id, app_id);
+ }
+ 
+@@ -108,6 +236,12 @@ token_set_surface (struct wl_client   *client,
+   MetaXdgActivationToken *token = wl_resource_get_user_data (resource);
+   MetaWaylandSurface *surface = wl_resource_get_user_data (surface_resource);
+ 
++  if (!token_is_mutable (resource))
++    return;
++
++  if (meta_is_gnoblin_session () && token->surface)
++    wl_list_remove (&token->surface_listener.link);
++
+   token->surface = surface;
+   wl_resource_add_destroy_listener (surface_resource,
+                                     &token->surface_listener);
+@@ -161,12 +295,15 @@ token_commit (struct wl_client   *client,
+               struct wl_resource *resource)
+ {
+   MetaXdgActivationToken *token = wl_resource_get_user_data (resource);
+-  MetaWaylandActivation *activation = token->activation;
+-  MetaDisplay *display = display_from_activation (activation);
++  MetaWaylandActivation *activation;
++  MetaDisplay *display;
+   uint64_t timestamp;
+   uid_t uid;
+   gid_t gid;
+ 
++  if (meta_is_gnoblin_session () && !token_is_mutable (resource))
++    return;
++
+   if (token->committed)
+     {
+       wl_resource_post_error (resource,
+@@ -175,10 +312,34 @@ token_commit (struct wl_client   *client,
+       return;
+     }
+ 
++  activation = token->activation;
++  display = display_from_activation (activation);
+   timestamp = meta_display_get_current_time_roundtrip (display);
+ 
+   wl_client_get_credentials (client, &token->requesting_pid, &uid, &gid);
+ 
++  if (meta_is_gnoblin_session () && token->surface &&
++      meta_wayland_surface_is_layer_shell (token->surface))
++    {
++      /* Snapshot authorization while the actual event recipient still owns
++       * input. Never reconstruct it from the client's serial after dismissal.
++       * The legacy grab check alone also accepts focus-enter serials. */
++      token->gnoblin_authorized =
++        token->gnoblin_seat_owned && token->seat == activation->compositor->seat &&
++        wl_resource_get_client (token->surface->resource) == client &&
++        token->surface == activation->gnoblin_input_surface &&
++        token->serial == activation->gnoblin_input_serial &&
++        activation->gnoblin_input_timestamp != 0 &&
++        g_get_monotonic_time () < activation->gnoblin_input_expires_at &&
++        !meta_wayland_session_lock_is_active (activation->compositor) &&
++        token_can_activate (token);
++      token->gnoblin_layer_source = TRUE;
++      token->gnoblin_input_epoch = activation->gnoblin_input_epoch;
++      token->gnoblin_expires_at = activation->gnoblin_input_expires_at;
++      if (token->gnoblin_authorized)
++        timestamp = activation->gnoblin_input_timestamp;
++    }
++
+   token->committed = TRUE;
+   token->token = create_startup_token (activation, display);
+   token->sequence = g_object_new (META_TYPE_STARTUP_SEQUENCE,
+@@ -236,11 +397,28 @@ meta_xdg_activation_token_free (MetaXdgActivationToken *token)
+   if (token->surface)
+     wl_list_remove (&token->surface_listener.link);
+ 
++  if (meta_is_gnoblin_session () && token->resource)
++    wl_resource_set_user_data (token->resource, NULL);
++
+   g_free (token->app_id);
+   g_free (token->token);
+   g_free (token);
+ }
+ 
++static void
++unbind_token_resource (struct wl_resource *resource)
++{
++  MetaXdgActivationToken *token = wl_resource_get_user_data (resource);
++
++  unbind_resource (resource);
++  if (!meta_is_gnoblin_session () || !token)
++    return;
++
++  token->resource = NULL;
++  if (!token->committed)
++    meta_xdg_activation_token_free (token);
++}
++
+ static void
+ token_handle_surface_destroy (struct wl_listener *listener,
+                               void               *data)
+@@ -268,8 +446,9 @@ meta_wayland_activation_token_create_new_resource (MetaWaylandActivation *activa
+     wl_resource_create (client, &xdg_activation_token_v1_interface,
+                         wl_resource_get_version (activation_resource),
+                         id);
++  token->resource = token_resource;
+   wl_resource_set_implementation (token_resource, &token_interface,
+-                                  token, unbind_resource);
++                                  token, unbind_token_resource);
+   wl_resource_set_user_data (token_resource, token);
+   wl_list_insert (&activation->token_list,
+                   wl_resource_get_link (token_resource));
+@@ -301,6 +480,20 @@ token_can_activate (MetaXdgActivationToken *token)
+ {
+   MetaWaylandSeat *seat;
+ 
++  if (meta_is_gnoblin_session () && token->gnoblin_layer_source)
++    {
++      MetaWaylandActivation *activation = token->activation;
++      MetaDisplay *display = display_from_activation (activation);
++      uint32_t timestamp = meta_startup_sequence_get_timestamp (token->sequence);
++      uint32_t last_user_time = meta_display_get_last_user_time (display);
++
++      return token->gnoblin_authorized &&
++        token->gnoblin_input_epoch == activation->gnoblin_input_epoch &&
++        g_get_monotonic_time () < token->gnoblin_expires_at &&
++        !meta_wayland_session_lock_is_active (activation->compositor) &&
++        (last_user_time == 0 || (int32_t) (timestamp - last_user_time) >= 0);
++    }
++
+   if (!token->seat)
+     return FALSE;
+   if (!token->surface)
+@@ -406,6 +599,7 @@ maybe_activate (MetaWaylandActivation *activation,
+   MetaDisplay *display = display_from_activation (activation);
+   MetaXdgActivationToken *token;
+   MetaStartupSequence *sequence;
++  gboolean token_valid = FALSE;
+ 
+   if (!window || window->unmanaging)
+     return TRUE;
+@@ -417,6 +611,14 @@ maybe_activate (MetaWaylandActivation *activation,
+   if (token)
+     {
+       sequence = token->sequence;
++      token_valid = token_can_activate (token);
++      if (meta_is_gnoblin_session () && token->gnoblin_layer_source)
++        {
++          if (token->consumed)
++            return TRUE;
++          /* Focus may dispatch callbacks; spend the grant before side effects. */
++          token->consumed = TRUE;
++        }
+     }
+   else
+     {
+@@ -434,7 +636,7 @@ maybe_activate (MetaWaylandActivation *activation,
+ 
+   if ((meta_is_gnoblin_session () &&
+        meta_prefs_get_focus_new_windows () == G_DESKTOP_FOCUS_NEW_WINDOWS_SMART) ||
+-      (token && token_can_activate (token)) ||
++      token_valid ||
+       (!token && startup_sequence_is_recent (display, sequence)))
+     {
+       uint32_t timestamp;
+@@ -443,6 +645,12 @@ maybe_activate (MetaWaylandActivation *activation,
+       workspace_idx = sequence ? meta_startup_sequence_get_workspace (sequence) : -1;
+       timestamp = sequence ? meta_startup_sequence_get_timestamp (sequence) : 0;
+ 
++      if (token && token->gnoblin_layer_source)
++        {
++          meta_startup_sequence_complete (sequence);
++          sequence = NULL;
++        }
++
+       if (workspace_idx >= 0)
+         meta_window_change_workspace_by_index (window, workspace_idx, TRUE);
+ 
+@@ -578,6 +786,10 @@ bind_activation (struct wl_client *client,
+ void
+ meta_wayland_activation_finalize (MetaWaylandCompositor *compositor)
+ {
++  if (compositor->activation->gnoblin_lock_changed_id)
++    meta_wayland_session_lock_remove_state_changed_callback (
++      compositor, compositor->activation->gnoblin_lock_changed_id);
++  g_clear_weak_pointer (&compositor->activation->gnoblin_input_surface);
+   g_hash_table_destroy (compositor->activation->tokens);
+   g_hash_table_destroy (compositor->activation->pending_activations);
+   g_clear_pointer (&compositor->activation, g_free);
+@@ -590,6 +802,11 @@ meta_wayland_activation_init (MetaWaylandCompositor *compositor)
+ 
+   activation = g_new0 (MetaWaylandActivation, 1);
+   activation->compositor = compositor;
++  if (meta_is_gnoblin_session ())
++    activation->gnoblin_lock_changed_id =
++      meta_wayland_session_lock_add_state_changed_callback (
++        compositor, activation_lock_changed, activation,
++        activation_lock_observer_destroyed);
+   wl_list_init (&activation->resource_list);
+   wl_list_init (&activation->token_list);
+ 
+diff --git a/src/wayland/meta-wayland-activation.h b/src/wayland/meta-wayland-activation.h
+index e00c6ec55f..1353bea89d 100644
+--- a/src/wayland/meta-wayland-activation.h
++++ b/src/wayland/meta-wayland-activation.h
+@@ -25,6 +25,7 @@
+ #include <sys/types.h>
+ #include <wayland-server.h>
+ 
++#include "clutter/clutter.h"
+ #include "meta/types.h"
+ #include "wayland/meta-wayland-types.h"
+ 
+@@ -36,3 +37,11 @@ gboolean meta_wayland_activation_focus_window_with_token (MetaWaylandCompositor
+                                                          MetaWindow            *window,
+                                                          const char            *token,
+                                                          pid_t                  peer_pid);
++
++/* Internal input-delivery hooks; no client-supplied event data enters here. */
++void meta_wayland_activation_update_input (MetaWaylandCompositor *compositor,
++                                           const ClutterEvent    *event);
++void meta_wayland_activation_record_input (MetaWaylandSeat    *seat,
++                                           MetaWaylandSurface *surface,
++                                           uint32_t            serial,
++                                           const ClutterEvent *event);
+diff --git a/src/wayland/meta-wayland-keyboard.c b/src/wayland/meta-wayland-keyboard.c
+index c679467cc5..141c507b75 100644
+--- a/src/wayland/meta-wayland-keyboard.c
++++ b/src/wayland/meta-wayland-keyboard.c
+@@ -57,6 +57,7 @@
+ #include "core/display-private.h"
+ #include "mtk/mtk.h"
+ #include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-activation.h"
+ 
+ #include <gio/gio.h>
+ 
+@@ -382,6 +383,10 @@ meta_wayland_keyboard_broadcast_key (MetaWaylandKeyboard *keyboard,
+ 
+           wl_keyboard_send_key (resource, serial, time, key, key_state);
+         }
++
++      meta_wayland_activation_record_input (
++        meta_wayland_input_device_get_seat (input_device),
++        keyboard->focus_surface, serial, event);
+     }
+ 
+   /* Eat the key events if we have a focused surface. */
+diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
+index 0cab62fc31..21d9f3f262 100644
+--- a/src/wayland/meta-wayland-pointer.c
++++ b/src/wayland/meta-wayland-pointer.c
+@@ -67,6 +67,7 @@
+ #include "wayland/meta-wayland-pointer.h"
+ #include "wayland/meta-wayland-popup.h"
+ #include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-activation.h"
+ #include "wayland/meta-wayland-seat.h"
+ #include "wayland/meta-wayland-surface-private.h"
+ 
+@@ -520,6 +521,9 @@ meta_wayland_pointer_send_button (MetaWaylandPointer *pointer,
+                                   event_type == CLUTTER_BUTTON_PRESS ? 1 : 0);
+         }
+ 
++      meta_wayland_activation_record_input (
++        meta_wayland_input_device_get_seat (input_device),
++        pointer->focus_surface, serial, event);
+       meta_wayland_pointer_broadcast_frame (pointer);
+     }
+ 
+diff --git a/src/wayland/meta-wayland-seat.c b/src/wayland/meta-wayland-seat.c
+index 19cb7e0919..52427c36ad 100644
+--- a/src/wayland/meta-wayland-seat.c
++++ b/src/wayland/meta-wayland-seat.c
+@@ -23,6 +23,7 @@
+ 
+ #include "wayland/meta-wayland-data-device.h"
+ #include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-activation.h"
+ #include "wayland/meta-wayland-surface-private.h"
+ #include "wayland/meta-wayland-client-private.h"
+ #include "wayland/meta-wayland-tablet-seat.h"
+@@ -439,6 +440,8 @@ void
+ meta_wayland_seat_update (MetaWaylandSeat    *seat,
+                           const ClutterEvent *event)
+ {
++  meta_wayland_activation_update_input (seat->compositor, event);
++
+   if (is_tablet_event (seat, event))
+     {
+       meta_wayland_tablet_seat_update (seat->tablet_seat, event);
+diff --git a/src/wayland/meta-wayland-tablet-tool.c b/src/wayland/meta-wayland-tablet-tool.c
+index d25de93c18..5df83521d3 100644
+--- a/src/wayland/meta-wayland-tablet-tool.c
++++ b/src/wayland/meta-wayland-tablet-tool.c
+@@ -21,6 +21,8 @@
+ 
+ #include "config.h"
+ 
++#include "wayland/meta-wayland-activation.h"
++
+ #include "wayland/meta-wayland-tablet-tool.h"
+ 
+ #include <glib.h>
+@@ -741,6 +743,10 @@ broadcast_down (MetaWaylandTabletTool *tool,
+     {
+       zwp_tablet_tool_v2_send_down (resource, tool->down_serial);
+     }
++  if (!wl_list_empty (&tool->focus_resource_list))
++    meta_wayland_activation_record_input (tool->seat->seat,
++                                          tool->focus_surface,
++                                          tool->down_serial, event);
+ }
+ 
+ static void
+@@ -772,6 +778,10 @@ broadcast_button (MetaWaylandTabletTool *tool,
+                                       ZWP_TABLET_TOOL_V2_BUTTON_STATE_PRESSED :
+                                       ZWP_TABLET_TOOL_V2_BUTTON_STATE_RELEASED);
+     }
++  if (!wl_list_empty (&tool->focus_resource_list))
++    meta_wayland_activation_record_input (tool->seat->seat,
++                                          tool->focus_surface,
++                                          tool->button_serial, event);
+ }
+ 
+ static void
+diff --git a/src/wayland/meta-wayland-touch.c b/src/wayland/meta-wayland-touch.c
+index 7ff1ea7c36..4a804bf710 100644
+--- a/src/wayland/meta-wayland-touch.c
++++ b/src/wayland/meta-wayland-touch.c
+@@ -21,6 +21,8 @@
+ 
+ #include "config.h"
+ 
++#include "wayland/meta-wayland-activation.h"
++
+ #include <glib.h>
+ #include <string.h>
+ 
+@@ -404,6 +406,11 @@ handle_touch_begin (MetaWaylandTouch   *touch,
+                           wl_fixed_from_double (touch_info->y));
+     }
+ 
++  if (!wl_list_empty (l))
++    meta_wayland_activation_record_input (
++      meta_wayland_input_device_get_seat (META_WAYLAND_INPUT_DEVICE (touch)),
++      touch_info->focus_surface->surface, touch_info->slot_serial, event);
++
+   touch_info->begin_delivered = TRUE;
+ }
+ 
