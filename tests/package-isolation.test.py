@@ -84,6 +84,23 @@ class IsolationTests(unittest.TestCase):
             self.assertEqual(marker.read_text(), "preserve local data\n")
 
     def test_install_copies_a_staged_build_and_keeps_stock_units(self):
+        self.check_staged_install("cached")
+
+    def test_install_nopasswd_commands_do_not_require_sudo_validate(self):
+        # Mixed PASSWD/NOPASSWD ALL rules can allow commands while verifypw=all requires a password for -v.
+        self.check_staged_install("nopasswd")
+
+    def test_install_password_required_authenticates_before_changes(self):
+        self.check_staged_install("password")
+
+    def test_install_failed_authentication_changes_nothing(self):
+        self.check_staged_install("failure")
+
+    def test_install_probe_denied_by_command_policy_uses_validate(self):
+        # Permission to run install commands does not imply permission to run true.
+        self.check_staged_install("scoped")
+
+    def check_staged_install(self, sudo_policy):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             # The prefix has its own parent, as /usr/local/lib/gnoblin does. The loader check hides that parent in a
@@ -109,7 +126,26 @@ class IsolationTests(unittest.TestCase):
             systemctl.chmod(0o755)
             sudo = fake_bin / "sudo"
             sudo.write_text(
-                '#!/bin/sh\nprintf "sudo %s\\n" "$*" >> "$TEST_CALLS"\n[ "$1" = tar ] && cat > /dev/null\nexit 0\n'
+                """#!/bin/sh
+printf 'sudo %s\\n' "$*" >> "$TEST_CALLS"
+case "$*" in
+    '-n true')
+        case "$TEST_SUDO_POLICY" in
+            cached|nopasswd) exit 0 ;;
+            *) echo 'sudo: authentication required or command denied' >&2; exit 1 ;;
+        esac ;;
+    '-v')
+        case "$TEST_SUDO_POLICY" in
+            nopasswd|failure) echo 'sudo: a password is required' >&2; exit 1 ;;
+            *) touch "$TEST_AUTHENTICATED"; exit 0 ;;
+        esac ;;
+esac
+case "$TEST_SUDO_POLICY" in
+    password|failure) [ -f "$TEST_AUTHENTICATED" ] || exit 1 ;;
+esac
+[ "$1" = tar ] && cat > /dev/null
+exit 0
+"""
             )
             sudo.chmod(0o755)
             env = {
@@ -121,6 +157,8 @@ class IsolationTests(unittest.TestCase):
                 "GNOBLIN_SYSTEM_ROOT": str(base / "usr"),
                 "PATH": f"{fake_bin}:{os.environ['PATH']}",
                 "TEST_CALLS": str(base / "calls"),
+                "TEST_SUDO_POLICY": sudo_policy,
+                "TEST_AUTHENTICATED": str(base / "authenticated"),
             }
             inputs = session_build_inputs(base)
             # The build puts the runtime below the stage, as DESTDIR does.
@@ -138,12 +176,31 @@ class IsolationTests(unittest.TestCase):
             result = subprocess.run(
                 ["bash", str(ROOT / "scripts/register-session.sh"), str(prefix), str(stage)],
                 env=env,
-                check=True,
                 capture_output=True,
                 text=True,
             )
             self.assertEqual(stock.read_text(), "stock GNOME unit\n")
             calls = (base / "calls").read_text()
+            sudo_calls = [line for line in calls.splitlines() if line.startswith("sudo ")]
+            if sudo_policy == "failure":
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("sudo: a password is required", result.stderr)
+                self.assertEqual(sudo_calls, ["sudo -n true", "sudo -v"])
+                self.assertNotIn("Installing Gnoblin", result.stdout)
+                self.assertNotIn("systemctl --user daemon-reload", calls)
+                self.assertTrue(old_unit.is_symlink())
+                self.assertTrue(foreign.is_symlink())
+                for destination in (prefix, base / "usr", base / "usr-local-bin"):
+                    self.assertFalse(destination.exists(), destination)
+                return
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(sudo_calls[0], "sudo -n true")
+            if sudo_policy in ("password", "scoped"):
+                self.assertEqual(sudo_calls[1], "sudo -v")
+                self.assertTrue((base / "authenticated").exists())
+            else:
+                self.assertNotIn("sudo -v", sudo_calls)
+            self.assertIn("Gnoblin is installed", result.stdout)
             self.assertNotIn("org.gnome.Shell", calls)
             self.assertIn(f"sudo tar -C {prefix} --no-overwrite-dir -xpf -", calls)
             self.assertIn(f"{base}/usr/lib/systemd/user/gnoblin-session.target", calls)
