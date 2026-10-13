@@ -385,20 +385,29 @@ To use `wl-copy`, set `focus_new_windows` to `allow`.
 
 ## An app cannot take a screenshot
 
-Apps that ask the desktop portal for a screenshot show an allow-or-deny dialog.
-After you choose Allow, the request fails with no file, because a Gnoblin session
-has no screenshot service for the portal to call. The portal log reports
-`Failed to get screenshot` and names `org.gnome.Shell.Screenshot`.
+Portal screenshots capture the entire desktop. Allow the request when asked.
+Interactive requests show a confirmation dialog with an **Include pointer**
+option, off by default. Cancel returns no image. Region selection, window
+selection and the portal's `PickColor` method are not available.
 
-Use a tool that captures through the Wayland protocols instead. `grim` writes a
-PNG of every output:
+Capture fails while the session is locked or capture is inhibited. Unlock the
+session and try again. Check that PipeWire and the Gnoblin portal backend are
+running:
+
+```sh
+systemctl --user status pipewire xdg-desktop-portal-gnoblin
+```
+
+A log mentioning `org.gnome.Shell.Screenshot` means an older portal backend is
+still running. After updating Gnoblin, log out and back in to use the new
+backend. Gnoblin does not provide the GNOME Shell screenshot service, so
+`gnome-screenshot` still cannot use it.
+
+For a separate screenshot tool, use your shell's capture action or run:
 
 ```sh
 grim ~/screenshot.png
 ```
-
-`gnome-screenshot` does not work in this session. Your shell can provide its own
-screenshot tool.
 
 ## The screen stays locked after the lock screen closes
 

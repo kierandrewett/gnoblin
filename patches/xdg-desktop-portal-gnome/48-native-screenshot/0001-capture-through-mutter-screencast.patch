@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 13 Oct 2026 01:30:00 +0000
+Subject: [PATCH] portal: capture screenshots through Mutter ScreenCast
+
+Use the Gnoblin-owned screenshot backend and one-frame PipeWire reader.
+The pinned upstream ScreenCast session keeps inhibition, peer ownership and
+Gnoblin lock checks at the existing compositor boundary.
+
+---
+diff --git a/src/meson.build b/src/meson.build
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -83,6 +83,8 @@
+   dependency('glib-2.0', version: '>= 2.76'),
+   dependency('glycin-2'),
+   dependency('gio-unix-2.0'),
++  dependency('gdk-pixbuf-2.0'),
++  dependency('libpipewire-0.3'),
+   dependency('json-glib-1.0'),
+   dependency('gtk4', version: '>= 4.0'),
+   dependency('gtk4-unix-print', version: '>= 4.0'),
+@@ -122,8 +124,8 @@
+   'remotedesktop.c',
+   'remotedesktopdialog.c',
+   'request.c',
+-  'screenshot.c',
+-  'screenshotdialog.c',
++  'gnoblin-screenshot.c',
++  'gnoblin-screenshot-capture.c',
+   'screencast.c',
+   'screencastgeometrycontainer.c',
+   'screencastwidget.c',
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -16,7 +16,7 @@
+ src/screencastdialog.ui
+ src/screencastwidget.c
+ src/screencastwidget.ui
+-src/screenshotdialog.c
++src/gnoblin-screenshot.c
+ src/screenshotdialog.ui
+ src/settings.c
+ src/usbdialog.c
