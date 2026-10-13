@@ -72,6 +72,10 @@ void gnoblin_config_finish_deferred_load(gboolean commit);
 guint64 gnoblin_config_deferred_runtime_generation(void);
 /* The committed runtime document; returns a new reference or NULL. */
 GVariant* gnoblin_config_current_document(void);
+/* Warning-only unknown section/protocol names in a validated document. Returns
+ * an owned string array (empty when clean), at most 64 diagnostics of <=1024
+ * bytes each plus an omission notice. Does not change validation or settings. */
+GVariant* gnoblin_config_document_warnings(GVariant* document);
 guint64 gnoblin_config_settings_revision(void);
 /* Cache the latest native window snapshot for immediate Lua reads. Passing
  * NULL marks the snapshot unavailable until native control refreshes it. */

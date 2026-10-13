@@ -164,6 +164,17 @@ void append_config_notice(const char* diagnostic) {
     set_config_notice("notice", diagnostic);
 }
 
+void append_config_warning_notice(const char* diagnostic) {
+    g_autofree char* path = config_fallback_marker_path();
+    g_autofree char* contents = NULL;
+    /* Successful reloads must leave a previous-session crash notice intact.
+     * Warnings remain available in the reload response and committed event;
+     * merging them into a crash notice would also retain stale warnings. */
+    if (g_file_get_contents(path, &contents, NULL, NULL) && g_str_has_prefix(contents, "crash\n"))
+        return;
+    append_config_notice(diagnostic);
+}
+
 void set_config_fallback_marker(gboolean enabled, gboolean last_good, const char* diagnostic) {
     if (enabled && diagnostic && *diagnostic) {
         /* The panel reads the marker file. Also write the error and the choice to the session log,

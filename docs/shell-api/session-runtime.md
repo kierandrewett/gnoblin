@@ -104,6 +104,36 @@ events carry the committed policy snapshot and configuration revision. A
 failed reload emits `gnoblin.config.reload-failed` while the previous runtime
 remains active.
 
+### Reload warnings
+
+Check `warnings` in the result of `gnoblinctl config reload` or
+`gnoblin.runtime.reload_config()` from `gnoblinctl lua`. It is a list of
+diagnostic strings for unknown top-level sections and protocol names in the
+accepted config. The reload succeeds with `ok = true`; unsupported names
+have no effect. A clean config returns an empty list.
+
+For example, open `gnoblinctl lua` inside your session and enter:
+
+```lua
+for _, warning in ipairs(gnoblin.runtime.reload_config().warnings) do print(warning) end
+```
+
+The `gnoblin.config.reloaded` Lua event carries the same `warnings` list.
+Use that event for feedback after a reload requested by a running Lua handler;
+its `Operation` result only confirms staging.
+
+Warnings use normalized names: a misspelled `not_a_section` appears as
+`not-a-section`. The list contains up to 64 diagnostics, followed by an
+omission message if more exist. Long names are shortened. Gnoblin also
+publishes a notice for the shell; large lists are summarized there.
+
+An existing previous-session crash notice takes priority over warning notices.
+Reloading leaves that crash notice unchanged; read warnings from the reload
+result or event while it is present.
+
+Correct the names and reload to clear the configuration notice. Validation
+errors still fail the reload and keep the previous config active.
+
 ## Locking
 
 `gnoblin.session.lock()` asks a subscribed external shell client to show its

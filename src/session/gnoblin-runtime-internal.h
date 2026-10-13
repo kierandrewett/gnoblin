@@ -145,6 +145,7 @@ void session_diagnostic_wait_status(Runtime* runtime, const char* role, GPid pid
 void drain_compositor_stderr(Runtime* runtime, int log_fd);
 char* config_recovery_notice(void);
 void append_config_notice(const char* diagnostic);
+void append_config_warning_notice(const char* diagnostic);
 void set_config_fallback_marker(gboolean enabled, gboolean last_good, const char* diagnostic);
 extern gint64 guardian_started_us;
 void record_compositor_crash(int signal_number, int exit_status);

@@ -335,9 +335,12 @@ void dispatch_reload_event(Runtime* runtime, const char* event, const char* path
                           g_variant_new_int64((gint64)++runtime->event_sequence));
     g_variant_builder_add(&payload_builder, "{sv}", "time",
                           g_variant_new_int64(g_get_monotonic_time()));
-    if (g_str_equal(event, "gnoblin.config.reloaded"))
+    if (g_str_equal(event, "gnoblin.config.reloaded")) {
         g_variant_builder_add(&payload_builder, "{sv}", "revision", g_variant_new_uint64(revision));
-    else
+        g_autoptr(GVariant) document = gnoblin_config_current_document();
+        g_autoptr(GVariant) warnings = gnoblin_config_document_warnings(document);
+        g_variant_builder_add(&payload_builder, "{sv}", "warnings", warnings);
+    } else
         g_variant_builder_add(&payload_builder, "{sv}", "error",
                               g_variant_new_string(failure_message
                                                        ? failure_message
