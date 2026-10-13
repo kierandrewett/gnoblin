@@ -406,7 +406,18 @@ void publish_window_changes(GnoblinNativeControl* control, JsonNode* snapshot, g
             continue;
         NativeWindowState* state = g_new0(NativeWindowState, 1);
         state->json = json_to_string(node, FALSE);
-        g_autoptr(JsonNode) comparable = json_node_copy(node);
+        /* json_node_copy() shares the object. Give the comparison its own
+         * member table so removing fields cannot mutate the snapshot; nested
+         * values are only serialized, so they can remain shared. */
+        g_autoptr(JsonNode) comparable = json_node_new(JSON_NODE_OBJECT);
+        JsonObject* comparable_record = json_object_new();
+        JsonObjectIter member_iter;
+        const char* member_name;
+        JsonNode* member_value;
+        json_object_iter_init_ordered(&member_iter, record);
+        while (json_object_iter_next_ordered(&member_iter, &member_name, &member_value))
+            json_object_set_member(comparable_record, member_name, json_node_ref(member_value));
+        json_node_take_object(comparable, comparable_record);
         json_object_remove_member(json_node_get_object(comparable), "focused");
         json_object_remove_member(json_node_get_object(comparable), "revision");
         state->comparable_json = json_to_string(comparable, FALSE);
