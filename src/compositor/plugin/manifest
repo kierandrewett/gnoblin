@@ -1,5 +1,6 @@
 # project source destination
 mutter gnoblin-plugin.c src/compositor/plugins/gnoblin-plugin.c
+mutter gnoblin-plugin-input.h src/compositor/plugins/gnoblin-plugin-input.h
 mutter gnoblin-imgui-overlay.hpp src/compositor/plugins/gnoblin-imgui-overlay.hpp
 mutter gnoblin-imgui-overlay.cpp src/compositor/plugins/gnoblin-imgui-overlay.cpp
 mutter gnoblin-plugin-ui.h src/compositor/plugins/gnoblin-plugin-ui.h
