@@ -15,6 +15,11 @@ for portal requests. The shell does not make permission decisions.
 Changes apply to new requests;
 an existing screen share stays connected.
 
+Close a generic access dialog to cancel without saving a permission decision.
+Gnoblin also removes that dialog when the requesting app exits or its portal
+request ends, including after a timeout. Choosing **Deny** can save a denial
+for the app.
+
 ## Choose a policy
 
 | Level     | Result                                           |

@@ -1,0 +1,276 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 13 Oct 2026 04:00:00 +0000
+Subject: [PATCH] access: release local dialogs when their request ends
+
+Close must reject foreign senders and complete the Access call as well as
+unexporting its Request. Release local dialogs and their invisible parents
+on response, owner Close, original caller loss and frontend loss.
+
+xdg-desktop-portal 1.20.4 Screenshot does not forward Close during Access
+consent. Its Access call uses the default D-Bus timeout and its timeout
+handler only responds to and unexports the public Request. Check that
+verified frontend request asynchronously so a timed-out dialog is removed
+without imposing an arbitrary consent deadline. Report cancellation as a
+method error so the frontend does not store it as a user denial.
+
+---
+diff --git a/src/access.c b/src/access.c
+--- a/src/access.c
++++ b/src/access.c
+@@ -1,5 +1,6 @@
+ #include "config.h"
+ #include "gnoblin-portal-policy.h"
++#include "gnoblin-portal-identity.h"
+ 
+ #include <glib/gi18n.h>
+ 
+@@ -21,6 +22,14 @@
+   GHashTable *choices;
+ 
+   int response;
++  guint refs;
++  guint sender_watch;
++  guint caller_watch;
++  guint frontend_watch;
++  guint request_check;
++  GCancellable *cancellable;
++  gboolean completed;
++  gboolean cancelled;
+ } AccessDialogHandle;
+ 
+ static void
+@@ -28,6 +37,12 @@
+ {
+   AccessDialogHandle *handle = data;
+ 
++  if (--handle->refs)
++    return;
++
++  g_clear_object (&handle->impl);
++  g_clear_object (&handle->invocation);
++  g_clear_object (&handle->cancellable);
+   g_clear_object (&handle->external_parent);
+   g_clear_object (&handle->request);
+   g_clear_object (&handle->dialog);
+@@ -39,7 +54,15 @@
+ static void
+ access_dialog_handle_close (AccessDialogHandle *handle)
+ {
++  GtkWindow *parent = gtk_window_get_transient_for (GTK_WINDOW (handle->dialog));
++
++  g_signal_handlers_disconnect_by_data (handle->dialog, handle);
+   gtk_window_destroy (GTK_WINDOW (handle->dialog));
++  if (parent)
++    {
++      gtk_window_destroy (parent);
++      g_object_unref (parent);
++    }
+   access_dialog_handle_free (handle);
+ }
+ 
+@@ -47,6 +70,20 @@
+ send_response (AccessDialogHandle *handle)
+ {
+   GVariantBuilder opt_builder;
++
++  if (handle->completed)
++    return;
++  handle->completed = TRUE;
++  g_cancellable_cancel (handle->cancellable);
++  if (handle->sender_watch)
++    g_bus_unwatch_name (handle->sender_watch);
++  if (handle->caller_watch)
++    g_bus_unwatch_name (handle->caller_watch);
++  if (handle->frontend_watch)
++    g_bus_unwatch_name (handle->frontend_watch);
++  if (handle->request_check)
++    g_source_remove (handle->request_check);
++  g_signal_handlers_disconnect_by_data (handle->request, handle);
+ 
+   g_variant_builder_init (&opt_builder, G_VARIANT_TYPE_VARDICT);
+ 
+@@ -87,12 +124,144 @@
+       g_variant_builder_add (&opt_builder, "{sv}", "choices", g_variant_builder_end (&choice_builder));
+     }
+ 
+-  xdp_impl_access_complete_access_dialog (handle->impl,
+-                                          handle->invocation,
+-                                          handle->response,
+-                                          g_variant_builder_end (&opt_builder));
++  if (handle->cancelled)
++    {
++      /* The 1.20.4 frontend stores a denial for every nonzero Access result.
++       * An abandoned request is not a user's permission decision. */
++      g_variant_builder_clear (&opt_builder);
++      g_dbus_method_invocation_return_error_literal (handle->invocation, G_IO_ERROR,
++                                                      G_IO_ERROR_CANCELLED,
++                                                      "Access request was cancelled");
++    }
++  else
++    xdp_impl_access_complete_access_dialog (handle->impl,
++                                            handle->invocation,
++                                            handle->response,
++                                            g_variant_builder_end (&opt_builder));
+ 
+   access_dialog_handle_close (handle);
++}
++
++static gboolean
++handle_close (XdpImplRequest        *request,
++              GDBusMethodInvocation *invocation,
++              AccessDialogHandle    *handle)
++{
++  if (g_strcmp0 (g_dbus_method_invocation_get_sender (invocation),
++                 handle->request->sender) != 0)
++    {
++      g_dbus_method_invocation_return_error_literal (invocation, G_DBUS_ERROR,
++                                                      G_DBUS_ERROR_ACCESS_DENIED,
++                                                      "Only the request owner may close it");
++      return TRUE;
++    }
++
++  xdp_impl_request_complete_close (request, invocation);
++  handle->response = 1;
++  handle->cancelled = TRUE;
++  send_response (handle);
++  return TRUE;
++}
++
++static void
++peer_vanished (GDBusConnection *connection,
++               const char      *name,
++               gpointer         data)
++{
++  AccessDialogHandle *handle = data;
++
++  handle->response = 2;
++  handle->cancelled = TRUE;
++  send_response (handle);
++}
++
++static gboolean check_public_request (gpointer data);
++
++static void
++public_request_checked (GObject      *source,
++                        GAsyncResult *result,
++                        gpointer      data)
++{
++  AccessDialogHandle *handle = data;
++  g_autoptr(GError) error = NULL;
++  g_autoptr(GVariant) reply =
++    g_dbus_connection_call_finish (G_DBUS_CONNECTION (source), result, &error);
++  gboolean gone = g_error_matches (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT) ||
++                  g_error_matches (error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_METHOD);
++
++  if (reply)
++    {
++      const char *xml;
++      g_autoptr(GDBusNodeInfo) info = NULL;
++
++      g_variant_get (reply, "(&s)", &xml);
++      info = g_dbus_node_info_new_for_xml (xml, NULL);
++      gone = info && !g_dbus_node_info_lookup_interface (info, "org.freedesktop.portal.Request");
++    }
++  if (!handle->completed)
++    {
++      if (gone)
++        {
++          handle->response = 2;
++          handle->cancelled = TRUE;
++          send_response (handle);
++        }
++      else
++        handle->request_check = g_timeout_add (1000, check_public_request, handle);
++    }
++  access_dialog_handle_free (handle);
++}
++
++static gboolean
++check_public_request (gpointer data)
++{
++  AccessDialogHandle *handle = data;
++
++  handle->request_check = 0;
++  handle->refs++;
++  /* xdg-desktop-portal 1.20.4 Screenshot unexports its public Request on
++   * Access timeout without calling backend Close. Observe that lifetime,
++   * not an arbitrary dialog deadline. Errors alone do not prove removal. */
++  g_dbus_connection_call (g_dbus_method_invocation_get_connection (handle->invocation),
++                          handle->request->sender, handle->request->id,
++                          "org.freedesktop.DBus.Introspectable", "Introspect",
++                          NULL, G_VARIANT_TYPE ("(s)"), G_DBUS_CALL_FLAGS_NO_AUTO_START,
++                          -1, handle->cancellable, public_request_checked, handle);
++  return G_SOURCE_REMOVE;
++}
++
++static void
++watch_request (AccessDialogHandle *handle,
++               const char         *app_id)
++{
++  GDBusConnection *connection = g_dbus_method_invocation_get_connection (handle->invocation);
++  g_autofree char *identity = gnoblin_portal_requester_identity (
++    connection, handle->request->sender, app_id, handle->request->id);
++  const char *prefix = "/org/freedesktop/portal/desktop/request/";
++
++  handle->sender_watch = g_bus_watch_name_on_connection (
++    connection, handle->request->sender, G_BUS_NAME_WATCHER_FLAGS_NONE,
++    NULL, peer_vanished, handle, NULL);
++  /* A public handle encodes the original caller. This watch only cancels
++   * this dialog; it does not grant any authority to the encoded peer. */
++  if (g_str_has_prefix (handle->request->id, prefix))
++    {
++      g_auto(GStrv) parts = g_strsplit (handle->request->id + strlen (prefix), "/", 2);
++      g_autofree char *caller = g_strconcat (":", parts[0], NULL);
++
++      g_strdelimit (caller, "_", '.');
++      if (parts[1] && g_dbus_is_unique_name (caller))
++        handle->caller_watch = g_bus_watch_name_on_connection (
++          connection, caller, G_BUS_NAME_WATCHER_FLAGS_NONE,
++          NULL, peer_vanished, handle, NULL);
++    }
++  if (identity)
++    {
++      handle->frontend_watch = g_bus_watch_name_on_connection (
++        connection, "org.freedesktop.portal.Desktop", G_BUS_NAME_WATCHER_FLAGS_NONE,
++        NULL, peer_vanished, handle, NULL);
++      check_public_request (handle);
++    }
+ }
+ 
+ static void
+@@ -103,7 +272,10 @@
+   AccessDialogHandle *handle = user_data;
+ 
+   if (strcmp (response, "close") == 0)
+-    handle->response = 2;
++    {
++      handle->response = 2;
++      handle->cancelled = TRUE;
++    }
+   else if (strcmp (response, "deny") == 0)
+     handle->response = 1;
+   else if (strcmp (response, "grant") == 0)
+@@ -361,8 +533,10 @@
+                                      &choice_table);
+ 
+       handle = g_new0 (AccessDialogHandle, 1);
+-      handle->impl = object;
+-      handle->invocation = invocation;
++      handle->refs = 1;
++      handle->cancellable = g_cancellable_new ();
++      handle->impl = g_object_ref (object);
++      handle->invocation = g_object_ref (invocation);
+       handle->request = g_object_ref (request);
+       handle->dialog = g_object_ref (dialog);
+       handle->external_parent = external_parent;
+@@ -370,7 +544,9 @@
+ 
+       g_signal_connect (dialog, "response", G_CALLBACK (access_dialog_response), handle);
+ 
++      g_signal_connect (request, "handle-close", G_CALLBACK (handle_close), handle);
+       request_export (request, g_dbus_method_invocation_get_connection (invocation));
++      watch_request (handle, arg_app_id);
+     }
+   else /* otherwise delegate to gnome-shell */
+     {
