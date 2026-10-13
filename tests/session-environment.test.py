@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
-"""Check that the packaged login entry is the C session supervisor."""
+"""Check the packaged supervisor and its environment handoff without services."""
 
+import os
 from pathlib import Path
+import shlex
+import subprocess
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -10,6 +14,88 @@ from _sources import RUNTIME_SOURCES  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+class SessionActivationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        directory = tempfile.TemporaryDirectory(prefix="gnoblin-session-environment-")
+        cls.addClassCleanup(directory.cleanup)
+        cls.binary = Path(directory.name) / "environment"
+        flags = shlex.split(subprocess.check_output(["pkg-config", "--cflags", "--libs", "gio-unix-2.0"], text=True))
+        subprocess.run(
+            [
+                *shlex.split(os.environ.get("CC", "cc")),
+                "-Wall",
+                "-Werror",
+                "-ffunction-sections",
+                "-fdata-sections",
+                str(ROOT / "tests/session-environment-fixture.c"),
+                "-Wl,--gc-sections",
+                "-o",
+                str(cls.binary),
+                *flags,
+            ],
+            check=True,
+        )
+
+    def activation(self, manager):
+        result = subprocess.run([str(self.binary), manager], capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        activation, marker, _cleanup = result.stdout.partition("ACTIVATED\n")
+        self.assertTrue(marker, result.stdout)
+        return [line.split("\t") for line in activation.splitlines()]
+
+    def test_clears_stale_environment_before_sync_and_service_restarts(self):
+        calls = self.activation("systemd")
+        commands = [call[1:] for call in calls]
+        sync = next(i for i, cmd in enumerate(commands) if "XDG_CURRENT_DESKTOP" in cmd)
+        self.assertEqual(commands[sync][:2], ["dbus-update-activation-environment", "--systemd"])
+        self.assertEqual(calls[sync][0], "<unset>")
+        for variable in ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "GNOME_SETUP_DISPLAY"):
+            self.assertTrue(
+                any(cmd[:2] == commands[sync][:2] and f"{variable}=" in cmd for cmd in commands[:sync]),
+                f"D-Bus activation retained {variable}",
+            )
+        for variable in ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "GNOME_SETUP_DISPLAY", "GNOME_SHELL_SESSION_MODE"):
+            self.assertTrue(
+                any(
+                    cmd[:3] == ["systemctl", "--user", "unset-environment"] and variable in cmd
+                    for cmd in commands[:sync]
+                ),
+                f"systemd retained {variable} before environment sync",
+            )
+        restart = commands.index(["systemctl", "--user", "try-restart", "xdg-desktop-portal.service"])
+        self.assertLess(sync, restart)
+        stops = [(i, cmd[3:]) for i, cmd in enumerate(commands) if cmd[:3] == ["systemctl", "--user", "stop"]]
+        self.assertEqual(
+            {unit for _, units in stops for unit in units},
+            {
+                "dbus-1-org.gnome.OnlineAccounts@1.service",
+                "dbus-2-org.gnome.Identity@2.service",
+                "dbus-3-org.a11y.atspi.Registry@3.service",
+                "org.gnome.SettingsDaemon.ScreensaverProxy.service",
+            },
+        )
+        for index, _units in stops:
+            self.assertLess(sync, index)
+
+    def test_dbus_only_session_does_not_invoke_systemd(self):
+        calls = self.activation("no-systemd")
+        self.assertTrue(calls)
+        for _mode, command, *args in calls:
+            self.assertEqual(command, "dbus-update-activation-environment")
+            self.assertNotIn("--systemd", args)
+        sync = next(call for call in calls if "XDG_CURRENT_DESKTOP" in call)
+        self.assertEqual(sync[0], "<unset>")
+
+    def test_failed_commands_report_failure_even_when_optional(self):
+        for failure in ("spawn", "exit", "signal"):
+            with self.subTest(failure=failure):
+                result = subprocess.run(
+                    [str(self.binary), f"fixture-{failure}-failure"], capture_output=True, text=True, timeout=10
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
 
 
 class SessionEnvironmentTests(unittest.TestCase):
@@ -26,18 +112,6 @@ class SessionEnvironmentTests(unittest.TestCase):
         ]
         self.assertIn('g_getenv("XDG_CURRENT_DESKTOP")', portal_session)
         self.assertNotIn("GNOME_SHELL_SESSION_MODE", portal_session)
-        self.assertLess(
-            runtime.index('g_unsetenv("GNOME_SHELL_SESSION_MODE")'), runtime.index("run_activation_update(sync)")
-        )
-        self.assertLess(runtime.index("clear_session_mode[]"), runtime.index("run_activation_update(sync)"))
-        # Stale D-Bus activated services of the previous session are stopped after the environment is correct.
-        activation = runtime[runtime.index("gboolean activate_session(") :]
-        activation = activation[: activation.index("\nstatic ", 10)]
-        self.assertLess(
-            activation.index("run_activation_update(sync)"), activation.index("stop_stale_dbus_services();")
-        )
-        self.assertIn('"dbus-*-org.gnome.OnlineAccounts@*.service"', runtime)
-        self.assertIn('"dbus-*-org.gnome.Identity@*.service"', runtime)
         # Meson builds the compositor and the guardian as one executable through the
         # monolithic patch, so CMake defines no gnoblin target and the installer
         # only removes the old separate runtime helper.
@@ -50,8 +124,6 @@ class SessionEnvironmentTests(unittest.TestCase):
         self.assertIn("Exec=gnoblin", desktop)
         self.assertIn("gnoblin: runtime supervisor:", runtime)
         self.assertIn("spawn_compositor(compositor_path", runtime)
-        self.assertIn("return ok;", runtime)
-        self.assertNotIn("return ok || !required;", runtime)
         guardian = runtime[
             runtime.index("static int session_guardian_main(") : runtime.index("\nint gnoblin_runtime_main(")
         ]
@@ -62,12 +134,23 @@ class SessionEnvironmentTests(unittest.TestCase):
         )
         self.assertLess(
             guardian.index("g_file_test(compositor_path, G_FILE_TEST_IS_EXECUTABLE)"),
-            guardian.index("if (!devkit && !activate_session())"),
+            guardian.index("spawn_compositor(compositor_path"),
+        )
+        # Prepare the child's environment before spawn. Service activation can
+        # overlap compositor startup, but must finish before the supervisor
+        # starts configuration and autostart handling.
+        self.assertLess(
+            guardian.index("if (!devkit && !prepare_session_environment())"),
+            guardian.index("spawn_compositor(compositor_path"),
         )
         self.assertLess(
             guardian.index("if (!devkit && !activate_session())"),
-            guardian.index("spawn_compositor(compositor_path"),
+            guardian.index("spawn_session_supervisor("),
         )
+        activation_failure = guardian[guardian.index("if (!devkit && !activate_session()) {") :]
+        activation_failure = activation_failure[: activation_failure.index("\n    }")]
+        self.assertIn("terminate_and_reap(&guardian);", activation_failure)
+        self.assertIn("return EXIT_FAILURE;", activation_failure)
         worker = runtime[runtime.index("int runtime_worker_main(") : runtime.index("GPid spawn_runtime_worker(")]
         self.assertLess(
             worker.index("gnoblin_config_load_runtime_salvaged("), worker.index("send_config(&runtime, document")

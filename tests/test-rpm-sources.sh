@@ -6,25 +6,31 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d /tmp/gnoblin-rpm-sources-test.XXXXXX)"
 trap 'rm -rf "$TMP"' EXIT
 
-mkdir -p "$TMP/mutter"
-"$ROOT/scripts/stage-rpm-sources.sh" mutter "$TMP/mutter"
+# Mutter is part of the complete gnoblin source bundle, not a separate RPM.
+# Inspect the expanded specs so a missing spec or an unresolved source macro
+# fails here, rather than silently yielding an empty process substitution.
 assert_local_sources() {
     local project="${1:?project required}"
-    local output_dir="${2:?output directory required}"
+    local package="${2:?package required}"
+    local output_dir="$TMP/$project"
     local declaration source
 
+    "$ROOT/scripts/stage-rpm-sources.sh" "$project" "$output_dir"
+    rpmspec -P "$ROOT/packaging/rpm/$package.spec" >"$TMP/$package.spec"
     while IFS= read -r declaration; do
+        [[ "$declaration" =~ ^Source[1-9][0-9]*: ]] || continue
         source="${declaration#*:}"
         source="${source#"${source%%[![:space:]]*}"}"
         source="${source##*/}"
         [ -f "$output_dir/$source" ] || {
-            echo "FAIL: $project spec source was not staged: $source" >&2
+            echo "FAIL: $package spec source was not staged: $source" >&2
             exit 1
         }
-    done < <(grep -E '^Source[1-9][0-9]*:' "$ROOT/packaging/rpm/$project.spec")
+    done <"$TMP/$package.spec"
 }
 
-assert_local_sources mutter "$TMP/mutter"
+assert_local_sources mutter gnoblin
+assert_local_sources xdg-desktop-portal-gnome xdg-desktop-portal-gnoblin
 
 "$ROOT/scripts/list-tarball-sources.sh" mutter >"$TMP/mutter.sources"
 "$ROOT/scripts/list-tarball-sources.sh" xdg-desktop-portal-gnome >"$TMP/xdg-desktop-portal-gnome.sources"
