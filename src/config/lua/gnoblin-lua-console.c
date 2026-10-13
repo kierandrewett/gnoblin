@@ -39,6 +39,170 @@ static void console_truncate_utf8(GString* output, gsize length) {
     g_string_truncate(output, length);
 }
 
+/* Argument lists the console shows for functions implemented in C, which carry no parameter names.
+ * They follow docs/shell-api and docs/cli/lua.md. A name ending in "?" is optional; a table
+ * argument lists its keys. */
+typedef struct {
+    const char* path;
+    const char* arguments;
+} ApiSignature;
+
+static const ApiSignature api_signatures[] = {
+    {"animation", "spec"},
+    {"array", "table"},
+    {"permission_rule", "rule"},
+    {"window_rule", "rule"},
+    {"layer.list", ""},
+    {"monitor.list", ""},
+    {"events.mutter.on", "name, callback"},
+    {"events.mutter.once", "name, callback"},
+    {"animations.get", "name"},
+    {"animations.inspect", "args"},
+    {"animations.list", ""},
+    {"animations.pause", "args"},
+    {"animations.play", "args"},
+    {"animations.preview", "args"},
+    {"animations.seek", "args"},
+    {"animations.step", "args"},
+    {"animations.stop", "args"},
+    {"animations.surfaces", ""},
+    {"appearance.color_scheme", ""},
+    {"auth.begin", "{request_id, identity?}"},
+    {"auth.cancel", "{request_id}"},
+    {"auth.respond", "{request_id, response}"},
+    {"capabilities.list", ""},
+    {"commands.capture", "options"},
+    {"commands.run", "argv"},
+    {"console.toggle", ""},
+    {"events.on", "name, callback"},
+    {"events.once", "name, callback"},
+    {"focus.history", "filter?"},
+    {"grant.list", ""},
+    {"grant.revoke", "args"},
+    {"input.current_source", ""},
+    {"input.devices", ""},
+    {"input.on", "match, callback"},
+    {"input.orientation_lock", ""},
+    {"input.select_source", "{type, id}"},
+    {"input.set_orientation_lock", "value"},
+    {"input.sources", ""},
+    {"input.text_target", "context"},
+    {"launch.begin", "{token, application, milliseconds?}"},
+    {"launch.end", "{token}"},
+    {"launch.status", ""},
+    {"launches.begin", "options"},
+    {"launches.end", "args"},
+    {"launches.finish", "token"},
+    {"launches.list", ""},
+    {"launches.snapshot", ""},
+    {"layers.animation_policy", "namespace"},
+    {"layers.list", "filter?"},
+    {"load", "path_or_glob"},
+    {"location.authorize_app", "options"},
+    {"monitors.list", ""},
+    {"monitors.primary", ""},
+    {"monitors.privacy_screen", ""},
+    {"monitors.set_privacy_screen", "value"},
+    {"on", "event_name, callback"},
+    {"permissions.check", "args"},
+    {"permissions.list", ""},
+    {"permissions.policy", ""},
+    {"portals.grants", "filter?"},
+    {"privacy.state", ""},
+    {"privacy.stop_recording", ""},
+    {"privacy.stop_sharing", ""},
+    {"prompt.cancel", "args"},
+    {"prompt.respond", "args"},
+    {"runtime.reload_config", ""},
+    {"runtime.status", ""},
+    {"session.activity", ""},
+    {"session.lock", ""},
+    {"session.logout", ""},
+    {"session.status", ""},
+    {"shortcuts.actions", "group?"},
+    {"shortcuts.bind", "args"},
+    {"shortcuts.capture", "options?"},
+    {"shortcuts.end_session", "args"},
+    {"shortcuts.list", ""},
+    {"shortcuts.unbind", "args"},
+    {"snapshot", ""},
+    {"version", ""},
+    {"windows.by_id", "id"},
+    {"windows.focused", ""},
+    {"windows.list", "filter?"},
+    {"windows.snap_context", "context"},
+    {"workspaces.activate", "{id|number}"},
+    {"workspaces.active", ""},
+    {"workspaces.by_id", "id"},
+    {"workspaces.create", "{name, id?, activate?}"},
+    {"workspaces.list", ""},
+    {"workspaces.move_active", "{workspace, follow?}"},
+    {"workspaces.move_window", "{window, workspace, follow?}"},
+    {"workspaces.next", ""},
+    {"workspaces.previous", ""},
+    {"workspaces.remove", "{id|number}"},
+    {"workspaces.rename", "{id|number, name}"},
+};
+
+#define CONSOLE_SIGNATURES_KEY "gnoblin.signatures"
+
+/* Remember each public C function's arguments, keyed by the function itself, so a result shows
+ * them wherever it was reached from, such as a local alias of gnoblin.windows.list. Called once
+ * the API is installed and before any user code can replace a function. */
+void console_register_signatures(lua_State* state) {
+    lua_newtable(state);
+    for (gsize i = 0; i < G_N_ELEMENTS(api_signatures); i++) {
+        g_auto(GStrv) parts = g_strsplit(api_signatures[i].path, ".", -1);
+        lua_getglobal(state, "gnoblin");
+        for (guint part = 0; parts[part] && lua_istable(state, -1); part++) {
+            lua_pushstring(state, parts[part]);
+            lua_rawget(state, -2); /* raw: the gnoblin table's __index must not run here */
+            lua_remove(state, -2);
+        }
+        if (lua_iscfunction(state, -1)) {
+            lua_pushstring(state, api_signatures[i].arguments);
+            lua_rawset(state, -3);
+        } else {
+            lua_pop(state, 1);
+        }
+    }
+    lua_setfield(state, LUA_REGISTRYINDEX, CONSOLE_SIGNATURES_KEY);
+}
+
+/* The argument list of the function at the given index, or NULL when it is not known. Lua
+ * functions name their own parameters; C functions are looked up in the table above. */
+static char* console_function_arguments(lua_State* state, int index) {
+    index = lua_absindex(state, index);
+    if (lua_getfield(state, LUA_REGISTRYINDEX, CONSOLE_SIGNATURES_KEY) == LUA_TTABLE) {
+        lua_pushvalue(state, index);
+        if (lua_rawget(state, -2) == LUA_TSTRING) {
+            char* arguments = g_strdup(lua_tostring(state, -1));
+            lua_pop(state, 2);
+            return arguments;
+        }
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 1);
+    if (lua_iscfunction(state, index))
+        return NULL;
+
+    lua_Debug info;
+    lua_pushvalue(state, index);
+    lua_getinfo(state, ">u", &info); /* pops the function */
+    g_autoptr(GString) names = g_string_new(NULL);
+    lua_pushvalue(state, index);
+    for (int parameter = 1; parameter <= info.nparams; parameter++) {
+        const char* name = lua_getlocal(state, NULL, parameter);
+        if (names->len > 0)
+            g_string_append(names, ", ");
+        g_string_append(names, name && name[0] != '(' ? name : "?");
+    }
+    lua_pop(state, 1);
+    if (info.isvararg)
+        g_string_append(names, names->len > 0 ? ", ..." : "...");
+    return g_string_free(g_steal_pointer(&names), FALSE);
+}
+
 /* Rendering deliberately avoids Lua conversion hooks. A console result must
  * not execute user __tostring/__pairs code after the submitted chunk has
  * returned, otherwise presentation could bypass the instruction budget. */
@@ -72,6 +236,14 @@ static void console_append_value(GString* output, lua_State* state, int index) {
         g_string_append_printf(output, "<table: %" G_GINT64_FORMAT " array entries>",
                                (gint64)lua_rawlen(state, index));
         break;
+    case LUA_TFUNCTION: {
+        g_autofree char* arguments = console_function_arguments(state, index);
+        if (arguments)
+            g_string_append_printf(output, "<function(%s)>", arguments);
+        else
+            g_string_append(output, "<function>");
+        break;
+    }
     default:
         g_string_append_printf(output, "<%s>", lua_typename(state, lua_type(state, index)));
         break;

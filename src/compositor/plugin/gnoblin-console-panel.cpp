@@ -290,6 +290,19 @@ ImVec4 value_colour(const std::string& value) {
     return ImGui::GetStyleColorVec4(ImGuiCol_Text);
 }
 
+bool is_function_value(const std::string& value) {
+    return starts_with(value, "<function") || starts_with(value, "<cfunction");
+}
+
+/* "<function(a, b)>" is shown as "fn(a, b)"; a function whose arguments are unknown is "fn". */
+std::string function_text(const std::string& value) {
+    const std::size_t open = value.find('(');
+    const std::size_t close = value.rfind(")>");
+    if (open == std::string::npos || close == std::string::npos || close < open)
+        return "fn";
+    return "fn" + value.substr(open, close - open + 1);
+}
+
 std::string plain_key(const std::string& label) {
     if (label.size() >= 2 && label.front() == '"' && label.back() == '"')
         return label.substr(1, label.size() - 2);
@@ -314,8 +327,8 @@ std::string table_preview(const std::vector<GnoblinConsoleInspectorNode>& childr
 std::string value_preview(const GnoblinConsoleInspectorNode& node, int depth) {
     if (!node.children.empty() || starts_with(node.value, "<table"))
         return table_preview(node.children, node.has_more, depth);
-    if (starts_with(node.value, "<function") || starts_with(node.value, "<cfunction"))
-        return "fn";
+    if (is_function_value(node.value))
+        return function_text(node.value);
     return node.value;
 }
 
@@ -422,6 +435,11 @@ void GnoblinConsolePanel::draw() {
     /* A drop-down over the top of the screen, above everything including the
      * shell's own surfaces. */
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    /* Dim everything behind the console so it reads as a separate layer. */
+    ImGui::GetBackgroundDrawList()->AddRectFilled(
+        viewport->Pos,
+        ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y),
+        IM_COL32(0, 0, 0, 120));
     const float width = viewport->WorkSize.x;
     const float height = std::floor(viewport->WorkSize.y * kPanelFraction);
     ImGui::SetNextWindowPos(viewport->WorkPos);
@@ -509,7 +527,10 @@ void GnoblinConsolePanel::draw() {
                     }
                 } else {
                     if (!row.text.empty())
-                        marked_row("<", kQuietColour, row.text.c_str());
+                        marked_row(
+                            "<", kQuietColour,
+                            (is_function_value(row.text) ? function_text(row.text) : row.text)
+                                .c_str());
                     for (std::size_t child = 0; child < row.inspection.size(); child++) {
                         ImGui::Indent(16.0f);
                         draw_node(row.inspection[child],
@@ -868,9 +889,8 @@ void GnoblinConsolePanel::draw_node(const GnoblinConsoleInspectorNode& node,
             circular ? std::string("(circular)")
             : table_like
                 ? table_preview(node.children, node.has_more, 0, ImGui::GetContentRegionAvail().x)
-            : (starts_with(node.value, "<function") || starts_with(node.value, "<cfunction"))
-                ? std::string("fn")
-                : node.value;
+            : is_function_value(node.value) ? function_text(node.value)
+                                            : node.value;
         ImGui::PushStyleColor(ImGuiCol_Text, table_like ? kQuietColour : value_colour(node.value));
         if (node.children.empty())
             ImGui::TextWrapped("%s", shown_value.c_str());

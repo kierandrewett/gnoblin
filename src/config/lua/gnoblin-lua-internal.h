@@ -168,6 +168,7 @@ typedef struct {
     GVariant* result;
     GError* error;
 } EvalRun;
+void console_register_signatures(lua_State* state);
 #define MAX_CONSOLE_INSPECTION_DEPTH 8
 #define MAX_CONSOLE_INSPECTION_NODES 4000
 #define MAX_CONSOLE_INSPECTION_CHILDREN 512

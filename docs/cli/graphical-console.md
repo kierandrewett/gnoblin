@@ -8,7 +8,7 @@ The graphical console is available in a running Gnoblin session.
 
 With the built-in configuration, Alt+F2 opens the compositor's Lua console. Alt+F2 or
 Escape closes it. It drops down from the top of the screen over every application and
-shell layer, with the input line at the bottom.
+shell layer, with the input line at the bottom. The rest of the screen is dimmed behind it.
 
 Output grows upwards from the input line. Scroll it with the mouse wheel or Page Up and
 Page Down. Enter runs a command and Shift+Enter inserts a newline.
@@ -46,6 +46,10 @@ then takes the chosen suggestion, and otherwise runs what you typed. Escape hide
 A result that is a table or window record starts collapsed. Click its row, anywhere across
 the width, to expand it. Entries are listed alphabetically, and the summary on the row lists as
 many as fit the width.
+
+Functions show their arguments, for example `fn(filter?)`. A `?` marks an optional argument,
+and an argument in braces, such as `fn({name, id?})`, is a table with those keys. A function
+without a known argument list shows as `fn`.
 
 Expanded entries are read-only and limited to eight levels and 4,000 entries. A table cut off
 by that limit ends with a line such as `… 12 more`, which gives the number left out. A table
