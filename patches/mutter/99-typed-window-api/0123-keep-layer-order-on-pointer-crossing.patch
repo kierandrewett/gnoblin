@@ -1,4 +1,4 @@
-From: Gnoblin maintainers
+From: kierandrewett <kieran@drewett.dev>
 Subject: Keep managed layer-shell stacking unchanged on pointer crossing
 
 Mutter raises ordinary dock windows on pointer entry and exit. Layer-shell
