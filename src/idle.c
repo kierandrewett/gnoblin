@@ -645,7 +645,9 @@ static void handle_method_call(GDBusConnection* connection, const char* sender, 
         g_dbus_method_invocation_return_gerror(invocation, error);
         return;
     }
-    g_dbus_method_invocation_return_value(invocation, g_steal_pointer(&reply));
+    /* call_sync returns an owned, non-floating variant. Keep the autoptr reference;
+     * return_value only consumes floating variants. */
+    g_dbus_method_invocation_return_value(invocation, reply);
 }
 
 static const GDBusInterfaceVTable interface_vtable = {
