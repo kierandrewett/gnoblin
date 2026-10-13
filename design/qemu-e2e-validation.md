@@ -139,8 +139,10 @@ window on the host desktop as well:
 GNOBLIN_QEMU_WINDOW=1 scripts/qemu-e2e start "$run"
 ```
 
-The window uses QEMU's GTK display. With the default GL video it keeps the
-virgl path, and it also works with `GNOBLIN_QEMU_VIDEO=plain`. VNC, QMP
+The window uses QEMU's GTK display with a USB tablet, so the host pointer moves the
+guest pointer without a grab, and with keyboard grab on hover, so shortcuts such
+as Alt+F2 reach the guest while the pointer is over the window. With the default
+GL video it keeps the virgl path, and it also works with `GNOBLIN_QEMU_VIDEO=plain`. VNC, QMP
 screenshots and the guest command channel behave the same either way. The host
 session needs a running graphical display.
 

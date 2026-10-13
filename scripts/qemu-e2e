@@ -141,13 +141,15 @@ start() {
         done
     fi
     # GNOBLIN_QEMU_WINDOW=1 shows the guest screen in a window on the host desktop. The VNC server
-    # stays available either way.
-    if [[ -n "${GNOBLIN_QEMU_WINDOW:-}" ]]; then
-        video=("${video[@]/egl-headless/gtk,gl=on,show-menubar=off}")
-        video=("${video[@]/none/gtk,show-menubar=off}")
-    fi
+    # stays available either way. The window gets a USB tablet so the host pointer maps to the guest
+    # without a grab, and grab-on-hover so keyboard shortcuts reach the guest while the pointer is over it.
     local -a fallback_display=(-display none)
-    [[ -n "${GNOBLIN_QEMU_WINDOW:-}" ]] && fallback_display=(-display gtk,show-menubar=off)
+    if [[ -n "${GNOBLIN_QEMU_WINDOW:-}" ]]; then
+        video=("${video[@]/egl-headless/gtk,gl=on,show-menubar=off,grab-on-hover=on}")
+        video=("${video[@]/none/gtk,show-menubar=off,grab-on-hover=on}")
+        video+=(-device qemu-xhci -device usb-tablet)
+        fallback_display=(-display gtk,show-menubar=off,grab-on-hover=on -device qemu-xhci -device usb-tablet)
+    fi
     local renderer="virtio-vga-gl/egl-headless"
     [[ "${GNOBLIN_QEMU_VIDEO:-gl}" == plain ]] && renderer="virtio-vga/plain"
     printf '%s\n' "$renderer" >"$(run_file "$run" renderer)"
