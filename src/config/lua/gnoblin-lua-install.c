@@ -542,6 +542,7 @@ int protected_eval(lua_State* state) {
     EvalRun* run = lua_touserdata(state, lua_upvalueindex(1));
 
     install_api(state, run->config);
+    console_register_signatures(state);
     if (run->source) {
         if (luaL_loadbufferx(state, run->source, run->source_length, "@<built-in init.lua>", "t") !=
                 LUA_OK ||

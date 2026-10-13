@@ -1,0 +1,64 @@
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] Keep pointer input from clients while the console is open
+
+The modal diagnostic console swallowed pointer events at the stage, but only after Mutter had
+updated the Wayland seat. That update gives the surface under the pointer an enter event, so a
+dock or panel behind the console kept its hover state and tooltips even though clicks never
+reached it. While the console is open, hand pointer and touch events to the bridge before the seat
+update, withdraw pointer focus from the client under the pointer, and drop the event. Opening the
+console withdraws focus at once, from the first key event it takes, so a client the pointer already
+rests on does not keep its hover until the pointer moves.
+
+diff --git a/src/core/events.c b/src/core/events.c
+--- a/src/core/events.c
++++ b/src/core/events.c
+@@ -38,7 +38,9 @@
+ #include "core/gnoblin-native-control.h"
+ #include "core/window-private.h"
+ #include "meta/meta-backend.h"
++#include "wayland/meta-wayland-pointer.h"
+ #include "wayland/meta-wayland-private.h"
++#include "wayland/meta-wayland-seat.h"
+ #include "wayland/meta-wayland-session-lock.h"
+ 
+ #include "backends/native/meta-backend-native.h"
+@@ -257,6 +259,17 @@
+       !clutter_event_get_device_tool (event))
+     meta_display_handle_sticky_mouse_focus_event (display, event);
+ 
++  /* The modal diagnostic console owns the pointer. Withdraw pointer focus from the client under it
++   * and drop the event before the Wayland seat sees it, so no surface keeps hover or receives
++   * enter, motion or buttons while the console is open. */
++  if (gnoblin_plugin_input_pointer_modal (G_OBJECT (display), event))
++    {
++      gnoblin_plugin_input_handle_event (G_OBJECT (display), event);
++      if (wayland_compositor)
++        meta_wayland_pointer_focus_surface (wayland_compositor->seat->pointer, NULL);
++      return CLUTTER_EVENT_STOP;
++    }
++
+   meta_wayland_compositor_update (wayland_compositor, event);
+ 
+   if (event_type == CLUTTER_PAD_BUTTON_PRESS ||
+@@ -419,9 +432,20 @@
+ 
+   (void) stage;
+   /* The diagnostic console is modal: while it is open it takes key events before Lua input
+    * handlers, keybindings and shortcuts can act on them. */
+   if (gnoblin_plugin_input_handle_key (G_OBJECT (display), event))
+-    return TRUE;
++    {
++#ifdef HAVE_WAYLAND
++      /* The console is open, so a client the pointer rests on loses its hover now rather than at
++       * the next pointer motion. */
++      MetaWaylandCompositor *wayland_compositor =
++        meta_context_get_wayland_compositor (meta_display_get_context (display));
++
++      if (wayland_compositor)
++        meta_wayland_pointer_focus_surface (wayland_compositor->seat->pointer, NULL);
++#endif
++      return TRUE;
++    }
+   return gnoblin_native_control_filter_input_event (display, event, NULL);
+ }
+ 

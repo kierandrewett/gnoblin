@@ -1,0 +1,23 @@
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] Give the modal diagnostic console its keys before keybindings
+
+The console is a safe area: while it is open, no keybinding, Lua shortcut or input policy handler
+may run on the keys typed into it. The diagnostic input bridge only saw key events after Mutter's
+keybinding dispatch, so shortcuts still fired. Offer key events to the bridge first, from the
+stage input-policy filter that runs before every other consumer. The bridge declines unless the
+console is open, and keeps the Ctrl+Alt+F1..F12 console switches working.
+
+diff --git a/src/core/events.c b/src/core/events.c
+--- a/src/core/events.c
++++ b/src/core/events.c
+@@ -409,6 +409,10 @@
+   MetaDisplay *display = user_data;
+ 
+   (void) stage;
++  /* The diagnostic console is modal: while it is open it takes key events before Lua input
++   * handlers, keybindings and shortcuts can act on them. */
++  if (gnoblin_plugin_input_handle_key (G_OBJECT (display), event))
++    return TRUE;
+   return gnoblin_native_control_filter_input_event (display, event, NULL);
+ }
+ 

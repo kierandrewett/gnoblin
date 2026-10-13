@@ -5,11 +5,14 @@
 #include "gnoblin-console-panel.hpp"
 
 #include <algorithm>
+#include <cctype>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <utility>
 
 #include "imgui.h"
+#include "imgui_internal.h"
 
 namespace {
 constexpr std::size_t kMaxRows = 200;
@@ -74,12 +77,25 @@ void GnoblinConsolePanel::set_visible(bool visible) {
     if (visible_ == visible)
         return;
     visible_ = visible;
+    {
+        /* Modifiers are tracked from key events; start each session without any held. */
+        ImGui::SetCurrentContext(gnoblin_imgui_overlay_get_context(overlay_));
+        ImGuiIO& io = ImGui::GetIO();
+        io.AddKeyEvent(ImGuiMod_Ctrl, false);
+        io.AddKeyEvent(ImGuiMod_Shift, false);
+        io.AddKeyEvent(ImGuiMod_Alt, false);
+    }
     if (!visible) {
         ++*completion_generation_;
         completion_visible_ = false;
+        signature_ = {};
     }
-    if (visible)
+    if (visible) {
         scroll_to_bottom_ = true;
+        focus_input_ = true;
+        completion_requested_ = input_.data();
+        preview_requested_ = input_.data();
+    }
     if (callbacks_.visibility_changed)
         callbacks_.visibility_changed();
     queue_redraw();
@@ -109,12 +125,37 @@ void GnoblinConsolePanel::add_text(const char* utf8) {
         gnoblin_imgui_overlay_add_text(overlay_, utf8);
 }
 
-bool GnoblinConsolePanel::handle_key(guint keyval, ClutterModifierType modifiers, bool pressed) {
+bool GnoblinConsolePanel::handle_key(guint keyval, ClutterModifierType modifiers, bool pressed,
+                                     bool repeated) {
     if (!visible())
         return false;
 
     ImGui::SetCurrentContext(gnoblin_imgui_overlay_get_context(overlay_));
     ImGuiIO& io = ImGui::GetIO();
+    /* A key event carries the modifiers held before it, so the release of a modifier still shows
+     * it as held, and its press does not. Left stale, ImGui ignores clicks on result rows (it
+     * refuses them while a modifier is down) after the console is opened with Alt+F2. */
+    {
+        const guint mask = [keyval]() -> guint {
+            switch (keyval) {
+            case CLUTTER_KEY_Shift_L:
+            case CLUTTER_KEY_Shift_R:
+                return CLUTTER_SHIFT_MASK;
+            case CLUTTER_KEY_Control_L:
+            case CLUTTER_KEY_Control_R:
+                return CLUTTER_CONTROL_MASK;
+            case CLUTTER_KEY_Alt_L:
+            case CLUTTER_KEY_Alt_R:
+            case CLUTTER_KEY_Meta_L:
+            case CLUTTER_KEY_Meta_R:
+                return CLUTTER_MOD1_MASK;
+            default:
+                return 0;
+            }
+        }();
+        modifiers =
+            static_cast<ClutterModifierType>(pressed ? (modifiers | mask) : (modifiers & ~mask));
+    }
     io.AddKeyEvent(ImGuiMod_Ctrl, (modifiers & CLUTTER_CONTROL_MASK) != 0);
     io.AddKeyEvent(ImGuiMod_Shift, (modifiers & CLUTTER_SHIFT_MASK) != 0);
     io.AddKeyEvent(ImGuiMod_Alt, (modifiers & CLUTTER_MOD1_MASK) != 0);
@@ -126,9 +167,23 @@ bool GnoblinConsolePanel::handle_key(guint keyval, ClutterModifierType modifiers
         return true;
     }
 
+    /* Alt+F2 opens the console, so it closes it too. A held key must not close it at once. */
+    if (keyval == CLUTTER_KEY_F2 && (modifiers & CLUTTER_MOD1_MASK) != 0) {
+        if (!repeated)
+            set_visible(false);
+        queue_redraw();
+        return true;
+    }
+    if (keyval == CLUTTER_KEY_Page_Up || keyval == CLUTTER_KEY_Page_Down) {
+        scroll_request_pages_ += keyval == CLUTTER_KEY_Page_Up ? -1 : 1;
+        queue_redraw();
+        return true;
+    }
     if (keyval == CLUTTER_KEY_Escape) {
         if (completion_visible_)
             completion_visible_ = false;
+        else if (!signature_.empty())
+            signature_ = {};
         else
             set_visible(false);
         queue_redraw();
@@ -142,28 +197,36 @@ bool GnoblinConsolePanel::handle_key(guint keyval, ClutterModifierType modifiers
             queue_redraw();
             return true;
         }
-        if (completion_visible_)
-            accept_completion();
-        else
-            submit();
+        enter_requested_ = true;
+        queue_redraw();
         return true;
     }
 
-    if (imgui_key != ImGuiKey_None)
-        io.AddKeyEvent(imgui_key, true);
-    if (keyval == CLUTTER_KEY_Tab) {
-        if (completion_visible_)
-            accept_completion();
-        else
-            complete();
+    /* Tab belongs to the suggestions. Handing it to ImGui would move keyboard focus off the input
+     * line, so it is not forwarded. Shift+Tab steps back through the list. */
+    if (keyval == CLUTTER_KEY_Tab || keyval == CLUTTER_KEY_ISO_Left_Tab) {
+        if (keyval == CLUTTER_KEY_ISO_Left_Tab || (modifiers & CLUTTER_SHIFT_MASK) != 0) {
+            const int count = static_cast<int>(completions_.size());
+            if (completion_visible_ && count > 0) {
+                completion_index_ = (completion_index_ + count - 1) % count;
+                completion_scroll_ = true;
+            }
+        } else {
+            tab_requested_ = true;
+        }
+        queue_redraw();
         return true;
     }
+    if (imgui_key != ImGuiKey_None)
+        io.AddKeyEvent(imgui_key, true);
     if (keyval == CLUTTER_KEY_Up || keyval == CLUTTER_KEY_Down) {
         if (completion_visible_) {
             const int count = static_cast<int>(completions_.size());
             if (count > 0)
                 completion_index_ =
                     (completion_index_ + (keyval == CLUTTER_KEY_Up ? count - 1 : 1)) % count;
+            completion_scroll_ = true;
+            completion_chosen_ = true;
         } else if (std::strchr(input_.data(), '\n') == nullptr ||
                    (modifiers & CLUTTER_MOD1_MASK) != 0)
             history_step(keyval == CLUTTER_KEY_Up ? -1 : 1);
@@ -188,88 +251,728 @@ void GnoblinConsolePanel::append_log(std::string_view text, bool error) {
     rows_.push_back(std::move(row));
     if (rows_.size() > kMaxRows)
         rows_.erase(rows_.begin());
-    scroll_to_bottom_ = true;
+    scroll_to_bottom_ = scroll_to_bottom_ || at_bottom_;
     queue_redraw();
 }
+
+namespace {
+constexpr float kInset = 10.0f;
+constexpr float kRowPadding = 5.0f;
+constexpr float kPanelFraction = 0.5f;
+constexpr int kMaxInputLines = 8;
+
+ImVec4 rgb(unsigned hex, float alpha = 1.0f) {
+    return ImVec4(((hex >> 16) & 0xff) / 255.0f, ((hex >> 8) & 0xff) / 255.0f,
+                  (hex & 0xff) / 255.0f, alpha);
+}
+
+const ImVec4 kPromptColour = rgb(0x569cd6);
+const ImVec4 kKeyColour = rgb(0xc586c0);
+const ImVec4 kErrorColour = rgb(0xff8080);
+const ImVec4 kErrorFill = rgb(0x290000);
+const ImVec4 kErrorRule = rgb(0x5c0000);
+const ImVec4 kQuietColour = rgb(0xb0b0b0);
+/* Values are coloured by kind, as in a browser console. */
+const ImVec4 kStringColour = rgb(0xe9a07a);
+const ImVec4 kNumberColour = rgb(0xa6d189);
+const ImVec4 kKeywordColour = rgb(0x6cb6ff);
+const ImVec4 kFunctionColour = rgb(0x6fd7c8);
+const ImVec4 kTypeColour = rgb(0xe5c07b);
+
+/* Every expandable row, and every leaf, highlights across the full width on hover. */
+constexpr ImGuiTreeNodeFlags kTreeFlags = ImGuiTreeNodeFlags_SpanFullWidth;
+constexpr ImGuiTreeNodeFlags kLeafFlags = ImGuiTreeNodeFlags_SpanFullWidth |
+                                          ImGuiTreeNodeFlags_Leaf |
+                                          ImGuiTreeNodeFlags_NoTreePushOnOpen;
+
+bool starts_with(const std::string& text, const char* prefix) {
+    return text.compare(0, std::strlen(prefix), prefix) == 0;
+}
+
+ImVec4 value_colour(const std::string& value) {
+    if (value.empty())
+        return kQuietColour;
+    if (value[0] == '"' || value[0] == '\'')
+        return kStringColour;
+    if (value == "true" || value == "false")
+        return kKeywordColour;
+    if (value == "nil")
+        return kQuietColour;
+    if (starts_with(value, "<function") || starts_with(value, "<cfunction"))
+        return kFunctionColour;
+    if ((value[0] >= '0' && value[0] <= '9') || value[0] == '-')
+        return kNumberColour;
+    return ImGui::GetStyleColorVec4(ImGuiCol_Text);
+}
+
+bool is_function_value(const std::string& value) {
+    return starts_with(value, "<function") || starts_with(value, "<cfunction");
+}
+
+/* "<function(a: T): R>" is shown as "fn(a: T): R"; a function whose signature is unknown is "fn".
+ */
+std::string function_text(const std::string& value) {
+    if (!starts_with(value, "<function(") || value.size() < 11 || value.back() != '>')
+        return "fn";
+    return "fn" + value.substr(9, value.size() - 10);
+}
+
+using Span = std::pair<std::string, ImVec4>;
+
+bool is_identifier_char(char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+}
+
+/* The end of a type that starts at "start": it runs to a comma, closing bracket or the end of
+ * the text that is not inside brackets of its own, as in "fun(event: Event): Result|nil". */
+std::size_t type_end(const std::string& text, std::size_t start) {
+    int depth = 0;
+    char quote = 0;
+    for (std::size_t i = start; i < text.size(); i++) {
+        const char c = text[i];
+        if (quote) {
+            if (c == quote)
+                quote = 0;
+            continue;
+        }
+        if (c == '"' || c == '\'')
+            quote = c;
+        else if (c == '(' || c == '<' || c == '{' || c == '[')
+            depth++;
+        else if (c == ')' || c == '>' || c == '}' || c == ']') {
+            if (depth == 0)
+                return i;
+            depth--;
+        } else if (c == ',' && depth == 0)
+            return i;
+    }
+    return text.size();
+}
+
+/* Colours "(name: type, other?: type): result" from the opening parenthesis at index i and
+ * returns the index after it. Names are keys, types are types, punctuation is quiet. */
+std::size_t signature_spans(const std::string& text, std::size_t i, std::vector<Span>* out) {
+    auto push = [out](std::string part, const ImVec4& colour) {
+        if (!part.empty())
+            out->emplace_back(std::move(part), colour);
+    };
+    push("(", kQuietColour);
+    i++;
+    while (i < text.size() && text[i] != ')') {
+        while (i < text.size() && text[i] == ' ')
+            push(" ", kQuietColour), i++;
+        std::size_t name_end = i;
+        while (name_end < text.size() &&
+               (is_identifier_char(text[name_end]) || text[name_end] == '?'))
+            name_end++;
+        if (text.compare(i, 3, "...") == 0)
+            name_end = i + 3;
+        push(text.substr(i, name_end - i), kKeyColour);
+        i = name_end;
+        if (i < text.size() && text[i] == ':') {
+            push(": ", kQuietColour);
+            i++;
+            while (i < text.size() && text[i] == ' ')
+                i++;
+            const std::size_t end = type_end(text, i);
+            push(text.substr(i, end - i), kTypeColour);
+            i = end;
+        }
+        if (i < text.size() && text[i] == ',') {
+            push(", ", kQuietColour);
+            i++;
+            while (i < text.size() && text[i] == ' ')
+                i++;
+        } else if (i < text.size() && text[i] != ')') {
+            push(text.substr(i, 1), kQuietColour); // keep going on text this does not expect
+            i++;
+        }
+    }
+    if (i < text.size()) {
+        push(")", kQuietColour);
+        i++;
+    }
+    if (i < text.size() && text[i] == ':') {
+        push(": ", kQuietColour);
+        i++;
+        while (i < text.size() && text[i] == ' ')
+            i++;
+        const std::size_t end = type_end(text, i);
+        push(text.substr(i, end - i), kTypeColour);
+        i = end;
+    }
+    return i;
+}
+
+/* Colours a result summary such as "{ list: fn(filter?: WindowFilter): Window[], n: 3 }": keys,
+ * functions with their signatures, strings, numbers and keywords each get their own colour. */
+std::vector<Span> highlight(const std::string& text) {
+    std::vector<Span> out;
+    auto push = [&out](std::string part, const ImVec4& colour) {
+        if (!part.empty())
+            out.emplace_back(std::move(part), colour);
+    };
+    bool key_position = true;
+    std::size_t i = 0;
+    while (i < text.size()) {
+        const char c = text[i];
+        if (c == ' ') {
+            push(" ", kQuietColour);
+            i++;
+        } else if (c == '"') {
+            std::size_t end = i + 1;
+            while (end < text.size() && text[end] != '"')
+                end += text[end] == '\\' ? 2 : 1;
+            end = std::min(end + 1, text.size());
+            push(text.substr(i, end - i), kStringColour);
+            i = end;
+            key_position = false;
+        } else if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
+            std::size_t end = i;
+            while (end < text.size() && is_identifier_char(text[end]))
+                end++;
+            const std::string word = text.substr(i, end - i);
+            std::size_t next = end;
+            while (next < text.size() && text[next] == ' ')
+                next++;
+            if (word == "fn" && end < text.size() && text[end] == '(') {
+                push(word, kFunctionColour);
+                i = signature_spans(text, end, &out);
+                key_position = false;
+                continue;
+            }
+            if (word == "fn") {
+                push(word, kFunctionColour);
+            } else if (key_position && next < text.size() && text[next] == ':') {
+                push(word, kKeyColour);
+            } else if (word == "true" || word == "false") {
+                push(word, kKeywordColour);
+            } else {
+                push(word, kQuietColour);
+            }
+            i = end;
+            key_position = false;
+        } else if (std::isdigit(static_cast<unsigned char>(c)) ||
+                   (c == '-' && i + 1 < text.size() &&
+                    std::isdigit(static_cast<unsigned char>(text[i + 1])))) {
+            std::size_t end = i + 1;
+            while (end < text.size() &&
+                   (std::isalnum(static_cast<unsigned char>(text[end])) || text[end] == '.'))
+                end++;
+            push(text.substr(i, end - i), kNumberColour);
+            i = end;
+            key_position = false;
+        } else {
+            /* Punctuation, and any multi-byte character such as the ellipsis, as one unit. */
+            std::size_t length = 1;
+            while (i + length < text.size() &&
+                   (static_cast<unsigned char>(text[i + length]) & 0xc0) == 0x80)
+                length++;
+            push(text.substr(i, length), kQuietColour);
+            key_position = c == '{' || c == '[' || c == ',';
+            i += length;
+        }
+    }
+    return out;
+}
+
+void draw_spans(const std::vector<Span>& spans) {
+    bool first = true;
+    for (const auto& span : spans) {
+        if (!first)
+            ImGui::SameLine(0.0f, 0.0f);
+        first = false;
+        ImGui::PushStyleColor(ImGuiCol_Text, span.second);
+        ImGui::TextUnformatted(span.first.c_str());
+        ImGui::PopStyleColor();
+    }
+}
+
+void draw_highlighted(const std::string& text) {
+    draw_spans(highlight(text));
+}
+
+/* "(a: T): R", the argument list of a function, drawn in colour. */
+void draw_signature_text(const std::string& signature) {
+    std::vector<Span> spans;
+    if (!signature.empty() && signature[0] == '(')
+        signature_spans(signature, 0, &spans);
+    else
+        spans.emplace_back(signature, kTypeColour);
+    draw_spans(spans);
+}
+
+std::string plain_key(const std::string& label) {
+    if (label.size() >= 2 && label.front() == '"' && label.back() == '"')
+        return label.substr(1, label.size() - 2);
+    return label;
+}
+
+/* A table whose keys are 1..n in order is an array. */
+bool is_array(const std::vector<GnoblinConsoleInspectorNode>& children) {
+    std::size_t expected = 1;
+    for (const auto& child : children) {
+        if (child.label.empty() && child.has_more)
+            continue;
+        if (child.label != std::to_string(expected++))
+            return false;
+    }
+    return expected > 1;
+}
+
+std::string table_preview(const std::vector<GnoblinConsoleInspectorNode>& children, bool more,
+                          int depth, float width = 0.0f);
+
+std::string value_preview(const GnoblinConsoleInspectorNode& node, int depth) {
+    if (!node.children.empty() || starts_with(node.value, "<table"))
+        return table_preview(node.children, node.has_more, depth);
+    if (is_function_value(node.value))
+        return function_text(node.value);
+    return node.value;
+}
+
+/* A short inline summary, like a browser's "Object { a: 1, b: {…} }" and "[1, 2, 3]". Entries past
+ * the cap are a childless node with no label. A top-level summary lists as many entries as fit in
+ * the given width in pixels and only then ends in an ellipsis; without a width it lists five. A
+ * nested table lists up to four entries, and one nested deeper is just its brackets. */
+std::string table_preview(const std::vector<GnoblinConsoleInspectorNode>& children, bool more,
+                          int depth, float width) {
+    std::vector<const GnoblinConsoleInspectorNode*> entries;
+    for (const auto& child : children) {
+        if (child.label.empty() && child.has_more)
+            more = true;
+        else
+            entries.push_back(&child);
+    }
+    const bool array = is_array(children);
+    const char* open = array ? "[" : "{";
+    const char* close = array ? "]" : "}";
+    if (entries.empty())
+        return more ? std::string(open) + "…" + close : std::string(open) + close;
+    if (depth >= 2)
+        return std::string(open) + "…" + close;
+    const std::size_t limit = depth > 0 ? 4 : (width > 0.0f ? entries.size() : 5);
+    const std::string tail = std::string(", … ") + close;
+    std::string out = std::string(open) + " ";
+    std::size_t shown = 0;
+    for (const auto* child : entries) {
+        if (shown == limit)
+            break;
+        std::string item = array
+                               ? value_preview(*child, depth + 1)
+                               : plain_key(child->label) + ": " + value_preview(*child, depth + 1);
+        std::string candidate = shown > 0 ? out + ", " + item : out + item;
+        if (width > 0.0f && shown > 0 && ImGui::CalcTextSize((candidate + tail).c_str()).x > width)
+            break;
+        out = std::move(candidate);
+        shown++;
+    }
+    if (shown < entries.size() || more)
+        out += ", …";
+    return out + " " + close;
+}
+
+/* True for text that only walks a table by name, such as "gnoblin.windows": evaluating it cannot
+ * run anything, so the console shows its value as a preview while it is typed. */
+bool is_plain_path(const std::string& text) {
+    if (text.empty() || text.size() > 200)
+        return false;
+    bool segment_start = true;
+    for (char c : text) {
+        if (c == '.') {
+            if (segment_start)
+                return false;
+            segment_start = true;
+        } else if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || c == '_' ||
+                   (!segment_start && c >= '0' && c <= '9')) {
+            segment_start = false;
+        } else {
+            return false;
+        }
+    }
+    return !segment_start;
+}
+
+/* An error spans the full width on a dark red band, as in Chrome's console. */
+void error_row(const char* text) {
+    ImDrawList* list = ImGui::GetWindowDrawList();
+    const ImVec2 origin = ImGui::GetCursorScreenPos();
+    const ImVec2 window = ImGui::GetWindowPos();
+    const float width = ImGui::GetWindowWidth();
+    const ImVec2 size = ImGui::CalcTextSize(text, nullptr, false, ImGui::GetContentRegionAvail().x);
+    const float top = origin.y - 2.0f;
+    const float bottom = origin.y + size.y + 2.0f;
+    list->AddRectFilled(ImVec2(window.x, top), ImVec2(window.x + width, bottom),
+                        ImGui::GetColorU32(kErrorFill));
+    list->AddLine(ImVec2(window.x, top), ImVec2(window.x + width, top),
+                  ImGui::GetColorU32(kErrorRule));
+    list->AddLine(ImVec2(window.x, bottom), ImVec2(window.x + width, bottom),
+                  ImGui::GetColorU32(kErrorRule));
+    ImGui::PushStyleColor(ImGuiCol_Text, kErrorColour);
+    ImGui::TextWrapped("%s", text);
+    ImGui::PopStyleColor();
+    ImGui::Dummy(ImVec2(0.0f, 2.0f));
+}
+
+/* A line led by a one-character marker. */
+void marked_row(const char* marker, const ImVec4& marker_colour, const char* text,
+                const ImVec4* text_colour = nullptr) {
+    ImGui::TextColored(marker_colour, "%s", marker);
+    ImGui::SameLine(0.0f, 8.0f);
+    if (text_colour != nullptr)
+        ImGui::PushStyleColor(ImGuiCol_Text, *text_colour);
+    ImGui::TextWrapped("%s", text);
+    if (text_colour != nullptr)
+        ImGui::PopStyleColor();
+}
+} // namespace
 
 void GnoblinConsolePanel::draw() {
     if (!visible())
         return;
+
+    /* A drop-down over the top of the screen, above everything including the
+     * shell's own surfaces. */
     const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    /* Dim everything behind the console so it reads as a separate layer. */
+    ImGui::GetBackgroundDrawList()->AddRectFilled(
+        viewport->Pos,
+        ImVec2(viewport->Pos.x + viewport->Size.x, viewport->Pos.y + viewport->Size.y),
+        IM_COL32(0, 0, 0, 120));
+    const float width = viewport->WorkSize.x;
+    const float height = std::floor(viewport->WorkSize.y * kPanelFraction);
     ImGui::SetNextWindowPos(viewport->WorkPos);
-    ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, viewport->WorkSize.y * 0.55f));
-    constexpr ImGuiWindowFlags flags = ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
-                                       ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings;
-    if (!ImGui::Begin("Lua console", nullptr, flags)) {
+    ImGui::SetNextWindowSize(ImVec2(width, height));
+    constexpr ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoScrollWithMouse;
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+    const bool open = ImGui::Begin("Lua console", nullptr, flags);
+    ImGui::PopStyleVar(2);
+    if (!open) {
         ImGui::End();
         return;
     }
 
-    ImGui::TextUnformatted("Lua");
-    ImGui::SameLine();
-    if (ImGui::Button("Clear"))
-        clear();
-    ImGui::Separator();
+    ImDrawList* list = ImGui::GetWindowDrawList();
+    const ImVec2 origin = ImGui::GetWindowPos();
+    const ImU32 line_colour = ImGui::GetColorU32(ImGuiCol_Border);
 
-    const float input_height =
-        ImGui::GetTextLineHeightWithSpacing() * 6.0f + ImGui::GetStyle().ItemSpacing.y * 2.0f;
-    if (ImGui::BeginChild("##transcript", ImVec2(0, -input_height), ImGuiChildFlags_Borders)) {
+    int lines = 1;
+    for (const char* c = input_.data(); *c != '\0'; c++)
+        if (*c == '\n')
+            lines++;
+    lines = std::min(lines, kMaxInputLines);
+    const float input_height = lines * ImGui::GetTextLineHeight() + kRowPadding * 2;
+    /* A greyed line under the input shows the value of what is typed, when that is safe to know.
+     * Its space is always reserved so the input and output do not move as it appears. */
+    const float preview_height = ImGui::GetTextLineHeight() + kRowPadding;
+    const float input_top = height - input_height - preview_height;
+
+    /* Transcript. */
+    ImGui::SetCursorPos(ImVec2(0.0f, 0.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(kInset, kRowPadding));
+    if (ImGui::BeginChild("##transcript", ImVec2(width, input_top - 1.0f),
+                          ImGuiChildFlags_AlwaysUseWindowPadding)) {
+        /* Output grows upwards from the input line: while it is shorter than the pane, push it
+         * down. The height comes from the previous frame; a change draws one more frame. */
+        const float pane_height = ImGui::GetContentRegionAvail().y;
+        at_bottom_ = ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 2.0f;
+        if (scroll_request_pages_ != 0) {
+            ImGui::SetScrollY(ImGui::GetScrollY() + scroll_request_pages_ * pane_height * 0.9f);
+            scroll_request_pages_ = 0;
+        }
+        const float spacer =
+            std::max(0.0f, pane_height - transcript_height_ - ImGui::GetStyle().ItemSpacing.y);
+        if (spacer > 0.0f)
+            ImGui::Dummy(ImVec2(0.0f, spacer));
+        const float content_top = ImGui::GetCursorPosY();
+        ImDrawList* transcript_list = ImGui::GetWindowDrawList();
+        const int first_vertex = transcript_list->VtxBuffer.Size;
         for (std::size_t index = 0; index < rows_.size(); index++) {
             const Row& row = rows_[index];
             ImGui::PushID(static_cast<int>(index));
             if (row.log) {
                 if (!row.error.empty())
-                    ImGui::TextColored(ImVec4(1, .35f, .35f, 1), "%s", row.error.c_str());
+                    error_row(row.error.c_str());
                 else
-                    ImGui::TextWrapped("%s", row.text.c_str());
+                    marked_row(" ", kQuietColour, row.text.c_str(), &kQuietColour);
             } else {
-                ImGui::TextColored(ImVec4(.55f, .8f, 1, 1), "> %s", row.source.c_str());
+                marked_row(">", kPromptColour, row.source.c_str());
                 if (row.pending)
-                    ImGui::TextDisabled("Pending...");
+                    marked_row("<", kQuietColour, "...", &kQuietColour);
                 else if (!row.error.empty())
-                    ImGui::TextColored(ImVec4(1, .35f, .35f, 1), "%s", row.error.c_str());
-                else if (!row.text.empty())
-                    ImGui::TextWrapped("%s", row.text.c_str());
-                for (std::size_t child = 0; child < row.inspection.size(); child++)
-                    draw_node(row.inspection[child],
-                              std::to_string(index) + ":" + std::to_string(child));
+                    error_row(row.error.c_str());
+                else if (!row.text.empty() && !row.inspection.empty() &&
+                         row.text.find('\n') == std::string::npos) {
+                    /* A result that can be expanded starts collapsed, as in a browser console. */
+                    ImGui::TextColored(kQuietColour, "<");
+                    ImGui::SameLine(0.0f, 8.0f);
+                    const bool open = ImGui::TreeNodeEx("##result", kTreeFlags, "");
+                    ImGui::SameLine(0.0f, 0.0f);
+                    ImGui::TextColored(kKeywordColour, "table ");
+                    ImGui::SameLine(0.0f, 0.0f);
+                    const std::string summary =
+                        table_preview(row.inspection, false, 0, ImGui::GetContentRegionAvail().x);
+                    draw_highlighted(summary);
+                    if (open) {
+                        for (std::size_t child = 0; child < row.inspection.size(); child++)
+                            draw_node(row.inspection[child],
+                                      std::to_string(index) + ":" + std::to_string(child));
+                        ImGui::TreePop();
+                    }
+                } else {
+                    if (!row.text.empty() && is_function_value(row.text)) {
+                        ImGui::TextColored(kQuietColour, "<");
+                        ImGui::SameLine(0.0f, 8.0f);
+                        draw_highlighted(function_text(row.text));
+                    } else if (!row.text.empty()) {
+                        marked_row("<", kQuietColour, row.text.c_str());
+                    }
+                    for (std::size_t child = 0; child < row.inspection.size(); child++) {
+                        ImGui::Indent(16.0f);
+                        draw_node(row.inspection[child],
+                                  std::to_string(index) + ":" + std::to_string(child));
+                        ImGui::Unindent(16.0f);
+                    }
+                }
             }
             ImGui::PopID();
         }
+        const float measured = ImGui::GetCursorPosY() - content_top;
+        if (std::fabs(measured - transcript_height_) > 0.5f) {
+            /* The spacer above used last frame's height. Move what was just drawn to where it
+             * belongs now, so a new row does not show for one frame in the wrong place; layout
+             * catches up on the next frame. */
+            const float wanted =
+                std::max(0.0f, pane_height - measured - ImGui::GetStyle().ItemSpacing.y);
+            const float shift = wanted - spacer;
+            for (int vertex = first_vertex; vertex < transcript_list->VtxBuffer.Size; vertex++)
+                transcript_list->VtxBuffer[vertex].pos.y += shift;
+            transcript_height_ = measured;
+            queue_redraw();
+        }
         if (scroll_to_bottom_) {
-            ImGui::SetScrollHereY(1.0f);
+            /* Only when the content really overflows; the spacer above used last frame's height and
+             * can overflow for a frame without the content being too tall. */
+            if (measured > pane_height)
+                ImGui::SetScrollHereY(1.0f);
             scroll_to_bottom_ = false;
         }
     }
     ImGui::EndChild();
+    ImGui::PopStyleVar();
 
-    ImGui::TextUnformatted("Input (Enter runs, Shift+Enter adds a line)");
-    const ImVec2 input_size(ImGui::GetContentRegionAvail().x,
-                            ImGui::GetTextLineHeightWithSpacing() * 4.0f);
-    ImGui::InputTextMultiline("##input", input_.data(), input_.size(), input_size,
+    /* Input line. */
+    list->AddLine(ImVec2(origin.x, origin.y + input_top - 1.0f),
+                  ImVec2(origin.x + width, origin.y + input_top - 1.0f), line_colour);
+    ImGui::SetCursorPos(ImVec2(kInset, input_top + kRowPadding));
+    ImGui::TextColored(kPromptColour, ">");
+    ImGui::SameLine(0.0f, 8.0f);
+    ImGui::SetCursorPosY(input_top);
+
+    if (reload_input_) {
+        if (ImGuiInputTextState* state = ImGui::GetInputTextState(ImGui::GetID("##input")))
+            state->ReloadUserBufAndMoveToEnd();
+        reload_input_ = false;
+    }
+    /* Typing always goes to the input: clicking a result must not leave the console deaf. */
+    if (!ImGui::IsAnyItemActive() && !ImGui::IsMouseDown(0))
+        focus_input_ = true;
+    if (focus_input_) {
+        ImGui::SetKeyboardFocusHere();
+        focus_input_ = false;
+    }
+    ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0.0f, kRowPadding));
+    ImGui::PushStyleVar(ImGuiStyleVar_FrameBorderSize, 0.0f);
+    ImGui::InputTextMultiline("##input", input_.data(), input_.size(),
+                              ImVec2(ImGui::GetContentRegionAvail().x - kInset, input_height),
                               ImGuiInputTextFlags_WordWrap);
-    if (ImGui::Button(pending_ ? "Running..." : "Run") && !pending_)
-        submit();
-    ImGui::SameLine();
-    if (ImGui::Button("Complete"))
-        complete();
+    ImGui::PopStyleVar(2);
+    input_anchor_x_ = ImGui::GetItemRectMin().x;
+    input_anchor_y_ = ImGui::GetItemRectMax().y + preview_height;
+    if (!preview_text_.empty()) {
+        ImGui::SetCursorPos(ImVec2(kInset, input_top + input_height));
+        ImGui::TextColored(kQuietColour, "<");
+        ImGui::SameLine(0.0f, 8.0f);
+        draw_highlighted(preview_text_);
+    }
+    input_width_ = ImGui::GetItemRectSize().x;
+
+    if ((enter_requested_ || tab_requested_) &&
+        ImGui::GetCurrentContext()->InputEventsQueue.Size == 0) {
+        const bool enter = enter_requested_;
+        const bool tab = tab_requested_;
+        enter_requested_ = tab_requested_ = false;
+        /* Enter submits what was typed unless a suggestion was picked from the list; Tab takes the
+         * highlighted suggestion. */
+        if (completion_visible_ && completion_source_ == input_.data() &&
+            (tab || completion_chosen_))
+            accept_completion();
+        else if (enter)
+            submit();
+        else {
+            /* Tab before the suggestions have arrived takes the first one when they do. */
+            accept_on_arrival_ = tab;
+            complete();
+        }
+    }
     if (completion_visible_ && completion_source_ != input_.data())
         completion_visible_ = false;
-    if (completion_visible_) {
-        ImGui::SameLine();
-        ImGui::TextDisabled("Tab/Enter accepts completion");
+    /* Suggest as the user types: once every queued character is applied, ask for completions of
+     * the text as it now stands. */
+    if (ImGui::GetCurrentContext()->InputEventsQueue.Size == 0 &&
+        completion_requested_ != input_.data()) {
+        completion_requested_ = input_.data();
+        if (completion_requested_.empty()) {
+            completion_visible_ = false;
+            signature_ = {};
+            ++*completion_generation_;
+        } else
+            complete();
+    }
+    if (ImGui::GetCurrentContext()->InputEventsQueue.Size == 0 &&
+        preview_requested_ != input_.data()) {
+        preview_requested_ = input_.data();
+        request_preview();
+    }
+    ImGui::End();
+
+    if (!signature_.empty())
+        draw_signature();
+    if (completion_visible_)
+        draw_completions();
+}
+
+/* Parameter help for the call being typed, directly under the input line. The active parameter
+ * is marked; a table parameter lists its keys one level in. */
+void GnoblinConsolePanel::draw_signature() {
+    const float wrap = std::max(input_width_ * 0.6f, 480.0f);
+    ImGui::SetNextWindowPos(ImVec2(input_anchor_x_ - 4.0f, input_anchor_y_ + 2.0f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(360.0f, 0.0f), ImVec2(wrap + 24.0f, FLT_MAX));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 6.0f));
+    constexpr ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing |
+        ImGuiWindowFlags_NoInputs;
+    if (ImGui::Begin("##console-signature", nullptr, flags)) {
+        ImGui::PushTextWrapPos(wrap);
+        {
+            const std::size_t open = signature_.title.find('(');
+            ImGui::TextColored(kFunctionColour, "%s", signature_.title.substr(0, open).c_str());
+            if (open != std::string::npos) {
+                ImGui::SameLine(0.0f, 0.0f);
+                draw_signature_text(signature_.title.substr(open));
+            }
+        }
+        if (!signature_.summary.empty())
+            ImGui::TextColored(kQuietColour, "%s", signature_.summary.c_str());
+        if (!signature_.rows.empty())
+            ImGui::Spacing();
+        for (const auto& row : signature_.rows) {
+            if (row.indent > 0)
+                ImGui::Indent(18.0f * row.indent);
+            ImGui::TextColored(kKeywordColour, "%s", row.active ? ">" : " ");
+            ImGui::SameLine(0.0f, 6.0f);
+            ImGui::TextColored(kKeyColour, "%s", row.label.c_str());
+            ImGui::SameLine(0.0f, 0.0f);
+            ImGui::TextColored(kQuietColour, ": ");
+            ImGui::SameLine(0.0f, 0.0f);
+            ImGui::TextColored(kTypeColour, "%s", row.type.c_str());
+            if (!row.description.empty()) {
+                ImGui::SameLine(0.0f, 10.0f);
+                ImGui::TextColored(kQuietColour, "%s", row.description.c_str());
+            }
+            if (row.indent > 0)
+                ImGui::Unindent(18.0f * row.indent);
+        }
+        ImGui::PopTextWrapPos();
+        signature_height_ = ImGui::GetWindowSize().y;
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
+}
+
+/* Matches the input line: a small list under it, no decoration, with the highlighted entry's
+ * signature and description in a panel below. */
+void GnoblinConsolePanel::draw_completions() {
+    const float line = ImGui::GetTextLineHeightWithSpacing();
+    const float top =
+        input_anchor_y_ + 2.0f + (signature_.empty() ? 0.0f : signature_height_ + 2.0f);
+    const float room = ImGui::GetMainViewport()->WorkSize.y - top - 8.0f;
+    ImGui::SetNextWindowPos(ImVec2(input_anchor_x_ - 4.0f, top), ImGuiCond_Always,
+                            ImVec2(0.0f, 0.0f));
+    ImGui::SetNextWindowSizeConstraints(
+        ImVec2(std::min(360.0f, input_width_), line * 5 + 8.0f),
+        ImVec2(std::max(input_width_ * 0.5f, 360.0f), std::min(line * 12 + 8.0f, room)));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(2.0f, 2.0f));
+    ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0.0f, 0.0f));
+    constexpr ImGuiWindowFlags flags =
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoFocusOnAppearing;
+    /* Labels share a column; each entry's type or signature sits to its right. */
+    float column = 0.0f;
+    for (const auto& item : completions_)
+        column = std::max(column, ImGui::CalcTextSize(item.label.c_str()).x);
+    column = std::min(column, 320.0f) + 24.0f;
+    ImVec2 list_position, list_size;
+    if (ImGui::Begin("##console-completions", nullptr, flags)) {
         for (std::size_t i = 0; i < completions_.size(); i++) {
-            const auto& item = completions_[i];
             const bool selected = static_cast<int>(i) == completion_index_;
-            if (ImGui::Selectable(item.label.c_str(), selected)) {
+            ImGui::PushID(static_cast<int>(i));
+            if (ImGui::Selectable(completions_[i].label.c_str(), selected)) {
                 completion_index_ = static_cast<int>(i);
                 accept_completion();
             }
-            if (selected && !item.documentation.empty())
-                ImGui::SetItemTooltip("%s\n%s", item.detail.c_str(), item.documentation.c_str());
+            if (!completions_[i].detail.empty()) {
+                ImGui::SameLine(column);
+                draw_signature_text(completions_[i].detail);
+            }
+            ImGui::PopID();
+            if (selected && completion_scroll_)
+                ImGui::SetScrollHereY();
         }
+        completion_scroll_ = false;
+        list_position = ImGui::GetWindowPos();
+        list_size = ImGui::GetWindowSize();
     }
     ImGui::End();
+    ImGui::PopStyleVar(2);
+
+    if (completion_index_ < 0 || completion_index_ >= static_cast<int>(completions_.size()))
+        return;
+    const auto& chosen = completions_[completion_index_];
+    const bool generic = chosen.documentation == "Live Lua environment member" ||
+                         chosen.documentation == "Read-only Gnoblin snapshot member";
+    if (chosen.documentation.empty() || (generic && starts_with(chosen.detail, "Lua ")))
+        return;
+    const float wrap = std::max(list_size.x, 420.0f);
+    ImGui::SetNextWindowPos(ImVec2(list_position.x, list_position.y + list_size.y + 2.0f));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(wrap, 0.0f), ImVec2(wrap, FLT_MAX));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(8.0f, 6.0f));
+    if (ImGui::Begin("##console-completion-doc", nullptr, flags | ImGuiWindowFlags_NoInputs)) {
+        ImGui::PushTextWrapPos(wrap - 16.0f);
+        if (!generic) {
+            if (starts_with(chosen.detail, "(")) {
+                ImGui::TextColored(kFunctionColour, "%s", chosen.label.c_str());
+                ImGui::SameLine(0.0f, 0.0f);
+                draw_signature_text(chosen.detail);
+            } else {
+                ImGui::TextColored(kKeyColour, "%s", chosen.label.c_str());
+                ImGui::SameLine(0.0f, 0.0f);
+                ImGui::TextColored(kQuietColour, ": ");
+                ImGui::SameLine(0.0f, 0.0f);
+                ImGui::TextColored(kTypeColour, "%s", chosen.detail.c_str());
+            }
+        }
+        ImGui::TextColored(kQuietColour, "%s", chosen.documentation.c_str());
+        ImGui::PopTextWrapPos();
+    }
+    ImGui::End();
+    ImGui::PopStyleVar();
 }
 
 void GnoblinConsolePanel::submit() {
@@ -284,7 +987,11 @@ void GnoblinConsolePanel::submit() {
     source.erase(last + 1);
     append_history(source);
     std::fill(input_.begin(), input_.end(), '\0');
+    reload_input_ = true;
+    focus_input_ = true;
     completion_visible_ = false;
+    signature_ = {};
+    preview_text_.clear();
     if (source == ":help") {
         append_result(source, {true, console_help(), {}, {}});
         return;
@@ -330,27 +1037,70 @@ void GnoblinConsolePanel::submit_control(GnoblinConsoleControl control, std::str
 
 void GnoblinConsolePanel::complete() {
     const std::string source(input_.data());
-    completion_visible_ = false;
-    completions_.clear();
     completion_source_ = source;
     const std::uint64_t generation = ++*completion_generation_;
     const std::weak_ptr<std::uint64_t> lifetime = completion_generation_;
     if (callbacks_.complete)
-        callbacks_.complete(source, [this, lifetime, generation,
-                                     source](std::vector<GnoblinConsoleCompletion> result) {
-            const auto current = lifetime.lock();
-            if (!current || *current != generation)
-                return;
-            if (!visible_ || source != input_.data())
-                return;
-            completions_ = std::move(result);
-            if (completions_.size() > 64)
-                completions_.resize(64);
-            completion_index_ = 0;
-            completion_visible_ = !completions_.empty();
-            queue_redraw();
-        });
+        callbacks_.complete(
+            source, [this, lifetime, generation, source](GnoblinConsoleHints hints) {
+                const auto current = lifetime.lock();
+                if (!current || *current != generation)
+                    return;
+                if (!visible_ || source != input_.data())
+                    return;
+                completions_ = std::move(hints.completions);
+                signature_ = std::move(hints.signature);
+                /* Names starting with an underscore are internal; list them last. */
+                std::stable_partition(completions_.begin(), completions_.end(),
+                                      [](const GnoblinConsoleCompletion& item) {
+                                          const auto dot = item.label.find_last_of('.');
+                                          const auto leaf = dot == std::string::npos ? 0 : dot + 1;
+                                          return item.label.compare(leaf, 1, "_") != 0;
+                                      });
+                if (completions_.size() > 64)
+                    completions_.resize(64);
+                completion_index_ = 0;
+                completion_chosen_ = false;
+                completion_scroll_ = true;
+                completion_visible_ = !completions_.empty();
+                if (accept_on_arrival_ && completion_visible_)
+                    accept_completion();
+                accept_on_arrival_ = false;
+                queue_redraw();
+            });
     queue_redraw();
+}
+
+void GnoblinConsolePanel::request_preview() {
+    ++*preview_generation_;
+    if (!is_plain_path(preview_requested_) || !callbacks_.evaluate || pending_) {
+        if (!preview_text_.empty()) {
+            preview_text_.clear();
+            queue_redraw();
+        }
+        return;
+    }
+    const std::uint64_t generation = *preview_generation_;
+    const std::weak_ptr<std::uint64_t> lifetime = preview_generation_;
+    const std::string source = preview_requested_;
+    callbacks_.evaluate(source, [this, lifetime, generation, source](GnoblinConsoleResult result) {
+        const auto current = lifetime.lock();
+        if (!current || *current != generation || !visible_ || source != input_.data())
+            return;
+        std::string text;
+        if (result.success && !result.value.empty()) {
+            if (!result.inspection.empty())
+                text = "table " + table_preview(result.inspection, false, 0);
+            else
+                text = result.value.substr(0, result.value.find('\n'));
+            if (is_function_value(text))
+                text = function_text(text);
+        }
+        if (text != preview_text_) {
+            preview_text_ = std::move(text);
+            queue_redraw();
+        }
+    });
 }
 
 void GnoblinConsolePanel::accept_completion() {
@@ -368,6 +1118,10 @@ void GnoblinConsolePanel::accept_completion() {
     const std::string updated =
         current.substr(0, token == std::string::npos ? 0 : token + 1) + replacement;
     std::snprintf(input_.data(), input_.size(), "%s", updated.c_str());
+    completion_requested_ = updated;
+    completion_chosen_ = false;
+    reload_input_ = true;
+    focus_input_ = true;
     completion_visible_ = false;
     queue_redraw();
 }
@@ -391,7 +1145,8 @@ void GnoblinConsolePanel::append_result(std::string source, GnoblinConsoleResult
     }
     if (rows_.size() > kMaxRows)
         rows_.erase(rows_.begin());
-    scroll_to_bottom_ = true;
+    /* Output follows only while the view is at the end, so reading back is not interrupted. */
+    scroll_to_bottom_ = scroll_to_bottom_ || at_bottom_;
     queue_redraw();
 }
 
@@ -417,23 +1172,56 @@ void GnoblinConsolePanel::history_step(int delta) {
     const std::string& value =
         history_index_ == history_.size() ? history_draft_ : history_[history_index_];
     std::snprintf(input_.data(), input_.size(), "%s", value.c_str());
+    completion_requested_ = value;
+    completion_visible_ = false;
+    signature_ = {};
+    reload_input_ = true;
+    focus_input_ = true;
 }
 
 void GnoblinConsolePanel::draw_node(const GnoblinConsoleInspectorNode& node,
                                     const std::string& id) {
     ImGui::PushID(id.c_str());
-    const std::string label = node.label + (node.value.empty() ? "" : ": " + node.value);
-    if (node.children.empty()) {
-        ImGui::TextWrapped("%s", label.c_str());
-        if (node.has_more)
-            ImGui::TextDisabled("Result preview is limited or contains a repeated reference.");
-    } else if (ImGui::TreeNode(label.c_str())) {
+    const bool placeholder =
+        node.children.empty() && node.value.empty() && node.label.empty() && node.has_more;
+    ImGui::PushStyleColor(ImGuiCol_Text, placeholder ? kQuietColour : kKeyColour);
+    /* A node cut off at the cap shows how many entries were left out. */
+    const std::string shown = !placeholder    ? plain_key(node.label)
+                              : node.more > 0 ? "… " + std::to_string(node.more) + " more"
+                                              : "…";
+    /* Leaves use the same row as expandable nodes, so labels line up and hover alike. */
+    const bool expanded = ImGui::TreeNodeEx(
+        "##node", node.children.empty() ? kLeafFlags : kTreeFlags, "%s", shown.c_str());
+    ImGui::PopStyleColor();
+    const bool table_like = !node.children.empty() || starts_with(node.value, "<table");
+    if (table_like || !node.value.empty()) {
+        ImGui::SameLine(0.0f, 8.0f);
+        const bool circular = node.value.find("(circular)") != std::string::npos;
+        const std::string shown_value =
+            circular ? std::string("(circular)")
+            : table_like
+                ? table_preview(node.children, node.has_more, 0, ImGui::GetContentRegionAvail().x)
+            : is_function_value(node.value) ? function_text(node.value)
+                                            : node.value;
+        if (table_like || is_function_value(node.value)) {
+            draw_highlighted(shown_value);
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Text, value_colour(node.value));
+            ImGui::TextWrapped("%s", shown_value.c_str());
+            ImGui::PopStyleColor();
+        }
+    }
+    if (!node.children.empty() && expanded) {
         for (std::size_t i = 0; i < node.children.size(); i++)
             draw_node(node.children[i], id + ":" + std::to_string(i));
         if (node.has_more)
-            ImGui::TextDisabled("Result preview is limited or contains a repeated reference.");
+            ImGui::TextColored(kQuietColour, "%s",
+                               node.more > 0 ? ("… " + std::to_string(node.more) + " more").c_str()
+                                             : "…");
         ImGui::TreePop();
     }
+    if (node.children.empty() && node.has_more && !placeholder)
+        ImGui::TextColored(kQuietColour, "…");
     ImGui::PopID();
 }
 

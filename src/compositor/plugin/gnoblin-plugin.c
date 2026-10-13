@@ -119,6 +119,23 @@ static gboolean gnoblin_plugin_handle_event(const ClutterEvent* event, gpointer 
                                                                        : CLUTTER_EVENT_PROPAGATE;
 }
 
+static gboolean gnoblin_plugin_is_modal(gpointer user_data) {
+    MetaGnoblinPlugin* self = user_data;
+
+    return !gnoblin_plugin_session_is_locked(self) &&
+           gnoblin_plugin_ui_console_visible(self->diagnostics_ui);
+}
+
+static gboolean gnoblin_plugin_handle_key(const ClutterEvent* event, gpointer user_data) {
+    MetaGnoblinPlugin* self = user_data;
+
+    if (gnoblin_plugin_session_is_locked(self))
+        return CLUTTER_EVENT_PROPAGATE;
+    return gnoblin_plugin_ui_handle_key_event(self->diagnostics_ui, event)
+               ? CLUTTER_EVENT_STOP
+               : CLUTTER_EVENT_PROPAGATE;
+}
+
 static void gnoblin_plugin_session_lock_changed(MetaWaylandCompositor* compositor,
                                                 MetaWaylandSessionLockState state,
                                                 gpointer user_data) {
@@ -164,7 +181,8 @@ static void gnoblin_plugin_start(MetaPlugin* plugin) {
      * share the top-window group, so parenting this actor there lets a shell
      * cover recovery and console UI. */
     self->diagnostics_ui = gnoblin_plugin_ui_new(meta_backend_get_stage(backend), display);
-    self->input = (GnoblinPluginInput){gnoblin_plugin_handle_event, self};
+    self->input = (GnoblinPluginInput){gnoblin_plugin_handle_event, self, gnoblin_plugin_handle_key,
+                                       gnoblin_plugin_is_modal};
     gnoblin_plugin_input_attach(G_OBJECT(display), &self->input);
     self->wayland_compositor = meta_context_get_wayland_compositor(context);
     if (self->wayland_compositor)
@@ -274,4 +292,13 @@ static void meta_gnoblin_plugin_class_init(MetaGnoblinPluginClass* klass) {
 
 static void meta_gnoblin_plugin_init(MetaGnoblinPlugin* self) {
     (void)self;
+}
+
+float gnoblin_plugin_paint_scale(ClutterPaintContext* paint_context) {
+    ClutterStageView* view;
+
+    if (!paint_context)
+        return 1.0f;
+    view = clutter_paint_context_get_stage_view(paint_context);
+    return view ? clutter_stage_view_get_scale(view) : 1.0f;
 }

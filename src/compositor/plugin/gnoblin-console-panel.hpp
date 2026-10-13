@@ -31,6 +31,8 @@ struct GnoblinConsoleInspectorNode {
     std::string value;
     std::vector<GnoblinConsoleInspectorNode> children;
     bool has_more = false;
+    /* Entries past the cap that were not sent; 0 when the number is unknown. */
+    std::uint32_t more = 0;
 };
 
 struct GnoblinConsoleResult {
@@ -56,10 +58,35 @@ using GnoblinConsoleEvaluateFunc =
 using GnoblinConsoleControlFunc = std::function<void(
     GnoblinConsoleControl control, std::function<void(GnoblinConsoleResult)> done)>;
 
+/* One parameter of the call being typed, or, one level in, a key of its table argument. */
+struct GnoblinConsoleHelpRow {
+    std::string label;
+    std::string type;
+    std::string description;
+    int indent = 0;
+    bool active = false;
+};
+
+/* Parameter help for the call under the cursor. Empty when the cursor is not inside a call to a
+ * function whose signature is known. */
+struct GnoblinConsoleSignature {
+    std::string title;
+    std::string summary;
+    std::vector<GnoblinConsoleHelpRow> rows;
+    bool empty() const {
+        return title.empty();
+    }
+};
+
+struct GnoblinConsoleHints {
+    std::vector<GnoblinConsoleCompletion> completions;
+    GnoblinConsoleSignature signature;
+};
+
 /* Async completion reads names from the runtime without evaluating input.
  * The coordinator completes requests on the compositor thread. */
-using GnoblinConsoleCompleteFunc = std::function<void(
-    std::string_view source, std::function<void(std::vector<GnoblinConsoleCompletion>)> done)>;
+using GnoblinConsoleCompleteFunc =
+    std::function<void(std::string_view source, std::function<void(GnoblinConsoleHints)> done)>;
 
 /* Persistence is injected because settings storage is session policy.  The
  * UI caps the stored command history at 200 entries. */
@@ -103,7 +130,8 @@ class GnoblinConsolePanel {
      * open. add_text() forwards UTF-8 input to the overlay's ImGui context.
      * Return true when the console consumed a key. */
     void add_text(const char* utf8);
-    bool handle_key(guint keyval, ClutterModifierType modifiers, bool pressed);
+    bool handle_key(guint keyval, ClutterModifierType modifiers, bool pressed,
+                    bool repeated = false);
 
     /* Useful for runtime log forwarding.  The transcript is bounded to 200
      * rows, independently of persisted command history. */
@@ -120,7 +148,10 @@ class GnoblinConsolePanel {
     void append_history(const std::string& source);
     void history_step(int delta);
     void draw_node(const GnoblinConsoleInspectorNode& node, const std::string& id);
+    void draw_completions();
+    void draw_signature();
     void queue_redraw();
+    void request_preview();
 
     GnoblinImGuiOverlay* overlay_;
     GnoblinConsoleCallbacks callbacks_;
@@ -130,11 +161,42 @@ class GnoblinConsolePanel {
     std::size_t history_index_ = 0;
     std::string history_draft_;
     std::vector<GnoblinConsoleCompletion> completions_;
+    GnoblinConsoleSignature signature_;
+    float signature_height_ = 0.0f;
     int completion_index_ = 0;
     bool completion_visible_ = false;
     std::shared_ptr<std::uint64_t> completion_generation_ = std::make_shared<std::uint64_t>(0);
     std::string completion_source_;
     bool scroll_to_bottom_ = true;
+    /* Whether the transcript was scrolled to its end last frame; new output follows only then. */
+    bool at_bottom_ = true;
+    int scroll_request_pages_ = 0;
+    /* The input text completions were last requested for, so typing asks once the text settles. */
+    std::string completion_requested_;
+    /* Value of the typed text when it is a plain name, shown greyed under the input. */
+    std::string preview_text_;
+    std::string preview_requested_;
+    std::shared_ptr<std::uint64_t> preview_generation_ = std::make_shared<std::uint64_t>(0);
+    /* Set once the user moves in the list; Enter then accepts, otherwise it submits. */
+    bool completion_chosen_ = false;
+    float transcript_height_ = 0.0f;
+    /* The input takes keyboard focus when the console opens and after each
+     * action, so typing works without a click first. ImGui keeps its own copy of
+     * the text while the box is active, so a buffer rewritten by submit, history
+     * or completion must be reloaded into it. */
+    bool focus_input_ = true;
+    bool reload_input_ = false;
+    /* Enter and Tab act on the input only after ImGui has applied every queued
+     * character, or text typed just before them would be lost. */
+    bool enter_requested_ = false;
+    bool tab_requested_ = false;
+    /* Tab was pressed before the suggestions arrived: take the first one when they do. */
+    bool accept_on_arrival_ = false;
+    /* Where the completion list is drawn: above the input, inside the screen. */
+    bool completion_scroll_ = false;
+    float input_anchor_x_ = 0.0f;
+    float input_anchor_y_ = 0.0f;
+    float input_width_ = 0.0f;
     bool pending_ = false;
     bool visible_ = false;
 };

@@ -168,9 +168,11 @@ typedef struct {
     GVariant* result;
     GError* error;
 } EvalRun;
-#define MAX_CONSOLE_INSPECTION_DEPTH 6
-#define MAX_CONSOLE_INSPECTION_NODES 200
-#define MAX_CONSOLE_INSPECTION_CHILDREN 64
+void console_register_signatures(lua_State* state);
+#define MAX_CONSOLE_INSPECTION_DEPTH 8
+#define MAX_CONSOLE_INSPECTION_NODES 4000
+#define MAX_CONSOLE_INSPECTION_CHILDREN 512
+#define MAX_CONSOLE_INSPECTION_TEXT_BYTES (256 * 1024)
 #define MAX_CONSOLE_INSPECTION_VALUE_BYTES 1024
 typedef struct {
     guint nodes;

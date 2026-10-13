@@ -192,6 +192,27 @@ See the [TypeSafe API reference](https://api.typesafe.ai/docs) and
 for provider details. Agents only run Jev automatically when `.env` opts
 in with `GNOBLIN_DOCS_JEV_PROVIDER`.
 
+## Lua API annotations
+
+The signatures the console and editors show for `gnoblin.*` functions come from LuaCATS
+annotations in `src/config/lua/api/*.h`. Each block is a C comment that opens with `/*** lua`
+and closes with `*/`, holding plain LuaCATS: a `---@class` with its `---@field` lines for each
+table argument, and for each function its summary, `---@param` and `---@return` lines and a
+`function gnoblin.example(name) end` stub. Describe what the code accepts and enforces, not what
+the docs say; read the handler, not just the Lua binding.
+
+After adding or changing a Lua function or the keys it accepts, update its annotation and run:
+
+```sh
+python3 scripts/gen-lua-api.py
+```
+
+This rewrites `src/config/lua/gnoblin-lua-signatures.inc`, which the console compiles in, and
+`docs/public/gnoblin.d.lua`, the file published for Lua Language Server. A pre-commit hook runs
+the script with `--check` and fails when either file is stale. Use `--validate` to check the
+annotations without writing anything. A C function without an annotation shows as plain `fn` in the
+console, so annotate every public function.
+
 ## Issues and commit hooks
 
 Gnoblin uses Beads for its work queue and GitHub Issues as the shared record.

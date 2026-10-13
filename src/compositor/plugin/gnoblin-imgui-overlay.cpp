@@ -15,13 +15,16 @@
 #include <vector>
 
 #include "cogl/cogl.h"
+#include "gnoblin-plugin-ui.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 
 struct _GnoblinImGuiOverlay {
     ClutterActor* actor;
     ClutterContent* content;
     ImGuiContext* context;
     CoglTexture* font_texture;
+    float font_scale;
     GnoblinImGuiOverlayDrawFunc draw_callback;
     void* draw_user_data;
     GDestroyNotify draw_destroy;
@@ -57,11 +60,35 @@ static void gnoblin_imgui_render_draw_data(GnoblinImGuiOverlay* overlay,
         return;
 
     CoglContext* cogl_context = cogl_framebuffer_get_context(framebuffer);
+    /* The overlay paints in the actor's logical coordinates, the same space as
+     * ImGui's vertices and clip rectangles. Output density only changes the
+     * font bake, so clip rectangles are not scaled. */
     const ImVec2 clip_offset = draw_data->DisplayPos;
-    const ImVec2 clip_scale = draw_data->FramebufferScale;
+
+    /* Only the font atlas is ever bound, so one pipeline serves the frame. */
+    CoglTexture* pipeline_texture = nullptr;
+    CoglPipeline* pipeline = nullptr;
+    std::vector<guint> indices;
 
     for (int list_index = 0; list_index < draw_data->CmdListsCount; list_index++) {
         const ImDrawList* list = draw_data->CmdLists[list_index];
+        if (list->VtxBuffer.Size == 0)
+            continue;
+
+        /* Upload each list's vertices once; its commands only differ by clip
+         * rectangle and index range. */
+        CoglAttributeBuffer* vertex_buffer = cogl_attribute_buffer_new(
+            cogl_context, list->VtxBuffer.Size * sizeof(ImDrawVert), list->VtxBuffer.Data);
+        CoglAttribute* attributes[3];
+        attributes[0] = cogl_attribute_new(vertex_buffer, "cogl_position_in", sizeof(ImDrawVert),
+                                           offsetof(ImDrawVert, pos), 2, COGL_ATTRIBUTE_TYPE_FLOAT);
+        attributes[1] = cogl_attribute_new(vertex_buffer, "cogl_tex_coord0_in", sizeof(ImDrawVert),
+                                           offsetof(ImDrawVert, uv), 2, COGL_ATTRIBUTE_TYPE_FLOAT);
+        attributes[2] =
+            cogl_attribute_new(vertex_buffer, "cogl_color_in", sizeof(ImDrawVert),
+                               offsetof(ImDrawVert, col), 4, COGL_ATTRIBUTE_TYPE_UNSIGNED_BYTE);
+        cogl_attribute_set_normalized(attributes[2], TRUE);
+
         for (int command_index = 0; command_index < list->CmdBuffer.Size; command_index++) {
             const ImDrawCmd* command = &list->CmdBuffer[command_index];
             if (command->UserCallback != nullptr) {
@@ -70,10 +97,10 @@ static void gnoblin_imgui_render_draw_data(GnoblinImGuiOverlay* overlay,
                 continue;
             }
 
-            const float clip_x1 = (command->ClipRect.x - clip_offset.x) * clip_scale.x;
-            const float clip_y1 = (command->ClipRect.y - clip_offset.y) * clip_scale.y;
-            const float clip_x2 = (command->ClipRect.z - clip_offset.x) * clip_scale.x;
-            const float clip_y2 = (command->ClipRect.w - clip_offset.y) * clip_scale.y;
+            const float clip_x1 = command->ClipRect.x - clip_offset.x;
+            const float clip_y1 = command->ClipRect.y - clip_offset.y;
+            const float clip_x2 = command->ClipRect.z - clip_offset.x;
+            const float clip_y2 = command->ClipRect.w - clip_offset.y;
             if (clip_x1 >= clip_x2 || clip_y1 >= clip_y2)
                 continue;
 
@@ -84,24 +111,24 @@ static void gnoblin_imgui_render_draw_data(GnoblinImGuiOverlay* overlay,
             if (texture == nullptr)
                 continue;
 
-            std::vector<guint> indices;
+            if (pipeline == nullptr || texture != pipeline_texture) {
+                if (pipeline != nullptr)
+                    g_object_unref(pipeline);
+                pipeline = cogl_pipeline_new(cogl_context);
+                cogl_pipeline_set_layer_texture(pipeline, 0, texture);
+                cogl_pipeline_set_layer_filters(pipeline, 0, COGL_PIPELINE_FILTER_LINEAR,
+                                                COGL_PIPELINE_FILTER_LINEAR);
+                g_autoptr(GError) error = nullptr;
+                cogl_pipeline_set_blend(
+                    pipeline, "RGBA = ADD(SRC_COLOR*(SRC_COLOR[A]), DST_COLOR*(1-SRC_COLOR[A]))",
+                    &error);
+                pipeline_texture = texture;
+            }
+
+            indices.clear();
             indices.reserve(command->ElemCount);
             for (unsigned int i = 0; i < command->ElemCount; i++)
                 indices.push_back(list->IdxBuffer[command->IdxOffset + i] + command->VtxOffset);
-
-            CoglAttributeBuffer* vertex_buffer = cogl_attribute_buffer_new(
-                cogl_context, list->VtxBuffer.Size * sizeof(ImDrawVert), list->VtxBuffer.Data);
-            CoglAttribute* attributes[3];
-            attributes[0] =
-                cogl_attribute_new(vertex_buffer, "cogl_position_in", sizeof(ImDrawVert),
-                                   offsetof(ImDrawVert, pos), 2, COGL_ATTRIBUTE_TYPE_FLOAT);
-            attributes[1] =
-                cogl_attribute_new(vertex_buffer, "cogl_tex_coord0_in", sizeof(ImDrawVert),
-                                   offsetof(ImDrawVert, uv), 2, COGL_ATTRIBUTE_TYPE_FLOAT);
-            attributes[2] =
-                cogl_attribute_new(vertex_buffer, "cogl_color_in", sizeof(ImDrawVert),
-                                   offsetof(ImDrawVert, col), 4, COGL_ATTRIBUTE_TYPE_UNSIGNED_BYTE);
-            cogl_attribute_set_normalized(attributes[2], TRUE);
 
             CoglPrimitive* primitive = cogl_primitive_new_with_attributes(
                 COGL_VERTICES_MODE_TRIANGLES, list->VtxBuffer.Size, attributes,
@@ -110,68 +137,138 @@ static void gnoblin_imgui_render_draw_data(GnoblinImGuiOverlay* overlay,
                 cogl_context, COGL_INDICES_TYPE_UNSIGNED_INT, indices.data(), indices.size());
             cogl_primitive_set_indices(primitive, cogl_indices, indices.size());
 
-            CoglPipeline* pipeline = cogl_pipeline_new(cogl_context);
-            cogl_pipeline_set_layer_texture(pipeline, 0, texture);
-            cogl_pipeline_set_layer_filters(pipeline, 0, COGL_PIPELINE_FILTER_LINEAR,
-                                            COGL_PIPELINE_FILTER_LINEAR);
-            g_autoptr(GError) error = nullptr;
-            cogl_pipeline_set_blend(
-                pipeline, "RGBA = ADD(SRC_COLOR*(SRC_COLOR[A]), DST_COLOR*(1-SRC_COLOR[A]))",
-                &error);
-
             cogl_framebuffer_push_rectangle_clip(framebuffer, clip_x1, clip_y1, clip_x2, clip_y2);
             cogl_primitive_draw(primitive, framebuffer, pipeline);
             cogl_framebuffer_pop_clip(framebuffer);
 
-            g_object_unref(pipeline);
             g_object_unref(cogl_indices);
             g_object_unref(primitive);
-            g_object_unref(attributes[0]);
-            g_object_unref(attributes[1]);
-            g_object_unref(attributes[2]);
-            g_object_unref(vertex_buffer);
         }
+
+        g_object_unref(attributes[0]);
+        g_object_unref(attributes[1]);
+        g_object_unref(attributes[2]);
+        g_object_unref(vertex_buffer);
     }
+    if (pipeline != nullptr)
+        g_object_unref(pipeline);
 }
 
-/* The recovery panel must stay readable when the user's shell is broken, so it
- * cannot depend on fontconfig, Pango or a shell font. Try a few common
- * TrueType UI fonts, newest GNOME default first, and keep ImGui's built-in
- * bitmap font if none is installed. stb_truetype cannot read CFF (.otf). */
-static void gnoblin_imgui_load_system_font(ImGuiIO& io) {
-    if (io.Fonts->Fonts.Size > 0)
-        return;
-
+/* Panels must stay readable when the user's shell is broken, so they cannot
+ * depend on fontconfig, Pango or a shell font. Prefer a monospace TrueType font,
+ * then a proportional one, and keep ImGui's built-in font if none is installed.
+ * stb_truetype cannot read CFF (.otf). */
+static void gnoblin_imgui_load_system_font(ImGuiIO& io, float density) {
     static const char* const candidates[] = {
+        "/usr/share/fonts/dejavu-sans-mono-fonts/DejaVuSansMono.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf",
+        "/usr/share/fonts/TTF/DejaVuSansMono.ttf",
+        "/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf",
+        "/usr/share/fonts/google-noto-vf/NotoSansMono[wght].ttf",
+        "/usr/share/fonts/adwaita-mono-fonts/AdwaitaMono-Regular.ttf",
         "/usr/share/fonts/adwaita-sans-fonts/AdwaitaSans-Regular.ttf",
-        "/usr/share/fonts/google-noto-vf/NotoSans[wght].ttf",
         "/usr/share/fonts/dejavu-sans-fonts/DejaVuSans.ttf",
         "/usr/share/fonts/liberation-sans/LiberationSans-Regular.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/TTF/DejaVuSans.ttf",
     };
+    /* The logical size stays 15 px: a sturdy monospace face with wide letterforms reads better
+     * than a light, narrow one at this size. Density only raises the bake resolution so
+     * text is sharp on a scaled output. */
+    ImFontConfig config;
+    config.RasterizerDensity = density;
+    /* One sample per pixel on whole-pixel positions keeps stems sharp; the
+     * default horizontal oversampling smears small text. */
+    config.OversampleH = 1;
+    config.OversampleV = 1;
+    config.PixelSnapH = true;
     for (const char* path : candidates) {
         if (!g_file_test(path, G_FILE_TEST_IS_REGULAR))
             continue;
-        if (io.Fonts->AddFontFromFileTTF(path, 14.0f) != nullptr)
+        if (io.Fonts->AddFontFromFileTTF(path, 15.0f, &config) != nullptr)
             return;
     }
+    config.SizePixels = 15.0f;
+    io.Fonts->AddFontDefault(&config);
 }
 
-static void gnoblin_imgui_upload_font(GnoblinImGuiOverlay* overlay, CoglFramebuffer* framebuffer) {
-    if (overlay->font_texture != nullptr)
+/* Flat, square and neutral grey: a debug layer that looks the same over any
+ * shell. */
+static void gnoblin_imgui_apply_style() {
+    ImGuiStyle& style = ImGui::GetStyle();
+    ImGui::StyleColorsDark(&style);
+    style.WindowRounding = style.ChildRounding = style.FrameRounding = 0.0f;
+    style.PopupRounding = style.ScrollbarRounding = style.GrabRounding = 0.0f;
+    style.WindowBorderSize = 1.0f;
+    style.PopupBorderSize = 1.0f;
+    style.FrameBorderSize = 0.0f;
+    style.WindowPadding = ImVec2(10.0f, 8.0f);
+    style.FramePadding = ImVec2(8.0f, 3.0f);
+    style.ItemSpacing = ImVec2(8.0f, 4.0f);
+    style.ScrollbarSize = 10.0f;
+
+    const auto grey = [](int value, float alpha = 1.0f) {
+        const float v = static_cast<float>(value) / 255.0f;
+        return ImVec4(v, v, v, alpha);
+    };
+    ImVec4* c = style.Colors;
+    c[ImGuiCol_Text] = grey(0xe8);
+    c[ImGuiCol_TextDisabled] = grey(0x9c);
+    c[ImGuiCol_WindowBg] = grey(0x1e);
+    c[ImGuiCol_ChildBg] = ImVec4(0, 0, 0, 0);
+    c[ImGuiCol_PopupBg] = grey(0x25);
+    c[ImGuiCol_Border] = grey(0x3c);
+    c[ImGuiCol_TitleBg] = c[ImGuiCol_TitleBgActive] = c[ImGuiCol_TitleBgCollapsed] = grey(0x2d);
+    c[ImGuiCol_FrameBg] = c[ImGuiCol_FrameBgHovered] = c[ImGuiCol_FrameBgActive] = grey(0x1e);
+    c[ImGuiCol_Button] = grey(0x33);
+    c[ImGuiCol_ButtonHovered] = grey(0x44);
+    c[ImGuiCol_ButtonActive] = grey(0x50);
+    c[ImGuiCol_Header] = ImVec4(0.149f, 0.310f, 0.471f, 1.0f);
+    c[ImGuiCol_HeaderHovered] = ImVec4(0.165f, 0.239f, 0.322f, 1.0f);
+    c[ImGuiCol_HeaderActive] = ImVec4(0.149f, 0.310f, 0.471f, 1.0f);
+    c[ImGuiCol_Separator] = grey(0x3c);
+    c[ImGuiCol_ScrollbarBg] = ImVec4(0, 0, 0, 0);
+    c[ImGuiCol_ScrollbarGrab] = grey(0x4a);
+    c[ImGuiCol_ScrollbarGrabHovered] = grey(0x5e);
+    c[ImGuiCol_ScrollbarGrabActive] = grey(0x72);
+    c[ImGuiCol_TextSelectedBg] = ImVec4(0.149f, 0.310f, 0.471f, 0.8f);
+    c[ImGuiCol_NavCursor] = ImVec4(0, 0, 0, 0);
+}
+
+/* Build the atlas and its texture. It is rebuilt when the output scale
+ * changes so text stays sharp on a scaled monitor. */
+static void gnoblin_imgui_upload_font(GnoblinImGuiOverlay* overlay, CoglFramebuffer* framebuffer,
+                                      float scale) {
+    if (overlay->font_texture != nullptr && overlay->font_scale == scale)
         return;
 
     ImGui::SetCurrentContext(overlay->context);
-    gnoblin_imgui_load_system_font(ImGui::GetIO());
+    ImGuiIO& io = ImGui::GetIO();
+    if (overlay->font_texture != nullptr) {
+        io.Fonts->Clear();
+        g_clear_object(&overlay->font_texture);
+    }
+    gnoblin_imgui_load_system_font(io, scale);
     unsigned char* pixels = nullptr;
     int width = 0;
     int height = 0;
-    ImGui::GetIO().Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
+    /* Unhinted coverage reads thin on a dark background. Lift it a little. */
+    static const struct Lift {
+        unsigned char table[256];
+        Lift() {
+            for (int i = 0; i < 256; i++)
+                table[i] = static_cast<unsigned char>(
+                    std::lround(255.0 * std::pow(static_cast<double>(i) / 255.0, 0.72)));
+        }
+    } lift;
+    for (int i = 0; i < width * height; i++)
+        pixels[i * 4 + 3] = lift.table[pixels[i * 4 + 3]];
     overlay->font_texture = COGL_TEXTURE(
         cogl_texture_2d_new_from_data(cogl_framebuffer_get_context(framebuffer), width, height,
                                       COGL_PIXEL_FORMAT_RGBA_8888, width * 4, pixels, nullptr));
-    ImGui::GetIO().Fonts->SetTexID(overlay->font_texture);
+    io.Fonts->SetTexID(overlay->font_texture);
+    overlay->font_scale = scale;
 }
 
 static gboolean gnoblin_imgui_input_tick(gpointer user_data) {
@@ -196,7 +293,8 @@ static void gnoblin_imgui_content_paint(ClutterContent* content, ClutterActor* a
         return;
 
     CoglFramebuffer* framebuffer = clutter_paint_context_get_framebuffer(paint_context);
-    gnoblin_imgui_upload_font(overlay, framebuffer);
+    const float scale = std::clamp(gnoblin_plugin_paint_scale(paint_context), 1.0f, 4.0f);
+    gnoblin_imgui_upload_font(overlay, framebuffer, scale);
 
     ImGui::SetCurrentContext(overlay->context);
     ImGuiIO& io = ImGui::GetIO();
@@ -205,9 +303,41 @@ static void gnoblin_imgui_content_paint(ClutterContent* content, ClutterActor* a
     ImGui::NewFrame();
     overlay->draw_callback(overlay, overlay->draw_user_data);
     ImGui::Render();
+    /* The pointer shape comes from Gnoblin's cursor system, which resolves it from the actor under
+     * the pointer: map what ImGui asks for (a text cursor over an input) onto the overlay actor. */
+    {
+        ClutterCursorType cursor = CLUTTER_CURSOR_DEFAULT;
+        switch (ImGui::GetMouseCursor()) {
+        case ImGuiMouseCursor_TextInput:
+            cursor = CLUTTER_CURSOR_TEXT;
+            break;
+        case ImGuiMouseCursor_Hand:
+            cursor = CLUTTER_CURSOR_POINTER;
+            break;
+        case ImGuiMouseCursor_ResizeEW:
+            cursor = CLUTTER_CURSOR_EW_RESIZE;
+            break;
+        case ImGuiMouseCursor_ResizeNS:
+            cursor = CLUTTER_CURSOR_NS_RESIZE;
+            break;
+        case ImGuiMouseCursor_NotAllowed:
+            cursor = CLUTTER_CURSOR_NOT_ALLOWED;
+            break;
+        default:
+            break;
+        }
+        if (clutter_actor_get_cursor_type(actor) != cursor)
+            clutter_actor_set_cursor_type(actor, cursor);
+    }
     /* ImGui trickles a quick press/release across two frames. Ensure the release
      * is processed even when both input events preceded one compositor paint. */
-    if (!overlay->input_tick_id && (io.MouseDown[0] || io.MouseDown[1] || io.MouseDown[2]))
+    /* ImGui also trickles queued keys and characters one event per frame. A
+     * fast typist can queue several before the next paint, and with nothing
+     * else invalidating the overlay the remainder would sit unprocessed until
+     * the next keypress, which drops or reorders text. Keep painting until the
+     * queue drains. */
+    if (!overlay->input_tick_id && (io.MouseDown[0] || io.MouseDown[1] || io.MouseDown[2] ||
+                                    ImGui::GetCurrentContext()->InputEventsQueue.Size > 0))
         overlay->input_tick_id = g_timeout_add(16, gnoblin_imgui_input_tick, overlay);
     gnoblin_imgui_render_draw_data(overlay, framebuffer, ImGui::GetDrawData());
 }
@@ -230,6 +360,15 @@ GnoblinImGuiOverlay* gnoblin_imgui_overlay_new(ClutterActor* stage) {
     ImGui::GetIO().BackendRendererName = "gnoblin-cogl";
     ImGui::GetIO().BackendPlatformName = "gnoblin-clutter";
     ImGui::GetIO().BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
+    /* No imgui.ini or log file: panels keep no layout state between runs. */
+    ImGui::GetIO().IniFilename = nullptr;
+    /* A misuse of the ImGui API in a panel must never take the compositor down. Recoverable errors
+     * are repaired and logged instead of aborting, and no error tooltip is drawn. */
+    ImGui::GetIO().ConfigErrorRecovery = true;
+    ImGui::GetIO().ConfigErrorRecoveryEnableAssert = false;
+    ImGui::GetIO().ConfigErrorRecoveryEnableTooltip = false;
+    ImGui::GetIO().LogFilename = nullptr;
+    gnoblin_imgui_apply_style();
     if (stage != nullptr) {
         g_return_val_if_fail(CLUTTER_IS_STAGE(stage), overlay);
         /* Keep the diagnostics actor directly on the stage. Window groups can
@@ -318,6 +457,14 @@ void gnoblin_imgui_overlay_set_pointer(GnoblinImGuiOverlay* overlay, float x, fl
     io.AddMouseButtonEvent(0, left_down);
     io.AddMouseButtonEvent(1, right_down);
     io.AddMouseButtonEvent(2, middle_down);
+    gnoblin_imgui_overlay_queue_redraw(overlay);
+}
+
+void gnoblin_imgui_overlay_add_scroll(GnoblinImGuiOverlay* overlay, float dx, float dy) {
+    if (overlay == nullptr)
+        return;
+    ImGui::SetCurrentContext(overlay->context);
+    ImGui::GetIO().AddMouseWheelEvent(dx, dy);
     gnoblin_imgui_overlay_queue_redraw(overlay);
 }
 

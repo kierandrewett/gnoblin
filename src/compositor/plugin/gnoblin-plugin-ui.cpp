@@ -2,6 +2,7 @@
 
 #include "gnoblin-plugin-ui.h"
 
+#include <algorithm>
 #include <cstring>
 #include <cstdint>
 #include <functional>
@@ -29,7 +30,7 @@ struct RuntimeRequest {
 struct CompletionRequest {
     GnoblinPluginUi* ui;
     std::uint64_t id = 0;
-    std::function<void(std::vector<GnoblinConsoleCompletion>)> done;
+    std::function<void(GnoblinConsoleHints)> done;
 };
 
 constexpr gsize kConsoleHistoryLimit = 200;
@@ -168,9 +169,12 @@ static void update_visibility(GnoblinPluginUi* ui) {
 
 static void draw_panels(GnoblinImGuiOverlay* overlay, void* user_data) {
     auto* ui = static_cast<GnoblinPluginUi*>(user_data);
-    gnoblin_recovery_panel_draw(overlay, ui->recovery.get());
+    /* The console is modal and covers the notice's position; drawing both made
+     * the notice show through the console. The notice returns when it closes. */
     if (ui->console->visible())
         ui->console->draw_frame(overlay);
+    else
+        gnoblin_recovery_panel_draw(overlay, ui->recovery.get());
 }
 
 static void console_visibility_changed(GnoblinPluginUi* ui) {
@@ -231,8 +235,8 @@ static void runtime_request_destroy(gpointer data) {
 }
 
 constexpr guint kConsoleInspectionMaximumDepth = 8;
-constexpr guint kConsoleInspectionMaximumNodes = 256;
-constexpr guint kConsoleInspectionMaximumChildren = 64;
+constexpr guint kConsoleInspectionMaximumNodes = 4000;
+constexpr guint kConsoleInspectionMaximumChildren = 512;
 constexpr gsize kConsoleInspectionMaximumTextBytes = 4096;
 
 static bool console_inspection_string(GVariant* dictionary, const char* key,
@@ -246,6 +250,41 @@ static bool console_inspection_string(GVariant* dictionary, const char* key,
     return true;
 }
 
+/* Lua walks a table in hash order, which changes between runs. Show keys alphabetically instead.
+ * Numeric keys, as in an array, sort by value and come before names; a node with no label (the
+ * "… N more" marker) stays last. */
+static void sort_console_children(std::vector<GnoblinConsoleInspectorNode>* children) {
+    auto key = [](const GnoblinConsoleInspectorNode& node) {
+        std::string text = node.label;
+        if (text.size() >= 2 && text.front() == '"' && text.back() == '"')
+            text = text.substr(1, text.size() - 2);
+        return text;
+    };
+    auto number = [](const std::string& text, double* value) {
+        char* end = nullptr;
+        *value = g_ascii_strtod(text.c_str(), &end);
+        return !text.empty() && end && *end == '\0';
+    };
+    std::stable_sort(
+        children->begin(), children->end(),
+        [&](const GnoblinConsoleInspectorNode& a, const GnoblinConsoleInspectorNode& b) {
+            if (a.label.empty() != b.label.empty())
+                return b.label.empty();
+            const std::string left = key(a), right = key(b);
+            double left_number = 0, right_number = 0;
+            const bool left_is = number(left, &left_number);
+            const bool right_is = number(right, &right_number);
+            if (left_is != right_is)
+                return left_is;
+            if (left_is)
+                return left_number < right_number;
+            g_autofree char* left_fold = g_utf8_casefold(left.c_str(), -1);
+            g_autofree char* right_fold = g_utf8_casefold(right.c_str(), -1);
+            const int order = g_utf8_collate(left_fold, right_fold);
+            return order != 0 ? order < 0 : left < right;
+        });
+}
+
 static bool console_inspection_node(GVariant* dictionary, guint depth, guint* node_count,
                                     GnoblinConsoleInspectorNode* destination) {
     if (!g_variant_is_of_type(dictionary, G_VARIANT_TYPE_VARDICT) ||
@@ -255,6 +294,9 @@ static bool console_inspection_node(GVariant* dictionary, guint depth, guint* no
         return false;
     (*node_count)++;
     g_variant_lookup(dictionary, "has_more", "b", &destination->has_more);
+    gint32 more = 0;
+    if (g_variant_lookup(dictionary, "more", "i", &more) && more > 0)
+        destination->more = static_cast<std::uint32_t>(more);
 
     g_autoptr(GVariant) children =
         g_variant_lookup_value(dictionary, "children", G_VARIANT_TYPE("aa{sv}"));
@@ -276,6 +318,7 @@ static bool console_inspection_node(GVariant* dictionary, guint depth, guint* no
     g_autoptr(GVariant) remaining = g_variant_iter_next_value(&iterator);
     if (remaining)
         destination->has_more = true;
+    sort_console_children(&destination->children);
     return true;
 }
 
@@ -300,29 +343,53 @@ static std::vector<GnoblinConsoleInspectorNode> console_inspection_nodes(GVarian
     return nodes;
 }
 
+/* Lua prefixes errors with the chunk name and line, "(gnoblin console):1: ". One-line input makes
+ * that noise, so the console shows the message alone. */
+static std::string strip_console_chunk(const char* message) {
+    static const char prefix[] = "(gnoblin console):";
+    std::string text = message;
+    if (text.compare(0, sizeof(prefix) - 1, prefix) != 0)
+        return text;
+    std::size_t index = sizeof(prefix) - 1;
+    while (index < text.size() && g_ascii_isdigit(text[index]))
+        index++;
+    if (text.compare(index, 2, ": ") == 0)
+        return text.substr(index + 2);
+    return text;
+}
+
 static GnoblinConsoleResult runtime_result(gboolean success, GVariant* result, const char* error) {
     GnoblinConsoleResult converted;
     converted.success = success;
     if (!success)
-        converted.error = error ? error : "runtime request failed";
+        converted.error = strip_console_chunk(error ? error : "runtime request failed");
     else if (result != nullptr) {
         const char* value = nullptr;
         if (g_variant_lookup(result, "value", "&s", &value) && value)
             converted.value = value;
         else
             converted.value = "nil";
-        const char* type = nullptr;
-        if (g_variant_lookup(result, "type", "&s", &type) && type)
-            converted.value += "\n(type: " + std::string(type) + ")";
         gint64 operations = 0;
         if (g_variant_lookup(result, "operations", "x", &operations) && operations > 0)
             converted.value += "\n" + std::to_string(operations) + " runtime operation(s) queued";
         converted.inspection = console_inspection_nodes(result);
+        /* A single result is already printed above. Its tree is only worth showing when the value
+         * can be expanded, and then without a wrapper row that repeats the value. */
+        if (converted.inspection.size() == 1) {
+            GnoblinConsoleInspectorNode only = std::move(converted.inspection.front());
+            converted.inspection = std::move(only.children);
+            if (only.has_more) {
+                GnoblinConsoleInspectorNode marker;
+                marker.more = only.more;
+                marker.has_more = true;
+                converted.inspection.push_back(std::move(marker));
+            }
+        }
     }
     return converted;
 }
 
-static std::vector<GnoblinConsoleCompletion> console_completions(GVariant* result) {
+static std::vector<GnoblinConsoleCompletion> console_completion_list(GVariant* result) {
     constexpr guint maximum_completions = 64;
     std::vector<GnoblinConsoleCompletion> completions;
     g_autoptr(GVariant) entries =
@@ -346,6 +413,41 @@ static std::vector<GnoblinConsoleCompletion> console_completions(GVariant* resul
     return completions;
 }
 
+static GnoblinConsoleSignature console_signature(GVariant* result) {
+    constexpr guint maximum_rows = 64;
+    GnoblinConsoleSignature signature;
+    g_autoptr(GVariant) help = g_variant_lookup_value(result, "signature", G_VARIANT_TYPE_VARDICT);
+    if (!help || !console_inspection_string(help, "title", &signature.title))
+        return {};
+    console_inspection_string(help, "summary", &signature.summary);
+    g_autoptr(GVariant) rows = g_variant_lookup_value(help, "rows", G_VARIANT_TYPE("aa{sv}"));
+    if (!rows)
+        return signature;
+    GVariantIter iterator;
+    g_variant_iter_init(&iterator, rows);
+    while (signature.rows.size() < maximum_rows) {
+        g_autoptr(GVariant) entry = g_variant_iter_next_value(&iterator);
+        if (!entry)
+            break;
+        GnoblinConsoleHelpRow row;
+        if (!g_variant_is_of_type(entry, G_VARIANT_TYPE_VARDICT) ||
+            !console_inspection_string(entry, "label", &row.label) ||
+            !console_inspection_string(entry, "type", &row.type) ||
+            !console_inspection_string(entry, "description", &row.description))
+            continue;
+        gint32 indent = 0;
+        if (g_variant_lookup(entry, "indent", "i", &indent))
+            row.indent = std::clamp<gint32>(indent, 0, 4);
+        g_variant_lookup(entry, "active", "b", &row.active);
+        signature.rows.push_back(std::move(row));
+    }
+    return signature;
+}
+
+static GnoblinConsoleHints console_hints(GVariant* result) {
+    return {console_completion_list(result), console_signature(result)};
+}
+
 static void completion_request_destroy(gpointer data) {
     delete static_cast<CompletionRequest*>(data);
 }
@@ -360,11 +462,11 @@ static void completion_response(gboolean success, GVariant* result, const char* 
         request->done({});
         return;
     }
-    request->done(result ? console_completions(result) : std::vector<GnoblinConsoleCompletion>{});
+    request->done(result ? console_hints(result) : GnoblinConsoleHints{});
 }
 
 static void complete_lua(GnoblinPluginUi* ui, std::string_view source,
-                         std::function<void(std::vector<GnoblinConsoleCompletion>)> done) {
+                         std::function<void(GnoblinConsoleHints)> done) {
     auto* request = new CompletionRequest{ui, 0, std::move(done)};
     const std::string code(source);
     g_autoptr(GError) error = nullptr;
@@ -482,7 +584,7 @@ GnoblinPluginUi* gnoblin_plugin_ui_new(ClutterActor* parent, MetaDisplay* displa
         control_lua(ui, control, std::move(done));
     };
     callbacks.complete = [ui](std::string_view source,
-                              std::function<void(std::vector<GnoblinConsoleCompletion>)> done) {
+                              std::function<void(GnoblinConsoleHints)> done) {
         complete_lua(ui, source, std::move(done));
     };
     if (ui->console_history) {
@@ -504,8 +606,12 @@ GnoblinPluginUi* gnoblin_plugin_ui_new(ClutterActor* parent, MetaDisplay* displa
             break;
         }
     }
-    GnoblinRecoveryPanelActions actions = {
-        open_config_folder, ui->terminal.empty() ? nullptr : open_terminal, reload_config, ui};
+    /* "Open config" hands the folder to whatever application is registered for directories
+     * (a file manager). Without one the request would fail silently, so offer no button. */
+    g_autoptr(GAppInfo) folder_handler = g_app_info_get_default_for_type("inode/directory", FALSE);
+    GnoblinRecoveryPanelActions actions = {folder_handler ? open_config_folder : nullptr,
+                                           ui->terminal.empty() ? nullptr : open_terminal,
+                                           reload_config, ui};
     gnoblin_recovery_panel_set_actions(ui->recovery.get(), &actions);
     gnoblin_imgui_overlay_set_draw_callback(ui->overlay, draw_panels, ui, nullptr);
     load_recovery_marker(ui);
@@ -564,6 +670,40 @@ void gnoblin_plugin_ui_set_session_locked(GnoblinPluginUi* ui, gboolean locked) 
 
 gboolean gnoblin_plugin_ui_console_visible(GnoblinPluginUi* ui) {
     return ui != nullptr && ui->console->visible();
+}
+
+/* Feed one key event to the console. */
+static gboolean console_take_key(GnoblinPluginUi* ui, const ClutterEvent* event) {
+    const gboolean pressed = clutter_event_type(event) == CLUTTER_KEY_PRESS;
+    const gboolean consumed = ui->console->handle_key(
+        clutter_event_get_key_symbol(event), clutter_event_get_state(event), pressed,
+        (clutter_event_get_flags(event) & CLUTTER_EVENT_FLAG_REPEATED) != 0);
+    if (pressed) {
+        const gunichar character = clutter_event_get_key_unicode(event);
+        if (character != 0 && !g_unichar_iscntrl(character)) {
+            char text[7] = {};
+            const int length = g_unichar_to_utf8(character, text);
+            text[length] = '\0';
+            ui->console->add_text(text);
+        }
+    }
+    return consumed || pressed;
+}
+
+gboolean gnoblin_plugin_ui_handle_key_event(GnoblinPluginUi* ui, const ClutterEvent* event) {
+    if (ui == nullptr || ui->session_locked || !ui->console->visible())
+        return FALSE;
+    const ClutterEventType type = clutter_event_type(event);
+    if (type != CLUTTER_KEY_PRESS && type != CLUTTER_KEY_RELEASE)
+        return FALSE;
+    /* Switching to another console stays available. */
+    const guint keyval = clutter_event_get_key_symbol(event);
+    const ClutterModifierType state = clutter_event_get_state(event);
+    if (keyval >= CLUTTER_KEY_F1 && keyval <= CLUTTER_KEY_F12 && (state & CLUTTER_CONTROL_MASK) &&
+        (state & CLUTTER_MOD1_MASK))
+        return FALSE;
+    console_take_key(ui, event);
+    return TRUE;
 }
 
 gboolean gnoblin_plugin_ui_handle_event(GnoblinPluginUi* ui, const ClutterEvent* event) {
@@ -633,21 +773,39 @@ gboolean gnoblin_plugin_ui_handle_event(GnoblinPluginUi* ui, const ClutterEvent*
                                               ui->recovery_buttons & (1u << 2));
         return TRUE;
     }
+    case CLUTTER_SCROLL: {
+        float dx = 0.0f, dy = 0.0f;
+        switch (clutter_event_get_scroll_direction(event)) {
+        case CLUTTER_SCROLL_UP:
+            dy = 1.0f;
+            break;
+        case CLUTTER_SCROLL_DOWN:
+            dy = -1.0f;
+            break;
+        case CLUTTER_SCROLL_LEFT:
+            dx = 1.0f;
+            break;
+        case CLUTTER_SCROLL_RIGHT:
+            dx = -1.0f;
+            break;
+        case CLUTTER_SCROLL_SMOOTH: {
+            double delta_x = 0.0, delta_y = 0.0;
+            clutter_event_get_scroll_delta(event, &delta_x, &delta_y);
+            dx = static_cast<float>(-delta_x);
+            dy = static_cast<float>(-delta_y);
+            break;
+        }
+        default:
+            break;
+        }
+        if (modal)
+            gnoblin_imgui_overlay_add_scroll(ui->overlay, dx, dy);
+        return TRUE;
+    }
     case CLUTTER_KEY_PRESS:
     case CLUTTER_KEY_RELEASE: {
-        const gboolean pressed = clutter_event_type(event) == CLUTTER_KEY_PRESS;
-        const gboolean consumed = ui->console->handle_key(clutter_event_get_key_symbol(event),
-                                                          clutter_event_get_state(event), pressed);
-        if (pressed) {
-            const gunichar character = clutter_event_get_key_unicode(event);
-            if (character != 0 && !g_unichar_iscntrl(character)) {
-                char text[7] = {};
-                const int length = g_unichar_to_utf8(character, text);
-                text[length] = '\0';
-                ui->console->add_text(text);
-            }
-        }
-        return consumed || pressed;
+        /* While the console is open its keys are taken earlier, before keybindings. */
+        return console_take_key(ui, event) || ui->console->visible();
     }
     default:
         return TRUE;

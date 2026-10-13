@@ -39,6 +39,161 @@ static void console_truncate_utf8(GString* output, gsize length) {
     g_string_truncate(output, length);
 }
 
+/* Signatures for the public C functions come from the LuaCATS annotations in src/config/lua/api/,
+ * turned into the tables below by scripts/gen-lua-api.py. */
+typedef struct {
+    const char* name;
+    const char* type;
+    gboolean optional;
+    const char* description;
+} ApiMember;
+
+typedef struct {
+    const char* name;
+    const char* summary;
+    const ApiMember* fields;
+    gsize n_fields;
+} ApiClass;
+
+typedef struct {
+    const char* path;
+    const char* summary;
+    const ApiMember* params;
+    gsize n_params;
+    const char* returns;
+} ApiFunction;
+
+#include "gnoblin-lua-signatures.inc"
+
+#define CONSOLE_SIGNATURES_KEY "gnoblin.signatures"
+
+/* Remember each annotated C function's signature, keyed by the function itself, so a result shows
+ * it wherever it was reached from, such as a local alias of gnoblin.windows.list. Called once the
+ * API is installed and before any user code can replace a function. */
+void console_register_signatures(lua_State* state) {
+    lua_newtable(state);
+    for (const ApiFunction* function = api_functions; function->path; function++) {
+        g_auto(GStrv) parts = g_strsplit(function->path, ".", -1);
+        lua_getglobal(state, "gnoblin");
+        for (guint part = 0; parts[part] && lua_istable(state, -1); part++) {
+            lua_pushstring(state, parts[part]);
+            lua_rawget(state, -2); /* raw: the gnoblin table's __index must not run here */
+            lua_remove(state, -2);
+        }
+        if (lua_iscfunction(state, -1)) {
+            lua_pushlightuserdata(state, (void*)function);
+            lua_rawset(state, -3);
+        } else {
+            lua_pop(state, 1);
+        }
+    }
+    lua_setfield(state, LUA_REGISTRYINDEX, CONSOLE_SIGNATURES_KEY);
+}
+
+static const ApiFunction* console_api_function(lua_State* state, int index) {
+    index = lua_absindex(state, index);
+    const ApiFunction* function = NULL;
+    if (lua_getfield(state, LUA_REGISTRYINDEX, CONSOLE_SIGNATURES_KEY) == LUA_TTABLE) {
+        lua_pushvalue(state, index);
+        if (lua_rawget(state, -2) == LUA_TLIGHTUSERDATA)
+            function = lua_touserdata(state, -1);
+        lua_pop(state, 1);
+    }
+    lua_pop(state, 1);
+    return function;
+}
+
+static void console_append_parameters(GString* out, const ApiFunction* function) {
+    for (gsize i = 0; i < function->n_params; i++) {
+        const ApiMember* param = &function->params[i];
+        g_string_append_printf(out, "%s%s%s: %s", i ? ", " : "", param->name,
+                               param->optional ? "?" : "", param->type);
+    }
+}
+
+/* The class named by a type such as "WorkspaceArgs", "WorkspaceArgs?" or "Rule|nil"; a union of
+ * several types, an array or a builtin names none. */
+static const ApiClass* console_find_class(const char* type) {
+    g_autofree char* name = g_strdup(type);
+    g_strstrip(name);
+    gsize length = strlen(name);
+    if (length > 4 && g_str_has_suffix(name, "|nil"))
+        name[length - 4] = '\0';
+    length = strlen(name);
+    if (length && name[length - 1] == '?')
+        name[length - 1] = '\0';
+    char* generic = strchr(name, '<');
+    if (generic)
+        *generic = '\0';
+    for (const ApiClass* class = api_classes; class->name; class ++)
+        if (g_str_equal(class->name, name))
+            return class;
+    return NULL;
+}
+
+/* The argument list of the function at the given index as "(a: T, b?: U): R", or NULL when it
+ * is not known. Annotated C functions carry their types; Lua functions name their own
+ * parameters. */
+static char* console_function_arguments(lua_State* state, int index) {
+    index = lua_absindex(state, index);
+    g_autoptr(GString) text = g_string_new("(");
+    const ApiFunction* function = console_api_function(state, index);
+    if (function) {
+        console_append_parameters(text, function);
+        g_string_append_c(text, ')');
+        if (function->returns && *function->returns)
+            g_string_append_printf(text, ": %s", function->returns);
+        return g_string_free(g_steal_pointer(&text), FALSE);
+    }
+    if (lua_iscfunction(state, index))
+        return NULL;
+
+    lua_Debug info;
+    lua_pushvalue(state, index);
+    lua_getinfo(state, ">u", &info); /* pops the function */
+    lua_pushvalue(state, index);
+    for (int parameter = 1; parameter <= info.nparams; parameter++) {
+        const char* name = lua_getlocal(state, NULL, parameter);
+        if (parameter > 1)
+            g_string_append(text, ", ");
+        g_string_append(text, name && name[0] != '(' ? name : "?");
+    }
+    lua_pop(state, 1);
+    if (info.isvararg)
+        g_string_append(text, info.nparams > 0 ? ", ..." : "...");
+    g_string_append_c(text, ')');
+    return g_string_free(g_steal_pointer(&text), FALSE);
+}
+
+static void console_append_member(GString* out, const ApiMember* member, const char* indent) {
+    g_string_append_printf(out, "%s%s%s: %s", indent, member->name, member->optional ? "?" : "",
+                           member->type);
+    if (member->description && *member->description)
+        g_string_append_printf(out, "  %s", member->description);
+    g_string_append_c(out, '\n');
+}
+
+/* The summary, then every parameter with its description, with the keys of a table parameter
+ * listed under it. NULL for functions without an annotation. */
+static char* console_function_documentation(lua_State* state, int index) {
+    const ApiFunction* function = console_api_function(state, index);
+    if (!function)
+        return NULL;
+    g_autoptr(GString) text = g_string_new(function->summary);
+    if (function->n_params)
+        g_string_append(text, "\n\n");
+    for (gsize i = 0; i < function->n_params; i++) {
+        console_append_member(text, &function->params[i], "");
+        const ApiClass* class = console_find_class(function->params[i].type);
+        for (gsize field = 0; class && field < class->n_fields; field++)
+            console_append_member(text, &class->fields[field], "    ");
+    }
+    if (function->returns && *function->returns)
+        g_string_append_printf(text, "\nreturns %s", function->returns);
+    g_strchomp(text->str);
+    return g_string_free(g_steal_pointer(&text), FALSE);
+}
+
 /* Rendering deliberately avoids Lua conversion hooks. A console result must
  * not execute user __tostring/__pairs code after the submitted chunk has
  * returned, otherwise presentation could bypass the instruction budget. */
@@ -72,6 +227,14 @@ static void console_append_value(GString* output, lua_State* state, int index) {
         g_string_append_printf(output, "<table: %" G_GINT64_FORMAT " array entries>",
                                (gint64)lua_rawlen(state, index));
         break;
+    case LUA_TFUNCTION: {
+        g_autofree char* arguments = console_function_arguments(state, index);
+        if (arguments)
+            g_string_append_printf(output, "<function%s>", arguments);
+        else
+            g_string_append(output, "<function>");
+        break;
+    }
     default:
         g_string_append_printf(output, "<%s>", lua_typename(state, lua_type(state, index)));
         break;
@@ -88,9 +251,9 @@ static void console_append_inspection_value(GString* output, lua_State* state, i
         g_string_append(output, "…");
         added = output->len - before;
     }
-    if (inspection->text_bytes + added > MAX_CONSOLE_RESULT_BYTES) {
-        gsize available = inspection->text_bytes < MAX_CONSOLE_RESULT_BYTES
-                              ? MAX_CONSOLE_RESULT_BYTES - inspection->text_bytes
+    if (inspection->text_bytes + added > MAX_CONSOLE_INSPECTION_TEXT_BYTES) {
+        gsize available = inspection->text_bytes < MAX_CONSOLE_INSPECTION_TEXT_BYTES
+                              ? MAX_CONSOLE_INSPECTION_TEXT_BYTES - inspection->text_bytes
                               : 0;
         console_truncate_utf8(output, before + available);
         g_string_append(output, "…");
@@ -118,23 +281,43 @@ static gboolean console_push_inspection_table(lua_State* state, int index) {
     return FALSE;
 }
 
+/* Number of entries in a table the inspector does not walk, so the console can say how many it
+ * left out instead of a bare ellipsis. */
+static gint32 console_count_entries(lua_State* state, int table) {
+    gint32 count = 0;
+    lua_pushnil(state);
+    while (count < G_MAXINT32 && lua_next(state, table)) {
+        count++;
+        lua_pop(state, 1);
+    }
+    if (lua_gettop(state) > table)
+        lua_pop(state, 1);
+    return count;
+}
+
 static GVariant* console_inspection_node(lua_State* state, const char* label, int index,
                                          guint depth, ConsoleInspection* inspection) {
     index = lua_absindex(state, index);
     gboolean has_more = FALSE;
+    gint32 more = 0;
     g_autoptr(GString) value = g_string_new(NULL);
     console_append_inspection_value(value, state, index, inspection);
 
     GVariantBuilder children;
     g_variant_builder_init(&children, G_VARIANT_TYPE("aa{sv}"));
-    if (inspection->nodes >= MAX_CONSOLE_INSPECTION_NODES) {
-        has_more = TRUE;
-    } else if (depth < MAX_CONSOLE_INSPECTION_DEPTH &&
-               console_push_inspection_table(state, index)) {
+    if (inspection->nodes >= MAX_CONSOLE_INSPECTION_NODES ||
+        depth >= MAX_CONSOLE_INSPECTION_DEPTH) {
+        has_more = lua_istable(state, index) || lua_isuserdata(state, index);
+        if (has_more && console_push_inspection_table(state, index)) {
+            more = console_count_entries(state, lua_absindex(state, -1));
+            lua_pop(state, 1);
+        }
+    } else if (console_push_inspection_table(state, index)) {
         int table = lua_absindex(state, -1);
         const void* identity = lua_topointer(state, table);
         if (!identity || g_hash_table_contains(inspection->seen, identity)) {
-            has_more = TRUE;
+            /* Already shown above, so listing it again would loop. */
+            g_string_append(value, " (circular)");
         } else {
             g_hash_table_add(inspection->seen, (gpointer)identity);
             guint child_count = 0;
@@ -143,7 +326,13 @@ static GVariant* console_inspection_node(lua_State* state, const char* label, in
                 if (child_count >= MAX_CONSOLE_INSPECTION_CHILDREN ||
                     inspection->nodes >= MAX_CONSOLE_INSPECTION_NODES) {
                     has_more = TRUE;
-                    lua_pop(state, 1); /* value; retain key only until stack reset */
+                    /* Count what is left so the console can say how much it did not list. */
+                    more = 1;
+                    lua_pop(state, 1); /* value; the key stays for lua_next */
+                    while (more < G_MAXINT32 && lua_next(state, table)) {
+                        more++;
+                        lua_pop(state, 1);
+                    }
                     break;
                 }
                 g_autoptr(GString) child_label = g_string_new(NULL);
@@ -171,6 +360,7 @@ static GVariant* console_inspection_node(lua_State* state, const char* label, in
     g_variant_builder_add(&node, "{sv}", "value", g_variant_new_string(value->str));
     g_variant_builder_add(&node, "{sv}", "children", g_variant_builder_end(&children));
     g_variant_builder_add(&node, "{sv}", "has_more", g_variant_new_boolean(has_more));
+    g_variant_builder_add(&node, "{sv}", "more", g_variant_new_int32(more));
     return g_variant_ref_sink(g_variant_builder_end(&node));
 }
 
@@ -233,7 +423,7 @@ static gboolean console_completion_identifier(const char* text, gsize length) {
 static const char* console_completion_token_start(const char* source) {
     const char* start = source;
     for (const char* cursor = source; *cursor; cursor++) {
-        if (strchr(" \t\n;(){}[]", *cursor))
+        if (strchr(" \t\n;(){}[],=", *cursor))
             start = cursor + 1;
     }
     return start;
@@ -330,9 +520,17 @@ static void console_completion_add(GPtrArray* completions, GHashTable* seen, con
     completion->label = receiver && *receiver
                             ? g_strdup_printf(method ? "%s:%s" : "%s.%s", receiver, key)
                             : g_strdup(key);
-    completion->detail = g_strdup_printf("Lua %s", lua_typename(state, lua_type(state, value)));
-    completion->documentation =
-        g_strdup(readonly ? "Read-only Gnoblin snapshot member" : "Live Lua environment member");
+    g_autofree char* signature =
+        lua_isfunction(state, value) ? console_function_arguments(state, value) : NULL;
+    g_autofree char* documentation =
+        lua_isfunction(state, value) ? console_function_documentation(state, value) : NULL;
+    completion->detail =
+        signature ? g_steal_pointer(&signature)
+                  : g_strdup_printf("Lua %s", lua_typename(state, lua_type(state, value)));
+    completion->documentation = documentation
+                                    ? g_steal_pointer(&documentation)
+                                    : g_strdup(readonly ? "Read-only Gnoblin snapshot member"
+                                                        : "Live Lua environment member");
     g_ptr_array_add(completions, completion);
 }
 
@@ -374,6 +572,148 @@ static char* console_completion_receiver(GPtrArray* segments) {
     return g_string_free(g_steal_pointer(&receiver), FALSE);
 }
 
+/* Where the cursor sits in a function call being typed: the innermost call that is still open. */
+typedef struct {
+    char open;
+    gsize position;
+    guint commas;
+} ConsoleFrame;
+
+typedef struct {
+    gboolean found;
+    char* callee;      /* the dotted name before the opening parenthesis */
+    guint active;      /* zero-based argument being typed */
+    gboolean in_table; /* inside a table constructor within that argument */
+} ConsoleCall;
+
+static ConsoleCall console_call_context(const char* source) {
+    ConsoleCall call = {FALSE, NULL, 0, FALSE};
+    g_autoptr(GArray) frames = g_array_new(FALSE, FALSE, sizeof(ConsoleFrame));
+    char quote = 0;
+    for (gsize i = 0; source[i]; i++) {
+        char c = source[i];
+        if (quote) {
+            if (c == '\\' && source[i + 1])
+                i++;
+            else if (c == quote)
+                quote = 0;
+            continue;
+        }
+        if (c == '"' || c == '\'') {
+            quote = c;
+        } else if (c == '-' && source[i + 1] == '-') {
+            while (source[i] && source[i] != '\n')
+                i++;
+            if (!source[i])
+                break;
+        } else if (c == '(' || c == '{' || c == '[') {
+            ConsoleFrame frame = {c, i, 0};
+            g_array_append_val(frames, frame);
+        } else if ((c == ')' || c == '}' || c == ']') && frames->len) {
+            g_array_set_size(frames, frames->len - 1);
+        } else if (c == ',' && frames->len) {
+            g_array_index(frames, ConsoleFrame, frames->len - 1).commas++;
+        }
+    }
+    for (gint i = (gint)frames->len - 1; i >= 0; i--) {
+        ConsoleFrame* frame = &g_array_index(frames, ConsoleFrame, i);
+        if (frame->open != '(')
+            continue;
+        gsize end = frame->position;
+        gsize start = end;
+        while (start > 0 && (g_ascii_isalnum(source[start - 1]) || source[start - 1] == '_' ||
+                             source[start - 1] == '.'))
+            start--;
+        if (start == end || (start > 0 && source[start - 1] == ':'))
+            return call;
+        call.found = TRUE;
+        call.callee = g_strndup(source + start, end - start);
+        call.active = frame->commas;
+        call.in_table = (guint)i + 1 < frames->len &&
+                        g_array_index(frames, ConsoleFrame, frames->len - 1).open == '{';
+        return call;
+    }
+    return call;
+}
+
+/* Push the value reached by a dotted name from the globals. Raw reads only: the lookup must not
+ * run any __index code. */
+static gboolean console_push_path(lua_State* state, const char* path) {
+    g_auto(GStrv) parts = g_strsplit(path, ".", -1);
+    lua_rawgeti(state, LUA_REGISTRYINDEX, LUA_RIDX_GLOBALS);
+    for (guint i = 0; parts[i]; i++) {
+        if (!console_completion_identifier(parts[i], strlen(parts[i])) ||
+            !console_completion_push_field(state, -1, parts[i])) {
+            lua_pop(state, 1);
+            return FALSE;
+        }
+        lua_remove(state, -2);
+    }
+    return TRUE;
+}
+
+static void console_add_help_row(GVariantBuilder* rows, const ApiMember* member, gint32 indent,
+                                 gboolean active) {
+    GVariantBuilder row;
+    g_variant_builder_init(&row, G_VARIANT_TYPE_VARDICT);
+    g_autofree char* label = g_strconcat(member->name, member->optional ? "?" : "", NULL);
+    g_variant_builder_add(&row, "{sv}", "label", g_variant_new_string(label));
+    g_variant_builder_add(&row, "{sv}", "type", g_variant_new_string(member->type));
+    g_variant_builder_add(&row, "{sv}", "description",
+                          g_variant_new_string(member->description ? member->description : ""));
+    g_variant_builder_add(&row, "{sv}", "indent", g_variant_new_int32(indent));
+    g_variant_builder_add(&row, "{sv}", "active", g_variant_new_boolean(active));
+    g_variant_builder_add_value(rows, g_variant_builder_end(&row));
+}
+
+/* Parameter help for the call being typed, or NULL when the callee is not a known function. When
+ * the cursor is inside a table argument, table_class is the class describing its keys. */
+static GVariant* console_signature_help(lua_State* state, const ConsoleCall* call,
+                                        const ApiClass** table_class) {
+    int base = lua_gettop(state);
+    GVariant* help = NULL;
+    if (console_push_path(state, call->callee) && lua_isfunction(state, -1)) {
+        const ApiFunction* function = console_api_function(state, -1);
+        g_autofree char* arguments = console_function_arguments(state, -1);
+        if (arguments) {
+            GVariantBuilder rows, result;
+            g_variant_builder_init(&rows, G_VARIANT_TYPE("aa{sv}"));
+            for (gsize i = 0; function && i < function->n_params; i++) {
+                gboolean active = i == call->active;
+                console_add_help_row(&rows, &function->params[i], 0, active);
+                const ApiClass* class = console_find_class(function->params[i].type);
+                if (active && call->in_table && class)
+                    *table_class = class;
+                if (active && class)
+                    for (gsize field = 0; field < class->n_fields; field++)
+                        console_add_help_row(&rows, &class->fields[field], 1, FALSE);
+            }
+            g_autofree char* title = g_strconcat(call->callee, arguments, NULL);
+            g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&result, "{sv}", "title", g_variant_new_string(title));
+            g_variant_builder_add(&result, "{sv}", "summary",
+                                  g_variant_new_string(function ? function->summary : ""));
+            g_variant_builder_add(&result, "{sv}", "rows", g_variant_builder_end(&rows));
+            help = g_variant_ref_sink(g_variant_builder_end(&result));
+        }
+    }
+    lua_settop(state, base);
+    return help;
+}
+
+/* True when the text ends in a table key being typed: "{na" or "{a = 1, na". */
+static gboolean console_typing_key(const char* source, const char** key) {
+    gsize end = strlen(source);
+    gsize start = end;
+    while (start > 0 && (g_ascii_isalnum(source[start - 1]) || source[start - 1] == '_'))
+        start--;
+    gsize before = start;
+    while (before > 0 && g_ascii_isspace(source[before - 1]))
+        before--;
+    *key = source + start;
+    return before > 0 && (source[before - 1] == '{' || source[before - 1] == ',');
+}
+
 GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
     if (!source || strlen(source) > MAX_CONSOLE_SOURCE_BYTES ||
         !g_utf8_validate(source, -1, NULL)) {
@@ -397,13 +737,9 @@ GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
     g_autoptr(GPtrArray) segments = g_ptr_array_new_with_free_func(g_free);
     g_autofree char* prefix = NULL;
     gboolean method = FALSE;
-    if (!console_completion_parse(source, segments, &prefix, &method)) {
-        GVariantBuilder empty, result;
-        g_variant_builder_init(&empty, G_VARIANT_TYPE("aa{sv}"));
-        g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
-        g_variant_builder_add(&result, "{sv}", "completions", g_variant_builder_end(&empty));
-        return g_variant_ref_sink(g_variant_builder_end(&result));
-    }
+    gboolean parsed = console_completion_parse(source, segments, &prefix, &method);
+    ConsoleCall call = console_call_context(source);
+    g_autofree char* callee = call.callee;
 
     lua_State* state = runtime->state;
     int base = lua_gettop(state);
@@ -411,7 +747,13 @@ GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
     guint operations = config->operations ? g_hash_table_size(config->operations) : 0;
     config->api_calling = TRUE;
     lua_rawgeti(state, LUA_REGISTRYINDEX, LUA_RIDX_GLOBALS);
-    gboolean resolved = lua_istable(state, -1);
+    const char* typed_key = NULL;
+    gboolean key_position = call.found && call.in_table && console_typing_key(source, &typed_key);
+    /* With no name started, as after a closing or opening parenthesis, a comma or a space, there is
+     * nothing to complete: the signature help is the hint, so list nothing rather than every
+     * global. A table key position lists the table's keys instead of globals. */
+    gboolean resolved = parsed && !key_position && lua_istable(state, -1) &&
+                        *console_completion_token_start(source);
     for (guint i = 0; resolved && i < segments->len; i++) {
         const char* segment = g_ptr_array_index(segments, i);
         if (!console_completion_push_field(state, -1, segment))
@@ -439,6 +781,21 @@ GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
                                              seen, &visits);
         lua_pop(state, 1);
     }
+    /* Help for the call being typed, and the keys of a table argument as completions. */
+    const ApiClass* table_class = NULL;
+    g_autoptr(GVariant) help =
+        call.found ? console_signature_help(state, &call, &table_class) : NULL;
+    for (gsize i = 0; key_position && table_class && i < table_class->n_fields; i++) {
+        const ApiMember* field = &table_class->fields[i];
+        if (!g_str_has_prefix(field->name, typed_key) ||
+            completions->len >= MAX_CONSOLE_COMPLETIONS)
+            continue;
+        ConsoleCompletion* completion = g_new0(ConsoleCompletion, 1);
+        completion->label = g_strdup(field->name);
+        completion->detail = g_strdup(field->type);
+        completion->documentation = g_strdup(field->description ? field->description : "");
+        g_ptr_array_add(completions, completion);
+    }
     g_ptr_array_sort(completions, console_completion_compare);
 
     lua_settop(state, base);
@@ -464,6 +821,8 @@ GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
     }
     g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
     g_variant_builder_add(&result, "{sv}", "completions", g_variant_builder_end(&values));
+    if (help)
+        g_variant_builder_add(&result, "{sv}", "signature", help);
     return g_variant_ref_sink(g_variant_builder_end(&result));
 }
 
@@ -514,14 +873,16 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
     int steps = MAX_CONSOLE_STEPS / 1000;
     memcpy(lua_getextraspace(state), &steps, sizeof steps);
 
-    /* Prefer normal Lua chunks, then make a bare expression convenient for a
-     * prompt. The second parse has no side effects because the first only
-     * compiles source. */
-    int status = luaL_loadbufferx(state, source, strlen(source), "=(gnoblin console)", "t");
+    /* Read the input as an expression first, like the Lua REPL, so a call such as
+     * gnoblin.session.status() shows what it returns. A call is also a valid statement, so trying
+     * the statement form first would run it and discard the result. Input that is not an
+     * expression, such as an assignment or several statements, loads as a normal chunk instead.
+     * Loading only compiles, so the failed attempt has no side effects. */
+    g_autofree char* expression = g_strdup_printf("return %s", source);
+    int status = luaL_loadbufferx(state, expression, strlen(expression), "=(gnoblin console)", "t");
     if (status != LUA_OK) {
         lua_pop(state, 1);
-        g_autofree char* expression = g_strdup_printf("return %s", source);
-        status = luaL_loadbufferx(state, expression, strlen(expression), "=(gnoblin console)", "t");
+        status = luaL_loadbufferx(state, source, strlen(source), "=(gnoblin console)", "t");
     }
     if (status == LUA_OK)
         status = lua_pcall(state, 0, LUA_MULTRET, 0);
