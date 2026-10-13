@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 13 Oct 2026 01:53:00 +0000
+Subject: [PATCH] desktopentry: preserve the complete desktop action identifier
+
+The group brackets have already been removed when finishCategory runs.
+"Desktop Action " has 15 characters, so slicing at 16 drops the first
+character of the action ID. This also merges distinct actions that share
+the same suffix and makes single-character IDs empty.
+
+Derive the offset from the matched prefix. DesktopAction.id must retain
+the exact desktop-file identifier for callers that activate it via GIO.
+
+Base: a1a150fab00a93ea983aaca5df55304bc837f51b (v0.2.1)
+---
+ src/core/desktopentry.cpp | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/core/desktopentry.cpp b/src/core/desktopentry.cpp
+--- a/src/core/desktopentry.cpp
++++ b/src/core/desktopentry.cpp
+@@ -131,7 +131,7 @@ ParsedDesktopEntryData DesktopEntry::parseText(const QString& id, const QString& te
+ 				else if (key == "Keywords") data.keywords = value.split(u';', Qt::SkipEmptyParts);
+ 			}
+ 		} else if (groupName.startsWith("Desktop Action ")) {
+-			auto actionName = groupName.sliced(16);
++			auto actionName = groupName.sliced(QStringLiteral("Desktop Action ").size());
+ 			DesktopActionData action;
+ 			action.id = actionName;
+ 
