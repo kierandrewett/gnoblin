@@ -19,6 +19,6 @@ void gnoblin_plugin_ui_set_session_locked(GnoblinPluginUi* ui, gboolean locked);
 gboolean gnoblin_plugin_ui_console_visible(GnoblinPluginUi* ui);
 
 /* Console is modal; passive recovery captures pointer events inside its panel. */
-gboolean gnoblin_plugin_ui_handle_event(GnoblinPluginUi* ui, ClutterEvent* event);
+gboolean gnoblin_plugin_ui_handle_event(GnoblinPluginUi* ui, const ClutterEvent* event);
 
 G_END_DECLS

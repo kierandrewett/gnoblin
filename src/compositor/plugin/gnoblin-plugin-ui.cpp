@@ -462,7 +462,7 @@ GnoblinPluginUi* gnoblin_plugin_ui_new(ClutterActor* parent, MetaDisplay* displa
     auto* ui = new GnoblinPluginUi;
     ui->display = display;
     ui->overlay = gnoblin_imgui_overlay_new(parent);
-    /* Stage capture routes the modal console and the recovery panel's pointer
+    /* Mutter's event filter routes the console and recovery panel's pointer
      * bounds. The full-stage actor must not intercept other client input. */
     clutter_actor_set_reactive(gnoblin_imgui_overlay_get_actor(ui->overlay), FALSE);
     ui->recovery = {gnoblin_recovery_panel_new(), gnoblin_recovery_panel_free};
@@ -562,7 +562,7 @@ gboolean gnoblin_plugin_ui_console_visible(GnoblinPluginUi* ui) {
     return ui != nullptr && ui->console->visible();
 }
 
-gboolean gnoblin_plugin_ui_handle_event(GnoblinPluginUi* ui, ClutterEvent* event) {
+gboolean gnoblin_plugin_ui_handle_event(GnoblinPluginUi* ui, const ClutterEvent* event) {
     if (ui == nullptr || ui->session_locked)
         return FALSE;
     const bool modal = ui->console->visible();
