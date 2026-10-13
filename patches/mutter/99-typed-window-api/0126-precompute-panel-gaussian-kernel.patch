@@ -1,0 +1,139 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 4 Oct 2026 20:08:52 +0100
+Subject: [PATCH] Precompute bounded Gaussian kernels with constant sample indices
+
+---
+diff --git a/clutter/clutter/clutter-blur.c b/clutter/clutter/clutter-blur.c
+index 5151a4af..aeb0a116 100644
+--- a/clutter/clutter/clutter-blur.c
++++ b/clutter/clutter/clutter-blur.c
+@@ -58,6 +58,13 @@
+  *
+  * http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/
+  *
++ * ## Precomputed kernel
++ *
++ * For common radii, the paired weights and sampling offsets are calculated
++ * once when setting up each blur pass. The shader uses constant uniform
++ * indices so software renderers do not execute the recurrence or loop for
++ * every fragment. Texture sizes, tap positions and normalization are unchanged.
++ *
+  * ## Incremental gauss-factor calculation
+  *
+  * The kernel values for the gaussian kernel are computed incrementally instead
+@@ -69,12 +76,52 @@
+  *
+  */
+ 
++/* Ten vec4 uniforms hold twenty bilinear pairs. Keep this bound and the
++ * SAMPLE_PAIR list together; larger and very small sigmas use the original
++ * recurrence. Packing pairs also limits fragment-uniform consumption. */
++#define MAX_KERNEL_PAIRS 20
++
++#define SAMPLE_PAIR(i, swizzle) \
++"    if (kernel_scale.z > " G_STRINGIFY (i) ".0) {\n" \
++"      vec2 pair = kernel[" G_STRINGIFY (i) " / 2]." G_STRINGIFY (swizzle) ";\n" \
++"      vec2 offset = direction * pair.y * pixel_step;\n" \
++"      ret += texture2D (cogl_sampler, uv + offset) * pair.x;\n" \
++"      ret += texture2D (cogl_sampler, uv - offset) * pair.x;\n" \
++"    }\n"
++
+ static const char *gaussian_blur_glsl_declarations =
++"uniform vec4 kernel[" G_STRINGIFY (MAX_KERNEL_PAIRS / 2) "];\n"
++"uniform vec3 kernel_scale;\n"
+ "uniform float sigma;                                                      \n"
+ "uniform float pixel_step;                                                 \n"
+ "uniform vec2 direction;                                                   \n";
+ 
+ static const char *gaussian_blur_glsl =
++"  if (kernel_scale.z > 0.0) {                                                 \n"
++"    vec2 uv = vec2 (cogl_tex_coord.st);                                    \n"
++"    vec4 ret = texture2D (cogl_sampler, uv) * kernel_scale.x;              \n"
++SAMPLE_PAIR (0, xy)
++SAMPLE_PAIR (1, zw)
++SAMPLE_PAIR (2, xy)
++SAMPLE_PAIR (3, zw)
++SAMPLE_PAIR (4, xy)
++SAMPLE_PAIR (5, zw)
++SAMPLE_PAIR (6, xy)
++SAMPLE_PAIR (7, zw)
++SAMPLE_PAIR (8, xy)
++SAMPLE_PAIR (9, zw)
++SAMPLE_PAIR (10, xy)
++SAMPLE_PAIR (11, zw)
++SAMPLE_PAIR (12, xy)
++SAMPLE_PAIR (13, zw)
++SAMPLE_PAIR (14, xy)
++SAMPLE_PAIR (15, zw)
++SAMPLE_PAIR (16, xy)
++SAMPLE_PAIR (17, zw)
++SAMPLE_PAIR (18, xy)
++SAMPLE_PAIR (19, zw)
++"    cogl_texel = ret / kernel_scale.y;                                    \n"
++"  } else {                                                               \n"
+ "  vec2 uv = vec2 (cogl_tex_coord.st);                                     \n"
+ "                                                                          \n"
+ "  vec3 gauss_coefficient;                                                 \n"
+@@ -106,7 +153,10 @@ static const char *gaussian_blur_glsl =
+ "    gauss_coefficient.xy *= gauss_coefficient.yz;                         \n"
+ "  }                                                                       \n"
+ "                                                                          \n"
+-"  cogl_texel = ret / gauss_coefficient_total;                             \n";
++"  cogl_texel = ret / gauss_coefficient_total;                             \n"
++"  }\n";
++
++#undef SAMPLE_PAIR
+ 
+ #define MIN_DOWNSCALE_SIZE 256.f
+ #define MAX_SIGMA 6.f
+@@ -204,6 +254,49 @@ update_blur_uniforms (ClutterBlur *blur,
+                                     blur->sigma / blur->downscale_factor);
+     }
+ 
++  /* The radius is fixed for the lifetime of a ClutterBlur. Keep the paired
++   * Gaussian weights and bilinear offsets out of the per-fragment loop.
++   * Retain the original shader outside the bounded uniform kernel. */
++  {
++    float sigma = blur->sigma / blur->downscale_factor;
++    float scale[3] = { 0 };
++    int location;
++
++    if (sigma >= 1.f && sigma <= MAX_KERNEL_PAIRS / 1.5f)
++      {
++        float kernel[MAX_KERNEL_PAIRS][2] = { 0 };
++        int n_pairs = (int) ceilf (1.5f * sigma);
++        float coefficient = 1.f / (sqrtf (2.f * (float) G_PI) * sigma);
++        float ratio = expf (-0.5f / (sigma * sigma));
++        float ratio_squared = ratio * ratio;
++
++        scale[0] = scale[1] = coefficient;
++        scale[2] = (float) n_pairs;
++        coefficient *= ratio;
++        ratio *= ratio_squared;
++        for (int i = 0; i < n_pairs; i++)
++          {
++            float subtotal = coefficient;
++
++            coefficient *= ratio;
++            ratio *= ratio_squared;
++            subtotal += coefficient;
++            kernel[i][0] = subtotal;
++            kernel[i][1] = (float) (2 * i + 1) + coefficient / subtotal;
++            scale[1] += 2.f * subtotal;
++            coefficient *= ratio;
++            ratio *= ratio_squared;
++          }
++
++        location = cogl_pipeline_get_uniform_location (pass->pipeline, "kernel");
++        cogl_pipeline_set_uniform_float (pass->pipeline, location,
++                                         4, (n_pairs + 1) / 2, &kernel[0][0]);
++      }
++
++    location = cogl_pipeline_get_uniform_location (pass->pipeline, "kernel_scale");
++    cogl_pipeline_set_uniform_float (pass->pipeline, location, 3, 1, scale);
++  }
++
+   direction_uniform =
+     cogl_pipeline_get_uniform_location (pass->pipeline, "direction");
+   if (direction_uniform > -1)
