@@ -23,9 +23,10 @@ actions:
 
 A custom SSD renderer implements its own titlebar click behavior.
 
-Set `window_management.button_layout` to choose Mutter's global server-side
-button order. The per-window `frame.button_layout` option controls buttons for
-Gnoblin frame renderers. See [titlebar button placement](/config/configure/window_management#titlebar-button-placement).
+Use `frame.button_layout` to choose the right-side buttons in Gnoblin's native
+frame and its fallback. External renderers use their own settings.
+`window_management.button_layout` does not change these titlebars. See
+[titlebar button placement](/config/configure/window_management#titlebar-button-placement).
 
 The embedded default config enables Gnoblin's built-in `native` renderer with
 `mode = "auto"` and extents `{32, 1, 1, 1}`. Apps keep their own titlebars;
@@ -95,17 +96,17 @@ the app. Apps that draw their own titlebars can look unchanged under `auto`.
 All fields below go inside `frame`. Later matching rules override individual
 fields. Sizes are logical pixels.
 
-| Field                 | Default                             | Values                                               |
-| --------------------- | ----------------------------------- | ---------------------------------------------------- |
-| `mode`                | `"off"`                             | Modes listed above                                   |
-| `extents`             | `{32, 1, 1, 1}`                     | Top/right/bottom/left frame size; integers 0–256     |
-| `crop`                | `{0, 0, 0, 0}`                      | Removed client margins; same order and range         |
-| `renderer`            | `"native"`                          | Registered service name                              |
-| `style`               | `"default"`                         | Style understood by that renderer                    |
-| `background`          | `"#242424"`                         | Active background colour                             |
-| `foreground`          | `"#eeeeee"`                         | Foreground colour                                    |
-| `inactive_background` | `"#303030"`                         | Unfocused background colour                          |
-| `button_layout`       | `{"minimize", "maximize", "close"}` | Ordered buttons, without duplicates; `{}` hides them |
+| Field                 | Default                             | Values                                                    |
+| --------------------- | ----------------------------------- | --------------------------------------------------------- |
+| `mode`                | `"off"`                             | Modes listed above                                        |
+| `extents`             | `{32, 1, 1, 1}`                     | Top/right/bottom/left frame size; integers 0–256          |
+| `crop`                | `{0, 0, 0, 0}`                      | Removed client margins; same order and range              |
+| `renderer`            | `"native"`                          | Registered service name                                   |
+| `style`               | `"default"`                         | Style understood by that renderer                         |
+| `background`          | `"#242424"`                         | Active background colour                                  |
+| `foreground`          | `"#eeeeee"`                         | Foreground colour                                         |
+| `inactive_background` | `"#303030"`                         | Unfocused background colour                               |
+| `button_layout`       | `{"minimize", "maximize", "close"}` | Native-frame buttons, without duplicates; `{}` hides them |
 
 Colours accept `#RRGGBB` or `#RRGGBBAA`.
 Renderer and style names accept 1–64 letters, digits, `_` or `-`.
@@ -159,7 +160,9 @@ Wayland window effects exclude transparent buffer margins outside the client's
 declared window geometry. Borders and shadows include Gnoblin's server frame.
 When an app uses Gnoblin's frame, `corners.radius` rounds the whole window,
 frame and content, even in `auto` mode, so square app content never shows
-outside the frame's corners. States where rounding is off, such as maximised
+outside the frame's corners.
+
+States where rounding is off, such as maximised
 with `keep_maximized = false`, make both the frame and the content square.
 
 Popup positions use the parent window's client origin, excluding Gnoblin's
