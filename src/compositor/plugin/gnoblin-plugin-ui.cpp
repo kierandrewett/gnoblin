@@ -217,8 +217,12 @@ static gboolean load_recovery_marker(GnoblinPluginUi* ui) {
 
 static gboolean refresh_recovery_marker(gpointer user_data) {
     auto* ui = static_cast<GnoblinPluginUi*>(user_data);
-    load_recovery_marker(ui);
-    update_visibility(ui);
+    /* An unchanged notice has no animation. Invalidating this full-stage
+     * overlay makes otherwise idle backdrops repaint, including panel blur.
+     * Keep console refreshes and hide the actor after a notice is dismissed. */
+    if (load_recovery_marker(ui) || ui->console->visible() ||
+        !gnoblin_recovery_panel_should_draw(ui->recovery.get()))
+        update_visibility(ui);
     return G_SOURCE_CONTINUE;
 }
 
