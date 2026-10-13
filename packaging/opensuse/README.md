@@ -14,7 +14,7 @@ contains Mutter and the Lua supervisor together.
 
 To check dependencies without installing them, run
 `packaging/opensuse/check-buildrequires.sh gnoblin`. The accepted package names
-are `gnoblin-portal` and `gnoblin`. Add `--install` to install the
+are `xdg-desktop-portal-gnoblin` and `gnoblin`. Add `--install` to install the
 selected stage's host dependencies. A successful dependency check does not
 prove a binary build, installation, GNOME coexistence, login, or removal. Do
 not publish this adapter until those gates have passed on a clean Tumbleweed

@@ -200,7 +200,7 @@ A line such as `gnoblin-guardian: scheduling policy 5->0, nice 16->-11`
 shows that Gnoblin corrected the inherited priority. If the policy is still
 `SCHED_IDLE`, check that `rtkit-daemon` is running.
 
-### Ananicy-cpp rules
+### Ananicy-cpp rules {#ananicy-cpp-rules}
 
 Ananicy-cpp's default rules rank `gdm`, `gdm-wayland-session` and
 `gdm-session-worker` as background work (nice 16, idle I/O, `SCHED_IDLE`).
@@ -209,22 +209,31 @@ RealtimeKit corrects only the thread that asks. This can delay desktop frames
 and input under CPU load. The daemon's GNOME rule gives `gnome-shell` a
 separate low-latency class; check your installed rules for its actual priority.
 
-`make install` adds two files to `/etc/ananicy.d` when that directory exists:
+Install the `gnoblin-ananicy-rules` package from the
+[latest `gnoblin-ananicy-v*` release](https://github.com/kierandrewett/gnoblin/releases?q=gnoblin-ananicy):
 
-- `99-gnoblin.types` defines the priority classes.
-- `99-gnoblin.rules` selects `SCHED_OTHER` and nice `-5` for `gnoblin`,
-  `quickshell` and `bingux-frame`. Installation also restarts `ananicy-cpp`.
+```sh
+sudo dnf install ./gnoblin-ananicy-rules-VERSION-1.noarch.rpm        # Fedora
+sudo pacman -U gnoblin-ananicy-rules-VERSION-1-any.pkg.tar.zst       # Arch Linux
+```
+
+On another distribution, copy `99-gnoblin.types` and `99-gnoblin.rules` from the
+release tarball to `/etc/ananicy.d/` and run `sudo systemctl restart ananicy-cpp`.
+
+The rules give `gnoblin`, `quickshell` and `bingux-frame` normal scheduling
+with nice -5. Log out and back in, then confirm with:
+
+```sh
+chrt -p "$(pgrep -ox gnoblin)"
+```
+
+The policy should be `SCHED_OTHER`. Remove the two files from
+`/etc/ananicy.d/`, or the package, to return to the daemon's defaults.
 
 Ordinary commands launched through `gnoblin.commands.run` or
 `gnoblin.commands.capture` drop an inherited negative nice value to `0`.
 External process rules can change it afterward. Helpers launched directly by
 a shell use that shell's launch path and can inherit its priority.
-
-To install them without a full install, copy both files from
-`packaging/ananicy/` to `/etc/ananicy.d/` and run
-`sudo systemctl restart ananicy-cpp`. Log out and back in, because running
-processes keep the class they inherited. Delete the two files to return to the
-daemon's defaults.
 
 ## The session ended and returned to the login screen
 

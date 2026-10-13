@@ -61,7 +61,7 @@ jobs:
           # Build requirements come from the specs below. Only the test tools that no spec requires are named here.
           dnf -y install dnf-plugins-core gsettings-desktop-schemas \
             weston dbus-daemon dbus-tools ibus flatpak grim util-linux-user
-          dnf -y builddep --allowerasing packaging/rpm/gnoblin.spec packaging/rpm/gnoblin-portal.spec
+          dnf -y builddep --allowerasing packaging/rpm/gnoblin.spec packaging/rpm/xdg-desktop-portal-gnoblin.spec
           useradd --create-home builder
           builder_uid="$(id -u builder)"
           install -d -o builder -g builder -m 700 "/run/user/$builder_uid"

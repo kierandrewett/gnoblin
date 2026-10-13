@@ -118,7 +118,7 @@ let
     '';
   });
   gnoblinPortal = gnomePortal.overrideAttrs (old: {
-    pname = "gnoblin-portal";
+    pname = "xdg-desktop-portal-gnoblin";
     version = versions.components.xdg-desktop-portal-gnome.version;
     src = portalSrc;
     patches = patchesFor "xdg-desktop-portal-gnome";

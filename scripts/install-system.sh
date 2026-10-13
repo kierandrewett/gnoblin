@@ -97,16 +97,16 @@ if [ "$SOURCE" = copr ]; then
     "${sudo_args[@]}" dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"
 else
     META_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin.spec")"
-    PORTAL_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/gnoblin-portal.spec")"
+    PORTAL_VERSION="$(sed -n 's/^Version:[[:space:]]*//p' "$ROOT/packaging/rpm/xdg-desktop-portal-gnoblin.spec")"
     packages=("gnoblin:$META_VERSION")
-    portal_release="$(rpmspec -q --srpm --qf '%{RELEASE}' "$ROOT/packaging/rpm/gnoblin-portal.spec")"
+    portal_release="$(rpmspec -q --srpm --qf '%{RELEASE}' "$ROOT/packaging/rpm/xdg-desktop-portal-gnoblin.spec")"
     mapfile -t portal_matches < <(find "$RPM_DIR" -type f \
-        -name "gnoblin-portal-$PORTAL_VERSION-$portal_release.*.rpm" | sort)
+        -name "xdg-desktop-portal-gnoblin-$PORTAL_VERSION-$portal_release.*.rpm" | sort)
     if [ "${#portal_matches[@]}" -gt 1 ]; then
-        echo "Expected at most one gnoblin-portal-$PORTAL_VERSION-$portal_release RPM under $RPM_DIR; found ${#portal_matches[@]}." >&2
+        echo "Expected at most one xdg-desktop-portal-gnoblin-$PORTAL_VERSION-$portal_release RPM under $RPM_DIR; found ${#portal_matches[@]}." >&2
         exit 1
     elif [ "${#portal_matches[@]}" -eq 1 ]; then
-        packages+=("gnoblin-portal:$PORTAL_VERSION")
+        packages+=("xdg-desktop-portal-gnoblin:$PORTAL_VERSION")
     else
         echo "No matching Gnoblin portal RPM found; installing the core session without it."
     fi
@@ -116,7 +116,7 @@ else
         version="${package#*:}"
         case "$name" in
             gnoblin) project=gnoblin ;;
-            gnoblin-portal) project=gnoblin-portal ;;
+            xdg-desktop-portal-gnoblin) project=xdg-desktop-portal-gnoblin ;;
         esac
         release="$(rpmspec -q --srpm --qf '%{RELEASE}' "$ROOT/packaging/rpm/$project.spec")"
         mapfile -t matches < <(find "$RPM_DIR" -type f -name "$name-$version-$release.*.rpm" | sort)
@@ -153,9 +153,9 @@ elif [ -f "$LEGACY_GNOME_SESSION_DROPIN_PATH" ] &&
 fi
 systemctl --user daemon-reload
 rpm -q gnoblin
-if rpm -q gnoblin-portal >/dev/null 2>&1; then
-    rpm -q gnoblin-portal
+if rpm -q xdg-desktop-portal-gnoblin >/dev/null 2>&1; then
+    rpm -q xdg-desktop-portal-gnoblin
 fi
 printf '%s\n' 'Installed. Select Gnoblin at login; GNOME remains available.' \
     'Remove with: sudo dnf remove gnoblin' \
-    'Remove the optional portal separately: sudo dnf remove gnoblin-portal'
+    'Remove the optional portal separately: sudo dnf remove xdg-desktop-portal-gnoblin'

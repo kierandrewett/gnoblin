@@ -92,7 +92,7 @@ stylus eraser mode and action keys now flow through Gnoblin's typed input
 adapter, and Mutter uses a local enum for that mode. Its other newer optional
 input keys are checked against the installed schema before use. The GTK 4.22.0
 and xdg-desktop-portal 1.21.1 requirements belong to the optional
-`gnoblin-portal` package; they do not block the core session build. Support
+`xdg-desktop-portal-gnoblin` package; they do not block the core session build. Support
 still requires measured package availability and a successful clean
 build/install per target. For older targets, decide whether each missing
 library is safe to use privately under `/usr/lib/gnoblin` or is a required

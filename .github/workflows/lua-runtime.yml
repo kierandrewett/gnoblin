@@ -40,7 +40,7 @@ jobs:
           dnf -y install \
             dnf-plugins-core git make pkgconf-pkg-config python3-packaging adwaita-cursor-theme \
             util-linux-user xorg-x11-server-Xwayland
-          dnf -y builddep packaging/rpm/gnoblin.spec packaging/rpm/gnoblin-portal.spec
+          dnf -y builddep packaging/rpm/gnoblin.spec packaging/rpm/xdg-desktop-portal-gnoblin.spec
 
       - name: Build all targets as an unprivileged user
         run: |

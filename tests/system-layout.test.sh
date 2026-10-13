@@ -68,7 +68,7 @@ check() {
     # The recipes' own file lists are the contract. Take every literal /usr and /etc path from their %files sections.
     expected="$(awk '/^%files/ {in_files = 1; next} /^%(package|description|changelog|posttrans|postun|check)/ {in_files = 0}
         in_files && $NF ~ /^\/(usr|etc)\// && $NF !~ /%/ {print $NF}' \
-        "$ROOT/packaging/rpm/gnoblin.spec.in" "$ROOT/packaging/rpm/gnoblin-portal.spec" | sort -u)"
+        "$ROOT/packaging/rpm/gnoblin.spec.in" "$ROOT/packaging/rpm/xdg-desktop-portal-gnoblin.spec" | sort -u)"
     # Only the Fedora recipe asks for the GeoClue file. A stage made without GNOBLIN_LAYOUT_GEOCLUE=1 has none.
     if "$STAGED_BY_BUILD" && [ "${GNOBLIN_LAYOUT_GEOCLUE:-0}" != 1 ]; then
         expected="$(grep -v '^/etc/geoclue/' <<<"$expected" || true)"

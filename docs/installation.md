@@ -59,7 +59,7 @@ paths.
 Gnoblin uses the portal backend selected by its XDG portal configuration. The
 core session package installs a Gnoblin-specific default that prefers Gnoblin's
 backend and falls back to another installed backend. The optional
-`gnoblin-portal` package supplies Gnoblin's backend.
+`xdg-desktop-portal-gnoblin` package supplies Gnoblin's backend.
 
 You can route interfaces to another backend in the Lua config. The default
 applies only to a Gnoblin session, so an existing GNOME session keeps its own

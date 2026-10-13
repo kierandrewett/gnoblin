@@ -16,7 +16,7 @@ versions are available, build and install as your normal user:
 
 ```sh
 cd ~/Downloads
-mv gnoblin-*-gnome-*.PKGBUILD PKGBUILD
+mv gnoblin-[0-9]*.PKGBUILD PKGBUILD
 makepkg -si
 ```
 
@@ -27,13 +27,13 @@ testing this package path.
 
 The core package installs the default portal route for Gnoblin sessions but
 does not include a backend. The release also provides an optional
-`gnoblin-portal` PKGBUILD and matching source archive.
+`xdg-desktop-portal-gnoblin` PKGBUILD and matching source archive.
 
 Build the optional package with `makepkg -si` if you want Gnoblin's GTK
 backend. The default route uses it when installed and otherwise selects
 another installed backend. You can route interfaces to another backend in the
 Lua config.
 
-For GNOME applications on a minimal Arch system, install the separate
-[`gnoblin-gnome-integration` package](gnome-apps.md). Install the applications
-you want through pacman.
+For GNOME applications on a minimal Arch system, install the
+[shared desktop services](gnome-apps.md) first. Install the applications you
+want through pacman.
