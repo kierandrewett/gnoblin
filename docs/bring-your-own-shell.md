@@ -102,7 +102,7 @@ If you installed a Bingux package instead, load its Gnoblin Lua module as
 described in the Bingux installation guide. The package enables helper
 services for Gnoblin sessions.
 
-```sh
+````sh
 Do not add Bingux to Gnoblin's autostart list yourself; the package module
 already defines startup for the shell and layer-shell clients.
 
@@ -148,7 +148,7 @@ For Bingux helper services, inspect the optional target:
 ```sh
 systemctl --user status bingux.target
 journalctl --user -b -u bingux-searchd.service -u bingux-statusd.service
-```
+````
 
 See [troubleshooting](troubleshooting.md#no-bar-dock-or-launcher).
-To write your own shell, start with the [compositor bridge](compositor-bridge.md).
+To write your own shell, start with the [compositor bridge](bridge/index.md).

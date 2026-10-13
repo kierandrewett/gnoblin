@@ -10,7 +10,7 @@ is available only in the native Mutter runtime and raises a Lua error while its
 snapshot is unavailable.
 
 Shells that also use the control socket can find its request format in the
-[compositor bridge](/compositor-bridge).
+[compositor bridge](/bridge/).
 
 Layer records expose these fields:
 
@@ -49,7 +49,7 @@ or closing; they do not need to request keyboard focus to receive clicks.
 Pointer movement alone leaves layer ordering unchanged. Pointer clicks can
 raise a layer surface within its layer. Exclusive keyboard
 focus also raises a popup when it opens. A shell can keep companion surfaces
-above or below an overlay using [UI-session state](../compositor-bridge.md#api-version-175-shell-ui-sessions).
+above or below an overlay using [UI-session state](../bridge/.md#api-version-175-shell-ui-sessions).
 Those constraints apply to pointer raises too.
 
 `gnoblin.layers.animation_policy(namespace)` returns the effective enter and

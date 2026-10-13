@@ -13,6 +13,8 @@ from _sources import control_header, control_source, LUA_SOURCES  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 LUA = LUA_SOURCES
 DISPATCH_PATCH = ROOT / "patches/mutter/99-typed-window-api/0032-dispatch-shell-session-lock-request.patch"
+BRIDGE_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/bridge").glob("*.md")))
+EVENT_DOCS = "\n".join(path.read_text() for path in sorted((ROOT / "docs/events").glob("*.md")))
 
 
 class SessionLockApiTests(unittest.TestCase):
@@ -82,9 +84,9 @@ class SessionLockApiTests(unittest.TestCase):
         self.assertIn("gnoblin_native_control_request_session_lock", patch)
 
     def test_docs_separate_delivery_from_compositor_confirmation(self):
-        bridge = (ROOT / "docs/compositor-bridge.md").read_text()
+        bridge = BRIDGE_DOCS
         runtime = (ROOT / "docs/shell-api/session-runtime.md").read_text()
-        events = (ROOT / "docs/config/lua-events.md").read_text()
+        events = EVENT_DOCS
         design = (ROOT / "design/lua-api.md").read_text()
 
         for document in (bridge, runtime, design):

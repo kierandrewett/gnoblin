@@ -61,7 +61,7 @@ bindings, synthetic input, input-method events, or repeated key presses. Direct
 `Window:focus`, `Window:begin_move`, and `Window:begin_resize` calls without a
 context remain denied.
 
-For the socket activation contract, see the [compositor bridge](/compositor-bridge).
+For the socket activation contract, see the [compositor bridge](/bridge/).
 
 ## Launching from a layer surface
 

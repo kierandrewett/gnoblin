@@ -49,11 +49,11 @@ the timeout takes effect only while that behavior is enabled.
 
 ## Click mapping
 
-| Field                    | Accepted values                                  | Meaning                                                                                                                            |
-| ------------------------ | ------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `tap_button_map`         | `"default"`, `"left-right-middle"`, or `"left-middle-right"` | `"left-right-middle"` maps one-, two-, and three-finger taps to left, right, and middle click. `"left-middle-right"` swaps the two- and three-finger mappings. `"lrm"` and `"lmr"` still load as the old names. |
-| `click_method`           | `"default"`, `"none"`, `"areas"`, or `"fingers"` | Keep hardware behavior, disable software-emulated clicks, or emulate clicks using click areas or finger counts.                    |
-| `middle_click_emulation` | Boolean                                          | Setting true enables middle-click when both buttons are pressed; omitted uses the current device preference, normally off.         |
+| Field                    | Accepted values                                              | Meaning                                                                                                                                               |
+| ------------------------ | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tap_button_map`         | `"default"`, `"left-right-middle"`, or `"left-middle-right"` | `"left-right-middle"` maps taps to left, right, middle. `"left-middle-right"` swaps two- and three-finger taps. `"lrm"` and `"lmr"` are legacy names. |
+| `click_method`           | `"default"`, `"none"`, `"areas"`, or `"fingers"`             | Keep hardware behavior, disable software-emulated clicks, or emulate clicks using click areas or finger counts.                                       |
+| `middle_click_emulation` | Boolean                                                      | Setting true enables middle-click when both buttons are pressed; omitted uses the current device preference, normally off.                            |
 
 Each field defaults to the current device preference when omitted. The
 `"default"` enum value asks GNOME/libinput to choose the device behavior.
@@ -72,7 +72,7 @@ end)
 
 The callback table includes `app_id`, `wm_class`, and `title`. This event runs
 when the config loads; it does not track pointer movement continuously. See the
-[Lua event API](/config/lua-events) for its payload and callback behavior.
+[Lua event API](/events/) for its payload and callback behavior.
 
 For `accel_curve`, use a positive `step` and at least two finite,
 non-negative `points`. The points define output speed at evenly spaced input

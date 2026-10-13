@@ -6,11 +6,11 @@
 | `gnoblin.privacy.stop_sharing()`          | None                                                   | `Operation<{requested: integer}>`                                |
 | `gnoblin.privacy.stop_recording()`        | None                                                   | `Operation<{requested: integer}>`                                |
 | `gnoblin.location.authorize_app(options)` | `request_id`, `allow`, `accuracy` from a pending event | Runtime: `Operation<Result>`; `gnoblinctl lua`: read-only result |
-| `gnoblin.permissions.list()`                      | None                                                   | Read-only policy, capabilities, levels, and config path          |
-| `gnoblin.permissions.policy()`                    | None                                                   | Immutable policy with `default`, `rules`, and `revision`         |
-| `gnoblin.permissions.check(args)`                 | `capability`, `identity`                               | Permission decision with scope details                           |
-| `gnoblin.grant.list()`                            | None                                                   | `{grants = {Grant, ...}}`                                        |
-| `gnoblin.grant.revoke(args)`                      | `kind`, `id`                                           | `{ok, id}`                                                       |
+| `gnoblin.permissions.list()`              | None                                                   | Read-only policy, capabilities, levels, and config path          |
+| `gnoblin.permissions.policy()`            | None                                                   | Immutable policy with `default`, `rules`, and `revision`         |
+| `gnoblin.permissions.check(args)`         | `capability`, `identity`                               | Permission decision with scope details                           |
+| `gnoblin.grant.list()`                    | None                                                   | `{grants = {Grant, ...}}`                                        |
+| `gnoblin.grant.revoke(args)`              | `kind`, `id`                                           | `{ok, id}`                                                       |
 
 ## Permission policy
 
@@ -30,7 +30,7 @@ The revision identifies the committed permission-policy snapshot.
 `available` field and a `revision`.
 
 Socket clients read this state through the shared Lua runtime; see the
-[compositor bridge](/compositor-bridge) for its request format.
+[compositor bridge](/bridge/) for its request format.
 
 The `available` record uses `screen_sharing`, `recording`,
 `microphone_in_use`, `camera_in_use`, and `location_in_use`. Gnoblin omits an
@@ -95,7 +95,7 @@ end)
 
 This handler denies every request. A shell that asks the user for consent can
 return `allow = true` with the selected accuracy after the user approves.
-The [compositor bridge](/compositor-bridge) describes how a socket client
+The [compositor bridge](/bridge/) describes how a socket client
 receives and answers these requests. GeoClue configuration that does not allow
 the agent must be fixed by the system administrator before the capability
 becomes available.
@@ -152,7 +152,7 @@ Each grant record contains:
 
 | Field           | Type and values                                                  |
 | --------------- | ---------------------------------------------------------------- |
-| `id`            | Opaque string returned by `gnoblin.grant.list()`.                        |
+| `id`            | Opaque string returned by `gnoblin.grant.list()`.                |
 | `kind`          | `"screen-cast"` or `"remote-desktop"`.                           |
 | `requester`     | Verified portal identity, such as `app-id:org.example.Recorder`. |
 | `devices`       | Integer bitmask: keyboard `1`, pointer `2`, touchscreen `4`.     |
@@ -191,5 +191,5 @@ time. The collection is available after the native portal grant snapshot has
 loaded.
 
 Subscribe to `gnoblin.portal.grant-added` and
-`gnoblin.portal.grant-removed` to track changes. The [compositor bridge](/compositor-bridge)
+`gnoblin.portal.grant-removed` to track changes. The [compositor bridge](/bridge/)
 documents the socket methods and event subscriptions.

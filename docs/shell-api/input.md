@@ -93,7 +93,7 @@ receive the updated record, plus these event fields:
 - `sequence` orders events.
 - `time` is monotonic.
 
-The socket method names and arguments are documented in the [compositor bridge](/compositor-bridge).
+The socket method names and arguments are documented in the [compositor bridge](/bridge/).
 
 `device_type` is `"pointer"`, `"keyboard"`, `"extension"`, `"joystick"`,
 `"tablet"`, `"touchpad"`, `"touchscreen"`, `"pen"`, `"eraser"`,
@@ -331,13 +331,13 @@ expires with its source focus context and is revoked by lock or config reload.
 
 The context is available only in a trusted shortcut callback. It expires
 after five seconds and is revoked by session lock or config reload. See the
-[compositor bridge](/compositor-bridge) for the socket contract.
+[compositor bridge](/bridge/) for the socket contract.
 
 ## Tablet-pad help
 
 Subscribe to `gnoblin.input.pad-help-requested` to show help for a tablet pad
 whose configured button action is `"help"`. Lua listeners receive the event
-directly. See [Lua events](/config/lua-events) for callback behavior.
+directly. See [Lua events](/events/) for callback behavior.
 
 The event contains:
 

@@ -372,15 +372,15 @@ The focus policy uses the existing `window_management` settings.
 The read-only `gnoblin.focus.policy` property returns a `FocusPolicy` with
 these fields:
 
-| Field                          | Type and accepted values             | Current default; standalone proposal and effect                                                                   |
-| ------------------------------ | ------------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `focus_mode`                   | `"click"`, `"hover"`, or `"hover-strict"`  | `"click"`; controls whether pointer entry changes focus.                                                          |
-| `focus_new_windows`            | `"prevent"` or `"allow"`              | `"prevent"`; prevents activation requests without valid launch or user context from interrupting the current task. |
-| `raise_on_click`               | boolean                              | `true`; raise a window when clicked.                                                                              |
-| `auto_raise`                   | boolean                              | `false`; raise the focused window automatically.                                                                  |
-| `focus_change_on_pointer_rest` | boolean                              | `false`; delay pointer-follow focus until the pointer rests.                                                      |
-| `auto_raise_delay`             | integer from 0 to 10000 milliseconds | `500`; delay before automatic raise.                                                                              |
-| `revision`                     | integer                              | Revision of this policy snapshot.                                                                                 |
+| Field                          | Type and accepted values                  | Current default; standalone proposal and effect                                                                    |
+| ------------------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `focus_mode`                   | `"click"`, `"hover"`, or `"hover-strict"` | `"click"`; controls whether pointer entry changes focus.                                                           |
+| `focus_new_windows`            | `"prevent"` or `"allow"`                  | `"prevent"`; prevents activation requests without valid launch or user context from interrupting the current task. |
+| `raise_on_click`               | boolean                                   | `true`; raise a window when clicked.                                                                               |
+| `auto_raise`                   | boolean                                   | `false`; raise the focused window automatically.                                                                   |
+| `focus_change_on_pointer_rest` | boolean                                   | `false`; delay pointer-follow focus until the pointer rests.                                                       |
+| `auto_raise_delay`             | integer from 0 to 10000 milliseconds      | `500`; delay before automatic raise.                                                                               |
+| `revision`                     | integer                                   | Revision of this policy snapshot.                                                                                  |
 
 Change the effective policy through the same declarative API used by
 configuration:
@@ -985,7 +985,7 @@ monitor, lock state, runtime generation, and work-area bounds. The parent Lua
 runtime exposes these operations as `gnoblin.windows.snap_context` and
 `snap_context:commit()`. Native API 1.28 also exposes `window.snap_context` and
 `window.snap` to socket clients, using connection-bound tokens; see the
-[compositor bridge](/compositor-bridge#api-128-text-insertion-and-keyboard-snapping).
+[compositor bridge](/bridge/input-and-focus#api-128-text-insertion-and-keyboard-snapping).
 Pointer snap offers are also available through the capability-bound socket API
 above.
 
@@ -1062,7 +1062,7 @@ session. Socket clients have equivalent `input.text_target` and
 wraps those calls as `gnoblin.input.text_target(context)` and
 `TextTarget:insert_text(text)` for event callbacks, keeping the token private;
 both calls return completed results synchronously in the console. See the
-[compositor bridge](/compositor-bridge#api-128-text-insertion-and-keyboard-snapping).
+[compositor bridge](/bridge/input-and-focus#api-128-text-insertion-and-keyboard-snapping).
 X11 is unsupported.
 
 The target expires with the context's five-second deadline. Lock, focus loss,
@@ -1707,7 +1707,7 @@ live, one-use trusted shortcut context; calls without one fail closed. Socket
 the token's input serial and source surface, and Gnoblin requires the socket
 peer PID to match the PID that created the token. The token is consumed once
 and is never exposed to Lua. See the
-[runtime API reference](../docs/config/runtime-api.md) for arguments and
+[runtime API reference](../docs/shell-api/index.md) for arguments and
 restrictions.
 
 ### Current window results and actions
@@ -1794,8 +1794,8 @@ operations requested by the callback are applied after it returns. Queued
 callbacks are discarded when their Lua runtime is replaced. The native API call
 path still uses a positive request ID internally and returns a normal socket
 `reply` or `error`.
-See the [runtime API reference](../docs/config/runtime-api.md) and [Lua
-events](../docs/config/lua-events.md) for current behavior.
+See the [runtime API reference](../docs/shell-api/index.md) and [Lua
+events](../docs/events/index.md) for current behavior.
 
 ## Implementation status at this checkout
 

@@ -73,10 +73,10 @@ continues after you enter a passphrase.
 Both events carry `request_id`, an integer that stays the same for one prompt.
 Gnoblin does not reuse a `request_id` while it runs.
 
-| Event                      | Extra fields                                                                                                 | When it fires                                  |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------- |
+| Event                      | Extra fields                                                                                                                            | When it fires                                    |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | `gnoblin.prompt.requested` | `kind`, `title`, `message`, `description`, `warning`, `password_new`, `choice_label`, `caller_window`, `continue_label`, `cancel_label` | A program asks for a password or a confirmation. |
-| `gnoblin.prompt.finished`  | `result`                                                                                                     | The prompt ended.                              |
+| `gnoblin.prompt.finished`  | `result`                                                                                                                                | The prompt ended.                                |
 
 - `kind` is `"password"` when the program needs a password, or `"confirm"` when
   it needs a yes or no answer.
@@ -99,19 +99,19 @@ Gnoblin does not reuse a `request_id` while it runs.
 Each method takes a table and returns an operation. The operation succeeds with
 `{request_id = ..., submitted = true}`.
 
-| Method                  | Fields                                              | Effect                                          |
-| ----------------------- | --------------------------------------------------- | ----------------------------------------------- |
-| `gnoblin.prompt.respond`| `request_id`, `password`, `confirmed`, `choice`     | Answer the prompt.                              |
-| `gnoblin.prompt.cancel` | `request_id`                                        | End the prompt. The program that asked sees a cancellation. |
+| Method                   | Fields                                          | Effect                                                      |
+| ------------------------ | ----------------------------------------------- | ----------------------------------------------------------- |
+| `gnoblin.prompt.respond` | `request_id`, `password`, `confirmed`, `choice` | Answer the prompt.                                          |
+| `gnoblin.prompt.cancel`  | `request_id`                                    | End the prompt. The program that asked sees a cancellation. |
 
 For `prompt.respond`:
 
-| Field        | Type    | Required for          | Meaning                                                                    |
-| ------------ | ------- | --------------------- | -------------------------------------------------------------------------- |
-| `request_id` | integer | Always                | The `request_id` from the event. Must be positive.                         |
-| `password`   | string  | `kind = "password"`   | The password. UTF-8, up to 4096 bytes. Not allowed for a confirmation.     |
-| `confirmed`  | boolean | `kind = "confirm"`    | `true` continues. `false` cancels. Not allowed for a password prompt.      |
-| `choice`     | boolean | Never                 | The state of the checkbox that `choice_label` describes.                   |
+| Field        | Type    | Required for        | Meaning                                                                |
+| ------------ | ------- | ------------------- | ---------------------------------------------------------------------- |
+| `request_id` | integer | Always              | The `request_id` from the event. Must be positive.                     |
+| `password`   | string  | `kind = "password"` | The password. UTF-8, up to 4096 bytes. Not allowed for a confirmation. |
+| `confirmed`  | boolean | `kind = "confirm"`  | `true` continues. `false` cancels. Not allowed for a password prompt.  |
+| `choice`     | boolean | Never               | The state of the checkbox that `choice_label` describes.               |
 
 A missing or wrong-typed field fails the operation with a message that names
 the field.
@@ -143,7 +143,7 @@ and Lua strings are not wiped.
 
 ## Use the methods from a shell process
 
-A shell that connects to the [compositor bridge](/compositor-bridge) uses the
+A shell that connects to the [compositor bridge](/bridge/) uses the
 same methods as `prompt.respond` and `prompt.cancel` with API version 1.79 or
 later, and subscribes to the `gnoblin.prompt.*` events. Only a client that
 received `gnoblin.prompt.requested` can answer that prompt.

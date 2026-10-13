@@ -89,12 +89,12 @@ end)
 
 `gnoblin.workspaces.list()` reads the current snapshot immediately. Creating a
 workspace returns an operation handle; Gnoblin reports its result through
-`gnoblin.operation.completed`. See [Lua events](/config/lua-events) for event
+`gnoblin.operation.completed`. See [Lua events](/events/) for event
 payloads and callback rules.
 
 Runtime-created workspaces are temporary even when you provide an ID.
 Config-declared workspaces cannot be removed, and Gnoblin rejects removal of
-the active or occupied workspace. The [Lua runtime API](/config/runtime-api)
+the active or occupied workspace. The [Lua runtime API](/shell-api/)
 lists available methods and result fields.
 
 | Call or field                  | Accepted value                                | Meaning                                         |
@@ -135,5 +135,5 @@ gnoblinctl window workspace 42 --number 1
 Replace `42` with the ID shown on your system. Workspace numbers can change
 when workspaces are removed or reordered; use configured IDs in saved rules
 and scripts. See [workspace settings](/config/configure/window_management),
-the [window rules guide](/guides/window_rules#workspaces), [Lua events](/config/lua-events), and the
-[`gnoblinctl` reference](/gnoblinctl#workspaces-and-monitors).
+the [window rules guide](/guides/window_rules#workspaces), [Lua events](/events/), and the
+[`gnoblinctl` reference](/cli/#workspaces-and-monitors).

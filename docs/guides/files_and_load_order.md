@@ -143,31 +143,31 @@ Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 
 For event-driven compositor behavior, load a Lua module that registers a
 callback with `gnoblin.events.on`. See [Lua event handlers](/user-scripts) and
-the [event reference](/config/lua-events). Keep presentation in separate
+the [event reference](/events/). Keep presentation in separate
 Wayland clients; the runtime API controls compositor state.
 
 ## Reload and persistence
 
-| Change                             | Applies                                        | When removed                             |
-| ---------------------------------- | ---------------------------------------------- | ---------------------------------------- |
-| Rules and animations               | On reload                                      | Earlier rules/defaults apply             |
-| Titlebar policy                    | After reload and the app's next surface update | Earlier rules/defaults apply             |
-| Command shortcuts                  | On reload                                      | Binding released; launched process stays |
-| Built-in keybindings               | On reload                                      | Built-in default applies                 |
-| Window-management preferences      | On reload                                      | Gnoblin default applies                  |
-| Compositor interaction preferences | On reload                                      | Gnoblin default applies                  |
-| Input preferences                  | On reload                                      | GNOME/Mutter settings apply              |
-| Input sources                      | On reload                                      | GNOME session sources apply              |
-| Orientation lock                   | On reload                                      | GNOME orientation setting applies        |
-| Cursor theme and size              | On reload                                      | Adwaita at 24 logical pixels             |
-| Notifications and layout popup     | On reload                                      | Saved GSettings value stays              |
-| Autostart                          | Reconciled on reload                           | Updated or removed child stops           |
-| Renderer services                  | Restart on reload                              | Enabled frames use native fallback       |
-| Protocols                          | On reload for new clients                      | Default on reload for new clients        |
-| Launcher focus behaviour           | On reload                                      | Default on reload                        |
-| Drag boundary                      | Next drag after reload                         | Defaults to enabled                      |
+| Change                             | Applies                                        | When removed                              |
+| ---------------------------------- | ---------------------------------------------- | ----------------------------------------- |
+| Rules and animations               | On reload                                      | Earlier rules/defaults apply              |
+| Titlebar policy                    | After reload and the app's next surface update | Earlier rules/defaults apply              |
+| Command shortcuts                  | On reload                                      | Binding released; launched process stays  |
+| Built-in keybindings               | On reload                                      | Built-in default applies                  |
+| Window-management preferences      | On reload                                      | Gnoblin default applies                   |
+| Compositor interaction preferences | On reload                                      | Gnoblin default applies                   |
+| Input preferences                  | On reload                                      | GNOME/Mutter settings apply               |
+| Input sources                      | On reload                                      | GNOME session sources apply               |
+| Orientation lock                   | On reload                                      | GNOME orientation setting applies         |
+| Cursor theme and size              | On reload                                      | Adwaita at 24 logical pixels              |
+| Notifications and layout popup     | On reload                                      | Saved GSettings value stays               |
+| Autostart                          | Reconciled on reload                           | Updated or removed child stops            |
+| Renderer services                  | Restart on reload                              | Enabled frames use native fallback        |
+| Protocols                          | On reload for new clients                      | Default on reload for new clients         |
+| Launcher focus behaviour           | On reload                                      | Default on reload                         |
+| Drag boundary                      | Next drag after reload                         | Defaults to enabled                       |
 | Portal routes                      | Portal service restarts on reload              | Active portal requests may be interrupted |
-| Xwayland server flags              | Xwayland restarts when flags change            | Running X11 apps disconnect              |
+| Xwayland server flags              | Xwayland restarts when flags change            | Running X11 apps disconnect               |
 
 If you change a setting with the CLI, a value written in your config file
 will replace that change on the next config reload.

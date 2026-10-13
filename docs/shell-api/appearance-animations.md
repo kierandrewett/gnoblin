@@ -17,8 +17,7 @@ the initial compositor snapshot arrives. Calling it while the initial config
 is being evaluated raises an error because that snapshot has not arrived yet.
 
 Socket clients can read the same preference through the API described in the
-[compositor bridge](/compositor-bridge).
-
+[compositor bridge](/bridge/).
 
 ## Animation controls
 

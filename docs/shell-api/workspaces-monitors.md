@@ -1,7 +1,7 @@
 # Workspaces and monitors
 
 For window-level workspace moves, see [Windows](/shell-api/windows). Event
-subscriptions are listed in [Lua events](/config/lua-events).
+subscriptions are listed in [Lua events](/events/).
 
 ## Workspaces
 
@@ -23,11 +23,11 @@ and the [writing workspace recipe](/recipes/writing-workspace).
 
 These methods return immediate, read-only snapshots:
 
-| Method                       | Arguments          | Result                         |
-| ---------------------------- | ------------------ | ------------------------------ |
-| `gnoblin.workspaces.list()`  | None               | All current `Workspace` records |
-| `gnoblin.workspaces.active()` | None              | Active record or `nil`         |
-| `gnoblin.workspaces.by_id(id)` | String workspace ID | Matching record or `nil`       |
+| Method                         | Arguments           | Result                          |
+| ------------------------------ | ------------------- | ------------------------------- |
+| `gnoblin.workspaces.list()`    | None                | All current `Workspace` records |
+| `gnoblin.workspaces.active()`  | None                | Active record or `nil`          |
+| `gnoblin.workspaces.by_id(id)` | String workspace ID | Matching record or `nil`        |
 
 ## Create and change workspaces
 
@@ -44,7 +44,7 @@ These methods return immediate, read-only snapshots:
 
 Mutations return operation handles and complete asynchronously. Workspace
 reads and mutations use the `workspaces` namespace in Lua. For socket operation
-names and fields, see the [compositor bridge](/compositor-bridge).
+names and fields, see the [compositor bridge](/bridge/).
 
 `create` requires a nonempty name of up to 80 characters. Its optional ID must
 match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`; if omitted, Gnoblin generates a
@@ -63,15 +63,14 @@ A `Workspace` record has `id`, `number`, `name`, `active`, `windows`, and
 `persistent` fields. Gnoblin does not remove a declared workspace, the active
 workspace, or a workspace that still contains windows.
 
-
 Workspace snapshots also provide these methods. Call them with colon syntax
 from a runtime event callback; each returns an `Operation` handle.
 
 | Method                                  | Arguments                                                                   | Effect                              |
 | --------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------- |
-| `workspace:activate()`                 | None                                                                        | Activate this workspace.            |
-| `workspace:rename(name)`               | Nonempty name up to 80 characters                                           | Rename this workspace.              |
-| `workspace:remove()`                   | None                                                                        | Remove this workspace when allowed. |
+| `workspace:activate()`                  | None                                                                        | Activate this workspace.            |
+| `workspace:rename(name)`                | Nonempty name up to 80 characters                                           | Rename this workspace.              |
+| `workspace:remove()`                    | None                                                                        | Remove this workspace when allowed. |
 | `workspace:move_here(window, options?)` | Window snapshot, stable window ID, or `"active"`; optional `follow` boolean | Move the window to this workspace.  |
 
 ## Monitors
@@ -84,19 +83,19 @@ uses the first active connector alphabetically as the canonical ID.
 
 Monitor records expose these fields:
 
-| Field                       | Meaning                                                                                                            |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `id`                        | Canonical active connector name. Cloned outputs use the first connector alphabetically.                           |
-| `index`                     | Current zero-based Mutter order. It can change when outputs change.                                                |
-| `x`, `y`, `width`, `height` | Logical-pixel monitor geometry.                                                                                    |
-| `primary`                   | Whether this is the primary logical monitor.                                                                       |
-| `scale`                     | Current monitor scale factor.                                                                                      |
-| `enabled`                   | Always `true`; this list contains active logical monitors only.                                                    |
-| `transform`                 | Rotation or reflection applied by Mutter.                                                                          |
-| `name`                      | Optional display name supplied by Mutter.                                                                          |
-| `make`, `model`, `serial`   | Optional physical display details supplied by Mutter.                                                              |
-| `refresh_rate`              | Optional current refresh rate in Hz for the connector used as `id`.                                                |
-| `work_area`                 | The usable area of this monitor: `x`, `y`, `width` and `height` in logical pixels, after panels reserve space with exclusive zones. It follows the active workspace.|
+| Field                       | Meaning                                                                                                                                                              |
+| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                        | Canonical active connector name. Cloned outputs use the first connector alphabetically.                                                                              |
+| `index`                     | Current zero-based Mutter order. It can change when outputs change.                                                                                                  |
+| `x`, `y`, `width`, `height` | Logical-pixel monitor geometry.                                                                                                                                      |
+| `primary`                   | Whether this is the primary logical monitor.                                                                                                                         |
+| `scale`                     | Current monitor scale factor.                                                                                                                                        |
+| `enabled`                   | Always `true`; this list contains active logical monitors only.                                                                                                      |
+| `transform`                 | Rotation or reflection applied by Mutter.                                                                                                                            |
+| `name`                      | Optional display name supplied by Mutter.                                                                                                                            |
+| `make`, `model`, `serial`   | Optional physical display details supplied by Mutter.                                                                                                                |
+| `refresh_rate`              | Optional current refresh rate in Hz for the connector used as `id`.                                                                                                  |
+| `work_area`                 | The usable area of this monitor: `x`, `y`, `width` and `height` in logical pixels, after panels reserve space with exclusive zones. It follows the active workspace. |
 
 The `transform` values describe the output orientation:
 
@@ -109,7 +108,6 @@ The `transform` values describe the output orientation:
 Use the connector `id` for typed monitor moves. When outputs are cloned, the
 refresh rate comes from the lexicographically first active connector used as
 the monitor ID. The native result does not include inactive physical outputs.
-
 
 ## Monitor privacy screens
 

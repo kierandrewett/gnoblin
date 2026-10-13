@@ -25,6 +25,6 @@ running session with `gnoblinctl` and the documented runtime API.
 ## References and boundaries
 
 Use the [configuration reference](/config) for Lua settings and the
-[runtime API reference](/config/runtime-api) for compositor state and
-operations. Use [gnoblinctl](/gnoblinctl) for session diagnostics and direct
+[runtime API reference](/shell-api/) for compositor state and
+operations. Use [gnoblinctl](/cli/) for session diagnostics and direct
 control. The compositor API does not create widgets or provide a terminal UI.

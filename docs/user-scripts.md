@@ -21,9 +21,7 @@ gnoblin.load("scripts/**/*.lua")
 
 Run `gnoblinctl config reload` to activate it. The runtime replaces the old
 callbacks after a successful reload; a failed reload leaves the active config
-running. See the [Lua event reference](/config/lua-events) for event names and
-payload fields, and the [runtime API](/config/runtime-api) for operations that
-control windows, workspaces, input, and session state.
+running. See the [event reference](/events/) for event names and payload fields, and the [Lua runtime API](/shell-api/) for operations that control windows, workspaces, input, and session state.
 
 Lua configuration runs in a restricted runtime. It cannot access arbitrary
 files, start processes, load native modules, or use GNOME Shell's in-process

@@ -59,7 +59,7 @@ unlock.
 
 `ScreenSaver.GetActive` returns `false` for `unlocked` and `true` for
 `covering`, `locked`, or `failsafe`. These are the compositor's
-[lock states](/compositor-bridge#track-lock-state); only `locked` confirms the
+[lock states](/bridge/#track-lock-state); only `locked` confirms the
 lock transition.
 
 Subscribe to `org.freedesktop.ScreenSaver.ActiveChanged` on the session bus at

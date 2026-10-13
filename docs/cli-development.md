@@ -1,6 +1,6 @@
 # CLI development
 
-The user reference is [gnoblinctl](gnoblinctl.md).
+The user reference is [gnoblinctl](cli/index.md).
 
 ## Command design
 
@@ -38,7 +38,7 @@ operations, which require the stable ID printed by `gnoblinctl window list`.
 
 `gnoblinctl window list` reads the API 1.37 `windows.list` snapshot and keeps
 the CLI's `windows` JSON wrapper. The list below is a method-name index. See
-the [runtime API reference](/config/runtime-api) for method arguments,
+the [runtime API reference](/shell-api/) for method arguments,
 accepted values, results, and compatibility limits.
 
 `gnoblinctl workspace list` reads `workspaces.list` and keeps its `workspaces`
@@ -93,7 +93,7 @@ runtime at API 1.41. Its optional group filter and action records match
 Lua receives an operation ticket and handles completion through
 `gnoblin.operation.completed` on native API 1.11. The legacy
 `gnoblin.api.operation-completed` event remains available during migration; see
-the [Lua runtime API](/config/runtime-api).
+the [Lua runtime API](/shell-api/).
 
 Methods use the `domain.method` form on the socket. A workspace selector has
 exactly one of these fields:
@@ -139,7 +139,7 @@ the operation:
 Errors use `event: "error"`, retain the request ID, and include a message.
 Replies use `event: "reply"`; `result` contains operation-specific data.
 `pending: true` acknowledges an asynchronous request, not its final state.
-See the [bridge operation reference](/compositor-bridge#operation-index) for
+See the [bridge operation reference](/bridge/#operation-index) for
 payload fields and selector values.
 
 ## Change a window
@@ -183,7 +183,7 @@ dedicated methods because they require verified activation or menu context.
 
 `toggle-minimize` is available through its typed method, which takes a stable
 window ID.
-See the [`gnoblinctl` window reference](/gnoblinctl#window-actions) for CLI
+See the [`gnoblinctl` window reference](/cli/#window-actions) for CLI
 arguments and ranges.
 
 `window` is a stable string ID from a previous list. For `window.move`, `x` and

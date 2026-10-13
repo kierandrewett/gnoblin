@@ -35,12 +35,12 @@ Binding names use lowercase letters, numbers and `_`.
 
 ### Callback fields
 
-| Field | Accepted value | Default | Effect |
-| --- | --- | --- | --- |
-| `binding` | One GTK accelerator string | Required | Chooses the key combination. |
-| `callback` | Lua function | Required | Runs when the binding matches. |
-| `trigger` | `"press"` or `"release"` | `"press"` | Chooses key press or release. |
-| `enable` | `true` or `false` | `true` | `false` disables an imported named binding. |
+| Field      | Accepted value             | Default   | Effect                                      |
+| ---------- | -------------------------- | --------- | ------------------------------------------- |
+| `binding`  | One GTK accelerator string | Required  | Chooses the key combination.                |
+| `callback` | Lua function               | Required  | Runs when the binding matches.              |
+| `trigger`  | `"press"` or `"release"`   | `"press"` | Chooses key press or release.               |
+| `enable`   | `true` or `false`          | `true`    | `false` disables an imported named binding. |
 
 The callback can return `"consume"` to keep the event in Gnoblin or
 `"forward"` to route it to the focused app. A missing return is `"consume"`.
@@ -221,7 +221,7 @@ shortcut with `capture_input = true`, `binding = "Super"`, and
 `trigger = "release"`. Handle `gnoblin.shortcut.session.key` events in Lua.
 Only one command-free, action-free bare Super capture binding can be active at
 a time. See the [shortcut configuration reference](/config/configure/shortcuts)
-and [shortcut state and capture](/config/runtime-api#shortcut-state-and-capture)
+and [shortcut state and capture](/shell-api/#shortcut-state-and-capture)
 for the event fields and session behavior.
 
 See also [restore-or-minimise bindings](/guides/window_state_shortcuts).
