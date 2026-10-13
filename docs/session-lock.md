@@ -54,14 +54,27 @@ the same message to the journal. Gnoblin leaves the session unlocked in this
 case.
 
 A request while the session is already locked succeeds and sends no second
-event. `ScreenSaver.GetActive` reports whether the compositor holds a lock.
-`SetActive(false)` returns `NotSupported`, because only the locker can unlock.
-Gnoblin does not send the `ScreenSaver.ActiveChanged` signal; subscribe to
-`gnoblin.session.lock-state-changed` for changes.
+event. `SetActive(false)` returns `NotSupported`, because only the locker can
+unlock.
+
+`ScreenSaver.GetActive` returns `false` for `unlocked` and `true` for
+`covering`, `locked`, or `failsafe`. These are the compositor's
+[lock states](/compositor-bridge#track-lock-state); only `locked` confirms the
+lock transition.
+
+Subscribe to `org.freedesktop.ScreenSaver.ActiveChanged` on the session bus at
+`/org/freedesktop/ScreenSaver` to receive that boolean when it changes. Read
+`GetActive` for the initial value. Changes between active lock states do not
+send duplicate signals. Use `gnoblin.session.lock-state-changed` when you need
+the individual state transitions.
+
+If the compositor connection is interrupted, Gnoblin sends no unlock signal.
+It reconnects and reports a changed boolean from the current state. After the
+idle service restarts, read `GetActive` again for its initial value.
 
 If GNOME Shell owns `org.gnome.ScreenSaver` in the same session, the
-`ScreenSaver` methods go to GNOME Shell instead, and it handles the logind
-signal.
+`ScreenSaver` methods go to GNOME Shell instead, its active-state changes are
+relayed, and it handles the logind signal.
 
 To lock with a key of your choice, bind a key in the Lua configuration:
 
