@@ -388,58 +388,107 @@ static void register_pointer_binding_callbacks(lua_State* state, int config_inde
     lua_pop(state, 1); /* pointer bindings */
 }
 
+static const char* const known_configure_sections[] = {
+    "keybindings",  "window-management", "compositor",  "input",     "input-sources",
+    "monitors",     "touchpad-gestures", "permissions", "location",  "prompts",
+    "auth",         "portals",           "layer-shell", "protocols", "frame-renderers",
+    "cursor",       "xwayland",          "shortcuts",   "autostart", "workspaces",
+    "window-rules", "animations",        NULL,
+};
+static const char* const known_protocols[] = {
+    "wlr-layer-shell",
+    "ext-foreign-toplevel-list",
+    "wlr-foreign-toplevel-management",
+    "xdg-decoration",
+    "kde-server-decoration",
+    "window-frame-renderer",
+    "wlr-screencopy",
+    "ext-background-effect-v1",
+    "blur-fade",
+    "ext-data-control",
+    "ext-idle-notify",
+    "wlr-gamma-control",
+    "wlr-output-power-management",
+    "ext-session-lock",
+    NULL,
+};
+
+static const char* const unknown_section_warning =
+    "gnoblin.configure: unknown section \"%s\" is ignored; check the spelling against "
+    "the documented sections";
+static const char* const unknown_protocol_warning =
+    "gnoblin.configure: unknown protocol \"%s\" is ignored; check the spelling "
+    "against the documented protocol names";
+
 /* Warn about a top-level key that gnoblin.configure does not know. A typo such as window_managment
  * otherwise does nothing and gives no feedback. This is a warning, not an error, so a config
  * written for a newer Gnoblin still loads. The names are the documented sections, after
  * push_settings has turned underscores into dashes. */
 static void warn_unknown_configure_sections(lua_State* state, int table) {
-    static const char* const known[] = {
-        "keybindings",  "window-management", "compositor",  "input",     "input-sources",
-        "monitors",     "touchpad-gestures", "permissions", "location",  "prompts",
-        "auth",         "portals",           "layer-shell", "protocols", "frame-renderers",
-        "cursor",       "xwayland",          "shortcuts",   "autostart", "workspaces",
-        "window-rules", "animations",        NULL,
-    };
-    static const char* const known_protocols[] = {
-        "wlr-layer-shell",
-        "ext-foreign-toplevel-list",
-        "wlr-foreign-toplevel-management",
-        "xdg-decoration",
-        "kde-server-decoration",
-        "window-frame-renderer",
-        "wlr-screencopy",
-        "ext-background-effect-v1",
-        "blur-fade",
-        "ext-data-control",
-        "ext-idle-notify",
-        "wlr-gamma-control",
-        "wlr-output-power-management",
-        "ext-session-lock",
-        NULL,
-    };
     table = lua_absindex(state, table);
     lua_pushnil(state);
     while (lua_next(state, table)) {
         const char* section = lua_type(state, -2) == LUA_TSTRING ? lua_tostring(state, -2) : NULL;
-        if (section && !g_strv_contains(known, section))
-            g_warning(
-                "gnoblin.configure: unknown section \"%s\" is ignored; check the spelling against "
-                "the documented sections",
-                section);
+        if (section && !g_strv_contains(known_configure_sections, section))
+            g_warning(unknown_section_warning, section);
         if (section && !strcmp(section, "protocols") && lua_istable(state, -1)) {
             lua_pushnil(state);
             while (lua_next(state, -2)) {
                 if (lua_type(state, -2) == LUA_TSTRING &&
                     !g_strv_contains(known_protocols, lua_tostring(state, -2)))
-                    g_warning(
-                        "gnoblin.configure: unknown protocol \"%s\" is ignored; check the spelling "
-                        "against the documented protocol names",
-                        lua_tostring(state, -2));
+                    g_warning(unknown_protocol_warning, lua_tostring(state, -2));
                 lua_pop(state, 1);
             }
         }
         lua_pop(state, 1);
     }
+}
+
+/* Public diagnostics are derived from the accepted document, never merged into it.
+ * Bound both count and key length so config typos cannot inflate reload packets or notices. */
+static void add_document_warning(GPtrArray* warnings, gboolean* omitted, const char* format,
+                                 const char* name) {
+    if (warnings->len >= 64) {
+        *omitted = TRUE;
+        return;
+    }
+    g_autofree char* prefix = g_strndup(name, 256);
+    g_autofree char* valid = g_utf8_make_valid(prefix, -1);
+    g_autofree char* display = g_strconcat(valid, strlen(name) > 256 ? "..." : "", NULL);
+    g_ptr_array_add(warnings, g_strdup_printf(format, display));
+}
+
+GVariant* gnoblin_config_document_warnings(GVariant* document) {
+    g_autoptr(GPtrArray) warnings = g_ptr_array_new_with_free_func(g_free);
+    gboolean omitted = FALSE;
+    GVariantIter sections;
+    const char* name;
+    GVariant* value;
+    g_variant_iter_init(&sections, document);
+    while (g_variant_iter_next(&sections, "{&sv}", &name, &value)) {
+        g_autoptr(GVariant) section = value;
+        /* input-handlers is generated by input.on and callback keybindings. */
+        if (!g_strv_contains(known_configure_sections, name) &&
+            !g_str_equal(name, "input-handlers"))
+            add_document_warning(warnings, &omitted, unknown_section_warning, name);
+        if (g_str_equal(name, "protocols") &&
+            g_variant_is_of_type(section, G_VARIANT_TYPE_VARDICT)) {
+            GVariantIter protocols;
+            const char* protocol;
+            GVariant* enabled;
+            g_variant_iter_init(&protocols, section);
+            while (g_variant_iter_next(&protocols, "{&sv}", &protocol, &enabled)) {
+                if (!g_strv_contains(known_protocols, protocol))
+                    add_document_warning(warnings, &omitted, unknown_protocol_warning, protocol);
+                g_variant_unref(enabled);
+            }
+        }
+    }
+    g_ptr_array_sort(warnings, compare_entry_names);
+    if (omitted)
+        g_ptr_array_add(warnings, g_strdup("Further configuration warnings were omitted."));
+    return g_variant_ref_sink(
+        g_variant_new_strv((const char* const*)warnings->pdata, warnings->len));
 }
 
 static int lua_configure(lua_State* state) {

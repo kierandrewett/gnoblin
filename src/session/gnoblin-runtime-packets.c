@@ -141,6 +141,23 @@ void runtime_reload_finish(Runtime* runtime, gboolean commit, const char* messag
             runtime->recovery_snapshot = FALSE;
         set_config_fallback_marker(runtime->config_fallback, reload->saved_fallback,
                                    runtime->startup_failure);
+        g_autoptr(GVariant) warnings = gnoblin_config_document_warnings(reload->document);
+        if (g_variant_n_children(warnings) > 0) {
+            g_autoptr(GString) notice = g_string_new("Configuration loaded with warnings:");
+            GVariantIter iter;
+            const char* warning;
+            g_variant_iter_init(&iter, warnings);
+            while (g_variant_iter_next(&iter, "&s", &warning)) {
+                /* Leave room for recovery/salvage diagnostics in the notice file. */
+                if (notice->len + strlen(warning) + 1 > 4096) {
+                    g_string_append(notice,
+                                    "\nAdditional warnings are available in the reload result.");
+                    break;
+                }
+                g_string_append_printf(notice, "\n%s", warning);
+            }
+            append_config_warning_notice(notice->str);
+        }
         if (reload->ignored && reload->ignored->len > 0) {
             /* The rest of the configuration is active. Say plainly what was left out, in the
              * session log and in the notice the panel reads. */
@@ -185,6 +202,7 @@ void runtime_reload_finish(Runtime* runtime, gboolean commit, const char* messag
                               g_variant_new_uint64(reload->revision));
         g_variant_builder_add(&builder, "{sv}", "runtime_generation",
                               g_variant_new_uint64(reload->generation));
+        g_variant_builder_add(&builder, "{sv}", "warnings", warnings);
         g_autoptr(GVariant) result = g_variant_ref_sink(g_variant_builder_end(&builder));
         dispatch_reload_event(runtime, "gnoblin.config.reloaded", reload->path, reload->revision,
                               NULL);

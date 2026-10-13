@@ -133,13 +133,22 @@ if(GNOBLIN_LUA_FOUND)
     PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_XKBCOMMON
     PkgConfig::GNOBLIN_LUA m)
 
-  foreach(test_name IN ITEMS lua-config lua-api glob-config)
+  foreach(test_name IN ITEMS lua-config lua-config-validation lua-api glob-config)
     add_executable(${test_name}-test tests/${test_name}-test.c)
     target_link_libraries(${test_name}-test PRIVATE gnoblin-config-core)
     add_test(NAME ${test_name} COMMAND ${test_name}-test)
     set_tests_properties(${test_name} PROPERTIES TIMEOUT 20)
   endforeach()
-set_tests_properties(lua-config PROPERTIES
+  add_executable(config-reload-warnings-test
+    tests/config-reload-warnings-test.c
+    src/session/gnoblin-runtime-diagnostics.c
+    src/session/gnoblin-runtime-packets.c
+    src/session/gnoblin-runtime-events.c
+    src/control/gnoblin-runtime-protocol.c)
+  target_link_libraries(config-reload-warnings-test PRIVATE gnoblin-config-core)
+  add_test(NAME config-reload-warnings COMMAND config-reload-warnings-test)
+  set_tests_properties(config-reload-warnings PROPERTIES TIMEOUT 20)
+set_tests_properties(lua-config lua-config-validation PROPERTIES
   ENVIRONMENT
     "GNOBLIN_TEST_SOURCE_ROOT=${PROJECT_SOURCE_DIR};GNOBLIN_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/gnoblin-config-test-prefix")
 set(GNOBLIN_CONFIG_TEST_CATALOG_DIR

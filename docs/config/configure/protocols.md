@@ -28,9 +28,14 @@ gnoblin.configure {protocols = {wlr_screencopy = false}}
 
 See the [protocol catalog](/wayland-protocols).
 
-A name that is not in the list above does nothing. The reload still succeeds, and
-Gnoblin writes `gnoblin.configure: unknown protocol "name" is ignored` to the
-session log.
+A name that is not in the list above does nothing. The reload still succeeds,
+and `gnoblinctl config reload` includes an `unknown protocol` diagnostic in its
+`warnings` list. Gnoblin also logs it and publishes a configuration notice for
+the shell. Correct the name and reload again to clear the warning.
+
+See [reload feedback](/shell-api/session-runtime#reload-warnings) for the
+result and event fields. Protocol values must still be booleans; an invalid
+value fails validation and leaves the previous configuration active.
 
 ## Type definition
 

@@ -20,10 +20,19 @@ Sizes use logical pixels. Window rules distinguish application windows
 ## Settings
 
 Each entry below is a real top-level key accepted by `gnoblin.configure`.
-A top-level key that is not in this list does nothing. The reload still
-succeeds, and Gnoblin writes `gnoblin.configure: unknown section "name" is
-ignored` to the session log. Check the log when a setting seems to have no
-effect, for example after a spelling mistake in a section name.
+An unknown top-level key does nothing. The reload still succeeds, but
+`gnoblinctl config reload` includes the diagnostic in its `warnings` list.
+Gnoblin also logs it and publishes a configuration notice for the shell.
+A clean reload returns an empty list and clears the configuration notice.
+
+An existing previous-session crash notice takes priority and survives reloads;
+warnings remain available in the reload result.
+
+For example, `touchpad` belongs under `input.touchpad`, not at the top level.
+Use the [touchpad reference](/config/configure/input/touchpad) for its fields.
+Diagnostics use normalized names, so `not_a_section` appears as
+`not-a-section`. See [reload feedback](/shell-api/session-runtime#reload-warnings)
+for the result and event fields.
 
 - [`gnoblin.configure.keybindings`](/config/configure/keybindings)
 - [`gnoblin.configure.window_management`](/config/configure/window_management)
