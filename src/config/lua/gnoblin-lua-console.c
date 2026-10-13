@@ -749,10 +749,11 @@ GVariant* gnoblin_config_complete_console(const char* source, GError** error) {
     lua_rawgeti(state, LUA_REGISTRYINDEX, LUA_RIDX_GLOBALS);
     const char* typed_key = NULL;
     gboolean key_position = call.found && call.in_table && console_typing_key(source, &typed_key);
-    /* Right after an opening parenthesis or comma there is no name yet: the signature help is the
-     * hint, so list nothing. A table key position lists the table's keys instead of globals. */
+    /* With no name started, as after a closing or opening parenthesis, a comma or a space, there is
+     * nothing to complete: the signature help is the hint, so list nothing rather than every
+     * global. A table key position lists the table's keys instead of globals. */
     gboolean resolved = parsed && !key_position && lua_istable(state, -1) &&
-                        !(call.found && !*console_completion_token_start(source));
+                        *console_completion_token_start(source);
     for (guint i = 0; resolved && i < segments->len; i++) {
         const char* segment = g_ptr_array_index(segments, i);
         if (!console_completion_push_field(state, -1, segment))
@@ -872,14 +873,16 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
     int steps = MAX_CONSOLE_STEPS / 1000;
     memcpy(lua_getextraspace(state), &steps, sizeof steps);
 
-    /* Prefer normal Lua chunks, then make a bare expression convenient for a
-     * prompt. The second parse has no side effects because the first only
-     * compiles source. */
-    int status = luaL_loadbufferx(state, source, strlen(source), "=(gnoblin console)", "t");
+    /* Read the input as an expression first, like the Lua REPL, so a call such as
+     * gnoblin.session.status() shows what it returns. A call is also a valid statement, so trying
+     * the statement form first would run it and discard the result. Input that is not an
+     * expression, such as an assignment or several statements, loads as a normal chunk instead.
+     * Loading only compiles, so the failed attempt has no side effects. */
+    g_autofree char* expression = g_strdup_printf("return %s", source);
+    int status = luaL_loadbufferx(state, expression, strlen(expression), "=(gnoblin console)", "t");
     if (status != LUA_OK) {
         lua_pop(state, 1);
-        g_autofree char* expression = g_strdup_printf("return %s", source);
-        status = luaL_loadbufferx(state, expression, strlen(expression), "=(gnoblin console)", "t");
+        status = luaL_loadbufferx(state, source, strlen(source), "=(gnoblin console)", "t");
     }
     if (status == LUA_OK)
         status = lua_pcall(state, 0, LUA_MULTRET, 0);
