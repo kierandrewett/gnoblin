@@ -303,6 +303,32 @@ static void gnoblin_imgui_content_paint(ClutterContent* content, ClutterActor* a
     ImGui::NewFrame();
     overlay->draw_callback(overlay, overlay->draw_user_data);
     ImGui::Render();
+    /* The pointer shape comes from Gnoblin's cursor system, which resolves it from the actor under
+     * the pointer: map what ImGui asks for (a text cursor over an input) onto the overlay actor. */
+    {
+        ClutterCursorType cursor = CLUTTER_CURSOR_DEFAULT;
+        switch (ImGui::GetMouseCursor()) {
+        case ImGuiMouseCursor_TextInput:
+            cursor = CLUTTER_CURSOR_TEXT;
+            break;
+        case ImGuiMouseCursor_Hand:
+            cursor = CLUTTER_CURSOR_POINTER;
+            break;
+        case ImGuiMouseCursor_ResizeEW:
+            cursor = CLUTTER_CURSOR_EW_RESIZE;
+            break;
+        case ImGuiMouseCursor_ResizeNS:
+            cursor = CLUTTER_CURSOR_NS_RESIZE;
+            break;
+        case ImGuiMouseCursor_NotAllowed:
+            cursor = CLUTTER_CURSOR_NOT_ALLOWED;
+            break;
+        default:
+            break;
+        }
+        if (clutter_actor_get_cursor_type(actor) != cursor)
+            clutter_actor_set_cursor_type(actor, cursor);
+    }
     /* ImGui trickles a quick press/release across two frames. Ensure the release
      * is processed even when both input events preceded one compositor paint. */
     /* ImGui also trickles queued keys and characters one event per frame. A

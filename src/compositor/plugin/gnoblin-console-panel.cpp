@@ -94,7 +94,6 @@ void GnoblinConsolePanel::set_visible(bool visible) {
         completion_requested_ = input_.data();
         preview_requested_ = input_.data();
     }
-    ImGui::GetIO().MouseDrawCursor = visible;
     if (callbacks_.visibility_changed)
         callbacks_.visibility_changed();
     queue_redraw();
@@ -444,9 +443,9 @@ void GnoblinConsolePanel::draw() {
             lines++;
     lines = std::min(lines, kMaxInputLines);
     const float input_height = lines * ImGui::GetTextLineHeight() + kRowPadding * 2;
-    /* A greyed line under the input shows the value of what is typed, when that is safe to know. */
-    const float preview_height =
-        preview_text_.empty() ? 0.0f : ImGui::GetTextLineHeight() + kRowPadding;
+    /* A greyed line under the input shows the value of what is typed, when that is safe to know.
+     * Its space is always reserved so the input and output do not move as it appears. */
+    const float preview_height = ImGui::GetTextLineHeight() + kRowPadding;
     const float input_top = height - input_height - preview_height;
 
     /* Transcript. */
@@ -565,7 +564,7 @@ void GnoblinConsolePanel::draw() {
     ImGui::PopStyleVar(2);
     input_anchor_x_ = ImGui::GetItemRectMin().x;
     input_anchor_y_ = ImGui::GetItemRectMax().y + preview_height;
-    if (preview_height > 0.0f) {
+    if (!preview_text_.empty()) {
         ImGui::SetCursorPos(ImVec2(kInset, input_top + input_height));
         ImGui::TextColored(kQuietColour, "<");
         ImGui::SameLine(0.0f, 8.0f);

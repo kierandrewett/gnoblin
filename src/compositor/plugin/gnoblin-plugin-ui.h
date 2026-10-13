@@ -21,9 +21,6 @@ void gnoblin_plugin_ui_toggle_console(GnoblinPluginUi* ui);
 float gnoblin_plugin_paint_scale(ClutterPaintContext* paint_context);
 void gnoblin_plugin_ui_hide_console(GnoblinPluginUi* ui);
 
-/* Implemented in gnoblin-plugin.c. Hide or restore the real pointer, and read its position. */
-void gnoblin_plugin_hide_pointer(MetaDisplay* display, gboolean hide);
-gboolean gnoblin_plugin_get_pointer(MetaDisplay* display, float* x, float* y);
 void gnoblin_plugin_ui_set_session_locked(GnoblinPluginUi* ui, gboolean locked);
 gboolean gnoblin_plugin_ui_console_visible(GnoblinPluginUi* ui);
 
