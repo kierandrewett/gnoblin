@@ -167,7 +167,12 @@ if ((conflicts > 0 || command_conflicts > 0)); then
     exit 1
 fi
 
-sudo -v
+# With mixed PASSWD/NOPASSWD rules, verifypw=all can require a password for -v even when commands need none.
+# Probe a harmless command first; fall back to validation before changing files if authentication is needed.
+# This is a credential check, not proof that command-scoped policy permits every install operation below.
+if ! sudo -n true 2>/dev/null; then
+    sudo -v
+fi
 printf '%s==>%s Installing Gnoblin\n\n' "$blue" "$reset"
 
 # Print one row for every file or link this script makes. A link shows its target. Rows carry no category,
