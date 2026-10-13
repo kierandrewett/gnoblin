@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 13 Oct 2026 01:33:00 +0000
+Subject: [PATCH] mdk: fail initialization when EIS disconnects before a seat
+
+The viewer waits synchronously for its first libei seat before installing
+the RemoteDesktop name watcher. If EIS disconnects during that wait,
+process_events consumes the terminal event and the constructor spins
+forever waiting for a seat that can no longer arrive.
+
+Report the disconnect from event processing and return a connection-closed
+GError through the existing constructor/GInitable failure path. Release the
+partial MdkEi, its attached source, and the libei-owned fd on failure.
+Keep successful ownership transfer and post-startup dispatch unchanged.
+
+This fixes the pre-seat disconnect path independently of the compositor
+parent-death signal safeguard; it does not identify the historical orphan's
+cause without a matching runtime reproduction.
+
+---
+diff --git a/mdk/mdk-ei.c b/mdk/mdk-ei.c
+--- a/mdk/mdk-ei.c
++++ b/mdk/mdk-ei.c
+@@ -47,7 +47,7 @@
+ 
+ G_DEFINE_FINAL_TYPE (MdkEi, mdk_ei, G_TYPE_OBJECT)
+ 
+-static void
++static gboolean
+ process_events (MdkEi *ei)
+ {
+   struct ei_event *ei_event;
+@@ -62,8 +62,10 @@
+       switch (ei_event_type)
+         {
+         case EI_EVENT_CONNECT:
++          break;
+         case EI_EVENT_DISCONNECT:
+-          break;
++          ei_event_unref (ei_event);
++          return FALSE;
+         case EI_EVENT_SEAT_ADDED:
+             {
+               struct ei_seat *ei_seat;
+@@ -124,6 +126,8 @@
+ 
+       ei_event_unref (ei_event);
+     }
++
++  return TRUE;
+ }
+ 
+ static gboolean
+@@ -207,7 +211,7 @@
+             int          fd,
+             GError     **error)
+ {
+-  MdkEi *ei;
++  g_autoptr (MdkEi) ei = NULL;
+   int ret;
+ 
+   ei = g_object_new (MDK_TYPE_EI, NULL);
+@@ -220,7 +224,7 @@
+     {
+       g_set_error (error, G_IO_ERROR, g_io_error_from_errno (-ret),
+                    "Failed to setup libei backend: %s", g_strerror (-ret));
+-      return FALSE;
++      return NULL;
+     }
+ 
+   ei->source = create_ei_source (ei);
+@@ -231,10 +235,15 @@
+   while (!ei->default_seat)
+     {
+       ei_dispatch (ei->ei);
+-      process_events (ei);
++      if (!process_events (ei))
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_CONNECTION_CLOSED,
++                               "EIS disconnected before providing a seat");
++          return NULL;
++        }
+     }
+ 
+-  return ei;
++  return g_steal_pointer (&ei);
+ }
+ 
+ MdkSeat *
