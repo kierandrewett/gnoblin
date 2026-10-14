@@ -19,6 +19,10 @@ void gnoblin_plugin_ui_toggle_console(GnoblinPluginUi* ui);
  * linkage. Output scale of the view being painted, or 1 when there is none. The
  * overlay bakes its text at this density. */
 float gnoblin_plugin_paint_scale(ClutterPaintContext* paint_context);
+/* Clipboard text for the panels, backed by Mutter's selection in gnoblin-plugin.c. */
+const char* gnoblin_plugin_clipboard_text(void);
+void gnoblin_plugin_clipboard_set_text(const char* text);
+
 void gnoblin_plugin_ui_hide_console(GnoblinPluginUi* ui);
 
 void gnoblin_plugin_ui_set_session_locked(GnoblinPluginUi* ui, gboolean locked);

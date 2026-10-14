@@ -368,6 +368,14 @@ GnoblinImGuiOverlay* gnoblin_imgui_overlay_new(ClutterActor* stage) {
     ImGui::GetIO().ConfigErrorRecoveryEnableAssert = false;
     ImGui::GetIO().ConfigErrorRecoveryEnableTooltip = false;
     ImGui::GetIO().LogFilename = nullptr;
+    /* Panels copy and paste through Mutter's clipboard; ImGui itself has no platform backend. */
+    ImGuiPlatformIO& platform_io = ImGui::GetPlatformIO();
+    platform_io.Platform_GetClipboardTextFn = [](ImGuiContext*) -> const char* {
+        return gnoblin_plugin_clipboard_text();
+    };
+    platform_io.Platform_SetClipboardTextFn = [](ImGuiContext*, const char* text) {
+        gnoblin_plugin_clipboard_set_text(text);
+    };
     gnoblin_imgui_apply_style();
     if (stage != nullptr) {
         g_return_val_if_fail(CLUTTER_IS_STAGE(stage), overlay);

@@ -13,6 +13,14 @@ shell layer, with the input line at the bottom. The rest of the screen is dimmed
 Output grows upwards from the input line. Scroll it with the mouse wheel or Page Up and
 Page Down. Enter runs a command and Shift+Enter inserts a newline.
 
+The input line supports the usual editing keys:
+
+- Ctrl+A selects everything.
+- Ctrl+C, Ctrl+X and Ctrl+V copy, cut and paste through the system clipboard.
+- Ctrl+Z and Ctrl+Y undo and redo.
+
+Right-click the input line for a menu with Cut, Copy, Paste, Select All and Clear. A multi-line paste keeps its newlines and stays in the input until you press Enter.
+
 While the console is open it is modal: keyboard shortcuts and keybindings do not run, and
 every key goes to the console. Ctrl+Alt+F1 to F12 still switch to another virtual console.
 Escape and Alt+F2 close it even if you have bound the console to another key.

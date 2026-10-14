@@ -23,6 +23,8 @@
 #include "meta/meta-monitor-manager.h"
 #include "meta/meta-plugin.h"
 #include "meta/keybindings.h"
+#include "meta/meta-selection-source-memory.h"
+#include "meta/meta-selection.h"
 #include "meta/meta-wayland-compositor.h"
 #include "core/gnoblin-animation.h"
 #include "core/gnoblin-native-control.h"
@@ -155,6 +157,114 @@ static gboolean gnoblin_plugin_toggle_console_bridge(MetaDisplay* display, gpoin
     return TRUE;
 }
 
+/* --- Clipboard bridge for the diagnostic ImGui panels -------------------------------------
+ * ImGui reads the clipboard synchronously, while Mutter's selection transfer is asynchronous.
+ * Keep a cached copy of the clipboard text: refresh it whenever the selection owner changes,
+ * and publish copies from the panels as an in-memory selection source. */
+
+static MetaSelection* clipboard_selection;
+static gulong clipboard_owner_handler;
+static GCancellable* clipboard_cancellable;
+static char* clipboard_cache;
+
+typedef struct {
+    GOutputStream* stream;
+} ClipboardRead;
+
+static const char* const clipboard_mimetypes[] = {"text/plain;charset=utf-8", "text/plain",
+                                                  "UTF8_STRING", "STRING", NULL};
+
+static void clipboard_read_done(GObject* source, GAsyncResult* result, gpointer user_data) {
+    ClipboardRead* read = user_data;
+    g_autoptr(GError) error = NULL;
+    if (meta_selection_transfer_finish(META_SELECTION(source), result, &error)) {
+        g_output_stream_close(read->stream, NULL, NULL);
+        gsize size = g_memory_output_stream_get_data_size(G_MEMORY_OUTPUT_STREAM(read->stream));
+        const char* data = g_memory_output_stream_get_data(G_MEMORY_OUTPUT_STREAM(read->stream));
+        if (data && g_utf8_validate(data, (gssize)size, NULL)) {
+            g_free(clipboard_cache);
+            clipboard_cache = g_strndup(data, size);
+        }
+    }
+    g_object_unref(read->stream);
+    g_free(read);
+}
+
+static void clipboard_refresh(void) {
+    if (!clipboard_selection)
+        return;
+    g_cancellable_cancel(clipboard_cancellable);
+    g_object_unref(clipboard_cancellable);
+    clipboard_cancellable = g_cancellable_new();
+
+    GList* offered = meta_selection_get_mimetypes(clipboard_selection, META_SELECTION_CLIPBOARD);
+    const char* chosen = NULL;
+    for (guint i = 0; !chosen && clipboard_mimetypes[i]; i++)
+        for (GList* item = offered; item; item = item->next)
+            if (g_str_equal(item->data, clipboard_mimetypes[i])) {
+                chosen = clipboard_mimetypes[i];
+                break;
+            }
+    if (!chosen) {
+        /* Nothing textual is on the clipboard. */
+        g_free(clipboard_cache);
+        clipboard_cache = NULL;
+        g_list_free_full(offered, g_free);
+        return;
+    }
+    ClipboardRead* read = g_new0(ClipboardRead, 1);
+    read->stream = g_memory_output_stream_new_resizable();
+    meta_selection_transfer_async(clipboard_selection, META_SELECTION_CLIPBOARD, chosen, -1,
+                                  read->stream, clipboard_cancellable, clipboard_read_done, read);
+    g_list_free_full(offered, g_free);
+}
+
+static void clipboard_owner_changed(MetaSelection* selection, MetaSelectionType type,
+                                    MetaSelectionSource* owner, gpointer user_data) {
+    (void)selection;
+    (void)owner;
+    (void)user_data;
+    if (type == META_SELECTION_CLIPBOARD)
+        clipboard_refresh();
+}
+
+static void gnoblin_plugin_clipboard_init(MetaDisplay* display) {
+    clipboard_selection = meta_display_get_selection(display);
+    clipboard_cancellable = g_cancellable_new();
+    clipboard_owner_handler = g_signal_connect(clipboard_selection, "owner-changed",
+                                               G_CALLBACK(clipboard_owner_changed), NULL);
+    clipboard_refresh();
+}
+
+static void gnoblin_plugin_clipboard_shutdown(void) {
+    if (clipboard_selection && clipboard_owner_handler)
+        g_signal_handler_disconnect(clipboard_selection, clipboard_owner_handler);
+    clipboard_owner_handler = 0;
+    if (clipboard_cancellable) {
+        g_cancellable_cancel(clipboard_cancellable);
+        g_clear_object(&clipboard_cancellable);
+    }
+    clipboard_selection = NULL;
+    g_clear_pointer(&clipboard_cache, g_free);
+}
+
+const char* gnoblin_plugin_clipboard_text(void) {
+    return clipboard_cache ? clipboard_cache : "";
+}
+
+void gnoblin_plugin_clipboard_set_text(const char* text) {
+    if (!clipboard_selection || !text || !g_utf8_validate(text, -1, NULL))
+        return;
+    g_free(clipboard_cache);
+    clipboard_cache = g_strdup(text);
+    g_autoptr(GBytes) bytes = g_bytes_new(text, strlen(text));
+    g_autoptr(GError) error = NULL;
+    g_autoptr(MetaSelectionSource) source =
+        meta_selection_source_memory_new("text/plain;charset=utf-8", bytes, &error);
+    if (source)
+        meta_selection_set_owner(clipboard_selection, META_SELECTION_CLIPBOARD, source);
+}
+
 static void gnoblin_plugin_debug_bridge(gboolean enabled, gpointer user_data) {
     MetaGnoblinPlugin* plugin = user_data;
     gnoblin_plugin_ui_set_debug(plugin->diagnostics_ui, enabled);
@@ -198,6 +308,7 @@ static void gnoblin_plugin_start(MetaPlugin* plugin) {
     gnoblin_native_control_set_console_toggle_handler(display, gnoblin_plugin_toggle_console_bridge,
                                                       self);
     gnoblin_native_control_set_debug_handler(display, gnoblin_plugin_debug_bridge, self);
+    gnoblin_plugin_clipboard_init(display);
     clutter_actor_show(meta_backend_get_stage(backend));
 }
 
@@ -213,6 +324,7 @@ static void meta_gnoblin_plugin_dispose(GObject* object) {
         self->session_lock_callback_id = 0;
         self->wayland_compositor = NULL;
     }
+    gnoblin_plugin_clipboard_shutdown();
     g_clear_pointer(&self->diagnostics_ui, gnoblin_plugin_ui_free);
     g_clear_pointer(&self->background_group, clutter_actor_destroy);
 
