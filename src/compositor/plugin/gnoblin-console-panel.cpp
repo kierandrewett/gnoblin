@@ -868,10 +868,13 @@ void GnoblinConsolePanel::draw() {
             state->ReloadUserBufAndMoveToEnd();
         reload_input_ = false;
     }
-    /* Typing always goes to the input: clicking a result must not leave the console deaf. */
+    /* Typing always goes to the input: clicking a result must not leave the console deaf.
+     * An open context menu keeps focus, otherwise re-focusing the input closes it at once. */
+    const bool menu_open =
+        ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId | ImGuiPopupFlags_AnyPopupLevel);
     if (!ImGui::IsAnyItemActive() && !ImGui::IsMouseDown(0))
         focus_input_ = true;
-    if (focus_input_) {
+    if (focus_input_ && !menu_open) {
         ImGui::SetKeyboardFocusHere();
         focus_input_ = false;
     }
