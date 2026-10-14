@@ -37,6 +37,7 @@ JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* m
         g_str_equal(method_name, "shortcuts.list") || g_str_equal(method_name, "portals.grants") ||
         g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "windows.list") ||
         g_str_equal(method_name, "workspaces.list") || g_str_equal(method_name, "monitors.list") ||
+        g_str_equal(method_name, "outputs.list") || g_str_equal(method_name, "outputs.renderer") ||
         g_str_equal(method_name, "monitors.privacy_screen") ||
         g_str_equal(method_name, "monitors.set_privacy_screen") ||
         g_str_equal(method_name, "layers.list") || g_str_equal(method_name, "focus.history") ||

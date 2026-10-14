@@ -158,6 +158,7 @@ export default defineConfig({
                             { text: "Windows", link: "/shell-api/windows" },
                             { text: "Focus and Activation", link: "/shell-api/focus-activation" },
                             { text: "Workspaces and Monitors", link: "/shell-api/workspaces-monitors" },
+                            { text: "Outputs", link: "/shell-api/outputs" },
                             { text: "Layer Surfaces", link: "/shell-api/layer-surfaces" },
                             { text: "Input", link: "/shell-api/input" },
                             { text: "Input Handlers", link: "/shell-api/input-handlers" },

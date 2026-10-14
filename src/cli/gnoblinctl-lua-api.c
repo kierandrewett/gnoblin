@@ -154,6 +154,22 @@ int lua_api_index(lua_State* state) {
         if (g_str_equal(name, "list") || g_str_equal(name, "active") || g_str_equal(name, "by_id"))
             return 1;
     }
+    if (g_str_equal(prefix, "outputs")) {
+        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+        if (g_str_equal(name, "list"))
+            lua_pushcclosure(state, lua_cli_outputs_list, 1);
+        else if (g_str_equal(name, "primary"))
+            lua_pushcclosure(state, lua_cli_outputs_primary, 1);
+        else if (g_str_equal(name, "by_id"))
+            lua_pushcclosure(state, lua_cli_outputs_by_id, 1);
+        else if (g_str_equal(name, "renderer"))
+            lua_pushcclosure(state, lua_cli_outputs_renderer, 1);
+        else
+            lua_pop(state, 1);
+        if (g_str_equal(name, "list") || g_str_equal(name, "primary") ||
+            g_str_equal(name, "by_id") || g_str_equal(name, "renderer"))
+            return 1;
+    }
     if (g_str_equal(prefix, "monitors")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         if (g_str_equal(name, "list"))

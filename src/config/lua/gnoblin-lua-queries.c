@@ -489,6 +489,93 @@ int lua_monitors_list(lua_State* state) {
     return 1;
 }
 
+static GVariant* lua_output_array(LuaConfig* config) {
+    if (!config || !config->output_snapshot)
+        return NULL;
+    return g_variant_lookup_value(config->output_snapshot, "outputs", G_VARIANT_TYPE("av"));
+}
+
+int lua_outputs_list(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.outputs.list takes no arguments");
+    if (!config || !config->output_snapshot) {
+        lua_newtable(state);
+        mark_array_table(state, -1);
+        return 1;
+    }
+    g_autoptr(GVariant) outputs = lua_output_array(config);
+    lua_newtable(state);
+    mark_array_table(state, -1);
+    for (gsize i = 0; outputs && i < g_variant_n_children(outputs); i++) {
+        g_autoptr(GVariant) wrapped = g_variant_get_child_value(outputs, i);
+        g_autoptr(GVariant) output = g_variant_get_variant(wrapped);
+        push_variant(state, output);
+        push_readonly_copy(state, -1);
+        lua_remove(state, -2);
+        lua_rawseti(state, -2, i + 1);
+    }
+    return 1;
+}
+
+static int lua_outputs_find(lua_State* state, gboolean by_id) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    const char* wanted = NULL;
+    if (by_id && (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING ||
+                  !(wanted = lua_tostring(state, 1)) || !*wanted))
+        return luaL_error(state, "gnoblin.outputs.by_id requires one nonempty output ID");
+    if (!by_id && lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.outputs.primary takes no arguments");
+    if (!config || !config->output_snapshot) {
+        lua_pushnil(state);
+        return 1;
+    }
+    g_autoptr(GVariant) outputs = lua_output_array(config);
+    for (gsize i = 0; outputs && i < g_variant_n_children(outputs); i++) {
+        g_autoptr(GVariant) wrapped = g_variant_get_child_value(outputs, i);
+        g_autoptr(GVariant) output = g_variant_get_variant(wrapped);
+        const char* id = NULL;
+        gboolean primary = FALSE;
+        g_variant_lookup(output, "id", "&s", &id);
+        g_variant_lookup(output, "primary", "b", &primary);
+        if ((by_id && id && g_str_equal(wanted, id)) || (!by_id && primary)) {
+            push_variant(state, output);
+            push_readonly_copy(state, -1);
+            lua_remove(state, -2);
+            return 1;
+        }
+    }
+    lua_pushnil(state);
+    return 1;
+}
+
+int lua_outputs_primary(lua_State* state) {
+    return lua_outputs_find(state, FALSE);
+}
+int lua_outputs_by_id(lua_State* state) {
+    return lua_outputs_find(state, TRUE);
+}
+
+int lua_outputs_renderer(lua_State* state) {
+    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.outputs.renderer takes no arguments");
+    if (!config || !config->output_snapshot) {
+        lua_pushnil(state);
+        return 1;
+    }
+    g_autoptr(GVariant) renderer =
+        g_variant_lookup_value(config->output_snapshot, "renderer", G_VARIANT_TYPE_VARDICT);
+    if (!renderer) {
+        lua_pushnil(state);
+        return 1;
+    }
+    push_variant(state, renderer);
+    push_readonly_copy(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
 int lua_monitors_primary(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)

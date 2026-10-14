@@ -71,6 +71,9 @@ static gboolean publish_windows(gpointer user_data) {
     g_autoptr(GError) monitor_error = NULL;
     g_autoptr(JsonNode) monitor_json =
         gnoblin_control_monitor_snapshot_json(control, TRUE, &monitor_error);
+    g_autoptr(GError) output_error = NULL;
+    g_autoptr(JsonNode) output_json =
+        gnoblin_control_output_snapshot_json(control, TRUE, &output_error);
     g_autoptr(GError) layer_error = NULL;
     g_autoptr(JsonNode) layer_json =
         gnoblin_control_layer_snapshot_json(control, TRUE, &layer_error);

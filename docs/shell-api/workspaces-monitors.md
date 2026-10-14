@@ -109,6 +109,8 @@ Use the connector `id` for typed monitor moves. When outputs are cloned, the
 refresh rate comes from the lexicographically first active connector used as
 the monitor ID. The native result does not include inactive physical outputs.
 
+For per-output records and the compositor renderer, see [Outputs](/shell-api/outputs).
+
 ## Monitor privacy screens
 
 `gnoblin.monitors.privacy_screen()` returns the cached privacy-screen

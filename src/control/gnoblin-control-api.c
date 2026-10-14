@@ -75,6 +75,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     g_autoptr(JsonNode) initial_workspaces = NULL;
     g_autoptr(GError) monitor_error = NULL;
     g_autoptr(JsonNode) initial_monitors = NULL;
+    g_autoptr(JsonNode) initial_outputs = NULL;
     g_autoptr(GError) layer_error = NULL;
     g_autoptr(JsonNode) initial_layer_snapshot = NULL;
     g_autoptr(GVariant) capabilities = NULL;
@@ -362,6 +363,11 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         control->monitor_state = gnoblin_control_monitor_state_from_snapshot(initial_monitors);
         control->monitor_state_initialized = TRUE;
     }
+    g_clear_error(&monitor_error);
+    initial_outputs = gnoblin_control_output_snapshot_json(control, TRUE, &monitor_error);
+    if (!initial_outputs)
+        g_warning("gnoblin-native-control: cannot seed output snapshot: %s",
+                  monitor_error ? monitor_error->message : "output listing unavailable");
     g_signal_connect(control->display, "show-osd", G_CALLBACK(native_show_osd_requested), control);
     g_signal_connect(control->display, "show-pad-osd", G_CALLBACK(native_show_pad_osd_requested),
                      control);

@@ -320,9 +320,12 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "workspace.list",
         "layer.list",
         "monitor.list",
+        "output.list",
         "layer.animation_policy",
         "workspaces.list",
         "monitors.list",
+        "outputs.list",
+        "outputs.renderer",
         "monitors.privacy_screen",
         "layers.list",
         "launches.list",
@@ -477,6 +480,16 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "monitor.list") || g_str_equal(method, "monitors.list")) {
         lua_getfield(state, -1, "monitors");
         lua_getfield(state, -1, "list");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "outputs.list") || g_str_equal(method, "output.list")) {
+        lua_getfield(state, -1, "outputs");
+        lua_getfield(state, -1, "list");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "outputs.renderer")) {
+        lua_getfield(state, -1, "outputs");
+        lua_getfield(state, -1, "renderer");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "monitors.privacy_screen")) {

@@ -320,3 +320,8 @@ void print_help(const char* command, const char* action);
 void print_completion(const char* shell);
 
 #endif /* GNOBLINCTL_INTERNAL_H */
+
+int lua_cli_outputs_list(lua_State* state);
+int lua_cli_outputs_primary(lua_State* state);
+int lua_cli_outputs_by_id(lua_State* state);
+int lua_cli_outputs_renderer(lua_State* state);

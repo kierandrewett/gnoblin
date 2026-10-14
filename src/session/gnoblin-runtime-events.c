@@ -391,6 +391,8 @@ gboolean handle_state(Runtime* runtime, GVariant* payload, GError** error) {
         update = gnoblin_config_update_workspace_snapshot;
     else if (g_str_equal(name, "monitors"))
         update = gnoblin_config_update_monitor_snapshot;
+    else if (g_str_equal(name, "outputs"))
+        update = gnoblin_config_update_output_snapshot;
     else if (g_str_equal(name, "monitor-privacy-screen"))
         update = gnoblin_config_update_monitor_privacy_screen_snapshot;
     else if (g_str_equal(name, "layers"))

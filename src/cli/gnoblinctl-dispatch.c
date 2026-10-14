@@ -355,6 +355,8 @@ JsonNode* dispatch(Cli* cli, GError** error) {
         method = "layers.list";
     else if (is(command, "monitor") && is(action, "list"))
         method = "monitors.list";
+    else if (is(command, "output") && is(action, "list"))
+        method = "outputs.list";
     else if (is(command, "focus") && is(action, "history")) {
         set_if(arguments, "workspace_id", option(cli, "workspace-id"));
         set_if(arguments, "monitor_id", option(cli, "monitor-id"));
@@ -435,6 +437,13 @@ JsonNode* dispatch(Cli* cli, GError** error) {
         g_autoptr(JsonNode) result = window_match_from_snapshot(
             json_node_get_array(reply), arg(cli, 0) ? arg(cli, 0) : "active", error);
         return result ? json_node_copy(result) : NULL;
+    }
+    if (is(command, "output") && is(action, "list") && JSON_NODE_HOLDS_ARRAY(reply)) {
+        JsonObject* result = json_object_new();
+        json_object_set_member(result, "outputs", json_node_copy(reply));
+        JsonNode* node = json_node_new(JSON_NODE_OBJECT);
+        json_node_take_object(node, result);
+        return node;
     }
     if (is(command, "monitor") && is(action, "list") && JSON_NODE_HOLDS_ARRAY(reply)) {
         JsonObject* result = json_object_new();

@@ -73,6 +73,7 @@ void lua_runtime_free(LuaRuntime* runtime) {
     g_clear_pointer(&runtime->config.window_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.workspace_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.monitor_snapshot, g_variant_unref);
+    g_clear_pointer(&runtime->config.output_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.monitor_privacy_screen_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.layer_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.capability_snapshot, g_variant_unref);
@@ -142,6 +143,21 @@ void gnoblin_config_update_monitor_snapshot(GVariant* snapshot, guint64 revision
         runtime->config.monitor_revision = snapshot ? revision : 0;
         if (snapshot)
             runtime->config.monitor_snapshot = g_variant_ref(snapshot);
+    }
+}
+
+void gnoblin_config_update_output_snapshot(GVariant* snapshot, guint64 revision) {
+    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
+        return;
+    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
+    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
+        LuaRuntime* runtime = runtimes[i];
+        if (!runtime || (i == 1 && runtime == runtimes[0]))
+            continue;
+        g_clear_pointer(&runtime->config.output_snapshot, g_variant_unref);
+        runtime->config.output_revision = snapshot ? revision : 0;
+        if (snapshot)
+            runtime->config.output_snapshot = g_variant_ref(snapshot);
     }
 }
 
@@ -594,6 +610,10 @@ static LuaRuntime* lua_runtime_new(const char* path, GError** error) {
     if (snapshot_source && snapshot_source->config.monitor_snapshot) {
         runtime->config.monitor_snapshot = g_variant_ref(snapshot_source->config.monitor_snapshot);
         runtime->config.monitor_revision = snapshot_source->config.monitor_revision;
+    }
+    if (snapshot_source && snapshot_source->config.output_snapshot) {
+        runtime->config.output_snapshot = g_variant_ref(snapshot_source->config.output_snapshot);
+        runtime->config.output_revision = snapshot_source->config.output_revision;
     }
     if (snapshot_source && snapshot_source->config.monitor_privacy_screen_snapshot)
         runtime->config.monitor_privacy_screen_snapshot =
