@@ -14,7 +14,7 @@
 namespace {
 
 constexpr unsigned int kHistory = 240;
-constexpr float kBackgroundAlpha = 0.20f;
+constexpr float kBackgroundAlpha = 0.80f;
 constexpr float kDroppedFrameMs = 25.0f;
 
 } // namespace
@@ -226,19 +226,19 @@ void gnoblin_debug_panel_draw(GnoblinImGuiOverlay* overlay, GnoblinDebugPanel* p
     }
     const float fps = mean > 0.0f ? 1000.0f / mean : 0.0f;
 
-    ImGui::SetNextWindowPos(ImVec2(12.0f, 44.0f), ImGuiCond_Always);
-    ImGui::SetNextWindowBgAlpha(kBackgroundAlpha);
+    ImGui::SetNextWindowPos(ImVec2(12.0f, 244.0f), ImGuiCond_Always);
     const ImGuiWindowFlags flags =
         ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_NoNav |
         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing |
         ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_AlwaysAutoResize;
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.0f, 0.0f, 0.0f, kBackgroundAlpha));
     ImGui::PushStyleColor(ImGuiCol_Border, ImVec4(1.0f, 1.0f, 1.0f, 0.10f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10.0f, 8.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0f);
     if (!ImGui::Begin("gnoblin debug", nullptr, flags)) {
         ImGui::End();
         ImGui::PopStyleVar(2);
-        ImGui::PopStyleColor();
+        ImGui::PopStyleColor(2);
         return;
     }
 
@@ -268,5 +268,5 @@ void gnoblin_debug_panel_draw(GnoblinImGuiOverlay* overlay, GnoblinDebugPanel* p
     debug_line(dim, "cpu %.0f%%   mem %.0f MB", panel->cpu_percent, panel->rss_mb);
     ImGui::End();
     ImGui::PopStyleVar(2);
-    ImGui::PopStyleColor();
+    ImGui::PopStyleColor(2);
 }
