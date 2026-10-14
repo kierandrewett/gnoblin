@@ -8,7 +8,7 @@
 
 /* Handles a vr.spatial.* method. Returns a floating-or-full-ref a{sv} result, or NULL
  * with @error set. Methods: anchor, place, attach, move, raise, update_pose, surface,
- * snapshot. */
+ * snapshot, hit, head. */
 GVariant* gnoblin_vr_scene_call(const char* method, GVariant* arguments, GError** error);
 
 /* The headset as an outputs record (kind "xr"), read from the status file that gnoblin-vr

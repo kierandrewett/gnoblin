@@ -32,6 +32,25 @@ static GVariant* pose_args(const char* surface_key, const char* surface_id, cons
     return g_variant_ref_sink(g_variant_builder_end(&args));
 }
 
+static GVariant* head_args(double qy, double qw) {
+    GVariantBuilder pos, rot, pose, args;
+    g_variant_builder_init(&pos, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&pos, "{sv}", "x", g_variant_new_double(0.0));
+    g_variant_builder_add(&pos, "{sv}", "y", g_variant_new_double(1.5));
+    g_variant_builder_add(&pos, "{sv}", "z", g_variant_new_double(0.0));
+    g_variant_builder_init(&rot, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&rot, "{sv}", "x", g_variant_new_double(0.0));
+    g_variant_builder_add(&rot, "{sv}", "y", g_variant_new_double(qy));
+    g_variant_builder_add(&rot, "{sv}", "z", g_variant_new_double(0.0));
+    g_variant_builder_add(&rot, "{sv}", "w", g_variant_new_double(qw));
+    g_variant_builder_init(&pose, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&pose, "{sv}", "position", g_variant_builder_end(&pos));
+    g_variant_builder_add(&pose, "{sv}", "rotation", g_variant_builder_end(&rot));
+    g_variant_builder_init(&args, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&args, "{sv}", "pose", g_variant_builder_end(&pose));
+    return g_variant_ref_sink(g_variant_builder_end(&args));
+}
+
 static GVariant* ray_args(double ox, double oy, double oz, double dx, double dy, double dz) {
     GVariantBuilder origin, direction, args;
     g_variant_builder_init(&origin, G_VARIANT_TYPE_VARDICT);
@@ -133,6 +152,33 @@ int main(void) {
     g_autoptr(GVariant) away = ray_args(0.0, 3.0, 0.0, 0.0, 0.0, 1.0);
     g_autoptr(GVariant) behind = gnoblin_vr_scene_call("vr.spatial.hit", away, &error);
     g_assert_true(g_variant_lookup(behind, "hit", "b", &did_hit) && !did_hit);
+
+    /* A head-locked anchor follows the head pose. Head (0,1.5,0), view anchor (0,1.5,-2) and a
+     * docked panel at (0,1.5,0) from it put the panel at (0,4.5,-2). */
+    gnoblin_vr_scene_reset();
+    g_autoptr(GVariant) head = head_args(0.0, 1.0);
+    g_assert_nonnull(gnoblin_vr_scene_call("vr.spatial.head", head, &error));
+    g_assert_no_error(error);
+    GVariantDict view_dict;
+    g_autoptr(GVariant) view_base = pose_args("id", "v", NULL, NULL, -2.0, FALSE);
+    g_variant_dict_init(&view_dict, view_base);
+    g_variant_dict_insert(&view_dict, "space_id", "s", "view");
+    g_autoptr(GVariant) view_anchor = g_variant_ref_sink(g_variant_dict_end(&view_dict));
+    g_assert_nonnull(gnoblin_vr_scene_call("vr.spatial.anchor", view_anchor, &error));
+    g_autoptr(GVariant) docked = pose_args("surface_id", "h", "viewport_id", "v", 0.0, TRUE);
+    g_assert_nonnull(gnoblin_vr_scene_call("vr.spatial.attach", docked, &error));
+    g_assert_no_error(error);
+    g_autoptr(GVariant) view_ray = ray_args(0.0, 4.5, 0.0, 0.0, 0.0, -1.0);
+    g_autoptr(GVariant) view_hit = gnoblin_vr_scene_call("vr.spatial.hit", view_ray, &error);
+    g_assert_true(g_variant_lookup(view_hit, "hit", "b", &did_hit) && did_hit);
+    g_assert_true(g_variant_lookup(view_hit, "distance", "d", &distance));
+    g_assert_cmpfloat_with_epsilon(distance, 2.0, 1e-9);
+
+    /* Turning the head 90 degrees swings the panel out of that ray. */
+    g_autoptr(GVariant) turned = head_args(0.70710678118654752, 0.70710678118654752);
+    g_assert_nonnull(gnoblin_vr_scene_call("vr.spatial.head", turned, &error));
+    g_autoptr(GVariant) after_turn = gnoblin_vr_scene_call("vr.spatial.hit", view_ray, &error);
+    g_assert_true(g_variant_lookup(after_turn, "hit", "b", &did_hit) && !did_hit);
 
     gnoblin_vr_scene_reset();
     g_autoptr(GVariant) empty = gnoblin_vr_scene_call("vr.spatial.snapshot", NULL, &error);

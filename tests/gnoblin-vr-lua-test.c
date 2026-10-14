@@ -30,6 +30,7 @@ int main(void) {
                          "assert(type(gnoblin.spatial.move) == 'function')\n"
                          "assert(type(gnoblin.spatial.raise) == 'function')\n"
                          "assert(type(gnoblin.spatial.update_pose) == 'function')\n"
+                         "assert(type(gnoblin.spatial.head) == 'function')\n"
                          "assert(gnoblin.outputs.by_id('xr:headset') == nil)\n";
     g_assert_true(g_file_set_contents(config, source, -1, &error));
     g_assert_no_error(error);

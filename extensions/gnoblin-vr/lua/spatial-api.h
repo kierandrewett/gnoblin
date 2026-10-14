@@ -60,6 +60,12 @@ function gnoblin.spatial.raise(args) end
 ---@return Operation<{hit:boolean, surface_id?:string, u?:number, v?:number, distance?:number}>
 function gnoblin.spatial.hit(args) end
 
+---Report where the head is in world space. Anchors created with `space_id = "view"` follow it, so
+---`hit` can reach head-locked surfaces. The presentation client sends this each frame.
+---@param args {pose:GnoblinVRPose}
+---@return Operation<{revision:integer}>
+function gnoblin.spatial.head(args) end
+
 ---Update a placed surface pose.
 ---@param args {surface_id:string, pose:GnoblinVRPose}
 ---@return Operation<GnoblinVRSpatialSurface>

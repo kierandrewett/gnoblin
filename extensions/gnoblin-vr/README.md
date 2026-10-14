@@ -29,7 +29,7 @@ and `update_pose` methods validate extension-owned scene arguments and submit
 asynchronous `vr.spatial.*` actions from the supervised Lua runtime. The
 `surface` and `snapshot` methods are likewise typed extension actions.
 
-The compositor keeps a spatial scene store behind these calls. Anchors, free and viewport-docked surface placements, stacking ranks and pose updates are validated and applied there, and `snapshot` and `surface` return the stored records with a scene revision. A headless test covers the store. It does not yet import window textures, project quad layers, hit test controller rays, or route pointer and focus events; those consume the store in later phases.
+The compositor keeps a spatial scene store behind these calls. Anchors, free and viewport-docked surface placements, stacking ranks and pose updates are validated and applied there, and `snapshot` and `surface` return the stored records with a scene revision. `hit` casts a ray into the store and returns the nearest surface with its `u` and `v`; `head` reports the head pose so head-locked (`space_id = "view"") anchors can be hit. A headless test covers the store. It does not yet import window textures, project quad layers, or route pointer and focus events; those consume the store in later phases.
 
 ## Headset as an outputs-style record
 
