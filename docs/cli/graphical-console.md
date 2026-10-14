@@ -57,6 +57,14 @@ Assign to `gnoblin.config` to change a setting in the running session:
 gnoblin.config.compositor.debug = true
 ```
 
+A setting the configuration has not declared is not in `gnoblin.config` yet, so assigning to it fails
+with "attempt to index a nil value". Use `gnoblin.configure` instead, which also covers keys you have
+not set:
+
+```lua
+gnoblin.configure { window_management = { focus_mode = "sloppy" } }
+```
+
 The change applies at once and lasts until the configuration is reloaded, so it does not edit your
 config files. A value the configuration does not accept is rejected with the reason, and the
 settings stay as they were.
