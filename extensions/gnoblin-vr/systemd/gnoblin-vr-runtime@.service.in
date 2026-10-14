@@ -1,0 +1,15 @@
+[Unit]
+Description=OpenXR runtime for Gnoblin VR (%i)
+Documentation=man:gnoblin-vr(1)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+# monado: tethered headsets, scanned out through a DRM lease.
+# wivrn: standalone headsets, streamed over USB or Wi-Fi.
+Type=exec
+ExecStart=@CMAKE_INSTALL_PREFIX@/bin/gnoblin-vr --runtime %i
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+
