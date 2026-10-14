@@ -74,6 +74,7 @@ void gnoblin_native_control_set_console_toggle_handler(MetaDisplay* display,
                                                        gpointer user_data);
 /* Registers the compositor plugin bridge for the developer debug overlay. The
  * handler receives the current compositor.debug value on registration. */
+META_EXPORT
 void gnoblin_native_control_set_debug_handler(MetaDisplay* display, GnoblinNativeDebugFunc handler,
                                               gpointer user_data);
 META_EXPORT
