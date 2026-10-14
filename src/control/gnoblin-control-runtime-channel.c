@@ -1,6 +1,70 @@
 #include "gnoblin-native-control-private.h"
 #include "gnoblin-vr-scene.h"
 
+/* Moves the pointer to the point of a window that a controller ray hit, raises the window and
+ * optionally presses or releases a button, so focus, motion and clicks reach the client through
+ * Mutter's ordinary input path. The scene's surface ID is the window's Gnoblin ID. */
+static GVariant* vr_point(GnoblinNativeControl* control, GVariant* arguments, GError** error) {
+    static ClutterVirtualInputDevice* pointer;
+    g_autoptr(GVariant) hit = gnoblin_vr_scene_call("vr.spatial.hit", arguments, error);
+    if (!hit)
+        return NULL;
+    gboolean hit_flag = FALSE;
+    const char* surface_id = NULL;
+    double u = 0.0, v = 0.0;
+    gboolean delivered = FALSE;
+    if (g_variant_lookup(hit, "hit", "b", &hit_flag) && hit_flag &&
+        g_variant_lookup(hit, "surface_id", "&s", &surface_id) &&
+        g_variant_lookup(hit, "u", "d", &u) && g_variant_lookup(hit, "v", "d", &v)) {
+        GHashTableIter iter;
+        gpointer key;
+        MetaWindow* target = NULL;
+        g_hash_table_iter_init(&iter, control->windows);
+        while (!target && g_hash_table_iter_next(&iter, &key, NULL)) {
+            g_autofree char* id = native_window_id(key);
+            if (g_str_equal(id, surface_id))
+                target = key;
+        }
+        if (target && control->input_seat) {
+            MtkRectangle frame;
+            meta_window_get_frame_rect(target, &frame);
+            if (!pointer)
+                pointer =
+                    clutter_seat_create_virtual_device(control->input_seat, CLUTTER_POINTER_DEVICE);
+            gint64 now = g_get_monotonic_time();
+            meta_window_raise(target);
+            clutter_virtual_input_device_notify_absolute_motion(
+                pointer, now, frame.x + u * frame.width, frame.y + v * frame.height);
+            const char* button = NULL;
+            const char* state = NULL;
+            if (g_variant_lookup(arguments, "button", "&s", &button) &&
+                g_variant_lookup(arguments, "state", "&s", &state)) {
+                /* Clutter button numbers: primary, middle, secondary. */
+                int code = g_str_equal(button, "right")    ? CLUTTER_BUTTON_SECONDARY
+                           : g_str_equal(button, "middle") ? CLUTTER_BUTTON_MIDDLE
+                                                           : CLUTTER_BUTTON_PRIMARY;
+                clutter_virtual_input_device_notify_button(pointer, now, code,
+                                                           g_str_equal(state, "press")
+                                                               ? CLUTTER_BUTTON_STATE_PRESSED
+                                                               : CLUTTER_BUTTON_STATE_RELEASED);
+            }
+            delivered = TRUE;
+        }
+    }
+    GVariantBuilder result;
+    g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
+    GVariantIter fields;
+    const char* name;
+    GVariant* value;
+    g_variant_iter_init(&fields, hit);
+    while (g_variant_iter_next(&fields, "{&sv}", &name, &value)) {
+        g_variant_builder_add(&result, "{sv}", name, value);
+        g_variant_unref(value);
+    }
+    g_variant_builder_add(&result, "{sv}", "delivered", g_variant_new_boolean(delivered));
+    return g_variant_ref_sink(g_variant_builder_end(&result));
+}
+
 gboolean native_runtime_dispatch_event(GnoblinNativeControl* control, const char* event,
                                        GVariant* payload) {
     if (!control || control->stopping || !event || !*event || !payload ||
@@ -700,6 +764,8 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
                     control->display, method, arguments, handle, generation, &operation_error);
             }
         }
+    } else if (g_str_equal(method, "vr.spatial.point")) {
+        result = vr_point(control, arguments, &operation_error);
     } else if (g_str_has_prefix(method, "vr.spatial.")) {
         /* The VR extension's Lua surface queues these; the scene store validates and applies them.
          */
