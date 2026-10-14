@@ -18,6 +18,12 @@ repos:
         language: system
         files: '^(src/.*\.[ch]|scripts/gen-lua-api\.py)$'
         pass_filenames: false
+      - id: lua-api-annotations
+        name: Lua API names all have annotations
+        entry: python3 scripts/audit-lua-annotations.py
+        language: system
+        files: '^(src/.*\.[ch]|scripts/audit-lua-annotations\.py)$'
+        pass_filenames: false
       - id: ruff
         name: ruff
         entry: ruff check

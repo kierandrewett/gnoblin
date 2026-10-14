@@ -1143,20 +1143,25 @@ function gnoblin.shortcuts.end_session(session) end
 ---@return Window[]
 function gnoblin.windows.list(filter) end
 
----Return the focused window, or nil when no window is focused.
----@return Window|nil
-function gnoblin.windows.focused() end
+---Identity and window-rule fields for one window, the record that gnoblinctl window match
+---prints. Selecting "active" means the focused window.
+---@param window? string "active" or a stable window ID; the default is "active".
+---@return WindowMatch
+function Window:match(window) end
 
----Find a window by its stable ID.
----@param id string Stable window ID.
----@return Window|nil
-function gnoblin.windows.by_id(id) end
+---The record that Window:match returns.
+---@class WindowMatch
+---@field id string Stable window ID of the matched window.
+---@field identity WindowMatchIdentity Verified identity.
+---@field match WindowRuleMatch Fields a window rule can match on.
 
----Create a snap context during a shortcut event callback.
----@param context FocusContext Live context from the current shortcut event.
----@return Operation<SnapContext>
-function gnoblin.windows.snap_context(context) end
+---Identity verified from the window record.
+---@class WindowMatchIdentity
+---@field app_id string Application ID used for matching.
+---@field gtk_app_id? string GTK application ID, when present.
+---@field wm_class? string Window manager class, when present.
 
+---Identity and window-rule fields for one window, the record that gnoblinctl window match prints.
 ---Return windows in most-recently-focused order, optionally filtered.
 ---@param filter? FocusHistoryFilter
 ---@return Window[]
