@@ -155,6 +155,11 @@ static gboolean gnoblin_plugin_toggle_console_bridge(MetaDisplay* display, gpoin
     return TRUE;
 }
 
+static void gnoblin_plugin_debug_bridge(gboolean enabled, gpointer user_data) {
+    auto* self = static_cast<MetaGnoblinPlugin*>(user_data);
+    gnoblin_plugin_ui_set_debug(self->diagnostics_ui, enabled);
+}
+
 static void gnoblin_plugin_start(MetaPlugin* plugin) {
     MetaGnoblinPlugin* self = META_GNOBLIN_PLUGIN(plugin);
     MetaDisplay* display = meta_plugin_get_display(plugin);
@@ -192,7 +197,7 @@ static void gnoblin_plugin_start(MetaPlugin* plugin) {
                                          gnoblin_plugin_session_is_locked(self));
     gnoblin_native_control_set_console_toggle_handler(display, gnoblin_plugin_toggle_console_bridge,
                                                       self);
-
+    gnoblin_native_control_set_debug_handler(display, gnoblin_plugin_debug_bridge, self);
     clutter_actor_show(meta_backend_get_stage(backend));
 }
 

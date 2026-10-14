@@ -29,13 +29,14 @@ diff --git a/src/compositor/plugins/meson.build b/src/compositor/plugins/meson.b
 index 1fdfd9b21..a1d5e8bc0 100644
 --- a/src/compositor/plugins/meson.build
 +++ b/src/compositor/plugins/meson.build
-@@ -27,5 +27,8 @@ gnoblin_imgui_sources = files(
+@@ -27,5 +27,9 @@ gnoblin_imgui_sources = files(
    gnoblin_imgui_root / 'imgui_draw.cpp',
    gnoblin_imgui_root / 'imgui_tables.cpp',
    gnoblin_imgui_root / 'imgui_widgets.cpp',
 +  'gnoblin-plugin-ui.cpp',
 +  'gnoblin-recovery-panel.cpp',
 +  'gnoblin-console-panel.cpp',
++'gnoblin-debug-panel.cpp',
    'gnoblin-imgui-overlay.cpp',
  )
 -- 

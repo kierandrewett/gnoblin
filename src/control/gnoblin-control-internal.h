@@ -299,6 +299,11 @@ struct _GnoblinNativeControl {
     char* input_policy_error;
     GnoblinNativeConsoleToggleFunc console_toggle_handler;
     gpointer console_toggle_handler_data;
+    /* Developer debug overlay state, driven by the compositor.debug config key. */
+    GnoblinNativeDebugFunc debug_handler;
+    gpointer debug_handler_data;
+    gboolean developer_debug_published;
+    gboolean developer_debug_known;
     GHashTable* accepted_input_requests;
     gint64 shortcut_capture_request_id;
     gulong session_lock_callback_id;

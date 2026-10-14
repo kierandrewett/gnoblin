@@ -22,6 +22,9 @@ float gnoblin_plugin_paint_scale(ClutterPaintContext* paint_context);
 void gnoblin_plugin_ui_hide_console(GnoblinPluginUi* ui);
 
 void gnoblin_plugin_ui_set_session_locked(GnoblinPluginUi* ui, gboolean locked);
+/* Developer debug overlay driven by the compositor.debug config key. The panel
+ * never takes input, so callers only toggle visibility here. */
+void gnoblin_plugin_ui_set_debug(GnoblinPluginUi* ui, gboolean enabled);
 gboolean gnoblin_plugin_ui_console_visible(GnoblinPluginUi* ui);
 
 /* Console is modal; passive recovery captures pointer events inside its panel. */

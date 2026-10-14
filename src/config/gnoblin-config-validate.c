@@ -216,10 +216,7 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     g_autoptr(GVariant) compositor = g_variant_lookup_value(document, "compositor", NULL);
     if (compositor) {
         static const char* booleans[] = {
-            "locate-pointer",
-            "visual-bell",
-            "audible-bell",
-            NULL,
+            "debug", "locate-pointer", "visual-bell", "audible-bell", NULL,
         };
         gboolean valid = g_variant_is_of_type(compositor, G_VARIANT_TYPE_VARDICT);
         GVariantIter iter;

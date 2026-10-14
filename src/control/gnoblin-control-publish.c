@@ -723,6 +723,14 @@ void native_settings_changed(guint64 revision, gpointer user_data) {
         control->wayland_compositor,
         gnoblin_native_control_get_config_bool(control->display, "layer-shell",
                                                "preserve-active-window", TRUE));
+    gboolean developer_debug =
+        gnoblin_native_control_get_config_bool(control->display, "compositor", "debug", FALSE);
+    if (!control->developer_debug_known || developer_debug != control->developer_debug_published) {
+        control->developer_debug_published = developer_debug;
+        control->developer_debug_known = TRUE;
+        if (control->debug_handler)
+            control->debug_handler(developer_debug, control->debug_handler_data);
+    }
     meta_settings_apply_gnoblin_privacy_screen_preferences(
         meta_backend_get_settings(control->backend), monitor_preferences);
     meta_settings_apply_gnoblin_privacy_screen_runtime_override(
@@ -740,4 +748,18 @@ void native_settings_changed(guint64 revision, gpointer user_data) {
     /* Animation registrations live in the supervisor's Lua state. The cache
      * is updated there independently of the compositor config document. */
     native_publish_runtime_snapshot(control, "animations", NULL, revision);
+}
+
+void gnoblin_native_control_set_debug_handler(MetaDisplay* display, GnoblinNativeDebugFunc handler,
+                                              gpointer user_data) {
+    GnoblinNativeControl* control =
+        display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
+    if (control) {
+        control->debug_handler = handler;
+        control->debug_handler_data = user_data;
+    }
+    /* Late registration replays the published value: the plugin starts after
+     * the compositor applies startup configuration. */
+    if (handler && control && control->developer_debug_known)
+        handler(control->developer_debug_published, user_data);
 }

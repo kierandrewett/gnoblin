@@ -14,6 +14,8 @@ static const InvalidConfig invalid_configs[] = {
     {"protocol-table", "gnoblin.configure {protocols = false}", "protocols"},
     {"protocol-array", "gnoblin.configure {protocols = {false}}", "protocols"},
     {"nested-setting", "gnoblin.configure {compositor = {not_a_setting = false}}", "not-a-setting"},
+    {"compositor-debug-type", "gnoblin.configure {compositor = {debug = 'true'}}",
+     "\"debug\" has an unsupported name or value"},
     {"touchpad-enum", "gnoblin.configure {input = {touchpad = {tap_button_map = 'xyz'}}}",
      "tap-button-map"},
     {"removed-shell", "gnoblin.configure {shell = {}}", "shell settings are no longer supported"},
