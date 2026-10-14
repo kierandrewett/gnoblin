@@ -36,7 +36,7 @@ index 1fdfd9b21..a1d5e8bc0 100644
 +  'gnoblin-plugin-ui.cpp',
 +  'gnoblin-recovery-panel.cpp',
 +  'gnoblin-console-panel.cpp',
-+'gnoblin-debug-panel.cpp',
++  'gnoblin-debug-panel.cpp',
    'gnoblin-imgui-overlay.cpp',
  )
 -- 
