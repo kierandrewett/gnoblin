@@ -1124,6 +1124,7 @@ function gnoblin.shortcuts.end_session(session) end
 ---@field above? boolean Whether the window is kept above others.
 ---@field sticky? boolean Whether the window appears on all workspaces.
 ---@field demands_attention? boolean Whether the window requests attention.
+---@field unresponsive? boolean Whether the client has stopped answering liveness pings.
 ---@field closable? boolean Whether the window can be closed.
 ---@field minimizable? boolean Whether the window can be minimized.
 ---@field maximizable? boolean Whether the window can be maximized.
@@ -1212,6 +1213,11 @@ function Window:match(window) end
 ---Close this window.
 ---@return Operation<Json>
 function Window:close() end
+
+---Send SIGKILL to the client process that owns this window. Use it for a window whose
+---`unresponsive` field is true; the client loses unsaved work.
+---@return Operation<Json>
+function Window:kill() end
 
 ---Minimize this window.
 ---@return Operation<Json>

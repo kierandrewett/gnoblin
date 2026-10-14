@@ -111,6 +111,8 @@ JsonNode* dispatch(Cli* cli, GError** error) {
             set_string(arguments, "id", window);
             if (is(action, "close"))
                 method = "window.close";
+            else if (is(action, "kill"))
+                method = "window.kill";
             else if (is(action, "minimize"))
                 method = "window.minimize";
             else if (is(action, "unminimize"))

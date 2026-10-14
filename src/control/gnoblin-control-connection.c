@@ -128,6 +128,7 @@ gboolean client_connected(GSocketService* service, GSocketConnection* connection
         "window.snap.offer",
         "window.action",
         "window.close",
+        "window.kill",
         "window.minimize",
         "window.toggle_minimize",
         "window.unminimize",

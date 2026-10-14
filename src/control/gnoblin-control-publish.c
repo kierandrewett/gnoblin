@@ -59,6 +59,7 @@ const WindowPropertyName window_property_names[] = {
     {"above", "above"},
     {"sticky", "sticky"},
     {"demandsAttention", "demands_attention"},
+    {"unresponsive", "unresponsive"},
     {"closable", "closable"},
     {"minimizable", "minimizable"},
     {"maximizable", "maximizable"},

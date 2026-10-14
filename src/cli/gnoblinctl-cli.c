@@ -19,7 +19,7 @@ const CommandSpec commands[] = {
     {"permissions", "list policy check"},
     {"window",
      "list match menu interactive-move interactive-resize above unabove stick unstick "
-     "focus close minimize unminimize toggle-minimize restore-or-minimize restore maximize "
+     "focus close kill minimize unminimize toggle-minimize restore-or-minimize restore maximize "
      "unmaximize fullscreen "
      "unfullscreen move resize monitor workspace thumbnail"},
     {"layer", "list"},
@@ -97,6 +97,7 @@ static const HelpEntry help_entries[] = {
     {"window", "unstick", "Show a window on one workspace only"},
     {"window", "focus", "Rejected: needs a one-use trusted context or an activation token"},
     {"window", "close", "Close a window"},
+    {"window", "kill", "Force-quit a window by killing its client process"},
     {"window", "minimize", "Minimize a window"},
     {"window", "unminimize", "Bring back a minimized window"},
     {"window", "toggle-minimize", "Minimize a window, or bring it back if minimized"},

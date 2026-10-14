@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 14 Oct 2026 15:50:00 +0100
+Subject: [PATCH] mutter: report unresponsive windows and add window.kill
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index 3fd1eb2..a3ae411 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -1643,10 +1643,12 @@ gnoblin_native_window_list (MetaDisplay *display,
+       MtkRectangle frame;
+       gboolean minimized = FALSE;
+       gboolean demands_attention = FALSE;
++      gboolean is_alive = TRUE;
+       meta_window_get_frame_rect (window, &frame);
+       g_object_get (window,
+                     "minimized", &minimized,
+                     "demands-attention", &demands_attention,
++                    "is-alive", &is_alive,
+                     NULL);
+       GVariantBuilder geometry;
+       GVariantBuilder entry;
+@@ -1670,6 +1672,8 @@ gnoblin_native_window_list (MetaDisplay *display,
+                              g_variant_new_boolean (meta_window_is_always_on_all_workspaces (window)));
+       g_variant_builder_add (&entry, "{sv}", "demandsAttention",
+                              g_variant_new_boolean (demands_attention));
++      g_variant_builder_add (&entry, "{sv}", "unresponsive",
++                             g_variant_new_boolean (!is_alive));
+       g_variant_builder_add (&entry, "{sv}", "closable",
+                              g_variant_new_boolean (meta_window_can_close (window)));
+       g_variant_builder_add (&entry, "{sv}", "minimizable",
+@@ -2082,6 +2086,7 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+       return NULL;
+     }
+   if (g_str_equal (method, "window.close") ||
++      g_str_equal (method, "window.kill") ||
+       g_str_equal (method, "window.minimize") ||
+       g_str_equal (method, "window.toggle_minimize") ||
+       g_str_equal (method, "window.unminimize") ||
+@@ -2206,7 +2211,24 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+                                "window cannot be closed");
+           return NULL;
+         }
+-      meta_window_delete (window, meta_display_get_current_time (display));
++      {
++        /* A close requested without an input event has no server time. Mutter refuses to ping a
++         * window with serial 0, so the liveness check that finds a frozen client never ran. */
++        guint32 timestamp = meta_display_get_current_time (display);
++        if (timestamp == 0)
++          timestamp = (guint32) (g_get_monotonic_time () / 1000) | 1;
++        meta_window_delete (window, timestamp);
++      }
++    }
++  else if (g_str_equal (method, "window.kill"))
++    {
++      if (meta_window_get_pid (window) <= 0)
++        {
++          g_set_error_literal (error, G_IO_ERROR, G_IO_ERROR_FAILED,
++                               "window has no client process to kill");
++          return NULL;
++        }
++      meta_window_kill (window);
+     }
+   else if (g_str_equal (method, "window.minimize"))
+     {
+@@ -2367,6 +2389,7 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+ {
+   static const char * const typed_window_methods[] = {
+     "window.close",
++    "window.kill",
+     "window.minimize",
+     "window.toggle_minimize",
+     "window.unminimize",

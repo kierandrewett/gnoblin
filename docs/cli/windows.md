@@ -14,6 +14,7 @@ gnoblinctl window toggle-minimize 42
 gnoblinctl window restore 42
 gnoblinctl window maximize 42
 gnoblinctl window close 42
+gnoblinctl window kill 42
 gnoblinctl window thumbnail 42 --output window.png
 ```
 
@@ -53,6 +54,20 @@ it when neither state applies.
 `toggle-minimize` restores a minimized window or minimizes any other window.
 Use `unmaximize` and `unfullscreen` to clear those states directly. `close`
 requests a normal close, including unsaved-work prompts.
+
+## Force-quit a frozen window
+
+`kill` sends SIGKILL to the process that owns the window, so unsaved work is lost.
+
+```sh
+gnoblinctl window kill 42
+```
+
+A window whose client stops answering liveness pings reports `unresponsive` as true in
+`window list --json`, and the compositor sends `gnoblin.window.changed`. The ping timeout is
+`window_management.check_alive_timeout`.
+
+Gnoblin shows no dialog of its own. A shell or a Lua script decides when to offer `kill`.
 
 `window thumbnail` saves a PNG for a stable window ID. By default, it requests
 an image up to 320 × 200 pixels. Set `--width` (1–480) and `--height` (1–320)
