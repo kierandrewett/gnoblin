@@ -30,6 +30,20 @@ An xr headset appears in Gnoblin's outputs API, and the Lua runtime owns every d
 
 Phase 3 API validation runs without a headset. Visible placement and interaction still need the compositor action handler and projection/input integration, followed by validation in the Monado preview window and a qualified headset before any performance claim in phase 5.
 
+## Controller rays and cursors
+
+Each controller draws a ray and, where the ray meets a window, the cursor you are using on the desktop.
+
+**Ray.** The presentation client draws one thin line per controller, from the controller's aim pose to the hit point reported by `gnoblin.spatial.hit`. With no hit it stops at a fixed length. The ray is a client overlay, not a scene surface, so it never takes part in hit testing. Lua decides whether it shows, its colour and length, and whether it appears only while a surface is under it, through the same `gnoblin.spatial` surface as the rest of the arrangement policy.
+
+**Cursor.** The cursor at the end of the ray is the compositor's live cursor sprite, so it follows whatever the session uses: the configured cursor theme, a hyprcursor theme, and the shape a client sets for the window under the ray (arrow, text beam, resize handle, and so on). Nothing in the VR extension ships its own cursor.
+
+- The compositor already tracks the current sprite and its hotspot for the desktop. It publishes the image, hotspot, scale and a serial number to the extension, for example through a file in `$XDG_RUNTIME_DIR/gnoblin-vr/` that is rewritten when the serial changes.
+- The client imports the image as a texture when the serial changes and draws it as a billboard quad at the hit point. The quad faces the head, the hotspot sits on the hit point, and its size grows with distance so it keeps a constant angular size.
+- With two controllers, the one that last called `gnoblin.spatial.point` shows the live sprite. The other shows the theme's default arrow, because Mutter has a single pointer and one current sprite. Lua can override that choice per controller.
+
+This needs texture import into the client, which needs a real GL driver to verify; the Monado preview under llvmpipe stays dark. Until then the ray and cursor are design only, and the sprite publication can be built and tested first because it needs no headset.
+
 ## Links
 
 - Outputs API design and implementation live in the outputs worktree until merged; `kind = "xr"` is reserved in design/outputs.md.
