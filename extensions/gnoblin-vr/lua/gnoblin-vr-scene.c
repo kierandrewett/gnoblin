@@ -207,6 +207,115 @@ static GVariant* place_or_attach(GVariant* arguments, gboolean docked, GError** 
     return accepted();
 }
 
+/* --- Ray hit testing -------------------------------------------------------------------- */
+
+static void rotate_vector(const double q[4], const double v[3], double out[3]) {
+    /* v' = v + 2 * cross(qv, cross(qv, v) + w * v) for a unit quaternion (x, y, z, w). */
+    const double* u = q;
+    double c[3] = {u[1] * v[2] - u[2] * v[1] + q[3] * v[0], u[2] * v[0] - u[0] * v[2] + q[3] * v[1],
+                   u[0] * v[1] - u[1] * v[0] + q[3] * v[2]};
+    out[0] = v[0] + 2.0 * (u[1] * c[2] - u[2] * c[1]);
+    out[1] = v[1] + 2.0 * (u[2] * c[0] - u[0] * c[2]);
+    out[2] = v[2] + 2.0 * (u[0] * c[1] - u[1] * c[0]);
+}
+
+static void multiply_quaternion(const double a[4], const double b[4], double out[4]) {
+    out[0] = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+    out[1] = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+    out[2] = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+    out[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+}
+
+/* Composes an anchor pose with a surface pose that is local to it. */
+static Pose world_pose(const Pose* anchor, const Pose* local) {
+    Pose world;
+    double offset[3];
+    rotate_vector(anchor->rotation, local->position, offset);
+    for (guint i = 0; i < 3; i++)
+        world.position[i] = anchor->position[i] + offset[i];
+    multiply_quaternion(anchor->rotation, local->rotation, world.rotation);
+    return world;
+}
+
+static gboolean vector3_of(GVariant* arguments, const char* key, double* out, GError** error) {
+    static const char* const names[] = {"x", "y", "z"};
+    if (!vector_of(arguments, key, names, 3, out)) {
+        g_set_error(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                    "%s must be a table of finite x, y, z numbers", key);
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/* Casts a ray against every surface that is visible in world space. A surface is a flat
+ * rectangle facing local +Z, centred on its pose, with width along X and height along Y.
+ * The nearest hit wins; coplanar overlaps fall back to stacking rank. Surfaces under a
+ * head-locked ("view") anchor are skipped because the store does not know the head pose. */
+static GVariant* hit_test(GVariant* arguments, GError** error) {
+    double origin[3], direction[3];
+    if (!vector3_of(arguments, "origin", origin, error) ||
+        !vector3_of(arguments, "direction", direction, error))
+        return NULL;
+    double length = sqrt(direction[0] * direction[0] + direction[1] * direction[1] +
+                         direction[2] * direction[2]);
+    if (length < 1e-9) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                            "direction must not be zero");
+        return NULL;
+    }
+    for (guint i = 0; i < 3; i++)
+        direction[i] /= length;
+
+    const Surface* best = NULL;
+    double best_distance = 0.0, best_u = 0.0, best_v = 0.0;
+    GHashTableIter iter;
+    gpointer value;
+    g_hash_table_iter_init(&iter, surfaces);
+    while (g_hash_table_iter_next(&iter, NULL, &value)) {
+        const Surface* surface = value;
+        const Anchor* anchor = g_hash_table_lookup(anchors, surface->anchor_id);
+        if (!anchor || g_str_equal(anchor->space_id, "view"))
+            continue;
+        Pose world = world_pose(&anchor->pose, &surface->pose);
+        double conjugate[4] = {-world.rotation[0], -world.rotation[1], -world.rotation[2],
+                               world.rotation[3]};
+        double relative[3] = {origin[0] - world.position[0], origin[1] - world.position[1],
+                              origin[2] - world.position[2]};
+        double local_origin[3], local_direction[3];
+        rotate_vector(conjugate, relative, local_origin);
+        rotate_vector(conjugate, direction, local_direction);
+        if (fabs(local_direction[2]) < 1e-9)
+            continue; /* parallel to the surface */
+        double distance = -local_origin[2] / local_direction[2];
+        if (distance <= 0.0)
+            continue; /* behind the ray origin */
+        double x = local_origin[0] + distance * local_direction[0];
+        double y = local_origin[1] + distance * local_direction[1];
+        if (fabs(x) > surface->width / 2.0 || fabs(y) > surface->height / 2.0)
+            continue;
+        gboolean nearer = !best || distance < best_distance - 1e-6;
+        gboolean tie_higher =
+            best && fabs(distance - best_distance) <= 1e-6 && surface->rank > best->rank;
+        if (nearer || tie_higher) {
+            best = surface;
+            best_distance = distance;
+            best_u = x / surface->width + 0.5;
+            best_v = 0.5 - y / surface->height;
+        }
+    }
+
+    GVariantBuilder b;
+    g_variant_builder_init(&b, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&b, "{sv}", "hit", g_variant_new_boolean(best != NULL));
+    if (best) {
+        g_variant_builder_add(&b, "{sv}", "surface_id", g_variant_new_string(best->id));
+        g_variant_builder_add(&b, "{sv}", "u", g_variant_new_double(best_u));
+        g_variant_builder_add(&b, "{sv}", "v", g_variant_new_double(best_v));
+        g_variant_builder_add(&b, "{sv}", "distance", g_variant_new_double(best_distance));
+    }
+    return g_variant_ref_sink(g_variant_builder_end(&b));
+}
+
 GVariant* gnoblin_vr_scene_call(const char* method, GVariant* arguments, GError** error) {
     ensure_tables();
     if (g_str_equal(method, "vr.spatial.snapshot")) {
@@ -247,6 +356,8 @@ GVariant* gnoblin_vr_scene_call(const char* method, GVariant* arguments, GError*
         revision++;
         return accepted();
     }
+    if (g_str_equal(method, "vr.spatial.hit"))
+        return hit_test(arguments, error);
     if (g_str_equal(method, "vr.spatial.place"))
         return place_or_attach(arguments, FALSE, error);
     if (g_str_equal(method, "vr.spatial.attach"))

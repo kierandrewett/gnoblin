@@ -32,6 +32,22 @@ static GVariant* pose_args(const char* surface_key, const char* surface_id, cons
     return g_variant_ref_sink(g_variant_builder_end(&args));
 }
 
+static GVariant* ray_args(double ox, double oy, double oz, double dx, double dy, double dz) {
+    GVariantBuilder origin, direction, args;
+    g_variant_builder_init(&origin, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&origin, "{sv}", "x", g_variant_new_double(ox));
+    g_variant_builder_add(&origin, "{sv}", "y", g_variant_new_double(oy));
+    g_variant_builder_add(&origin, "{sv}", "z", g_variant_new_double(oz));
+    g_variant_builder_init(&direction, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&direction, "{sv}", "x", g_variant_new_double(dx));
+    g_variant_builder_add(&direction, "{sv}", "y", g_variant_new_double(dy));
+    g_variant_builder_add(&direction, "{sv}", "z", g_variant_new_double(dz));
+    g_variant_builder_init(&args, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&args, "{sv}", "origin", g_variant_builder_end(&origin));
+    g_variant_builder_add(&args, "{sv}", "direction", g_variant_builder_end(&direction));
+    return g_variant_ref_sink(g_variant_builder_end(&args));
+}
+
 static guint64 rank_of(const char* id) {
     GError* error = NULL;
     GVariantBuilder b;
@@ -93,6 +109,30 @@ int main(void) {
     g_autoptr(GVariant) surfaces =
         g_variant_lookup_value(snapshot, "surfaces", G_VARIANT_TYPE("aa{sv}"));
     g_assert_cmpuint(g_variant_n_children(surfaces), ==, 2);
+
+    /* Anchor (0,1.5,-1) plus surface a (0,1.5,-0.5) puts a at (0,3,-1.5), b behind it at z -2.2. */
+    g_autoptr(GVariant) ray = ray_args(0.0, 3.0, 0.0, 0.0, 0.0, -1.0);
+    g_autoptr(GVariant) hit = gnoblin_vr_scene_call("vr.spatial.hit", ray, &error);
+    g_assert_no_error(error);
+    gboolean did_hit = FALSE;
+    const char* hit_id = NULL;
+    double u = 0.0, v = 0.0, distance = 0.0;
+    g_assert_true(g_variant_lookup(hit, "hit", "b", &did_hit) && did_hit);
+    g_assert_true(g_variant_lookup(hit, "surface_id", "&s", &hit_id));
+    g_assert_cmpstr(hit_id, ==, "a");
+    g_assert_true(g_variant_lookup(hit, "u", "d", &u) && g_variant_lookup(hit, "v", "d", &v));
+    g_assert_true(g_variant_lookup(hit, "distance", "d", &distance));
+    g_assert_cmpfloat_with_epsilon(u, 0.5, 1e-9);
+    g_assert_cmpfloat_with_epsilon(v, 0.5, 1e-9);
+    g_assert_cmpfloat_with_epsilon(distance, 1.5, 1e-9);
+
+    /* Off the edge of the 1.2 m wide panel, and pointing away from it, both miss. */
+    g_autoptr(GVariant) wide = ray_args(0.7, 3.0, 0.0, 0.0, 0.0, -1.0);
+    g_autoptr(GVariant) miss = gnoblin_vr_scene_call("vr.spatial.hit", wide, &error);
+    g_assert_true(g_variant_lookup(miss, "hit", "b", &did_hit) && !did_hit);
+    g_autoptr(GVariant) away = ray_args(0.0, 3.0, 0.0, 0.0, 0.0, 1.0);
+    g_autoptr(GVariant) behind = gnoblin_vr_scene_call("vr.spatial.hit", away, &error);
+    g_assert_true(g_variant_lookup(behind, "hit", "b", &did_hit) && !did_hit);
 
     gnoblin_vr_scene_reset();
     g_autoptr(GVariant) empty = gnoblin_vr_scene_call("vr.spatial.snapshot", NULL, &error);
