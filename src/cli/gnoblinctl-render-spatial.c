@@ -152,6 +152,81 @@ static void render_monitors(JsonArray* monitors) {
     print_table(rows);
 }
 
+static void render_outputs(JsonArray* outputs) {
+    JsonArray* rows = json_array_new();
+    for (guint i = 0; i < json_array_get_length(outputs); i++) {
+        JsonObject* input = json_array_get_object_element(outputs, i);
+        if (!input)
+            continue;
+        JsonObject* row = json_object_new();
+        json_object_set_string_member(row, "id", spatial_value(input, "id"));
+        json_object_set_string_member(row, "kind", spatial_value(input, "kind"));
+        JsonObject* mode = member_object(input, "mode");
+        g_autofree char* width = spatial_value(mode, "width");
+        g_autofree char* height = spatial_value(mode, "height");
+        g_autofree char* rate = spatial_value(mode, "refresh_rate");
+        g_autofree char* resolution = g_strdup_printf("%sx%s@%s", width, height, rate);
+        json_object_set_string_member(row, "resolution", resolution);
+        g_autofree char* x = spatial_value(input, "x");
+        g_autofree char* y = spatial_value(input, "y");
+        g_autofree char* position = g_strdup_printf("%s+%s", x, y);
+        json_object_set_string_member(row, "position", position);
+        json_object_set_string_member(row, "scale", spatial_value(input, "scale"));
+        gboolean primary = json_object_get_boolean_member_with_default(input, "primary", FALSE);
+        gboolean enabled = json_object_get_boolean_member_with_default(input, "enabled", FALSE);
+        json_object_set_string_member(row, "primary", primary ? "yes" : "no");
+        json_object_set_string_member(row, "enabled", enabled ? "yes" : "no");
+        JsonObject* renderer = member_object(input, "renderer");
+        g_autofree char* accelerated = g_strdup(
+            renderer && json_object_get_boolean_member_with_default(renderer, "accelerated", FALSE)
+                ? "yes"
+                : "no");
+        json_object_set_string_member(row, "accelerated", accelerated);
+        json_object_set_string_member(row, "renderer", spatial_value(renderer, "name"));
+        JsonNode* row_node = json_node_new(JSON_NODE_OBJECT);
+        json_node_take_object(row_node, row);
+        json_array_add_element(rows, row_node);
+    }
+    print_table(rows);
+    json_array_unref(rows);
+}
+
+static void render_output_primary(JsonObject* output) {
+    if (!output)
+        return;
+    const char* labels[] = {"id",     "kind",  "name", "make", "model",
+                            "serial", "scale", "x",    "y",    "monitor_id"};
+    for (guint i = 0; i < G_N_ELEMENTS(labels); i++) {
+        const char* member = labels[i];
+        JsonNode* value = json_object_get_member(output, member);
+        if (!value || JSON_NODE_HOLDS_NULL(value))
+            continue;
+        g_autofree char* label = human_label(member);
+        g_autofree char* text = node_text(value);
+        g_print("%s: %s\n", label, text);
+    }
+    JsonObject* mode = member_object(output, "mode");
+    if (mode) {
+        g_autofree char* width = spatial_value(mode, "width");
+        g_autofree char* height = spatial_value(mode, "height");
+        g_autofree char* rate = spatial_value(mode, "refresh_rate");
+        g_print("Mode: %sx%s@%s\n", width, height, rate);
+    }
+    JsonObject* renderer = member_object(output, "renderer");
+    if (renderer) {
+        g_autofree char* name = spatial_value(renderer, "name");
+        g_autofree char* vendor = spatial_value(renderer, "vendor");
+        g_autofree char* api = spatial_value(renderer, "api");
+        gboolean accelerated =
+            json_object_get_boolean_member_with_default(renderer, "accelerated", FALSE);
+        g_print("Renderer: %s%s\n", name, accelerated ? " (accelerated)" : " (software)");
+        if (vendor && *vendor)
+            g_print("Renderer vendor: %s\n", vendor);
+        if (api && *api)
+            g_print("Renderer API: %s\n", api);
+    }
+}
+
 static void render_workspaces(JsonArray* workspaces) {
     const char* fields[] = {"id", "number", "name", "active", "windows"};
     g_autoptr(JsonArray) rows = spatial_table(workspaces, fields, G_N_ELEMENTS(fields));
@@ -177,6 +252,14 @@ gboolean render_spatial(const char* command, const char* action, JsonNode* resul
     }
     if (is(command, "monitor") && is(action, "list")) {
         render_monitors(spatial_array(result, "monitors"));
+        return TRUE;
+    }
+    if (is(command, "output") && is(action, "list")) {
+        render_outputs(spatial_array(result, "outputs"));
+        return TRUE;
+    }
+    if (is(command, "output") && is(action, "primary") && JSON_NODE_HOLDS_OBJECT(result)) {
+        render_output_primary(json_node_get_object(result));
         return TRUE;
     }
     if (is(command, "workspace") && is(action, "list")) {

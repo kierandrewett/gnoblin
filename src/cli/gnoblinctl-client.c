@@ -203,6 +203,7 @@ JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* m
                                         word_in("capabilities.list focus.history windows.list "
                                                 "workspaces.list monitors.list layers.list "
                                                 "shortcuts.actions shortcut.actions shortcut.list "
+                                                "outputs.list "
                                                 "portals.grants "
                                                 "shortcuts.list",
                                                 method_name);

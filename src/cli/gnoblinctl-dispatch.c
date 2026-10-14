@@ -355,7 +355,7 @@ JsonNode* dispatch(Cli* cli, GError** error) {
         method = "layers.list";
     else if (is(command, "monitor") && is(action, "list"))
         method = "monitors.list";
-    else if (is(command, "output") && is(action, "list"))
+    else if (is(command, "output") && (is(action, "list") || is(action, "primary")))
         method = "outputs.list";
     else if (is(command, "focus") && is(action, "history")) {
         set_if(arguments, "workspace_id", option(cli, "workspace-id"));
@@ -444,6 +444,17 @@ JsonNode* dispatch(Cli* cli, GError** error) {
         JsonNode* node = json_node_new(JSON_NODE_OBJECT);
         json_node_take_object(node, result);
         return node;
+    }
+    if (is(command, "output") && is(action, "primary") && JSON_NODE_HOLDS_ARRAY(reply)) {
+        JsonArray* outputs = json_node_get_array(reply);
+        for (guint i = 0; i < json_array_get_length(outputs); i++) {
+            JsonObject* output = json_array_get_object_element(outputs, i);
+            if (output && json_object_get_boolean_member_with_default(output, "primary", FALSE)) {
+                return json_node_copy(json_array_get_element(outputs, i));
+            }
+        }
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_FOUND, "no primary output");
+        return NULL;
     }
     if (is(command, "monitor") && is(action, "list") && JSON_NODE_HOLDS_ARRAY(reply)) {
         JsonObject* result = json_object_new();
