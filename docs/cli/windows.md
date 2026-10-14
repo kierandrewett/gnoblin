@@ -15,6 +15,8 @@ gnoblinctl window restore 42
 gnoblinctl window maximize 42
 gnoblinctl window close 42
 gnoblinctl window kill 42
+gnoblinctl window raise 42
+gnoblinctl window lower 42
 gnoblinctl window thumbnail 42 --output window.png
 ```
 

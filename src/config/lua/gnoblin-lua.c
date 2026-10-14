@@ -100,6 +100,8 @@ const char* api_methods[] = {
     "workspace.move_window",
     "window.close",
     "window.kill",
+    "window.raise",
+    "window.lower",
     "window.minimize",
     "window.toggle_minimize",
     "window.unminimize",

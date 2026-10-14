@@ -113,6 +113,10 @@ JsonNode* dispatch(Cli* cli, GError** error) {
                 method = "window.close";
             else if (is(action, "kill"))
                 method = "window.kill";
+            else if (is(action, "raise"))
+                method = "window.raise";
+            else if (is(action, "lower"))
+                method = "window.lower";
             else if (is(action, "minimize"))
                 method = "window.minimize";
             else if (is(action, "unminimize"))

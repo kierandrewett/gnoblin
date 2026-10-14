@@ -17,11 +17,11 @@ const CommandSpec commands[] = {
     {"session", "activity lock logout suspend hibernate reboot poweroff"},
     {"privacy", "stop-sharing stop-recording"},
     {"permissions", "list policy check"},
-    {"window",
-     "list match menu interactive-move interactive-resize above unabove stick unstick "
-     "focus close kill minimize unminimize toggle-minimize restore-or-minimize restore maximize "
-     "unmaximize fullscreen "
-     "unfullscreen move resize monitor workspace thumbnail"},
+    {"window", "list match menu interactive-move interactive-resize above unabove stick unstick "
+               "focus close kill raise lower minimize unminimize toggle-minimize "
+               "restore-or-minimize restore maximize "
+               "unmaximize fullscreen "
+               "unfullscreen move resize monitor workspace thumbnail"},
     {"layer", "list"},
     {"completion", NULL},
     {"shortcut", "actions list capture"},
@@ -98,6 +98,8 @@ static const HelpEntry help_entries[] = {
     {"window", "focus", "Rejected: needs a one-use trusted context or an activation token"},
     {"window", "close", "Close a window"},
     {"window", "kill", "Force-quit a window by killing its client process"},
+    {"window", "raise", "Raise a window above the others"},
+    {"window", "lower", "Lower a window below the others"},
     {"window", "minimize", "Minimize a window"},
     {"window", "unminimize", "Bring back a minimized window"},
     {"window", "toggle-minimize", "Minimize a window, or bring it back if minimized"},
