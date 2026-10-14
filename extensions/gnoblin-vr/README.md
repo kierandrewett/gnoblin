@@ -40,6 +40,14 @@ rectangle. It matches the `xr:0` record that `gnoblin.outputs.list()` returns; u
 need a fresh read of the status instead of the published snapshot.
 `parse_status` and `output_record` are the pure parts, if you already have the status text.
 
+## Cursor sprite
+
+The compositor publishes the cursor the session is using, so the client can draw it at the end of a
+controller ray. `$XDG_RUNTIME_DIR/gnoblin-vr/cursor.rgba` holds the sprite as straight RGBA8 pixels, and
+`cursor.ini` gives its `width`, `height`, hotspot (`hot_x`, `hot_y`), `scale` and a `serial` that
+changes with the sprite. Re-import the texture only when `serial` changes. It follows the cursor theme
+and the shape a client sets, for example the text beam over a terminal.
+
 ## Window arrangement policy
 
 `gnoblin-vr-shell.lua` is a Lua module that decides where windows go. It moves a viewport pill, docks
