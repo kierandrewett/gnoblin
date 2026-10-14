@@ -212,7 +212,7 @@ I ran `gnoblinctl help` and `gnoblinctl help COMMAND` for each command with acti
 ### `init`
 
 - **Lua equivalent:** None
-- **Notes:** CLI-only setup command that creates a config tree from the installed binary.
+- **Notes:** CLI-only by design. It creates a config tree before any session or Lua runtime exists, so there is no Lua caller. In a running session, `gnoblin.config.restore_default()` recreates the tree.
 
 ### `session suspend`
 
