@@ -6,11 +6,16 @@ License:        GPL-2.0-or-later
 BuildRequires:  cmake
 BuildRequires:  gcc
 BuildRequires:  glib2-devel
+BuildRequires:  libdrm-devel
+BuildRequires:  systemd-devel
 BuildRequires:  openxr-devel
 BuildRequires:  pkgconfig
 BuildRequires:  python3
 Requires:       glib2
 Requires:       openxr-libs
+Suggests:       monado
+Suggests:       wivrn
+Suggests:       android-tools
 Source0:        gnoblin-vr-%{version}.tar.gz
 
 %description
@@ -32,5 +37,9 @@ An optional, extension-owned OpenXR presentation client for Gnoblin.
 %files
 %{_bindir}/gnoblin-vr
 %{_userunitdir}/gnoblin-vr.service
+%{_userunitdir}/gnoblin-vr@.service
+%{_userunitdir}/gnoblin-vr-runtime@.service
+%{_userunitdir}/gnoblin-vr-watch.service
 %{_datadir}/gnoblin-vr/lua/gnoblin-vr.lua
 %{_datadir}/gnoblin-vr/lua/gnoblin-vr-shell.lua
+%{_datadir}/gnoblin-vr/lua/gnoblin-vr-session.lua

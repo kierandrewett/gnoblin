@@ -30,6 +30,17 @@ An xr headset appears in Gnoblin's outputs API, and the Lua runtime owns every d
 
 Phase 3 API validation runs without a headset. Visible placement and interaction still need the compositor action handler and projection/input integration, followed by validation in the Monado preview window and a qualified headset before any performance claim in phase 5.
 
+## Headsets and runtimes
+
+Headsets arrive two ways and need two runtimes, so the extension supports both behind one `xr` output.
+
+- Tethered headsets (Index, Vive, PSVR2, Pimax, Windows MR) present as DRM connectors with the `non-desktop` property. Mutter already filters such connectors out of the desktop and exposes them through `wp_drm_lease_device_v1`; Monado's `direct_wayland` target (`XRT_COMPOSITOR_FORCE_WAYLAND_DIRECT`) takes the lease through `VK_EXT_acquire_drm_display`. No compositor change is required.
+- Standalone headsets (Quest, Pico, Vive Focus) have no connector. WiVRn, a Monado based OpenXR runtime that streams video to a headset app over USB (`adb reverse tcp:9757`) or Wi-Fi (mDNS plus a pairing PIN), is the streaming runtime. ALVR is a SteamVR driver and would need the SteamVR path; WiVRn exposes a plain OpenXR runtime that `gnoblin-vr` already targets. WiVRn is GPL-3.0-or-later and Monado's compositor is BSL-1.0. Gnoblin only starts WiVRn as a separate process and talks to it over OpenXR and D-Bus, so the licences do not mix; the source is pinned as `subprojects/wivrn`.
+
+`gnoblin-vr --watch` reports each headset (USB IDs, non-desktop connectors, the WiVRn D-Bus service) and the compositor publishes them as `xr:N` outputs plus the `gnoblin.vr.headset-changed` event. Lua decides what to start. The default policy, `gnoblin-vr-session.lua`, is ordinary Lua and replaceable.
+
+Verified without a headset: classification and the output records against fixture machines, the watcher against the real WiVRn server's D-Bus name and a mock that connects and disconnects a headset, the runtime and client units, and the Monado simulated headset session. A real DRM lease, adb pairing and a Wi-Fi stream need hardware.
+
 ## Controller rays and cursors
 
 Each controller draws a ray and, where the ray meets a window, the cursor you are using on the desktop.

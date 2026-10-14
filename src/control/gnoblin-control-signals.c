@@ -565,11 +565,35 @@ static void window_unmanaged(MetaWindow* window, gpointer user_data) {
     schedule_windows(control);
 }
 
+extern GVariant* gnoblin_vr_output_records(void) __attribute__((weak));
+
+/* Tells Lua that a headset appeared, changed state or went away, with the current xr output
+ * records, so a configuration can start or stop the matching runtime without polling. */
+static void publish_headset_changed(GnoblinNativeControl* control) {
+    if (!gnoblin_vr_output_records || control->stopping)
+        return;
+    g_autoptr(GVariant) records = gnoblin_vr_output_records();
+    /* A replaced file raises several monitor events; tell Lua only about real changes. */
+    static char* last;
+    g_autofree char* text = g_variant_print(records, FALSE);
+    if (g_strcmp0(text, last) == 0)
+        return;
+    g_free(last);
+    last = g_steal_pointer(&text);
+    GVariantBuilder fields;
+    g_variant_builder_init(&fields, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&fields, "{sv}", "headsets", records);
+    g_autoptr(GVariant) payload = g_variant_ref_sink(g_variant_builder_end(&fields));
+    native_publish_request_event(control, "gnoblin.vr.headset-changed", payload);
+}
+
 static void vr_status_changed(GFileMonitor* monitor, GFile* file, GFile* other,
                               GFileMonitorEvent event, gpointer user_data) {
     if (event == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT || event == G_FILE_MONITOR_EVENT_CREATED ||
-        event == G_FILE_MONITOR_EVENT_DELETED)
+        event == G_FILE_MONITOR_EVENT_DELETED) {
         schedule_windows(user_data);
+        publish_headset_changed(user_data);
+    }
 }
 
 /* The VR extension reports the headset through a status file that the output listing reads.
@@ -618,16 +642,19 @@ void gnoblin_control_watch_vr_status(GnoblinNativeControl* control) {
                          G_CALLBACK(cursor_sprite_changed), NULL);
         publish_cursor_sprite(control->cursor_tracker);
     }
-    static GFileMonitor* monitor;
-    if (monitor)
+    static GFileMonitor* monitors[2];
+    if (monitors[0])
         return;
     g_autofree char* directory = g_build_filename(g_get_user_runtime_dir(), "gnoblin-vr", NULL);
     g_mkdir_with_parents(directory, 0700);
-    g_autofree char* path = g_build_filename(directory, "status.ini", NULL);
-    g_autoptr(GFile) file = g_file_new_for_path(path);
-    monitor = g_file_monitor_file(file, G_FILE_MONITOR_NONE, NULL, NULL);
-    if (monitor)
-        g_signal_connect(monitor, "changed", G_CALLBACK(vr_status_changed), control);
+    static const char* const files[] = {"status.ini", "devices.ini"};
+    for (guint i = 0; i < G_N_ELEMENTS(files); i++) {
+        g_autofree char* path = g_build_filename(directory, files[i], NULL);
+        g_autoptr(GFile) file = g_file_new_for_path(path);
+        monitors[i] = g_file_monitor_file(file, G_FILE_MONITOR_NONE, NULL, NULL);
+        if (monitors[i])
+            g_signal_connect(monitors[i], "changed", G_CALLBACK(vr_status_changed), control);
+    }
 }
 
 void track_window(GnoblinNativeControl* control, MetaWindow* window) {

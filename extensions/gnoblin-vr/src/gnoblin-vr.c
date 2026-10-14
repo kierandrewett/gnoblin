@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "gnoblin-vr-common.h"
+#include "gnoblin-vr-session.h"
 
 int main(int argc, char** argv) {
     if (argc == 2 && g_str_equal(argv[1], "--status")) {
@@ -14,17 +15,32 @@ int main(int argc, char** argv) {
             g_print("%s", contents);
         return 0;
     }
-    if (argc != 1) {
-        g_printerr("usage: gnoblin-vr [--status]\n");
+    if (argc == 2 && g_str_equal(argv[1], "--devices"))
+        return gnoblin_vr_devices_main();
+    if (argc == 2 && g_str_equal(argv[1], "--watch"))
+        return gnoblin_vr_watch_main();
+    if ((argc == 2 || argc == 3) && g_str_equal(argv[1], "--connect"))
+        return gnoblin_vr_connect_main(argc == 3 ? argv[2] : NULL);
+    if (argc == 3 && g_str_equal(argv[1], "--runtime"))
+        return gnoblin_vr_runtime_main(argv[2]);
+    const char* backend = NULL;
+    if (argc == 3 && g_str_equal(argv[1], "--backend"))
+        backend = argv[2];
+    else if (argc != 1) {
+        g_printerr("usage: gnoblin-vr [--status | --devices | --watch | --connect [ID] |\n"
+                   "                  --runtime monado|wivrn | --backend monado|wivrn]\n");
         return 2;
     }
+    if (backend && !gnoblin_vr_select_backend(backend))
+        return gnoblin_vr_absent("the requested OpenXR runtime is not installed");
     signal(SIGTERM, gnoblin_vr_handle_stop);
     signal(SIGINT, gnoblin_vr_handle_stop);
     /* Keep phase-2 preview behaviour extension-owned. Monado opens its XCB
      * preview window and does not stream this session to a headset. */
-    if (!g_getenv("XRT_COMPOSITOR_FORCE_XCB"))
+    if (!backend && !g_getenv("XRT_COMPOSITOR_FORCE_XCB"))
         g_setenv("XRT_COMPOSITOR_FORCE_XCB", "1", FALSE);
-    gnoblin_vr_select_monado_service();
+    if (!backend)
+        gnoblin_vr_select_monado_service();
 
     /* A bare instance lets an absent runtime exit cleanly before any extension
      * checks try to query properties from a loader that has no runtime. */

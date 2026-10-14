@@ -157,3 +157,4 @@ releases the client’s bindings and other resources.
 | 1.79            | Adds the `prompt-broker` capability, `prompt.respond`, `prompt.cancel`, and `gnoblin.prompt.*` events      |
 | 1.80            | Adds the `gnoblin.pointer.locate-requested` event                                                          |
 | 1.81            | Adds `work_area` to monitor records and to the monitor `changed` list                                      |
+| 1.84            | Adds the `gnoblin.vr.headset-changed` event                                                                |

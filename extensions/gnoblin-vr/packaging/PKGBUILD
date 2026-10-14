@@ -6,7 +6,10 @@ pkgdesc='Optional OpenXR presentation client for Gnoblin'
 arch=('x86_64')
 url='https://github.com/kierandrewett/gnoblin/tree/main/extensions/gnoblin-vr'
 license=('GPL-2.0-or-later')
-depends=('glib2' 'openxr')
+depends=('glib2' 'openxr' 'libdrm' 'systemd-libs')
+optdepends=('monado: tethered headsets (Index, Vive, PSVR2)'
+    'wivrn-server: standalone headsets (Quest, Pico) over USB or Wi-Fi'
+    'android-tools: USB link to standalone headsets')
 makedepends=('cmake' 'gcc' 'pkgconf' 'python')
 source=("gnoblin::git+https://github.com/kierandrewett/gnoblin.git")
 b2sums=('SKIP')

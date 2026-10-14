@@ -66,7 +66,45 @@ shell:drag(grab, {origin = {x = 0, y = 1.4, z = 0}, direction = {x = -1, y = 0, 
 `tests/vr-shell-live.test.lua` runs the module against a live session: `gnoblinctl lua
 tests/vr-shell-live.test.lua` prints one PASS or FAIL line per check.
 
-The compositor reads the status file at `$XDG_RUNTIME_DIR/gnoblin-vr/status.ini` and adds the headset to its output list as an `xr:0` record with `kind = "xr"`, `state`, `diagnostic` and per-eye `views`. Mutter has no registration interface for an external output driver, so the record is read-only and the monitor manager still owns every display output.
+## Headsets
+
+Two kinds of headset reach the computer, and each needs a different OpenXR runtime.
+
+- **Tethered** (Index, Vive, PSVR2, Pimax, Windows MR): a display cable and USB. The cable is a DRM
+  connector flagged `non-desktop`. Mutter leaves it out of the desktop and offers it through
+  `wp_drm_lease_device_v1`; Monado takes the lease in direct mode and scans out to it. Backend:
+  `monado`.
+- **Standalone** (Quest, Pico, Vive Focus): the headset runs the WiVRn app and receives the scene
+  as a video stream over a USB cable (`adb reverse`) or Wi-Fi. Backend: `wivrn`.
+
+WiVRn is GPL-3.0-or-later. Gnoblin runs it as a separate process, never linked, and pins its source
+as the submodule `subprojects/wivrn` for distributions that do not package it
+(`make vr-streamer INSTALL=1`). Monado is BSL-1.0.
+
+`gnoblin-vr --watch` (the `gnoblin-vr-watch.service` unit) follows USB, DRM and the WiVRn D-Bus
+service with udev and signals, and keeps `$XDG_RUNTIME_DIR/gnoblin-vr/devices.ini` current. The
+compositor turns it into `xr:N` outputs, each with `state`, `connection`, `transport`,
+`backend` and `device_id`, and sends `gnoblin.vr.headset-changed` when the list changes.
+
+`gnoblin-vr-session.lua` is the default policy. `require("gnoblin-vr-session").auto()` starts the
+runtime unit for the chosen headset (`gnoblin-vr-runtime@monado` or `@wivrn`), runs
+`gnoblin-vr --connect` for a standalone headset on USB, and starts the client
+(`gnoblin-vr@monado` or `@wivrn`) once the headset is ready. The compositor knows none of this.
+See the [VR headsets guide](../../docs/guides/vr_headsets.md) for setup.
+
+| Command                        | What it does                                                      |
+| ------------------------------ | ----------------------------------------------------------------- |
+| `gnoblin-vr --devices`         | Print the headsets found right now.                               |
+| `gnoblin-vr --watch`           | Keep `devices.ini` current as headsets come and go.               |
+| `gnoblin-vr --connect [ID]`    | Start the USB link to a standalone headset through adb.           |
+| `gnoblin-vr --runtime BACKEND` | Run the OpenXR runtime for `monado` or `wivrn` in the foreground. |
+| `gnoblin-vr --backend BACKEND` | Run the presentation client against that runtime.                 |
+
+The USB table that classifies headsets is a hint for what to offer; the OpenXR runtime has the
+final say on a session. Detection reads `GNOBLIN_VR_FIXTURE`, a directory standing in for sysfs,
+DRM and the streamer, which is how `tests/vr-devices.test.py` runs without hardware.
+
+The compositor reads `$XDG_RUNTIME_DIR/gnoblin-vr/status.ini` for the session state and the per-eye `views` of the headset that hosts the session. Mutter has no registration interface for an external output driver, so the records are read-only and the monitor manager still owns every display output.
 
 Build and test the extension independently with CMake and CTest from this
 directory. The build requires GLib/GIO and the OpenXR loader development files.

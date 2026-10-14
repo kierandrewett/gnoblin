@@ -322,7 +322,7 @@ static GVariant* hit_test(GVariant* arguments, GError** error) {
     return g_variant_ref_sink(g_variant_builder_end(&b));
 }
 
-GVariant* gnoblin_vr_scene_call(const char* method, GVariant* arguments, GError** error) {
+static GVariant* scene_call(const char* method, GVariant* arguments, GError** error) {
     ensure_tables();
     if (g_str_equal(method, "vr.spatial.snapshot")) {
         GVariantBuilder anchor_list, surface_list, result;
@@ -403,19 +403,91 @@ GVariant* gnoblin_vr_scene_call(const char* method, GVariant* arguments, GError*
     return NULL;
 }
 
-GVariant* gnoblin_vr_output_record(void) {
-    g_autofree char* path =
-        g_build_filename(g_get_user_runtime_dir(), "gnoblin-vr", "status.ini", NULL);
-    g_autoptr(GKeyFile) file = g_key_file_new();
-    if (!g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, NULL))
-        return NULL;
-    g_autofree char* state = g_key_file_get_string(file, "vr", "state", NULL);
-    g_autofree char* diagnostic = g_key_file_get_string(file, "vr", "diagnostic", NULL);
-    gint views = g_key_file_get_integer(file, "vr", "view_count", NULL);
-    if (!state || !*state)
-        return NULL;
-    views = CLAMP(views, 0, 8);
+/* --- scene.ini ---------------------------------------------------------------------------- */
 
+static void format_pose(GString* out, const char* prefix, const Pose* pose) {
+    g_string_append_printf(out, "%s_pos=%.6f;%.6f;%.6f\n", prefix, pose->position[0],
+                           pose->position[1], pose->position[2]);
+    g_string_append_printf(out, "%s_rot=%.6f;%.6f;%.6f;%.6f\n", prefix, pose->rotation[0],
+                           pose->rotation[1], pose->rotation[2], pose->rotation[3]);
+}
+
+static gint compare_rank(gconstpointer a, gconstpointer b) {
+    const Surface* left = *(const Surface* const*)a;
+    const Surface* right = *(const Surface* const*)b;
+    return left->rank < right->rank ? -1 : left->rank > right->rank;
+}
+
+/* The presentation client renders from this file: every surface with the pose of its anchor and
+ * its own pose, left separate so head-locked anchors follow the live head pose in the client.
+ * Surfaces are written lowest rank first. */
+static void publish_scene(void) {
+    g_autofree char* directory = g_build_filename(g_get_user_runtime_dir(), "gnoblin-vr", NULL);
+    g_mkdir_with_parents(directory, 0700);
+    g_autoptr(GPtrArray) ordered = g_ptr_array_new();
+    GHashTableIter iter;
+    gpointer value;
+    g_hash_table_iter_init(&iter, surfaces);
+    while (g_hash_table_iter_next(&iter, NULL, &value)) {
+        const Surface* surface = value;
+        if (g_hash_table_contains(anchors, surface->anchor_id))
+            g_ptr_array_add(ordered, value);
+    }
+    g_ptr_array_sort(ordered, compare_rank);
+    GString* out = g_string_new(NULL);
+    g_string_append_printf(out, "[scene]\nrevision=%" G_GUINT64_FORMAT "\ncount=%u\n", revision,
+                           ordered->len);
+    for (guint i = 0; i < ordered->len; i++) {
+        const Surface* surface = g_ptr_array_index(ordered, i);
+        const Anchor* anchor = g_hash_table_lookup(anchors, surface->anchor_id);
+        g_autofree char* frame = gnoblin_vr_frame_name(surface->id);
+        g_string_append_printf(out, "\n[surface.%u]\nid=%s\nframe=%s\nspace=%s\ndocked=%d\n", i,
+                               surface->id, frame, anchor->space_id, surface->docked ? 1 : 0);
+        format_pose(out, "anchor", &anchor->pose);
+        format_pose(out, "local", &surface->pose);
+        g_string_append_printf(out, "width=%.6f\nheight=%.6f\n", surface->width, surface->height);
+    }
+    g_autofree char* path = g_build_filename(directory, "scene.ini", NULL);
+    g_autoptr(GError) error = NULL;
+    if (!g_file_set_contents(path, out->str, (gssize)out->len, &error))
+        g_warning("gnoblin-vr: cannot publish the scene: %s", error->message);
+    g_string_free(out, TRUE);
+}
+
+GVariant* gnoblin_vr_scene_call(const char* method, GVariant* arguments, GError** error) {
+    guint64 before = revision;
+    GVariant* result = scene_call(method, arguments, error);
+    if (result && revision != before)
+        publish_scene();
+    return result;
+}
+
+char* gnoblin_vr_frame_name(const char* surface_id) {
+    GString* name = g_string_new(NULL);
+    for (const char* c = surface_id; *c; c++)
+        g_string_append_c(name, g_ascii_isalnum(*c) || *c == '-' || *c == '_' ? *c : '_');
+    return g_string_free(name, FALSE);
+}
+
+gboolean gnoblin_vr_scene_has_surfaces(void) {
+    return surfaces && g_hash_table_size(surfaces) > 0;
+}
+
+char** gnoblin_vr_scene_surface_ids(void) {
+    GPtrArray* ids = g_ptr_array_new();
+    GHashTableIter iter;
+    gpointer key;
+    if (surfaces) {
+        g_hash_table_iter_init(&iter, surfaces);
+        while (g_hash_table_iter_next(&iter, &key, NULL))
+            g_ptr_array_add(ids, g_strdup(key));
+    }
+    g_ptr_array_add(ids, NULL);
+    return (char**)g_ptr_array_free(ids, FALSE);
+}
+
+static GVariant* status_views(GKeyFile* file) {
+    gint views = CLAMP(g_key_file_get_integer(file, "vr", "view_count", NULL), 0, 8);
     GVariantBuilder view_list;
     g_variant_builder_init(&view_list, G_VARIANT_TYPE("aa{sv}"));
     for (gint i = 0; i < views; i++) {
@@ -431,18 +503,111 @@ GVariant* gnoblin_vr_output_record(void) {
             g_variant_new_int32(g_key_file_get_integer(file, "vr", height_key, NULL)));
         g_variant_builder_add_value(&view_list, g_variant_builder_end(&view));
     }
+    return g_variant_builder_end(&view_list);
+}
 
-    GVariantBuilder record;
-    g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string("xr:0"));
-    g_variant_builder_add(&record, "{sv}", "kind", g_variant_new_string("xr"));
-    g_variant_builder_add(&record, "{sv}", "name", g_variant_new_string("OpenXR headset"));
-    g_variant_builder_add(&record, "{sv}", "enabled",
-                          g_variant_new_boolean(g_str_equal(state, "running")));
-    g_variant_builder_add(&record, "{sv}", "primary", g_variant_new_boolean(FALSE));
-    g_variant_builder_add(&record, "{sv}", "state", g_variant_new_string(state));
-    if (diagnostic && *diagnostic)
-        g_variant_builder_add(&record, "{sv}", "diagnostic", g_variant_new_string(diagnostic));
-    g_variant_builder_add(&record, "{sv}", "views", g_variant_builder_end(&view_list));
-    return g_variant_ref_sink(g_variant_builder_end(&record));
+static GKeyFile* load_runtime_file(const char* name) {
+    g_autofree char* path = g_build_filename(g_get_user_runtime_dir(), "gnoblin-vr", name, NULL);
+    GKeyFile* file = g_key_file_new();
+    if (!g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, NULL))
+        g_clear_pointer(&file, g_key_file_unref);
+    return file;
+}
+
+static gboolean headset_session_state(const char* state) {
+    return g_str_equal(state, "ready") || g_str_equal(state, "connected");
+}
+
+/* One xr record per headset that gnoblin-vr --watch found, in devices.ini order. The session
+ * status in status.ini (state, per-eye views) belongs to the first headset that can host one.
+ * Without devices.ini the extension reports a single xr:0 from the status file alone, which is
+ * how a Monado preview window with no hardware appears. */
+GVariant* gnoblin_vr_output_records(void) {
+    g_autoptr(GKeyFile) status = load_runtime_file("status.ini");
+    g_autoptr(GKeyFile) devices = load_runtime_file("devices.ini");
+    g_autofree char* status_state =
+        status ? g_key_file_get_string(status, "vr", "state", NULL) : NULL;
+    g_autofree char* status_diagnostic =
+        status ? g_key_file_get_string(status, "vr", "diagnostic", NULL) : NULL;
+    gint count = devices ? g_key_file_get_integer(devices, "streamer", "device_count", NULL) : 0;
+    count = CLAMP(count, 0, 16);
+    GVariantBuilder records;
+    g_variant_builder_init(&records, G_VARIANT_TYPE("aa{sv}"));
+    gboolean session_assigned = FALSE;
+    gint emitted = 0;
+
+    for (gint i = 0; i < count; i++) {
+        g_autofree char* group = g_strdup_printf("device.%d", i);
+        g_autofree char* state = g_key_file_get_string(devices, group, "state", NULL);
+        g_autofree char* name = g_key_file_get_string(devices, group, "name", NULL);
+        g_autofree char* vendor = g_key_file_get_string(devices, group, "vendor", NULL);
+        g_autofree char* device_id = g_key_file_get_string(devices, group, "id", NULL);
+        if (!state || !device_id)
+            continue;
+        gboolean hosts_session = !session_assigned && status_state && headset_session_state(state);
+        gboolean running = hosts_session && g_str_equal(status_state, "running");
+        if (hosts_session)
+            session_assigned = TRUE;
+        g_autofree char* diagnostic = g_key_file_get_string(devices, group, "diagnostic", NULL);
+        if (hosts_session && status_diagnostic && *status_diagnostic &&
+            !g_str_equal(status_state, "absent")) {
+            g_free(diagnostic);
+            diagnostic = g_strdup(status_diagnostic);
+        }
+
+        GVariantBuilder record;
+        g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+        g_autofree char* id = g_strdup_printf("xr:%d", emitted++);
+        g_autofree char* label = (vendor && *vendor && name && !g_str_has_prefix(name, vendor))
+                                     ? g_strdup_printf("%s %s", vendor, name)
+                                     : g_strdup(name && *name ? name : "OpenXR headset");
+        g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string(id));
+        g_variant_builder_add(&record, "{sv}", "kind", g_variant_new_string("xr"));
+        g_variant_builder_add(&record, "{sv}", "name", g_variant_new_string(label));
+        g_variant_builder_add(&record, "{sv}", "enabled", g_variant_new_boolean(running));
+        g_variant_builder_add(&record, "{sv}", "primary", g_variant_new_boolean(FALSE));
+        g_variant_builder_add(&record, "{sv}", "state",
+                              g_variant_new_string(running ? "running" : state));
+        if (diagnostic && *diagnostic)
+            g_variant_builder_add(&record, "{sv}", "diagnostic", g_variant_new_string(diagnostic));
+        static const char* const copied[] = {"transport", "backend", "vendor"};
+        for (guint f = 0; f < G_N_ELEMENTS(copied); f++) {
+            g_autofree char* value = g_key_file_get_string(devices, group, copied[f], NULL);
+            if (value && *value)
+                g_variant_builder_add(&record, "{sv}", copied[f], g_variant_new_string(value));
+        }
+        g_autofree char* connection = g_key_file_get_string(devices, group, "kind", NULL);
+        if (connection && *connection)
+            g_variant_builder_add(&record, "{sv}", "connection", g_variant_new_string(connection));
+        g_variant_builder_add(&record, "{sv}", "device_id", g_variant_new_string(device_id));
+        g_variant_builder_add(&record, "{sv}", "views",
+                              running ? status_views(status)
+                                      : g_variant_new_array(G_VARIANT_TYPE("a{sv}"), NULL, 0));
+        g_variant_builder_add_value(&records, g_variant_builder_end(&record));
+    }
+
+    if (count == 0 && status_state && *status_state) {
+        GVariantBuilder record;
+        g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string("xr:0"));
+        g_variant_builder_add(&record, "{sv}", "kind", g_variant_new_string("xr"));
+        g_variant_builder_add(&record, "{sv}", "name", g_variant_new_string("OpenXR headset"));
+        g_variant_builder_add(&record, "{sv}", "enabled",
+                              g_variant_new_boolean(g_str_equal(status_state, "running")));
+        g_variant_builder_add(&record, "{sv}", "primary", g_variant_new_boolean(FALSE));
+        g_variant_builder_add(&record, "{sv}", "state", g_variant_new_string(status_state));
+        if (status_diagnostic && *status_diagnostic)
+            g_variant_builder_add(&record, "{sv}", "diagnostic",
+                                  g_variant_new_string(status_diagnostic));
+        g_variant_builder_add(&record, "{sv}", "views", status_views(status));
+        g_variant_builder_add_value(&records, g_variant_builder_end(&record));
+    }
+    return g_variant_ref_sink(g_variant_builder_end(&records));
+}
+
+GVariant* gnoblin_vr_output_record(void) {
+    g_autoptr(GVariant) records = gnoblin_vr_output_records();
+    if (g_variant_n_children(records) == 0)
+        return NULL;
+    return g_variant_get_child_value(records, 0);
 }
