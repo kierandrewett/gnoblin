@@ -449,6 +449,7 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_setfield(state, -2, "__index");
     lua_setmetatable(state, -2);
     lua_setglobal(state, "gnoblin");
+    gnoblin_lua_extensions_install(state, config);
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_require, 1);
     lua_setglobal(state, "require");

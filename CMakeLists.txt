@@ -107,6 +107,8 @@ if(GNOBLIN_LUA_FOUND)
     src/config/lua/gnoblin-lua-dispatch.c
     src/config/lua/gnoblin-lua-finish.c
     src/config/lua/gnoblin-lua-input.c
+    src/config/lua/gnoblin-lua-extension.c
+    extensions/gnoblin-vr/lua/gnoblin-vr-lua.c
     src/config/lua/gnoblin-lua-install.c
     src/config/lua/gnoblin-lua-merge.c
     src/config/lua/gnoblin-lua-named.c
@@ -139,6 +141,12 @@ if(GNOBLIN_LUA_FOUND)
     add_test(NAME ${test_name} COMMAND ${test_name}-test)
     set_tests_properties(${test_name} PROPERTIES TIMEOUT 20)
   endforeach()
+  add_executable(gnoblin-vr-lua-test
+    tests/gnoblin-vr-lua-test.c
+    extensions/gnoblin-vr/lua/gnoblin-vr-lua.c)
+  target_link_libraries(gnoblin-vr-lua-test PRIVATE gnoblin-config-core)
+  add_test(NAME gnoblin-vr-lua COMMAND gnoblin-vr-lua-test)
+  set_tests_properties(gnoblin-vr-lua PROPERTIES TIMEOUT 20)
   add_executable(config-reload-warnings-test
     tests/config-reload-warnings-test.c
     src/session/gnoblin-runtime-diagnostics.c

@@ -93,6 +93,10 @@ int main(int argc, char** argv) {
     }
     signal(SIGTERM, handle_stop);
     signal(SIGINT, handle_stop);
+    /* Keep phase-2 preview behaviour extension-owned. Monado opens its XCB
+     * preview window and does not stream this session to a headset. */
+    if (!g_getenv("XRT_COMPOSITOR_FORCE_XCB"))
+        g_setenv("XRT_COMPOSITOR_FORCE_XCB", "1", FALSE);
     select_monado_service();
 
     XrInstance instance = XR_NULL_HANDLE;
