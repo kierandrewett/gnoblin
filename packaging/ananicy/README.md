@@ -18,13 +18,13 @@ name the Gnoblin processes. They have no effect without Ananicy-cpp.
 
 Each `gnoblin-ananicy-v*` release on GitHub carries these assets:
 
-- `gnoblin-ananicy-rules-VERSION-1.noarch.rpm` for Fedora and other RPM systems
+- `gnoblin-ananicy-rules-VERSION-1.DIST.noarch.rpm` for Fedora and other RPM systems
 - `gnoblin-ananicy-rules-VERSION-1-any.pkg.tar.zst` for Arch Linux
 - `gnoblin-ananicy-rules-VERSION.tar.gz`, the two files for any other distribution
 
 ```sh
-sudo dnf install ./gnoblin-ananicy-rules-VERSION-1.noarch.rpm
-sudo pacman -U gnoblin-ananicy-rules-VERSION-1-any.pkg.tar.zst
+sudo dnf install ./gnoblin-ananicy-rules-*.noarch.rpm
+sudo pacman -U gnoblin-ananicy-rules-*-any.pkg.tar.zst
 ```
 
 Each install restarts `ananicy-cpp`. Log out and back in, because a running

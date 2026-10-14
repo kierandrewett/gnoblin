@@ -213,8 +213,8 @@ Install the `gnoblin-ananicy-rules` package from the
 [latest `gnoblin-ananicy-v*` release](https://github.com/kierandrewett/gnoblin/releases?q=gnoblin-ananicy):
 
 ```sh
-sudo dnf install ./gnoblin-ananicy-rules-VERSION-1.noarch.rpm        # Fedora
-sudo pacman -U gnoblin-ananicy-rules-VERSION-1-any.pkg.tar.zst       # Arch Linux
+sudo dnf install ./gnoblin-ananicy-rules-*.noarch.rpm        # Fedora
+sudo pacman -U gnoblin-ananicy-rules-*-any.pkg.tar.zst       # Arch Linux
 ```
 
 On another distribution, copy `99-gnoblin.types` and `99-gnoblin.rules` from the
