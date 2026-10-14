@@ -342,6 +342,7 @@ static int lua_record_method(lua_State* state) {
         return 1;
     }
     if (g_str_equal(method, "window.close") || g_str_equal(method, "window.kill") ||
+        g_str_equal(method, "window.raise") || g_str_equal(method, "window.lower") ||
         g_str_equal(method, "window.minimize") || g_str_equal(method, "window.toggle_minimize") ||
         g_str_equal(method, "window.restore") || g_str_equal(method, "window.unminimize") ||
         g_str_equal(method, "window.restore_or_minimize") ||
@@ -495,6 +496,8 @@ static void add_snapshot_methods(lua_State* state, int backing, int method_table
     if (is_window) {
         const char* methods[][2] = {{"close", "window.close"},
                                     {"kill", "window.kill"},
+                                    {"raise", "window.raise"},
+                                    {"lower", "window.lower"},
                                     {"minimize", "window.minimize"},
                                     {"toggle_minimize", "window.toggle_minimize"},
                                     {"unminimize", "window.unminimize"},

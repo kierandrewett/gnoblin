@@ -1214,6 +1214,14 @@ function Window:match(window) end
 ---@return Operation<Json>
 function Window:close() end
 
+---Raise this window above the others without focusing it.
+---@return Operation<Json>
+function Window:raise() end
+
+---Lower this window below the others.
+---@return Operation<Json>
+function Window:lower() end
+
 ---Send SIGKILL to the client process that owns this window. Use it for a window whose
 ---`unresponsive` field is true; the client loses unsaved work.
 ---@return Operation<Json>

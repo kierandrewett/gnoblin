@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 14 Oct 2026 21:00:00 +0100
+Subject: [PATCH] mutter: add window.raise and window.lower
+
+---
+diff --git a/src/core/util.c b/src/core/util.c
+index a3ae411..bc7b8be 100644
+--- a/src/core/util.c
++++ b/src/core/util.c
+@@ -2087,6 +2087,8 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+     }
+   if (g_str_equal (method, "window.close") ||
+       g_str_equal (method, "window.kill") ||
++      g_str_equal (method, "window.raise") ||
++      g_str_equal (method, "window.lower") ||
+       g_str_equal (method, "window.minimize") ||
+       g_str_equal (method, "window.toggle_minimize") ||
+       g_str_equal (method, "window.unminimize") ||
+@@ -2220,6 +2222,10 @@ gnoblin_native_typed_window_operation (MetaDisplay *display,
+         meta_window_delete (window, timestamp);
+       }
+     }
++  else if (g_str_equal (method, "window.raise"))
++    meta_window_raise (window);
++  else if (g_str_equal (method, "window.lower"))
++    meta_window_lower (window);
+   else if (g_str_equal (method, "window.kill"))
+     {
+       if (meta_window_get_pid (window) <= 0)
+@@ -2390,6 +2396,8 @@ meta_gnoblin_dispatch_native_api (MetaDisplay *display,
+   static const char * const typed_window_methods[] = {
+     "window.close",
+     "window.kill",
++    "window.raise",
++    "window.lower",
+     "window.minimize",
+     "window.toggle_minimize",
+     "window.unminimize",
