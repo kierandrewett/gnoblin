@@ -147,6 +147,13 @@ if(GNOBLIN_LUA_FOUND)
   target_link_libraries(gnoblin-vr-lua-test PRIVATE gnoblin-config-core)
   add_test(NAME gnoblin-vr-lua COMMAND gnoblin-vr-lua-test)
   set_tests_properties(gnoblin-vr-lua PROPERTIES TIMEOUT 20)
+  add_executable(gnoblin-vr-scene-test
+    tests/gnoblin-vr-scene-test.c
+    extensions/gnoblin-vr/lua/gnoblin-vr-scene.c)
+  target_include_directories(gnoblin-vr-scene-test PRIVATE extensions/gnoblin-vr/lua)
+  target_link_libraries(gnoblin-vr-scene-test PRIVATE PkgConfig::GNOBLIN_GIO m)
+  add_test(NAME gnoblin-vr-scene COMMAND gnoblin-vr-scene-test)
+  set_tests_properties(gnoblin-vr-scene PROPERTIES TIMEOUT 20)
   add_executable(config-reload-warnings-test
     tests/config-reload-warnings-test.c
     src/session/gnoblin-runtime-diagnostics.c

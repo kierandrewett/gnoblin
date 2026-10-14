@@ -1,4 +1,5 @@
 #include "gnoblin-native-control-private.h"
+#include "gnoblin-vr-scene.h"
 
 gboolean native_runtime_dispatch_event(GnoblinNativeControl* control, const char* event,
                                        GVariant* payload) {
@@ -699,6 +700,10 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
                     control->display, method, arguments, handle, generation, &operation_error);
             }
         }
+    } else if (g_str_has_prefix(method, "vr.spatial.")) {
+        /* The VR extension's Lua surface queues these; the scene store validates and applies them.
+         */
+        result = gnoblin_vr_scene_call(method, arguments, &operation_error);
     } else if (g_str_equal(method, "console.toggle")) {
         if (g_variant_n_children(arguments) != 0) {
             g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,

@@ -27,3 +27,5 @@ mutter gnoblin-control-connection.c src/core/gnoblin-control-connection.c
 mutter gnoblin-control-runtime-channel.c src/core/gnoblin-control-runtime-channel.c
 mutter gnoblin-control-api.c src/core/gnoblin-control-api.c
 mutter gnoblin-native-control-private.h src/core/gnoblin-native-control-private.h
+mutter ../../extensions/gnoblin-vr/lua/gnoblin-vr-scene.c src/core/gnoblin-vr-scene.c
+mutter ../../extensions/gnoblin-vr/lua/gnoblin-vr-scene.h src/core/gnoblin-vr-scene.h
