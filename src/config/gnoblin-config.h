@@ -35,6 +35,8 @@ const GnoblinConfigDefaultFile* gnoblin_config_default_file(const char* path);
 const char* gnoblin_config_default_lua(gsize* length);
 /* Current root filename. Free the result with g_free(). */
 char* gnoblin_config_path(void);
+/* Restore the standard config directory from embedded defaults, retaining the previous tree. */
+gboolean gnoblin_config_restore_default(GError** error);
 /* A validated declarative configuration snapshot for startup recovery. */
 GVariant* gnoblin_config_default_document(void);
 GVariant* gnoblin_config_load_last_good_document(const char* config_path, GError** error);

@@ -9,6 +9,7 @@ gnoblin.appearance = {}
 gnoblin.auth = {}
 gnoblin.capabilities = {}
 gnoblin.commands = {}
+gnoblin.config = {}
 gnoblin.console = {}
 gnoblin.events = {}
 gnoblin.events.mutter = {}
@@ -412,6 +413,19 @@ function gnoblin.array(values) end
 ---@param settings table Settings table to merge into the active configuration.
 function gnoblin.configure(settings) end
 
+---Return the active configuration file path using GNOBLIN_CONFIG and XDG defaults.
+---@return string path
+function gnoblin.config.path() end
+
+---Return the bundled default Lua configuration source.
+---@return string source
+function gnoblin.config.default() end
+
+---Replace the standard config directory with bundled defaults, save the old directory as a backup,
+---and reload the restored configuration.
+---@return Operation<AcceptedResult>
+function gnoblin.config.restore_default() end
+
 ---Event payload passed to a subscription callback. Fields beyond `name` depend on the event.
 ---@class Event
 ---@field name string Name of the event that was dispatched.
@@ -449,6 +463,29 @@ function gnoblin.events.mutter.on(name, callback) end
 ---@param callback fun(event: Event) Called once for the first matching event.
 ---@return EventSubscription
 function gnoblin.events.mutter.once(name, callback) end
+
+---@class FocusHistoryFilter
+---@field workspace_id? string Exact workspace ID to include.
+---@field monitor_id? string Exact monitor ID to include.
+---@field limit? integer Maximum number of records, from 1 to 256; defaults to 50.
+
+---@class FocusPolicy
+---@field focus_mode "click"|"hover"|"hover-strict" How pointer movement changes focus.
+---@field focus_new_windows "allow"|"prevent" Whether new windows may take focus.
+---@field raise_on_click boolean Whether clicking a window raises it.
+---@field auto_raise boolean Whether the focused window is raised automatically.
+---@field focus_change_on_pointer_rest boolean Whether focus changes after pointer rest.
+---@field auto_raise_delay integer Delay in milliseconds before automatic raise.
+---@field revision integer Revision of the committed settings snapshot.
+
+---Return windows in most-recently-focused order, optionally filtered.
+---@param filter? FocusHistoryFilter
+---@return Window[]
+function gnoblin.focus.history(filter) end
+
+---Read the committed focus policy.
+---@return FocusPolicy
+function gnoblin.focus.policy() end
 
 ---@class InputDevice
 ---@field id string Stable ID for this compositor device instance.
@@ -922,6 +959,22 @@ function gnoblin.session.lock() end
 ---@return Operation<AcceptedResult>
 function gnoblin.session.logout() end
 
+---Request that the session suspend through the native session supervisor and logind.
+---@return Operation<AcceptedResult>
+function gnoblin.session.suspend() end
+
+---Request that the session hibernate through the native session supervisor and logind.
+---@return Operation<AcceptedResult>
+function gnoblin.session.hibernate() end
+
+---Request that the machine reboot through the native session supervisor and logind.
+---@return Operation<AcceptedResult>
+function gnoblin.session.reboot() end
+
+---Request that the machine power off through the native session supervisor and logind.
+---@return Operation<AcceptedResult>
+function gnoblin.session.poweroff() end
+
 ---Read the Lua runtime worker state and generation.
 ---@return RuntimeStatus
 function gnoblin.runtime.status() end
@@ -1111,11 +1164,6 @@ function gnoblin.shortcuts.end_session(session) end
 ---@field width integer Thumbnail width from 1 to 480 pixels.
 ---@field height integer Thumbnail height from 1 to 320 pixels.
 
----@class FocusHistoryFilter
----@field workspace_id? string Exact workspace ID.
----@field monitor_id? string Exact monitor ID.
----@field limit? integer Maximum records from 1 to 256. Default 50.
-
 ---@class FocusContext
 
 ---@class SnapContextFrame
@@ -1160,12 +1208,6 @@ function Window:match(window) end
 ---@field app_id string Application ID used for matching.
 ---@field gtk_app_id? string GTK application ID, when present.
 ---@field wm_class? string Window manager class, when present.
-
----Identity and window-rule fields for one window, the record that gnoblinctl window match prints.
----Return windows in most-recently-focused order, optionally filtered.
----@param filter? FocusHistoryFilter
----@return Window[]
-function gnoblin.focus.history(filter) end
 
 ---Close this window.
 ---@return Operation<Json>

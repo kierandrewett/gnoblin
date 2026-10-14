@@ -744,6 +744,27 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
             g_variant_builder_add(&logout_result, "{sv}", "accepted", g_variant_new_boolean(TRUE));
             result = g_variant_ref_sink(g_variant_builder_end(&logout_result));
         }
+    } else if (g_str_equal(method, "session.suspend") || g_str_equal(method, "session.hibernate") ||
+               g_str_equal(method, "session.reboot") || g_str_equal(method, "session.poweroff")) {
+        if (g_variant_n_children(arguments) != 0) {
+            g_set_error(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                        "%s takes no arguments", method);
+        } else {
+            GVariantBuilder accepted;
+            g_variant_builder_init(&accepted, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
+            result = g_variant_ref_sink(g_variant_builder_end(&accepted));
+        }
+    } else if (g_str_equal(method, "config.restore_default")) {
+        if (g_variant_n_children(arguments) != 0) {
+            g_set_error_literal(&operation_error, G_IO_ERROR, G_IO_ERROR_INVALID_ARGUMENT,
+                                "config.restore_default takes no arguments");
+        } else {
+            GVariantBuilder accepted;
+            g_variant_builder_init(&accepted, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
+            result = g_variant_ref_sink(g_variant_builder_end(&accepted));
+        }
     } else if (g_str_equal(method, "input.insert_text")) {
         result = gnoblin_native_control_insert_text(control->display, arguments, &operation_error);
     } else if (g_str_equal(method, "shortcut.session.arm")) {

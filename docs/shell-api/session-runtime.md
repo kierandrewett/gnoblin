@@ -28,6 +28,27 @@ manager. A socket caller may receive EOF while the session is closing.
 lock result reports that a subscribed shell client received the request; check
 `session.status()` to confirm the compositor entered a locked state.
 
+These methods take no arguments and return operations:
+
+- `gnoblin.session.suspend()` asks logind to suspend.
+- `gnoblin.session.hibernate()` asks logind to hibernate.
+- `gnoblin.session.reboot()` asks logind to reboot.
+- `gnoblin.session.poweroff()` asks logind to power off.
+
+The native session supervisor checks the matching logind capability before
+requesting the action. Logind may answer `yes` or `challenge`; other answers
+and failed method calls are errors. The operation confirms that Gnoblin
+accepted the request. The machine may stop the Lua runtime as the action
+begins.
+
+The focus reads are available as `gnoblin.focus.history(filter)` and
+`gnoblin.focus.policy()`. See [Focus and activation](/shell-api/focus-activation)
+for their fields and filter values.
+
+For configuration path and default reads or restoring the default tree, see
+[Configuration files](/config/configure/config-files). `gnoblinctl init` remains
+a command-line setup action.
+
 The [compositor bridge](/bridge/) documents the socket request format.
 
 ## Runtime health and reload

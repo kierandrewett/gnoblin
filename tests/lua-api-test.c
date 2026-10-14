@@ -449,6 +449,21 @@ int main(void) {
     g_assert_true(g_variant_equal(socket_input_operation, queued_input_operation));
     g_assert_true(g_variant_equal(location_operation, queued_location_operation));
 
+    const char* queued_methods[] = {"session.suspend",  "session.hibernate",      "session.reboot",
+                                    "session.poweroff", "config.restore_default", NULL};
+    for (guint i = 0; queued_methods[i]; i++) {
+        g_autoptr(GVariant) queued =
+            gnoblin_config_call_api(queued_methods[i], api_arguments, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(queued);
+        g_autoptr(GVariant) queued_batch = gnoblin_config_drain_runtime_operations();
+        g_assert_cmpuint(g_variant_n_children(queued_batch), ==, 1);
+        g_autoptr(GVariant) queued_record = g_variant_get_child_value(queued_batch, 0);
+        const char* queued_method = NULL;
+        g_assert_true(g_variant_lookup(queued_record, "method", "&s", &queued_method));
+        g_assert_cmpstr(queued_method, ==, queued_methods[i]);
+    }
+
     GVariantBuilder thumbnail_event_builder;
     g_variant_builder_init(&thumbnail_event_builder, G_VARIANT_TYPE_VARDICT);
     GVariantBuilder thumbnail_window_builder;

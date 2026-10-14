@@ -166,6 +166,8 @@ int lua_cli_session_activity(lua_State* state) {
 }
 
 int lua_cli_focus_policy_property(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.focus.policy takes no arguments");
     Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
     JsonObject* arguments = json_object_new();
     g_autoptr(GError) call_error = NULL;

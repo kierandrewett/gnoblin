@@ -1,5 +1,117 @@
 #include "gnoblin-config-internal.h"
 
+static char* default_config_directory(GError** error) {
+    g_autofree char* path = gnoblin_config_path();
+    const char* config_home = g_getenv("XDG_CONFIG_HOME");
+    g_autofree char* expected =
+        config_home && *config_home
+            ? g_build_filename(config_home, "gnoblin", "init.lua", NULL)
+            : g_build_filename(g_get_home_dir(), ".config", "gnoblin", "init.lua", NULL);
+    g_autofree char* canonical_path = g_canonicalize_filename(path, NULL);
+    g_autofree char* canonical_expected = g_canonicalize_filename(expected, NULL);
+    if (!g_str_equal(canonical_path, canonical_expected)) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "config restore-default requires %s; GNOBLIN_CONFIG selects a single file "
+                    "and cannot safely replace its parent directory",
+                    canonical_expected);
+        return NULL;
+    }
+    return g_path_get_dirname(canonical_path);
+}
+
+static gboolean write_default_tree(const char* directory, GError** error) {
+    gsize count = 0;
+    const GnoblinConfigDefaultFile* files = gnoblin_config_default_files(&count);
+    for (gsize i = 0; i < count; i++) {
+        if (!files[i].path || !*files[i].path || g_path_is_absolute(files[i].path) ||
+            strstr(files[i].path, "..")) {
+            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                "embedded default config has an unsafe path");
+            return FALSE;
+        }
+        g_autofree char* target = g_build_filename(directory, files[i].path, NULL);
+        g_autofree char* parent = g_path_get_dirname(target);
+        if (g_mkdir_with_parents(parent, 0700) != 0) {
+            g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                        "could not create default config directory %s: %s", parent,
+                        g_strerror(errno));
+            return FALSE;
+        }
+        if (!g_file_set_contents_full(target, files[i].contents, (gssize)files[i].length,
+                                      G_FILE_SET_CONTENTS_CONSISTENT | G_FILE_SET_CONTENTS_DURABLE,
+                                      0600, error))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static char* stage_default_tree(const char* directory, GError** error) {
+    g_autofree char* parent = g_path_get_dirname(directory);
+    if (g_mkdir_with_parents(parent, 0700) != 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not create config parent directory %s: %s", parent, g_strerror(errno));
+        return NULL;
+    }
+    g_autofree char* template = g_build_filename(parent, ".gnoblin.default.XXXXXX", NULL);
+    char* staged = g_mkdtemp(template);
+    if (!staged) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not stage embedded default config: %s", g_strerror(errno));
+        return NULL;
+    }
+    if (!write_default_tree(staged, error)) {
+        g_autoptr(GFile) file = g_file_new_for_path(staged);
+        g_file_delete(file, NULL, NULL);
+        return NULL;
+    }
+    return g_steal_pointer(&template);
+}
+
+gboolean gnoblin_config_restore_default(GError** error) {
+    g_autofree char* directory = default_config_directory(error);
+    if (!directory)
+        return FALSE;
+    if (!g_file_test(directory, G_FILE_TEST_EXISTS)) {
+        g_autofree char* staged = stage_default_tree(directory, error);
+        if (!staged)
+            return FALSE;
+        if (g_rename(staged, directory) != 0) {
+            g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                        "could not initialize default config at %s: %s", directory,
+                        g_strerror(errno));
+            return FALSE;
+        }
+        return TRUE;
+    }
+    if (!g_file_test(directory, G_FILE_TEST_IS_DIR)) {
+        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                    "configuration path %s is not a directory", directory);
+        return FALSE;
+    }
+    g_autofree char* staged = stage_default_tree(directory, error);
+    if (!staged)
+        return FALSE;
+    g_autofree char* uuid = g_uuid_string_random();
+    g_autofree char* backup = g_strdup_printf("%s.recovery-%s", directory, uuid);
+    if (g_rename(directory, backup) != 0) {
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(errno),
+                    "could not back up config directory %s: %s", directory, g_strerror(errno));
+        return FALSE;
+    }
+    if (g_rename(staged, directory) != 0) {
+        int saved_errno = errno;
+        if (g_rename(backup, directory) != 0)
+            g_warning("could not restore original config from %s", backup);
+        g_set_error(error, G_FILE_ERROR, g_file_error_from_errno(saved_errno),
+                    "could not restore embedded default config at %s: %s", directory,
+                    g_strerror(saved_errno));
+        return FALSE;
+    }
+    g_message("Restored embedded default config at %s; previous config saved to %s", directory,
+              backup);
+    return TRUE;
+}
+
 GVariant* gnoblin_config_load_document(const char* path, GPtrArray** paths, GPtrArray** directories,
                                        GError** error) {
     g_autoptr(GPtrArray) loaded_paths = g_ptr_array_new_with_free_func(g_free);

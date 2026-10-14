@@ -434,6 +434,10 @@ int lua_generic_api_action(lua_State* state) {
         return luaL_error(state, "session.lock takes no arguments");
     if (g_str_equal(method, "session.logout") && lua_gettop(state) != 0)
         return luaL_error(state, "session.logout takes no arguments");
+    if ((g_str_equal(method, "session.suspend") || g_str_equal(method, "session.hibernate") ||
+         g_str_equal(method, "session.reboot") || g_str_equal(method, "session.poweroff")) &&
+        lua_gettop(state) != 0)
+        return luaL_error(state, "%s takes no arguments", method);
     if (g_str_equal(method, "console.toggle") && lua_gettop(state) != 0)
         return luaL_error(state, "console.toggle takes no arguments");
     if (g_str_equal(method, "grant.revoke")) {

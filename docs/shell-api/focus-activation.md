@@ -1,6 +1,6 @@
 # Focus and activation
 
-`gnoblin.focus.policy` returns a read-only snapshot of the supported focus
+`gnoblin.focus.policy()` returns a read-only snapshot of the supported focus
 settings. Its `revision` identifies the committed settings snapshot.
 
 The snapshot includes:
@@ -38,7 +38,7 @@ History includes minimized windows and removes windows after they close. At
 startup, only the focused window seeds the recent order. Other open windows
 stay in snapshot order until the runtime observes their focus.
 
-The settings property becomes available after the initial config load commits.
+The policy read becomes available after the initial config load commits.
 Native compositor snapshots are seeded after the initial Lua config
 evaluation. They are unavailable while Gnoblin first loads the config file, so
 call these read methods from a runtime event callback after native startup.

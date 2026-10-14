@@ -19,6 +19,9 @@ Sizes use logical pixels. Window rules distinguish application windows
 
 ## Settings
 
+For the active file path, bundled defaults, and restoring the default config
+tree, see [Configuration files](/config/configure/config-files).
+
 Each entry below is a real top-level key accepted by `gnoblin.configure`.
 An unknown top-level key does nothing. The reload still succeeds, but
 `gnoblinctl config reload` includes the diagnostic in its `warnings` list.

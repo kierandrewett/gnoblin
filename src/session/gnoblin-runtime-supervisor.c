@@ -1,5 +1,54 @@
 #include "gnoblin-runtime-internal.h"
 
+static gboolean perform_power_action(int exit_status) {
+    static const struct {
+        int exit_status;
+        const char* method;
+        const char* query;
+        const char* label;
+    } actions[] = {{EXIT_POWER_SUSPEND, "Suspend", "CanSuspend", "suspend"},
+                   {EXIT_POWER_HIBERNATE, "Hibernate", "CanHibernate", "hibernate"},
+                   {EXIT_POWER_REBOOT, "Reboot", "CanReboot", "restart"},
+                   {EXIT_POWER_POWEROFF, "PowerOff", "CanPowerOff", "power off"}};
+    const typeof(actions[0])* action = NULL;
+    for (guint i = 0; i < G_N_ELEMENTS(actions); i++)
+        if (actions[i].exit_status == exit_status) {
+            action = &actions[i];
+            break;
+        }
+    if (!action)
+        return FALSE;
+
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GDBusConnection) bus = g_bus_get_sync(G_BUS_TYPE_SYSTEM, NULL, &error);
+    if (!bus)
+        goto failed;
+    g_autoptr(GVariant) answer = g_dbus_connection_call_sync(
+        bus, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
+        action->query, NULL, G_VARIANT_TYPE("(s)"), G_DBUS_CALL_FLAGS_NONE, 5000, NULL, &error);
+    if (!answer)
+        goto failed;
+    const char* verdict = NULL;
+    g_variant_get(answer, "(&s)", &verdict);
+    if (!g_str_equal(verdict, "yes") && !g_str_equal(verdict, "challenge")) {
+        g_set_error(&error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED,
+                    "this machine cannot %s here (logind answers \"%s\")", action->label, verdict);
+        goto failed;
+    }
+    g_autoptr(GVariant) result = g_dbus_connection_call_sync(
+        bus, "org.freedesktop.login1", "/org/freedesktop/login1", "org.freedesktop.login1.Manager",
+        action->method, g_variant_new("(b)", TRUE), NULL, G_DBUS_CALL_FLAGS_NONE, 30000, NULL,
+        &error);
+    if (result)
+        return TRUE;
+    if (error)
+        g_dbus_error_strip_remote_error(error);
+failed:
+    g_printerr("gnoblin: session power action failed: %s\n",
+               error ? error->message : "unknown logind error");
+    return FALSE;
+}
+
 GPid spawn_session_supervisor(const char* executable, const char* config_path, gboolean devkit,
                               const char* wayland_display, int runtime_fd, int status_parent_fd,
                               int status_child_fd, int autostart_parent_fd, int autostart_child_fd,
@@ -350,6 +399,22 @@ int session_supervisor_main(int argc, char** argv) {
                     explicit_logout = TRUE;
                     host.exit_status = EXIT_SUCCESS;
                     break;
+                }
+                if (WIFEXITED(worker_status) && WEXITSTATUS(worker_status) >= EXIT_POWER_SUSPEND &&
+                    WEXITSTATUS(worker_status) <= EXIT_POWER_POWEROFF) {
+                    host.exit_status = perform_power_action(WEXITSTATUS(worker_status))
+                                           ? EXIT_SUCCESS
+                                           : EXIT_FAILURE;
+                    stop_session = TRUE;
+                    break;
+                }
+                if (WIFEXITED(worker_status) && WEXITSTATUS(worker_status) == EXIT_CONFIG_RESTORE) {
+                    if (!gnoblin_config_restore_default(&error)) {
+                        g_printerr("gnoblin: could not restore default config: %s\n",
+                                   error ? error->message : "restore failed");
+                        g_clear_error(&error);
+                    }
+                    /* Use the normal supervised worker recovery path to load the restored tree. */
                 }
                 if (WIFEXITED(worker_status) &&
                     WEXITSTATUS(worker_status) == EXIT_RESUME_REJECTED) {

@@ -6,7 +6,7 @@ Lua already controls many day-to-day window-manager operations. This is more tha
 
 The control path is typed and mediated by Gnoblin; Lua does not receive `MetaWindow`, `ClutterActor`, or libinput objects.
 
-The gap for making Lua the control language is ownership and coverage. Lua cannot configure outputs, set 3D poses, set general runtime focus policy, arrange layer-shell surfaces, access clipboard or screen-capture streams, or run idle and frame callbacks. Several Mutter preferences are only set by configuration load/reload. There is also no XR output kind in this checkout's runtime API.
+The gap for making Lua the control language is ownership and coverage. Lua cannot configure outputs, set 3D poses, set general runtime focus policy, arrange layer-shell surfaces, access clipboard or screen-capture streams, or run idle and frame callbacks. Several Mutter preferences are only set by configuration load/reload. There is also no XR output kind in this checkout's runtime API. Session power actions, focus history and policy reads, and config path/default/restore reads now have Lua equivalents; `gnoblinctl init` remains CLI-only.
 
 The requested spatial direction therefore needs an output API change and compositor support for spatial state, input picking, and rendering; adding Lua wrappers alone cannot supply those mechanisms.
 
@@ -39,7 +39,7 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 ### Focus and activation policy
 
 - **Mutter or Gnoblin mechanism (file and function):** `src/control/gnoblin-control-focus.c` context/token validation; Mutter `meta_window_activate_full` in `patches/mutter/52-focus-transfer/0001-honour-app-activation.patch`; policy preferences are applied from Gnoblin config
-- **Current Lua access:** Partial: `Window:focus(context)` and `begin_move` are trusted-context operations; Lua can read `gnoblin.focus.policy` and history. No general runtime setter or activation-policy callback
+- **Current Lua access:** Partial: `Window:focus(context)` and `begin_move` are trusted-context operations; Lua can read `gnoblin.focus.policy()` and `gnoblin.focus.history(filter)`. No general runtime setter or activation-policy callback
 - **What is needed:** Add an explicit focus-policy declaration/runtime update. Keep activation tokens and one-use user contexts as mandatory authorization inputs; do not expose unconditional focus-stealing.
 
 ### Stacking and layers
@@ -123,7 +123,7 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 ### Session power
 
 - **Mutter or Gnoblin mechanism (file and function):** `src/cli/gnoblinctl.c` `run_power_action` calls systemd-logind `CanSuspend`/`Suspend`, `CanHibernate`/`Hibernate`, `CanReboot`/`Reboot`, `CanPowerOff`/`PowerOff`
-- **Current Lua access:** None for suspend, hibernate, reboot, poweroff. Lua does have session lock and logout
+- **Current Lua access:** Full for `gnoblin.session.suspend()`, `hibernate()`, `reboot()`, and `poweroff()`. These queue operations; the native session supervisor checks logind capability and requests the action. Lua also has session lock and logout
 - **What is needed:** Add `gnoblin.session.power(action)` as an asynchronous, capability-checked request to a Gnoblin session service. Keep authorization and logind availability errors explicit.
 
 ### Lock and logout
@@ -196,43 +196,43 @@ I ran `gnoblinctl help` and `gnoblinctl help COMMAND` for each command with acti
 
 ### `config path`
 
-- **Lua equivalent:** None
-- **Notes:** The active file path is not part of Lua runtime state.
+- **Lua equivalent:** `gnoblin.config.path()`
+- **Notes:** Returns the active configuration file path.
 
 ### `config default`
 
-- **Lua equivalent:** None
-- **Notes:** Printing embedded defaults is an offline CLI operation.
+- **Lua equivalent:** `gnoblin.config.default()`
+- **Notes:** Returns the embedded default Lua source.
 
 ### `config restore-default`
 
-- **Lua equivalent:** None
-- **Notes:** Backup and replacement of the user's config tree is intentionally not a runtime API operation.
+- **Lua equivalent:** `gnoblin.config.restore_default()`
+- **Notes:** Queues an operation that backs up and replaces the standard config tree, then reloads it.
 
 ### `init`
 
 - **Lua equivalent:** None
-- **Notes:** Creates a config tree from the installed binary.
+- **Notes:** CLI-only setup command that creates a config tree from the installed binary.
 
 ### `session suspend`
 
-- **Lua equivalent:** None
-- **Notes:** CLI calls logind directly.
+- **Lua equivalent:** `gnoblin.session.suspend()`
+- **Notes:** Queues a capability-checked request for the native session supervisor to call logind.
 
 ### `session hibernate`
 
-- **Lua equivalent:** None
-- **Notes:** CLI calls logind directly.
+- **Lua equivalent:** `gnoblin.session.hibernate()`
+- **Notes:** Queues a capability-checked request for the native session supervisor to call logind.
 
 ### `session reboot`
 
-- **Lua equivalent:** None
-- **Notes:** CLI calls logind directly.
+- **Lua equivalent:** `gnoblin.session.reboot()`
+- **Notes:** Queues a capability-checked request for the native session supervisor to call logind.
 
 ### `session poweroff`
 
-- **Lua equivalent:** None
-- **Notes:** CLI calls logind directly.
+- **Lua equivalent:** `gnoblin.session.poweroff()`
+- **Notes:** Queues a capability-checked request for the native session supervisor to call logind.
 
 ### `window menu`
 
@@ -272,7 +272,7 @@ Other listed actions have direct runtime equivalents: focus history/policy, relo
 
 ### `window_management`: focus mode/new-window focus, raising delays, auto-maximize, liveness timeout, primary-only workspaces, edge tiling, center-new-windows, modal attachment, X11 workarounds, drag work-area constraint, titlebar actions and button layout; initial `workspaces` ID/name declarations
 
-- **Runtime status:** Config/reload only. `gnoblin.focus.policy` reads effective policy; no setter. Typed window/workspace operations change individual objects, not these policies or the initial workspace declaration.
+- **Runtime status:** Config/reload only. `gnoblin.focus.policy()` reads effective policy; no setter. Typed window/workspace operations change individual objects, not these policies or the initial workspace declaration.
 
 ### `layer_shell.preserve_active_window`
 

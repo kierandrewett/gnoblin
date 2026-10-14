@@ -87,6 +87,22 @@ function gnoblin.session.lock() end
 ---@return Operation<AcceptedResult>
 function gnoblin.session.logout() end
 
+---Request that the session suspend through the native session supervisor and logind.
+---@return Operation<AcceptedResult>
+function gnoblin.session.suspend() end
+
+---Request that the session hibernate through the native session supervisor and logind.
+---@return Operation<AcceptedResult>
+function gnoblin.session.hibernate() end
+
+---Request that the machine reboot through the native session supervisor and logind.
+---@return Operation<AcceptedResult>
+function gnoblin.session.reboot() end
+
+---Request that the machine power off through the native session supervisor and logind.
+---@return Operation<AcceptedResult>
+function gnoblin.session.poweroff() end
+
 ---Read the Lua runtime worker state and generation.
 ---@return RuntimeStatus
 function gnoblin.runtime.status() end

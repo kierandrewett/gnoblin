@@ -431,6 +431,11 @@ guint api_minor_for_method(const char* method) {
         guint minor;
     } methods[] = {
         {"session.logout", 32},
+        {"session.suspend", 32},
+        {"session.hibernate", 32},
+        {"session.reboot", 32},
+        {"session.poweroff", 32},
+        {"config.restore_default", 32},
         {"window.restore_or_minimize", 48},
         {"privacy.stop_sharing", 31},
         {"privacy.stop_recording", 31},

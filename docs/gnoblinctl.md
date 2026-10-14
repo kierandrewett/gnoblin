@@ -144,10 +144,10 @@ for _, window in ipairs(gnoblin.focus.history { limit = 10 }) do
 end
 ```
 
-Read the committed focus behavior through the read-only `FocusPolicy` property:
+Read the committed focus behavior with `gnoblin.focus.policy()`:
 
 ```lua
-local policy = gnoblin.focus.policy
+local policy = gnoblin.focus.policy()
 print(policy.focus_mode, policy.focus_new_windows, policy.revision)
 ```
 
