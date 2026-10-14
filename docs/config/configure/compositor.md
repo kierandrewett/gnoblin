@@ -16,6 +16,7 @@ rules. There is no global animation switch. See the
 | `visual_bell`        | Boolean                                 | `false`              | Flashes the screen when an app requests the visual bell.          |
 | `audible_bell`       | Boolean                                 | `true`               | Plays a sound when an app requests the audible bell.              |
 | `blur`               | `"auto"`, `"on"`, or `"off"`            | `"auto"`             | Controls compositor background blur.                              |
+| `debug`              | Boolean                                 | `false`              | Shows the compositor FPS and frame-time debug overlay.            |
 | `visual_bell_type`   | `"fullscreen-flash"` or `"frame-flash"` | `"fullscreen-flash"` | Flash the full screen or the focused window.                      |
 
 `blur = "auto"` enables blur when Mutter reports hardware accelerated rendering and disables it otherwise. `"on"` always enables blur; `"off"` disables blur for panels, window rules, and shell-requested background effects. The setting applies on configuration reload.
@@ -59,6 +60,7 @@ gnoblin.configure {
         locate_pointer_key = string?, -- XKB keysym name, "disabled", or ""
         visual_bell = boolean?,
         audible_bell = boolean?,
+        debug = boolean?,
         blur = "auto" | "on" | "off"?,
         visual_bell_type = "fullscreen-flash" | "frame-flash"?,
     },

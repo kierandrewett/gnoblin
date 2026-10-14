@@ -9,4 +9,6 @@ mutter gnoblin-console-panel.hpp src/compositor/plugins/gnoblin-console-panel.hp
 mutter gnoblin-console-panel.cpp src/compositor/plugins/gnoblin-console-panel.cpp
 mutter gnoblin-recovery-panel.hpp src/compositor/plugins/gnoblin-recovery-panel.hpp
 mutter gnoblin-recovery-panel.cpp src/compositor/plugins/gnoblin-recovery-panel.cpp
+mutter gnoblin-debug-panel.hpp src/compositor/plugins/gnoblin-debug-panel.hpp
+mutter gnoblin-debug-panel.cpp src/compositor/plugins/gnoblin-debug-panel.cpp
 mutter gnoblin-config.h src/wayland/gnoblin-config.h

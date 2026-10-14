@@ -17,6 +17,7 @@
 #include <imgui.h>
 
 #include "gnoblin-console-panel.hpp"
+#include "gnoblin-debug-panel.hpp"
 #include "gnoblin-imgui-overlay.hpp"
 #include "gnoblin-recovery-panel.hpp"
 #include "gnoblin-native-control.h"
@@ -152,16 +153,19 @@ struct _GnoblinPluginUi {
     std::set<std::uint64_t> requests;
     std::unique_ptr<GnoblinRecoveryPanel, decltype(&gnoblin_recovery_panel_free)> recovery;
     std::unique_ptr<GnoblinConsolePanel> console;
+    std::unique_ptr<GnoblinDebugPanel, decltype(&gnoblin_debug_panel_free)> debug;
 
     _GnoblinPluginUi()
         : overlay(nullptr), display(nullptr), recovery_poll_id(0),
-          recovery(nullptr, gnoblin_recovery_panel_free) {}
+          recovery(nullptr, gnoblin_recovery_panel_free), debug(nullptr, gnoblin_debug_panel_free) {
+    }
 };
 
 static void update_visibility(GnoblinPluginUi* ui) {
     const gboolean visible =
         !ui->session_locked &&
-        (gnoblin_recovery_panel_should_draw(ui->recovery.get()) || ui->console->visible());
+        (gnoblin_recovery_panel_should_draw(ui->recovery.get()) || ui->console->visible() ||
+         gnoblin_debug_panel_enabled(ui->debug.get()));
     gnoblin_imgui_overlay_set_visible(ui->overlay, visible);
     if (visible)
         gnoblin_imgui_overlay_queue_redraw(ui->overlay);
@@ -169,6 +173,7 @@ static void update_visibility(GnoblinPluginUi* ui) {
 
 static void draw_panels(GnoblinImGuiOverlay* overlay, void* user_data) {
     auto* ui = static_cast<GnoblinPluginUi*>(user_data);
+    gnoblin_debug_panel_draw(overlay, ui->debug.get());
     /* The console is modal and covers the notice's position; drawing both made
      * the notice show through the console. The notice returns when it closes. */
     if (ui->console->visible())
@@ -573,6 +578,7 @@ GnoblinPluginUi* gnoblin_plugin_ui_new(ClutterActor* parent, MetaDisplay* displa
     clutter_actor_set_reactive(gnoblin_imgui_overlay_get_actor(ui->overlay), FALSE);
     ui->recovery = {gnoblin_recovery_panel_new(), gnoblin_recovery_panel_free};
     ui->console_history = console_history_store_new();
+    ui->debug.reset(gnoblin_debug_panel_new());
 
     GnoblinConsoleCallbacks callbacks;
     callbacks.evaluate = [ui](std::string_view source,
@@ -635,6 +641,8 @@ void gnoblin_plugin_ui_free(GnoblinPluginUi* ui) {
         g_cancellable_cancel(ui->console_history->cancellable);
     ui->console_history.reset();
     ui->recovery.reset();
+    gnoblin_debug_panel_set_enabled(ui->debug.get(), nullptr, FALSE);
+    ui->debug.reset();
     gnoblin_imgui_overlay_free(ui->overlay);
     delete ui;
 }
@@ -670,6 +678,13 @@ void gnoblin_plugin_ui_set_session_locked(GnoblinPluginUi* ui, gboolean locked) 
 
 gboolean gnoblin_plugin_ui_console_visible(GnoblinPluginUi* ui) {
     return ui != nullptr && ui->console->visible();
+}
+
+void gnoblin_plugin_ui_set_debug(GnoblinPluginUi* ui, gboolean enabled) {
+    if (ui == nullptr)
+        return;
+    gnoblin_debug_panel_set_enabled(ui->debug.get(), ui->overlay, enabled);
+    update_visibility(ui);
 }
 
 /* Feed one key event to the console. */

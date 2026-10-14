@@ -13,11 +13,13 @@
 G_BEGIN_DECLS
 
 #define GNOBLIN_NATIVE_CONTROL_API_MAJOR 1
-#define GNOBLIN_NATIVE_CONTROL_API_MINOR 82
+#define GNOBLIN_NATIVE_CONTROL_API_MINOR 83
 
 typedef struct _GnoblinNativeControl GnoblinNativeControl;
 GVariant* gnoblin_control_output_list(MetaDisplay* display, GError** error);
 typedef gboolean (*GnoblinNativeConsoleToggleFunc)(MetaDisplay* display, gpointer user_data);
+/* Notified when the compositor.debug configuration boolean changes. */
+typedef void (*GnoblinNativeDebugFunc)(gboolean enabled, gpointer user_data);
 
 /* A compositor-owned caller can use this private bridge to ask the supervised
  * Lua runtime to evaluate console input or perform a validated runtime
@@ -70,6 +72,11 @@ META_EXPORT
 void gnoblin_native_control_set_console_toggle_handler(MetaDisplay* display,
                                                        GnoblinNativeConsoleToggleFunc handler,
                                                        gpointer user_data);
+/* Registers the compositor plugin bridge for the developer debug overlay. The
+ * handler receives the current compositor.debug value on registration. */
+META_EXPORT
+void gnoblin_native_control_set_debug_handler(MetaDisplay* display, GnoblinNativeDebugFunc handler,
+                                              gpointer user_data);
 META_EXPORT
 gboolean gnoblin_native_control_toggle_console(MetaDisplay* display, GError** error);
 META_EXPORT
