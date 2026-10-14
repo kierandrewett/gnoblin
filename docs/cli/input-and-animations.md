@@ -15,6 +15,15 @@ gnoblinctl layer list
 The command reads the API 1.37 `layers.list` snapshot and keeps the `layers`
 object in JSON output. Records include a state revision.
 
+In a terminal, the list shows each surface's ID, namespace, layer, monitor,
+geometry, anchors, and mapped state:
+
+```text
+ID       NAMESPACE       LAYER  MONITOR ID  GEOMETRY        ANCHOR             MAPPED
+-------  --------------  -----  ----------  --------------  -----------------  ------
+layer:4  bingux-dock     top    Virtual-1   1920x104+0+976  bottom,left,right  yes
+```
+
 Use a surface's `namespace` as the `layer` value in a window rule. The
 `animation surfaces` command reports the same surfaces for animation previews.
 
@@ -36,6 +45,13 @@ requires the Lua supervisor for every supported socket client version.
 API 1.4 socket clients can also subscribe to device add and removal events.
 `gnoblinctl input list` reads the API 1.6 `input.sources` snapshot through the
 shared Lua read introduced in API 1.46. It prints the configured XKB sources.
+The terminal output is a headed table; an unavailable value is shown as `-`:
+
+```text
+ID  TYPE  NAME          CURRENT
+--  ----  ------------  -------
+us  xkb   English (US)  yes
+```
 
 `gnoblinctl input current` reads `input.current_source` through the same Lua
 route. Its JSON record includes `available` and, when known, `source`.
@@ -115,8 +131,9 @@ local inspection = gnoblin.animations.inspect {
 print(inspection.event, inspection.duration)
 ```
 
-`animation list` marks entries that current preview targets can run with
-`previewable`.
+`animation list` prints name, event, duration, easing curve, and preview
+availability in aligned columns; empty fields appear as `-`. Entries that
+current preview targets can run are marked with `previewable`.
 
 `animation get NAME` prints the configured record for an exact name and returns
 `null` when no animation matches. Use `--json` in scripts.
