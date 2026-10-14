@@ -9,8 +9,10 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <string>
 #include <utility>
 
+#include "gnoblin-plugin-ui.h"
 #include "imgui.h"
 #include "imgui_internal.h"
 
@@ -44,6 +46,26 @@ ImGuiKey imgui_key_for_clutter(guint keyval) {
         return ImGuiKey_PageUp;
     case CLUTTER_KEY_Page_Down:
         return ImGuiKey_PageDown;
+    /* Ctrl+A/C/V/X/Z/Y reach the input as editing shortcuts. ImGui only acts on them while Ctrl is
+     * held; a plain letter arrives as text instead. */
+    case CLUTTER_KEY_a:
+    case CLUTTER_KEY_A:
+        return ImGuiKey_A;
+    case CLUTTER_KEY_c:
+    case CLUTTER_KEY_C:
+        return ImGuiKey_C;
+    case CLUTTER_KEY_v:
+    case CLUTTER_KEY_V:
+        return ImGuiKey_V;
+    case CLUTTER_KEY_x:
+    case CLUTTER_KEY_X:
+        return ImGuiKey_X;
+    case CLUTTER_KEY_z:
+    case CLUTTER_KEY_Z:
+        return ImGuiKey_Z;
+    case CLUTTER_KEY_y:
+    case CLUTTER_KEY_Y:
+        return ImGuiKey_Y;
     default:
         return ImGuiKey_None;
     }
@@ -240,6 +262,73 @@ bool GnoblinConsolePanel::handle_key(guint keyval, ClutterModifierType modifiers
     }
     queue_redraw();
     return true;
+}
+
+void GnoblinConsolePanel::draw_input_menu() {
+    const ImGuiID input_id = ImGui::GetItemID();
+    if (ImGuiInputTextState* state = ImGui::GetInputTextState(input_id)) {
+        /* A requested select-all or caret move lands once the buffer has been reloaded. */
+        if (select_all_pending_) {
+            state->SelectAll();
+            select_all_pending_ = false;
+        } else if (pending_caret_ >= 0) {
+            state->SetSelection(pending_caret_, pending_caret_);
+            pending_caret_ = -1;
+        }
+        /* Remember the selection at the moment of the click: opening the menu takes focus away
+         * from the input, which would otherwise lose it. */
+        if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+            menu_sel_start_ = std::min(state->GetSelectionStart(), state->GetSelectionEnd());
+            menu_sel_end_ = std::max(state->GetSelectionStart(), state->GetSelectionEnd());
+        }
+    } else if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
+        menu_sel_start_ = menu_sel_end_ = 0;
+    }
+    if (!ImGui::BeginPopupContextItem("##input-menu", ImGuiPopupFlags_MouseButtonRight))
+        return;
+
+    const int length = static_cast<int>(std::strlen(input_.data()));
+    const int start = std::clamp(menu_sel_start_, 0, length);
+    const int end = std::clamp(menu_sel_end_, start, length);
+    const bool has_selection = end > start;
+    const bool has_clipboard = gnoblin_plugin_clipboard_text()[0] != '\0';
+
+    if (ImGui::MenuItem("Cut", "Ctrl+X", false, has_selection)) {
+        const std::string selected(input_.data() + start, static_cast<size_t>(end - start));
+        gnoblin_plugin_clipboard_set_text(selected.c_str());
+        std::memmove(input_.data() + start, input_.data() + end,
+                     static_cast<size_t>(length - end) + 1);
+        pending_caret_ = start;
+        reload_input_ = true;
+    }
+    if (ImGui::MenuItem("Copy", "Ctrl+C", false, has_selection)) {
+        const std::string selected(input_.data() + start, static_cast<size_t>(end - start));
+        gnoblin_plugin_clipboard_set_text(selected.c_str());
+    }
+    if (ImGui::MenuItem("Paste", "Ctrl+V", false, has_clipboard)) {
+        const char* text = gnoblin_plugin_clipboard_text();
+        const int free_space = static_cast<int>(input_.size()) - 1 - (length - (end - start));
+        int insert = std::min(static_cast<int>(std::strlen(text)), std::max(free_space, 0));
+        /* Never cut a multi-byte character in half. */
+        while (insert > 0 && (static_cast<unsigned char>(text[insert]) & 0xC0) == 0x80)
+            insert--;
+        std::memmove(input_.data() + start + insert, input_.data() + end,
+                     static_cast<size_t>(length - end) + 1);
+        std::memcpy(input_.data() + start, text, static_cast<size_t>(insert));
+        pending_caret_ = start + insert;
+        reload_input_ = true;
+    }
+    ImGui::Separator();
+    if (ImGui::MenuItem("Select All", "Ctrl+A", false, length > 0)) {
+        select_all_pending_ = true;
+        focus_input_ = true;
+    }
+    if (ImGui::MenuItem("Clear", nullptr, false, length > 0)) {
+        input_[0] = '\0';
+        pending_caret_ = 0;
+        reload_input_ = true;
+    }
+    ImGui::EndPopup();
 }
 
 void GnoblinConsolePanel::append_log(std::string_view text, bool error) {
@@ -792,6 +881,7 @@ void GnoblinConsolePanel::draw() {
                               ImVec2(ImGui::GetContentRegionAvail().x - kInset, input_height),
                               ImGuiInputTextFlags_WordWrap);
     ImGui::PopStyleVar(2);
+    draw_input_menu();
     input_anchor_x_ = ImGui::GetItemRectMin().x;
     input_anchor_y_ = ImGui::GetItemRectMax().y + preview_height;
     if (!preview_text_.empty()) {
