@@ -17,6 +17,7 @@
 #include <string.h>
 #include "gnoblin-keybinding-catalog.h"
 #include "gnoblin-lua-pattern.h"
+#include "gnoblin-lua-extension.h"
 #if __has_include("../core/gnoblin-native-control.h")
 #include "../core/gnoblin-native-control.h"
 #endif

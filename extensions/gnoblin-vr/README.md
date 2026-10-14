@@ -23,7 +23,18 @@ The extension Lua module is shipped at
 `/usr/share/gnoblin-vr/lua/gnoblin-vr.lua`. Copy it into the configuration's
 `lua/` module directory and assign `require("gnoblin-vr")` to
 `gnoblin.outputs.xr`; the extension supplies `start`, `stop`, and `status`.
-Gnoblin core does not install or expose an XR-specific Lua API.
+The optional extension also installs `gnoblin.spatial` through Gnoblin's Lua
+extension installer hook. Its `anchor`, `place`, `attach`, `move`, `raise`,
+and `update_pose` methods validate extension-owned scene arguments and submit
+asynchronous `vr.spatial.*` actions from the supervised Lua runtime. The
+`surface` and `snapshot` methods are likewise typed extension actions.
+
+This phase exposes the Lua surface only. The compositor does not yet handle
+the `vr.spatial.*` actions, import window textures, project quad layers, or
+perform 3D ray hit testing. It also does not route pointer or focus events to
+these surfaces. Calls therefore require a runtime integration that is still
+under development; the no-headset test verifies Lua installation and
+validation, not action completion or rendering.
 
 The stock output list remains owned by Mutter's monitor manager. This
 extension package does not add an XR record to that list; Mutter currently has
