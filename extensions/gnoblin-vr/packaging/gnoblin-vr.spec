@@ -33,3 +33,4 @@ An optional, extension-owned OpenXR presentation client for Gnoblin.
 %{_bindir}/gnoblin-vr
 %{_userunitdir}/gnoblin-vr.service
 %{_datadir}/gnoblin-vr/lua/gnoblin-vr.lua
+%{_datadir}/gnoblin-vr/lua/gnoblin-vr-shell.lua
