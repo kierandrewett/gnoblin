@@ -135,6 +135,7 @@ static GVariant* legacy_window_list_from_lua(GVariant* windows, GError** error) 
                   {"above", "above"},
                   {"sticky", "sticky"},
                   {"demands_attention", "demandsAttention"},
+                  {"unresponsive", "unresponsive"},
                   {"closable", "closable"},
                   {"minimizable", "minimizable"},
                   {"maximizable", "maximizable"},

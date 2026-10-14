@@ -123,7 +123,8 @@ static int lua_cli_window_method(lua_State* state) {
             }
             json_object_set_string_member(arguments, "edge", edge);
         }
-    } else if (g_str_equal(method, "window.close") || g_str_equal(method, "window.minimize") ||
+    } else if (g_str_equal(method, "window.close") || g_str_equal(method, "window.kill") ||
+               g_str_equal(method, "window.minimize") ||
                g_str_equal(method, "window.toggle_minimize") ||
                g_str_equal(method, "window.unminimize") || g_str_equal(method, "window.restore") ||
                g_str_equal(method, "window.restore_or_minimize")) {
@@ -241,6 +242,7 @@ void lua_cli_push_window_record(lua_State* state, Cli* cli, JsonObject* object) 
     lua_newtable(state);
     static const char* const methods[][2] = {
         {"close", "window.close"},
+        {"kill", "window.kill"},
         {"minimize", "window.minimize"},
         {"toggle_minimize", "window.toggle_minimize"},
         {"unminimize", "window.unminimize"},
