@@ -5,7 +5,7 @@
 #include <imgui.h>
 #include <algorithm>
 
-struct _GnoblinDebugPanel {
+struct GnoblinDebugPanel {
     bool enabled;
     /* Rolling paint intervals in milliseconds; newest at the ring cursor. */
     float intervals[180];
@@ -15,8 +15,8 @@ struct _GnoblinDebugPanel {
     guint tick_id;
     GnoblinImGuiOverlay* overlay;
 
-    _GnoblinDebugPanel() = default;
-    ~_GnoblinDebugPanel() = default;
+    GnoblinDebugPanel() = default;
+    ~GnoblinDebugPanel() = default;
 };
 
 static gboolean debug_scroll_tick(gpointer user_data) {
