@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "gnoblin-vr-common.h"
+#include "gnoblin-vr-preview.h"
 #include "gnoblin-vr-session.h"
 
 int main(int argc, char** argv) {
@@ -21,6 +22,8 @@ int main(int argc, char** argv) {
         return gnoblin_vr_watch_main();
     if ((argc == 2 || argc == 3) && g_str_equal(argv[1], "--connect"))
         return gnoblin_vr_connect_main(argc == 3 ? argv[2] : NULL);
+    if (argc == 3 && g_str_equal(argv[1], "--render-eyes"))
+        return gnoblin_vr_render_eyes_main(argv[2]);
     if (argc == 3 && g_str_equal(argv[1], "--runtime"))
         return gnoblin_vr_runtime_main(argv[2]);
     const char* backend = NULL;
@@ -28,7 +31,8 @@ int main(int argc, char** argv) {
         backend = argv[2];
     else if (argc != 1) {
         g_printerr("usage: gnoblin-vr [--status | --devices | --watch | --connect [ID] |\n"
-                   "                  --runtime monado|wivrn | --backend monado|wivrn]\n");
+                   "                  --runtime monado|wivrn | --backend monado|wivrn |\n"
+                   "                  --render-eyes DIR]\n");
         return 2;
     }
     if (backend && !gnoblin_vr_select_backend(backend))
@@ -63,6 +67,13 @@ int main(int argc, char** argv) {
         (void)xrDestroyInstance(probe_instance);
     } else {
         return gnoblin_vr_failed("the OpenXR loader could not create an instance");
+    }
+
+    /* Vulkan is the path for every runtime that offers it; WiVRn needs it. */
+    {
+        int vulkan_result = gnoblin_vr_xr_main();
+        if (vulkan_result != 99)
+            return vulkan_result;
     }
 
     /* The GL path renders the animated per-eye test pattern through real

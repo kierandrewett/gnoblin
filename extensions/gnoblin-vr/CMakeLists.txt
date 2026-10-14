@@ -9,11 +9,14 @@ pkg_check_modules(LIBUDEV IMPORTED_TARGET libudev)
 find_path(OPENXR_INCLUDE_DIR openxr/openxr.h REQUIRED)
 find_library(OPENXR_LOADER_LIBRARY NAMES openxr_loader REQUIRED)
 find_package(OpenGL REQUIRED)
+find_package(Vulkan REQUIRED)
 find_package(X11 REQUIRED)
 add_executable(gnoblin-vr src/gnoblin-vr.c src/gnoblin-vr-common.c src/gnoblin-vr-gl.c
-  src/gnoblin-vr-devices.c src/gnoblin-vr-session.c)
-target_include_directories(gnoblin-vr PRIVATE "${OPENXR_INCLUDE_DIR}" src)
-target_link_libraries(gnoblin-vr PRIVATE PkgConfig::GLIB "${OPENXR_LOADER_LIBRARY}" OpenGL::GL X11::X11 m)
+  src/gnoblin-vr-devices.c src/gnoblin-vr-session.c
+  src/gnoblin-vr-view.c src/gnoblin-vr-vk.c src/gnoblin-vr-xr.c src/gnoblin-vr-preview.c
+  src/gnoblin-vr-compose.c src/gnoblin-vr-input.c)
+target_include_directories(gnoblin-vr PRIVATE "${OPENXR_INCLUDE_DIR}" src lua shaders)
+target_link_libraries(gnoblin-vr PRIVATE PkgConfig::GLIB "${OPENXR_LOADER_LIBRARY}" OpenGL::GL X11::X11 Vulkan::Vulkan m)
 if(LIBDRM_FOUND)
   target_compile_definitions(gnoblin-vr PRIVATE HAVE_LIBDRM)
   target_link_libraries(gnoblin-vr PRIVATE PkgConfig::LIBDRM)

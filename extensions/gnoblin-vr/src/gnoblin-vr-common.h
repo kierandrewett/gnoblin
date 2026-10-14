@@ -32,3 +32,5 @@ int gnoblin_vr_failed(const char* diagnostic);
 /* Runs the GL projection-layer session. Returns a process exit style code and never
  * returns while rendering except on stop/disconnect. */
 int gnoblin_vr_gl_main(void);
+/* Runs the Vulkan session. Returns 99 when the runtime cannot take Vulkan clients. */
+int gnoblin_vr_xr_main(void);
