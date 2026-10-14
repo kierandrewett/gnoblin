@@ -99,6 +99,8 @@ void GnoblinConsolePanel::set_visible(bool visible) {
     if (visible_ == visible)
         return;
     visible_ = visible;
+    /* A menu left open must not survive a hide and show, or it keeps swallowing keys. */
+    close_menu_ = menu_open_;
     {
         /* Modifiers are tracked from key events; start each session without any held. */
         ImGui::SetCurrentContext(gnoblin_imgui_overlay_get_context(overlay_));
@@ -143,8 +145,12 @@ void GnoblinConsolePanel::draw_frame(GnoblinImGuiOverlay* overlay) {
 }
 
 void GnoblinConsolePanel::add_text(const char* utf8) {
-    if (visible())
-        gnoblin_imgui_overlay_add_text(overlay_, utf8);
+    if (!visible())
+        return;
+    /* Typing dismisses the menu and returns to the input. */
+    if (menu_open_)
+        close_menu_ = true;
+    gnoblin_imgui_overlay_add_text(overlay_, utf8);
 }
 
 bool GnoblinConsolePanel::handle_key(guint keyval, ClutterModifierType modifiers, bool pressed,
@@ -202,7 +208,9 @@ bool GnoblinConsolePanel::handle_key(guint keyval, ClutterModifierType modifiers
         return true;
     }
     if (keyval == CLUTTER_KEY_Escape) {
-        if (completion_visible_)
+        if (menu_open_)
+            close_menu_ = true;
+        else if (completion_visible_)
             completion_visible_ = false;
         else if (!signature_.empty())
             signature_ = {};
@@ -284,8 +292,17 @@ void GnoblinConsolePanel::draw_input_menu() {
     } else if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
         menu_sel_start_ = menu_sel_end_ = 0;
     }
-    if (!ImGui::BeginPopupContextItem("##input-menu", ImGuiPopupFlags_MouseButtonRight))
+    if (!ImGui::BeginPopupContextItem("##input-menu", ImGuiPopupFlags_MouseButtonRight)) {
+        menu_open_ = false;
+        close_menu_ = false;
         return;
+    }
+    menu_open_ = true;
+    if (close_menu_) {
+        ImGui::CloseCurrentPopup();
+        close_menu_ = false;
+        focus_input_ = true;
+    }
 
     const int length = static_cast<int>(std::strlen(input_.data()));
     const int start = std::clamp(menu_sel_start_, 0, length);
