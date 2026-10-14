@@ -31,6 +31,14 @@ asynchronous `vr.spatial.*` actions from the supervised Lua runtime. The
 
 The compositor keeps a spatial scene store behind these calls. Anchors, free and viewport-docked surface placements, stacking ranks and pose updates are validated and applied there, and `snapshot` and `surface` return the stored records with a scene revision. A headless test covers the store. It does not yet import window textures, project quad layers, hit test controller rays, or route pointer and focus events; those consume the store in later phases.
 
+## Headset as an outputs-style record
+
+`gnoblin-vr.lua` can describe the headset in the shape of a `gnoblin.outputs` record. `output(callback)`
+runs `gnoblin-vr --status` and passes `callback` a record with `kind = "xr"`, `enabled`, `state`,
+`diagnostic` and a `views` list of per-eye `width` and `height`. The record has no logical desktop
+rectangle. It is not added to `gnoblin.outputs.list()`, which comes from Mutter's monitor manager.
+`parse_status` and `output_record` are the pure parts, if you already have the status text.
+
 ## Window arrangement policy
 
 `gnoblin-vr-shell.lua` is a Lua module that decides where windows go. It moves a viewport pill, docks
