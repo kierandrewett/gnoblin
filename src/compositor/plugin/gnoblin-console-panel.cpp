@@ -835,6 +835,12 @@ void GnoblinConsolePanel::draw() {
                         ImGui::TextColored(kQuietColour, "<");
                         ImGui::SameLine(0.0f, 8.0f);
                         draw_highlighted(function_text(row.text));
+                    } else if (!row.text.empty() && row.text.find('\n') == std::string::npos) {
+                        /* The component the live preview uses, so a value keeps its colours once
+                         * it has been run. */
+                        ImGui::TextColored(kQuietColour, "<");
+                        ImGui::SameLine(0.0f, 8.0f);
+                        draw_highlighted(row.text);
                     } else if (!row.text.empty()) {
                         marked_row("<", kQuietColour, row.text.c_str());
                     }

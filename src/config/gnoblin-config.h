@@ -171,6 +171,8 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
  * the public Gnoblin Lua API, but may not replace the declarative
  * gnoblin.config document. */
 GVariant* gnoblin_config_eval_console(const char* source, GError** error);
+/* True when a console evaluation or event changed the configuration and it awaits a commit. */
+gboolean gnoblin_config_has_pending_document(void);
 /* Complete a raw Lua identifier or dot chain without evaluating source. */
 GVariant* gnoblin_config_complete_console(const char* source, GError** error);
 /* Evaluate one allowlisted read-only Lua snapshot API method. */

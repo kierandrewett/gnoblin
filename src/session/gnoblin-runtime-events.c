@@ -503,6 +503,9 @@ gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVariant* payl
             result = gnoblin_config_complete_console(source, &api_error);
         } else {
             result = gnoblin_config_eval_console(source, &api_error);
+            if (result && gnoblin_config_has_pending_document() &&
+                !commit_event_result(runtime, result, &api_error))
+                g_clear_pointer(&result, g_variant_unref);
         }
     } else if (!g_str_equal(method, "runtime.reload_config") ||
                g_variant_n_children(arguments) != 0) {
