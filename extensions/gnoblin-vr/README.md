@@ -31,6 +31,24 @@ asynchronous `vr.spatial.*` actions from the supervised Lua runtime. The
 
 The compositor keeps a spatial scene store behind these calls. Anchors, free and viewport-docked surface placements, stacking ranks and pose updates are validated and applied there, and `snapshot` and `surface` return the stored records with a scene revision. A headless test covers the store. It does not yet import window textures, project quad layers, hit test controller rays, or route pointer and focus events; those consume the store in later phases.
 
+## Window arrangement policy
+
+`gnoblin-vr-shell.lua` is a Lua module that decides where windows go. It moves a viewport pill, docks
+windows to it, places windows in free space turned towards you, and turns controller rays into grab, move
+and resize. The compositor only stores the result, so a configuration can replace any of it. Copy the
+module next to `gnoblin-vr.lua` and load it with `require("gnoblin-vr-shell")`.
+
+```lua
+local shell = require("gnoblin-vr-shell").new()
+shell:dock("window:1", {width = 1.2, height = 0.7}, {x = -0.7, y = 0, z = 0})
+shell:float("window:2", {x = 0.8, y = 1.4, z = -3}, {width = 1.6, height = 0.9})
+local grab = shell:grab({origin = {x = 0, y = 1.4, z = 0}, direction = {x = 0.8, y = 0, z = -3}})
+shell:drag(grab, {origin = {x = 0, y = 1.4, z = 0}, direction = {x = -1, y = 0, z = -3}})
+```
+
+`tests/vr-shell-live.test.lua` runs the module against a live session: `gnoblinctl lua
+tests/vr-shell-live.test.lua` prints one PASS or FAIL line per check.
+
 The stock output list remains owned by Mutter's monitor manager. This
 extension package does not add an XR record to that list; Mutter currently has
 no external driver registration interface that this process can use. The

@@ -15,7 +15,7 @@ install(TARGETS gnoblin-vr RUNTIME DESTINATION bin)
 configure_file(systemd/gnoblin-vr.service.in gnoblin-vr.service @ONLY)
 install(FILES "${CMAKE_CURRENT_BINARY_DIR}/gnoblin-vr.service"
         DESTINATION lib/systemd/user)
-install(FILES lua/gnoblin-vr.lua DESTINATION share/gnoblin-vr/lua)
+install(FILES lua/gnoblin-vr.lua lua/gnoblin-vr-shell.lua DESTINATION share/gnoblin-vr/lua)
 
 if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)

@@ -1,0 +1,242 @@
+local shellmod = (function()
+    -- Window arrangement policy for the Gnoblin VR extension, written entirely in Lua.
+    --
+    -- The compositor only stores anchors, surfaces and poses (gnoblin.spatial). Everything that decides
+    -- where a window goes, what a controller grab does and how the viewport pill moves lives here, so a
+    -- configuration can replace any of it.
+    --
+    --   local shell = require("gnoblin-vr-shell").new()
+    --   shell:dock("window:1", {width = 1.2, height = 0.7}, {x = -0.7, y = 0, z = 0})
+    --   shell:float("window:2", {x = 0.5, y = 1.4, z = -2}, {width = 1.6, height = 0.9})
+    --   local grab = shell:grab(ray)          -- ray = {origin = {...}, direction = {...}}
+    --   shell:drag(grab, ray)                 -- call as the controller moves
+    --   shell:release(grab)
+    local M = {}
+
+    local function vec(x, y, z)
+        return { x = x, y = y, z = z }
+    end
+
+    local function normalise(v)
+        local length = math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z)
+        if length < 1e-9 then
+            return vec(0, 0, -1)
+        end
+        return vec(v.x / length, v.y / length, v.z / length)
+    end
+
+    --- Rotation about the vertical axis. Positive yaw turns a surface that faces +Z towards +X.
+    function M.yaw_rotation(yaw)
+        return { x = 0, y = math.sin(yaw / 2), z = 0, w = math.cos(yaw / 2) }
+    end
+
+    --- Yaw that turns a surface at position so that its front faces point.
+    function M.yaw_towards(position, point)
+        return math.atan(point.x - position.x, point.z - position.z)
+    end
+
+    --- Point at distance along a ray.
+    function M.point_on_ray(ray, distance)
+        local direction = normalise(ray.direction)
+        return vec(
+            ray.origin.x + direction.x * distance,
+            ray.origin.y + direction.y * distance,
+            ray.origin.z + direction.z * distance
+        )
+    end
+
+    -- Mutating calls return an Operation in the supervised runtime and the value itself from
+    -- gnoblinctl lua; this lets one policy run in both.
+    local function settle(result, callback)
+        if type(result) == "table" and type(result.on_complete) == "function" then
+            result:on_complete(function(value, err)
+                callback(value, err)
+            end)
+        else
+            callback(result, nil)
+        end
+    end
+
+    local Shell = {}
+    Shell.__index = Shell
+
+    --- Create the policy. Options: world_anchor (default "world"), viewport_id (default "viewport"),
+    --- pill (initial pose position, default 0.0, 1.3, -1.5) and minimum_size (default 0.2 metres).
+    function M.new(options)
+        options = options or {}
+        local self = setmetatable({}, Shell)
+        self.world_anchor = options.world_anchor or "world"
+        self.viewport_id = options.viewport_id or "viewport"
+        self.minimum_size = options.minimum_size or 0.2
+        self.pill = options.pill or vec(0, 1.3, -1.5)
+        self.pill_yaw = 0
+        self.sizes = {}
+        local identity = { position = vec(0, 0, 0), rotation = { x = 0, y = 0, z = 0, w = 1 } }
+        gnoblin.spatial.anchor({ id = self.world_anchor, pose = identity })
+        self:move_pill(self.pill, 0)
+        return self
+    end
+
+    --- Move the viewport pill. Windows docked to the viewport move with it.
+    function Shell:move_pill(position, yaw)
+        self.pill = position
+        self.pill_yaw = yaw or self.pill_yaw
+        return gnoblin.spatial.anchor({
+            id = self.viewport_id,
+            pose = { position = position, rotation = M.yaw_rotation(self.pill_yaw) },
+        })
+    end
+
+    --- Drag the pill to where a controller ray points, keeping its distance and facing the user.
+    function Shell:drag_pill(ray, distance)
+        distance = distance or 1.5
+        local target = M.point_on_ray(ray, distance)
+        return self:move_pill(target, M.yaw_towards(target, ray.origin))
+    end
+
+    --- Dock a window to the viewport at an offset from the pill, in the pill's own frame.
+    function Shell:dock(surface_id, size, offset)
+        self.sizes[surface_id] = size
+        return gnoblin.spatial.attach({
+            surface_id = surface_id,
+            viewport_id = self.viewport_id,
+            pose = {
+                position = offset or vec(0, 0, 0),
+                rotation = { x = 0, y = 0, z = 0, w = 1 },
+            },
+            size = size,
+        })
+    end
+
+    --- Place a window in free space, turned to face the user's current viewport.
+    function Shell:float(surface_id, position, size)
+        self.sizes[surface_id] = size
+        local yaw = M.yaw_towards(position, self.pill)
+        return gnoblin.spatial.place({
+            surface_id = surface_id,
+            anchor_id = self.world_anchor,
+            pose = { position = position, rotation = M.yaw_rotation(yaw) },
+            size = size,
+        })
+    end
+
+    --- Start grabbing the window under a controller ray. Returns nil when the ray hits nothing.
+    function Shell:grab(ray)
+        local grabbed
+        settle(gnoblin.spatial.hit({ origin = ray.origin, direction = ray.direction }), function(hit)
+            if hit and hit.hit then
+                grabbed = {
+                    surface_id = hit.surface_id,
+                    distance = hit.distance,
+                    u = hit.u,
+                    v = hit.v,
+                }
+            end
+        end)
+        if grabbed then
+            gnoblin.spatial.raise({ surface_id = grabbed.surface_id })
+        end
+        return grabbed
+    end
+
+    --- Move a grabbed window with the controller. A docked window leaves the viewport and floats.
+    function Shell:drag(grab, ray)
+        if not grab then
+            return
+        end
+        local position = M.point_on_ray(ray, grab.distance)
+        local size = self.sizes[grab.surface_id] or { width = 1, height = 1 }
+        return self:float(grab.surface_id, position, size)
+    end
+
+    --- Resize a grabbed window by dragging a corner: the corner follows the ray in the window plane.
+    --- The window keeps its centre; width and height are clamped to minimum_size.
+    function Shell:resize(grab, size)
+        if not grab then
+            return
+        end
+        size = {
+            width = math.max(self.minimum_size, size.width),
+            height = math.max(self.minimum_size, size.height),
+        }
+        self.sizes[grab.surface_id] = size
+        local current
+        settle(gnoblin.spatial.surface({ surface_id = grab.surface_id }), function(value)
+            current = value
+        end)
+        if not current then
+            return
+        end
+        return gnoblin.spatial.place({
+            surface_id = grab.surface_id,
+            anchor_id = current.anchor_id or self.world_anchor,
+            pose = current.pose,
+            size = size,
+        })
+    end
+
+    function Shell:release(grab)
+        return nil
+    end
+
+    M.Shell = Shell
+    return M
+end)()
+
+local function value(r)
+    return r
+end
+local function check(name, ok, detail)
+    print((ok and "PASS " or "FAIL ") .. name .. (detail and (" " .. detail) or ""))
+end
+local near = function(a, b)
+    return math.abs(a - b) < 1e-3
+end
+
+local shell = shellmod.new({ pill = { x = 0, y = 1.3, z = -1.5 } })
+shell:dock("window:1", { width = 1.2, height = 0.7 }, { x = -0.7, y = 0, z = 0 })
+shell:float("window:2", { x = 0.8, y = 1.4, z = -3 }, { width = 1.6, height = 0.9 })
+
+local snap = gnoblin.spatial.snapshot()
+local by = {}
+for _, s in ipairs(snap.surfaces) do
+    by[s.id] = s
+end
+check("docked window attached to viewport", by["window:1"] and by["window:1"].viewport_id == "viewport")
+check("floating window anchored in world", by["window:2"] and by["window:2"].anchor_id == "world")
+
+-- Aim at the floating window: a controller at the user's head.
+local origin = { x = 0, y = 1.4, z = 0 }
+local ray = { origin = origin, direction = { x = 0.8, y = 0, z = -3 } }
+local grab = shell:grab(ray)
+check("grab finds the floating window", grab and grab.surface_id == "window:2")
+if grab then
+    check("grab distance", near(grab.distance, math.sqrt(0.8 * 0.8 + 9)), tostring(grab.distance))
+    -- Move the controller to the left; the window follows at the same distance.
+    local moved = { origin = origin, direction = { x = -1, y = 0, z = -3 } }
+    shell:drag(grab, moved)
+    local s = gnoblin.spatial.surface({ surface_id = "window:2" })
+    local expected = shellmod.point_on_ray(moved, grab.distance)
+    check(
+        "dragged window follows the ray",
+        near(s.pose.position.x, expected.x) and near(s.pose.position.z, expected.z),
+        "x=" .. s.pose.position.x
+    )
+    shell:resize(grab, { width = 0.05, height = 3 })
+    s = gnoblin.spatial.surface({ surface_id = "window:2" })
+    check("resize clamps the minimum", near(s.size.width, 0.2) and near(s.size.height, 3))
+end
+
+local miss = shell:grab({ origin = origin, direction = { x = 5, y = 0, z = -1 } })
+check("grab misses empty space", miss == nil)
+
+-- Moving the pill moves docked windows: their record keeps the viewport, the anchor is replaced.
+shell:drag_pill({ origin = origin, direction = { x = 1, y = 0, z = -1 } }, 1.5)
+snap = gnoblin.spatial.snapshot()
+local pill
+for _, a in ipairs(snap.anchors) do
+    if a.id == "viewport" then
+        pill = a
+    end
+end
+check("pill moved", pill and pill.pose.position.x > 0.5, pill and ("x=" .. pill.pose.position.x))
