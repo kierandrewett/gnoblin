@@ -832,11 +832,238 @@ def run_location_authorization_cli_test(binary: str, build_directory: str) -> su
         return result
 
 
+def _write_fixture_reply(stream, value: dict[str, object]) -> None:
+    stream.write((json.dumps(value) + "\n").encode())
+    stream.flush()
+
+
+def run_human_command(binary: str, build_directory: str, command: str, method: str, sample: object) -> str:
+    with tempfile.TemporaryDirectory(prefix="human-render-", dir=build_directory) as temporary:
+        socket_path = str(Path(temporary) / "compositor.sock")
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(1)
+                    ready.set()
+                    connection, _ = server.accept()
+                    with connection, connection.makefile("rwb") as stream:
+                        request = json.loads(stream.readline())
+                        if request.get("op") == "events":
+                            _write_fixture_reply(stream, {"event": "subscribed", "events": request["events"]})
+                            request = json.loads(stream.readline())
+                        assert request.get("op") == "api", request
+                        assert request.get("method") == method, request
+                        _write_fixture_reply(stream, {"event": "reply", "id": request["id"], "result": sample})
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), errors
+        master, slave = os.openpty()
+        process = subprocess.Popen(
+            [binary, "--socket", socket_path, *command.split()],
+            stdin=subprocess.DEVNULL,
+            stdout=slave,
+            stderr=subprocess.PIPE,
+        )
+        os.close(slave)
+        chunks = bytearray()
+        while True:
+            try:
+                chunk = os.read(master, 4096)
+            except OSError as error:
+                if error.errno == 5:
+                    break
+                raise
+            if not chunk:
+                break
+            chunks.extend(chunk)
+        os.close(master)
+        stderr = process.communicate(timeout=5)[1].decode()
+        thread.join(5)
+        assert process.returncode == 0, stderr
+        assert not thread.is_alive(), "fake compositor did not finish"
+        assert not errors, errors
+        return chunks.decode().replace("\r\n", "\n")
+
+
+def _run_human_renderer_cases(binary: str, build_directory: str, selected: set[str]) -> None:
+    samples = [
+        (
+            "layer list",
+            "layers.list",
+            {
+                "layers": [
+                    {
+                        "id": "layer:4",
+                        "namespace": "dock",
+                        "layer": "overlay",
+                        "monitor_id": "DP-1",
+                        "geometry": {"x": 0, "y": 976, "width": 1920, "height": 104},
+                        "anchor": ["right", "bottom", "left"],
+                        "mapped": True,
+                    }
+                ]
+            },
+            "ID       NAMESPACE  LAYER    MONITOR ID  GEOMETRY        ANCHOR             MAPPED\n-------  ---------  -------  ----------  --------------  -----------------  ------\nlayer:4  dock       overlay  DP-1        1920x104+0+976  bottom,left,right  yes   \n",
+        ),
+        (
+            "monitor list",
+            "monitors.list",
+            {
+                "monitors": [
+                    {
+                        "id": "DP-1",
+                        "index": 0,
+                        "name": "Display",
+                        "x": 0,
+                        "y": 0,
+                        "width": 1920,
+                        "height": 1080,
+                        "scale": 1.0,
+                        "primary": True,
+                        "enabled": True,
+                    }
+                ]
+            },
+            "ID    INDEX  NAME     RESOLUTION  POSITION  SCALE  PRIMARY  ENABLED\n----  -----  -------  ----------  --------  -----  -------  -------\nDP-1  0      Display  1920x1080   0+0       1.0    yes      yes    \n",
+        ),
+        (
+            "input list",
+            "input.sources",
+            {"sources": [{"id": "us", "type": "xkb", "name": "English (US)", "current": True}]},
+            "ID  TYPE  NAME          CURRENT\n--  ----  ------------  -------\nus  xkb   English (US)  yes    \n",
+        ),
+        (
+            "shortcut list",
+            "shortcuts.list",
+            [{"name": "files", "binding": "<Super>e", "trigger": "press", "enabled": True}],
+            "NAME   BINDING   TRIGGER  ENABLED\n-----  --------  -------  -------\nfiles  <Super>e  press    yes    \n",
+        ),
+        (
+            "animation list",
+            "animation.list",
+            {
+                "animations": [
+                    {"name": "fade", "event": "open", "duration": 150, "ease": "ease-out-expo", "previewable": True},
+                    {"name": "missing-event", "duration": 0, "ease": "linear", "previewable": False},
+                ]
+            },
+            "NAME           EVENT  DURATION  EASE           PREVIEWABLE\n-------------  -----  --------  -------------  -----------\nfade           open   150       ease-out-expo  yes        \nmissing-event  -      0         linear         no         \n",
+        ),
+        (
+            "capabilities",
+            "capabilities.list",
+            [{"id": "privacy.camera", "available": True, "description": "Camera activity", "revision": 4}],
+            "ID              AVAILABLE  DESCRIPTION    \n--------------  ---------  ---------------\nprivacy.camera  yes        Camera activity\n",
+        ),
+        ("config show", "settings", {"zeta": 1, "alpha": {"enabled": False}}, "alpha.enabled: no\nzeta: 1\n"),
+        (
+            "status",
+            "session.status",
+            {"state": "running", "lock_state": "unlocked", "lock_available": True, "revision": 5},
+            "STATE           running\nLOCK STATE      unlocked\nLOCK AVAILABLE  yes\n",
+        ),
+        (
+            "privacy",
+            "privacy.state",
+            {
+                "screen_sharing": False,
+                "recording": False,
+                "camera_in_use": False,
+                "microphone_in_use": False,
+                "revision": 2,
+                "available": {
+                    "screen_sharing": True,
+                    "recording": True,
+                    "camera_in_use": True,
+                    "microphone_in_use": True,
+                    "location_in_use": False,
+                },
+            },
+            "SCREEN SHARING  no\nRECORDING       no\nCAMERA          no\nMICROPHONE      no\n\nAVAILABLE\nSCREEN SHARING  yes\nRECORDING       yes\nCAMERA          yes\nMICROPHONE      yes\nLOCATION        no\n",
+        ),
+    ]
+    for command, method, sample, expected in samples:
+        if command not in selected:
+            continue
+        output = run_human_command(binary, build_directory, command, method, sample)
+        if expected:
+            assert output == expected, (command, output)
+        else:
+            print(f"{command}: {output!r}")
+
+
+def test_render_spatial(binary: str, build_directory: str) -> None:
+    _run_human_renderer_cases(binary, build_directory, {"layer list", "monitor list"})
+
+
+def test_render_state(binary: str, build_directory: str) -> None:
+    _run_human_renderer_cases(binary, build_directory, {"status", "privacy", "capabilities"})
+
+
+def test_render_settings(binary: str, build_directory: str) -> None:
+    _run_human_renderer_cases(binary, build_directory, {"input list", "shortcut list", "animation list", "config show"})
+
+
+def test_piped_json_unchanged(binary: str, build_directory: str) -> None:
+    sample = {"layers": [{"id": "layer:4", "namespace": "dock"}], "revision": 7}
+    with tempfile.TemporaryDirectory(prefix="piped-json-", dir=build_directory) as temporary:
+        socket_path = str(Path(temporary) / "compositor.sock")
+        ready = threading.Event()
+        errors: list[BaseException] = []
+
+        def serve() -> None:
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+                    server.bind(socket_path)
+                    server.listen(1)
+                    ready.set()
+                    connection, _ = server.accept()
+                    with connection, connection.makefile("rwb") as stream:
+                        request = json.loads(stream.readline())
+                        if request.get("op") == "events":
+                            _write_fixture_reply(stream, {"event": "subscribed", "events": request["events"]})
+                            request = json.loads(stream.readline())
+                        stream.write(
+                            (
+                                json.dumps(
+                                    {"event": "reply", "id": request["id"], "result": sample}, separators=(",", ":")
+                                )
+                                + "\n"
+                            ).encode()
+                        )
+                        stream.flush()
+            except BaseException as error:
+                errors.append(error)
+
+        thread = threading.Thread(target=serve, daemon=True)
+        thread.start()
+        assert ready.wait(5), errors
+        process = subprocess.run(
+            [binary, "--socket", socket_path, "--format", "json", "layer", "list"], capture_output=True
+        )
+        thread.join(5)
+        assert process.returncode == 0, process.stderr.decode()
+        assert process.stdout == (json.dumps(sample, separators=(",", ":")) + "\n").encode(), process.stdout
+        assert not errors, errors
+
+
 def main() -> int:
     if len(sys.argv) != 3:
         raise SystemExit("usage: gnoblinctl-cli.test.py BINARY BUILD_DIRECTORY")
 
     binary, build_directory = sys.argv[1:]
+
+    test_render_spatial(binary, build_directory)
+    test_render_state(binary, build_directory)
+    test_render_settings(binary, build_directory)
+    test_piped_json_unchanged(binary, build_directory)
 
     help_result = run(binary, "--help")
     assert help_result.returncode == 0, help_result.stderr
