@@ -36,7 +36,8 @@ The compositor keeps a spatial scene store behind these calls. Anchors, free and
 `gnoblin-vr.lua` can describe the headset in the shape of a `gnoblin.outputs` record. `output(callback)`
 runs `gnoblin-vr --status` and passes `callback` a record with `kind = "xr"`, `enabled`, `state`,
 `diagnostic` and a `views` list of per-eye `width` and `height`. The record has no logical desktop
-rectangle. It is not added to `gnoblin.outputs.list()`, which comes from Mutter's monitor manager.
+rectangle. It matches the `xr:0` record that `gnoblin.outputs.list()` returns; use the helper when you
+need a fresh read of the status instead of the published snapshot.
 `parse_status` and `output_record` are the pure parts, if you already have the status text.
 
 ## Window arrangement policy
@@ -57,13 +58,7 @@ shell:drag(grab, {origin = {x = 0, y = 1.4, z = 0}, direction = {x = -1, y = 0, 
 `tests/vr-shell-live.test.lua` runs the module against a live session: `gnoblinctl lua
 tests/vr-shell-live.test.lua` prints one PASS or FAIL line per check.
 
-The stock output list remains owned by Mutter's monitor manager. This
-extension package does not add an XR record to that list; Mutter currently has
-no external driver registration interface that this process can use. The
-headset-as-output integration therefore remains a separate extension/driver
-boundary to implement before `gnoblinctl output list` can show an XR output.
-The extension Lua helper supplies client lifecycle and status only. It does
-not publish an XR output record into the compositor snapshot.
+The compositor reads the status file at `$XDG_RUNTIME_DIR/gnoblin-vr/status.ini` and adds the headset to its output list as an `xr:0` record with `kind = "xr"`, `state`, `diagnostic` and per-eye `views`. Mutter has no registration interface for an external output driver, so the record is read-only and the monitor manager still owns every display output.
 
 Build and test the extension independently with CMake and CTest from this
 directory. The build requires GLib/GIO and the OpenXR loader development files.
