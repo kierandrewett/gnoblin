@@ -4,8 +4,6 @@
 
 static GPtrArray* installers;
 
-extern void gnoblin_vr_lua_extension_register(void);
-
 void gnoblin_lua_extension_register(GnoblinLuaExtensionInstallFunc install) {
     g_return_if_fail(install != NULL);
     if (!installers)
@@ -17,7 +15,13 @@ void gnoblin_lua_extension_register(GnoblinLuaExtensionInstallFunc install) {
 }
 
 void gnoblin_lua_extensions_install(lua_State* state, void* config) {
-    gnoblin_vr_lua_extension_register();
+    /* Statically linked extensions register here. The VR extension supplies this hook
+     * only when its sources are linked into the same binaries; a weak reference keeps
+     * builds that omit the extension linking cleanly. */
+    extern void gnoblin_lua_extension_vr_install(lua_State * state, void* config)
+        __attribute__((weak));
+    if (gnoblin_lua_extension_vr_install)
+        gnoblin_lua_extension_vr_install(state, config);
     if (!installers)
         return;
     for (guint i = 0; i < installers->len; i++) {

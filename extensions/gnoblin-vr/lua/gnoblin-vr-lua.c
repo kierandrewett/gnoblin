@@ -199,6 +199,8 @@ static void gnoblin_vr_lua_install(lua_State* state, void* opaque_config) {
     lua_pop(state, 1);
 }
 
-void gnoblin_vr_lua_extension_register(void) {
+/* The configuration core calls this through a weak symbol, so stock code links without this
+ * extension's sources. */
+void gnoblin_lua_extension_vr_install(lua_State* state, void* config) {
     gnoblin_lua_extension_register(gnoblin_vr_lua_install);
 }
