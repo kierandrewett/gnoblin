@@ -1,0 +1,14 @@
+[Unit]
+Description=Gnoblin OpenXR presentation client
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=exec
+ExecStart=@CMAKE_INSTALL_PREFIX@/bin/gnoblin-vr
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=5
+
+[Install]
+WantedBy=graphical-session.target
