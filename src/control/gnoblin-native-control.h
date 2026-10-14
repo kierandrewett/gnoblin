@@ -13,9 +13,10 @@
 G_BEGIN_DECLS
 
 #define GNOBLIN_NATIVE_CONTROL_API_MAJOR 1
-#define GNOBLIN_NATIVE_CONTROL_API_MINOR 81
+#define GNOBLIN_NATIVE_CONTROL_API_MINOR 82
 
 typedef struct _GnoblinNativeControl GnoblinNativeControl;
+GVariant* gnoblin_control_output_list(MetaDisplay* display, GError** error);
 typedef gboolean (*GnoblinNativeConsoleToggleFunc)(MetaDisplay* display, gpointer user_data);
 
 /* A compositor-owned caller can use this private bridge to ask the supervised

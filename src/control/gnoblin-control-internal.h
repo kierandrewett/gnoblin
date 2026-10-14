@@ -519,6 +519,9 @@ G_GNUC_INTERNAL JsonNode* gnoblin_control_workspace_snapshot_json(GnoblinNativeC
 G_GNUC_INTERNAL JsonNode* gnoblin_control_monitor_snapshot_json(GnoblinNativeControl* control,
                                                                 gboolean update_lua_snapshot,
                                                                 GError** error);
+G_GNUC_INTERNAL JsonNode* gnoblin_control_output_snapshot_json(GnoblinNativeControl* control,
+                                                               gboolean update_lua_snapshot,
+                                                               GError** error);
 G_GNUC_INTERNAL GHashTable* gnoblin_control_workspace_state_from_snapshot(JsonNode* snapshot);
 G_GNUC_INTERNAL GHashTable* gnoblin_control_monitor_state_from_snapshot(JsonNode* snapshot);
 G_GNUC_INTERNAL char* gnoblin_control_monitor_id_for_index(JsonNode* snapshot, int monitor_index);

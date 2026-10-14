@@ -59,6 +59,7 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl window match`                      | Show the values a window rule can match                      |
 | `gnoblinctl window thumbnail ID --output PATH` | Save a window thumbnail as a PNG                             |
 | `gnoblinctl layer list`                        | Find layer-surface namespaces                                |
+| `gnoblinctl output list`                       | Inspect output modes and renderer state                      |
 | `gnoblinctl input devices`                     | List detected input devices and capabilities                 |
 | `gnoblinctl input orientation-lock [VALUE]`    | Read or set the orientation lock                             |
 | `gnoblinctl workspace list`                    | Show workspace IDs, names, positions and windows             |
@@ -340,6 +341,12 @@ for _, monitor in ipairs(gnoblin.monitors.list()) do
     print(monitor.id, monitor.width, monitor.height, monitor.scale)
 end
 ```
+
+Output snapshots are available through `gnoblin.outputs.list()`,
+`gnoblin.outputs.primary()`, `gnoblin.outputs.by_id(id)`, and
+`gnoblin.outputs.renderer()`. `gnoblinctl output list` prints the output
+records; add `--json` for machine-readable output. During login, `renderer()`
+can return `nil` until the first output snapshot is published.
 
 Use `gnoblin.layers.list(filter?)` to read layer surfaces. Each result is a
 read-only `LayerSurface` record. `gnoblin.layer.list()` is the compatibility
@@ -1168,3 +1175,10 @@ integrations run as separate processes and use the bridge directly. Check
 checks only whether the compositor control socket responds; it does not check
 external shell clients. See [CLI development](cli-development.md) for the
 transport contract.
+
+## Outputs
+
+Run `gnoblinctl output list` to inspect connector IDs, physical modes, logical
+positions, and renderer information. Use `--json` for the complete snapshot,
+including nested mode and renderer records. `monitor list` retains its existing
+logical-monitor format.

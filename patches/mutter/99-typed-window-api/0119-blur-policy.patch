@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000119 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Subject: [PATCH] compositor: gate background blur by renderer policy
+
+Resolve the global blur policy at the shared effect path and invalidate
+existing effects when runtime configuration changes.
+
+diff --git a/src/compositor/compositor-private.h b/src/compositor/compositor-private.h
+index 4481017140..d8d2905841 100644
+--- a/src/compositor/compositor-private.h
++++ b/src/compositor/compositor-private.h
+@@ -173,6 +173,7 @@ void meta_compositor_show_tile_preview (MetaCompositor *compositor,
+                                         int             tile_monitor_number);
+ 
+ void meta_compositor_hide_tile_preview (MetaCompositor *compositor);
++void meta_compositor_invalidate_background_blur (MetaCompositor *compositor);
+ 
+ void meta_compositor_show_window_menu (MetaCompositor     *compositor,
+                                        MetaWindow         *window,
+diff --git a/src/compositor/compositor.c b/src/compositor/compositor.c
+index 1bdcc860be..64e8e771f4 100644
+--- a/src/compositor/compositor.c
++++ b/src/compositor/compositor.c
+@@ -64,6 +64,7 @@
+ #include "compositor/meta-window-group-private.h"
+ #include "core/startup-notification-private.h"
+ #include "core/util-private.h"
++#include "core/gnoblin-native-control.h"
+ #include "core/window-private.h"
+ #include "meta/main.h"
+ #include "meta/meta-backend.h"
+@@ -1451,15 +1452,45 @@ meta_compositor_get_background_blur_params (MetaCompositor *compositor,
+ {
+   MetaCompositorPrivate *priv =
+     meta_compositor_get_instance_private (compositor);
++  gboolean enabled = TRUE;
++  g_autoptr (GVariant) document =
++    gnoblin_native_control_get_config_document (priv->display);
++  g_autoptr (GVariant) compositor_config = document
++    ? g_variant_lookup_value (document, "compositor", G_VARIANT_TYPE_VARDICT)
++    : NULL;
++  const char *policy = "auto";
++
++  if (compositor_config)
++    g_variant_lookup (compositor_config, "blur", "&s", &policy);
++  if (document)
++    {
++      MetaBackend *backend = meta_context_get_backend (
++        meta_display_get_context (priv->display));
++
++      enabled = g_strcmp0 (policy, "on") == 0 ||
++        (g_strcmp0 (policy, "off") != 0 && backend &&
++         meta_backend_is_rendering_hardware_accelerated (backend));
++    }
+ 
+   if (blur_radius)
+-    *blur_radius = priv->background_blur_radius;
++    *blur_radius = enabled ? priv->background_blur_radius : 0.0f;
+   if (saturation)
+     *saturation = priv->background_saturation;
+   if (noise)
+     *noise = priv->background_noise;
+ }
+ 
++void
++meta_compositor_invalidate_background_blur (MetaCompositor *compositor)
++{
++  MetaCompositorPrivate *priv;
++
++  g_return_if_fail (META_IS_COMPOSITOR (compositor));
++  priv = meta_compositor_get_instance_private (compositor);
++  for (GList *l = priv->windows; l; l = l->next)
++    meta_window_actor_invalidate_background_blur (l->data);
++}
++
+ #define FLASH_TIME_MS 50
+ 
+ static void
+diff --git a/src/compositor/meta-surface-actor.c b/src/compositor/meta-surface-actor.c
+index 81275c6e41..89f99e1385 100644
+--- a/src/compositor/meta-surface-actor.c
++++ b/src/compositor/meta-surface-actor.c
+@@ -499,6 +499,12 @@ get_effective_blur (MetaSurfaceActor *surface_actor,
+ {
+   MetaSurfaceActorPrivate *priv =
+     meta_surface_actor_get_instance_private (surface_actor);
++  float global_radius;
++
++  meta_compositor_get_background_blur_params (priv->compositor,
++                                              &global_radius, NULL, NULL);
++  if (global_radius <= 0.0f)
++    return NULL;
+ 
+   if (priv->rule_blur_enabled)
+     *radius = priv->rule_blur_radius;

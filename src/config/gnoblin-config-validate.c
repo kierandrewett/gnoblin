@@ -237,6 +237,11 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
                      g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
                 const char* bell = g_variant_get_string(value, NULL);
                 valid = g_str_equal(bell, "fullscreen-flash") || g_str_equal(bell, "frame-flash");
+            } else if (g_str_equal(name, "blur") &&
+                       g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+                const char* blur = g_variant_get_string(value, NULL);
+                valid = g_str_equal(blur, "auto") || g_str_equal(blur, "on") ||
+                        g_str_equal(blur, "off");
             } else if (g_str_equal(name, "locate-pointer-key") &&
                        g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
                 valid = compositor_locate_pointer_key_valid(g_variant_get_string(value, NULL));

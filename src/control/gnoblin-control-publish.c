@@ -1,4 +1,5 @@
 #include "gnoblin-native-control-private.h"
+#include "compositor/compositor-private.h"
 
 static void native_window_record_add_public_aliases(JsonObject* object);
 
@@ -682,6 +683,7 @@ void native_settings_changed(guint64 revision, gpointer user_data) {
         dynamic_shortcut_end_session(control, control->active_shortcut_session, "config_changed");
 
     g_autoptr(GVariant) config = native_config_document(control);
+    meta_compositor_invalidate_background_blur(meta_display_get_compositor(control->display));
     g_autoptr(GError) capture_error = NULL;
     if (!apply_configured_capture_shortcut(control, config, &capture_error))
         g_warning("gnoblin-native-control: could not apply configured shortcut input capture: %s",

@@ -610,3 +610,79 @@ void lua_cli_push_menu_context(lua_State* state, CliLuaEventSubscription* subscr
     luaL_getmetatable(state, GNOBLINCTL_MENU_CONTEXT_METATABLE);
     lua_setmetatable(state, -2);
 }
+
+static JsonNode* lua_cli_output_snapshot(lua_State* state, Cli* cli, const char* operation) {
+    JsonObject* arguments = json_object_new();
+    g_autoptr(GError) error = NULL;
+    JsonNode* result = call_compositor(cli, "api", "outputs.list", arguments, &error);
+    json_object_unref(arguments);
+    if (!result)
+        luaL_error(state, "gnoblin.outputs.%s failed: %s", operation,
+                   error ? error->message : "unknown error");
+    if (!JSON_NODE_HOLDS_ARRAY(result)) {
+        json_node_unref(result);
+        luaL_error(state, "gnoblin.outputs.%s returned an invalid snapshot", operation);
+    }
+    return result;
+}
+
+int lua_cli_outputs_list(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.outputs.list takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    g_autoptr(JsonNode) result = lua_cli_output_snapshot(state, cli, "list");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}
+
+int lua_cli_outputs_find(lua_State* state, gboolean by_id) {
+    const char* id = NULL;
+    if (by_id && (lua_gettop(state) != 1 || lua_type(state, 1) != LUA_TSTRING ||
+                  !(id = lua_tostring(state, 1)) || !*id))
+        return luaL_error(state, "gnoblin.outputs.by_id requires one nonempty output ID");
+    if (!by_id && lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.outputs.primary takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    g_autoptr(JsonNode) result = lua_cli_output_snapshot(state, cli, by_id ? "by_id" : "primary");
+    JsonArray* outputs = json_node_get_array(result);
+    for (guint i = 0; i < json_array_get_length(outputs); i++) {
+        JsonObject* output = json_array_get_object_element(outputs, i);
+        if (output &&
+            ((by_id && g_str_equal(member_string(output, "id", ""), id)) ||
+             (!by_id && json_object_get_boolean_member_with_default(output, "primary", FALSE)))) {
+            JsonNode* copy = json_node_copy(json_array_get_element(outputs, i));
+            json_to_lua(state, copy);
+            json_node_unref(copy);
+            lua_cli_push_readonly_value(state, -1);
+            lua_remove(state, -2);
+            return 1;
+        }
+    }
+    lua_pushnil(state);
+    return 1;
+}
+
+int lua_cli_outputs_primary(lua_State* state) {
+    return lua_cli_outputs_find(state, FALSE);
+}
+int lua_cli_outputs_by_id(lua_State* state) {
+    return lua_cli_outputs_find(state, TRUE);
+}
+int lua_cli_outputs_renderer(lua_State* state) {
+    if (lua_gettop(state))
+        return luaL_error(state, "gnoblin.outputs.renderer takes no arguments");
+    Cli* cli = lua_touserdata(state, lua_upvalueindex(1));
+    JsonObject* args = json_object_new();
+    g_autoptr(GError) error = NULL;
+    g_autoptr(JsonNode) result = call_compositor(cli, "api", "outputs.renderer", args, &error);
+    json_object_unref(args);
+    if (!result)
+        return luaL_error(state, "gnoblin.outputs.renderer failed: %s",
+                          error ? error->message : "unknown error");
+    json_to_lua(state, result);
+    lua_cli_push_readonly_value(state, -1);
+    lua_remove(state, -2);
+    return 1;
+}

@@ -1,4 +1,15 @@
 #include "gnoblin-native-control-private.h"
+#include "meta/meta-backend.h"
+#include "meta/meta-monitor.h"
+#include "meta/meta-monitor-manager.h"
+#include "meta/meta-logical-monitor.h"
+#include "backends/meta-monitor-private.h"
+#include "backends/meta-logical-monitor-private.h"
+#include "clutter/clutter-backend.h"
+#include "cogl/cogl.h"
+#include "cogl/driver/gl/cogl-driver-gl-private.h"
+#include <GL/gl.h>
+#include <string.h>
 
 char* monitor_snapshot(GnoblinNativeControl* control) {
     g_autoptr(GError) error = NULL;
@@ -9,6 +20,35 @@ char* monitor_snapshot(GnoblinNativeControl* control) {
     json_object_set_string_member(object, "event", "monitors");
     g_autofree char* encoded = json_to_string(json, FALSE);
     return g_strconcat(encoded, "\n", NULL);
+}
+
+JsonNode* gnoblin_control_output_snapshot_json(GnoblinNativeControl* control,
+                                               gboolean update_lua_snapshot, GError** error) {
+    g_autoptr(GVariant) result = gnoblin_control_output_list(control->display, error);
+    if (!result) {
+        if (update_lua_snapshot)
+            gnoblin_control_publish_runtime_snapshot(control, "outputs", NULL,
+                                                     control->state_revision);
+        return NULL;
+    }
+    g_autoptr(JsonNode) json = gnoblin_control_json_from_variant(result);
+    if (!JSON_NODE_HOLDS_OBJECT(json))
+        return NULL;
+    JsonObject* object = json_node_get_object(json);
+    json_object_set_int_member(object, "revision", control->state_revision);
+    JsonArray* outputs = json_object_get_array_member(object, "outputs");
+    for (guint i = 0; outputs && i < json_array_get_length(outputs); i++) {
+        JsonNode* item = json_array_get_element(outputs, i);
+        if (JSON_NODE_HOLDS_OBJECT(item))
+            json_object_set_int_member(json_node_get_object(item), "revision",
+                                       control->state_revision);
+    }
+    if (update_lua_snapshot) {
+        g_autoptr(GVariant) snapshot = gnoblin_control_variant_from_json(json);
+        gnoblin_control_publish_runtime_snapshot(control, "outputs", snapshot,
+                                                 control->state_revision);
+    }
+    return g_steal_pointer(&json);
 }
 
 char* native_monitor_id_for_index(JsonNode* snapshot, int monitor_index) {
@@ -507,4 +547,169 @@ void publish_window_changes(GnoblinNativeControl* control, JsonNode* snapshot, g
     g_hash_table_unref(control->window_state);
     control->window_state = current;
     control->window_state_initialized = TRUE;
+}
+
+static GVariant* output_renderer(MetaDisplay* display) {
+    static char* cached_name;
+    static char* cached_vendor;
+    static char* cached_api;
+    static gboolean cached_accelerated;
+    static gboolean cached;
+    if (!cached) {
+        MetaBackend* backend = meta_context_get_backend(meta_display_get_context(display));
+        ClutterBackend* clutter = backend ? meta_backend_get_clutter_backend(backend) : NULL;
+        CoglContext* context = clutter ? clutter_backend_get_cogl_context(clutter) : NULL;
+        CoglRenderer* renderer = context ? cogl_context_get_renderer(context) : NULL;
+        CoglDriver* driver = context ? cogl_context_get_driver(context) : NULL;
+        if (!renderer || !COGL_IS_DRIVER_GL(driver))
+            return NULL;
+        const char* name = (const char*)glGetString(GL_RENDERER);
+        const char* vendor = (const char*)glGetString(GL_VENDOR);
+        if (!name || !*name)
+            return NULL;
+        cached_name = g_strdup(name);
+        cached_vendor = g_strdup(vendor);
+        CoglDriverId driver_id = cogl_renderer_get_driver_id(renderer);
+        cached_api = g_strdup(driver_id == COGL_DRIVER_ID_GLES2 ? "gles2"
+                              : driver_id == COGL_DRIVER_ID_GL3 ? "gl"
+                                                                : "other");
+        cached_accelerated = cogl_renderer_is_hardware_accelerated(renderer);
+        g_autofree char* folded = g_ascii_strdown(cached_name, -1);
+        if (strstr(folded, "llvmpipe") || strstr(folded, "softpipe") || strstr(folded, "swrast") ||
+            strstr(folded, "software rasterizer"))
+            cached_accelerated = FALSE;
+        cached = TRUE;
+    }
+    GVariantBuilder record;
+    g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&record, "{sv}", "name", g_variant_new_string(cached_name));
+    if (cached_vendor && *cached_vendor)
+        g_variant_builder_add(&record, "{sv}", "vendor", g_variant_new_string(cached_vendor));
+    g_variant_builder_add(&record, "{sv}", "api", g_variant_new_string(cached_api));
+    g_variant_builder_add(&record, "{sv}", "accelerated",
+                          g_variant_new_boolean(cached_accelerated));
+    return g_variant_ref_sink(g_variant_builder_end(&record));
+}
+
+static const char* output_transform_name(MtkMonitorTransform transform) {
+    switch (transform) {
+    case MTK_MONITOR_TRANSFORM_NORMAL:
+        return "normal";
+    case MTK_MONITOR_TRANSFORM_90:
+        return "90";
+    case MTK_MONITOR_TRANSFORM_180:
+        return "180";
+    case MTK_MONITOR_TRANSFORM_270:
+        return "270";
+    case MTK_MONITOR_TRANSFORM_FLIPPED:
+        return "flipped";
+    case MTK_MONITOR_TRANSFORM_FLIPPED_90:
+        return "flipped-90";
+    case MTK_MONITOR_TRANSFORM_FLIPPED_180:
+        return "flipped-180";
+    case MTK_MONITOR_TRANSFORM_FLIPPED_270:
+        return "flipped-270";
+    }
+    return "normal";
+}
+
+GVariant* gnoblin_control_output_list(MetaDisplay* display, GError** error) {
+    MetaBackend* backend = meta_context_get_backend(meta_display_get_context(display));
+    MetaMonitorManager* manager = backend ? meta_backend_get_monitor_manager(backend) : NULL;
+    if (!manager) {
+        g_set_error_literal(error, G_IO_ERROR, G_IO_ERROR_NOT_INITIALIZED,
+                            "output enumeration is unavailable before monitor initialization");
+        return NULL;
+    }
+
+    GVariantBuilder outputs;
+    g_autoptr(GVariant) renderer = output_renderer(display);
+    g_variant_builder_init(&outputs, G_VARIANT_TYPE("aa{sv}"));
+    GList* logicals = meta_monitor_manager_get_logical_monitors(manager);
+    for (GList* item = meta_monitor_manager_get_monitors(manager); item; item = item->next) {
+        MetaMonitor* monitor = item->data;
+        GList* connectors = meta_monitor_get_outputs(monitor);
+        MetaMonitorMode* mode = meta_monitor_get_current_mode(monitor);
+        if (!mode)
+            mode = meta_monitor_get_preferred_mode(monitor);
+        int width = 0, height = 0;
+        if (mode)
+            meta_monitor_mode_get_resolution(mode, &width, &height);
+        for (GList* connector = connectors; connector; connector = connector->next) {
+            MetaOutput* output = connector->data;
+            const char* id = meta_output_get_name(output);
+            if (!id || !*id)
+                continue;
+            MetaLogicalMonitor* logical = NULL;
+            for (GList* lm = logicals; lm && !logical; lm = lm->next) {
+                GList* members = meta_logical_monitor_get_monitors(lm->data);
+                if (g_list_find(members, monitor))
+                    logical = lm->data;
+            }
+            GVariantBuilder record;
+            g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string(id));
+            g_variant_builder_add(&record, "{sv}", "kind", g_variant_new_string("display"));
+            if (renderer)
+                g_variant_builder_add(&record, "{sv}", "renderer", renderer);
+            g_variant_builder_add(&record, "{sv}", "enabled",
+                                  g_variant_new_boolean(logical != NULL));
+            g_variant_builder_add(
+                &record, "{sv}", "primary",
+                g_variant_new_boolean(logical && meta_logical_monitor_is_primary(logical)));
+            const char* display_name = meta_monitor_get_display_name(monitor);
+            g_variant_builder_add(
+                &record, "{sv}", "name",
+                g_variant_new_string(display_name && *display_name ? display_name : id));
+            if (meta_monitor_get_vendor(monitor))
+                g_variant_builder_add(&record, "{sv}", "make",
+                                      g_variant_new_string(meta_monitor_get_vendor(monitor)));
+            if (meta_monitor_get_product(monitor))
+                g_variant_builder_add(&record, "{sv}", "model",
+                                      g_variant_new_string(meta_monitor_get_product(monitor)));
+            if (meta_monitor_get_serial(monitor))
+                g_variant_builder_add(&record, "{sv}", "serial",
+                                      g_variant_new_string(meta_monitor_get_serial(monitor)));
+            GVariantBuilder mode_record;
+            g_variant_builder_init(&mode_record, G_VARIANT_TYPE_VARDICT);
+            g_variant_builder_add(&mode_record, "{sv}", "width", g_variant_new_int32(width));
+            g_variant_builder_add(&mode_record, "{sv}", "height", g_variant_new_int32(height));
+            g_variant_builder_add(
+                &mode_record, "{sv}", "refresh_rate",
+                g_variant_new_double(mode ? meta_monitor_mode_get_refresh_rate(mode) : 0));
+            g_variant_builder_add(&record, "{sv}", "mode", g_variant_builder_end(&mode_record));
+            if (logical) {
+                MtkRectangle rect = meta_logical_monitor_get_layout(logical);
+                const char* logical_id = id;
+                for (GList* member = meta_logical_monitor_get_monitors(logical); member;
+                     member = member->next)
+                    for (GList* member_output = meta_monitor_get_outputs(member->data);
+                         member_output; member_output = member_output->next) {
+                        const char* member_id = meta_output_get_name(member_output->data);
+                        if (member_id && g_strcmp0(member_id, logical_id) < 0)
+                            logical_id = member_id;
+                    }
+                g_variant_builder_add(&record, "{sv}", "monitor_id",
+                                      g_variant_new_string(logical_id));
+                g_variant_builder_add(&record, "{sv}", "x", g_variant_new_int32(rect.x));
+                g_variant_builder_add(&record, "{sv}", "y", g_variant_new_int32(rect.y));
+                g_variant_builder_add(
+                    &record, "{sv}", "scale",
+                    g_variant_new_double(meta_logical_monitor_get_scale(logical)));
+                g_variant_builder_add(&record, "{sv}", "transform",
+                                      g_variant_new_string(output_transform_name(
+                                          meta_logical_monitor_get_transform(logical))));
+            } else {
+                g_variant_builder_add(&record, "{sv}", "scale", g_variant_new_double(1.0));
+                g_variant_builder_add(&record, "{sv}", "transform", g_variant_new_string("normal"));
+            }
+            g_variant_builder_add_value(&outputs, g_variant_builder_end(&record));
+        }
+    }
+    GVariantBuilder result;
+    g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&result, "{sv}", "outputs", g_variant_builder_end(&outputs));
+    if (renderer)
+        g_variant_builder_add(&result, "{sv}", "renderer", renderer);
+    return g_variant_ref_sink(g_variant_builder_end(&result));
 }

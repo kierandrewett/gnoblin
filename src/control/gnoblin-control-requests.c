@@ -358,6 +358,9 @@ char* handle_request(Client* client, const char* data, gsize length) {
         return encode_response(id, NULL, "privacy stop methods require API version 1.31");
     if (g_str_equal(method, "layer.animation_policy") && client->api_minor < 31)
         return encode_response(id, NULL, "layer.animation_policy requires API version 1.31");
+    if ((g_str_equal(method, "outputs.list") || g_str_equal(method, "outputs.renderer")) &&
+        client->api_minor < 82)
+        return encode_response(id, NULL, "output reads require API version 1.82");
     if ((g_str_equal(method, "windows.list") || g_str_equal(method, "workspaces.list") ||
          g_str_equal(method, "monitors.list") || g_str_equal(method, "layers.list") ||
          g_str_equal(method, "launches.list")) &&
@@ -421,6 +424,16 @@ char* handle_request(Client* client, const char* data, gsize length) {
         if (!client->control->supervised_runtime)
             return encode_response(id, NULL, "Lua supervisor is not connected");
         return queue_runtime_api_request(client, id, method, arguments, "read");
+    }
+    if (g_str_equal(method, "outputs.list") || g_str_equal(method, "outputs.renderer")) {
+        if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
+            return encode_response(id, NULL, "output reads do not accept arguments");
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+        return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
     if (g_str_equal(method, "session.status")) {
         if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
@@ -564,6 +577,14 @@ char* handle_request(Client* client, const char* data, gsize length) {
         return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
     if (g_str_equal(method, "monitor.list")) {
+        GVariantBuilder empty;
+        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
+        g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
+        if (!client->control->supervised_runtime)
+            return encode_response(id, NULL, "Lua supervisor is not connected");
+        return queue_runtime_api_request(client, id, method, read_arguments, "read");
+    }
+    if (g_str_equal(method, "output.list")) {
         GVariantBuilder empty;
         g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
         g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));

@@ -16,7 +16,9 @@ gboolean native_api_read_method(const char* method) {
             g_str_equal(method, "session.activity") || g_str_equal(method, "session.status") ||
             g_str_equal(method, "runtime.status") ||
             g_str_equal(method, "layer.animation_policy") ||
-            g_str_equal(method, "workspaces.list") || g_str_equal(method, "monitors.list") ||
+            g_str_equal(method, "workspaces.list") || g_str_equal(method, "output.list") ||
+            g_str_equal(method, "monitors.list") || g_str_equal(method, "outputs.list") ||
+            g_str_equal(method, "outputs.renderer") ||
             g_str_equal(method, "monitors.privacy_screen") || g_str_equal(method, "layers.list") ||
             g_str_equal(method, "launches.list") || g_str_equal(method, "launches.snapshot") ||
             g_str_equal(method, "shortcuts.list") || g_str_equal(method, "shortcuts.actions") ||
