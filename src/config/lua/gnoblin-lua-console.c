@@ -963,6 +963,9 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
         known |= g_str_equal(api_methods[i], method);
     for (guint i = 0; i < api_aliases_count; i++)
         known |= g_str_equal(api_aliases[i].public_name, method);
+    /* Extension namespaces such as gnoblin.spatial register their own Lua functions; the lookup
+     * below reports one that is missing. */
+    known |= g_str_has_prefix(method, "spatial.");
     if (!known) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "unknown Gnoblin API method '%s'",
                     method);

@@ -191,6 +191,8 @@ class GnoblinConsolePanel {
     int menu_sel_end_ = 0;
     int pending_caret_ = -1;
     bool select_all_pending_ = false;
+    bool menu_open_ = false;
+    bool close_menu_ = false;
     void draw_input_menu();
     /* Enter and Tab act on the input only after ImGui has applied every queued
      * character, or text typed just before them would be lost. */

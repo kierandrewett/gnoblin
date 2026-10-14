@@ -17,6 +17,7 @@ static const char* const move_fields[] = {"surface_id", "hit", "pose", NULL};
 static const char* const surface_fields[] = {"surface_id", NULL};
 static const char* const raise_fields[] = {"surface_id", NULL};
 static const char* const pose_fields[] = {"surface_id", "pose", NULL};
+static const char* const hit_fields[] = {"origin", "direction", NULL};
 
 static gboolean spatial_string_field(lua_State* state, int table, const char* name,
                                      gboolean optional);
@@ -110,6 +111,7 @@ static const SpatialMethod spatial_methods[] = {
     {"move", "vr.spatial.move", move_fields, FALSE},
     {"raise", "vr.spatial.raise", raise_fields, FALSE},
     {"update_pose", "vr.spatial.update_pose", pose_fields, FALSE},
+    {"hit", "vr.spatial.hit", hit_fields, FALSE},
 };
 
 static gboolean spatial_string_field(lua_State* state, int table, const char* name,
@@ -168,6 +170,13 @@ static int spatial_method_call(lua_State* state) {
                                   "gnoblin.spatial.%s requires positive finite size "
                                   "dimensions",
                                   method->name);
+        }
+        if (g_str_equal(method->name, "hit")) {
+            static const char* const axes[] = {"x", "y", "z"};
+            if (!spatial_vector(state, 1, "origin", axes, G_N_ELEMENTS(axes)) ||
+                !spatial_vector(state, 1, "direction", axes, G_N_ELEMENTS(axes)))
+                return luaL_error(state, "gnoblin.spatial.hit requires finite origin and "
+                                         "direction vectors with x, y, z");
         }
         if (g_str_equal(method->name, "move") && !spatial_hit(state, 1))
             return luaL_error(state, "gnoblin.spatial.move requires a valid hit record");

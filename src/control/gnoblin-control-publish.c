@@ -752,8 +752,14 @@ void native_settings_changed(guint64 revision, gpointer user_data) {
 
 void gnoblin_native_control_set_debug_handler(MetaDisplay* display, GnoblinNativeDebugFunc handler,
                                               gpointer user_data) {
+    if (!display)
+        return;
+    NativeDebugBridge* bridge = g_new0(NativeDebugBridge, 1);
+    bridge->handler = handler;
+    bridge->user_data = user_data;
+    g_object_set_data_full(G_OBJECT(display), NATIVE_DEBUG_BRIDGE_DATA_KEY, bridge, g_free);
     GnoblinNativeControl* control =
-        display ? g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY) : NULL;
+        g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY);
     if (control) {
         control->debug_handler = handler;
         control->debug_handler_data = user_data;

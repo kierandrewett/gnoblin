@@ -52,6 +52,7 @@ void gnoblin_debug_panel_set_enabled(GnoblinDebugPanel* panel, GnoblinImGuiOverl
         return;
     const bool wanted = enabled == TRUE;
     if (wanted && overlay != nullptr) {
+        panel->enabled = true;
         panel->overlay = overlay;
         if (!panel->tick_id)
             panel->tick_id = g_timeout_add(250, debug_scroll_tick, panel);

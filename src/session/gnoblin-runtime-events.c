@@ -119,8 +119,11 @@ gboolean handle_input(Runtime* runtime, guint64 request_id, GVariant* payload, G
     /* Input authority is ephemeral. Do not defer it across a startup or
      * reload boundary: Mutter can immediately use this default decision and
      * discard any later reply for the retired request ID. */
+    /* The compositor stamps each request with the settings revision it holds. The runtime
+     * generation advances on every reload, including one that changes nothing, so comparing
+     * against it rejected every later request and silently disabled Lua key handlers. */
     if (!runtime->ready || runtime->recovery_snapshot || runtime->pending_reload ||
-        config_generation != gnoblin_config_runtime_generation())
+        config_generation != gnoblin_config_settings_revision())
         return send_input_default_decision(runtime, request_id, config_generation,
                                            "input handlers are unavailable", error);
 
