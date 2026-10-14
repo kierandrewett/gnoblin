@@ -49,6 +49,18 @@ Run `gnoblinctl reload` after saving. The console evaluates Lua against the
 active configuration runtime and sends reload requests through compositor
 control.
 
+## Change settings
+
+Assign to `gnoblin.config` to change a setting in the running session:
+
+```lua
+gnoblin.config.compositor.debug = true
+```
+
+The change applies at once and lasts until the configuration is reloaded, so it does not edit your
+config files. A value the configuration does not accept is rejected with the reason, and the
+settings stay as they were.
+
 Suggestions appear below the input as you type. Completion supports globals and dotted member
 names, such as `gnoblin.windows.`. It does not evaluate the input or call Lua getters.
 

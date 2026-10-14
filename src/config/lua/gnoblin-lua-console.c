@@ -902,10 +902,9 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
     g_autoptr(GVariant) document = variant_from_lua(state, -1, 0, FALSE, 0, &document_error);
     lua_pop(state, 2);
     if (!document || !g_variant_is_of_type(document, G_VARIANT_TYPE_VARDICT) ||
-        !gnoblin_config_validate_document(document, &document_error) ||
-        !g_variant_equal(document, runtime->document)) {
+        !gnoblin_config_validate_document(document, &document_error)) {
         const char* message =
-            document_error ? document_error->message : "console code may not modify gnoblin.config";
+            document_error ? document_error->message : "console code left gnoblin.config invalid";
         lua_getglobal(state, "gnoblin");
         push_variant(state, runtime->document);
         lua_setfield(state, -2, "config");
@@ -916,6 +915,14 @@ GVariant* gnoblin_config_eval_console(const char* source, GError** error) {
         config->actions_in_dispatch = 0;
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "%s", message);
         return NULL;
+    }
+
+    /* A valid change to gnoblin.config is applied to the live session like one made by an event
+     * handler: the session commits it and the compositor receives the new settings. It lasts until
+     * the configuration is reloaded. */
+    if (!g_variant_equal(document, runtime->document)) {
+        g_clear_pointer(&runtime->pending_document, g_variant_unref);
+        runtime->pending_document = g_variant_ref(document);
     }
 
     int values = lua_gettop(state) - base;

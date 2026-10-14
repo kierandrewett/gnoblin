@@ -169,6 +169,10 @@ guint64 gnoblin_config_settings_revision(void) {
     return active_runtime ? active_runtime->config.settings_revision : 0;
 }
 
+gboolean gnoblin_config_has_pending_document(void) {
+    return active_runtime && active_runtime->pending_document;
+}
+
 void gnoblin_config_finish_event(gboolean commit) {
     if (!active_runtime || !active_runtime->pending_document)
         return;
