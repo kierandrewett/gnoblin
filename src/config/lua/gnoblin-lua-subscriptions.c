@@ -1,5 +1,12 @@
 #include "gnoblin-lua-internal.h"
 
+int lua_focus_policy(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.focus.policy takes no arguments");
+    lua_pushvalue(state, lua_upvalueindex(1));
+    return 1;
+}
+
 static int lua_operation_unsubscribe(lua_State* state);
 
 int lua_gnoblin_index(lua_State* state) {
@@ -70,11 +77,11 @@ int lua_gnoblin_index(lua_State* state) {
         int readonly_policy = lua_absindex(state, -1);
         lua_createtable(state, 0, 2);
         lua_pushvalue(state, readonly_policy);
+        lua_pushcclosure(state, lua_focus_policy, 1);
         lua_setfield(state, -2, "policy");
         lua_pushlightuserdata(state, config);
         lua_pushcclosure(state, lua_focus_history, 1);
         lua_setfield(state, -2, "history");
-        push_readonly_copy(state, -1);
         return 1;
     }
     if (!g_str_equal(property, "settings")) {

@@ -312,6 +312,8 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "focus.history",
         "settings",
         "focus.policy",
+        "config.path",
+        "config.default",
         "session.activity",
         "session.status",
         "runtime.status",
@@ -448,6 +450,16 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_getfield(state, -1, "history");
         lua_remove(state, -2);
         lua_remove(state, -2);
+    } else if (g_str_equal(method, "focus.policy")) {
+        lua_getfield(state, -1, "focus");
+        lua_getfield(state, -1, "policy");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
+    } else if (g_str_equal(method, "config.path") || g_str_equal(method, "config.default")) {
+        lua_getfield(state, -1, "config");
+        lua_getfield(state, -1, g_str_equal(method, "config.path") ? "path" : "default");
+        lua_remove(state, -2);
+        lua_remove(state, -2);
     } else if (g_str_equal(method, "windows.list") || g_str_equal(method, "window.list") ||
                g_str_equal(method, "window.match")) {
         lua_getfield(state, -1, "windows");
@@ -570,7 +582,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         lua_remove(state, -2);
     }
 
-    gboolean is_function = !g_str_equal(method, "settings") && !g_str_equal(method, "focus.policy");
+    gboolean is_function = !g_str_equal(method, "settings");
     int argument_count = 0;
     if (!lua_isfunction(state, -1) && is_function) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "Lua API read '%s' is not registered",

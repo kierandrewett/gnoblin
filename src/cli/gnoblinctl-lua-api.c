@@ -234,8 +234,28 @@ int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_cli_runtime_status, 1);
         return 1;
     }
+    if (g_str_equal(prefix, "config")) {
+        if (g_str_equal(name, "path")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state, lua_cli_config_path, 1);
+            return 1;
+        }
+        if (g_str_equal(name, "default")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushcclosure(state, lua_cli_config_default, 1);
+            return 1;
+        }
+        if (g_str_equal(name, "restore_default")) {
+            lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
+            lua_pushliteral(state, "config.restore_default");
+            lua_pushcclosure(state, lua_cli_session_operation, 2);
+            return 1;
+        }
+    }
     if (g_str_equal(prefix, "session") &&
-        (g_str_equal(name, "lock") || g_str_equal(name, "logout"))) {
+        (g_str_equal(name, "lock") || g_str_equal(name, "logout") || g_str_equal(name, "suspend") ||
+         g_str_equal(name, "hibernate") || g_str_equal(name, "reboot") ||
+         g_str_equal(name, "poweroff"))) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushfstring(state, "session.%s", name);
         lua_pushcclosure(state, lua_cli_session_operation, 2);
@@ -346,7 +366,6 @@ int lua_api_index(lua_State* state) {
         if (g_str_equal(name, "policy")) {
             lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
             lua_pushcclosure(state, lua_cli_focus_policy_property, 1);
-            lua_call(state, 0, 1);
             return 1;
         }
         if (g_str_equal(name, "history")) {

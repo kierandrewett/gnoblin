@@ -254,6 +254,8 @@ int lua_cli_session_status(lua_State* state);
 void register_lua_cli_session_activity_record(lua_State* state);
 int lua_cli_session_activity(lua_State* state);
 int lua_cli_focus_policy_property(lua_State* state);
+int lua_cli_config_path(lua_State* state);
+int lua_cli_config_default(lua_State* state);
 int lua_cli_input_snapshot(lua_State* state);
 int lua_cli_appearance_color_scheme(lua_State* state);
 int lua_cli_input_select_source(lua_State* state);

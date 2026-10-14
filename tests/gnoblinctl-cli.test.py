@@ -1302,7 +1302,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(120):
+                    for _ in range(125):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -1579,9 +1579,26 @@ def main() -> int:
                                 result = {"request_id": 38, "method": request["method"]}
                             elif request["method"] == "runtime.status":
                                 result = {"state": "running", "generation": 7}
-                            elif request["method"] in {"session.lock", "session.logout"}:
+                            elif request["method"] in {
+                                "session.lock",
+                                "session.logout",
+                                "session.suspend",
+                                "session.hibernate",
+                                "session.reboot",
+                                "session.poweroff",
+                                "config.restore_default",
+                            }:
+                                request_ids = {
+                                    "session.lock": 39,
+                                    "session.logout": 40,
+                                    "session.suspend": 41,
+                                    "session.hibernate": 42,
+                                    "session.reboot": 43,
+                                    "session.poweroff": 44,
+                                    "config.restore_default": 45,
+                                }
                                 result = {
-                                    "request_id": 39 if request["method"] == "session.lock" else 40,
+                                    "request_id": request_ids[request["method"]],
                                     "method": request["method"],
                                 }
                             elif request["method"] == "capabilities.list":
@@ -1794,6 +1811,11 @@ def main() -> int:
                                 "runtime.reload_config",
                                 "session.lock",
                                 "session.logout",
+                                "session.suspend",
+                                "session.hibernate",
+                                "session.reboot",
+                                "session.poweroff",
+                                "config.restore_default",
                             }:
                                 operation_id = result["request_id"]
                                 method = result["method"]
@@ -2015,6 +2037,14 @@ def main() -> int:
                                 elif method == "session.lock":
                                     value = {"dispatched": True, "subscribers": 1}
                                 elif method == "session.logout":
+                                    value = {"accepted": True}
+                                elif method in {
+                                    "session.suspend",
+                                    "session.hibernate",
+                                    "session.reboot",
+                                    "session.poweroff",
+                                    "config.restore_default",
+                                }:
                                     value = {"accepted": True}
                                 else:
                                     value = {"workspaces": [{"id": "codex-probe", "name": "Codex Probe"}]}
@@ -2562,7 +2592,7 @@ def main() -> int:
         assert shortcuts_lua.returncode == 0, shortcuts_lua.stderr
         focus_policy_file = Path(temporary) / "focus-policy.lua"
         focus_policy_file.write_text(
-            "local policy = gnoblin.focus.policy\n"
+            "local policy = gnoblin.focus.policy()\n"
             'assert(tostring(policy) == "FocusPolicy")\n'
             'assert(policy.focus_mode == "sloppy" and policy.focus_new_windows == "smart")\n'
             "assert(not policy.raise_on_click and policy.auto_raise)\n"
@@ -2570,11 +2600,23 @@ def main() -> int:
             "assert(policy.revision == 42)\n"
             'assert(not pcall(function() policy.focus_mode = "click" end))\n'
             'assert(not pcall(function() rawset(policy, "focus_mode", "click") end))\n'
-            "assert(not pcall(function() policy() end))\n",
+            "assert(not pcall(function() gnoblin.focus.policy(true) end))\n",
             encoding="utf-8",
         )
         focus_policy = run(binary, "--socket", socket_path, "lua", str(focus_policy_file))
         assert focus_policy.returncode == 0, focus_policy.stderr
+        config_reads_file = Path(temporary) / "config-reads.lua"
+        config_reads_file.write_text(
+            'assert(type(gnoblin.config.path()) == "string")\n'
+            'assert(gnoblin.config.path():match("init%.lua$") or gnoblin.config.path():match("gnoblin%.toml$") or gnoblin.config.path():match("gnoblin%.conf$"))\n'
+            'assert(gnoblin.config.default():find("gnoblin.load", 1, true))\n'
+            "assert(not pcall(function() gnoblin.config.path(true) end))\n"
+            "assert(not pcall(function() gnoblin.config.default(true) end))\n"
+            "assert(not pcall(function() gnoblin.config.restore_default(true) end))\n",
+            encoding="utf-8",
+        )
+        config_reads = run(binary, "--socket", socket_path, "lua", str(config_reads_file))
+        assert config_reads.returncode == 0, config_reads.stderr
         settings_file = Path(temporary) / "settings-property.lua"
         settings_file.write_text(
             "local settings = gnoblin.settings\n"
@@ -2890,7 +2932,14 @@ def main() -> int:
             "assert(not pcall(function() gnoblin.session.lock(true) end))\n"
             "local logout = gnoblin.session.logout()\n"
             "assert(logout.accepted and not pcall(function() logout.accepted = false end))\n"
-            "assert(not pcall(function() gnoblin.session.logout({}) end))\n",
+            "assert(not pcall(function() gnoblin.session.logout({}) end))\n"
+            "for _, action in ipairs({'suspend', 'hibernate', 'reboot', 'poweroff'}) do\n"
+            "  local operation = gnoblin.session[action]()\n"
+            "  assert(operation.accepted)\n"
+            "  assert(not pcall(function() gnoblin.session[action](true) end))\n"
+            "end\n"
+            "local restored = gnoblin.config.restore_default()\n"
+            "assert(restored.accepted)\n",
             encoding="utf-8",
         )
         session_operations_result = run(binary, "--socket", socket_path, "lua", str(session_operations_script))
@@ -3004,12 +3053,12 @@ def main() -> int:
         invalid_session_status_file.write_text("gnoblin.session.status()\n", encoding="utf-8")
         invalid_session_status_result = run(binary, "--socket", socket_path, "lua", str(invalid_session_status_file))
         assert invalid_session_status_result.returncode != 0
-        assert "invalid SessionStatus" in invalid_session_status_result.stderr
+        assert "invalid SessionStatus" in invalid_session_status_result.stderr, invalid_session_status_result.stderr
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 120
-        assert len(subscriptions) == 120
+        assert len(received) == 125
+        assert len(subscriptions) == 125
         assert received[-2]["method"] == "runtime.status"
         assert received[-2]["api_version"] == {"major": 1, "minor": 67}
         assert received[-1]["method"] == "session.status"
@@ -3141,16 +3190,16 @@ def main() -> int:
         assert received[67]["method"] == "layer.animation_policy"
         assert received[67]["api_version"] == {"major": 1, "minor": 31}
         assert received[67]["arguments"] == {"namespace": "bingux-panel"}
-        assert received[105]["method"] == "input.orientation_lock"
-        assert received[105]["api_version"] == {"major": 1, "minor": 66}
-        assert received[105]["arguments"] == {}
-        assert received[106]["method"] == "input.set_orientation_lock"
-        assert received[106]["api_version"] == {"major": 1, "minor": 66}
-        assert received[106]["arguments"] == {"value": True}
-        assert received[107]["method"] == "input.orientation_lock"
-        assert received[108]["method"] == "input.set_orientation_lock"
-        assert received[108]["api_version"] == {"major": 1, "minor": 66}
-        assert received[108]["arguments"] == {"value": True}
+        assert received[110]["method"] == "input.orientation_lock"
+        assert received[110]["api_version"] == {"major": 1, "minor": 66}
+        assert received[110]["arguments"] == {}
+        assert received[111]["method"] == "input.set_orientation_lock"
+        assert received[111]["api_version"] == {"major": 1, "minor": 66}
+        assert received[111]["arguments"] == {"value": True}
+        assert received[112]["method"] == "input.orientation_lock"
+        assert received[113]["method"] == "input.set_orientation_lock"
+        assert received[113]["api_version"] == {"major": 1, "minor": 66}
+        assert received[113]["arguments"] == {"value": True}
         privacy_screen_requests = [
             request
             for request in received
@@ -3393,13 +3442,30 @@ def main() -> int:
         assert len(runtime_reload_calls) == 1
         assert runtime_reload_calls[0]["api_version"] == {"major": 1, "minor": 20}
         assert runtime_reload_calls[0]["arguments"] == {}
-        session_calls = [call for call in received if call["method"] in {"session.lock", "session.logout"}]
-        assert [call["method"] for call in session_calls] == ["session.lock", "session.logout"]
+        session_calls = [
+            call
+            for call in received
+            if call["method"].startswith("session.") and call["method"] not in {"session.activity", "session.status"}
+        ]
+        assert [call["method"] for call in session_calls] == [
+            "session.lock",
+            "session.logout",
+            "session.suspend",
+            "session.hibernate",
+            "session.reboot",
+            "session.poweroff",
+        ]
         assert [call["api_version"] for call in session_calls] == [
             {"major": 1, "minor": 21},
             {"major": 1, "minor": 32},
+            {"major": 1, "minor": 32},
+            {"major": 1, "minor": 32},
+            {"major": 1, "minor": 32},
+            {"major": 1, "minor": 32},
         ]
         assert all(call["arguments"] == {} for call in session_calls)
+        restore_calls = [call for call in received if call["method"] == "config.restore_default"]
+        assert len(restore_calls) == 1 and restore_calls[0]["arguments"] == {}
         grant_revoke_calls = [
             call for call in received if call["method"] == "grant.revoke" and call["arguments"].get("id") == "grant-cli"
         ]

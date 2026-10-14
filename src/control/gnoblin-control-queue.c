@@ -12,6 +12,7 @@ gboolean native_api_read_method(const char* method) {
            (g_str_equal(method, "window.list") || g_str_equal(method, "windows.list") ||
             g_str_equal(method, "version") || g_str_equal(method, "capabilities.list") ||
             g_str_equal(method, "focus.history") || g_str_equal(method, "settings") ||
+            g_str_equal(method, "config.path") || g_str_equal(method, "config.default") ||
             g_str_equal(method, "appearance.color_scheme") || g_str_equal(method, "focus.policy") ||
             g_str_equal(method, "session.activity") || g_str_equal(method, "session.status") ||
             g_str_equal(method, "runtime.status") ||

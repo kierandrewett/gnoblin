@@ -124,4 +124,17 @@ function gnoblin.array(values) end
 ---Merge settings into the active Lua configuration.
 ---@param settings table Settings table to merge into the active configuration.
 function gnoblin.configure(settings) end
+
+---Return the active configuration file path using GNOBLIN_CONFIG and XDG defaults.
+---@return string path
+function gnoblin.config.path() end
+
+---Return the bundled default Lua configuration source.
+---@return string source
+function gnoblin.config.default() end
+
+---Replace the standard config directory with bundled defaults, save the old directory as a backup,
+---and reload the restored configuration.
+---@return Operation<AcceptedResult>
+function gnoblin.config.restore_default() end
 */

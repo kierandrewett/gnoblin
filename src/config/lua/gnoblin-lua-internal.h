@@ -284,6 +284,7 @@ int lua_require(lua_State* state);
 void focus_history_reconcile_snapshot(LuaConfig* config, GVariant* snapshot);
 void focus_history_update_event(LuaConfig* config, const char* event, GVariant* payload);
 int lua_focus_history(lua_State* state);
+int lua_focus_policy(lua_State* state);
 int lua_windows_list(lua_State* state);
 int lua_windows_focused(lua_State* state);
 int lua_windows_by_id(lua_State* state);

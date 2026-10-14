@@ -62,11 +62,6 @@
 ---@field width integer Thumbnail width from 1 to 480 pixels.
 ---@field height integer Thumbnail height from 1 to 320 pixels.
 
----@class FocusHistoryFilter
----@field workspace_id? string Exact workspace ID.
----@field monitor_id? string Exact monitor ID.
----@field limit? integer Maximum records from 1 to 256. Default 50.
-
 ---@class FocusContext
 
 ---@class SnapContextFrame
@@ -112,12 +107,6 @@ function Window:match(window) end
 ---@field app_id string Application ID used for matching.
 ---@field gtk_app_id? string GTK application ID, when present.
 ---@field wm_class? string Window manager class, when present.
-
----Identity and window-rule fields for one window, the record that gnoblinctl window match prints.
----Return windows in most-recently-focused order, optionally filtered.
----@param filter? FocusHistoryFilter
----@return Window[]
-function gnoblin.focus.history(filter) end
 
 ---Close this window.
 ---@return Operation<Json>

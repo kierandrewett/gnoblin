@@ -344,6 +344,12 @@ char* handle_request(Client* client, const char* data, gsize length) {
         return encode_response(id, NULL, "session.status requires API version 1.29");
     if (g_str_equal(method, "session.logout") && client->api_minor < 32)
         return encode_response(id, NULL, "session.logout requires API version 1.32");
+    if (g_str_equal(method, "config.restore_default") && client->api_minor < 32)
+        return encode_response(id, NULL, "config.restore_default requires API version 1.32");
+    if ((g_str_equal(method, "session.suspend") || g_str_equal(method, "session.hibernate") ||
+         g_str_equal(method, "session.reboot") || g_str_equal(method, "session.poweroff")) &&
+        client->api_minor < 32)
+        return encode_response(id, NULL, "session power methods require API version 1.32");
     if (g_str_equal(method, "window.restore_or_minimize") && client->api_minor < 38)
         return encode_response(id, NULL, "window.restore_or_minimize requires API version 1.38");
     if (g_str_equal(method, "launches.snapshot") && client->api_minor < 39)

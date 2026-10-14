@@ -28,6 +28,11 @@ JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* m
         g_str_equal(method_name, "permissions.list") || g_str_equal(method_name, "privacy.state") ||
         g_str_equal(method_name, "permissions.check") || g_str_equal(method_name, "version") ||
         g_str_equal(method_name, "session.status") || g_str_equal(method_name, "session.logout") ||
+        g_str_equal(method_name, "session.suspend") ||
+        g_str_equal(method_name, "session.hibernate") ||
+        g_str_equal(method_name, "session.reboot") ||
+        g_str_equal(method_name, "session.poweroff") ||
+        g_str_equal(method_name, "config.restore_default") ||
         g_str_equal(method_name, "session.activity") || g_str_equal(method_name, "session.lock") ||
         g_str_equal(method_name, "privacy.stop_sharing") ||
         g_str_equal(method_name, "privacy.stop_recording") ||

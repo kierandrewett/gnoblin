@@ -2749,6 +2749,17 @@ int main(void) {
     g_assert_true(g_variant_lookup(focus_policy, "focus_new_windows", "&s", &focus_new_windows));
     g_assert_cmpstr(focus_new_windows, ==, "allow");
 
+    g_autoptr(GVariant) config_path =
+        gnoblin_config_read_api("config.path", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(config_path, G_VARIANT_TYPE_STRING));
+    g_assert_cmpstr(g_variant_get_string(config_path, NULL), !=, "");
+    g_autoptr(GVariant) config_default =
+        gnoblin_config_read_api("config.default", empty_read_arguments, &error);
+    g_assert_no_error(error);
+    g_assert_true(g_variant_is_of_type(config_default, G_VARIANT_TYPE_STRING));
+    g_assert_nonnull(strstr(g_variant_get_string(config_default, NULL), "gnoblin.load"));
+
     g_autoptr(GVariant) empty_workspaces = empty_array_snapshot("workspaces");
     g_autoptr(GVariant) empty_monitors = empty_array_snapshot("monitors");
     g_autoptr(GVariant) empty_layers = empty_array_snapshot("layers");

@@ -1,5 +1,22 @@
 #include "gnoblin-lua-internal.h"
 
+static int lua_config_path(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.config.path takes no arguments");
+    g_autofree char* path = gnoblin_config_path();
+    lua_pushstring(state, path);
+    return 1;
+}
+
+static int lua_config_default(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.config.default takes no arguments");
+    gsize length = 0;
+    const char* source = gnoblin_config_default_lua(&length);
+    lua_pushlstring(state, source, length);
+    return 1;
+}
+
 static void version_identity_clear(VersionIdentity* identity) {
     g_clear_pointer(&identity->gnoblin, g_free);
     g_clear_pointer(&identity->gnome, g_free);
@@ -111,8 +128,25 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushcfunction(state, lua_gnoblin_version);
     lua_setfield(state, -2, "version");
     lua_newtable(state);
+    int config_table = lua_absindex(state, -1);
+    lua_newtable(state);
+    int config_metatable = lua_absindex(state, -1);
+    lua_newtable(state);
+    int config_methods = lua_absindex(state, -1);
+    lua_pushcfunction(state, lua_config_path);
+    lua_setfield(state, config_methods, "path");
+    lua_pushcfunction(state, lua_config_default);
+    lua_setfield(state, config_methods, "default");
+    lua_pushlightuserdata(state, config);
+    lua_pushliteral(state, "config.restore_default");
+    lua_pushcclosure(state, lua_generic_api_action, 2);
+    lua_setfield(state, config_methods, "restore_default");
+    lua_setfield(state, config_metatable, "__index");
+    lua_setmetatable(state, config_table);
     lua_setfield(state, -2, "config");
     for (guint i = 0; api_methods[i]; i++) {
+        if (g_str_equal(api_methods[i], "config.restore_default"))
+            continue; /* Config methods live on config's metatable, not in saved settings. */
         if (g_str_has_prefix(api_methods[i], "workspace."))
             continue; /* Lua exposes workspace operations through workspaces.*. */
         if (g_str_equal(api_methods[i], "command.run") ||

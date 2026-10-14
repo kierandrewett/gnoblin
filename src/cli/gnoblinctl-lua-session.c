@@ -514,6 +514,22 @@ int lua_cli_session_operation(lua_State* state) {
     return 1;
 }
 
+int lua_cli_config_path(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.config.path takes no arguments");
+    g_autofree char* path = config_path();
+    lua_pushstring(state, path);
+    return 1;
+}
+
+int lua_cli_config_default(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.config.default takes no arguments");
+    g_autofree char* source = default_config(NULL);
+    lua_pushstring(state, source);
+    return 1;
+}
+
 static gboolean lua_cli_capability_valid(JsonObject* object) {
     const char* id = member_string(object, "id", NULL);
     const char* description = member_string(object, "description", NULL);
