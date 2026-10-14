@@ -18,6 +18,7 @@ static const char* const surface_fields[] = {"surface_id", NULL};
 static const char* const raise_fields[] = {"surface_id", NULL};
 static const char* const pose_fields[] = {"surface_id", "pose", NULL};
 static const char* const hit_fields[] = {"origin", "direction", NULL};
+static const char* const head_fields[] = {"pose", NULL};
 
 static gboolean spatial_string_field(lua_State* state, int table, const char* name,
                                      gboolean optional);
@@ -112,6 +113,7 @@ static const SpatialMethod spatial_methods[] = {
     {"raise", "vr.spatial.raise", raise_fields, FALSE},
     {"update_pose", "vr.spatial.update_pose", pose_fields, FALSE},
     {"hit", "vr.spatial.hit", hit_fields, FALSE},
+    {"head", "vr.spatial.head", head_fields, FALSE},
 };
 
 static gboolean spatial_string_field(lua_State* state, int table, const char* name,
@@ -158,7 +160,8 @@ static int spatial_method_call(lua_State* state) {
             !spatial_string_field(state, 1, "surface_id", FALSE))
             return luaL_error(state, "gnoblin.spatial.surface requires a valid surface_id");
         if ((g_str_equal(method->name, "place") || g_str_equal(method->name, "attach") ||
-             g_str_equal(method->name, "move") || g_str_equal(method->name, "update_pose")) &&
+             g_str_equal(method->name, "move") || g_str_equal(method->name, "update_pose") ||
+             g_str_equal(method->name, "head")) &&
             !spatial_pose(state, 1))
             return luaL_error(state,
                               "gnoblin.spatial.%s requires a finite pose with a "

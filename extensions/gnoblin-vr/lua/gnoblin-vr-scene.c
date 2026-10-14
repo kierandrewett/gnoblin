@@ -28,6 +28,8 @@ static GHashTable* anchors;  /* id -> Anchor */
 static GHashTable* surfaces; /* id -> Surface */
 static guint64 revision;
 static guint64 next_rank;
+/* Head pose in world space; anchors in the "view" space are relative to it. */
+static Pose head_pose = {{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
 
 static void anchor_free(gpointer data) {
     Anchor* anchor = data;
@@ -55,6 +57,7 @@ void gnoblin_vr_scene_reset(void) {
     g_clear_pointer(&surfaces, g_hash_table_unref);
     revision = 0;
     next_rank = 0;
+    head_pose = (Pose){{0.0, 0.0, 0.0}, {0.0, 0.0, 0.0, 1.0}};
 }
 
 static gboolean number_of(GVariant* dict, const char* key, double* out) {
@@ -250,7 +253,7 @@ static gboolean vector3_of(GVariant* arguments, const char* key, double* out, GE
 /* Casts a ray against every surface that is visible in world space. A surface is a flat
  * rectangle facing local +Z, centred on its pose, with width along X and height along Y.
  * The nearest hit wins; coplanar overlaps fall back to stacking rank. Surfaces under a
- * head-locked ("view") anchor are skipped because the store does not know the head pose. */
+ * head-locked ("view") anchor follow the head pose last set with vr.spatial.head. */
 static GVariant* hit_test(GVariant* arguments, GError** error) {
     double origin[3], direction[3];
     if (!vector3_of(arguments, "origin", origin, error) ||
@@ -274,9 +277,12 @@ static GVariant* hit_test(GVariant* arguments, GError** error) {
     while (g_hash_table_iter_next(&iter, NULL, &value)) {
         const Surface* surface = value;
         const Anchor* anchor = g_hash_table_lookup(anchors, surface->anchor_id);
-        if (!anchor || g_str_equal(anchor->space_id, "view"))
+        if (!anchor)
             continue;
-        Pose world = world_pose(&anchor->pose, &surface->pose);
+        Pose anchor_world = g_str_equal(anchor->space_id, "view")
+                                ? world_pose(&head_pose, &anchor->pose)
+                                : anchor->pose;
+        Pose world = world_pose(&anchor_world, &surface->pose);
         double conjugate[4] = {-world.rotation[0], -world.rotation[1], -world.rotation[2],
                                world.rotation[3]};
         double relative[3] = {origin[0] - world.position[0], origin[1] - world.position[1],
@@ -332,9 +338,18 @@ GVariant* gnoblin_vr_scene_call(const char* method, GVariant* arguments, GError*
             g_variant_builder_add_value(&surface_list, surface_variant(value));
         g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
         g_variant_builder_add(&result, "{sv}", "revision", g_variant_new_uint64(revision));
+        g_variant_builder_add(&result, "{sv}", "head", pose_variant(&head_pose));
         g_variant_builder_add(&result, "{sv}", "anchors", g_variant_builder_end(&anchor_list));
         g_variant_builder_add(&result, "{sv}", "surfaces", g_variant_builder_end(&surface_list));
         return g_variant_ref_sink(g_variant_builder_end(&result));
+    }
+    if (g_str_equal(method, "vr.spatial.head")) {
+        Pose pose;
+        if (!pose_of(arguments, &pose, error))
+            return NULL;
+        head_pose = pose;
+        revision++;
+        return accepted();
     }
     if (g_str_equal(method, "vr.spatial.anchor")) {
         const char* id = id_of(arguments, "id", error);
