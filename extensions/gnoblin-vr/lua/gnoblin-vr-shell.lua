@@ -174,6 +174,24 @@ function Shell:resize(grab, size)
     })
 end
 
+--- Where a controller's visible ray ends. Returns {origin, end_point, hit, surface_id, u, v, distance}:
+--- end_point is the hit point when the ray meets a surface, otherwise max_length metres out
+--- (default 5). The client draws the line and puts the cursor billboard at end_point.
+function Shell:ray_segment(ray, max_length)
+    max_length = max_length or 5
+    local result = { origin = ray.origin, hit = false, distance = max_length }
+    settle(gnoblin.spatial.hit({ origin = ray.origin, direction = ray.direction }), function(hit)
+        if hit and hit.hit and hit.distance <= max_length then
+            result.hit = true
+            result.surface_id = hit.surface_id
+            result.u, result.v = hit.u, hit.v
+            result.distance = hit.distance
+        end
+    end)
+    result.end_point = M.point_on_ray(ray, result.distance)
+    return result
+end
+
 function Shell:release(grab)
     return nil
 end
