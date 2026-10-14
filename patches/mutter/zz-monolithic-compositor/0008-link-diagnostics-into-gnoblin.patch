@@ -81,7 +81,7 @@ diff --git a/src/core/mutter.c b/src/core/mutter.c
 diff --git a/src/compositor/plugins/meson.build b/src/compositor/plugins/meson.build
 --- a/src/compositor/plugins/meson.build
 +++ b/src/compositor/plugins/meson.build
-@@ -18,37 +18,3 @@
+@@ -18,38 +18,3 @@
    install: true,
  )
  
@@ -100,6 +100,7 @@ diff --git a/src/compositor/plugins/meson.build b/src/compositor/plugins/meson.b
 -  'gnoblin-plugin-ui.cpp',
 -  'gnoblin-recovery-panel.cpp',
 -  'gnoblin-console-panel.cpp',
+-  'gnoblin-debug-panel.cpp',
 -  'gnoblin-imgui-overlay.cpp',
 -)
 -gnoblin_imgui_includes = include_directories(
