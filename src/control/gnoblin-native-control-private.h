@@ -460,6 +460,7 @@ void refresh_cursor_tracker_signal_watches(GnoblinNativeControl* control);
 void refresh_all_window_signal_watches(GnoblinNativeControl* control);
 void native_refresh_all_mutter_signal_watches(GnoblinNativeControl* control);
 void track_window(GnoblinNativeControl* control, MetaWindow* window);
+void gnoblin_control_watch_vr_status(GnoblinNativeControl* control);
 void window_created(MetaDisplay* display, MetaWindow* window, gpointer user_data);
 void display_notified(GObject* display, GParamSpec* property, gpointer user_data);
 void display_restacked(MetaDisplay* display, gpointer user_data);

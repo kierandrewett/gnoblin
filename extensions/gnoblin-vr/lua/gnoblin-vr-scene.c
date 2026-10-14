@@ -387,3 +387,47 @@ GVariant* gnoblin_vr_scene_call(const char* method, GVariant* arguments, GError*
     g_set_error(error, G_IO_ERROR, G_IO_ERROR_NOT_SUPPORTED, "unknown spatial method '%s'", method);
     return NULL;
 }
+
+GVariant* gnoblin_vr_output_record(void) {
+    g_autofree char* path =
+        g_build_filename(g_get_user_runtime_dir(), "gnoblin-vr", "status.ini", NULL);
+    g_autoptr(GKeyFile) file = g_key_file_new();
+    if (!g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, NULL))
+        return NULL;
+    g_autofree char* state = g_key_file_get_string(file, "vr", "state", NULL);
+    g_autofree char* diagnostic = g_key_file_get_string(file, "vr", "diagnostic", NULL);
+    gint views = g_key_file_get_integer(file, "vr", "view_count", NULL);
+    if (!state || !*state)
+        return NULL;
+    views = CLAMP(views, 0, 8);
+
+    GVariantBuilder view_list;
+    g_variant_builder_init(&view_list, G_VARIANT_TYPE("aa{sv}"));
+    for (gint i = 0; i < views; i++) {
+        g_autofree char* width_key = g_strdup_printf("view_%d_width", i);
+        g_autofree char* height_key = g_strdup_printf("view_%d_height", i);
+        GVariantBuilder view;
+        g_variant_builder_init(&view, G_VARIANT_TYPE_VARDICT);
+        g_variant_builder_add(
+            &view, "{sv}", "width",
+            g_variant_new_int32(g_key_file_get_integer(file, "vr", width_key, NULL)));
+        g_variant_builder_add(
+            &view, "{sv}", "height",
+            g_variant_new_int32(g_key_file_get_integer(file, "vr", height_key, NULL)));
+        g_variant_builder_add_value(&view_list, g_variant_builder_end(&view));
+    }
+
+    GVariantBuilder record;
+    g_variant_builder_init(&record, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&record, "{sv}", "id", g_variant_new_string("xr:0"));
+    g_variant_builder_add(&record, "{sv}", "kind", g_variant_new_string("xr"));
+    g_variant_builder_add(&record, "{sv}", "name", g_variant_new_string("OpenXR headset"));
+    g_variant_builder_add(&record, "{sv}", "enabled",
+                          g_variant_new_boolean(g_str_equal(state, "running")));
+    g_variant_builder_add(&record, "{sv}", "primary", g_variant_new_boolean(FALSE));
+    g_variant_builder_add(&record, "{sv}", "state", g_variant_new_string(state));
+    if (diagnostic && *diagnostic)
+        g_variant_builder_add(&record, "{sv}", "diagnostic", g_variant_new_string(diagnostic));
+    g_variant_builder_add(&record, "{sv}", "views", g_variant_builder_end(&view_list));
+    return g_variant_ref_sink(g_variant_builder_end(&record));
+}

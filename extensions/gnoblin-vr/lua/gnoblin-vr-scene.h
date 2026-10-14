@@ -11,5 +11,10 @@
  * snapshot. */
 GVariant* gnoblin_vr_scene_call(const char* method, GVariant* arguments, GError** error);
 
+/* The headset as an outputs record (kind "xr"), read from the status file that gnoblin-vr
+ * writes at $XDG_RUNTIME_DIR/gnoblin-vr/status.ini. Returns a full-ref a{sv}, or NULL when the
+ * extension has never reported. The record has per-eye "views" and no logical rectangle. */
+GVariant* gnoblin_vr_output_record(void);
+
 /* Drops every anchor and surface and restarts revisions; used on session end and tests. */
 void gnoblin_vr_scene_reset(void);

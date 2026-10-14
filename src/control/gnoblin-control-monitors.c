@@ -11,6 +11,9 @@
 #include <GL/gl.h>
 #include <string.h>
 
+/* Provided by the optional VR extension when it is built in; absent otherwise. */
+extern GVariant* gnoblin_vr_output_record(void) __attribute__((weak));
+
 char* monitor_snapshot(GnoblinNativeControl* control) {
     g_autoptr(GError) error = NULL;
     g_autoptr(JsonNode) json = gnoblin_control_monitor_snapshot_json(control, FALSE, &error);
@@ -705,6 +708,11 @@ GVariant* gnoblin_control_output_list(MetaDisplay* display, GError** error) {
             }
             g_variant_builder_add_value(&outputs, g_variant_builder_end(&record));
         }
+    }
+    if (gnoblin_vr_output_record) {
+        g_autoptr(GVariant) headset = gnoblin_vr_output_record();
+        if (headset)
+            g_variant_builder_add_value(&outputs, headset);
     }
     GVariantBuilder result;
     g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);

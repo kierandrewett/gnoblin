@@ -1,4 +1,5 @@
 #include "gnoblin-native-control-private.h"
+#include <glib/gstdio.h>
 #include "core/stack.h"
 
 static void add_window_signal_identity(GVariantBuilder* payload, MetaWindow* window);
@@ -562,6 +563,28 @@ static void window_unmanaged(MetaWindow* window, gpointer user_data) {
     g_hash_table_remove(control->snap_restore_frames, window);
     g_hash_table_remove(control->windows, window);
     schedule_windows(control);
+}
+
+static void vr_status_changed(GFileMonitor* monitor, GFile* file, GFile* other,
+                              GFileMonitorEvent event, gpointer user_data) {
+    if (event == G_FILE_MONITOR_EVENT_CHANGES_DONE_HINT || event == G_FILE_MONITOR_EVENT_CREATED ||
+        event == G_FILE_MONITOR_EVENT_DELETED)
+        schedule_windows(user_data);
+}
+
+/* The VR extension reports the headset through a status file that the output listing reads.
+ * Republish the snapshots when it changes so gnoblin.outputs.list() follows the headset. */
+void gnoblin_control_watch_vr_status(GnoblinNativeControl* control) {
+    static GFileMonitor* monitor;
+    if (monitor)
+        return;
+    g_autofree char* directory = g_build_filename(g_get_user_runtime_dir(), "gnoblin-vr", NULL);
+    g_mkdir_with_parents(directory, 0700);
+    g_autofree char* path = g_build_filename(directory, "status.ini", NULL);
+    g_autoptr(GFile) file = g_file_new_for_path(path);
+    monitor = g_file_monitor_file(file, G_FILE_MONITOR_NONE, NULL, NULL);
+    if (monitor)
+        g_signal_connect(monitor, "changed", G_CALLBACK(vr_status_changed), control);
 }
 
 void track_window(GnoblinNativeControl* control, MetaWindow* window) {

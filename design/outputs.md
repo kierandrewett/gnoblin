@@ -25,8 +25,11 @@ Software Rasterizer report `accelerated = false`.
 
 `display` describes a physical display connected through Mutter's monitor
 manager. `virtual` is reserved for a future software-created output. `xr` is
-reserved for a headset output with per-eye views and no logical desktop
-rectangle. Only `display` is implemented today. Renderer identity comes from the compositor GL context and is cached once; outputs currently share the compositor renderer record.
+a headset output with per-eye views and no logical desktop rectangle. The optional
+VR extension supplies it: the compositor reads the status file that `gnoblin-vr` writes and
+adds one `xr:0` record while the file exists. Mutter has no registration interface for an
+external output driver, so the record is read-only and carries `state`, `diagnostic` and
+`views` instead of a mode. `display` is the only kind backed by Mutter's monitor manager. Renderer identity comes from the compositor GL context and is cached once; outputs currently share the compositor renderer record.
 
 ## Display configuration
 

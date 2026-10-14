@@ -375,6 +375,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     if (!initial_outputs)
         g_warning("gnoblin-native-control: cannot seed output snapshot: %s",
                   monitor_error ? monitor_error->message : "output listing unavailable");
+    gnoblin_control_watch_vr_status(control);
     g_signal_connect(control->display, "show-osd", G_CALLBACK(native_show_osd_requested), control);
     g_signal_connect(control->display, "show-pad-osd", G_CALLBACK(native_show_pad_osd_requested),
                      control);

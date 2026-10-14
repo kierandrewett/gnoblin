@@ -8,12 +8,12 @@ same snapshot from the command line, with `--json` for machine-readable output.
 
 ## Read outputs
 
-| Method                          | Arguments           | Result                        |
-| ------------------------------- | ------------------- | ----------------------------- |
-| `gnoblin.outputs.list()`        | None                | All current `Output` records  |
-| `gnoblin.outputs.primary()`     | None                | Primary record or `nil`       |
-| `gnoblin.outputs.by_id(id)`     | String connector ID | Matching record or `nil`      |
-| `gnoblin.outputs.renderer()`    | None                | `Renderer` record or `nil`    |
+| Method                       | Arguments           | Result                       |
+| ---------------------------- | ------------------- | ---------------------------- |
+| `gnoblin.outputs.list()`     | None                | All current `Output` records |
+| `gnoblin.outputs.primary()`  | None                | Primary record or `nil`      |
+| `gnoblin.outputs.by_id(id)`  | String connector ID | Matching record or `nil`     |
+| `gnoblin.outputs.renderer()` | None                | `Renderer` record or `nil`   |
 
 ```lua
 local renderer = gnoblin.outputs.renderer()
@@ -33,35 +33,50 @@ changes, so event handlers read current state instead of caching records.
 
 ## Output records
 
-| Field        | Type              | Meaning                                                                  |
-| ------------ | ----------------- | ------------------------------------------------------------------------ |
-| `id`         | String            | Connector name, such as `"DP-1"`. Stable per output.                     |
-| `kind`       | String enum       | `"display"` today. `"virtual"` and `"xr"` are reserved.                 |
-| `name`       | String or `nil`   | Display name, when the hardware provides one.                            |
-| `make`       | String or `nil`   | Manufacturer string, when available.                                     |
-| `model`      | String or `nil`   | Model string, when available.                                            |
-| `serial`     | String or `nil`   | Serial string, when available.                                           |
-| `enabled`    | Boolean           | Whether the output is active in the current layout.                      |
-| `primary`    | Boolean           | Whether this is the primary output.                                      |
-| `monitor_id` | String or `nil`   | Matching logical monitor ID from `gnoblin.monitors`.                     |
-| `mode`       | Record            | `width` and `height` in physical pixels; `refresh_rate` in Hz.           |
-| `scale`      | Number            | Compositing scale of the logical monitor.                                |
-| `transform`  | String            | Current transformation, such as `"normal"` or `"90"`.                   |
-| `x`, `y`     | Number or `nil`   | Logical position; present for display outputs.                           |
-| `renderer`   | Record            | `Renderer` record for the GPU path that renders this output.             |
-| `revision`   | Integer           | Snapshot revision of this record.                                        |
+| Field        | Type            | Meaning                                                        |
+| ------------ | --------------- | -------------------------------------------------------------- |
+| `id`         | String          | Connector name, such as `"DP-1"`. Stable per output.           |
+| `kind`       | String enum     | `"display"` or `"xr"`. `"virtual"` is reserved.                |
+| `name`       | String or `nil` | Display name, when the hardware provides one.                  |
+| `make`       | String or `nil` | Manufacturer string, when available.                           |
+| `model`      | String or `nil` | Model string, when available.                                  |
+| `serial`     | String or `nil` | Serial string, when available.                                 |
+| `enabled`    | Boolean         | Whether the output is active in the current layout.            |
+| `primary`    | Boolean         | Whether this is the primary output.                            |
+| `monitor_id` | String or `nil` | Matching logical monitor ID from `gnoblin.monitors`.           |
+| `mode`       | Record          | `width` and `height` in physical pixels; `refresh_rate` in Hz. |
+| `scale`      | Number          | Compositing scale of the logical monitor.                      |
+| `transform`  | String          | Current transformation, such as `"normal"` or `"90"`.          |
+| `x`, `y`     | Number or `nil` | Logical position; present for display outputs.                 |
+| `renderer`   | Record          | `Renderer` record for the GPU path that renders this output.   |
+| `revision`   | Integer         | Snapshot revision of this record.                              |
 
 An output is not guaranteed to occupy a rectangle in the logical layout.
-Reserved `virtual` and `xr` kinds omit the logical position and rectangle shape.
+The reserved `virtual` kind omits the logical position and rectangle shape.
+
+## Headset output
+
+With the optional VR extension installed, `gnoblin.outputs.list()` and
+`gnoblinctl output list` include one record with `kind = "xr"` and `id = "xr:0"`. It has no
+`mode`, position or renderer. Instead it carries:
+
+| Field        | Type            | Meaning                                                              |
+| ------------ | --------------- | -------------------------------------------------------------------- |
+| `state`      | String          | `"running"`, `"stopped"` or `"absent"`, as reported by `gnoblin-vr`. |
+| `diagnostic` | String or `nil` | Why the headset is in that state.                                    |
+| `views`      | List of records | One `width` and `height` in pixels for each eye.                     |
+
+`enabled` is true only while `state` is `"running"`. The record appears once `gnoblin-vr` has run
+at least once in this login, and the Lua snapshot updates when its state changes.
 
 ## Renderer records
 
-| Field         | Type             | Meaning                                       |
-| ------------- | ---------------- | --------------------------------------------- |
-| `name`        | String           | GL renderer string, such as `"llvmpipe"`.     |
-| `vendor`      | String or `nil`  | GL vendor string, when available.             |
-| `api`         | String           | GL API in use, such as `"gles2"`.             |
-| `accelerated` | Boolean          | `false` for software rasterizers.             |
+| Field         | Type            | Meaning                                   |
+| ------------- | --------------- | ----------------------------------------- |
+| `name`        | String          | GL renderer string, such as `"llvmpipe"`. |
+| `vendor`      | String or `nil` | GL vendor string, when available.         |
+| `api`         | String          | GL API in use, such as `"gles2"`.         |
+| `accelerated` | Boolean         | `false` for software rasterizers.         |
 
 Gnoblin reports `accelerated = false` for the software rasterizers llvmpipe,
 softpipe, swrast, and Software Rasterizer, and when Mutter reports software
