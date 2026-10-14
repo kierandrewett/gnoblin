@@ -37,6 +37,14 @@ connector as their ID.
 
 `gnoblinctl monitor list` reads the API 1.37 `monitors.list` snapshot. Its JSON
 output keeps the `monitors` object, and each record includes its state revision.
+In a terminal, it shows connector, index, display name, resolution, position,
+scale, primary state, and enabled state:
+
+```text
+ID         INDEX  NAME               RESOLUTION  POSITION  SCALE  PRIMARY  ENABLED
+---------  -----  -----------------  ----------  --------  -----  -------  -------
+Virtual-1  0      Red Hat, Inc. 14`"  1920x1080   0+0       1.0    yes      yes
+```
 
 The standalone compositor supports workspace list, create, rename, remove,
 switch, next, previous, and window moves by ID or number. The list includes
@@ -85,8 +93,15 @@ compositor. External-client shortcuts and disabled declarations are not
 included.
 
 Each record includes its name, binding, enabled state, trigger, revision, and
-either a command or built-in action. Multiple accelerators appear as a JSON
+either a command or built-in action. The terminal table includes the name,
+binding, trigger, and enabled state; multiple accelerators appear as a JSON
 array. The command reads the shared Lua snapshot through API 1.40.
+
+```text
+NAME      BINDING       TRIGGER  ENABLED
+--------  ------------  -------  -------
+terminal  <Super>e      press    yes
+```
 
 Use `--json` for structured output in a terminal or pipe:
 

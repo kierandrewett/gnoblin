@@ -72,9 +72,10 @@ Use a capability from `permissions list` and a source from `input list`.
 See [permission policy](/guides/permissions) and [launch feedback](/shell-api/launch-feedback).
 Launch feedback does not start an application.
 
-Run `gnoblinctl privacy` to see one status per source. Each status is active,
-inactive or unavailable. Unavailable sources have no activity value. Camera
-activity follows running PipeWire nodes marked with the `Camera` media role.
+Run `gnoblinctl privacy` to see activity and availability for each source.
+Boolean values print as `yes` or `no`; unavailable sources have no activity
+value. Camera activity follows running PipeWire nodes marked with the `Camera`
+media role.
 
 Location activity follows GeoClue's service state and `InUse` property. If it
 is unavailable, check GeoClue's `[agent]` whitelist.
@@ -105,6 +106,20 @@ record.
 
 Human-readable output prints each full grant ID on its own line, even when it
 exceeds the terminal width. Use `--json` for machine-readable output.
+
+Lists use the headed table style in a terminal. `gnoblinctl capabilities`
+prints each capability's ID, availability, and description in aligned columns.
+
+`gnoblinctl config show` prints one dotted key per line in alphabetical order.
+For example, `compositor.audible_bell` appears before `input_sources.per_window`.
+
+On a terminal, `gnoblinctl status` prints the session state as labeled fields:
+
+```text
+STATE           running
+LOCK STATE      unlocked
+LOCK AVAILABLE  yes
+```
 
 See the [shortcuts guide](/guides/shortcuts#key-names) for configuration
 examples.

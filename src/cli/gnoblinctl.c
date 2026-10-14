@@ -132,7 +132,7 @@ int main(int argc, char** argv) {
     result = dispatch(&cli, &error);
     if (!result)
         goto failure;
-    render(result, cli.format,
+    render(cli.command, cli.action, result, cli.format,
            g_str_equal(cli.command, "config") && g_strcmp0(cli.action, "default") == 0);
     return 0;
 

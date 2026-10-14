@@ -178,6 +178,10 @@ add_executable(gnoblinctl
     src/cli/gnoblinctl-lua-shortcuts.c
     src/cli/gnoblinctl-lua-windows.c
     src/cli/gnoblinctl-output.c
+    src/cli/gnoblinctl-render.c
+    src/cli/gnoblinctl-render-settings.c
+    src/cli/gnoblinctl-render-spatial.c
+    src/cli/gnoblinctl-render-state.c
     src/cli/gnoblinctl.c)
 target_include_directories(gnoblinctl PRIVATE src/cli)
 target_link_libraries(gnoblinctl PRIVATE

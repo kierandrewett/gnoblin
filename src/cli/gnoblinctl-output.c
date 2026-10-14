@@ -159,7 +159,7 @@ int run_lua_console(Cli* cli, const char* file) {
     return exit_status;
 }
 
-static char* node_text(JsonNode* node) {
+char* node_text(JsonNode* node) {
     if (!node)
         return g_strdup("-");
     if (JSON_NODE_HOLDS_NULL(node))
@@ -188,7 +188,7 @@ static char* node_text(JsonNode* node) {
     return json_to_string(node, FALSE);
 }
 
-static char* human_label(const char* name) {
+char* human_label(const char* name) {
     GString* label = g_string_new(NULL);
     for (const char* p = name; *p; p++) {
         if (*p == '_')
@@ -204,6 +204,8 @@ static char* human_label(const char* name) {
 }
 
 static char* table_header(const char* name) {
+    if (g_str_equal(name, "app"))
+        return g_strdup("APP ID");
     if (g_str_equal(name, "appId") || g_str_equal(name, "app_id"))
         return g_strdup("APP ID");
     if (g_str_equal(name, "gtk_app_id"))
@@ -221,6 +223,8 @@ static char* table_header(const char* name) {
 }
 
 static void print_cell(const char* value, guint width) {
+    if (!value || !*value)
+        value = "-";
     glong length = g_utf8_strlen(value, -1);
     if (length > width) {
         guint keep = width > 3 ? width - 3 : 0;
@@ -233,7 +237,7 @@ static void print_cell(const char* value, guint width) {
     }
 }
 
-static void print_table(JsonArray* array) {
+void print_table(JsonArray* array) {
     guint rows = json_array_get_length(array);
     if (rows == 0) {
         g_print("No items.\n");
@@ -401,7 +405,8 @@ static gboolean print_privacy_state(JsonObject* object) {
     return TRUE;
 }
 
-void render(JsonNode* result, const char* format, gboolean raw_string) {
+void render(const char* command, const char* action, JsonNode* result, const char* format,
+            gboolean raw_string) {
     if (raw_string && JSON_NODE_HOLDS_VALUE(result)) {
         g_print("%s", json_node_get_string(result));
         return;
@@ -412,6 +417,8 @@ void render(JsonNode* result, const char* format, gboolean raw_string) {
         g_print("%s\n", encoded);
         return;
     }
+    if (render_command(command, action, result))
+        return;
     if (JSON_NODE_HOLDS_VALUE(result)) {
         g_autofree char* value = node_text(result);
         g_print("%s\n", value);

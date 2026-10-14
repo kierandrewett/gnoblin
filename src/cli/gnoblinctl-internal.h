@@ -302,7 +302,20 @@ void register_lua_cli_workspace_record(lua_State* state);
 void register_lua_cli_monitor_record(lua_State* state);
 void print_lua_error(lua_State* state, const char* prefix);
 int run_lua_console(Cli* cli, const char* file);
-void render(JsonNode* result, const char* format, gboolean raw_string);
+void render(const char* command, const char* action, JsonNode* result, const char* format,
+            gboolean raw_string);
+/* Terminal rendering helpers shared by the command renderers. */
+char* node_text(JsonNode* node);
+char* human_label(const char* name);
+void print_table(JsonArray* array);
+void print_key_values(JsonObject* object, const char* const* keys, const char* const* labels,
+                      guint count);
+void print_key_value(JsonObject* object, const char* key, const char* label);
+/* Print a command result for a terminal. Returns FALSE to use the generic renderer. */
+gboolean render_command(const char* command, const char* action, JsonNode* result);
+gboolean render_spatial(const char* command, const char* action, JsonNode* result);
+gboolean render_state(const char* command, const char* action, JsonNode* result);
+gboolean render_settings(const char* command, const char* action, JsonNode* result);
 void print_help(const char* command, const char* action);
 void print_completion(const char* shell);
 
