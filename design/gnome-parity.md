@@ -10,11 +10,11 @@ Gnoblin is the compositor and session integration layer. Bingux owns shell prese
 
 ### Unresponsive apps
 
-- **Current Gnoblin + Bingux state and gap:** Mutter tracks whether an application responds to ping, but there is no Shell-style “not responding” prompt with wait/force quit.
+- **Current Gnoblin + Bingux state and gap:** Covered. Gnoblin pings clients (`window_management.check_alive_timeout`), reports `unresponsive` on window records with a `gnoblin.window.changed` event, and offers `window.kill` (`gnoblinctl window kill`, `Window:kill()`). Bingux shows a Not Responding dialog with Wait and Force Quit. Remaining parity: GNOME also dims and groups the frozen window and offers the choice when the user clicks its close button, which Bingux does not.
 - **Owner:** Bingux UI; Gnoblin detection and safe action
-- **User impact:** A hung app looks like a frozen desktop and users have no discoverable recovery action.
-- **First useful slice:** M
-- **Mutter hook or protocol:** Mutter `MetaWindow` `ping`/`ping-timeout` and `delete`/kill APIs; surface a typed event and an authorized force-quit operation over the compositor bridge. No Wayland protocol reports this to arbitrary clients.
+- **User impact:** A hung app can be ended from the desktop without a terminal.
+- **First useful slice:** Done; S for the dimmed window and close-button prompt.
+- **Mutter hook or protocol:** Mutter `MetaWindow` `is-alive` and `meta_window_kill`. No Wayland protocol reports this to arbitrary clients.
 
 ### Alt+Tab and app switcher
 
