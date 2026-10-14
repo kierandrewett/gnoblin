@@ -316,6 +316,7 @@ static void meta_gnoblin_plugin_dispose(GObject* object) {
     MetaGnoblinPlugin* self = META_GNOBLIN_PLUGIN(object);
     MetaDisplay* display = meta_plugin_get_display(META_PLUGIN(self));
     gnoblin_native_control_set_console_toggle_handler(display, NULL, NULL);
+    gnoblin_native_control_set_debug_handler(display, NULL, NULL);
 
     gnoblin_plugin_input_detach(G_OBJECT(display), &self->input);
     if (self->wayland_compositor && self->session_lock_callback_id != 0) {

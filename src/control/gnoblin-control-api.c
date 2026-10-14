@@ -203,6 +203,13 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         control->console_toggle_handler = console_bridge->handler;
         control->console_toggle_handler_data = console_bridge->user_data;
     }
+    /* The compositor plugin registers its debug overlay before this object exists. */
+    NativeDebugBridge* debug_bridge =
+        g_object_get_data(G_OBJECT(control->display), NATIVE_DEBUG_BRIDGE_DATA_KEY);
+    if (debug_bridge) {
+        control->debug_handler = debug_bridge->handler;
+        control->debug_handler_data = debug_bridge->user_data;
+    }
     MetaBackend* backend = meta_context_get_backend(context);
     control->backend = backend;
     control->orientation_manager = meta_backend_get_orientation_manager(backend);

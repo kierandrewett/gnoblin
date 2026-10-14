@@ -2,6 +2,15 @@
 
 static void push_snap_context(lua_State* state, GVariant* value);
 
+typedef struct {
+    char* key;
+    GVariant* child;
+} SortedEntry;
+
+static gint entry_compare(gconstpointer a, gconstpointer b) {
+    return strcmp(((const SortedEntry*)a)->key, ((const SortedEntry*)b)->key);
+}
+
 GVariant* variant_from_lua(lua_State* state, int index, int depth, gboolean force_array,
                            int keybinding_depth, GError** error) {
     int type = lua_type(state, index);
@@ -100,8 +109,11 @@ GVariant* variant_from_lua(lua_State* state, int index, int depth, gboolean forc
         }
         return g_variant_builder_end(&out);
     }
-    GVariantBuilder out;
-    g_variant_builder_init(&out, G_VARIANT_TYPE_VARDICT);
+    /* Lua visits table keys in hash order, which changes when a table is rebuilt. Emit entries
+     * sorted by key so equal documents serialise equally and compare equal. */
+    typedef SortedEntry Entry;
+    g_autoptr(GArray) entries = g_array_new(FALSE, FALSE, sizeof(Entry));
+    gboolean failed = FALSE;
     lua_pushnil(state);
     while (lua_next(state, index)) {
         const char* key = lua_tostring(state, -2);
@@ -109,15 +121,30 @@ GVariant* variant_from_lua(lua_State* state, int index, int depth, gboolean forc
         int child_keybinding_depth = !strcmp(key, "keybindings") ? 1
                                      : keybinding_depth == 1     ? 2
                                                                  : 0;
-        g_autoptr(GVariant) child =
+        GVariant* child =
             variant_from_lua(state, -1, depth + 1, child_array, child_keybinding_depth, error);
         if (!child) {
-            lua_pop(state, 1);
-            g_variant_builder_clear(&out);
-            return NULL;
+            lua_pop(state, 2);
+            failed = TRUE;
+            break;
         }
-        g_variant_builder_add(&out, "{sv}", key, g_variant_ref(child));
+        Entry entry = {g_strdup(key), g_variant_ref_sink(child)};
+        g_array_append_val(entries, entry);
         lua_pop(state, 1);
+    }
+    g_array_sort(entries, entry_compare);
+    GVariantBuilder out;
+    g_variant_builder_init(&out, G_VARIANT_TYPE_VARDICT);
+    for (guint i = 0; i < entries->len; i++) {
+        Entry* entry = &g_array_index(entries, Entry, i);
+        if (!failed)
+            g_variant_builder_add(&out, "{sv}", entry->key, entry->child);
+        g_free(entry->key);
+        g_variant_unref(entry->child);
+    }
+    if (failed) {
+        g_variant_builder_clear(&out);
+        return NULL;
     }
     return g_variant_builder_end(&out);
 }

@@ -53,6 +53,13 @@ function gnoblin.spatial.move(args) end
 ---@return Operation<GnoblinVRSpatialSurface>
 function gnoblin.spatial.raise(args) end
 
+---Cast a ray into the scene and report the nearest surface it crosses.
+---Surfaces under a head-locked anchor are skipped. `u` and `v` run from 0 to 1 across the surface,
+---left to right and top to bottom.
+---@param args {origin:{x:number, y:number, z:number}, direction:{x:number, y:number, z:number}}
+---@return Operation<{hit:boolean, surface_id?:string, u?:number, v?:number, distance?:number}>
+function gnoblin.spatial.hit(args) end
+
 ---Update a placed surface pose.
 ---@param args {surface_id:string, pose:GnoblinVRPose}
 ---@return Operation<GnoblinVRSpatialSurface>
