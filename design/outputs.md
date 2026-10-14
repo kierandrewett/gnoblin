@@ -6,9 +6,17 @@ desktop's logical layout.
 
 The current read API is `gnoblin.outputs.list()`, `primary()`, `by_id(id)`,
 and `renderer()`. An output record contains `id`, `kind`, optional identity
-strings (`name`, `make`, `model`, `serial`), `enabled`, `primary`, optional
-`monitor_id`, physical mode `{width, height, refresh_rate}`, `scale`,
-`transform`, optional logical `x` and `y`, its `renderer`, and `revision`.
+strings (`name`, `make`, `model`, `serial`), `enabled`, `primary`, and
+`revision`.
+
+An output record also carries:
+
+- optional `monitor_id`,
+- physical mode `{width, height, refresh_rate}`,
+- `scale` and `transform`,
+- optional logical `x` and `y`,
+- its `renderer`.
+
 Renderer records contain the GL renderer `name`, optional `vendor`, GL `api`,
 and `accelerated`. Software rasterizers such as llvmpipe, softpipe, swrast, and
 Software Rasterizer report `accelerated = false`.
@@ -31,10 +39,13 @@ profiles.
 
 ## Spatial output
 
-An XR output supplies per-eye views. The Lua runtime owns spatial policy while
-Gnoblin supplies surface state, appearance, and authorized input. The headset
-renders the 3D scene. This keeps spatial policy out of the logical monitor
-rectangle model.
+An XR output supplies per-eye views. The Lua runtime owns spatial policy: which
+surfaces join the scene and where they go. Gnoblin supplies the OpenXR session,
+surface state, authorized input, and frame timing, and never calls Lua on the
+render or tracking thread.
+
+Spatial policy stays out of the logical monitor rectangle model. The scene
+contract lives in design/vr.md.
 
 ## Non-goals
 
