@@ -19,6 +19,7 @@ static const char* const raise_fields[] = {"surface_id", NULL};
 static const char* const pose_fields[] = {"surface_id", "pose", NULL};
 static const char* const hit_fields[] = {"origin", "direction", NULL};
 static const char* const head_fields[] = {"pose", NULL};
+static const char* const point_fields[] = {"origin", "direction", "button", "state", NULL};
 
 static gboolean spatial_string_field(lua_State* state, int table, const char* name,
                                      gboolean optional);
@@ -114,6 +115,7 @@ static const SpatialMethod spatial_methods[] = {
     {"update_pose", "vr.spatial.update_pose", pose_fields, FALSE},
     {"hit", "vr.spatial.hit", hit_fields, FALSE},
     {"head", "vr.spatial.head", head_fields, FALSE},
+    {"point", "vr.spatial.point", point_fields, FALSE},
 };
 
 static gboolean spatial_string_field(lua_State* state, int table, const char* name,
@@ -174,7 +176,22 @@ static int spatial_method_call(lua_State* state) {
                                   "dimensions",
                                   method->name);
         }
-        if (g_str_equal(method->name, "hit")) {
+        if (g_str_equal(method->name, "point")) {
+            lua_getfield(state, 1, "button");
+            lua_getfield(state, 1, "state");
+            const char* button = lua_isstring(state, -2) ? lua_tostring(state, -2) : NULL;
+            const char* press = lua_isstring(state, -1) ? lua_tostring(state, -1) : NULL;
+            gboolean valid = (!button && !press && lua_isnil(state, -2) && lua_isnil(state, -1)) ||
+                             (button && press &&
+                              (g_str_equal(button, "left") || g_str_equal(button, "right") ||
+                               g_str_equal(button, "middle")) &&
+                              (g_str_equal(press, "press") || g_str_equal(press, "release")));
+            lua_pop(state, 2);
+            if (!valid)
+                return luaL_error(state, "gnoblin.spatial.point takes button (left, right or "
+                                         "middle) together with state (press or release)");
+        }
+        if (g_str_equal(method->name, "hit") || g_str_equal(method->name, "point")) {
             static const char* const axes[] = {"x", "y", "z"};
             if (!spatial_vector(state, 1, "origin", axes, G_N_ELEMENTS(axes)) ||
                 !spatial_vector(state, 1, "direction", axes, G_N_ELEMENTS(axes)))

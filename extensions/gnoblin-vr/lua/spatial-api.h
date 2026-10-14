@@ -18,6 +18,25 @@
 ---@field viewport_id? string Viewport ID when attached to the viewport pill.
 ---@field stack_index integer Spatial stacking rank used for rendering and hit testing.
 
+---@class GnoblinVRVector
+---@field x number
+---@field y number
+---@field z number
+
+---@class GnoblinVRPointArgs
+---@field origin GnoblinVRVector Ray origin in metres.
+---@field direction GnoblinVRVector Ray direction; need not be normalised.
+---@field button? "left"|"right"|"middle" Button to press or release; needs state.
+---@field state? "press"|"release" What to do with button.
+
+---@class GnoblinVRPointResult
+---@field hit boolean Whether the ray crossed a surface.
+---@field delivered boolean Whether the pointer was moved onto a window.
+---@field surface_id? string Surface that was hit.
+---@field u? number Horizontal position on it, 0 to 1.
+---@field v? number Vertical position on it, 0 to 1.
+---@field distance? number Ray distance in metres.
+
 ---@class GnoblinVRSpatialHit
 ---@field surface_id string Window or layer surface ID hit by the controller ray.
 ---@field x number Surface-local x coordinate in logical pixels.
@@ -59,6 +78,13 @@ function gnoblin.spatial.raise(args) end
 ---@param args {origin:{x:number, y:number, z:number}, direction:{x:number, y:number, z:number}}
 ---@return Operation<{hit:boolean, surface_id?:string, u?:number, v?:number, distance?:number}>
 function gnoblin.spatial.hit(args) end
+
+---Point at a window with a controller ray. The pointer moves to where the ray crosses the window,
+---which is raised; with `button` and `state` the button is pressed or released there, so the
+---window receives focus, motion and clicks. The surface ID must be a Gnoblin window ID.
+---@param args GnoblinVRPointArgs
+---@return Operation<GnoblinVRPointResult>
+function gnoblin.spatial.point(args) end
 
 ---Report where the head is in world space. Anchors created with `space_id = "view"` follow it, so
 ---`hit` can reach head-locked surfaces. The presentation client sends this each frame.
