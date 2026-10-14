@@ -156,8 +156,8 @@ static gboolean gnoblin_plugin_toggle_console_bridge(MetaDisplay* display, gpoin
 }
 
 static void gnoblin_plugin_debug_bridge(gboolean enabled, gpointer user_data) {
-    auto* self = static_cast<MetaGnoblinPlugin*>(user_data);
-    gnoblin_plugin_ui_set_debug(self->diagnostics_ui, enabled);
+    MetaGnoblinPlugin* plugin = user_data;
+    gnoblin_plugin_ui_set_debug(plugin->diagnostics_ui, enabled);
 }
 
 static void gnoblin_plugin_start(MetaPlugin* plugin) {
