@@ -574,7 +574,50 @@ static void vr_status_changed(GFileMonitor* monitor, GFile* file, GFile* other,
 
 /* The VR extension reports the headset through a status file that the output listing reads.
  * Republish the snapshots when it changes so gnoblin.outputs.list() follows the headset. */
+/* Publishes the live cursor sprite for the VR client, which draws it at the end of a controller
+ * ray. cursor.rgba holds straight RGBA8 pixels; cursor.ini holds the size, hotspot, scale and a
+ * serial that changes with the sprite, so the client re-imports it only when needed. */
+static void publish_cursor_sprite(MetaCursorTracker* tracker) {
+    static guint serial;
+    CoglTexture* texture = meta_cursor_tracker_get_sprite(tracker);
+    if (!texture)
+        return;
+    int width = cogl_texture_get_width(texture);
+    int height = cogl_texture_get_height(texture);
+    if (width <= 0 || height <= 0 || width > 512 || height > 512)
+        return;
+    gsize size = (gsize)width * height * 4;
+    g_autofree guint8* pixels = g_malloc(size);
+    if (!cogl_texture_get_data(texture, COGL_PIXEL_FORMAT_RGBA_8888, width * 4, pixels))
+        return;
+    int hot_x = 0, hot_y = 0;
+    meta_cursor_tracker_get_hot(tracker, &hot_x, &hot_y);
+    g_autofree char* directory = g_build_filename(g_get_user_runtime_dir(), "gnoblin-vr", NULL);
+    g_mkdir_with_parents(directory, 0700);
+    g_autofree char* pixel_path = g_build_filename(directory, "cursor.rgba", NULL);
+    g_autofree char* ini_path = g_build_filename(directory, "cursor.ini", NULL);
+    g_autoptr(GError) error = NULL;
+    if (!g_file_set_contents(pixel_path, (const char*)pixels, size, &error)) {
+        g_warning("gnoblin-native-control: cannot write cursor sprite: %s", error->message);
+        return;
+    }
+    g_autofree char* ini = g_strdup_printf(
+        "[cursor]\nserial=%u\nwidth=%d\nheight=%d\nhot_x=%d\nhot_y=%d\nscale=%.3f\n", ++serial,
+        width, height, hot_x, hot_y, meta_cursor_tracker_get_scale(tracker));
+    if (!g_file_set_contents(ini_path, ini, -1, &error))
+        g_warning("gnoblin-native-control: cannot write cursor info: %s", error->message);
+}
+
+static void cursor_sprite_changed(MetaCursorTracker* tracker, gpointer user_data) {
+    publish_cursor_sprite(tracker);
+}
+
 void gnoblin_control_watch_vr_status(GnoblinNativeControl* control) {
+    if (control && control->cursor_tracker) {
+        g_signal_connect(control->cursor_tracker, "cursor-changed",
+                         G_CALLBACK(cursor_sprite_changed), NULL);
+        publish_cursor_sprite(control->cursor_tracker);
+    }
     static GFileMonitor* monitor;
     if (monitor)
         return;
