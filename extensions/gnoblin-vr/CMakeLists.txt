@@ -29,10 +29,18 @@ foreach(unit gnoblin-vr.service gnoblin-vr@.service gnoblin-vr-runtime@.service
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/${unit}" DESTINATION lib/systemd/user)
 endforeach()
 install(FILES lua/gnoblin-vr.lua lua/gnoblin-vr-shell.lua lua/gnoblin-vr-session.lua
+        lua/gnoblin-vr-desktop.lua
         DESTINATION share/gnoblin-vr/lua)
 
 if(BUILD_TESTING)
   find_package(Python3 REQUIRED COMPONENTS Interpreter)
+  find_program(LUA_EXECUTABLE NAMES lua lua5.4 lua5.3 lua5.2 lua5.1)
+  if(LUA_EXECUTABLE)
+    add_test(NAME gnoblin-vr-desktop
+      COMMAND "${LUA_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/vr-desktop.test.lua")
+    set_tests_properties(gnoblin-vr-desktop PROPERTIES
+      WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../.." TIMEOUT 15)
+  endif()
   add_test(NAME gnoblin-vr-devices
     COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/vr-devices.test.py"
             "$<TARGET_FILE:gnoblin-vr>")

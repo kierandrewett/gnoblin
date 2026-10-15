@@ -39,6 +39,8 @@ Headsets arrive two ways and need two runtimes, so the extension supports both b
 
 `gnoblin-vr --watch` reports each headset (USB IDs, non-desktop connectors, the WiVRn D-Bus service) and the compositor publishes them as `xr:N` outputs plus the `gnoblin.vr.headset-changed` event. Lua decides what to start. The default policy, `gnoblin-vr-session.lua`, is ordinary Lua and replaceable.
 
+The installed `gnoblin-vr-desktop.lua` module provides a replaceable default desktop policy through `require("gnoblin-vr-desktop").auto(opts)`. When an XR output enters `running`, it mirrors normal windows as metre-sized quads on a two-metre forward arc, tracks window lifecycle and focus, routes controller pointer input, and handles window and workspace grabs in Lua. The compositor stores the anchors and surfaces and accepts pose, pointer, environment, and removal actions; it does not choose the arrangement or gesture behavior. The existing `gnoblin-vr-shell.lua` viewport pill remains an independent optional policy.
+
 Verified without a headset: classification and the output records against fixture machines, the watcher against the real WiVRn server's D-Bus name and a mock that connects and disconnects a headset, the runtime and client units, and the Monado simulated headset session. A real DRM lease, adb pairing and a Wi-Fi stream need hardware.
 
 ## Controller rays and cursors
