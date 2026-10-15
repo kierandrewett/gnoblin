@@ -6,9 +6,7 @@ Lua already controls many day-to-day window-manager operations. This is more tha
 
 The control path is typed and mediated by Gnoblin; Lua does not receive `MetaWindow`, `ClutterActor`, or libinput objects.
 
-The gap for making Lua the control language is ownership and coverage. Lua cannot configure outputs, set 3D poses, set general runtime focus policy, arrange layer-shell surfaces, access clipboard or screen-capture streams, or run idle and frame callbacks. Several Mutter preferences are only set by configuration load/reload. There is also no XR output kind in this checkout's runtime API. Session power actions, focus history and policy reads, and config path/default/restore reads now have Lua equivalents; `gnoblinctl init` remains CLI-only.
-
-The requested spatial direction therefore needs an output API change and compositor support for spatial state, input picking, and rendering; adding Lua wrappers alone cannot supply those mechanisms.
+The gap for making Lua the control language is ownership and coverage. Lua cannot configure outputs, set general runtime focus policy, arrange layer-shell surfaces, access clipboard or screen-capture streams, or run idle and frame callbacks. Several Mutter preferences are only set by configuration load/reload. Session power actions, focus history and policy reads, and config path/default/restore reads now have Lua equivalents; `gnoblinctl init` remains CLI-only.
 
 This audit treats the checked-in LuaCATS headers and native-control handlers as the implementation source of truth. `design/lua-api.md` is a target design and contains proposed signatures alongside current APIs; a signature there is not proof that the runtime implements it. The source submodule is pinned at `15761641006132ab027e86b997fa22be06e7e8e9`, but its checkout is absent in this worktree.
 
@@ -22,19 +20,13 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 - **Mutter or Gnoblin mechanism (file and function):** `patches/mutter/99-typed-window-api/0001-dispatch-typed-window-operations.patch`: `meta_window_move_frame`; Gnoblin handler in `src/control/gnoblin-control-requests.c`
 - **Current Lua access:** Full for 2D logical position: `Window:move(position)`; interactive move is context-bound
-- **What is needed:** Keep 2D behavior; add a separate spatial pose API for VR, with bounds, coordinate-space, and stale-revision checks.
+- **What is needed:** Nothing beyond the existing 2D behavior.
 
 ### Window resize
 
 - **Mutter or Gnoblin mechanism (file and function):** Same typed-operation patch: `meta_window_move_resize_frame`; `patches/mutter/99-typed-window-api/0065-native-window-resize-user-operation.patch` and `0076-animate-typed-window-resizes.patch`
 - **Current Lua access:** Full for 2D frame size; interactive resize requires a live shortcut context
-- **What is needed:** Add resize leases for XR surfaces: preserve pose, request a client size, and report accepted/rejected geometry.
-
-### 3D or transformed placement
-
-- **Mutter or Gnoblin mechanism (file and function):** Mutter window actors and Gnoblin animation runtime in `patches/mutter/99-typed-window-api/0024-native-animation-runtime.patch`; `src/config/lua/gnoblin-lua-animation.c`
-- **Current Lua access:** Partial: animation frames can translate, scale, rotate in 2D, and change opacity. There is no persistent 3D pose, perspective, depth ordering contract, or spatial hit-test API
-- **What is needed:** Add stable spatial transforms (position, orientation, scale, parent/anchor) and compositor-side projection, clipping, hit testing, and revisioned change events. Treat XR as an output kind.
+- **What is needed:** Nothing beyond the existing 2D behavior.
 
 ### Focus and activation policy
 
@@ -52,19 +44,19 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 - **Mutter or Gnoblin mechanism (file and function):** `meta_workspace_activate` and workspace manager operations in `patches/mutter/90-native-workspaces/0001-list-and-switch-workspaces-in-native-compositor.patch` and `91-native-workspace-management/0001-manage-numeric-workspaces-in-native-compositor.patch`; handlers in `src/control/windows/gnoblin-control-workspaces.c`
 - **Current Lua access:** Full for current model: create, remove, rename, activate, next/previous, move windows; workspace records are revisioned
-- **What is needed:** Add a spatial workspace/view relationship only if the XR output model needs one; retain stable workspace IDs rather than using position as identity.
+- **What is needed:** Nothing beyond the current model. Retain stable workspace IDs rather than using position as identity.
 
 ### Monitor and output configuration
 
 - **Mutter or Gnoblin mechanism (file and function):** `meta_monitor_manager_get_logical_monitors` and monitor snapshot code in `patches/mutter/99-typed-window-api/0007-native-monitor-snapshot-records.patch`; stable connector lookup in `0006-stable-monitor-connector-ids.patch`
 - **Current Lua access:** Read only for topology, current geometry, scale, refresh rate, and transform; partial runtime override for privacy screen and tablet mapping. No output profile/mode/enable/arrangement API
-- **What is needed:** Integrate the output configuration API with Lua and transactional validation/rollback. Add the reserved `xr` kind as a first-class output with capability and lifecycle events.
+- **What is needed:** Integrate the output configuration API with Lua and transactional validation/rollback.
 
 ### Layer-shell arrangement
 
 - **Mutter or Gnoblin mechanism (file and function):** `meta_wayland_init_layer_shell` in `patches/mutter/30-layer-shell/0001-layer-shell-wire-wlr-layer-shell-into-the-build.patch`; snapshot getter and Lua `lua_layers_list` in `src/config/lua/gnoblin-lua-queries.c`
 - **Current Lua access:** Read only for layer snapshots and animation policy; partial configuration through window rules and `preserve_active_window`. Anchors, exclusive zones, size, and surface role remain client/protocol state
-- **What is needed:** Add compositor-mediated surface pose/placement and docking targets for Lua policy, with protocol constraints and configure/ack lifecycle. A VR “pill” should be Lua policy over Gnoblin-managed layer/window surfaces, not shell-only scene state.
+- **What is needed:** Add compositor-mediated surface placement and docking targets for Lua policy, with protocol constraints and configure/ack lifecycle.
 
 ### Keyboard input
 
@@ -76,13 +68,13 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 
 - **Mutter or Gnoblin mechanism (file and function):** `native_input_event_type` and `native_input_send_head` in `src/control/gnoblin-control-input-routing.c`; trusted focus/drag token handling in `src/control/gnoblin-control-focus.c`
 - **Current Lua access:** Full for matched button, motion, and scroll delivery decisions; partial for pointer warp, cursor shape, and hit-target selection, which are not general Lua operations
-- **What is needed:** Add device/cursor control and controller-to-pointer mapping as explicit operations. For VR, couple ray hit, hover, and click to one surface/mapping revision.
+- **What is needed:** Add device/cursor control and controller-to-pointer mapping as explicit operations.
 
 ### Touch
 
 - **Mutter or Gnoblin mechanism (file and function):** `native_input_event_type`, `native_input_is_stream_begin`, and `native_input_is_terminal` in `src/control/gnoblin-control-input-routing.c` serialize touch events and retain stream decisions
 - **Current Lua access:** Partial: touch event types and stream decisions exist, but no touch injection or Lua-owned gesture recognizer API is exposed
-- **What is needed:** Add documented touch phases and cancellation/ownership helpers if needed by the XR controller/touch model; retain begin/update/end consistency.
+- **What is needed:** Add documented touch phases and cancellation/ownership helpers if needed; retain begin/update/end consistency.
 
 ### Gestures
 
@@ -162,23 +154,6 @@ Mutter mechanisms below are therefore named from Gnoblin's applied patches and t
 - **Current Lua access:** None. Lua gets lifecycle and input events, not a frame-clock callback
 - **What is needed:** Keep Lua off the paint path.
     - If frame policy is required, expose declarative frame-boundary state or sampled notifications with strict rate/budget limits; never synchronously call Lua per rendered frame.
-
-### Spatial implication
-
-The current API's `Monitor` is a physical/logical display snapshot, not a scene or XR runtime. The source tree has no implemented `xr` output record, pose, stereo view, controller tracking, or output mode mutation. The outputs design work described in the brief reserves `xr` and is evolving separately; this document assumes that contract will be integrated rather than defining a second output namespace.
-
-The first VR implementation boundary should be:
-
-1. Gnoblin's output API owns output identity, lifecycle, capabilities, and
-   validated configuration, including XR outputs.
-2. Lua owns placement, docking, gesture, activation, and controller mapping
-   policy through typed operations and events.
-3. Mutter owns surface content, configure/ack, rendering, input routing, and
-   native safety checks. A layer-shell surface remains a Wayland client surface; Lua controls its compositor placement, not its pixels.
-4. A head pose or controller sample must carry a sequence/time and output
-   identity. A hit, hover, resize, or click must be rejected when its mapping revision is stale.
-
-This is an architectural recommendation. The current patches do not establish XR rendering or tracking support.
 
 ## `gnoblinctl` operations without a Lua equivalent
 
@@ -335,85 +310,48 @@ The exact accepted keys and defaults are documented in the linked config pages:
 
 ## Gap ranking and small-PR sequence
 
-Ranking weighs the owner's stated goal: make Lua the control language for window management and the VR decision process. Signatures below are proposals, not existing API. Each PR should update its LuaCATS header and generated signature/docs artifacts when implemented.
+Ranking weighs the owner's stated goal: make Lua the control language for window management. Signatures below are proposals, not existing API. Each PR should update its LuaCATS header and generated signature/docs artifacts when implemented.
 
-### 1. Output control and XR identity
+### 1. Output control
 
 - **Value and bounded outcome:** Foundational.
-    - Give Lua one output namespace that covers ordinary displays and the reserved XR kind; validate and roll back configuration in Gnoblin's output service.
+    - Give Lua an output namespace for displays; validate and roll back configuration in Gnoblin's output service.
     - Coordinate the shape with `design/outputs.md` before implementation.
 - **Proposed LuaCATS-style signatures:** `---@class OutputSelector`<br>`---@field id string Stable output ID`<br>`---@class OutputConfiguration`<br>`---@field outputs OutputSpec[] Desired enabled outputs and modes`<br>`function gnoblin.outputs.list() end`<br>`function gnoblin.outputs.configure(configuration) end`<br>`function gnoblin.outputs.by_id(id) end`
 
-### 2. Persistent spatial placement
-
-- **Value and bounded outcome:** Core VR gap. Establish a scene coordinate contract and 3D transform in Mutter/Gnoblin before exposing it to Lua. Keep content size distinct from physical panel size and pose.
-- **Proposed LuaCATS-style signatures:** `---@class SpatialPose`<br>`---@field position Vec3`<br>`---@field orientation Quaternion`<br>`---@field scale Vec3`<br>`function Window:set_pose(pose, options) end`<br>`function Window:pose() end`
-
-### 3. Surface and layer docking
-
-- **Value and bounded outcome:** Lets Lua attach a layer-shell surface or window to a moving XR view and implement the draggable pill. Reuse stable output/surface IDs and configure/ack state.
-- **Proposed LuaCATS-style signatures:** `function gnoblin.layers.by_id(id) end`<br>`function LayerSurface:set_pose(pose, options) end`<br>`function LayerSurface:set_dock(target, options) end`<br>`function gnoblin.layers.on(event, callback) end`
-
-### 4. Controller and spatial input
-
-- **Value and bounded outcome:** Enables controller ray, click, drag, corner resize, and menu-button move policy in Lua. Keep native tracking and injection authority inside Gnoblin; make tracking loss cancel held state.
-- **Proposed LuaCATS-style signatures:** `function gnoblin.input.controllers() end`<br>`function gnoblin.input.on_controller(match, handler) end`<br>`function gnoblin.input.pointer_from_controller(request) end`<br>`function gnoblin.input.cancel_interaction(context) end`
-
-### 5. Focus, activation, stacking policy
+### 2. Focus, activation, stacking policy
 
 - **Value and bounded outcome:** Makes focus/raise behavior programmable while preserving user-activation proof. Add policy hooks before expanding privileged mutations.
 - **Proposed LuaCATS-style signatures:** `function gnoblin.focus.set_policy(policy) end`<br>`function gnoblin.focus.on_request(callback) end`<br>`function Window:raise(context) end`<br>`function Window:lower(context) end`
 
-### 6. Layout, snapping, and tiling
+### 3. Layout, snapping, and tiling
 
-- **Value and bounded outcome:** Promote current one-shot rectangle snap to reusable layout rules and constrained resize behavior; useful on desktop and VR.
+- **Value and bounded outcome:** Promote current one-shot rectangle snap to reusable layout rules and constrained resize behavior.
 - **Proposed LuaCATS-style signatures:** `function gnoblin.layouts.define(layout) end`<br>`function gnoblin.layouts.apply(layout, target) end`<br>`function Window:set_layout_area(area) end`<br>`function SnapContext:commit(request) end` (existing)
 
-### 7. Runtime compositor preferences
+### 4. Runtime compositor preferences
 
-- **Value and bounded outcome:** Remove config/reload as the only route for cursor, input-device, and decoration preferences. Add typed overrides per group and return the effective source/revision. Focus policy is covered by PR 5.
+- **Value and bounded outcome:** Remove config/reload as the only route for cursor, input-device, and decoration preferences. Add typed overrides per group and return the effective source/revision. Focus policy is covered by PR 2.
 - **Proposed LuaCATS-style signatures:** `function gnoblin.cursor.set_theme(theme, size) end`<br>`function gnoblin.input.set_device_preferences(device, preferences) end`<br>`function Window:set_decoration(decoration) end`<br>`function gnoblin.settings.on_changed(callback) end`
 
-### 8. Capture and clipboard sessions
+### 5. Capture and clipboard sessions
 
-- **Value and bounded outcome:** Complete shell workflow and VR content paths with explicit permissions and bounded resource lifetime. Keep capture separate from clipboard APIs.
+- **Value and bounded outcome:** Complete shell workflow with explicit permissions and bounded resource lifetime. Keep capture separate from clipboard APIs.
 - **Proposed LuaCATS-style signatures:** `function gnoblin.capture.begin(options) end`<br>`function Capture:next_frame() end`<br>`function Capture:stop() end`<br>`function gnoblin.clipboard.read(options) end`<br>`function gnoblin.clipboard.write(items) end`
 
-### 9. Session lifecycle and idle policy
+### 6. Session lifecycle and idle policy
 
 - **Value and bounded outcome:** Add missing power operations and give Lua explicit idle timers/inhibitors. Keep logind and lock capability checks in native services.
 - **Proposed LuaCATS-style signatures:** `function gnoblin.session.power(action) end`<br>`function gnoblin.idle.on(threshold_ms, callback) end`<br>`function gnoblin.idle.inhibit(reason, options) end`
 
-### 10. Managed startup
+### 7. Managed startup
 
 - **Value and bounded outcome:** Allow policy-driven session components with supervision rather than detached one-off command spawning.
 - **Proposed LuaCATS-style signatures:** `function gnoblin.services.start(spec) end`<br>`function gnoblin.services.stop(id) end`<br>`function gnoblin.services.restart(id) end`<br>`function gnoblin.services.list() end`
 
-### 11. Frame-adjacent policy
+### 8. Frame-adjacent policy
 
 - **Value and bounded outcome:** Lowest priority and should not become a per-frame Lua callback. Use this only for measured needs that cannot be expressed as events or animation declarations.
 - **Proposed LuaCATS-style signatures:** `function gnoblin.render.on_state_changed(callback) end`<br>`function gnoblin.animations.schedule(spec) end`
 
-PR 1 and PR 2 should be designed together because the output coordinate system defines the meaning of a spatial pose, but can be reviewed as separate API and compositor changes. PR 3 depends on both. PR 4 depends on stable surface IDs, pose mapping, and one-use input authority. PRs 5–11 can then proceed as separate vertical slices.
-
-Do not promise VR behavior until output creation, spatial rendering, input picking, and controller/session lifecycle have been verified together on the intended hardware.
-
-`OutputSpec`, `Vec3`, and `Quaternion` in these signature sketches are placeholders for the output-design contract and documented coordinate types; they are not current Gnoblin API names.
-
-## Source references
-
-The repository source paths above are the implementation evidence. Primary upstream/protocol references for follow-up work:
-
-- [Gnoblin Lua API annotations](https://github.com/kierandrewett/gnoblin/tree/main/src/config/lua/api)
-- [Gnoblin native-control implementation](https://github.com/kierandrewett/gnoblin/tree/main/src/control)
-- [Gnoblin Mutter overlays](https://github.com/kierandrewett/gnoblin/tree/main/patches/mutter)
-- [Gnoblin user API documentation](https://github.com/kierandrewett/gnoblin/tree/main/docs/shell-api)
-- [Mutter source: window operations](https://gitlab.gnome.org/GNOME/mutter/-/blob/main/src/core/meta-window.c)
-- [Mutter source: monitor manager](https://gitlab.gnome.org/GNOME/mutter/-/tree/main/src/backends)
-- [wlr layer-shell protocol XML](https://github.com/wlr-protocols/wlr-protocols/blob/master/unstable/wlr-layer-shell-unstable-v1.xml)
-- [xdg-activation protocol XML](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/xdg-activation/xdg-activation-v1.xml)
-- [Wayland data-control protocol XML](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/unstable/ext-data-control/ext-data-control-v1.xml)
-- [Wayland idle-notify protocol XML](https://gitlab.freedesktop.org/wayland/wayland-protocols/-/blob/main/staging/ext-idle-notify/ext-idle-notify-v1.xml)
-- [systemd-logind Manager API](https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.login1.html)
-
-The upstream `main` URLs are navigational references, not evidence that those branches match the pinned Mutter gitlink. Use the exact pinned source and protocol revisions when implementing a PR.
+PR 1 should land first because the output coordinate system underpins later work. PRs 2–8 can then proceed as separate vertical slices.

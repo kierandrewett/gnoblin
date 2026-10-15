@@ -324,8 +324,6 @@ void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payloa
             subscribed = FALSE;
         if (g_str_equal(name, "gnoblin.pointer.locate-requested") && client->event_api_minor < 80)
             subscribed = FALSE;
-        if (g_str_equal(name, "gnoblin.vr.headset-changed") && client->event_api_minor < 84)
-            subscribed = FALSE;
         if (subscribed) {
             if (!line) {
                 g_autofree char* encoded = json_to_string(socket_event, FALSE);

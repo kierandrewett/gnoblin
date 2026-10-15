@@ -169,21 +169,6 @@ static void render_outputs(JsonArray* outputs) {
         g_autofree char* x = spatial_value(input, "x");
         g_autofree char* y = spatial_value(input, "y");
         g_autofree char* position = g_strdup_printf("%s+%s", x, y);
-        /* A headset has per-eye views and no place in the desktop layout. */
-        JsonArray* views = json_object_has_member(input, "views")
-                               ? json_object_get_array_member(input, "views")
-                               : NULL;
-        if (views) {
-            JsonObject* first =
-                json_array_get_length(views) > 0 ? json_array_get_object_element(views, 0) : NULL;
-            g_autofree char* eye_width = spatial_value(first, "width");
-            g_autofree char* eye_height = spatial_value(first, "height");
-            g_free(resolution);
-            resolution =
-                g_strdup_printf("%u x %sx%s", json_array_get_length(views), eye_width, eye_height);
-            g_free(position);
-            position = g_strdup("-");
-        }
         json_object_set_string_member(row, "resolution", resolution);
         json_object_set_string_member(row, "position", position);
         json_object_set_string_member(row, "scale", spatial_value(input, "scale"));
@@ -196,10 +181,6 @@ static void render_outputs(JsonArray* outputs) {
             renderer && json_object_get_boolean_member_with_default(renderer, "accelerated", FALSE)
                 ? "yes"
                 : "no");
-        if (views) {
-            g_free(accelerated);
-            accelerated = g_strdup("-");
-        }
         json_object_set_string_member(row, "accelerated", accelerated);
         json_object_set_string_member(row, "renderer", spatial_value(renderer, "name"));
         JsonNode* row_node = json_node_new(JSON_NODE_OBJECT);

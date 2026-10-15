@@ -36,7 +36,7 @@ changes, so event handlers read current state instead of caching records.
 | Field        | Type            | Meaning                                                        |
 | ------------ | --------------- | -------------------------------------------------------------- |
 | `id`         | String          | Connector name, such as `"DP-1"`. Stable per output.           |
-| `kind`       | String enum     | `"display"` or `"xr"`. `"virtual"` is reserved.                |
+| `kind`       | String enum     | `"display"`. `"virtual"` is reserved.                          |
 | `name`       | String or `nil` | Display name, when the hardware provides one.                  |
 | `make`       | String or `nil` | Manufacturer string, when available.                           |
 | `model`      | String or `nil` | Model string, when available.                                  |
@@ -53,40 +53,6 @@ changes, so event handlers read current state instead of caching records.
 
 An output is not guaranteed to occupy a rectangle in the logical layout.
 The reserved `virtual` kind omits the logical position and rectangle shape.
-
-## Headset output
-
-With the optional VR extension installed, each headset that `gnoblin-vr --watch` finds is an output
-with `kind = "xr"`. Both `gnoblin.outputs.list()` and `gnoblinctl output list` include it.
-
-The ids are `xr:0`, `xr:1` and so on, in a stable order. A headset has no `mode`, position or
-renderer. It carries these fields instead:
-
-| Field        | Type            | Meaning                                                                                                     |
-| ------------ | --------------- | ----------------------------------------------------------------------------------------------------------- |
-| `state`      | String          | `"waiting"`, `"detected"`, `"ready"`, `"connected"` or `"running"`. See [VR headsets](/guides/vr_headsets). |
-| `connection` | String          | `"tethered"` for a display cable, `"standalone"` for a headset that receives a stream.                      |
-| `transport`  | String          | `"drm-lease"`, `"usb"` or `"wifi"`.                                                                         |
-| `backend`    | String          | The OpenXR runtime that drives it: `"monado"` or `"wivrn"`.                                                 |
-| `vendor`     | String or `nil` | The headset maker, when known.                                                                              |
-| `device_id`  | String          | A stable id such as `drm:DP-2` or `usb:2833:0186:SERIAL`, used by `gnoblin-vr --connect`.                   |
-| `diagnostic` | String or `nil` | What to do next when the headset is not ready.                                                              |
-| `views`      | List of records | One `width` and `height` in pixels for each eye while the session runs; empty otherwise.                    |
-
-`enabled` is true only while `state` is `"running"`. Without `gnoblin-vr --watch`, the
-extension reports a single `xr:0` from the session status alone, with `state` set to
-`"running"`, `"stopped"` or `"absent"`.
-
-When a headset appears, changes state or goes away, the compositor sends the
-`gnoblin.vr.headset-changed` event with the current list in `headsets`:
-
-```lua
-gnoblin.on("gnoblin.vr.headset-changed", function(event)
-    for _, headset in ipairs(event.headsets) do
-        print(headset.id, headset.connection, headset.state)
-    end
-end)
-```
 
 ## Renderer records
 

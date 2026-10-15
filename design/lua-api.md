@@ -36,12 +36,6 @@ OSDs, overview surfaces, and other UI are ordinary client windows, usually
 Wayland layer-shell surfaces. Lua does not create widgets, draw surfaces, or
 replace Wayland protocols.
 
-The [spatial desktop plan](spatial-desktop.md) extends these ownership rules
-to headset presentations. Gnoblin supplies surface state, appearance,
-authorized input, and temporary-state recovery. Shell developers own spatial
-scenes, placement, and interaction; the headset renders the 3D scene. The
-plan does not add implemented Lua methods to this reference.
-
 Mutter owns windows, input devices, focus, geometry, rendering, and compositor
 protocols. Gnoblin owns policy and the public control contract. Compositor
 operations cross a narrow versioned interface; the Lua API does not expose

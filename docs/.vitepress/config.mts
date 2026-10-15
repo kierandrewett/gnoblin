@@ -109,7 +109,6 @@ export default defineConfig({
                             { text: "Wallpapers", link: "/guides/wallpapers" },
                             { text: "Window Rules", link: "/guides/window_rules" },
                             { text: "Window Effects", link: "/guides/window_effects" },
-                            { text: "VR Headsets", link: "/guides/vr_headsets" },
                             { text: "Window Frames", link: "/guides/window_frames" },
                             { text: "Animations", link: "/guides/animations" },
                             { text: "Shaders", link: "/guides/shaders" },
