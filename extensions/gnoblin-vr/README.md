@@ -29,7 +29,7 @@ and `update_pose` methods validate extension-owned scene arguments and submit
 asynchronous `vr.spatial.*` actions from the supervised Lua runtime. The
 `surface` and `snapshot` methods are likewise typed extension actions.
 
-The compositor keeps a spatial scene store behind these calls. Anchors, free and viewport-docked surface placements, stacking ranks and pose updates are validated and applied there, and `snapshot` and `surface` return the stored records with a scene revision. `hit` casts a ray into the store and returns the nearest surface with its `u` and `v`; `head` reports the head pose so head-locked (`space_id = "view"") anchors can be hit. `point`is`hit`plus delivery: the pointer moves to where the ray crosses a window, the window is raised, and`button`with`state` (`press`or`release`) clicks there, so a controller ray can focus and click a window. The scene surface ID must be the window's Gnoblin ID, and the real pointer moves with it. A headless test covers the store. It does not yet import window textures, project quad layers, or route pointer and focus events; those consume the store in later phases.
+The compositor validates and stores anchors, placements, stacking, poses, pointer input and environment mode. `snapshot` and `surface` read scene records; `hit` finds the nearest surface; `point` moves the real pointer and can press or release a button. Surface IDs for windows are their Gnoblin window IDs. The compositor owns storage and input delivery; Lua policy owns placement and gesture decisions.
 
 ## Headset as an outputs-style record
 
@@ -50,21 +50,16 @@ and the shape a client sets, for example the text beam over a terminal.
 
 ## Window arrangement policy
 
-`gnoblin-vr-shell.lua` is a Lua module that decides where windows go. It moves a viewport pill, docks
-windows to it, places windows in free space turned towards you, and turns controller rays into grab, move
-and resize. The compositor only stores the result, so a configuration can replace any of it. Copy the
-module next to `gnoblin-vr.lua` and load it with `require("gnoblin-vr-shell")`.
+`gnoblin-vr-desktop.lua` is the default desktop policy. It mirrors normal windows on a two-metre arc at eye height, tracks window lifecycle and focus, and maps controller input to pointer, move, resize, workspace movement, scaling and passthrough. Install it beside the other Lua modules and enable it in the user configuration:
 
 ```lua
-local shell = require("gnoblin-vr-shell").new()
-shell:dock("window:1", {width = 1.2, height = 0.7}, {x = -0.7, y = 0, z = 0})
-shell:float("window:2", {x = 0.8, y = 1.4, z = -3}, {width = 1.6, height = 0.9})
-local grab = shell:grab({origin = {x = 0, y = 1.4, z = 0}, direction = {x = 0.8, y = 0, z = -3}})
-shell:drag(grab, {origin = {x = 0, y = 1.4, z = 0}, direction = {x = -1, y = 0, z = -3}})
+require("gnoblin-vr-session").auto()
+require("gnoblin-vr-desktop").auto()
 ```
 
-`tests/vr-shell-live.test.lua` runs the module against a live session: `gnoblinctl lua
-tests/vr-shell-live.test.lua` prints one PASS or FAIL line per check.
+`auto(opts)` accepts `pixels_per_metre` (default 1000), `radius` (2 metres), `eye_height` (1.45 metres), `arc_step` (18 degrees), `arc_center`, `minimum_size`, `resize_debounce`, `environment` (`opaque` or `passthrough`), workspace scale limits, and replacement functions for the main policy methods. See the [VR headsets guide](../../docs/guides/vr_headsets.md) for the controls table.
+
+`gnoblin-vr-shell.lua` remains available for a viewport pill and optional docked surfaces. It can be loaded independently with `require("gnoblin-vr-shell")`.
 
 ## Headsets
 

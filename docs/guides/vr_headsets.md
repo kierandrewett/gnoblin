@@ -38,9 +38,53 @@ cp /usr/share/gnoblin-vr/lua/gnoblin-vr*.lua ~/.config/gnoblin/lua/
 ```lua
 -- ~/.config/gnoblin/config.lua
 require("gnoblin-vr-session").auto()
+require("gnoblin-vr-desktop").auto()
 ```
 
 Reload with `gnoblinctl reload`. To keep the streamer off until a headset is plugged in by USB, pass `{ streamer = "usb" }`. The default `"always"` keeps it running so a headset can find the computer over Wi-Fi.
+
+The desktop policy mirrors every normal window on a two-metre arc at eye height when the headset session enters `running`. It sizes each quad from the window's pixel dimensions. The policy requires a Gnoblin build with the VR spatial scene and input actions.
+
+The optional settings below change the arc, eye height and pixel-to-metre scale. They take effect when the Lua configuration is loaded or reloaded. Defaults and accepted values are:
+
+| Option                                                                    | Type and accepted values       | Default                | Effect                                                                                                    |
+| ------------------------------------------------------------------------- | ------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------------------- |
+| `pixels_per_metre`                                                        | Positive number                | `1000`                 | Converts the window frame from pixels to metres.                                                          |
+| `radius`                                                                  | Positive number in metres      | `2`                    | Distance from the scene origin to the arc.                                                                |
+| `eye_height`                                                              | Number in metres               | `1.45`                 | Vertical centre of each window in the scene.                                                              |
+| `arc_step`                                                                | Number in radians              | `math.rad(18)`         | Angular gap between adjacent placement slots.                                                             |
+| `arc_center`                                                              | Number                         | `0`                    | Arc offset in slot units. Slots fan out from the centre in alternating directions.                        |
+| `minimum_size`                                                            | Positive number in metres      | `0.2`                  | Smallest width or height during corner resizing and two-hand scaling.                                     |
+| `resize_debounce`                                                         | Non-negative number in seconds | `0.25`                 | Delay before resize updates are sent while a corner is held; release applies the final size immediately.  |
+| `environment`                                                             | `"opaque"` or `"passthrough"`  | `"opaque"`             | Initial headset background mode. The left menu button toggles the mode.                                   |
+| `minimum_workspace_scale`                                                 | Positive number                | `0.25`                 | Lower limit for two-hand workspace scaling.                                                               |
+| `maximum_workspace_scale`                                                 | Positive number                | `4`                    | Upper limit for two-hand workspace scaling.                                                               |
+| `place`, `remove`, `reconcile`, `input`, `_point`, `_start_grip`, `_drag` | Lua function                   | Built-in policy method | Replaces the matching method. Use `require("gnoblin-vr-desktop").new(opts)` to manage callbacks directly. |
+
+```lua
+require("gnoblin-vr-desktop").auto({
+    pixels_per_metre = 1000,
+    radius = 2,
+    eye_height = 1.45,
+    arc_step = math.rad(18),
+})
+```
+
+## Use the desktop in VR
+
+| Action                         | Controller input                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| Point at a window              | Aim either active controller at it; the pointer follows the ray.                                                   |
+| Click                          | Press or release the trigger. It sends a left-button click.                                                        |
+| Right-click                    | Press or release the right controller's menu button.                                                               |
+| Scroll                         | Use the controller thumbstick; its scroll delta goes to the pointed window.                                        |
+| Move a window                  | Grip a window and move the controller. The window follows and faces you.                                           |
+| Resize a window                | Grip within 12% of a window corner and move. The opposite corner stays fixed; release applies the new window size. |
+| Move the workspace             | Grip with the ray over empty space. Translate or turn the controller to move or rotate all windows together.       |
+| Scale and rotate the workspace | Grip with both controllers and move them apart/together or around each other.                                      |
+| Toggle passthrough             | Press the left controller's menu button. Press again to return to the opaque environment.                          |
+
+The desktop policy is ordinary Lua and can be replaced. `auto(opts)` accepts `pixels_per_metre`, `radius`, `eye_height`, `arc_step`, `arc_center`, `minimum_size`, `resize_debounce`, `environment`, workspace scale limits, and replacement functions for `place`, `remove`, `reconcile`, `input`, `_point`, `_start_grip`, and `_drag`.
 
 ## Connect a headset
 
