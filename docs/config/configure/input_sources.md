@@ -71,19 +71,16 @@ gnoblin.configure {
 
 ## Switch sources with the keyboard
 
-The starter config binds two keys, as a GNOME session does:
+Gnoblin leaves **Super+Space** and **Shift+Super+Space** available to the
+desktop shell. Bingux uses them to open its input-source selector and choose
+the next or previous configured source. This avoids two clients claiming the
+same global shortcut.
 
-- **Super+Space** selects the next source and wraps to the first after the last.
-- **Shift+Super+Space** selects the previous source.
-
-With fewer than two sources, the keys do nothing.
-
-These bindings live in `config/40-shortcuts.lua`. `gnoblinctl init` copies that
-file once, so a copy made earlier does not have them. Run
-`gnoblinctl config restore-default` to replace your folder with the current
-starter files. This moves your files to a backup, so copy back any changes you
-made. To keep your file instead, add the two `switch_input_source` bindings from
-the starter file to your own config.
+Without Bingux, select a source with `gnoblinctl input select xkb us` or bind a
+callback in your own config with `keybindings.keyboard`. The callback can read
+`gnoblin.input.sources()` and select a source with
+`gnoblin.input.select_source {type = "xkb", id = "gb"}`. See the
+[keyboard shortcut guide](/guides/shortcuts) for callback syntax.
 
 ## Share or keep sources per window
 
