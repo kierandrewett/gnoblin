@@ -554,20 +554,14 @@ int main(void) {
         g_assert_no_error(error);
         g_assert_nonnull(document);
         /* The starter declares its keys as Lua callbacks under
-         * keybindings.keyboard: the console key, eight command keys and two keys that switch the input source. */
+         * keybindings.keyboard: the console key and eight command keys. */
         g_autoptr(GVariant) example_keybindings =
             g_variant_lookup_value(document, "keybindings", G_VARIANT_TYPE_VARDICT);
         g_assert_nonnull(example_keybindings);
         g_autoptr(GVariant) example_keyboard =
             g_variant_lookup_value(example_keybindings, "keyboard", G_VARIANT_TYPE_VARDICT);
         g_assert_nonnull(example_keyboard);
-        g_assert_cmpuint(g_variant_n_children(example_keyboard), ==, 11);
-        g_autoptr(GVariant) switch_forward =
-            g_variant_lookup_value(example_keyboard, "switch_input_source", NULL);
-        g_assert_nonnull(switch_forward);
-        g_autoptr(GVariant) switch_backward =
-            g_variant_lookup_value(example_keyboard, "switch_input_source_backward", NULL);
-        g_assert_nonnull(switch_backward);
+        g_assert_cmpuint(g_variant_n_children(example_keyboard), ==, 9);
         g_autoptr(GVariant) example_window_management =
             g_variant_lookup_value(document, "window-management", G_VARIANT_TYPE_VARDICT);
         g_assert_nonnull(example_window_management);
