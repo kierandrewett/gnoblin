@@ -6,7 +6,6 @@
 #   make check     the fast checks
 #   make test      build the tests, then run the CTest suites
 #   make clean     delete build/, including the staged copy; an installed copy stays
-#   make vr-streamer [INSTALL=1]  build the WiVRn streaming server for standalone VR headsets
 #
 # Settings:  make JOBS=4 DEVKIT=0 PREFIX=/opt/gnoblin
 #   PREFIX   where make install puts the runtime (default /usr/local/lib/gnoblin). The binaries have it compiled in,
@@ -22,7 +21,7 @@ BUILD_DIR := $(or $(GNOBLIN_BUILD_DIR),build/make)
 export GNOBLIN_BUILD_DIR := $(BUILD_DIR)
 export GNOBLIN_VIA_MAKE := 1
 
-.PHONY: build preview install check test clean help vr-streamer
+.PHONY: build preview install check test clean help
 .DEFAULT_GOAL := build
 
 build:
@@ -33,9 +32,6 @@ preview:
 
 install:
 	@./scripts/register-session.sh $(PREFIX) $(STAGE)
-
-vr-streamer:
-	@./scripts/build-vr-streamer.sh $(if $(INSTALL),install)
 
 check:
 	@./tests/check-fast.sh

@@ -221,10 +221,6 @@ char* handle_request(Client* client, const char* data, gsize length) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "pointer locate events require API version 1.80");
             }
-            if (g_str_equal(name, "gnoblin.vr.headset-changed") && client->api_minor < 84) {
-                g_hash_table_unref(subscriptions);
-                return encode_response("", NULL, "headset events require API version 1.84");
-            }
             if (g_str_equal(name, "gnoblin.input.pad-help-requested") && client->api_minor < 73) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "tablet-pad help events require API version 1.73");

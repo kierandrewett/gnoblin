@@ -10,7 +10,3 @@
 [submodule "subprojects/imgui"]
 	path = subprojects/imgui
 	url = https://github.com/ocornut/imgui.git
-[submodule "subprojects/wivrn"]
-	path = subprojects/wivrn
-	url = https://github.com/WiVRn/WiVRn.git
-	shallow = true

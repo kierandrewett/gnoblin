@@ -439,7 +439,6 @@ const char* native_socket_events[] = {
     "gnoblin.window.menu-requested",
     "gnoblin.osd.requested",
     "gnoblin.pointer.locate-requested",
-    "gnoblin.vr.headset-changed",
     "gnoblin.input.pad-help-requested",
     "gnoblin.focus.policy-changed",
     "gnoblin.permission.changed",

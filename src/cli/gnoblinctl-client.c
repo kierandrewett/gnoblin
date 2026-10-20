@@ -3,11 +3,7 @@
 JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* method,
                                          JsonObject* arguments, guint api_minor, GError** error) {
     const char* method_name = method ? method : "";
-    /* The VR extension's public gnoblin.spatial.* calls run as vr.spatial.* operations. */
-    const gboolean spatial_method = g_str_has_prefix(method_name, "spatial.");
-    g_autofree char* spatial_operation =
-        spatial_method ? g_strconcat("vr.", method_name, NULL) : NULL;
-    const char* operation_method = spatial_method ? spatial_operation : method_name;
+    const char* operation_method = method_name;
     g_autofree char* id = g_uuid_string_random();
     g_autoptr(JsonBuilder) builder = json_builder_new();
     json_builder_begin_object(builder);
@@ -109,8 +105,7 @@ JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* m
         g_str_equal(method_name, "input.set_orientation_lock") ||
         g_str_equal(method_name, "monitors.set_privacy_screen") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "grant.list") ||
-        g_str_equal(method_name, "grant.revoke") || g_str_equal(method_name, "animation.preview") ||
-        spatial_method;
+        g_str_equal(method_name, "grant.revoke") || g_str_equal(method_name, "animation.preview");
     guint wait_timeout = cli->timeout + (g_str_equal(method_name, "shortcut.capture") ? 2
                                          : g_str_has_prefix(method_name, "grant.")    ? 6
                                                                                       : 0);
