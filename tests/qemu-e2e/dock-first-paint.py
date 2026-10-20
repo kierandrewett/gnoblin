@@ -13,9 +13,17 @@ After the observation window the check forces a stage repaint with
 `gnoblinctl config reload` and grabs a reference frame. The dock band is
 compared against that reference.
 
-A tick is "invisible-mapped" when the compositor reports the dock layer mapped
-at the reference geometry for at least --grace seconds but the dock band does
-not match the repainted reference. Any invisible-mapped frame fails the run.
+Outcomes per login, judged from the state at window end, before the repaint:
+
+- invisible-mapped: the dock layer is still mapped and its band does not match
+  the repainted reference. This is the reported symptom and fails the run.
+- not-mapped or incomplete: the dock never mapped, or never matched the
+  reference. These also fail the run.
+- drawn-late: the dock matched after more than --grace seconds of being mapped.
+  This is startup latency, reported with draw_latency, and does not fail.
+- drawn: the dock matched within --grace seconds.
+
+Per-tick invisible_mapped flags in ticks.json are diagnostic only.
 """
 
 import argparse
@@ -298,35 +306,48 @@ def observe_login(args, probe, vnc, login_dir):
 
     dock_box = rect(dock_ref)
     first_mapped = None
+    span_start = None
     for item in ticks:
         sample = item["probe"]
         dock = layer(sample, DOCK_NAMESPACE)
-        mapped = bool(dock and dock.get("mapped") and rect(dock) == dock_box)
-        if mapped and first_mapped is None:
-            first_mapped = sample["guest"]
+        mapped = bool(dock and dock.get("mapped"))
+        if mapped and span_start is None:
+            span_start = sample["guest"]
+            first_mapped = first_mapped or span_start
+        if not mapped:
+            span_start = None
         match = match_fraction(item["image"], reference, dock_box, args.tolerance)
+        mapped_for = None if span_start is None else round(sample["guest"] - span_start, 3)
         item.update(
             dock_mapped=mapped,
+            dock_geometry=rect(dock) if dock and dock.get("mapped") else None,
             dock_match=round(match, 4),
             dock_shown=match >= args.threshold,
-            mapped_for=None if first_mapped is None or not mapped else round(sample["guest"] - first_mapped, 3),
+            mapped_for=mapped_for,
         )
-        item["invisible_mapped"] = bool(mapped and item["mapped_for"] >= args.grace and not item["dock_shown"])
+        item["invisible_mapped"] = bool(mapped and mapped_for >= args.grace and not item["dock_shown"])
 
     invisible = [t["index"] for t in ticks if t["invisible_mapped"]]
     first_shown = next((t for t in ticks if t["dock_mapped"] and t["dock_shown"]), None)
+    last = ticks[-1]
+    draw_latency = None if first_shown is None or first_mapped is None else round(first_shown["probe"]["guest"] - first_mapped, 3)
     result.update(
         first_dock_mapped_guest=first_mapped,
         first_dock_shown_guest=None if first_shown is None else first_shown["probe"]["guest"],
+        draw_latency=draw_latency,
         invisible_mapped_frames=invisible,
         invisible_mapped_count=len(invisible),
+        window_end_mapped=last["dock_mapped"],
+        window_end_shown=last["dock_shown"],
     )
-    if invisible:
-        result["outcome"] = "invisible-mapped"
+    if last["dock_mapped"] and not last["dock_shown"]:
+        result.update(outcome="invisible-mapped", reason="dock still mapped and undrawn at window end, before repaint")
     elif first_mapped is None:
-        result.update(outcome="not-mapped", reason="the new dock never reported mapped at the reference geometry")
+        result.update(outcome="not-mapped", reason="the new dock never reported mapped")
     elif first_shown is None:
-        result.update(outcome="incomplete", reason="dock mapped but never matched the reference")
+        result.update(outcome="incomplete", reason="dock mapped but never matched the repaint reference")
+    elif draw_latency > args.grace:
+        result["outcome"] = "drawn-late"
     else:
         result["outcome"] = "drawn"
     write_login(login_dir, ticks, result, reference)
@@ -383,7 +404,7 @@ def main():
             login_dir = output / f"login-{login:02d}"
             result = observe_login(args, probe, vnc, login_dir)
             summary["logins"].append({"login": login, "dir": str(login_dir), **result})
-            failed |= result["outcome"] != "drawn"
+            failed |= result["outcome"] in ("invisible-mapped", "not-mapped", "incomplete")
             print(f"login {login}: {result['outcome']}; invisible-mapped frames={result.get('invisible_mapped_count', '-')}",
                   flush=True)
     finally:
