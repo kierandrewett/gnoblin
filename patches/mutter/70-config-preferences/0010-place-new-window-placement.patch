@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] core: place new windows by the configured placement mode
+
+---
+diff --git a/src/core/place.c b/src/core/place.c
+index 43ffd2f..ccb477e 100644
+--- a/src/core/place.c
++++ b/src/core/place.c
+@@ -455,7 +455,9 @@ window_place_centered (MetaWindow *window)
+   return (type == META_WINDOW_DIALOG ||
+           type == META_WINDOW_MODAL_DIALOG ||
+           type == META_WINDOW_SPLASHSCREEN ||
+-         (type == META_WINDOW_NORMAL && meta_prefs_get_center_new_windows ()));
++         (type == META_WINDOW_NORMAL &&
++          meta_prefs_get_new_window_placement () ==
++          META_NEW_WINDOW_PLACEMENT_CENTER));
+ }
+ 
+ static void
+@@ -1034,8 +1036,11 @@ meta_window_place (MetaWindow        *window,
+       x = logical_monitor->rect.x;
+       y = logical_monitor->rect.y;
+ 
+-      /* No good fit? Fall back to cascading... */
+-      if (!find_first_fit (window, windows,
++      /* Cascade mode never searches for a free area: every normal window
++       * starts from the top-left and steps diagonally past existing ones. */
++      if (meta_prefs_get_new_window_placement () ==
++          META_NEW_WINDOW_PLACEMENT_CASCADE ||
++          !find_first_fit (window, windows,
+                            logical_monitor, new_width, new_height,
+                            &x, &y))
+         {
