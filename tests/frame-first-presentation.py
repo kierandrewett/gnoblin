@@ -127,6 +127,16 @@ def visible(samples):
     return [r for r in samples if r.get("body") == [246, 245, 244]]
 
 
+def builtin_before_external(samples):
+    """Count built-in-header frames shown before the first external header."""
+    count = 0
+    for r in visible(samples):
+        if r["header"] != [36, 36, 36]:
+            return count, True
+        count += 1
+    return count, False
+
+
 def check(name, passed, detail):
     results.append(dict(name=name, passed=bool(passed), detail=detail))
     print(("PASS " if passed else "FAIL ") + name + ": " + str(detail), flush=True)
@@ -192,6 +202,12 @@ try:
             label + " first presentation",
             app_pixels and not bad,
             dict(visible=len(app_pixels), wrong_header=len(bad), first=app_pixels[0]["start"] if app_pixels else None),
+        )
+        before, external_seen = builtin_before_external(samples)
+        check(
+            label + " no built-in frame before first external",
+            external_seen and before == 0,
+            dict(builtin_before=before, external_seen=external_seen),
         )
         if label == "delayed" and app_pixels:
             pid = int(pidfile.read_text())
