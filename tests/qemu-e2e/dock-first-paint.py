@@ -13,17 +13,22 @@ After the observation window the check forces a stage repaint with
 `gnoblinctl config reload` and grabs a reference frame. The dock band is
 compared against that reference.
 
-Outcomes per login, judged from the state at window end, before the repaint:
+Outcomes per login, judged from the window end, before the repaint. The window
+counts only from the new session's epoch, the later of the new compositor and
+new shell start. Before that the old dock is still on screen and proves nothing.
 
-- invisible-mapped: the dock layer is still mapped and its band does not match
-  the repainted reference. This is the reported symptom and fails the run.
-- not-mapped or incomplete: the dock never mapped, or never matched the
+- invisible-mapped: at window end the new dock layer is still mapped and its band
+  does not match the repainted reference. This is the reported symptom and fails
+  the run.
+- not-mapped or incomplete: the new dock never mapped, or never matched the
   reference. These also fail the run.
-- drawn-late: the dock matched after more than --grace seconds of being mapped.
-  This is startup latency, reported with draw_latency, and does not fail.
-- drawn: the dock matched within --grace seconds.
+- drawn-late: the dock matched more than --grace seconds after it mapped. This is
+  startup latency, reported with draw_latency, and does not fail.
+- drawn: the dock matched within --grace seconds of mapping.
 
-Per-tick invisible_mapped flags in ticks.json are diagnostic only.
+Per-tick invisible_mapped flags in ticks.json are diagnostic only: a mapped dock
+that stays unmatched for --grace seconds. A fade-in counts as unmatched until the
+band reaches --threshold.
 """
 
 import argparse
@@ -304,13 +309,23 @@ def observe_login(args, probe, vnc, login_dir):
         write_login(login_dir, ticks, result, reference)
         return result
 
+    new_compositor = result["new_compositor_start_guest"]
+    new_shell = result["new_shell_start_guest"]
+    if not new_compositor or not new_shell:
+        result.update(outcome="incomplete", reason="no new compositor and shell start observed after restart")
+        write_login(login_dir, ticks, result, reference)
+        return result
+    # The old session's dock stays on screen until its compositor exits. Only ticks after
+    # the new session starts can show the new dock, so the window starts there.
+    epoch = max(new_compositor[0], new_shell[0])
     dock_box = rect(dock_ref)
     first_mapped = None
     span_start = None
     for item in ticks:
         sample = item["probe"]
+        in_session = sample["guest"] >= epoch
         dock = layer(sample, DOCK_NAMESPACE)
-        mapped = bool(dock and dock.get("mapped"))
+        mapped = bool(dock and dock.get("mapped")) and in_session
         if mapped and span_start is None:
             span_start = sample["guest"]
             first_mapped = first_mapped or span_start
@@ -319,19 +334,21 @@ def observe_login(args, probe, vnc, login_dir):
         match = match_fraction(item["image"], reference, dock_box, args.tolerance)
         mapped_for = None if span_start is None else round(sample["guest"] - span_start, 3)
         item.update(
+            in_session=in_session,
             dock_mapped=mapped,
-            dock_geometry=rect(dock) if dock and dock.get("mapped") else None,
+            dock_geometry=rect(dock) if mapped else None,
             dock_match=round(match, 4),
-            dock_shown=match >= args.threshold,
+            dock_shown=mapped and match >= args.threshold,
             mapped_for=mapped_for,
         )
         item["invisible_mapped"] = bool(mapped and mapped_for >= args.grace and not item["dock_shown"])
 
     invisible = [t["index"] for t in ticks if t["invisible_mapped"]]
-    first_shown = next((t for t in ticks if t["dock_mapped"] and t["dock_shown"]), None)
+    first_shown = next((t for t in ticks if t["dock_shown"]), None)
     last = ticks[-1]
     draw_latency = None if first_shown is None or first_mapped is None else round(first_shown["probe"]["guest"] - first_mapped, 3)
     result.update(
+        session_epoch_guest=epoch,
         first_dock_mapped_guest=first_mapped,
         first_dock_shown_guest=None if first_shown is None else first_shown["probe"]["guest"],
         draw_latency=draw_latency,
