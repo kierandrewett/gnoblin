@@ -68,11 +68,7 @@ static gboolean run_native_touchpad_command(GVariant* gesture, GError** error) {
         }
         argv[i] = g_strdup(g_variant_get_string(item, NULL));
     }
-    GPid pid = 0;
-    if (!gnoblin_control_command_spawn(argv, &pid, error))
-        return FALSE;
-    g_child_watch_add(pid, gnoblin_control_command_reap, NULL);
-    return TRUE;
+    return gnoblin_control_queue_command("touchpad", argv[0], argv, error);
 }
 
 static void run_native_touchpad_action(GnoblinNativeControl* control, GVariant* gesture) {

@@ -9,6 +9,7 @@
 #include "core/gnoblin-control-internal.h"
 
 #include <dirent.h>
+#include <sched.h>
 #include <errno.h>
 #include <signal.h>
 #include <spawn.h>
@@ -96,12 +97,6 @@ static gboolean native_command_started(gpointer user_data) {
     return G_SOURCE_REMOVE;
 }
 
-void gnoblin_control_command_reap(GPid pid, gint status, gpointer user_data) {
-    (void)status;
-    (void)user_data;
-    g_spawn_close_pid(pid);
-}
-
 static gboolean native_command_close_inherited_fds(posix_spawn_file_actions_t* actions,
                                                    GError** error) {
 #ifdef __GLIBC__
@@ -178,6 +173,20 @@ fail:
     goto fail_actions;
 }
 
+gboolean gnoblin_control_reset_command_scheduling(void) {
+    /* pid 0 names the calling thread on Linux, so only the spawning thread changes.
+     * Positive nice is kept because lowering it may need privilege. */
+    gboolean ok = TRUE;
+    if (getpriority(PRIO_PROCESS, 0) < 0 && setpriority(PRIO_PROCESS, 0, 0) != 0)
+        ok = FALSE;
+    if (sched_getscheduler(0) != SCHED_OTHER) {
+        struct sched_param param = {0};
+        if (sched_setscheduler(0, SCHED_OTHER, &param) != 0)
+            ok = FALSE;
+    }
+    return ok;
+}
+
 static void native_command_spawn_worker(gpointer data, gpointer user_data) {
     NativeCommandJob* job = data;
     NativeCommandStart* start = g_new0(NativeCommandStart, 1);
@@ -187,11 +196,10 @@ static void native_command_spawn_worker(gpointer data, gpointer user_data) {
     start->queued_at_us = job->queued_at_us;
     start->spawn_started_us = g_get_monotonic_time();
     g_autoptr(GError) error = NULL;
-    /* This exclusive worker never returns to GLib's shared pool. Reset before
-     * every spawn in case a process-wide priority daemon boosted it again.
-     * Keep a deliberately positive nice; raising it may require privileges. */
-    if (getpriority(PRIO_PROCESS, 0) < 0 && setpriority(PRIO_PROCESS, 0, 0) != 0)
-        g_warning("gnoblin-command: could not reset worker nice: %s", g_strerror(errno));
+    /* This exclusive worker never returns to GLib's shared pool. Reset its nice and
+     * scheduling policy before every spawn in case a boosted caller started it. */
+    if (!gnoblin_control_reset_command_scheduling())
+        g_warning("gnoblin-command: could not reset worker scheduling: %s", g_strerror(errno));
     if (!gnoblin_control_command_spawn(job->argv, &start->pid, &error))
         start->error_message = g_strdup(error->message);
     start->spawn_finished_us = g_get_monotonic_time();

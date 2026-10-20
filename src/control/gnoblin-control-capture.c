@@ -194,11 +194,9 @@ static void capture_child_setup(gpointer user_data) {
     sigset_t empty;
     sigemptyset(&empty);
     sigprocmask(SIG_SETMASK, &empty, NULL);
-    /* Reset only the forked child, never the shared GTask worker. These Linux
-     * priority calls do not allocate or take GLib locks in the child. Leave
-     * positive nice unchanged rather than attempting privileged promotion. */
-    if (getpriority(PRIO_PROCESS, 0) < 0)
-        (void)setpriority(PRIO_PROCESS, 0, 0);
+    /* Reset only the forked child, never the shared GTask worker. These calls do not
+     * allocate or take GLib locks. Positive nice is left unchanged. */
+    (void)gnoblin_control_reset_command_scheduling();
 }
 
 static void capture_spawn_thread(GTask* task, gpointer source, gpointer task_data,
