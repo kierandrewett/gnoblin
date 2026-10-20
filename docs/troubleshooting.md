@@ -48,9 +48,19 @@ The install does not need the source directory. If you installed with an older
 version of the build, run `make install` again. It removes the old links in your
 home directory that point into the source directory.
 
-Gnoblin does not register with GDM through GNOME Session. Its login entry must
-use `X-GDM-SessionRegisters=false`. If GDM reports “Session never registered,”
-update the entry with `make install`.
+GDM logs “Session never registered” when a session ends before it registers.
+Gnoblin's login entry sets `X-GDM-SessionRegisters=false`, so GDM's session
+wrapper registers the session itself about 10 seconds after it starts (GDM
+49.4, `daemon/gdm-wayland-session.c`).
+
+Check which case applies:
+
+- The session ended within 10 seconds of starting. The warning is expected, and
+  reinstalling does not prevent it.
+- The session ran longer than 10 seconds. Check that the entry says
+  `X-GDM-SessionRegisters=false`, and run `make install` again if it does not.
+  If the message still appears, include the output of `journalctl -b -u gdm` in
+  your bug report.
 
 If no configuration exists, Gnoblin loads its built-in Lua configuration. Run
 `gnoblinctl init` to create an editable configuration tree from the copy
