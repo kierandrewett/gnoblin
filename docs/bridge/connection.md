@@ -158,3 +158,4 @@ releases the client’s bindings and other resources.
 | 1.80            | Adds the `gnoblin.pointer.locate-requested` event                                                          |
 | 1.81            | Adds `work_area` to monitor records and to the monitor `changed` list                                      |
 | 1.84            | Reserved; no API changes                                                                                   |
+| 1.85            | Removes the `window_management.center_new_windows` config key; use `window_management.new_window_placement` (`free_space`, `center`, `cascade`) |
