@@ -245,7 +245,7 @@ Other listed actions have direct runtime equivalents: focus history/policy, relo
 
 `gnoblin.configure(settings)` declares/merges the config document during configuration evaluation. `gnoblin.settings` is a read-only committed snapshot. Neither is a generic live setter. Reload applies supported settings; that is different from a Lua runtime operation. The following config areas have no general runtime setter. The exceptions below are the specific runtime overrides that exist today.
 
-### `window_management`: focus mode/new-window focus, raising delays, auto-maximize, liveness timeout, primary-only workspaces, edge tiling, center-new-windows, modal attachment, X11 workarounds, drag work-area constraint, titlebar actions and button layout; initial `workspaces` ID/name declarations
+### `window_management`: focus mode/new-window focus, raising delays, auto-maximize, liveness timeout, primary-only workspaces, edge tiling, new-window placement, modal attachment, X11 workarounds, drag work-area constraint, titlebar actions and button layout; initial `workspaces` ID/name declarations
 
 - **Runtime status:** Config/reload only. `gnoblin.focus.policy()` reads effective policy; no setter. Typed window/workspace operations change individual objects, not these policies or the initial workspace declaration.
 

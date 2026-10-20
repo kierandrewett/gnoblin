@@ -10,7 +10,7 @@ gnoblin.configure {
         focus_change_on_pointer_rest = false,
         workspaces_only_on_primary = true, -- windows on other monitors follow the active workspace, as in GNOME.
         edge_tiling = true, -- drag a window to a screen edge to tile it.
-        center_new_windows = true,
+        new_window_placement = "center", -- "free_space", "center" or "cascade"; see window_management.md.
         attach_modal_dialogs = true, -- GNOME Shell sets this too; dialogs stay with their parent.
         constrain_drag_to_work_area = true,
 

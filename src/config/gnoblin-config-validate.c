@@ -144,7 +144,6 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
             "dynamic-workspaces",
             "workspaces-only-on-primary",
             "edge-tiling",
-            "center-new-windows",
             "attach-modal-dialogs",
             "disable-workarounds",
             NULL,
@@ -171,6 +170,19 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
                 known_boolean |= g_str_equal(name, booleans[i]);
             if (known_boolean) {
                 valid = g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN);
+            } else if (g_str_equal(name, "center-new-windows")) {
+                g_variant_unref(value);
+                g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                                    "window-management center-new-windows was replaced by "
+                                    "new-window-placement, which takes \"free_space\", "
+                                    "\"center\" or \"cascade\"");
+                return FALSE;
+            } else if (g_str_equal(name, "new-window-placement")) {
+                const char* string = g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)
+                                         ? g_variant_get_string(value, NULL)
+                                         : "";
+                valid = g_str_equal(string, "free_space") || g_str_equal(string, "center") ||
+                        g_str_equal(string, "cascade");
             } else if (g_str_equal(name, "auto-raise-delay")) {
                 gint64 number =
                     g_variant_is_of_type(value, G_VARIANT_TYPE_INT32)   ? g_variant_get_int32(value)
