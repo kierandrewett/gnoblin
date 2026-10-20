@@ -3,6 +3,7 @@
 #
 # Each cycle runs `gnoblinctl logout`, restarts GDM so autologin starts a new Gnoblin session, then checks:
 # - no new core dump appeared (coredumpctl count)
+# - the journal has no "Session never registered" from GDM
 # - the journal has no glibc corruption, SIGABRT or GLib critical from the old compositor
 # - a new compositor process is running
 # Set GNOBLIN_LOGOUT_CYCLES to change the number of cycles (default 8).
@@ -14,15 +15,18 @@ here="$root/tests/qemu-e2e"
 prefix="${GNOBLIN_PREFIX:-$root/build/validation-install}"
 run="${GNOBLIN_QEMU_RUN:-$(cat /tmp/gnoblin-run)}"
 cycles="${GNOBLIN_LOGOUT_CYCLES:-8}"
+# Seconds the new session runs before logout; GDM registers the session after a short delay.
+dwell="${GNOBLIN_LOGOUT_DWELL:-45}"
 out="$run/logout-cycles-$(date -u +%Y%m%dT%H%M%SZ).txt"
 guest() { scripts/qemu-e2e guest "$run" -- env GNOBLIN_PREFIX="$prefix" bash -s < "$1"; }
 
 {
-    echo "command: tests/qemu-e2e/run-logout-cycles.sh (cycles=$cycles)"
+    echo "command: tests/qemu-e2e/run-logout-cycles.sh (cycles=$cycles dwell=$dwell)"
     echo "renderer: $(cat "$run/renderer" 2>/dev/null || echo unknown)"
     failures=0
     for n in $(seq 1 "$cycles"); do
         before="$(guest "$here/guest-logout-state.sh" | grep '^cores=')"
+        sleep "$dwell"
         guest "$here/guest-logout-trigger.sh" || true
         sleep 10
         guest "$here/guest-logout-state.sh" > "$run/logout-cycle-$n-shutdown.txt" 2>&1 || true
@@ -38,10 +42,11 @@ guest() { scripts/qemu-e2e guest "$run" -- env GNOBLIN_PREFIX="$prefix" bash -s 
         state="$(guest "$here/guest-logout-state.sh" 2>&1 || true)"
         after="$(printf '%s\n' "$state" | grep '^cores=')"
         bad="$(printf '%s\n' "$state" | grep '^journal-bad=' || true)"
-        if [ "$ok" -eq 1 ] && [ "$before" = "$after" ] && [ "$bad" = "journal-bad=0" ]; then
-            echo "PASS cycle $n ($after, $bad)"
+        reg="$(printf '%s\n' "$state" | grep '^registration-missing=' || true)"
+        if [ "$ok" -eq 1 ] && [ "$before" = "$after" ] && [ "$bad" = "journal-bad=0" ] && [ "$reg" = "registration-missing=0" ]; then
+            echo "PASS cycle $n ($after, $bad, $reg)"
         else
-            echo "FAIL cycle $n (ok=$ok before=[$before] after=[$after] $bad)"
+            echo "FAIL cycle $n (ok=$ok before=[$before] after=[$after] $bad $reg)"
             printf '%s\n' "$state" | sed 's/^/    /'
             failures=$((failures + 1))
         fi

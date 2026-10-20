@@ -7,6 +7,8 @@ bad="$(sudo journalctl -b --no-pager --since "$since" 2>/dev/null |
     grep -v 'pkla-check-authorization' |
     grep -c -E 'double free|corruption|SIGABRT|Aborted|Gjs-CRITICAL|libmutter-CRITICAL|GLib-GObject-CRITICAL' || true)"
 # pkla-check-authorization is a polkit helper that logs its own GLib criticals; it is not the compositor.
+registration="$(sudo journalctl -b --no-pager --since "$since" 2>/dev/null | grep -c 'Session never registered' || true)"
+echo "registration-missing=$registration"
 echo "journal-bad=$bad"
 if pgrep -f "${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX}/bin/gnoblin --wayland" >/dev/null; then
     echo "compositor=running"
