@@ -1,13 +1,6 @@
 name: openSUSE RPM adapter
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    paths:
-      - ".github/workflows/opensuse-rpm.yml"
-      - "packaging/opensuse/**"
-      - "tests/opensuse-packaging.test.py"
   workflow_dispatch:
     inputs:
       ref:
