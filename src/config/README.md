@@ -8,12 +8,11 @@ they need conversion instead of silently creating a new default config.
 
 `gnoblin` is available globally. Its main declarations are:
 
-| Declaration                       | Input                              | Purpose and reference                                                                     |
-| --------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------- |
-| `gnoblin.configure { ... }`       | Settings table                     | Sets runtime options. See the [configuration API](/config/configure).                     |
-| `gnoblin.window_rule { ... }`     | Match and effect tables            | Adds an ordered window rule. See the [window rules guide](/guides/window_rules).          |
-| `gnoblin.permission_rule { ... }` | Match, capabilities, and decision  | Adds an ordered permission rule. See the [permission rule API](/config/permission_rule).  |
-| `gnoblin.animation { ... }`       | Name, event, timing, and keyframes | Registers a named transition. See the [animation guide](../../docs/guides/animations.md). |
+| Declaration                   | Input                              | Purpose and reference                                                                     |
+| ----------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------- |
+| `gnoblin.configure { ... }`   | Settings table                     | Sets runtime options. See the [configuration API](/config/configure).                     |
+| `gnoblin.window_rule { ... }` | Match and effect tables            | Adds an ordered window rule. See the [window rules guide](/guides/window_rules).          |
+| `gnoblin.animation { ... }`   | Name, event, timing, and keyframes | Registers a named transition. See the [animation guide](../../docs/guides/animations.md). |
 
 Use `gnoblin.configure.shortcuts` and `gnoblin.configure.autostart` for named
 entries. Set an entry's `enable` field to `false` to remove it from the

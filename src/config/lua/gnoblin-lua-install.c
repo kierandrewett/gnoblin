@@ -189,16 +189,6 @@ static void install_api(lua_State* state, LuaConfig* config) {
         } else if (g_str_equal(api_methods[i], "input.text_target")) {
             lua_pushlightuserdata(state, config);
             lua_pushcclosure(state, lua_input_text_target, 1);
-        } else if (g_str_equal(api_methods[i], "permissions.list") ||
-                   g_str_equal(api_methods[i], "permissions.policy") ||
-                   g_str_equal(api_methods[i], "permissions.check")) {
-            lua_pushlightuserdata(state, config);
-            lua_pushcclosure(state,
-                             g_str_equal(api_methods[i], "permissions.list") ? lua_permissions_list
-                             : g_str_equal(api_methods[i], "permissions.policy")
-                                 ? lua_permissions_policy
-                                 : lua_permissions_check,
-                             1);
         } else {
             lua_pushlightuserdata(state, config);
             lua_pushstring(state, api_methods[i]);
@@ -390,11 +380,6 @@ static void install_api(lua_State* state, LuaConfig* config) {
     lua_pushcclosure(state, lua_launches_finish, 1);
     lua_setfield(state, -2, "end");
     lua_setfield(state, -2, "launches");
-    lua_newtable(state);
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_portal_grants, 1);
-    lua_setfield(state, -2, "grants");
-    lua_setfield(state, -2, "portals");
     lua_pushcfunction(state, lua_on);
     lua_setfield(state, -2, "on");
     lua_newtable(state);
@@ -428,7 +413,6 @@ static void install_api(lua_State* state, LuaConfig* config) {
         gboolean named;
     } declarations[] = {
         {"window_rule", "", "window-rules", FALSE},
-        {"permission_rule", "permissions", "rules", FALSE},
         {"animation", "", "animations", TRUE},
     };
     for (guint i = 0; i < G_N_ELEMENTS(declarations); i++) {

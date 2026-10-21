@@ -105,10 +105,6 @@ with `remote-desktop`.
 ---@param rule WindowRuleArgs
 function gnoblin.window_rule(rule) end
 
----Append a permission rule to the permissions rules list.
----@param rule PermissionRuleArgs
-function gnoblin.permission_rule(rule) end
-
 ---Load and merge Lua configuration files matching a path or glob.
 ---@param pattern string Path or glob resolved relative to the current config file and configured
 search directories.

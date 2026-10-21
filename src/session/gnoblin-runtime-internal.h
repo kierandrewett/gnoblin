@@ -189,7 +189,6 @@ gboolean handle_completion(Runtime* runtime, guint64 packet_id, GVariant* payloa
 void runtime_schedule_deferred_callbacks(gpointer user_data);
 void runtime_policy_event_free(gpointer data);
 void focus_policy_committed(GVariant* policy, guint64 revision, gpointer user_data);
-void permission_policy_committed(GVariant* policy, guint64 revision, gpointer user_data);
 void dispatch_reload_event(Runtime* runtime, const char* event, const char* path, guint64 revision,
                            const char* failure_message);
 gboolean handle_state(Runtime* runtime, GVariant* payload, GError** error);

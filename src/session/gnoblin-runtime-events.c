@@ -349,10 +349,6 @@ void focus_policy_committed(GVariant* policy, guint64 revision, gpointer user_da
     queue_policy_event(user_data, "gnoblin.focus.policy-changed", policy, revision);
 }
 
-void permission_policy_committed(GVariant* policy, guint64 revision, gpointer user_data) {
-    queue_policy_event(user_data, "gnoblin.permission.changed", policy, revision);
-}
-
 void dispatch_reload_event(Runtime* runtime, const char* event, const char* path, guint64 revision,
                            const char* failure_message) {
     GVariantBuilder payload_builder;
@@ -438,8 +434,6 @@ gboolean handle_state(Runtime* runtime, GVariant* payload, GError** error) {
         update = gnoblin_config_update_shortcut_snapshot;
     else if (g_str_equal(name, "launches"))
         update = gnoblin_config_update_launch_snapshot;
-    else if (g_str_equal(name, "portal-grants"))
-        update = gnoblin_config_update_portal_grant_snapshot;
     else if (g_str_equal(name, "privacy"))
         update = gnoblin_config_update_privacy_snapshot;
     else if (g_str_equal(name, "session-activity"))

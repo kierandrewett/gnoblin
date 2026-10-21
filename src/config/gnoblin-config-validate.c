@@ -11,8 +11,6 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
     }
     if (!validate_input_handlers(document, error) || !validate_keybindings(document, error))
         return FALSE;
-    if (!gnoblin_permission_policy_validate(document, error))
-        return FALSE;
     g_autoptr(GVariant) location = g_variant_lookup_value(document, "location", NULL);
     if (location && !validate_location(location, error))
         return FALSE;

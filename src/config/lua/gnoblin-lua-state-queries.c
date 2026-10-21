@@ -26,36 +26,6 @@ int lua_capabilities_list(lua_State* state) {
     return 1;
 }
 
-int lua_permissions_list(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.permissions.list takes no arguments");
-    if (!config || !config->settings_document)
-        return luaL_error(state, "committed permission policy is unavailable");
-    g_autofree char* path = gnoblin_config_path();
-    g_autoptr(GVariant) snapshot = gnoblin_permission_policy_list(config->settings_document, path);
-    push_variant(state, snapshot);
-    push_readonly_copy(state, -1);
-    lua_remove(state, -2);
-    return 1;
-}
-
-int lua_permissions_policy(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    if (lua_gettop(state) != 0)
-        return luaL_error(state, "gnoblin.permissions.policy takes no arguments");
-    if (!config || !config->settings_document)
-        return luaL_error(state, "committed permission policy is unavailable");
-    g_autoptr(GVariant) snapshot =
-        gnoblin_permission_policy_snapshot(config->settings_document, config->settings_revision);
-    if (!snapshot)
-        return luaL_error(state, "committed permission policy is unavailable");
-    push_variant(state, snapshot);
-    push_readonly_copy(state, -1);
-    lua_remove(state, -2);
-    return 1;
-}
-
 int lua_privacy_state(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
     if (lua_gettop(state) != 0)
@@ -172,78 +142,6 @@ int lua_runtime_status(lua_State* state) {
                           g_variant_new_uint64(active_runtime->generation));
     g_autoptr(GVariant) status = g_variant_ref_sink(g_variant_builder_end(&builder));
     push_variant(state, status);
-    push_readonly_copy(state, -1);
-    lua_remove(state, -2);
-    return 1;
-}
-
-int lua_permissions_check(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    const char* capability = NULL;
-    const char* identity = NULL;
-    if (lua_gettop(state) == 2 && lua_type(state, 1) == LUA_TSTRING &&
-        lua_type(state, 2) == LUA_TSTRING) {
-        capability = lua_tostring(state, 1);
-        identity = lua_tostring(state, 2);
-    } else if (lua_gettop(state) == 1 && lua_istable(state, 1)) {
-        static const char* const fields[] = {"capability", "identity", NULL};
-        if (!table_fields_allowed(state, 1, fields))
-            return luaL_error(state, "gnoblin.permissions.check accepts capability and identity");
-        lua_getfield(state, 1, "capability");
-        capability = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
-        lua_getfield(state, 1, "identity");
-        identity = lua_type(state, -1) == LUA_TSTRING ? lua_tostring(state, -1) : NULL;
-    } else {
-        return luaL_error(state, "gnoblin.permissions.check requires capability and identity");
-    }
-    if (!capability || !identity) {
-        if (lua_gettop(state) == 3)
-            lua_pop(state, 2);
-        return luaL_error(state,
-                          "gnoblin.permissions.check requires string capability and identity");
-    }
-    if (!gnoblin_permission_capability_supported(capability)) {
-        if (lua_gettop(state) == 3)
-            lua_pop(state, 2);
-        return luaL_error(state, "unsupported permission capability");
-    }
-    if (!config || !config->settings_document) {
-        if (lua_gettop(state) == 3)
-            lua_pop(state, 2);
-        return luaL_error(state, "committed permission policy is unavailable");
-    }
-    g_auto(GnoblinPermission) decision =
-        gnoblin_permission_policy_evaluate(config->settings_document, capability, identity);
-    GVariantBuilder result;
-    g_variant_builder_init(&result, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(
-        &result, "{sv}", "level",
-        g_variant_new_string(decision.level == GNOBLIN_PERMISSION_ASK     ? "ask"
-                             : decision.level == GNOBLIN_PERMISSION_ALLOW ? "allow"
-                             : decision.level == GNOBLIN_PERMISSION_DENY  ? "deny"
-                                                                          : "inherit"));
-    g_variant_builder_add(&result, "{sv}", "rule",
-                          g_variant_new_string(decision.rule ? decision.rule : ""));
-    static const char* const empty_monitors[] = {NULL};
-    const char* const* monitor_values =
-        decision.monitors ? (const char* const*)decision.monitors : empty_monitors;
-    g_variant_builder_add(&result, "{sv}", "monitors", g_variant_new_strv(monitor_values, -1));
-    GVariantBuilder devices;
-    g_variant_builder_init(&devices, G_VARIANT_TYPE_STRING_ARRAY);
-    if (decision.devices & 1)
-        g_variant_builder_add(&devices, "s", "keyboard");
-    if (decision.devices & 2)
-        g_variant_builder_add(&devices, "s", "pointer");
-    if (decision.devices & 4)
-        g_variant_builder_add(&devices, "s", "touchscreen");
-    g_variant_builder_add(&result, "{sv}", "devices", g_variant_builder_end(&devices));
-    g_variant_builder_add(&result, "{sv}", "clipboard", g_variant_new_boolean(decision.clipboard));
-    g_variant_builder_add(&result, "{sv}", "revision",
-                          g_variant_new_uint64(config->settings_revision));
-    g_autoptr(GVariant) snapshot = g_variant_ref_sink(g_variant_builder_end(&result));
-    if (lua_gettop(state) == 3)
-        lua_pop(state, 2);
-    push_variant(state, snapshot);
     push_readonly_copy(state, -1);
     lua_remove(state, -2);
     return 1;
@@ -414,47 +312,6 @@ int lua_launches_snapshot(lua_State* state) {
     lua_setfield(state, -2, "revision");
     push_readonly_copy(state, -1);
     lua_remove(state, -2);
-    return 1;
-}
-
-int lua_portal_grants(lua_State* state) {
-    LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
-    const char* kind_filter = NULL;
-    if (lua_gettop(state) > 1 || (lua_gettop(state) == 1 && !lua_istable(state, 1)))
-        return luaL_error(state, "gnoblin.portals.grants takes no arguments or a filter table");
-    if (lua_istable(state, 1)) {
-        static const char* const fields[] = {"kind", NULL};
-        if (!table_fields_allowed(state, 1, fields))
-            return luaL_error(state, "gnoblin.portals.grants filter accepts only kind");
-        lua_getfield(state, 1, "kind");
-        if (!lua_isnil(state, -1) && lua_type(state, -1) != LUA_TSTRING)
-            return luaL_error(state, "portal grant kind must be a string");
-        kind_filter = lua_tostring(state, -1);
-        lua_pop(state, 1);
-    }
-    if (kind_filter && !g_str_equal(kind_filter, "screen-cast") &&
-        !g_str_equal(kind_filter, "remote-desktop"))
-        return luaL_error(state, "grant kind must be screen-cast or remote-desktop");
-    if (!config || !config->portal_grant_snapshot)
-        return luaL_error(state, "native portal grant snapshot is unavailable");
-
-    g_autoptr(GVariant) grants =
-        g_variant_lookup_value(config->portal_grant_snapshot, "grants", G_VARIANT_TYPE("aa{sv}"));
-    lua_newtable(state);
-    mark_array_table(state, -1);
-    for (gsize i = 0; grants && i < g_variant_n_children(grants); i++) {
-        g_autoptr(GVariant) grant = g_variant_get_child_value(grants, i);
-        const char* kind = NULL;
-        g_variant_lookup(grant, "kind", "&s", &kind);
-        if (kind_filter && (!kind || !g_str_equal(kind_filter, kind)))
-            continue;
-        push_variant(state, grant);
-        lua_pushinteger(state, (lua_Integer)config->portal_grant_revision);
-        lua_setfield(state, -2, "revision");
-        push_readonly_copy(state, -1);
-        lua_remove(state, -2);
-        lua_rawseti(state, -2, lua_rawlen(state, -2) + 1);
-    }
     return 1;
 }
 

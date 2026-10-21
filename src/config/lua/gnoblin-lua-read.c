@@ -335,10 +335,6 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         "launches.snapshot",
         "shortcuts.list",
         "shortcuts.actions",
-        "permissions.list",
-        "permissions.policy",
-        "permissions.check",
-        "portals.grants",
         "privacy.state",
         "input.devices",
         "input.sources",
@@ -365,8 +361,7 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         g_str_equal(method, "focus.history") || g_str_equal(method, "windows.list") ||
         g_str_equal(method, "window.list") || g_str_equal(method, "layer.animation_policy") ||
         g_str_equal(method, "window.match") || g_str_equal(method, "layers.list") ||
-        g_str_equal(method, "shortcuts.actions") || g_str_equal(method, "permissions.check") ||
-        g_str_equal(method, "portals.grants");
+        g_str_equal(method, "shortcuts.actions");
     if (!accepts_arguments && g_variant_n_children(arguments) != 0) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                     "Lua API read '%s' does not accept arguments", method);
@@ -397,27 +392,6 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                             "shortcuts.actions accepts an optional group string");
         return NULL;
-    }
-    if (g_str_equal(method, "permissions.check")) {
-        const char* capability = NULL;
-        const char* identity = NULL;
-        if (g_variant_n_children(arguments) != 2 ||
-            !g_variant_lookup(arguments, "capability", "&s", &capability) ||
-            !g_variant_lookup(arguments, "identity", "&s", &identity) || !capability || !identity) {
-            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                "permissions.check requires string capability and identity");
-            return NULL;
-        }
-    }
-    if (g_str_equal(method, "portals.grants")) {
-        const char* kind = NULL;
-        if (g_variant_n_children(arguments) > 1 ||
-            (g_variant_n_children(arguments) == 1 &&
-             !g_variant_lookup(arguments, "kind", "&s", &kind))) {
-            g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                                "portals.grants accepts only an optional kind string");
-            return NULL;
-        }
     }
     if (g_str_equal(method, "window.list") && !legacy_window_list_arguments_valid(arguments, error))
         return NULL;
@@ -533,26 +507,6 @@ GVariant* gnoblin_config_read_api(const char* method, GVariant* arguments, GErro
     } else if (g_str_equal(method, "shortcuts.actions")) {
         lua_getfield(state, -1, "shortcuts");
         lua_getfield(state, -1, "actions");
-        lua_remove(state, -2);
-        lua_remove(state, -2);
-    } else if (g_str_equal(method, "permissions.list")) {
-        lua_getfield(state, -1, "permissions");
-        lua_getfield(state, -1, "list");
-        lua_remove(state, -2);
-        lua_remove(state, -2);
-    } else if (g_str_equal(method, "permissions.policy")) {
-        lua_getfield(state, -1, "permissions");
-        lua_getfield(state, -1, "policy");
-        lua_remove(state, -2);
-        lua_remove(state, -2);
-    } else if (g_str_equal(method, "permissions.check")) {
-        lua_getfield(state, -1, "permissions");
-        lua_getfield(state, -1, "check");
-        lua_remove(state, -2);
-        lua_remove(state, -2);
-    } else if (g_str_equal(method, "portals.grants")) {
-        lua_getfield(state, -1, "portals");
-        lua_getfield(state, -1, "grants");
         lua_remove(state, -2);
         lua_remove(state, -2);
     } else if (g_str_equal(method, "privacy.state")) {

@@ -105,8 +105,6 @@ void gnoblin_config_update_appearance_snapshot(GVariant* snapshot, guint64 revis
 void gnoblin_config_update_shortcut_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the latest native launch-feedback snapshot for immediate Lua reads. */
 void gnoblin_config_update_launch_snapshot(GVariant* snapshot, guint64 revision);
-/* Cache validated portal grants for immediate Lua collection reads. */
-void gnoblin_config_update_portal_grant_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the current native animation registry for immediate Lua reads. */
 void gnoblin_config_update_animation_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache native privacy availability and activity fields for immediate Lua reads. */
@@ -121,11 +119,6 @@ typedef void (*GnoblinConfigFocusPolicyChangedFunc)(GVariant* policy, guint64 re
                                                     gpointer user_data);
 void gnoblin_config_set_focus_policy_changed_callback(GnoblinConfigFocusPolicyChangedFunc callback,
                                                       gpointer user_data);
-/* Notify the native host after a committed permission policy change. */
-typedef void (*GnoblinConfigPermissionPolicyChangedFunc)(GVariant* policy, guint64 revision,
-                                                         gpointer user_data);
-void gnoblin_config_set_permission_policy_changed_callback(
-    GnoblinConfigPermissionPolicyChangedFunc callback, gpointer user_data);
 /* Notify the native host after any committed configuration change. */
 typedef void (*GnoblinConfigSettingsChangedFunc)(guint64 revision, gpointer user_data);
 void gnoblin_config_set_settings_changed_callback(GnoblinConfigSettingsChangedFunc callback,

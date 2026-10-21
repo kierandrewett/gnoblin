@@ -54,18 +54,11 @@ void gnoblin_config_update_input_source_snapshot(GVariant* snapshot, guint64 rev
 void gnoblin_config_update_shortcut_snapshot(GVariant* snapshot, guint64 revision);
 /* Cache the latest native launch-feedback snapshot for immediate Lua reads. */
 void gnoblin_config_update_launch_snapshot(GVariant* snapshot, guint64 revision);
-/* Cache validated portal grants for immediate Lua collection reads. */
-void gnoblin_config_update_portal_grant_snapshot(GVariant* snapshot, guint64 revision);
 /* Notify the native host after a committed change to the effective focus policy. */
 typedef void (*GnoblinConfigFocusPolicyChangedFunc)(GVariant* policy, guint64 revision,
                                                     gpointer user_data);
 void gnoblin_config_set_focus_policy_changed_callback(GnoblinConfigFocusPolicyChangedFunc callback,
                                                       gpointer user_data);
-/* Notify the native host after a committed permission policy change. */
-typedef void (*GnoblinConfigPermissionPolicyChangedFunc)(GVariant* policy, guint64 revision,
-                                                         gpointer user_data);
-void gnoblin_config_set_permission_policy_changed_callback(
-    GnoblinConfigPermissionPolicyChangedFunc callback, gpointer user_data);
 /* Notify the native host after a committed configuration change. */
 typedef void (*GnoblinConfigSettingsChangedFunc)(guint64 revision, gpointer user_data);
 void gnoblin_config_set_settings_changed_callback(GnoblinConfigSettingsChangedFunc callback,

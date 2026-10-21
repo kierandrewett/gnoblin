@@ -119,13 +119,6 @@ static const ApiMember api_fields_AuthRespondArgs[] = {
     {"request_id", "integer", FALSE, "Positive request identifier."},
     {"response", "string", FALSE, "UTF-8 response of at most 4096 bytes."},
 };
-static const ApiMember api_fields_Capability[] = {
-    {"id", "string", FALSE, "Stable capability identifier."},
-    {"description", "string", FALSE, "Human-readable capability description."},
-    {"available", "boolean", FALSE, "Whether the capability is available in this session."},
-    {"reason", "string", TRUE, "Present when unavailable; a machine-readable reason."},
-    {"revision", "integer", FALSE, "Capability snapshot revision."},
-};
 static const ApiMember api_fields_CommandCaptureArgs[] = {
     {"argv", "string[]", FALSE, "Command and arguments; 1 to 64 entries with a non-empty command name; total size at most 64 KiB."},
     {"stdin", "string", TRUE, "UTF-8 input, at most 4096 bytes."},
@@ -164,26 +157,6 @@ static const ApiMember api_fields_FocusPolicy[] = {
     {"focus_change_on_pointer_rest", "boolean", FALSE, "Whether focus changes after pointer rest."},
     {"auto_raise_delay", "integer", FALSE, "Delay in milliseconds before automatic raise."},
     {"revision", "integer", FALSE, "Revision of the committed settings snapshot."},
-};
-static const ApiMember api_fields_Grant[] = {
-    {"id", "string", FALSE, "Opaque portal grant identifier."},
-    {"kind", "PortalGrantKind", FALSE, "Grant type."},
-    {"requester", "string", FALSE, "Requester identity reported by the portal."},
-    {"devices", "integer", FALSE, "Bit mask: keyboard is 1, pointer is 2, and touchscreen is 4."},
-    {"clipboard", "boolean", FALSE, "Whether clipboard access was granted."},
-    {"screenStreams", "boolean", FALSE, "Whether the grant has a saved screen stream selection."},
-};
-static const ApiMember api_fields_GrantListResult[] = {
-    {"grants", "Grant[]", FALSE, "Portal grants returned by the backend."},
-};
-static const ApiMember api_fields_GrantRevokeArgs[] = {
-    {"kind", "PortalGrantKind", FALSE, "Type of the grant to revoke."},
-    {"id", "string", FALSE, "Nonempty opaque grant identifier."},
-    {"created_at", "integer", TRUE, "Nonnegative creation time in Unix milliseconds, used to guard against revoking a replaced grant."},
-};
-static const ApiMember api_fields_GrantRevokeResult[] = {
-    {"ok", "boolean", FALSE, "Whether the grant was revoked."},
-    {"id", "string", FALSE, "Identifier of the revoked grant."},
 };
 static const ApiMember api_fields_InputDevice[] = {
     {"id", "string", FALSE, "Stable ID for this compositor device instance."},
@@ -331,38 +304,6 @@ static const ApiMember api_fields_OrientationLock[] = {
 static const ApiMember api_fields_OrientationLockValue[] = {
     {"value", "boolean|\"inherit\"", FALSE, "Lock, unlock, or restore the configured/system value."},
 };
-static const ApiMember api_fields_PermissionCheckArgs[] = {
-    {"capability", "PermissionCapability", FALSE, "Capability to evaluate."},
-    {"identity", "string", FALSE, "Permission identity, normally prefixed by \"app-id:\" or \"host-exe:/\"."},
-};
-static const ApiMember api_fields_PermissionDecision[] = {
-    {"level", "PermissionDecisionLevel", FALSE, "Effective decision level."},
-    {"rule", "string", FALSE, "Matching rule name, or an empty string when no rule matched."},
-    {"monitors", "string[]", FALSE, "Monitor restrictions selected by the effective rule."},
-    {"devices", "RemoteDesktopDevice[]", FALSE, "Input device restrictions selected by the effective rule."},
-    {"clipboard", "boolean", FALSE, "Whether clipboard access is allowed by the effective rule."},
-    {"revision", "integer", FALSE, "Policy revision used to evaluate the decision."},
-};
-static const ApiMember api_fields_PermissionListSnapshot[] = {
-    {"policy", "{default: PermissionReportedLevel, rules: PermissionRule[]}", FALSE, "Committed policy values."},
-    {"capabilities", "PermissionCapability[]", FALSE, "Capabilities accepted by the policy."},
-    {"levels", "PermissionReportedLevel[]", FALSE, "Levels accepted for the default policy."},
-    {"path", "string", FALSE, "Config path, or an empty string when not supplied."},
-};
-static const ApiMember api_fields_PermissionPolicy[] = {
-    {"default", "PermissionReportedLevel", FALSE, "Default decision. The deprecated \"default\" spelling is reported as \"inherit\"."},
-    {"rules", "PermissionRule[]", FALSE, "Permission rules in configured order."},
-    {"revision", "integer", FALSE, "Policy revision."},
-};
-static const ApiMember api_fields_PermissionRule[] = {
-    {"name", "string", FALSE, "Unique rule name of at most 80 ASCII letters, digits, underscore, dot, or hyphen."},
-    {"match", "string", FALSE, "Nonempty valid Lua pattern of at most 512 UTF-8 bytes, matched against the permission identity."},
-    {"capabilities", "PermissionCapability[]", FALSE, "Nonempty capabilities selected by this rule."},
-    {"level", "PermissionLevel", FALSE, "Rule decision level."},
-    {"monitors", "string[]", TRUE, "Nonempty monitor names; only for screen-cast or remote-desktop capabilities."},
-    {"devices", "RemoteDesktopDevice[]", TRUE, "Nonempty devices; only for remote-desktop capability."},
-    {"clipboard", "boolean", TRUE, "Clipboard access; only for remote-desktop capability."},
-};
 static const ApiMember api_fields_PermissionRuleArgs[] = {
     {"name", "string", FALSE, "Unique name of 1 to 80 ASCII letters, digits, `_`, `.`, or `-`."},
     {"match", "string", FALSE, "Valid Lua pattern of 1 to 512 UTF-8 bytes, matched against the application identity."},
@@ -371,19 +312,6 @@ static const ApiMember api_fields_PermissionRuleArgs[] = {
     {"monitors", "string[]", TRUE, "Nonempty monitor names (1 to 80 ASCII letters, digits, `_`, `.`, `:`, or `-`); valid only for `screen-cast` or `remote-desktop` capabilities."},
     {"devices", "string[]", TRUE, "Optional list of `keyboard`, `pointer`, or `touchscreen`; valid only with `remote-desktop`."},
     {"clipboard", "boolean", TRUE, "Clipboard access setting; valid only with `remote-desktop`."},
-};
-static const ApiMember api_fields_PortalGrant[] = {
-    {"id", "string", FALSE, "Opaque portal grant identifier."},
-    {"kind", "PortalGrantKind", FALSE, "Grant type."},
-    {"requester", "string", FALSE, "Requester identity reported by the portal."},
-    {"devices", "RemoteDesktopDevice[]", FALSE, "Granted input devices."},
-    {"clipboard", "boolean", FALSE, "Whether clipboard access was granted."},
-    {"has_screen_streams", "boolean", FALSE, "Whether the grant has active screen streams."},
-    {"created_at", "integer", FALSE, "Grant creation time in Unix milliseconds."},
-    {"revision", "integer", FALSE, "Grant snapshot revision."},
-};
-static const ApiMember api_fields_PortalGrantFilter[] = {
-    {"kind", "PortalGrantKind", TRUE, "Return only grants of this kind."},
 };
 static const ApiMember api_fields_PrivacyAvailability[] = {
     {"screen_sharing", "boolean", FALSE, "Whether screen sharing state is available."},
@@ -751,7 +679,6 @@ static const ApiClass api_classes[] = {
     {"AuthBeginArgs", "", api_fields_AuthBeginArgs, 2},
     {"AuthCancelArgs", "", api_fields_AuthCancelArgs, 1},
     {"AuthRespondArgs", "", api_fields_AuthRespondArgs, 2},
-    {"Capability", "", api_fields_Capability, 5},
     {"CommandCaptureArgs", "", api_fields_CommandCaptureArgs, 3},
     {"CommandResult", "", api_fields_CommandResult, 2},
     {"CommandRunResult", "", api_fields_CommandRunResult, 1},
@@ -762,10 +689,6 @@ static const ApiClass api_classes[] = {
     {"FocusContext", "", NULL, 0},
     {"FocusHistoryFilter", "", api_fields_FocusHistoryFilter, 3},
     {"FocusPolicy", "", api_fields_FocusPolicy, 7},
-    {"Grant", "", api_fields_Grant, 6},
-    {"GrantListResult", "", api_fields_GrantListResult, 1},
-    {"GrantRevokeArgs", "", api_fields_GrantRevokeArgs, 3},
-    {"GrantRevokeResult", "", api_fields_GrantRevokeResult, 2},
     {"InputDevice", "", api_fields_InputDevice, 8},
     {"InputEvent", "", api_fields_InputEvent, 6},
     {"InputHandlerMatch", "", api_fields_InputHandlerMatch, 7},
@@ -789,14 +712,7 @@ static const ApiClass api_classes[] = {
     {"OperationError", "The failure of an Operation.", api_fields_OperationError, 2},
     {"OrientationLock", "", api_fields_OrientationLock, 5},
     {"OrientationLockValue", "", api_fields_OrientationLockValue, 1},
-    {"PermissionCheckArgs", "", api_fields_PermissionCheckArgs, 2},
-    {"PermissionDecision", "", api_fields_PermissionDecision, 6},
-    {"PermissionListSnapshot", "", api_fields_PermissionListSnapshot, 4},
-    {"PermissionPolicy", "", api_fields_PermissionPolicy, 3},
-    {"PermissionRule", "", api_fields_PermissionRule, 7},
     {"PermissionRuleArgs", "", api_fields_PermissionRuleArgs, 7},
-    {"PortalGrant", "", api_fields_PortalGrant, 8},
-    {"PortalGrantFilter", "", api_fields_PortalGrantFilter, 1},
     {"PrivacyAvailability", "", api_fields_PrivacyAvailability, 5},
     {"PrivacyScreenMonitor", "", api_fields_PrivacyScreenMonitor, 4},
     {"PrivacyScreenSetArgs", "", api_fields_PrivacyScreenSetArgs, 1},
@@ -932,140 +848,127 @@ static const ApiMember api_params_36[] = {
 static const ApiMember api_params_37[] = {
     {"request", "AuthRespondArgs", FALSE, ""},
 };
-static const ApiMember api_params_39[] = {
+static const ApiMember api_params_38[] = {
     {"request", "CommandCaptureArgs", FALSE, "Command request. Standard error is discarded."},
 };
-static const ApiMember api_params_40[] = {
+static const ApiMember api_params_39[] = {
     {"argv", "string[]", FALSE, "Command and arguments; 1 to 64 UTF-8 entries, non-empty argv[1], total size at most 64 KiB."},
 };
-static const ApiMember api_params_44[] = {
+static const ApiMember api_params_43[] = {
     {"settings", "table", FALSE, "Settings table to merge into the active configuration."},
+};
+static const ApiMember api_params_45[] = {
+    {"name", "string", FALSE, "Mutter event name, 1 to 128 UTF-8 bytes."},
+    {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
 };
 static const ApiMember api_params_46[] = {
     {"name", "string", FALSE, "Mutter event name, 1 to 128 UTF-8 bytes."},
-    {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
-};
-static const ApiMember api_params_47[] = {
-    {"name", "string", FALSE, "Mutter event name, 1 to 128 UTF-8 bytes."},
     {"callback", "fun(event: Event)", FALSE, "Called once for the first matching event."},
 };
-static const ApiMember api_params_48[] = {
+static const ApiMember api_params_47[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive every dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
 };
-static const ApiMember api_params_49[] = {
+static const ApiMember api_params_48[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive the next dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for the first matching event."},
 };
-static const ApiMember api_params_50[] = {
+static const ApiMember api_params_49[] = {
     {"filter", "FocusHistoryFilter", TRUE, ""},
 };
-static const ApiMember api_params_53[] = {
-    {"grant", "GrantRevokeArgs", FALSE, ""},
-};
-static const ApiMember api_params_58[] = {
+static const ApiMember api_params_55[] = {
     {"match", "InputHandlerMatch", FALSE, "Event selectors. type is required; other selectors are optional."},
     {"handler", "fun(event: InputEvent): InputHandlerResult|nil", FALSE, "Return action=\"consume\" to consume, \"forward\" or nil to pass through."},
 };
-static const ApiMember api_params_60[] = {
+static const ApiMember api_params_57[] = {
     {"source", "InputSourceSelector", FALSE, ""},
 };
-static const ApiMember api_params_61[] = {
+static const ApiMember api_params_58[] = {
     {"value", "boolean|\"inherit\"", FALSE, "True locks orientation; false unlocks it; \"inherit\" clears the runtime override."},
 };
-static const ApiMember api_params_63[] = {
+static const ApiMember api_params_60[] = {
     {"context", "FocusContext", FALSE, "Context supplied to a shortcut event callback."},
 };
-static const ApiMember api_params_64[] = {
+static const ApiMember api_params_61[] = {
     {"launch", "NativeLaunchBeginArgs", FALSE, ""},
 };
-static const ApiMember api_params_65[] = {
+static const ApiMember api_params_62[] = {
     {"request", "LaunchEndArgs", FALSE, ""},
 };
-static const ApiMember api_params_67[] = {
+static const ApiMember api_params_64[] = {
     {"launch", "LaunchBeginArgs", FALSE, ""},
 };
-static const ApiMember api_params_68[] = {
+static const ApiMember api_params_65[] = {
     {"token", "string", FALSE, "Non-empty token, at most 128 characters."},
 };
-static const ApiMember api_params_69[] = {
+static const ApiMember api_params_66[] = {
     {"token", "string", FALSE, "Non-empty token, at most 128 characters."},
 };
-static const ApiMember api_params_73[] = {
+static const ApiMember api_params_70[] = {
     {"namespace", "string", FALSE, "UTF-8 namespace from 1 to 128 bytes."},
 };
-static const ApiMember api_params_74[] = {
+static const ApiMember api_params_71[] = {
     {"filter", "LayerFilter", TRUE, ""},
 };
-static const ApiMember api_params_75[] = {
+static const ApiMember api_params_72[] = {
     {"pattern", "string", FALSE, "Path or glob resolved relative to the current config file and configured search directories."},
 };
-static const ApiMember api_params_76[] = {
+static const ApiMember api_params_73[] = {
     {"request", "LocationAuthorizationArgs", FALSE, ""},
 };
-static const ApiMember api_params_81[] = {
+static const ApiMember api_params_78[] = {
     {"value", "boolean|\"inherit\"", FALSE, "true or false sets the override; \"inherit\" restores the configured or system value."},
 };
-static const ApiMember api_params_82[] = {
+static const ApiMember api_params_79[] = {
     {"name", "string", FALSE, "Event name, or `*` to receive every dispatched event."},
     {"callback", "fun(event: Event)", FALSE, "Called once for each matching event."},
 };
 static const ApiMember api_params_83[] = {
-    {"rule", "PermissionRuleArgs", FALSE, ""},
-};
-static const ApiMember api_params_84[] = {
-    {"request", "PermissionCheckArgs|PermissionCapability", FALSE, ""},
-    {"identity", "string", TRUE, "Required when request is a capability string."},
-};
-static const ApiMember api_params_87[] = {
-    {"filter", "PortalGrantFilter", TRUE, ""},
-};
-static const ApiMember api_params_91[] = {
     {"request", "PromptCancelArgs", FALSE, ""},
 };
-static const ApiMember api_params_92[] = {
+static const ApiMember api_params_84[] = {
     {"request", "PromptRespondArgs", FALSE, ""},
 };
-static const ApiMember api_params_103[] = {
+static const ApiMember api_params_95[] = {
     {"group", "\"wm\"|\"mutter\"|\"wayland\"", TRUE, "Action group."},
 };
-static const ApiMember api_params_104[] = {
+static const ApiMember api_params_96[] = {
     {"binding", "ShortcutBindingArgs", FALSE, ""},
 };
-static const ApiMember api_params_105[] = {
+static const ApiMember api_params_97[] = {
     {"options", "ShortcutCaptureOptions", TRUE, ""},
 };
-static const ApiMember api_params_106[] = {
+static const ApiMember api_params_98[] = {
     {"session", "ShortcutSessionArgs", FALSE, ""},
 };
-static const ApiMember api_params_108[] = {
+static const ApiMember api_params_100[] = {
     {"binding", "ShortcutIdArgs", FALSE, ""},
 };
-static const ApiMember api_params_111[] = {
+static const ApiMember api_params_103[] = {
     {"rule", "WindowRuleArgs", FALSE, ""},
 };
-static const ApiMember api_params_112[] = {
+static const ApiMember api_params_104[] = {
     {"filter", "WindowFilter", TRUE, ""},
 };
-static const ApiMember api_params_113[] = {
+static const ApiMember api_params_105[] = {
+    {"workspace", "WorkspaceSelector", FALSE, ""},
+};
+static const ApiMember api_params_107[] = {
+    {"id", "string", FALSE, "Stable workspace ID."},
+};
+static const ApiMember api_params_108[] = {
+    {"workspace", "WorkspaceCreateArgs", FALSE, ""},
+};
+static const ApiMember api_params_110[] = {
+    {"request", "WorkspaceMoveActiveArgs", FALSE, ""},
+};
+static const ApiMember api_params_111[] = {
+    {"request", "WorkspaceMoveWindowArgs", FALSE, ""},
+};
+static const ApiMember api_params_114[] = {
     {"workspace", "WorkspaceSelector", FALSE, ""},
 };
 static const ApiMember api_params_115[] = {
-    {"id", "string", FALSE, "Stable workspace ID."},
-};
-static const ApiMember api_params_116[] = {
-    {"workspace", "WorkspaceCreateArgs", FALSE, ""},
-};
-static const ApiMember api_params_118[] = {
-    {"request", "WorkspaceMoveActiveArgs", FALSE, ""},
-};
-static const ApiMember api_params_119[] = {
-    {"request", "WorkspaceMoveWindowArgs", FALSE, ""},
-};
-static const ApiMember api_params_122[] = {
-    {"workspace", "WorkspaceSelector", FALSE, ""},
-};
-static const ApiMember api_params_123[] = {
     {"workspace", "WorkspaceRenameArgs", FALSE, ""},
 };
 
@@ -1108,61 +1011,53 @@ static const ApiFunction api_functions[] = {
     {"auth.begin", "Begin an authentication request for an identity.", api_params_35, 1, "Operation<any>"},
     {"auth.cancel", "Cancel an authentication request.", api_params_36, 1, "Operation<any>"},
     {"auth.respond", "Submit a UTF-8 authentication response of at most 4096 bytes.", api_params_37, 1, "Operation<any>"},
-    {"capabilities.list", "List capabilities available in the current session.", NULL, 0, "Capability[]"},
-    {"commands.capture", "Run a command and return its standard output and exit code.", api_params_39, 1, "Operation<CommandResult>"},
-    {"commands.run", "Queue a command for asynchronous execution.", api_params_40, 1, "Operation<CommandRunResult>"},
+    {"commands.capture", "Run a command and return its standard output and exit code.", api_params_38, 1, "Operation<CommandResult>"},
+    {"commands.run", "Queue a command for asynchronous execution.", api_params_39, 1, "Operation<CommandRunResult>"},
     {"config.default", "Return the bundled default Lua configuration source.", NULL, 0, "string"},
     {"config.path", "Return the active configuration file path using GNOBLIN_CONFIG and XDG defaults.", NULL, 0, "string"},
     {"config.restore_default", "Replace the standard config directory with bundled defaults, save the old directory as a backup, and reload the restored configuration.", NULL, 0, "Operation<AcceptedResult>"},
-    {"configure", "Merge settings into the active Lua configuration.", api_params_44, 1, ""},
+    {"configure", "Merge settings into the active Lua configuration.", api_params_43, 1, ""},
     {"console.toggle", "Toggle the shell console.", NULL, 0, "Operation<ConsoleToggleResult>"},
-    {"events.mutter.on", "Register a callback for a Mutter event. The name must start with `mutter.`.", api_params_46, 2, "EventSubscription"},
-    {"events.mutter.once", "Register a callback for one Mutter event. The name must start with `mutter.`.", api_params_47, 2, "EventSubscription"},
-    {"events.on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_48, 2, "EventSubscription"},
-    {"events.once", "Register a callback that is removed after its first event.", api_params_49, 2, "EventSubscription"},
-    {"focus.history", "Return windows in most-recently-focused order, optionally filtered.", api_params_50, 1, "Window[]"},
+    {"events.mutter.on", "Register a callback for a Mutter event. The name must start with `mutter.`.", api_params_45, 2, "EventSubscription"},
+    {"events.mutter.once", "Register a callback for one Mutter event. The name must start with `mutter.`.", api_params_46, 2, "EventSubscription"},
+    {"events.on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_47, 2, "EventSubscription"},
+    {"events.once", "Register a callback that is removed after its first event.", api_params_48, 2, "EventSubscription"},
+    {"focus.history", "Return windows in most-recently-focused order, optionally filtered.", api_params_49, 1, "Window[]"},
     {"focus.policy", "Read the committed focus policy.", NULL, 0, "FocusPolicy"},
-    {"grant.list", "List portal grants through an asynchronous operation.", NULL, 0, "Operation<GrantListResult>"},
-    {"grant.revoke", "Revoke a portal grant by its kind and opaque identifier.", api_params_53, 1, "Operation<GrantRevokeResult>"},
     {"input.current", "Alias for input.current_source.", NULL, 0, "InputSource|nil"},
     {"input.current_source", "Return the selected input source, or nil when there is no current source.", NULL, 0, "InputSource|nil"},
     {"input.devices", "Return available input devices.", NULL, 0, "InputDevice[]"},
     {"input.list", "Alias for input.sources.", NULL, 0, "InputSource[]"},
-    {"input.on", "Register a Lua policy callback for matching input events.", api_params_58, 2, "string"},
+    {"input.on", "Register a Lua policy callback for matching input events.", api_params_55, 2, "string"},
     {"input.orientation_lock", "Return the current orientation lock state.", NULL, 0, "OrientationLock"},
-    {"input.select_source", "Select an XKB layout or IBus engine.", api_params_60, 1, "Operation<InputSource>"},
-    {"input.set_orientation_lock", "Set the runtime orientation lock override, or inherit the configured/system value.", api_params_61, 1, "Operation<OrientationLock>"},
+    {"input.select_source", "Select an XKB layout or IBus engine.", api_params_57, 1, "Operation<InputSource>"},
+    {"input.set_orientation_lock", "Set the runtime orientation lock override, or inherit the configured/system value.", api_params_58, 1, "Operation<OrientationLock>"},
     {"input.sources", "Return available XKB layouts and IBus engines.", NULL, 0, "InputSource[]"},
-    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_63, 1, "Operation<TextTarget>"},
-    {"launch.begin", "Begin tracking a matching application launch through the singular API.", api_params_64, 1, "Operation<Launch>"},
-    {"launch.end", "Stop tracking a launch token through the singular API.", api_params_65, 1, "Operation<LaunchEndResult>"},
+    {"input.text_target", "Create a one-use text target from the active shortcut FocusContext.", api_params_60, 1, "Operation<TextTarget>"},
+    {"launch.begin", "Begin tracking a matching application launch through the singular API.", api_params_61, 1, "Operation<Launch>"},
+    {"launch.end", "Stop tracking a launch token through the singular API.", api_params_62, 1, "Operation<LaunchEndResult>"},
     {"launch.status", "Return the current launch snapshot through the singular API.", NULL, 0, "LaunchSnapshot"},
-    {"launches.begin", "Begin tracking a matching application launch.", api_params_67, 1, "Operation<Launch>"},
-    {"launches.end", "Alias for launches.finish.", api_params_68, 1, "Operation<LaunchEndResult>"},
-    {"launches.finish", "Finish tracking a launch token.", api_params_69, 1, "Operation<LaunchEndResult>"},
+    {"launches.begin", "Begin tracking a matching application launch.", api_params_64, 1, "Operation<Launch>"},
+    {"launches.end", "Alias for launches.finish.", api_params_65, 1, "Operation<LaunchEndResult>"},
+    {"launches.finish", "Finish tracking a launch token.", api_params_66, 1, "Operation<LaunchEndResult>"},
     {"launches.list", "Return the current launch records.", NULL, 0, "Launch[]"},
     {"launches.snapshot", "Return the launch records and their snapshot revision.", NULL, 0, "LaunchSnapshot"},
     {"layer.list", "Return layer surfaces through the legacy singular namespace alias.", NULL, 0, "LayerSurface[]"},
-    {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_73, 1, "LayerAnimationPolicy"},
-    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_74, 1, "LayerSurface[]"},
-    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_75, 1, "boolean"},
-    {"location.authorize_app", "Answer a pending location authorization request. The request ID must have been received from an active authorization event subscription.", api_params_76, 1, "Operation<LocationAuthorizationResult>"},
+    {"layers.animation_policy", "Return the configured animation policy for a layer namespace.", api_params_70, 1, "LayerAnimationPolicy"},
+    {"layers.list", "Return the current layer surface snapshot, optionally filtered.", api_params_71, 1, "LayerSurface[]"},
+    {"load", "Load and merge Lua configuration files matching a path or glob.", api_params_72, 1, "boolean"},
+    {"location.authorize_app", "Answer a pending location authorization request. The request ID must have been received from an active authorization event subscription.", api_params_73, 1, "Operation<LocationAuthorizationResult>"},
     {"monitor.list", "Return monitors through the legacy singular namespace alias.", NULL, 0, "Monitor[]"},
     {"monitors.list", "Return the current monitor snapshot.", NULL, 0, "Monitor[]"},
     {"monitors.primary", "Return the primary monitor, or nil when none is available.", NULL, 0, "Monitor|nil"},
     {"monitors.privacy_screen", "Return the current privacy screen settings and per-monitor states.", NULL, 0, "PrivacyScreenSnapshot"},
-    {"monitors.set_privacy_screen", "Set the runtime privacy screen override.", api_params_81, 1, "Operation<Json>"},
-    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_82, 2, "EventSubscription"},
-    {"permission_rule", "Append a permission rule to the permissions rules list.", api_params_83, 1, ""},
-    {"permissions.check", "Evaluate a permission for a capability and application identity. Pass a PermissionCheckArgs table or a capability and identity string.", api_params_84, 2, "PermissionDecision"},
-    {"permissions.list", "Read the committed permission policy and its supported values.", NULL, 0, "PermissionListSnapshot"},
-    {"permissions.policy", "Read the effective committed permission policy.", NULL, 0, "PermissionPolicy"},
-    {"portals.grants", "List portal grants, optionally filtered by grant kind.", api_params_87, 1, "PortalGrant[]"},
+    {"monitors.set_privacy_screen", "Set the runtime privacy screen override.", api_params_78, 1, "Operation<Json>"},
+    {"on", "Register a callback for an event. Event names are UTF-8 strings of 1 to 128 bytes.", api_params_79, 2, "EventSubscription"},
     {"privacy.state", "Read the available privacy signals and current activity.", NULL, 0, "PrivacyState"},
     {"privacy.stop_recording", "Request that active recording sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
     {"privacy.stop_sharing", "Request that active screen sharing sessions stop.", NULL, 0, "Operation<PrivacyStopResult>"},
-    {"prompt.cancel", "Cancel a prompt request.", api_params_91, 1, "Operation<any>"},
-    {"prompt.respond", "Answer a prompt with an optional password, confirmation, or choice.", api_params_92, 1, "Operation<any>"},
+    {"prompt.cancel", "Cancel a prompt request.", api_params_83, 1, "Operation<any>"},
+    {"prompt.respond", "Answer a prompt with an optional password, confirmation, or choice.", api_params_84, 1, "Operation<any>"},
     {"runtime.reload_config", "Ask the runtime to reload its configuration.", NULL, 0, "Operation<ConfigReloadResult>"},
     {"runtime.status", "Read the Lua runtime worker state and generation.", NULL, 0, "RuntimeStatus"},
     {"session.activity", "Read the session idle state and elapsed idle time.", NULL, 0, "SessionActivity"},
@@ -1173,26 +1068,26 @@ static const ApiFunction api_functions[] = {
     {"session.reboot", "Request that the machine reboot through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
     {"session.status", "Read the current compositor session and lock state.", NULL, 0, "SessionStatus"},
     {"session.suspend", "Request that the session suspend through the native session supervisor and logind.", NULL, 0, "Operation<AcceptedResult>"},
-    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_103, 1, "ShortcutAction[]"},
-    {"shortcuts.bind", "Register a shortcut binding owned by the current Lua runtime.", api_params_104, 1, "Operation<ShortcutBinding>"},
-    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_105, 1, "Operation<ShortcutCaptureResult>"},
-    {"shortcuts.end_session", "End an active shortcut binding session.", api_params_106, 1, "Operation<ShortcutEndSessionResult>"},
+    {"shortcuts.actions", "List registered shortcut actions, optionally limited to a group.", api_params_95, 1, "ShortcutAction[]"},
+    {"shortcuts.bind", "Register a shortcut binding owned by the current Lua runtime.", api_params_96, 1, "Operation<ShortcutBinding>"},
+    {"shortcuts.capture", "Capture one normalized keyboard accelerator.", api_params_97, 1, "Operation<ShortcutCaptureResult>"},
+    {"shortcuts.end_session", "End an active shortcut binding session.", api_params_98, 1, "Operation<ShortcutEndSessionResult>"},
     {"shortcuts.list", "List the configured shortcut records.", NULL, 0, "ShortcutState[]"},
-    {"shortcuts.unbind", "Remove a shortcut binding owned by the current Lua runtime.", api_params_108, 1, "Operation<ShortcutUnbindResult>"},
+    {"shortcuts.unbind", "Remove a shortcut binding owned by the current Lua runtime.", api_params_100, 1, "Operation<ShortcutUnbindResult>"},
     {"snapshot", "Return a detached copy of the active Lua configuration table.", NULL, 0, "Json"},
     {"version", "Read installed Gnoblin, GNOME, Mutter, Lua, API, and build version information.", NULL, 0, "VersionInfo"},
-    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_111, 1, ""},
-    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_112, 1, "Window[]"},
-    {"workspaces.activate", "Activate a workspace selected by ID or one-based number. The current native compositor supports number selectors and rejects ID selectors.", api_params_113, 1, "Operation<Workspace>"},
+    {"window_rule", "Append a window rule to the ordered window-rules list.", api_params_103, 1, ""},
+    {"windows.list", "Return the current window snapshot, optionally filtered by application, title, focus, workspace, or monitor.", api_params_104, 1, "Window[]"},
+    {"workspaces.activate", "Activate a workspace selected by ID or one-based number. The current native compositor supports number selectors and rejects ID selectors.", api_params_105, 1, "Operation<Workspace>"},
     {"workspaces.active", "Return the active workspace, or nil when unavailable.", NULL, 0, "Workspace|nil"},
-    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_115, 1, "Workspace|nil"},
-    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_116, 1, "Operation<Workspace>"},
+    {"workspaces.by_id", "Find a workspace by its stable ID when the snapshot supplies IDs. Current native workspace snapshots omit IDs, so this returns nil there.", api_params_107, 1, "Workspace|nil"},
+    {"workspaces.create", "Create a workspace with a name and optional activation.", api_params_108, 1, "Operation<Workspace>"},
     {"workspaces.list", "Return the current workspace snapshot.", NULL, 0, "Workspace[]"},
-    {"workspaces.move_active", "Move the focused window to a workspace.", api_params_118, 1, "Operation<WorkspaceMoveResult>"},
-    {"workspaces.move_window", "Move a window to a workspace.", api_params_119, 1, "Operation<WorkspaceMoveResult>"},
+    {"workspaces.move_active", "Move the focused window to a workspace.", api_params_110, 1, "Operation<WorkspaceMoveResult>"},
+    {"workspaces.move_window", "Move a window to a workspace.", api_params_111, 1, "Operation<WorkspaceMoveResult>"},
     {"workspaces.next", "Activate the next workspace, wrapping to the first.", NULL, 0, "Operation<Workspace>"},
     {"workspaces.previous", "Activate the previous workspace, wrapping to the last.", NULL, 0, "Operation<Workspace>"},
-    {"workspaces.remove", "Remove an inactive, empty workspace when at least one other workspace remains.", api_params_122, 1, "Operation<Workspace>"},
-    {"workspaces.rename", "Rename a workspace selected by ID or one-based number.", api_params_123, 1, "Operation<Workspace>"},
+    {"workspaces.remove", "Remove an inactive, empty workspace when at least one other workspace remains.", api_params_114, 1, "Operation<Workspace>"},
+    {"workspaces.rename", "Rename a workspace selected by ID or one-based number.", api_params_115, 1, "Operation<Workspace>"},
     {NULL, NULL, NULL, 0, NULL},
 };

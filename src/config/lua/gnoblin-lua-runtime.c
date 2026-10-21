@@ -83,7 +83,6 @@ void lua_runtime_free(LuaRuntime* runtime) {
     g_clear_pointer(&runtime->config.appearance_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.shortcut_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.launch_snapshot, g_variant_unref);
-    g_clear_pointer(&runtime->config.portal_grant_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.animation_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.privacy_snapshot, g_variant_unref);
     g_clear_pointer(&runtime->config.session_activity_snapshot, g_variant_unref);
@@ -392,21 +391,6 @@ void gnoblin_config_update_launch_snapshot(GVariant* snapshot, guint64 revision)
     }
 }
 
-void gnoblin_config_update_portal_grant_snapshot(GVariant* snapshot, guint64 revision) {
-    if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
-        return;
-    LuaRuntime* runtimes[] = {active_runtime, pending_runtime, deferred_runtime};
-    for (guint i = 0; i < G_N_ELEMENTS(runtimes); i++) {
-        LuaRuntime* runtime = runtimes[i];
-        if (!runtime || (i == 1 && runtime == runtimes[0]))
-            continue;
-        g_clear_pointer(&runtime->config.portal_grant_snapshot, g_variant_unref);
-        runtime->config.portal_grant_revision = snapshot ? revision : 0;
-        if (snapshot)
-            runtime->config.portal_grant_snapshot = g_variant_ref(snapshot);
-    }
-}
-
 void gnoblin_config_update_session_activity_snapshot(GVariant* snapshot, guint64 revision) {
     if (snapshot && !g_variant_is_of_type(snapshot, G_VARIANT_TYPE_VARDICT))
         return;
@@ -657,11 +641,6 @@ static LuaRuntime* lua_runtime_new(const char* path, GError** error) {
     if (snapshot_source && snapshot_source->config.launch_snapshot) {
         runtime->config.launch_snapshot = g_variant_ref(snapshot_source->config.launch_snapshot);
         runtime->config.launch_revision = snapshot_source->config.launch_revision;
-    }
-    if (snapshot_source && snapshot_source->config.portal_grant_snapshot) {
-        runtime->config.portal_grant_snapshot =
-            g_variant_ref(snapshot_source->config.portal_grant_snapshot);
-        runtime->config.portal_grant_revision = snapshot_source->config.portal_grant_revision;
     }
     if (snapshot_source && snapshot_source->config.animation_snapshot) {
         runtime->config.animation_snapshot =

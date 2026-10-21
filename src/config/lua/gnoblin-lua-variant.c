@@ -250,7 +250,6 @@ static int lua_record_method(lua_State* state) {
     const char* method = lua_tostring(state, lua_upvalueindex(1));
     gboolean workspace = g_str_has_prefix(method, "workspace.");
     gboolean workspace_move = g_str_equal(method, "workspace.move_window");
-    gboolean portal_grant = g_str_equal(method, "grant.revoke");
     gboolean thumbnail = g_str_equal(method, "window.thumbnail");
     lua_getiuservalue(state, 1, 1);
     int backing = lua_absindex(state, -1);
@@ -263,12 +262,6 @@ static int lua_record_method(lua_State* state) {
     if (!workspace_move) {
         lua_pushstring(state, id);
         lua_setfield(state, arguments, "id");
-    }
-    if (portal_grant) {
-        lua_getfield(state, backing, "kind");
-        lua_setfield(state, arguments, "kind");
-        lua_getfield(state, backing, "created_at");
-        lua_setfield(state, arguments, "created_at");
     }
     lua_remove(state, -2); /* id */
     lua_remove(state, -2); /* backing */
@@ -529,15 +522,6 @@ static void add_snapshot_methods(lua_State* state, int backing, int method_table
         add_record_method(state, method_table, "rename", "workspace.rename");
         add_record_method(state, method_table, "remove", "workspace.remove");
         add_record_method(state, method_table, "move_here", "workspace.move_window");
-    } else {
-        lua_getfield(state, backing, "kind");
-        gboolean is_portal_grant = lua_type(state, -1) == LUA_TSTRING;
-        lua_pop(state, 1);
-        lua_getfield(state, backing, "created_at");
-        is_portal_grant &= lua_isinteger(state, -1);
-        lua_pop(state, 1);
-        if (is_portal_grant)
-            add_record_method(state, method_table, "revoke", "grant.revoke");
     }
 }
 

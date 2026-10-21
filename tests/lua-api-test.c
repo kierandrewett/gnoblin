@@ -69,9 +69,7 @@ int main(void) {
                          "shader_uniforms={my_strength=0.5},corners={keep_maximized=true}}\n"
                          "gnoblin.window_rule(rule)\n"
                          "rule.opacity=0.1\n"
-                         "assert(rule.match.app_id == 'my_app')\n"
-                         "gnoblin.permission_rule {name='capture',match='^app%-id:my_app$',"
-                         "capabilities={'screen-cast'},level='ask'}\n";
+                         "assert(rule.match.app_id == 'my_app')\n";
     g_autoptr(GVariant) actual = evaluate(root, source);
     g_autoptr(GVariant) expected = evaluate(
         root, "return {['layer-shell']={['preserve-active-window']=true},"
@@ -86,9 +84,7 @@ int main(void) {
               "autostart={{name='bar',command={'waybar'}}},"
               "['window-rules']={{match={type='window'},opacity=1},"
               "{match={['app-id']='my_app',focused=false},opacity=0.95,"
-              "['shader-uniforms']={my_strength=0.5},corners={['keep-maximized']=true}}},"
-              "permissions={rules={{name='capture',match='^app%-id:my_app$',"
-              "capabilities={'screen-cast'},level='ask'}}}}\n");
+              "['shader-uniforms']={my_strength=0.5},corners={['keep-maximized']=true}}}}\n");
     assert_equal(actual, expected);
     g_autoptr(GVariant) reloaded = evaluate(root, source);
     assert_equal(reloaded, expected);
@@ -151,7 +147,6 @@ int main(void) {
         "gnoblin.config.shortcuts={bad={}}; gnoblin.remove_shortcut('x')",
         "gnoblin.shortcut {name='x',binding='<Super>x',command={'x'}}; "
         "gnoblin.configure.shortcuts.x.name='renamed'",
-        "gnoblin.config.permissions=false; gnoblin.permission_rule {}",
         "local t={};t.child=t;gnoblin.configure(t)",
         NULL,
     };

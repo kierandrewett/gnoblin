@@ -24,10 +24,6 @@ GnoblinConfigFocusPolicyChangedFunc focus_policy_changed_callback;
 
 gpointer focus_policy_changed_data;
 
-GnoblinConfigPermissionPolicyChangedFunc permission_policy_changed_callback;
-
-gpointer permission_policy_changed_data;
-
 GnoblinConfigSettingsChangedFunc settings_changed_callback;
 
 gpointer settings_changed_data;
@@ -149,11 +145,6 @@ const char* api_methods[] = {
     "auth.cancel",
     "prompt.respond",
     "prompt.cancel",
-    "permissions.list",
-    "permissions.policy",
-    "permissions.check",
-    "grant.list",
-    "grant.revoke",
     "launch.status",
     "launch.begin",
     "launch.end",
