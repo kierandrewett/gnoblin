@@ -2,6 +2,7 @@
 """Exercise the shared quality commands in a disposable Git repository."""
 
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import tempfile
@@ -52,9 +53,13 @@ class QualityToolsTest(unittest.TestCase):
             subprocess.run(["git", "init", "-q", str(root)], check=True)
             subprocess.run(["git", "add", "."], cwd=root, check=True)
 
+            # The disposable repository has no Beads state or issue scripts, so
+            # the issue-sync hook cannot run there; it is not a quality check.
+            env = {**os.environ, "SKIP": "beads-github-sync"}
+
             def run(mode):
                 return subprocess.run(
-                    [str(root / "scripts/quality.sh"), mode], cwd=root, capture_output=True, text=True
+                    [str(root / "scripts/quality.sh"), mode], cwd=root, capture_output=True, text=True, env=env
                 )
 
             initial = {name: (root / name).read_bytes() for name in samples}
