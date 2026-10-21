@@ -35,9 +35,9 @@
   runCommand,
 }:
 let
-  versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnome-versions.json");
+  versions = builtins.fromJSON (builtins.readFile "${gnoblinSrc}/versions/gnome-versions.json");
   gnoblinVersion =
-    (builtins.fromJSON (builtins.readFile "${gnoblinSrc}/gnoblin-version.json")).version;
+    (builtins.fromJSON (builtins.readFile "${gnoblinSrc}/versions/gnoblin-version.json")).version;
   mutterVersion = versions.components.mutter.version;
   mutterApi = versions.components.mutter.api;
   patchesFor =

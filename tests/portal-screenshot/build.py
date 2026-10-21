@@ -36,9 +36,9 @@ def main():
     output.mkdir(parents=True, exist_ok=False)
     source = output / "source"
     upstream = ROOT / "subprojects/xdg-desktop-portal-gnome"
-    revision = json.loads((ROOT / "gnome-versions.json").read_text())["components"]["xdg-desktop-portal-gnome"][
-        "commit"
-    ]
+    revision = json.loads((ROOT / "versions/gnome-versions.json").read_text())["components"][
+        "xdg-desktop-portal-gnome"
+    ]["commit"]
     archive(upstream, revision, source)
     run(
         "cmake",

@@ -33,7 +33,7 @@ function(gnoblin_run)
   execute_process(COMMAND ${ARGN} COMMAND_ERROR_IS_FATAL ANY)
 endfunction()
 
-# Read a field from gnome-versions.json through the one script that owns the pins.
+# Read a field from versions/gnome-versions.json through the one script that owns the pins.
 function(gnoblin_pin out project field)
   execute_process(COMMAND "${GNOBLIN_ROOT}/scripts/gnome-versions.py" get "${project}" "${field}"
     OUTPUT_VARIABLE value RESULT_VARIABLE result OUTPUT_STRIP_TRAILING_WHITESPACE)

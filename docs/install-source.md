@@ -22,11 +22,11 @@ Python is used while building; the installed control command is a native
 GLib/GIO program.
 
 The compositor is built from the public [Gnoblin Mutter fork](https://github.com/kierandrewett/gnoblin-mutter),
-based on the Mutter release pinned in `gnome-versions.json`. Git checkouts and
+based on the Mutter release pinned in `versions/gnome-versions.json`. Git checkouts and
 source tarballs pin its source revision.
 
 The installed `gsettings-desktop-schemas` development package must be at least
-the version pinned in `gnome-versions.json`. The Gnoblin Mutter fork includes
+the version pinned in `versions/gnome-versions.json`. The Gnoblin Mutter fork includes
 the remote-desktop compatibility changes used by the build, including
 `libpipewire-0.3` version 1.4.11 or newer. PipeWire 1.5.84 and 1.6 add
 optional color-capability and device-ID negotiation.
@@ -416,7 +416,7 @@ Add `--without-xwayland` if building without X11 application support, or
 combine the flags. Meson checks other build requirements as it configures each
 component. Keep the error and the Meson log path when reporting a build problem.
 
-The pinned GNOME versions are in [gnome-versions.json](https://github.com/kierandrewett/gnoblin/blob/main/gnome-versions.json).
+The pinned GNOME versions are in [versions/gnome-versions.json](https://github.com/kierandrewett/gnoblin/blob/main/versions/gnome-versions.json).
 See [source development](source-development.md) for component rebuilds.
 
 ## Build reports disk quota exceeded

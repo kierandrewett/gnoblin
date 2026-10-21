@@ -157,7 +157,7 @@ def check(mode="checkout", project=None, xwayland=True, vector_cursors=False):
         )
         if prepare.returncode:
             return prepare.returncode
-    versions = json.loads((ROOT / "gnome-versions.json").read_text())
+    versions = json.loads((ROOT / "versions/gnome-versions.json").read_text())
     missing = set()
     for source_project in (project,) if project else projects:
         build_file = projects[source_project]

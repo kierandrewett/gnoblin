@@ -27,7 +27,7 @@ error check passes. The patched run must exit 0 with ten passing cases.
 Compilation uses `-Wall -Wextra -Werror`. Both runs compile with and without
 `HAVE_SYS_PRCTL`; the non-prctl build is a compile check only.
 
-The runner reads `meta-mdk.c` from the Mutter commit in `gnome-versions.json`
+The runner reads `meta-mdk.c` from the Mutter commit in `versions/gnome-versions.json`
 and applies tooling patch 0007, then 0008 for the patched run, in a temporary
 repository under this test directory. It compiles the actual lifetime callback
 and launcher registration extracted from that source. It never modifies or
