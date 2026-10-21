@@ -674,6 +674,34 @@ GVariant* native_location_authorize_operation(GnoblinNativeControl* control, GVa
     return response;
 }
 
+/* Publish compositor.background to the plugin when it changes. NULL values
+ * mean "unset"; the plugin falls back to its own default. */
+static void native_publish_background(GnoblinNativeControl* control,
+                                      GVariant* compositor_preferences) {
+    const char* color = NULL;
+    const char* image = NULL;
+    g_autoptr(GVariant) background =
+        compositor_preferences
+            ? g_variant_lookup_value(compositor_preferences, "background", G_VARIANT_TYPE_VARDICT)
+            : NULL;
+    if (background) {
+        g_variant_lookup(background, "color", "&s", &color);
+        g_variant_lookup(background, "image", "&s", &image);
+    }
+    gboolean changed = !control->background_known ||
+                       g_strcmp0(color, control->background_color_published) != 0 ||
+                       g_strcmp0(image, control->background_image_published) != 0;
+    if (!changed)
+        return;
+    g_free(control->background_color_published);
+    g_free(control->background_image_published);
+    control->background_color_published = g_strdup(color);
+    control->background_image_published = g_strdup(image);
+    control->background_known = TRUE;
+    if (control->background_handler)
+        control->background_handler(color, image, control->background_handler_data);
+}
+
 void native_settings_changed(guint64 revision, gpointer user_data) {
     GnoblinNativeControl* control = user_data;
     if (!control || control->stopping || !control->display)
@@ -732,6 +760,7 @@ void native_settings_changed(guint64 revision, gpointer user_data) {
         if (control->debug_handler)
             control->debug_handler(developer_debug, control->debug_handler_data);
     }
+    native_publish_background(control, compositor_preferences);
     meta_settings_apply_gnoblin_privacy_screen_preferences(
         meta_backend_get_settings(control->backend), monitor_preferences);
     meta_settings_apply_gnoblin_privacy_screen_runtime_override(
@@ -749,6 +778,26 @@ void native_settings_changed(guint64 revision, gpointer user_data) {
     /* Animation registrations live in the supervisor's Lua state. The cache
      * is updated there independently of the compositor config document. */
     native_publish_runtime_snapshot(control, "animations", NULL, revision);
+}
+
+void gnoblin_native_control_set_background_handler(MetaDisplay* display,
+                                                   GnoblinNativeBackgroundFunc handler,
+                                                   gpointer user_data) {
+    if (!display)
+        return;
+    NativeBackgroundBridge* bridge = g_new0(NativeBackgroundBridge, 1);
+    bridge->handler = handler;
+    bridge->user_data = user_data;
+    g_object_set_data_full(G_OBJECT(display), NATIVE_BACKGROUND_BRIDGE_DATA_KEY, bridge, g_free);
+    GnoblinNativeControl* control =
+        g_object_get_data(G_OBJECT(display), NATIVE_CONTROL_OBJECT_DATA_KEY);
+    if (control) {
+        control->background_handler = handler;
+        control->background_handler_data = user_data;
+    }
+    if (handler && control && control->background_known)
+        handler(control->background_color_published, control->background_image_published,
+                user_data);
 }
 
 void gnoblin_native_control_set_debug_handler(MetaDisplay* display, GnoblinNativeDebugFunc handler,

@@ -242,6 +242,8 @@ gboolean gnoblin_config_validate_document(GVariant* document, GError** error) {
             } else if (g_str_equal(name, "locate-pointer-key") &&
                        g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
                 valid = compositor_locate_pointer_key_valid(g_variant_get_string(value, NULL));
+            } else if (g_str_equal(name, "background")) {
+                valid = compositor_background_valid(value);
             } else
                 valid = FALSE;
             g_variant_unref(value);

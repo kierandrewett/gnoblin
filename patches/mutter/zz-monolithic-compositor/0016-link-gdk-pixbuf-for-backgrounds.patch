@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Thu, 8 Oct 2026 21:00:00 +0100
+Subject: [PATCH] mutter: link gdk-pixbuf into gnoblin for background images
+
+Mutter 51 no longer carries a background image loader. The Gnoblin compositor
+plugin paints compositor.background under every client so the first frame
+after a modeset is the session's wallpaper, not black; it decodes that image
+with gdk-pixbuf, which every Gnoblin host already has through GTK.
+
+---
+diff --git a/src/meson.build b/src/meson.build
+index 558f6e65d..2c334e8d3 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1293,6 +1293,9 @@ if not gnoblin_lua_dep.found()
+   error('Gnoblin requires Lua 5.4 development files')
+ endif
+ gnoblin_json_dep = dependency('json-glib-1.0')
++# The compositor plugin decodes compositor.background images itself: Mutter
++# no longer ships a background image loader.
++gnoblin_pixbuf_dep = dependency('gdk-pixbuf-2.0')
+ 
+ gnoblin_api_header = gnoblin_fs.read(gnoblin_root / 'src/control/gnoblin-native-control.h')
+ gnoblin_api_major = ''
+@@ -1402,7 +1405,7 @@ gnoblin = executable('gnoblin',
+     '-DGNOBLIN_NATIVE_CONTROL_API_MINOR=' + gnoblin_api_minor,
+     '-DGNOBLIN_DEFAULT_COMPOSITOR="' + gnoblin_prefix / 'bin/gnoblin' + '"',
+   ],
+-  dependencies: [libmutter_dep, mutter_deps, gnoblin_lua_dep, gnoblin_json_dep],
++  dependencies: [libmutter_dep, mutter_deps, gnoblin_lua_dep, gnoblin_json_dep, gnoblin_pixbuf_dep],
+   install_rpath: '$ORIGIN/../' + get_option('libdir') + ':$ORIGIN/../' + get_option('libdir') / 'mutter-51',
+   install_dir: bindir,
+   install: true,

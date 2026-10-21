@@ -18,6 +18,37 @@ rules. There is no global animation switch. See the
 | `blur`               | `"auto"`, `"on"`, or `"off"`            | `"auto"`             | Controls compositor background blur.                              |
 | `debug`              | Boolean                                 | `false`              | Shows a mostly opaque FPS, frame-time, CPU and memory overlay.    |
 | `visual_bell_type`   | `"fullscreen-flash"` or `"frame-flash"` | `"fullscreen-flash"` | Flash the full screen or the focused window.                      |
+| `background`         | Table: `color`, `image`                 | black                | What the compositor paints under every surface.                   |
+
+### `background`
+
+The compositor paints `background` on every monitor beneath all windows and
+layer surfaces. It is the first thing on screen after a modeset, before any
+wallpaper client has mapped, and it stays visible wherever nothing covers it.
+Set it to the same picture your shell shows and the start of a session, the
+return from the login screen and a wallpaper client restart no longer flash
+black.
+
+| Field   | Values                      | Effect                                                       |
+| ------- | --------------------------- | ------------------------------------------------------------ |
+| `color` | `"#rrggbb"` or `"#rrggbbaa"` | Fill colour. Also shows through a missing or failed `image`.  |
+| `image` | Absolute path               | Picture scaled to fill each monitor, keeping its aspect ratio |
+
+```lua
+gnoblin.configure {
+    compositor = {
+        background = {
+            color = "#1b2a4a",
+            image = "/usr/share/backgrounds/valley.jpg",
+        },
+    },
+}
+```
+
+The image is decoded once per path. A file that does not exist or cannot be
+decoded logs a warning and leaves the colour. Changing either field on reload
+repaints at once. A shell that manages wallpapers can regenerate a drop-in
+file with the current picture; see the [wallpaper guide](/guides/wallpapers).
 
 `blur = "auto"` enables blur when Mutter reports hardware accelerated rendering and disables it otherwise. `"on"` always enables blur; `"off"` disables blur for panels, window rules, and shell-requested background effects. The setting applies on configuration reload.
 
@@ -63,6 +94,10 @@ gnoblin.configure {
         debug = boolean?,
         blur = "auto" | "on" | "off"?,
         visual_bell_type = "fullscreen-flash" | "frame-flash"?,
+        background = {
+            color = string?, -- "#rrggbb" or "#rrggbbaa"
+            image = string?, -- absolute path
+        }?,
     },
 }
 ```

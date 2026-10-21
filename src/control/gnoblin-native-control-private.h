@@ -92,6 +92,7 @@
 #define MAX_UI_SESSION_PAYLOAD_BYTES (8 * 1024)
 #define NATIVE_CONSOLE_TOGGLE_BRIDGE_DATA_KEY "gnoblin-console-toggle-bridge"
 #define NATIVE_DEBUG_BRIDGE_DATA_KEY "gnoblin-debug-bridge"
+#define NATIVE_BACKGROUND_BRIDGE_DATA_KEY "gnoblin-background-bridge"
 #define OVERLAY_MODIFIER_HOOK_AVAILABLE_DATA_KEY "gnoblin-overlay-modifier-hook-available"
 #define MAX_LAUNCHES 64
 #define MAX_FOCUS_CONTEXTS 128
@@ -120,6 +121,10 @@ typedef struct {
     GnoblinNativeDebugFunc handler;
     gpointer user_data;
 } NativeDebugBridge;
+typedef struct {
+    GnoblinNativeBackgroundFunc handler;
+    gpointer user_data;
+} NativeBackgroundBridge;
 typedef struct {
     guint64 owner_client_id;
     JsonNode* state;

@@ -50,6 +50,7 @@ gboolean validate_prompts(GVariant* prompts, GError** error);
 gboolean validate_input(GVariant* input, GError** error);
 gboolean window_modifier_valid(const char* modifier);
 gboolean compositor_locate_pointer_key_valid(const char* name);
+gboolean compositor_background_valid(GVariant* background);
 gboolean validate_touchpad_gestures(GVariant* gestures, GError** error);
 gboolean validate_window_rule_patterns(GVariant* document, GError** error);
 gboolean validate_portal_selection(GVariant* portals, GError** error);

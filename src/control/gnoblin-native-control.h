@@ -20,6 +20,9 @@ GVariant* gnoblin_control_output_list(MetaDisplay* display, GError** error);
 typedef gboolean (*GnoblinNativeConsoleToggleFunc)(MetaDisplay* display, gpointer user_data);
 /* Notified when the compositor.debug configuration boolean changes. */
 typedef void (*GnoblinNativeDebugFunc)(gboolean enabled, gpointer user_data);
+/* compositor.background as configured: either may be NULL for "unset". */
+typedef void (*GnoblinNativeBackgroundFunc)(const char* color, const char* image,
+                                            gpointer user_data);
 
 /* A compositor-owned caller can use this private bridge to ask the supervised
  * Lua runtime to evaluate console input or perform a validated runtime
@@ -77,6 +80,13 @@ void gnoblin_native_control_set_console_toggle_handler(MetaDisplay* display,
 META_EXPORT
 void gnoblin_native_control_set_debug_handler(MetaDisplay* display, GnoblinNativeDebugFunc handler,
                                               gpointer user_data);
+/* Registers the compositor plugin bridge for the stage background painted
+ * under every client (compositor.background). The handler receives the
+ * current values on registration and after each configuration change. */
+META_EXPORT
+void gnoblin_native_control_set_background_handler(MetaDisplay* display,
+                                                   GnoblinNativeBackgroundFunc handler,
+                                                   gpointer user_data);
 META_EXPORT
 gboolean gnoblin_native_control_toggle_console(MetaDisplay* display, GError** error);
 META_EXPORT

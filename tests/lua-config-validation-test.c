@@ -19,6 +19,14 @@ static const InvalidConfig invalid_configs[] = {
     {"touchpad-enum", "gnoblin.configure {input = {touchpad = {tap_button_map = 'xyz'}}}",
      "tap-button-map"},
     {"removed-shell", "gnoblin.configure {shell = {}}", "shell settings are no longer supported"},
+    {"background-color", "gnoblin.configure {compositor = {background = {color = 'red'}}}",
+     "\"background\" has an unsupported name or value"},
+    {"background-relative-image",
+     "gnoblin.configure {compositor = {background = {image = 'wall.png'}}}",
+     "\"background\" has an unsupported name or value"},
+    {"background-unknown-field",
+     "gnoblin.configure {compositor = {background = {style = 'zoom'}}}",
+     "\"background\" has an unsupported name or value"},
 };
 
 static char* directory;
@@ -47,6 +55,29 @@ static void assert_invalid(gconstpointer data) {
     g_assert_null(document);
     g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
     g_assert_nonnull(strstr(error->message, test->diagnostic));
+}
+
+/* compositor.background keeps colour and image as given; both are optional.
+ * The image file need not exist at validation time. */
+static void test_compositor_background(void) {
+    g_autoptr(GVariant) document = load_valid(
+        "gnoblin.configure {compositor = {background = {color = '#1b2a4a', "
+        "image = '/nonexistent/wall.png'}}}");
+    g_autoptr(GVariant) compositor =
+        g_variant_lookup_value(document, "compositor", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(compositor);
+    g_autoptr(GVariant) background =
+        g_variant_lookup_value(compositor, "background", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(background);
+    const char* color = NULL;
+    const char* image = NULL;
+    g_assert_true(g_variant_lookup(background, "color", "&s", &color));
+    g_assert_true(g_variant_lookup(background, "image", "&s", &image));
+    g_assert_cmpstr(color, ==, "#1b2a4a");
+    g_assert_cmpstr(image, ==, "/nonexistent/wall.png");
+    g_autoptr(GVariant) colour_only =
+        load_valid("gnoblin.configure {compositor = {background = {color = '#00000080'}}}");
+    g_assert_nonnull(colour_only);
 }
 
 static void test_known_protocols(void) {
@@ -189,6 +220,7 @@ int main(int argc, char** argv) {
         g_autofree char* name = g_strdup_printf("/config/reject/%s", invalid_configs[i].name);
         g_test_add_data_func(name, &invalid_configs[i], assert_invalid);
     }
+    g_test_add_func("/config/compositor-background", test_compositor_background);
     g_test_add_func("/config/known-protocols", test_known_protocols);
     g_test_add_func("/config/aliases-and-extensions", test_aliases_and_extensions);
     g_test_add_func("/config/transaction-and-recovery", test_transaction_and_recovery);

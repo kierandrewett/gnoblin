@@ -210,6 +210,12 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
         control->debug_handler = debug_bridge->handler;
         control->debug_handler_data = debug_bridge->user_data;
     }
+    NativeBackgroundBridge* background_bridge =
+        g_object_get_data(G_OBJECT(control->display), NATIVE_BACKGROUND_BRIDGE_DATA_KEY);
+    if (background_bridge) {
+        control->background_handler = background_bridge->handler;
+        control->background_handler_data = background_bridge->user_data;
+    }
     MetaBackend* backend = meta_context_get_backend(context);
     control->backend = backend;
     control->orientation_manager = meta_backend_get_orientation_manager(backend);
@@ -658,6 +664,8 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         current.st_dev == control->device && current.st_ino == control->inode)
         g_unlink(control->path);
     g_free(control->path);
+    g_free(control->background_color_published);
+    g_free(control->background_image_published);
     g_clear_pointer(&control->native_touchpad_gestures, g_variant_unref);
     g_clear_pointer(&control->touchpad_router, gnoblin_touchpad_router_free);
     g_clear_pointer(&control->runtime_cache, gnoblin_runtime_cache_free);

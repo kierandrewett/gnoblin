@@ -78,6 +78,37 @@ gboolean compositor_locate_pointer_key_valid(const char* name) {
     return compositor_key_symbol_valid(left) && compositor_key_symbol_valid(right);
 }
 
+/* compositor.background paints the stage before any client maps a background
+ * surface: `color` is #rrggbb or #rrggbbaa, `image` an absolute path. Both are
+ * optional; a missing image file is reported at paint time, not here, so a
+ * configuration survives a wallpaper that is deleted later. */
+gboolean compositor_background_valid(GVariant* background) {
+    if (!g_variant_is_of_type(background, G_VARIANT_TYPE_VARDICT))
+        return FALSE;
+    GVariantIter iter;
+    const char* name;
+    GVariant* value;
+    gboolean valid = TRUE;
+    g_variant_iter_init(&iter, background);
+    while (valid && g_variant_iter_next(&iter, "{&sv}", &name, &value)) {
+        if (!g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+            valid = FALSE;
+        } else if (g_str_equal(name, "color")) {
+            const char* color = g_variant_get_string(value, NULL);
+            size_t length = strlen(color);
+            valid = color[0] == '#' && (length == 7 || length == 9);
+            for (size_t i = 1; valid && i < length; i++)
+                valid = g_ascii_isxdigit(color[i]);
+        } else if (g_str_equal(name, "image")) {
+            valid = g_path_is_absolute(g_variant_get_string(value, NULL));
+        } else {
+            valid = FALSE;
+        }
+        g_variant_unref(value);
+    }
+    return valid;
+}
+
 static gboolean touchpad_gesture_fields_allowed(GVariant* gesture) {
     static const char* const fields[] = {
         "name",    "gesture", "fingers",   "direction", "path", "action",

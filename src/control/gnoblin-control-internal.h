@@ -304,6 +304,12 @@ struct _GnoblinNativeControl {
     gpointer debug_handler_data;
     gboolean developer_debug_published;
     gboolean developer_debug_known;
+    /* Stage background from compositor.background, published to the plugin. */
+    GnoblinNativeBackgroundFunc background_handler;
+    gpointer background_handler_data;
+    char* background_color_published;
+    char* background_image_published;
+    gboolean background_known;
     GHashTable* accepted_input_requests;
     gint64 shortcut_capture_request_id;
     gulong session_lock_callback_id;

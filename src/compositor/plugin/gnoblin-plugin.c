@@ -11,6 +11,8 @@
 
 #include "config.h"
 
+#include <gdk-pixbuf/gdk-pixbuf.h>
+
 #include "clutter/clutter.h"
 #include "meta/display.h"
 #include "meta/meta-backend.h"
@@ -43,6 +45,12 @@ typedef struct _MetaGnoblinPluginClass MetaGnoblinPluginClass;
 struct _MetaGnoblinPlugin {
     MetaPlugin parent;
     ClutterActor* background_group;
+    /* compositor.background: painted under every client, so the first frame
+     * after a modeset already shows the session's colour or wallpaper. */
+    CoglColor background_color;
+    char* background_image;
+    /* Decoded once per image path; monitors share it. */
+    CoglTexture* background_texture;
     GnoblinPluginUi* diagnostics_ui;
     GnoblinPluginInput input;
     gulong session_lock_callback_id;
@@ -61,6 +69,107 @@ struct _MetaGnoblinPluginClass {
 
 G_DEFINE_TYPE(MetaGnoblinPlugin, meta_gnoblin_plugin, META_TYPE_PLUGIN);
 
+/* Parse #rrggbb or #rrggbbaa. The validator already rejected anything else. */
+static gboolean gnoblin_plugin_parse_color(const char* text, CoglColor* color) {
+    if (!text || text[0] != '#')
+        return FALSE;
+    size_t length = strlen(text + 1);
+    if (length != 6 && length != 8)
+        return FALSE;
+    guint64 value = g_ascii_strtoull(text + 1, NULL, 16);
+    if (length == 6)
+        value = (value << 8) | 0xff;
+    *color = COGL_COLOR_INIT((value >> 24) & 0xff, (value >> 16) & 0xff, (value >> 8) & 0xff,
+                             value & 0xff);
+    return TRUE;
+}
+
+/* Decode the wallpaper into a texture. Images larger than the largest
+ * monitor's long edge times two are scaled down on load: a 6000 px photo
+ * needs no 100 MB texture to fill a 4K screen. */
+static CoglTexture* gnoblin_plugin_load_background_texture(MetaGnoblinPlugin* self,
+                                                           const char* path) {
+    MetaDisplay* display = meta_plugin_get_display(META_PLUGIN(self));
+    MetaContext* context = meta_display_get_context(display);
+    MetaBackend* backend = meta_context_get_backend(context);
+    int limit = 0;
+    int n_monitors = meta_display_get_n_monitors(display);
+    for (int i = 0; i < n_monitors; i++) {
+        MtkRectangle geometry;
+        meta_display_get_monitor_geometry(display, i, &geometry);
+        limit = MAX(limit, MAX(geometry.width, geometry.height) * 2);
+    }
+    if (limit == 0)
+        limit = 4096;
+
+    g_autoptr(GError) error = NULL;
+    int width = 0;
+    int height = 0;
+    g_autoptr(GdkPixbuf) pixbuf = NULL;
+    if (gdk_pixbuf_get_file_info(path, &width, &height) && MAX(width, height) > limit)
+        pixbuf = gdk_pixbuf_new_from_file_at_scale(path, limit, limit, TRUE, &error);
+    else
+        pixbuf = gdk_pixbuf_new_from_file(path, &error);
+    if (!pixbuf) {
+        g_warning("gnoblin: compositor.background image %s could not be decoded: %s", path,
+                  error ? error->message : "unknown error");
+        return NULL;
+    }
+    g_autoptr(GdkPixbuf) oriented = gdk_pixbuf_apply_embedded_orientation(pixbuf);
+    GdkPixbuf* source = oriented ? oriented : pixbuf;
+    gboolean alpha = gdk_pixbuf_get_has_alpha(source);
+    ClutterActor* stage = meta_backend_get_stage(backend);
+    ClutterBackend* clutter_backend = clutter_context_get_backend(clutter_actor_get_context(stage));
+    CoglContext* cogl_context = clutter_backend_get_cogl_context(clutter_backend);
+    CoglTexture* texture = cogl_texture_2d_new_from_data(
+        cogl_context, gdk_pixbuf_get_width(source), gdk_pixbuf_get_height(source),
+        alpha ? COGL_PIXEL_FORMAT_RGBA_8888 : COGL_PIXEL_FORMAT_RGB_888,
+        gdk_pixbuf_get_rowstride(source), gdk_pixbuf_read_pixels(source), &error);
+    if (!texture)
+        g_warning("gnoblin: compositor.background texture for %s failed: %s", path,
+                  error ? error->message : "unknown error");
+    return texture;
+}
+
+static void gnoblin_plugin_set_background(MetaGnoblinPlugin* self, const char* color,
+                                          const char* image) {
+    if (!gnoblin_plugin_parse_color(color, &self->background_color))
+        self->background_color = COGL_COLOR_INIT(0, 0, 0, 255);
+    if (g_strcmp0(image, self->background_image) == 0)
+        return;
+    g_free(self->background_image);
+    self->background_image = NULL;
+    g_clear_object(&self->background_texture);
+    if (!image)
+        return;
+    if (!g_file_test(image, G_FILE_TEST_IS_REGULAR)) {
+        g_warning("gnoblin: compositor.background image %s is not a readable file", image);
+        return;
+    }
+    self->background_image = g_strdup(image);
+    self->background_texture = gnoblin_plugin_load_background_texture(self, image);
+}
+
+/* The compositor's own copy of compositor.background, read before the native
+ * control object exists so the first frame is right; the control's handler
+ * keeps it current afterwards. */
+static void gnoblin_plugin_load_configured_background(MetaGnoblinPlugin* self) {
+    MetaDisplay* display = meta_plugin_get_display(META_PLUGIN(self));
+    g_autoptr(GVariant) document = gnoblin_native_control_get_config_document(display);
+    g_autoptr(GVariant) compositor =
+        document ? g_variant_lookup_value(document, "compositor", G_VARIANT_TYPE_VARDICT) : NULL;
+    g_autoptr(GVariant) background =
+        compositor ? g_variant_lookup_value(compositor, "background", G_VARIANT_TYPE_VARDICT)
+                   : NULL;
+    const char* color = NULL;
+    const char* image = NULL;
+    if (background) {
+        g_variant_lookup(background, "color", "&s", &color);
+        g_variant_lookup(background, "image", "&s", &image);
+    }
+    gnoblin_plugin_set_background(self, color, image);
+}
+
 static void gnoblin_plugin_update_backgrounds(MetaGnoblinPlugin* self) {
     MetaDisplay* display = meta_plugin_get_display(META_PLUGIN(self));
     clutter_actor_destroy_all_children(self->background_group);
@@ -77,7 +186,10 @@ static void gnoblin_plugin_update_backgrounds(MetaGnoblinPlugin* self) {
 
         content = META_BACKGROUND_CONTENT(clutter_actor_get_content(actor));
         g_autoptr(MetaBackground) background = meta_background_new(display);
-        meta_background_set_color(background, &COGL_COLOR_INIT(0, 0, 0, 255));
+        meta_background_set_color(background, &self->background_color);
+        if (self->background_texture)
+            meta_background_set_texture(background, self->background_texture,
+                                        G_DESKTOP_BACKGROUND_STYLE_ZOOM, NULL);
         meta_background_content_set_background(content, background);
 
         clutter_actor_add_child(self->background_group, actor);
@@ -270,6 +382,13 @@ static void gnoblin_plugin_debug_bridge(gboolean enabled, gpointer user_data) {
     gnoblin_plugin_ui_set_debug(plugin->diagnostics_ui, enabled);
 }
 
+static void gnoblin_plugin_background_bridge(const char* color, const char* image,
+                                             gpointer user_data) {
+    MetaGnoblinPlugin* plugin = user_data;
+    gnoblin_plugin_set_background(plugin, color, image);
+    gnoblin_plugin_update_backgrounds(plugin);
+}
+
 static void gnoblin_plugin_start(MetaPlugin* plugin) {
     MetaGnoblinPlugin* self = META_GNOBLIN_PLUGIN(plugin);
     MetaDisplay* display = meta_plugin_get_display(plugin);
@@ -289,6 +408,7 @@ static void gnoblin_plugin_start(MetaPlugin* plugin) {
                                      self->background_group, NULL);
     g_signal_connect(monitor_manager, "monitors-changed",
                      G_CALLBACK(gnoblin_plugin_monitors_changed), plugin);
+    gnoblin_plugin_load_configured_background(self);
     gnoblin_plugin_update_backgrounds(self);
 
     /* Diagnostics belong directly to the stage, after Mutter's window,
@@ -308,6 +428,7 @@ static void gnoblin_plugin_start(MetaPlugin* plugin) {
     gnoblin_native_control_set_console_toggle_handler(display, gnoblin_plugin_toggle_console_bridge,
                                                       self);
     gnoblin_native_control_set_debug_handler(display, gnoblin_plugin_debug_bridge, self);
+    gnoblin_native_control_set_background_handler(display, gnoblin_plugin_background_bridge, self);
     gnoblin_plugin_clipboard_init(display);
     clutter_actor_show(meta_backend_get_stage(backend));
 }
@@ -317,6 +438,7 @@ static void meta_gnoblin_plugin_dispose(GObject* object) {
     MetaDisplay* display = meta_plugin_get_display(META_PLUGIN(self));
     gnoblin_native_control_set_console_toggle_handler(display, NULL, NULL);
     gnoblin_native_control_set_debug_handler(display, NULL, NULL);
+    gnoblin_native_control_set_background_handler(display, NULL, NULL);
 
     gnoblin_plugin_input_detach(G_OBJECT(display), &self->input);
     if (self->wayland_compositor && self->session_lock_callback_id != 0) {
@@ -328,6 +450,8 @@ static void meta_gnoblin_plugin_dispose(GObject* object) {
     gnoblin_plugin_clipboard_shutdown();
     g_clear_pointer(&self->diagnostics_ui, gnoblin_plugin_ui_free);
     g_clear_pointer(&self->background_group, clutter_actor_destroy);
+    g_clear_pointer(&self->background_image, g_free);
+    g_clear_object(&self->background_texture);
 
     G_OBJECT_CLASS(meta_gnoblin_plugin_parent_class)->dispose(object);
 }
