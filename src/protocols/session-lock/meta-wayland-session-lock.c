@@ -723,7 +723,12 @@ gboolean meta_wayland_session_lock_filter_event(MetaWaylandCompositor* composito
         ClutterActor* actor;
 
         clutter_event_get_coords(event, &x, &y);
-        actor = clutter_stage_get_actor_at_pos(controller->stage, CLUTTER_PICK_ALL, x, y);
+        /* unlock_and_destroy clears the stage before it publishes UNLOCKED, and the cursor and
+         * unredirect releases in between can deliver an event. No stage means no lock surface to
+         * pick, so the event is a miss and stays consumed. */
+        actor = controller->stage
+                    ? clutter_stage_get_actor_at_pos(controller->stage, CLUTTER_PICK_ALL, x, y)
+                    : NULL;
         /* Picking can return a texture or subsurface below the Wayland actor.
          * Walk only as far as our private lock scene; never accept a normal
          * stage actor merely because it happens to be beneath the cover. */

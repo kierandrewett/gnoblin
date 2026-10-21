@@ -279,7 +279,7 @@ void gnoblin_control_publish_workspace_changes(GnoblinNativeControl* control, Js
         }
 
         JsonArray* windows =
-            JSON_NODE_HOLDS_OBJECT(window_snapshot)
+            window_snapshot && JSON_NODE_HOLDS_OBJECT(window_snapshot)
                 ? json_object_get_array_member(json_node_get_object(window_snapshot), "windows")
                 : NULL;
         for (guint i = 0; windows && i < json_array_get_length(windows); i++) {
