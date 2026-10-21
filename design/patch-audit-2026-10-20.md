@@ -47,9 +47,12 @@ series), `retire`, `unknown` (not diffed against pristine 51.0 yet).
   `keep`. 14 export a symbol that `src/` calls; 16 are behaviour or config
   bridges whose Lua key or effect is documented under `docs/config/` and
   covered by tests. The table rows carry the evidence.
-- Still open: `patches/quickshell/0001` stays while Bingux pins Quickshell
-  0.2.1 (`bingux/docs/desktop-shell.md`); retire it when Bingux moves to
-    > = 0.3.0. The fold candidates remain as listed in each slice.
+- Resolved on 2026-10-21: `patches/quickshell/0001` moved to the Bingux tree
+  (feat/bingux-os commit 6994f21, `packages/bingux-quickshell/desktop-action-ids.patch`,
+  applied by `packages/bingux-shell/prepare-quickshell.py`). `patches/quickshell/`
+  and `scripts/prepare-quickshell.py` are removed from this repo.
+  `tests/quickshell-desktop-actions.py` stays as the runtime-agnostic probe.
+  The fold candidates remain as listed in each slice.
 
 ## Slice: gnome-shell, quickshell and portal dependencies
 
@@ -114,16 +117,13 @@ Every row's code targets the GNOME Shell source tree, which is no longer pinned 
 
 ### patches/quickshell
 
-| patch                                          | what it changes                                                                                                                           | why it exists                                                                                                       | still needed? evidence                                                                                                                                                                                                  | verdict                                                  | confidence |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ---------- |
-| 0001-preserve-desktop-action-identifiers.patch | `src/core/desktopentry.cpp`: `groupName.sliced(16)` becomes `sliced(strlen("Desktop Action "))`, so action IDs keep their first character | 18f6bb98. Bingux passes `DesktopAction.id` to GIO, and the v0.2.1 parser truncated IDs and merged colliding actions | Fixed upstream. Quickshell v0.2.1 (a1a150fa) has `sliced(16)`; **v0.3.0, v0.3.2 and master have `sliced(15)`** (checked raw files on git.outfoxxed.me). No upstream MR is cited in the patch header ("Base: … v0.2.1"). | retire (bump the managed Quickshell to ≥ v0.3.0 instead) | high       |
+| patch                                          | what it changes                                                                                                                           | why it exists                                                                                                       | still needed? evidence                                                                                                                                                                                                  | verdict                                 | confidence |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- | ---------- |
+| 0001-preserve-desktop-action-identifiers.patch | `src/core/desktopentry.cpp`: `groupName.sliced(16)` becomes `sliced(strlen("Desktop Action "))`, so action IDs keep their first character | 18f6bb98. Bingux passes `DesktopAction.id` to GIO, and the v0.2.1 parser truncated IDs and merged colliding actions | Fixed upstream. Quickshell v0.2.1 (a1a150fa) has `sliced(16)`; **v0.3.0, v0.3.2 and master have `sliced(15)`** (checked raw files on git.outfoxxed.me). No upstream MR is cited in the patch header ("Base: … v0.2.1"). | moved to Bingux (6994f21); removed here | high       |
 
-- What `scripts/prepare-quickshell.py` does:
-    - It is applied by hand to an external source tree (`~/.local/share/gnoblin/quickshell-fedora-src`). Neither `build.sh` nor CMake uses it.
-    - It accepts only the exact pinned parser or its already-patched form.
-    - It runs `patch --fuzz=0` on a staged copy and compares the result before writing.
-    - `--check` exits 0 if the patch is present, 1 if it is still needed, 2 for unknown source. On v0.3.x source it would exit 2, because the parser is not recognized.
-    - `tests/quickshell-desktop-actions.py` is the behavioral probe, and it stays useful for any runtime.
+- Resolved 2026-10-21: the patch moved to the Bingux tree as `packages/bingux-quickshell/desktop-action-ids.patch` (feat/bingux-os commit 6994f21). `packages/bingux-shell/prepare-quickshell.py` applies it. The full eight-patch series applied cleanly to the pristine v0.2.1 submodule.
+    - `patches/quickshell/` (patch and README) and `scripts/prepare-quickshell.py` are removed from Gnoblin (2e2bed15).
+    - `tests/quickshell-desktop-actions.py` stays as the runtime-agnostic behavioural probe. It exits 0 against the installed patched runtime at `~/.local/share/gnoblin/quickshell-fedora`, which keeps the fix applied (checked 2026-10-21).
 - Product boundary: Quickshell is the Bingux shell's runtime, not the compositor. Shell presentation belongs to Bingux. A downstream Quickshell patch, together with its prepare script and README describing `~/.local` paths, belongs in the Bingux repo, or should simply be replaced by requiring Quickshell ≥ 0.3.0. Gnoblin should keep at most the runtime probe, if Bingux compatibility is a documented contract here.
 
 ### patches/portal-dependencies
@@ -140,9 +140,7 @@ Every row's code targets the GNOME Shell source tree, which is no longer pinned 
     - Confirm with: `grep -rn 'patches/gnome-shell' cmake scripts packaging nix .github build.sh CMakeLists.txt` returns nothing (already true), and `git ls-remote`/gnome-versions.json has no gnome-shell entry.
     - When deleting them, rewrite design/gnome-shell-retirement.md. Its open parity items should become issues against the native path: backdrop sharing (60-blur-cache, 74/0002), menu redraw (58), scaled-output blur (74z), and real-seat keymap/IBus startup (77, 78, zzzzzzz). Keep them as issues, not as kept patches.
     - No build was needed. These files are not build inputs, so removing them cannot change any artifact.
-- `patches/quickshell/0001`: upstream fixed it in v0.3.0 (`sliced(15)`).
-    - Confirm with: `tests/quickshell-desktop-actions.py --quickshell <v0.3.x build>` exits 0.
-    - Then also remove `scripts/prepare-quickshell.py` and the README, or move them to Bingux.
+- `patches/quickshell/0001`: moved to Bingux (6994f21) and removed here, together with `scripts/prepare-quickshell.py` and the README. Upstream also fixed it in v0.3.0 (`sliced(15)`); `tests/quickshell-desktop-actions.py --quickshell <v0.3.x build>` is the check when Bingux moves.
 
 **Keep with a weak reason (history only)**
 
