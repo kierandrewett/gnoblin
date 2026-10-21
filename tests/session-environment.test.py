@@ -104,14 +104,6 @@ class SessionEnvironmentTests(unittest.TestCase):
         installer = (ROOT / "cmake/install-session.cmake").read_text()
         desktop = (ROOT / "src/data/session/gnoblin.desktop").read_text()
         runtime = RUNTIME_SOURCES.read_text()
-        portal_policy = (ROOT / "src/portal/backend/gnoblin-portal-policy.c").read_text()
-        portal_session = portal_policy[
-            portal_policy.index("static gboolean is_gnoblin_session(") : portal_policy.index(
-                "GnoblinPermission gnoblin_permission_check("
-            )
-        ]
-        self.assertIn('g_getenv("XDG_CURRENT_DESKTOP")', portal_session)
-        self.assertNotIn("GNOME_SHELL_SESSION_MODE", portal_session)
         # Meson builds the compositor and the guardian as one executable through the
         # monolithic patch, so CMake defines no gnoblin target and the installer
         # only removes the old separate runtime helper.

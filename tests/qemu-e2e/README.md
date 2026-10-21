@@ -11,7 +11,7 @@ copied into it.
 
 | Script                                         | What it checks                                                                                                                                                                                                                                                                                            |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tests/qemu-e2e/run-regression.sh`             | Capabilities, privacy, grants, `commands.capture`, polkit prompts, keyring and GPG prompts through the prompt broker, input sources, `gnoblinctl` queries, compositor stability. Prints PASS or FAIL for each check.                                                                                      |
+| `tests/qemu-e2e/run-regression.sh`             | Capabilities, privacy, `commands.capture`, polkit prompts, keyring and GPG prompts through the prompt broker, input sources, `gnoblinctl` queries, compositor stability. Prints PASS or FAIL for each check.                                                                                              |
 | `tests/qemu-e2e/run-layer-output-resize.sh`    | A background layer surface (swaybg) follows the output when its mode changes to a smaller and back to the original size. Switches the guest output mode through Mutter's display configuration and restores it.                                                                                           |
 | `tests/qemu-e2e/run-shortcut.sh`               | A Lua dynamic shortcut fires when its key combination reaches the guest.                                                                                                                                                                                                                                  |
 | `tests/qemu-e2e/run-config-shortcut.sh`        | A shortcut declared in `gnoblin.configure {shortcuts = ...}` runs its command, moves when the binding changes on reload, and stops when disabled.                                                                                                                                                         |
@@ -39,10 +39,7 @@ The prompt broker checks also need a default keyring that holds a secret for
 passphrase is `gnoblin-keyring-test`. Create both once with
 `tests/qemu-e2e/run-prompt-setup.sh`. It is safe to run again. The polkit check answers
 the prompt with `gnoblin-test`, so set that as the guest user's password
-(`echo luna:gnoblin-test | sudo chpasswd`). The grant check needs the portal backend
-running, which needs the prefix's systemd user units and portal files installed as
-described in `design/qemu-e2e-validation.md`.
-
+(`echo luna:gnoblin-test | sudo chpasswd`).
 The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled files.
 
 ## Reload and pointer checks
@@ -79,5 +76,3 @@ The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled
 ## Screen cast checks
 
 - `run-screencast.sh`: a screen cast session on `org.gnome.Mutter.ScreenCast` gives a PipeWire node, GStreamer reads a monitor-sized frame from it that shows a window, and the compositor keeps running after the session stops.
-- `run-portal-screencast.sh`: the same through the desktop portal as a browser or recorder does (CreateSession, SelectSources, Start, OpenPipeWireRemote), with a permission rule for the test's python3 so no dialog appears. Starts from a stopped portal backend.
-- `run-portal-screencast-cycles.sh`: the portal flow repeated `CYCLES` times (default 20) with a consumer holding each stream. After every Close the compositor's stream node and the portal session object are gone, and after the run the compositor and the Gnoblin portal backend have the same number of open files as after the first cycle and less than 2 MiB more resident memory. Needs `pipewire-utils` (`pw-dump`) in the guest.

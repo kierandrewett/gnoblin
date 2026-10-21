@@ -1055,42 +1055,6 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         header = control_header()
         self.assertGreaterEqual(api_minor(header), 39)
 
-    def test_permissions_list_always_uses_lua(self):
-        source = control_source()
-        permission_list = function_body(
-            source,
-            'if (g_str_equal(method, "permissions.list")) {',
-            'if (g_str_equal(method, "permissions.policy")) {',
-        )
-
-        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', permission_list)
-        self.assertNotIn("client->api_minor >= 42", permission_list)
-        self.assertNotIn("native_config_document(client->control)", permission_list)
-
-    def test_permissions_check_always_uses_lua(self):
-        source = control_source()
-        permission_check = function_body(
-            source,
-            'if (g_str_equal(method, "permissions.check")) {',
-            'if (g_str_equal(method, "window.action")) {',
-        )
-
-        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', permission_check)
-        self.assertNotIn("client->api_minor >= 43", permission_check)
-        self.assertNotIn("native_config_document(client->control)", permission_check)
-
-    def test_permissions_policy_always_uses_lua(self):
-        source = control_source()
-        permission_policy = function_body(
-            source,
-            'if (g_str_equal(method, "permissions.policy")) {',
-            'if (g_str_equal(method, "permissions.check")) {',
-        )
-
-        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', permission_policy)
-        self.assertNotIn("client->api_minor >= 44", permission_policy)
-        self.assertNotIn("native_config_document(client->control)", permission_policy)
-
     def test_legacy_window_actions_use_typed_lua_operations_for_all_api_versions(self):
         source = control_source()
         header = control_header()
@@ -1349,29 +1313,6 @@ class NativeSocketTextSnapTests(unittest.TestCase):
                 self.assertIn(reason, patch)
                 self.assertIn(reason, docs)
 
-    def test_portal_grants_always_uses_lua(self):
-        source = control_source()
-        header = control_header()
-        lua_source = LUA.read_text()
-        grant_handler = function_body(
-            source,
-            'if (g_str_equal(method, "portals.grants")) {',
-            'if (g_str_equal(method, "permissions.list")) {',
-        )
-        lua_read = function_body(
-            lua_source,
-            "GVariant* gnoblin_config_read_api(",
-            "void gnoblin_config_finish_load(",
-        )
-
-        self.assertIn('queue_runtime_api_request(client, id, method, read_arguments, "read")', grant_handler)
-        self.assertNotIn("client->api_minor >= 45", grant_handler)
-        self.assertNotIn("client->control->portal_grant_snapshot", grant_handler)
-        self.assertIn('"portals.grants"', lua_read)
-        self.assertIn('g_str_equal(method, "portals.grants")', lua_read)
-        self.assertIn('lua_getfield(state, -1, "grants")', lua_read)
-        self.assertGreaterEqual(api_minor(header), 45)
-
     def test_input_snapshots_always_use_lua(self):
         source = control_source()
         header = control_header()
@@ -1419,7 +1360,7 @@ class NativeSocketTextSnapTests(unittest.TestCase):
         handler = function_body(
             source,
             'if (g_str_equal(method, "privacy.state")) {',
-            'if (g_str_equal(method, "portals.grants")) {',
+            'if (g_str_equal(method, "window.action")) {',
         )
         reads = function_body(
             source,

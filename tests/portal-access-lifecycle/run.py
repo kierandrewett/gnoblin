@@ -20,11 +20,7 @@ def main():
     parser.add_argument("--upstream", type=Path, default=UPSTREAM, help="prepared portal source tree before patch 49")
     parser.add_argument("--source", type=Path, help="override access.c in the prepared source tree")
     parser.add_argument("--baseline", action="store_true")
-    parser.add_argument("--frontend", action="store_true")
-    parser.add_argument("--decisions-only", action="store_true")
     args = parser.parse_args()
-    if args.decisions_only and not args.frontend:
-        parser.error("--decisions-only requires --frontend")
     upstream = args.upstream.resolve()
     source = args.source.resolve() if args.source else upstream / "src/access.c"
     work = args.output.resolve()
@@ -110,10 +106,9 @@ def main():
                 "--config-file=" + str(work / "bus.conf"),
                 "--",
                 sys.executable,
-                str(HERE / ("frontend.py" if args.frontend else "probe.py")),
+                str(HERE / "probe.py"),
                 str(work),
                 *(["--baseline"] if args.baseline else []),
-                *(["--decisions-only"] if args.decisions_only else []),
             ],
             env=env,
             stdout=log,

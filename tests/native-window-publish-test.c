@@ -13,7 +13,7 @@ typedef struct {
     guint input_sources_api_minor, shortcut_capture_api_minor, input_devices_api_minor;
     guint launch_api_minor;
     guint64 client_id;
-    GHashTable *event_subscriptions, *pending_grant_operations;
+    GHashTable* event_subscriptions;
     GPtrArray* messages;
 } Client;
 
@@ -181,7 +181,6 @@ static Client client_new(GnoblinNativeControl* control, gboolean windows, guint 
 static void client_clear(Client* client) {
     g_ptr_array_unref(client->messages);
     g_hash_table_unref(client->event_subscriptions);
-    g_clear_pointer(&client->pending_grant_operations, g_hash_table_unref);
 }
 
 static const char* lifecycle_events[] = {
@@ -399,15 +398,11 @@ static void test_other_event_side_effects(void) {
     GnoblinNativeControl control = control_new();
     Client client = client_new(&control, FALSE, 14);
     g_hash_table_add(control.clients, &client);
-    client.pending_grant_operations = g_hash_table_new(g_str_hash, g_str_equal);
     for (guint minor = 13; minor <= 14; minor++) {
         client.api_minor = minor;
-        g_hash_table_add(client.pending_grant_operations, "123");
         g_autoptr(JsonNode) root = json_from_string(
             "{\"name\":\"gnoblin.operation.completed\",\"operation_id\":123}", NULL);
         publish_native_socket_event(&control, root);
-        /* Retire pending operations even if the client is too old to receive them. */
-        g_assert_cmpuint(g_hash_table_size(client.pending_grant_operations), ==, 0);
         g_assert_cmpuint(client.messages->len, ==, minor == 14 ? 1 : 0);
     }
     const char* requests[] = {"gnoblin.auth.requested", "gnoblin.prompt.requested",

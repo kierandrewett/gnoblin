@@ -121,9 +121,7 @@ if(GNOBLIN_LUA_FOUND)
     src/config/lua/gnoblin-lua.c
     src/config/lua/gnoblin-lua-pattern.c
     src/config/gnoblin-glob.c
-    src/input/gnoblin-keybinding-catalog.c
-    src/portal/backend/gnoblin-portal-identity.c
-    src/portal/backend/gnoblin-portal-policy.c)
+    src/input/gnoblin-keybinding-catalog.c)
   add_library(gnoblin-config-core STATIC ${GNOBLIN_CONFIG_SOURCES})
   target_include_directories(gnoblin-config-core PUBLIC
     src/config src/config/lua src/control src/input src/session src/portal/backend)
@@ -191,8 +189,8 @@ add_test(NAME gnoblinctl-cli
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/gnoblinctl-cli.test.py"
     "$<TARGET_FILE:gnoblinctl>" "${CMAKE_BINARY_DIR}")
 set_tests_properties(gnoblinctl-cli PROPERTIES TIMEOUT 15)
-add_test(NAME permission-contract
-  COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/permission-contract.test.py")
+add_test(NAME control-contract
+  COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/control-contract.test.py")
 add_test(NAME cursor-config-contract
   COMMAND "${Python3_EXECUTABLE}" "${PROJECT_SOURCE_DIR}/tests/cursor-config-contract.test.py")
 add_test(NAME window-button-layout-contract

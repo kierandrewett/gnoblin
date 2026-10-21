@@ -11,19 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTROL = control_source()
 
 
-class PermissionContractTest(unittest.TestCase):
-    def test_permission_decisions_are_confined_to_the_portal_backend(self):
-        start = CONTROL.index("static void native_policy_method_call(")
-        end = CONTROL.index("static const GDBusInterfaceVTable native_policy_vtable", start)
-        implementation = CONTROL[start:end]
-
-        self.assertIn("native_policy_requester_is_portal_backend(connection, sender)", implementation)
-        self.assertIn("permission decisions are available only to the Gnoblin portal backend", implementation)
-        self.assertIn("native_config_document(control)", implementation)
-        self.assertIn("gnoblin_permission_policy_evaluate(document, capability, identity)", implementation)
-        self.assertIn('g_variant_new("(ss@asub)"', implementation)
-        self.assertIn("decision.devices", implementation)
-
+class ControlContractTest(unittest.TestCase):
     def test_native_privacy_reports_observable_capture_and_location_state(self):
         start = CONTROL.index("static GVariant* privacy_snapshot_new(")
         end = CONTROL.index("static void publish_privacy_snapshot(", start)
