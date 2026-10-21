@@ -32,9 +32,17 @@ series), `retire`, `unknown` (not diffed against pristine 51.0 yet).
 
 ## Actions
 
-- Retired in this change: `patches/gnome-shell` (no apply target since
+- Retired on 2026-10-21: `patches/gnome-shell` (no apply target since
   `b7388ac9`; referenced by nothing in cmake, scripts, packaging, nix or CI).
-- Everything else stays until the check named in its row has been run.
+- Retired on 2026-10-21 after a Bingux grep, a plain `git am` of the
+  remaining series on pristine 51.0, a full devkit build and ctest:
+  mutter `10-tooling/0001`, `10-tooling/0003`, `54-texture-opacity/0001`,
+  `80-wayland-config/0001`, `82-optional-tools/0001`. `0124` was
+  regenerated for context only.
+- Still open: `10-tooling/0002` (move its background-effect hunk into
+  `62/0001` first), the `51/0001` redraw-clip hunks, `patches/quickshell/0001`
+  (needs a Quickshell >= 0.3.0 requirement), the fold candidates, and the
+  30 `unknown` rows in 0061 to 0131. Each stays until its named check runs.
 
 ## Slice: gnome-shell, quickshell and portal dependencies
 
