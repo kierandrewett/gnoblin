@@ -259,6 +259,18 @@ post_apply_state (MetaWaylandSurfaceRole  *surface_role,
   if (!actor || !scene)
     return;
 
+  /* The backing MetaWindow is never shown, so MetaWindowWayland keeps its
+   * window actor frozen and every surface actor skips its texture sync. The
+   * actor then keeps a 0x0 size and paints nothing, so the compositor shows
+   * only its black cover. The actor now lives in the lock scene and no longer
+   * depends on the window actor, so thaw it and apply the commit that was
+   * skipped while it was frozen. */
+  if (meta_surface_actor_is_frozen (actor))
+    {
+      meta_surface_actor_set_frozen (actor, FALSE);
+      meta_wayland_actor_surface_sync_actor_state (META_WAYLAND_ACTOR_SURFACE (lock_surface));
+    }
+
   if (clutter_actor_get_parent (CLUTTER_ACTOR (actor)) != scene)
     {
       ClutterActor *parent = clutter_actor_get_parent (CLUTTER_ACTOR (actor));
