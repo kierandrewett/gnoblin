@@ -128,7 +128,6 @@ static void client_free(Client* client) {
     g_clear_pointer(&client->event_subscriptions, g_hash_table_unref);
     g_clear_pointer(&client->focus_grants, g_hash_table_unref);
     g_clear_pointer(&client->menu_grants, g_hash_table_unref);
-    g_clear_pointer(&client->pending_grant_operations, g_hash_table_unref);
     g_free(client);
 }
 

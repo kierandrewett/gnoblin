@@ -3,7 +3,6 @@
 
 /* Restricted, single-state Lua configuration evaluator. */
 #include "gnoblin-config.h"
-#include "gnoblin-portal-policy.h"
 #include <gio/gio.h>
 #include <glib/gstdio.h>
 #include <json-glib/json-glib.h>

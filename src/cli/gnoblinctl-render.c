@@ -2,7 +2,7 @@
 
 /* Terminal output for one command. Each group lives in its own file so that renderers
  * stay small: spatial (window, layer, monitor, workspace), state (status, session, privacy,
- * permissions, grants, focus, launch) and settings (config, shortcut, input, animation). */
+ * focus, launch) and settings (config, shortcut, input, animation). */
 gboolean render_command(const char* command, const char* action, JsonNode* result) {
     return render_spatial(command, action, result) || render_state(command, action, result) ||
            render_settings(command, action, result);

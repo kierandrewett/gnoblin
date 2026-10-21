@@ -304,15 +304,6 @@ static const ApiMember api_fields_OrientationLock[] = {
 static const ApiMember api_fields_OrientationLockValue[] = {
     {"value", "boolean|\"inherit\"", FALSE, "Lock, unlock, or restore the configured/system value."},
 };
-static const ApiMember api_fields_PermissionRuleArgs[] = {
-    {"name", "string", FALSE, "Unique name of 1 to 80 ASCII letters, digits, `_`, `.`, or `-`."},
-    {"match", "string", FALSE, "Valid Lua pattern of 1 to 512 UTF-8 bytes, matched against the application identity."},
-    {"capabilities", "string[]", FALSE, "Nonempty list of `screen-cast`, `remote-desktop`, `input-capture`, `screenshot`, or `access`."},
-    {"level", "\"inherit\"|\"default\"|\"ask\"|\"allow\"|\"deny\"", FALSE, "Permission level; `default` is the deprecated spelling of `inherit`."},
-    {"monitors", "string[]", TRUE, "Nonempty monitor names (1 to 80 ASCII letters, digits, `_`, `.`, `:`, or `-`); valid only for `screen-cast` or `remote-desktop` capabilities."},
-    {"devices", "string[]", TRUE, "Optional list of `keyboard`, `pointer`, or `touchscreen`; valid only with `remote-desktop`."},
-    {"clipboard", "boolean", TRUE, "Clipboard access setting; valid only with `remote-desktop`."},
-};
 static const ApiMember api_fields_PrivacyAvailability[] = {
     {"screen_sharing", "boolean", FALSE, "Whether screen sharing state is available."},
     {"recording", "boolean", FALSE, "Whether recording state is available."},
@@ -712,7 +703,6 @@ static const ApiClass api_classes[] = {
     {"OperationError", "The failure of an Operation.", api_fields_OperationError, 2},
     {"OrientationLock", "", api_fields_OrientationLock, 5},
     {"OrientationLockValue", "", api_fields_OrientationLockValue, 1},
-    {"PermissionRuleArgs", "", api_fields_PermissionRuleArgs, 7},
     {"PrivacyAvailability", "", api_fields_PrivacyAvailability, 5},
     {"PrivacyScreenMonitor", "", api_fields_PrivacyScreenMonitor, 4},
     {"PrivacyScreenSetArgs", "", api_fields_PrivacyScreenSetArgs, 1},

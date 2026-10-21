@@ -370,9 +370,6 @@ static gboolean native_runtime_republish_full_state(GnoblinNativeControl* contro
     g_autoptr(GVariant) shortcuts = native_shortcut_snapshot(control);
     native_publish_runtime_snapshot(control, "shortcuts", shortcuts, revision);
     gnoblin_control_publish_privacy_snapshot(control, FALSE);
-    if (control->portal_grant_snapshot)
-        native_publish_runtime_snapshot(control, "portal-grants", control->portal_grant_snapshot,
-                                        control->portal_grant_revision);
     if (control->session_activity_snapshot)
         native_publish_runtime_snapshot(control, "session-activity",
                                         control->session_activity_snapshot,
@@ -803,20 +800,16 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
         result = gnoblin_native_control_dispatch_launch(control->display, method, arguments,
                                                         &operation_error);
     } else if (g_str_equal(method, "input.select") || g_str_equal(method, "input.select_source") ||
-               g_str_equal(method, "shortcut.capture") || g_str_equal(method, "grant.list") ||
-               g_str_equal(method, "grant.revoke")) {
+               g_str_equal(method, "shortcut.capture")) {
         guint64* operation_key = g_new(guint64, 1);
         *operation_key = (guint64)operation_id;
         g_hash_table_add(control->runtime_operation_ids, operation_key);
         if (g_str_equal(method, "input.select") || g_str_equal(method, "input.select_source")) {
             pending = gnoblin_native_control_select_input_source(
                 control->display, arguments, operation_id, method, &operation_error);
-        } else if (g_str_equal(method, "shortcut.capture")) {
+        } else {
             pending = gnoblin_native_control_begin_shortcut_capture(control->display, arguments,
                                                                     operation_id, &operation_error);
-        } else {
-            pending = gnoblin_native_control_portal_grant_operation(
-                control->display, method, arguments, operation_id, &operation_error);
         }
         if (pending)
             return TRUE;

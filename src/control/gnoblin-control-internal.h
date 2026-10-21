@@ -29,7 +29,6 @@
 #include "meta/meta-workspace-manager.h"
 
 #define NATIVE_CONTROL_OBJECT_DATA_KEY "gnoblin-native-control"
-#define PORTAL_BACKEND_BUS_NAME "org.freedesktop.impl.portal.desktop.gnoblin"
 
 #define MAX_NATIVE_COMMAND_ARGUMENTS 64
 #define MAX_NATIVE_COMMAND_BYTES (64 * 1024)
@@ -136,7 +135,6 @@ typedef struct {
     gboolean track_shortcut_capture;
     gboolean close_after_response;
     guint pending_thumbnails;
-    GHashTable* pending_grant_operations;
     guint pending_deferred_requests;
     gboolean watch_ui_sessions;
 } Client;
@@ -204,7 +202,6 @@ struct _GnoblinNativeControl {
     GHashTable* monitor_state;
     GHashTable* input_device_state;
     GHashTable* input_device_ids;
-    GVariant* portal_grant_snapshot;
     GVariant* privacy_snapshot;
     GPtrArray* input_sources;
     GPtrArray* ibus_sources;
@@ -258,16 +255,11 @@ struct _GnoblinNativeControl {
     guint launch_tick_id;
     guint shortcut_capture_timeout_id;
     guint focus_context_timeout_id;
-    guint policy_dbus_registration_id;
-    guint portal_grant_added_subscription_id;
-    guint portal_grant_removed_subscription_id;
-    guint portal_owner_subscription_id;
     guint ibus_signal_subscription_id;
     guint ibus_owner_subscription_id;
     guint ibus_retry_source_id;
     guint64 ibus_owner_generation;
     guint64 ibus_engine_generation;
-    guint portal_grant_retry_id;
     guint runtime_read_source_id;
     guint runtime_write_source_id;
     guint64 next_runtime_request_id;
@@ -313,13 +305,11 @@ struct _GnoblinNativeControl {
      * that may still have asynchronous compositor callbacks in flight. */
     guint64 last_runtime_operation_id;
     guint64 launch_revision;
-    guint64 portal_grant_revision;
     guint64 privacy_revision;
     GVariant* monitor_privacy_screen_snapshot;
     guint64 monitor_privacy_screen_revision;
     gboolean monitor_privacy_screen_runtime_override;
     gboolean monitor_privacy_screen_runtime_value;
-    guint portal_grant_retry_count;
     guint64 session_lock_revision;
     gboolean session_lifecycle_supported;
     GVariant* session_lifecycle_snapshot;
@@ -368,11 +358,8 @@ struct _GnoblinNativeControl {
     gboolean control_right_pressed;
     gboolean alt_left_pressed;
     gboolean alt_right_pressed;
-    gboolean policy_bus_name_owned;
-    gboolean portal_backend_available;
     guint pending_input_source_ops;
     guint pending_ibus_queries;
-    guint pending_portal_grant_ops;
     guint pending_thumbnail_count;
     GVariant* session_activity_snapshot;
     guint64 session_activity_revision;
@@ -407,8 +394,6 @@ G_GNUC_INTERNAL JsonNode* gnoblin_control_json_from_variant(GVariant* value);
 G_GNUC_INTERNAL void gnoblin_control_publish_socket_event(GnoblinNativeControl* control,
                                                           JsonNode* payload);
 G_GNUC_INTERNAL void gnoblin_control_maybe_free_stopped(GnoblinNativeControl* control);
-G_GNUC_INTERNAL void gnoblin_control_clear_pending_grant_delivery(GnoblinNativeControl* control,
-                                                                  gint64 request_id);
 G_GNUC_INTERNAL guint64 gnoblin_control_config_generation(GnoblinNativeControl* control);
 G_GNUC_INTERNAL guint64 gnoblin_control_config_revision(GnoblinNativeControl* control);
 G_GNUC_INTERNAL void gnoblin_control_send_response(Client* client, char* response);
@@ -471,8 +456,7 @@ G_GNUC_INTERNAL void gnoblin_control_privacy_new_handle(MetaRemoteAccessControll
 G_GNUC_INTERNAL GVariant* gnoblin_control_stop_privacy_sessions(GnoblinNativeControl* control,
                                                                 gboolean recording, GError** error);
 
-/* gnoblin-control-grants.c: portal grant cache, grant operations and session activity. */
-G_GNUC_INTERNAL void gnoblin_control_portal_grants_watch(GnoblinNativeControl* control);
+/* gnoblin-control-grants.c: session activity. */
 G_GNUC_INTERNAL void gnoblin_control_activity_watch(GnoblinNativeControl* control);
 G_GNUC_INTERNAL void gnoblin_control_activity_publish(GnoblinNativeControl* control,
                                                       gboolean available, gboolean idle,

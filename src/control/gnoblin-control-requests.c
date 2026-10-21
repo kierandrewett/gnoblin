@@ -123,11 +123,6 @@ char* handle_request(Client* client, const char* data, gsize length) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "focus policy events require API version 1.13");
             }
-            if (g_str_equal(name, "gnoblin.permission.changed") && client->api_minor < 16) {
-                g_hash_table_unref(subscriptions);
-                return encode_response("", NULL,
-                                       "permission policy events require API version 1.16");
-            }
             if (g_str_equal(name, "gnoblin.privacy.changed") && client->api_minor < 17) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "privacy state events require API version 1.17");
@@ -174,12 +169,6 @@ char* handle_request(Client* client, const char* data, gsize length) {
                 client->api_minor < 20) {
                 g_hash_table_unref(subscriptions);
                 return encode_response("", NULL, "config reload events require API version 1.20");
-            }
-            if ((g_str_equal(name, "gnoblin.portal.grant-added") ||
-                 g_str_equal(name, "gnoblin.portal.grant-removed")) &&
-                client->api_minor < 15) {
-                g_hash_table_unref(subscriptions);
-                return encode_response("", NULL, "portal grant events require API version 1.15");
             }
             if (g_str_equal(name, "gnoblin.operation.completed") && client->api_minor < 11) {
                 g_hash_table_unref(subscriptions);
@@ -327,13 +316,6 @@ char* handle_request(Client* client, const char* data, gsize length) {
         return encode_response(id, NULL, "auth methods require API version 1.78");
     if (g_str_has_prefix(method, "prompt.") && client->api_minor < 79)
         return encode_response(id, NULL, "prompt methods require API version 1.79");
-    if ((g_str_equal(method, "grant.list") || g_str_equal(method, "grant.revoke")) &&
-        client->api_minor < 14)
-        return encode_response(id, NULL, "portal grant methods require API version 1.14");
-    if (g_str_equal(method, "portals.grants") && client->api_minor < 15)
-        return encode_response(id, NULL, "portals.grants requires API version 1.15");
-    if (g_str_equal(method, "permissions.policy") && client->api_minor < 16)
-        return encode_response(id, NULL, "permissions.policy requires API version 1.16");
     if (g_str_equal(method, "privacy.state") && client->api_minor < 17)
         return encode_response(id, NULL, "privacy.state requires API version 1.17");
     if (g_str_equal(method, "session.lock") && client->api_minor < 21)
@@ -606,75 +588,6 @@ char* handle_request(Client* client, const char* data, gsize length) {
         GVariantBuilder empty;
         g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
         g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
-        return queue_runtime_api_request(client, id, method, read_arguments, "read");
-    }
-    if (g_str_equal(method, "portals.grants")) {
-        JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
-        const char* kind_filter = NULL;
-        if (arguments &&
-            (json_object_get_size(arguments) > 1 ||
-             (json_object_get_size(arguments) == 1 && !json_object_has_member(arguments, "kind"))))
-            return encode_response(id, NULL, "portals.grants accepts only an optional kind");
-        if (arguments && json_object_has_member(arguments, "kind")) {
-            JsonNode* kind_node = json_object_get_member(arguments, "kind");
-            if (!JSON_NODE_HOLDS_VALUE(kind_node) ||
-                json_node_get_value_type(kind_node) != G_TYPE_STRING)
-                return encode_response(id, NULL, "portal grant kind must be a string");
-            kind_filter = json_node_get_string(kind_node);
-            if (!g_str_equal(kind_filter, "screen-cast") &&
-                !g_str_equal(kind_filter, "remote-desktop"))
-                return encode_response(id, NULL,
-                                       "portal grant kind must be screen-cast or remote-desktop");
-        }
-        if (!client->control->supervised_runtime)
-            return encode_response(id, NULL, "Lua supervisor is not connected");
-        GVariantBuilder empty;
-        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-        g_autoptr(GVariant) read_arguments =
-            arguments_node ? variant_from_json(arguments_node)
-                           : g_variant_ref_sink(g_variant_builder_end(&empty));
-        if (!read_arguments)
-            return encode_response(id, NULL, "portals.grants arguments are invalid");
-        return queue_runtime_api_request(client, id, method, read_arguments, "read");
-    }
-    if (g_str_equal(method, "permissions.list")) {
-        if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
-            return encode_response(id, NULL, "permissions.list does not accept arguments");
-        if (!client->control->supervised_runtime)
-            return encode_response(id, NULL, "Lua supervisor is not connected");
-        GVariantBuilder empty;
-        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-        g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
-        return queue_runtime_api_request(client, id, method, read_arguments, "read");
-    }
-    if (g_str_equal(method, "permissions.policy")) {
-        if (arguments_node && json_object_get_size(json_node_get_object(arguments_node)) != 0)
-            return encode_response(id, NULL, "permissions.policy does not accept arguments");
-        if (!client->control->supervised_runtime)
-            return encode_response(id, NULL, "Lua supervisor is not connected");
-        GVariantBuilder empty;
-        g_variant_builder_init(&empty, G_VARIANT_TYPE_VARDICT);
-        g_autoptr(GVariant) read_arguments = g_variant_ref_sink(g_variant_builder_end(&empty));
-        return queue_runtime_api_request(client, id, method, read_arguments, "read");
-    }
-    if (g_str_equal(method, "permissions.check")) {
-        JsonObject* arguments = arguments_node ? json_node_get_object(arguments_node) : NULL;
-        if (!arguments || json_object_get_size(arguments) != 2 ||
-            !json_object_has_member(arguments, "capability") ||
-            !json_object_has_member(arguments, "identity") ||
-            !JSON_NODE_HOLDS_VALUE(json_object_get_member(arguments, "capability")) ||
-            !JSON_NODE_HOLDS_VALUE(json_object_get_member(arguments, "identity")) ||
-            json_node_get_value_type(json_object_get_member(arguments, "capability")) !=
-                G_TYPE_STRING ||
-            json_node_get_value_type(json_object_get_member(arguments, "identity")) !=
-                G_TYPE_STRING)
-            return encode_response(id, NULL,
-                                   "permissions.check requires string capability and identity");
-        if (!client->control->supervised_runtime)
-            return encode_response(id, NULL, "Lua supervisor is not connected");
-        g_autoptr(GVariant) read_arguments = variant_from_json(arguments_node);
-        if (!read_arguments)
-            return encode_response(id, NULL, "permissions.check arguments are invalid");
         return queue_runtime_api_request(client, id, method, read_arguments, "read");
     }
     if (g_str_equal(method, "window.action")) {

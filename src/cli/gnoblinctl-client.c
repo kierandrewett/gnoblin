@@ -22,11 +22,7 @@ JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* m
         g_str_equal(method_name, "input.select") || g_str_equal(method_name, "shortcut.actions") ||
         g_str_equal(method_name, "shortcuts.actions") ||
         g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "shortcut.list") ||
-        g_str_equal(method_name, "grant.list") || g_str_equal(method_name, "grant.revoke") ||
-        g_str_equal(method_name, "portals.grants") ||
-        g_str_equal(method_name, "permissions.policy") ||
-        g_str_equal(method_name, "permissions.list") || g_str_equal(method_name, "privacy.state") ||
-        g_str_equal(method_name, "permissions.check") || g_str_equal(method_name, "version") ||
+        g_str_equal(method_name, "privacy.state") || g_str_equal(method_name, "version") ||
         g_str_equal(method_name, "session.status") || g_str_equal(method_name, "session.logout") ||
         g_str_equal(method_name, "session.suspend") ||
         g_str_equal(method_name, "session.hibernate") ||
@@ -39,7 +35,7 @@ JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* m
         g_str_equal(method_name, "launch.status") ||
         g_str_equal(method_name, "launches.snapshot") ||
         g_str_equal(method_name, "shortcuts.actions") ||
-        g_str_equal(method_name, "shortcuts.list") || g_str_equal(method_name, "portals.grants") ||
+        g_str_equal(method_name, "shortcuts.list") ||
         g_str_equal(method_name, "capabilities.list") || g_str_equal(method_name, "windows.list") ||
         g_str_equal(method_name, "workspaces.list") || g_str_equal(method_name, "monitors.list") ||
         g_str_equal(method_name, "outputs.list") || g_str_equal(method_name, "outputs.renderer") ||
@@ -100,15 +96,13 @@ JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* m
         payload = g_strconcat(encoded, "\n", NULL);
     }
 
-    gboolean waits_for_operation =
-        g_str_equal(method_name, "window.thumbnail") || g_str_equal(method_name, "input.select") ||
-        g_str_equal(method_name, "input.set_orientation_lock") ||
-        g_str_equal(method_name, "monitors.set_privacy_screen") ||
-        g_str_equal(method_name, "shortcut.capture") || g_str_equal(method_name, "grant.list") ||
-        g_str_equal(method_name, "grant.revoke") || g_str_equal(method_name, "animation.preview");
-    guint wait_timeout = cli->timeout + (g_str_equal(method_name, "shortcut.capture") ? 2
-                                         : g_str_has_prefix(method_name, "grant.")    ? 6
-                                                                                      : 0);
+    gboolean waits_for_operation = g_str_equal(method_name, "window.thumbnail") ||
+                                   g_str_equal(method_name, "input.select") ||
+                                   g_str_equal(method_name, "input.set_orientation_lock") ||
+                                   g_str_equal(method_name, "monitors.set_privacy_screen") ||
+                                   g_str_equal(method_name, "shortcut.capture") ||
+                                   g_str_equal(method_name, "animation.preview");
+    guint wait_timeout = cli->timeout + (g_str_equal(method_name, "shortcut.capture") ? 2 : 0);
     g_autoptr(GSocketClient) client = g_socket_client_new();
     g_socket_client_set_timeout(client, wait_timeout);
     g_autoptr(GSocketAddress) address = g_unix_socket_address_new(cli->socket_path);
@@ -209,7 +203,6 @@ JsonNode* call_compositor_with_api_minor(Cli* cli, const char* op, const char* m
                                                 "workspaces.list monitors.list layers.list "
                                                 "shortcuts.actions shortcut.actions shortcut.list "
                                                 "outputs.list "
-                                                "portals.grants "
                                                 "shortcuts.list",
                                                 method_name);
                 gboolean null_result = result_node && JSON_NODE_HOLDS_NULL(result_node) &&

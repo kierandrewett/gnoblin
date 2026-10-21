@@ -408,8 +408,6 @@ const NativeCapability native_capabilities[] = {
     {"shortcut-focus-contexts",
      "Receive a one-use focus grant for a trusted configured command shortcut."},
     {"dynamic-shortcuts", "Register connection-owned momentary global shortcut bindings."},
-    {"portal-grants", "Read and revoke Gnoblin portal permission grants."},
-    {"permission-policy", "Read the committed portal permission policy."},
     {"animation-preview", "Inspect configured animations and control compositor previews."},
     {"microphone-monitor", "Monitor microphone activity through PipeWire."},
     {"camera-monitor", "Monitor camera activity through PipeWire."},
@@ -441,7 +439,6 @@ const char* native_socket_events[] = {
     "gnoblin.pointer.locate-requested",
     "gnoblin.input.pad-help-requested",
     "gnoblin.focus.policy-changed",
-    "gnoblin.permission.changed",
     "gnoblin.config.reloaded",
     "gnoblin.config.reload-failed",
     "gnoblin.capability.changed",
@@ -485,136 +482,23 @@ const char* native_socket_events[] = {
     "gnoblin.shortcut.session.activated",
     "gnoblin.shortcut.session.key",
     "gnoblin.shortcut.session.ended",
-    "gnoblin.portal.grant-added",
-    "gnoblin.portal.grant-removed",
     "gnoblin.api.operation-completed",
     "gnoblin.operation.completed",
     NULL,
 };
 
-static const char native_policy_introspection[] =
-    "<node><interface name='org.gnoblin.Compositor'>"
-    "<method name='CheckPermission'>"
-    "<arg type='s' direction='in'/><arg type='s' direction='in'/>"
-    "<arg type='s' direction='out'/><arg type='s' direction='out'/>"
-    "<arg type='as' direction='out'/><arg type='u' direction='out'/>"
-    "<arg type='b' direction='out'/>"
-    "</method></interface></node>";
-
-static gboolean native_policy_requester_is_portal_backend(GDBusConnection* connection,
-                                                          const char* sender) {
+gboolean start_native_session_bus(GnoblinNativeControl* control) {
     g_autoptr(GError) error = NULL;
-    g_autoptr(GVariant) owner = g_dbus_connection_call_sync(
-        connection, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
-        "GetNameOwner", g_variant_new("(s)", PORTAL_BACKEND_BUS_NAME), G_VARIANT_TYPE("(s)"),
-        G_DBUS_CALL_FLAGS_NONE, 2000, NULL, &error);
-    if (!owner)
-        return FALSE;
-    const char* unique_owner;
-    g_variant_get(owner, "(&s)", &unique_owner);
-    return g_strcmp0(unique_owner, sender) == 0;
-}
-
-static void native_policy_method_call(GDBusConnection* connection, const char* sender,
-                                      const char* object_path, const char* interface_name,
-                                      const char* method_name, GVariant* parameters,
-                                      GDBusMethodInvocation* invocation, gpointer user_data) {
-    (void)object_path;
-    (void)interface_name;
-    (void)method_name;
-    GnoblinNativeControl* control = user_data;
-    if (control->stopping || !native_policy_requester_is_portal_backend(connection, sender)) {
-        g_dbus_method_invocation_return_dbus_error(
-            invocation, "org.gnoblin.Compositor.Error.AccessDenied",
-            "permission decisions are available only to the Gnoblin portal backend");
-        return;
-    }
-    const char *capability, *identity;
-    g_variant_get(parameters, "(&s&s)", &capability, &identity);
-    if (!gnoblin_permission_capability_supported(capability)) {
-        g_dbus_method_invocation_return_dbus_error(invocation,
-                                                   "org.gnoblin.Compositor.Error.InvalidCapability",
-                                                   "unsupported permission capability");
-        return;
-    }
-    g_autoptr(GVariant) document = native_config_document(control);
-    if (!document) {
-        g_dbus_method_invocation_return_dbus_error(invocation,
-                                                   "org.gnoblin.Compositor.Error.PolicyUnavailable",
-                                                   "committed permission policy is unavailable");
-        return;
-    }
-    g_auto(GnoblinPermission) decision =
-        gnoblin_permission_policy_evaluate(document, capability, identity);
-    static const char* const empty_monitors[] = {NULL};
-    const char* const* monitors =
-        decision.monitors ? (const char* const*)decision.monitors : empty_monitors;
-    g_dbus_method_invocation_return_value(
-        invocation,
-        g_variant_new("(ss@asub)",
-                      decision.level == GNOBLIN_PERMISSION_ASK     ? "ask"
-                      : decision.level == GNOBLIN_PERMISSION_ALLOW ? "allow"
-                      : decision.level == GNOBLIN_PERMISSION_DENY  ? "deny"
-                                                                   : "inherit",
-                      decision.rule ? decision.rule : "", g_variant_new_strv(monitors, -1),
-                      decision.devices, decision.clipboard));
-}
-
-static const GDBusInterfaceVTable native_policy_vtable = {
-    .method_call = native_policy_method_call,
-};
-
-gboolean start_native_policy_dbus(GnoblinNativeControl* control) {
-    g_autoptr(GError) error = NULL;
-    g_autoptr(GDBusNodeInfo) node =
-        g_dbus_node_info_new_for_xml(native_policy_introspection, &error);
-    if (!node) {
-        g_warning("gnoblin-native-control: cannot load permission interface: %s", error->message);
-        return FALSE;
-    }
     control->session_bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
     if (!control->session_bus) {
-        g_warning("gnoblin-native-control: permission D-Bus service unavailable: %s",
-                  error->message);
+        g_warning("gnoblin-native-control: session D-Bus unavailable: %s", error->message);
         return FALSE;
     }
     gnoblin_control_activity_watch(control);
-    g_autoptr(GVariant) request_name = g_dbus_connection_call_sync(
-        control->session_bus, "org.freedesktop.DBus", "/org/freedesktop/DBus",
-        "org.freedesktop.DBus", "RequestName", g_variant_new("(su)", NATIVE_POLICY_BUS_NAME, 4u),
-        G_VARIANT_TYPE("(u)"), G_DBUS_CALL_FLAGS_NONE, 2000, NULL, &error);
-    if (!request_name) {
-        g_warning("gnoblin-native-control: cannot own permission D-Bus name: %s", error->message);
-        return FALSE;
-    }
-    guint32 result;
-    g_variant_get(request_name, "(u)", &result);
-    if (result != 1 && result != 4) {
-        g_warning("gnoblin-native-control: permission D-Bus name is already owned");
-        return FALSE;
-    }
-    control->policy_bus_name_owned = TRUE;
-    control->policy_dbus_registration_id = g_dbus_connection_register_object(
-        control->session_bus, NATIVE_POLICY_OBJECT_PATH, node->interfaces[0], &native_policy_vtable,
-        control, NULL, &error);
-    if (!control->policy_dbus_registration_id) {
-        g_warning("gnoblin-native-control: cannot export permission interface: %s", error->message);
-        g_dbus_connection_call(control->session_bus, "org.freedesktop.DBus",
-                               "/org/freedesktop/DBus", "org.freedesktop.DBus", "ReleaseName",
-                               g_variant_new("(s)", NATIVE_POLICY_BUS_NAME), NULL,
-                               G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL, NULL);
-        control->policy_bus_name_owned = FALSE;
-        return FALSE;
-    }
-    gnoblin_control_portal_grants_watch(control);
     return TRUE;
 }
 
-void stop_native_policy_dbus(GnoblinNativeControl* control) {
-    if (control->portal_grant_retry_id) {
-        g_source_remove(control->portal_grant_retry_id);
-        control->portal_grant_retry_id = 0;
-    }
+void stop_native_session_bus(GnoblinNativeControl* control) {
     if (control->ibus_retry_source_id) {
         g_source_remove(control->ibus_retry_source_id);
         control->ibus_retry_source_id = 0;
@@ -634,21 +518,6 @@ void stop_native_policy_dbus(GnoblinNativeControl* control) {
     g_clear_object(&control->ibus_bus);
     if (!control->session_bus)
         return;
-    if (control->portal_grant_added_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->session_bus,
-                                             control->portal_grant_added_subscription_id);
-        control->portal_grant_added_subscription_id = 0;
-    }
-    if (control->portal_grant_removed_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->session_bus,
-                                             control->portal_grant_removed_subscription_id);
-        control->portal_grant_removed_subscription_id = 0;
-    }
-    if (control->portal_owner_subscription_id) {
-        g_dbus_connection_signal_unsubscribe(control->session_bus,
-                                             control->portal_owner_subscription_id);
-        control->portal_owner_subscription_id = 0;
-    }
     if (control->session_activity_subscription_id) {
         g_dbus_connection_signal_unsubscribe(control->session_bus,
                                              control->session_activity_subscription_id);
@@ -659,21 +528,7 @@ void stop_native_policy_dbus(GnoblinNativeControl* control) {
                                              control->session_activity_owner_subscription_id);
         control->session_activity_owner_subscription_id = 0;
     }
-    if (control->policy_dbus_registration_id) {
-        g_dbus_connection_unregister_object(control->session_bus,
-                                            control->policy_dbus_registration_id);
-        control->policy_dbus_registration_id = 0;
-    }
-    if (control->policy_bus_name_owned) {
-        g_dbus_connection_call(control->session_bus, "org.freedesktop.DBus",
-                               "/org/freedesktop/DBus", "org.freedesktop.DBus", "ReleaseName",
-                               g_variant_new("(s)", NATIVE_POLICY_BUS_NAME), NULL,
-                               G_DBUS_CALL_FLAGS_NONE, -1, NULL, NULL, NULL);
-        control->policy_bus_name_owned = FALSE;
-    }
     g_clear_object(&control->session_bus);
-    g_clear_pointer(&control->portal_grant_snapshot, g_variant_unref);
-    native_publish_runtime_snapshot(control, "portal-grants", NULL, control->portal_grant_revision);
     g_clear_pointer(&control->session_activity_snapshot, g_variant_unref);
 }
 

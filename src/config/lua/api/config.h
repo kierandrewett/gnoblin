@@ -87,20 +87,6 @@ them.
 ---@field frame? WindowRuleFrame Frame options.
 ---@field corners? WindowRuleCorners Corner, border, and shadow options.
 
----@class PermissionRuleArgs
----@field name string Unique name of 1 to 80 ASCII letters, digits, `_`, `.`, or `-`.
----@field match string Valid Lua pattern of 1 to 512 UTF-8 bytes, matched against the application
-identity.
----@field capabilities string[] Nonempty list of `screen-cast`, `remote-desktop`, `input-capture`,
-`screenshot`, or `access`.
----@field level "inherit"|"default"|"ask"|"allow"|"deny" Permission level; `default` is the
-deprecated spelling of `inherit`.
----@field monitors? string[] Nonempty monitor names (1 to 80 ASCII letters, digits, `_`, `.`, `:`,
-or `-`); valid only for `screen-cast` or `remote-desktop` capabilities.
----@field devices? string[] Optional list of `keyboard`, `pointer`, or `touchscreen`; valid only
-with `remote-desktop`.
----@field clipboard? boolean Clipboard access setting; valid only with `remote-desktop`.
-
 ---Append a window rule to the ordered window-rules list.
 ---@param rule WindowRuleArgs
 function gnoblin.window_rule(rule) end

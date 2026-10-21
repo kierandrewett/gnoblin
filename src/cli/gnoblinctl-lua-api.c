@@ -266,21 +266,6 @@ int lua_api_index(lua_State* state) {
         lua_pushcclosure(state, lua_cli_capabilities_list, 1);
         return 1;
     }
-    if (g_str_equal(prefix, "permissions") && g_str_equal(name, "list")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushcclosure(state, lua_cli_permissions_list, 1);
-        return 1;
-    }
-    if (g_str_equal(prefix, "permissions") && g_str_equal(name, "policy")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushcclosure(state, lua_cli_permissions_policy, 1);
-        return 1;
-    }
-    if (g_str_equal(prefix, "permissions") && g_str_equal(name, "check")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushcclosure(state, lua_cli_permissions_check, 1);
-        return 1;
-    }
     if (g_str_equal(prefix, "session") && g_str_equal(name, "status")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
         lua_pushcclosure(state, lua_cli_session_status, 1);
@@ -397,21 +382,6 @@ int lua_api_index(lua_State* state) {
             lua_pushcclosure(state, lua_cli_shortcuts_capture, 1);
             return 1;
         }
-    }
-    if (g_str_equal(prefix, "portals") && g_str_equal(name, "grants")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushcclosure(state, lua_cli_portal_grants, 1);
-        return 1;
-    }
-    if (g_str_equal(prefix, "grant") && g_str_equal(name, "list")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushcclosure(state, lua_cli_portal_grants, 1);
-        return 1;
-    }
-    if (g_str_equal(prefix, "grant") && g_str_equal(name, "revoke")) {
-        lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));
-        lua_pushcclosure(state, lua_cli_grant_revoke, 1);
-        return 1;
     }
     if (g_str_equal(prefix, "layer") && g_str_equal(name, "list")) {
         lua_pushlightuserdata(state, lua_touserdata(state, lua_upvalueindex(2)));

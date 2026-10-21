@@ -3,7 +3,6 @@
 
 /* Lua configuration evaluation and supervisor runtime state. */
 #include "gnoblin-config.h"
-#include "gnoblin-portal-policy.h"
 #include "gnoblin-input-config.h"
 #include "gnoblin-keybinding-catalog.h"
 #include <errno.h>
