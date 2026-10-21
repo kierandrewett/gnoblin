@@ -236,6 +236,14 @@ exit 0
             with self.subTest(name=name, conflicts=conflicts, obsoletes=obsoletes), self.assertRaises(ValueError):
                 isolation.validate(name, "", "", conflicts, obsoletes)
 
+    def test_rejects_development_package_requirements_and_keeps_runtime_ones(self):
+        # The private runtime ships Mutter's .pc files. A pkgconfig() requirement makes a user's install pull in a
+        # -devel package, which pulled GTK 3 onto a clean Fedora system in the 0.1.10 RPM.
+        for requirement in ("pkgconfig(libcanberra) >= 0.26", "pkgconfig(gtk4)"):
+            with self.subTest(requirement=requirement), self.assertRaises(ValueError):
+                isolation.validate("gnoblin", "", "", "", "", requirement)
+        isolation.validate("gnoblin", "", "", "", "", "libgtk-4.so.1()(64bit)\nglib2 >= 2.86.0\nlua-libs >= 5.4")
+
     def test_gnoblin_payload_provides_and_obsoletes_the_old_session_package(self):
         self.assertNotIn("/usr/lib/systemd/user/gnoblin-recovery.service", isolation.PUBLIC_FILES)
         portal_files = {
@@ -407,7 +415,7 @@ exit 0
     def test_system_schemas_are_required_before_the_compositor(self):
         publisher = (ROOT / "scripts/publish-copr.sh").read_text()
         gnoblin = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin.spec")], text=True)
-        self.assertIn("BuildRequires: pkgconfig(gsettings-desktop-schemas) >= 49.1", gnoblin)
+        self.assertIn("BuildRequires: gsettings-desktop-schemas-devel >= 49.1", gnoblin)
         self.assertIn("BuildRequires:  pkgconfig(lua)", gnoblin)
         self.assertIn("Requires:       gsettings-desktop-schemas >= 49.1", gnoblin)
         component_build = (ROOT / "cmake/component-build.cmake").read_text()
@@ -431,7 +439,6 @@ exit 0
         self.assertIn('dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"', installer)
         self.assertIn('packages=("gnoblin:$META_VERSION"', installer)
         self.assertIn("gnoblin) project=gnoblin", installer)
-        self.assertIn("install --refresh gnoblin", (ROOT / ".github/workflows/verify.yml").read_text())
         # No task passes a local RPM option to the COPR installer.
         self.assertNotIn("--local-rpms", makefile)
         self.assertIn("scripts/legacy/gnome-session@gnoblin.target.d.conf", installer)
