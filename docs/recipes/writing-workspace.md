@@ -13,7 +13,7 @@ gnoblin.configure {
         {id = "other", name = "Other"},
     },
     window_management = {
-        center_new_windows = true,
+        new_window_placement = "center",
         attach_modal_dialogs = true,
     },
 }

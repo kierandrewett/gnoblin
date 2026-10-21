@@ -7,9 +7,17 @@ GNOME Shell build or compatibility layer.
 
 The source build prepares and builds Mutter and `xdg-desktop-portal-gnome`.
 The `prepare` and `apply-patches` steps in `cmake/source-step.cmake` accept only
-those projects. The GNOME Shell patch tree is not applied, built, packaged, or
-included in the standalone session. Shell patches that remain in the checkout
-are migration history, not active runtime behavior.
+those projects. The GNOME Shell patch tree was never applied, built, packaged,
+or included in the standalone session after the Shell source pin was dropped
+in `b7388ac9`. The remaining 28 series (30 files) were removed from
+`patches/gnome-shell` on 2026-10-21; their last state is at `ebe2a5d0`. Nothing
+in `cmake/`, `scripts/`, `packaging/`, `nix/` or `.github/` referenced the
+tree, so the removal changes no build artifact. The items below that still
+mention a Shell patch are open parity questions against the native path, not
+kept patches. Two series the earlier audit never listed, `90-branding` and
+`99zzzzzzzzzzzz-native-xkb`, were removed with the rest; branding is a shell
+client concern and native XKB selection is covered by the input-source
+checks described under "Still needs a decision".
 
 Package-isolation checks that install stock GNOME are intentional: they prove
 that installing Gnoblin does not replace a user's GNOME packages. The old
@@ -137,11 +145,16 @@ The remaining input-specific patches are listed below.
 
 ## Still needs a decision or stronger evidence
 
+These are open questions against the native path. The Shell patches they
+name no longer exist in the tree; see `git show ebe2a5d0:patches/gnome-shell`
+for the historical diffs.
+
 - `58-menu-backdrop-redraw`: establish whether native damage handling covers
   the same redraw lifecycle.
 - `60-blur-cache` and `74-0002-share-shell-layer-backdrops`: the native blur
   path does not currently demonstrate cross-surface backdrop sharing. Compare
-  frame cost and output before claiming parity or removing the old design.
+  frame cost and output before claiming parity. `74z-blur-output-scale`
+  (blur on scaled outputs) has the same status.
 - `68-dev-console`: the obsolete GJS entrypoint and console stylesheet patches
   were removed on 2026-10-02. `gnoblinctl lua` evaluates Lua locally in the
   terminal process and exposes the typed session API through

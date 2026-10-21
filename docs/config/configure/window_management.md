@@ -20,16 +20,16 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 
 ### Placement and responsiveness
 
-| Key                           | Values          | Default | Effect                                                                   |
-| ----------------------------- | --------------- | ------- | ------------------------------------------------------------------------ |
-| `auto_maximize`               | Boolean         | `true`  | Maximize new windows that nearly fill the monitor.                       |
-| `check_alive_timeout`         | 0–4294967295 ms | `5000`  | Client ping timeout before it is marked frozen; `0` disables the check.  |
-| `workspaces_only_on_primary`  | Boolean         | `false` | Keep workspaces on the primary monitor.                                  |
-| `edge_tiling`                 | Boolean         | `false` | Enable Mutter's edge tiling.                                             |
-| `center_new_windows`          | Boolean         | `false` | Center newly created windows.                                            |
-| `attach_modal_dialogs`        | Boolean         | `false` | Place modal dialogs with their parent window.                            |
-| `disable_workarounds`         | Boolean         | `false` | Disable Mutter's compatibility workarounds for broken X11 applications.  |
-| `constrain_drag_to_work_area` | Boolean         | `true`  | Keep dragged windows inside the work area. See the note below the table. |
+| Key                           | Values                                  | Default        | Effect                                                                   |
+| ----------------------------- | --------------------------------------- | -------------- | ------------------------------------------------------------------------ |
+| `auto_maximize`               | Boolean                                 | `true`         | Maximize new windows that nearly fill the monitor.                       |
+| `check_alive_timeout`         | 0–4294967295 ms                         | `5000`         | Client ping timeout before it is marked frozen; `0` disables the check.  |
+| `workspaces_only_on_primary`  | Boolean                                 | `false`        | Keep workspaces on the primary monitor.                                  |
+| `edge_tiling`                 | Boolean                                 | `false`        | Enable Mutter's edge tiling.                                             |
+| `new_window_placement`        | `"free_space"`, `"center"`, `"cascade"` | `"free_space"` | Where a new normal window opens. See the note below the table.           |
+| `attach_modal_dialogs`        | Boolean                                 | `false`        | Place modal dialogs with their parent window.                            |
+| `disable_workarounds`         | Boolean                                 | `false`        | Disable Mutter's compatibility workarounds for broken X11 applications.  |
+| `constrain_drag_to_work_area` | Boolean                                 | `true`         | Keep dragged windows inside the work area. See the note below the table. |
 
 Leave `disable_workarounds` set to `false` unless you are debugging an X11
 application. Enabling it can make some applications behave incorrectly.
@@ -43,6 +43,21 @@ work area, which is the monitor minus the space that panels reserve.
 
 The setting is read when a drag starts, so a reload affects the next drag.
 
+`new_window_placement` applies only to normal application windows. Dialogs,
+modal dialogs, splash screens and transient windows keep Mutter's own placement.
+The values are:
+
+- `"free_space"`: the window opens in the first free area of the monitor,
+  scanning from the top-left below and beside existing windows. When no area
+  fits, it cascades from the top-left. This is Mutter's default.
+- `"center"`: the window opens centred on the monitor's work area. If that spot
+  exactly covers an existing window, it cascades from the centre.
+- `"cascade"`: the window always steps diagonally from the top-left, past the
+  last placed window, without looking for a free area.
+
+The old boolean `center_new_windows` was removed. A config that still sets it
+fails validation and names `new_window_placement` and its three values.
+
 The table shows the compositor default when a key is missing. The starter
 config that Gnoblin loads first sets these values instead, so they are what you
 get unless your own config changes them:
@@ -50,7 +65,7 @@ get unless your own config changes them:
 | Key                            | Starter config value | Why                                                                           |
 | ------------------------------ | -------------------- | ----------------------------------------------------------------------------- |
 | `attach_modal_dialogs`         | `true`               | A modal dialog opens centered over its parent and moves with it, as in GNOME. |
-| `center_new_windows`           | `true`               | New windows open centered on the monitor.                                     |
+| `new_window_placement`         | `"center"`           | New windows open centered on the work area.                                   |
 | `edge_tiling`                  | `true`               | Dragging a window to a screen edge tiles it, as in GNOME.                     |
 | `focus_new_windows`            | `"allow"`            | A window started from a launcher takes focus. `"prevent"` leaves it behind.   |
 | `workspaces_only_on_primary`   | `true`               | A window on another monitor follows the active workspace, as in GNOME.        |
@@ -242,7 +257,7 @@ gnoblin.configure {
         }?,
         workspaces_only_on_primary = boolean?,
         edge_tiling = boolean?,
-        center_new_windows = boolean?,
+        new_window_placement = "free_space" | "center" | "cascade"?,
         attach_modal_dialogs = boolean?,
         disable_workarounds = boolean?,
         constrain_drag_to_work_area = boolean?,

@@ -98,6 +98,12 @@ sleep 2
 check "broker released names" "$(busctl --user list --no-pager 2>/dev/null | grep -i 'keyring.*SystemPrompter')" "activatable"
 
 echo "-- input sources"
+# Gnoblin lists only the sources in its own config and never reads the GNOME input-sources key (see
+# docs/config/configure/input_sources.md), so declare the sources these checks use.
+printf 'gnoblin.configure {input_sources = {sources = {{type = "xkb", id = "us"}, {type = "ibus", id = "m17n:ru:translit"}}}}\n' \
+    >"$CONFIG_DIR/99-test-sources.lua"
+"$G" config reload >/dev/null 2>&1
+sleep 2
 check "input sources list" "$("$G" input list 2>&1)" "English (US)"
 check "select xkb source" "$("$G" input select xkb us 2>&1)" '"current":true'
 check "current xkb source" "$("$G" input current 2>&1)" '"id":"us"'

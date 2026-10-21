@@ -1,0 +1,541 @@
+From 3716b46effd53941d3dbf165e5ff0278dc5b22bb Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Tue, 20 Oct 2026 21:23:03 +0100
+Subject: [PATCH] gnoblin: replace center-new-windows with new-window-placement
+
+Mutter side of the enum that replaces the boolean center-new-windows
+preference: new-window-placement is one of free_space, center or cascade.
+prefs.c reads it through APPLY_ENUM and exposes
+meta_prefs_get_new_window_placement(); prefs.h adds MetaNewWindowPlacement.
+The metatest and xdg-shell test helpers now set the string key.
+
+Validation: applied on top of the series with git am; scratch tree
+not built with tests (Mutter tests option disabled), so metatests are
+not compiled here.
+---
+ data/org.gnome.mutter.gschema.xml.in          | 16 +++++++----
+ src/core/prefs.c                              | 28 +++++++++----------
+ src/meta/prefs.h                              | 23 +++++++++++++--
+ .../always-on-top-map-new-partial.metatest    |  2 +-
+ src/tests/stacking/drag-cancel.metatest       |  2 +-
+ .../drag-maximized-then-remaximize.metatest   |  2 +-
+ .../drag-maximized-to-monitor.metatest        |  2 +-
+ .../stacking/drag-restore-initial.metatest    |  2 +-
+ .../stacking/drag-then-unmaximize.metatest    |  2 +-
+ .../drag-workarea-invalidation.metatest       |  2 +-
+ .../stacking/fullscreen-on-monitor.metatest   |  2 +-
+ src/tests/stacking/keyboard-resize.metatest   |  2 +-
+ .../stacking/map-after-headless.metatest      |  2 +-
+ src/tests/stacking/map-fullscreen.metatest    |  2 +-
+ src/tests/stacking/map-maximized.metatest     |  2 +-
+ .../maximize-unmaximize-race.metatest         |  2 +-
+ .../move-to-monitor-minimized.metatest        |  2 +-
+ .../stacking/multi-monitor-placement.metatest |  2 +-
+ .../stacking/resize-after-unmaximize.metatest |  2 +-
+ .../stacking/unmaximize-headless.metatest     |  2 +-
+ .../stacking/unmaximize-placement.metatest    |  2 +-
+ src/tests/stacking/unminimize.metatest        |  2 +-
+ src/tests/stacking/window-placement.metatest  |  2 +-
+ .../stacking/workspace-maximized.metatest     |  2 +-
+ src/tests/test-runner.c                       | 14 +++++-----
+ src/tests/wayland-xdg-shell-tests.c           | 14 +++++-----
+ 26 files changed, 79 insertions(+), 58 deletions(-)
+
+diff --git a/data/org.gnome.mutter.gschema.xml.in b/data/org.gnome.mutter.gschema.xml.in
+index 40f6c2ef..9d30706a 100644
+--- a/data/org.gnome.mutter.gschema.xml.in
++++ b/data/org.gnome.mutter.gschema.xml.in
+@@ -92,12 +92,18 @@
+       </description>
+     </key>
+ 
+-    <key name="center-new-windows" type="b">
+-      <default>true</default>
+-      <summary>Place new windows in the center</summary>
++    <key name="new-window-placement" type="s">
++      <choices>
++        <choice value="free_space"/>
++        <choice value="center"/>
++        <choice value="cascade"/>
++      </choices>
++      <default>'free_space'</default>
++      <summary>Where new normal windows are placed</summary>
+       <description>
+-        When true, the new windows will always be put in the center of the
+-        active screen of the monitor.
++        free_space places a new window in the first free area of the monitor,
++        center opens it centred on the work area, and cascade always steps it
++        diagonally from the top-left. Dialogs and transients keep Mutter placement.
+       </description>
+     </key>
+ 
+diff --git a/src/core/prefs.c b/src/core/prefs.c
+index 37011bef..981816db 100644
+--- a/src/core/prefs.c
++++ b/src/core/prefs.c
+@@ -92,7 +92,7 @@ static MetaKeyCombo locate_pointer_key_combos[2] = { 0 };
+ static GDesktopFocusMode focus_mode = G_DESKTOP_FOCUS_MODE_CLICK;
+ static GDesktopFocusNewWindows focus_new_windows = G_DESKTOP_FOCUS_NEW_WINDOWS_STRICT;
+ static gboolean raise_on_click = TRUE;
+-static gboolean center_new_windows = FALSE;
++static MetaNewWindowPlacement new_window_placement = META_NEW_WINDOW_PLACEMENT_FREE_SPACE;
+ static gboolean attach_modal_dialogs = FALSE;
+ static int num_workspaces = 4;
+ static GDesktopTitlebarAction action_double_click_titlebar = G_DESKTOP_TITLEBAR_ACTION_TOGGLE_MAXIMIZE;
+@@ -295,13 +295,6 @@ static MetaBoolPreference preferences_bool[] =
+       },
+       &attach_modal_dialogs,
+     },
+-    {
+-      { "center-new-windows",
+-        SCHEMA_MUTTER,
+-        META_PREF_CENTER_NEW_WINDOWS,
+-      },
+-      &center_new_windows,
+-    },
+     {
+       { "raise-on-click",
+         SCHEMA_GENERAL,
+@@ -1223,7 +1216,12 @@ meta_prefs_apply_gnoblin_window_preferences (GVariant *preferences)
+   APPLY_INT ("num-workspaces", num_workspaces, 4, META_PREF_NUM_WORKSPACES);
+   APPLY_BOOL ("workspaces-only-on-primary", workspaces_only_on_primary, FALSE, META_PREF_WORKSPACES_ONLY_ON_PRIMARY);
+   APPLY_BOOL ("edge-tiling", edge_tiling, FALSE, META_PREF_EDGE_TILING);
+-  APPLY_BOOL ("center-new-windows", center_new_windows, FALSE, META_PREF_CENTER_NEW_WINDOWS);
++  {
++    const char *const new_window_placements[] = { "free_space", "center", "cascade", NULL };
++
++    APPLY_ENUM ("new-window-placement", new_window_placement, new_window_placements,
++                META_NEW_WINDOW_PLACEMENT_FREE_SPACE, META_PREF_NEW_WINDOW_PLACEMENT);
++  }
+   APPLY_BOOL ("attach-modal-dialogs", attach_modal_dialogs, FALSE, META_PREF_ATTACH_MODAL_DIALOGS);
+   APPLY_BOOL ("disable-workarounds", disable_workarounds, FALSE, META_PREF_DISABLE_WORKAROUNDS);
+   maybe_give_disable_workarounds_warning ();
+@@ -1308,7 +1306,7 @@ gnoblin_owns_window_preference (const char *key)
+     "action-middle-click-titlebar", "action-right-click-titlebar",
+     "auto-maximize", "raise-on-click", "auto-raise", "auto-raise-delay",
+     "focus-change-on-pointer-rest", "dynamic-workspaces", "num-workspaces",
+-    "workspaces-only-on-primary", "edge-tiling", "center-new-windows",
++    "workspaces-only-on-primary", "edge-tiling", "new-window-placement",
+     "attach-modal-dialogs", "workspace-names", "mouse-button-modifier",
+     "resize-with-right-button", "disable-workarounds", "button-layout", NULL
+   };
+@@ -1670,10 +1668,10 @@ meta_prefs_get_focus_new_windows (void)
+   return focus_new_windows;
+ }
+ 
+-gboolean
+-meta_prefs_get_center_new_windows (void)
++MetaNewWindowPlacement
++meta_prefs_get_new_window_placement (void)
+ {
+-  return center_new_windows;
++  return new_window_placement;
+ }
+ 
+ gboolean
+@@ -2127,8 +2125,8 @@ meta_preference_to_string (MetaPreference pref)
+     case META_PREF_FOCUS_NEW_WINDOWS:
+       return "FOCUS_NEW_WINDOWS";
+ 
+-    case META_PREF_CENTER_NEW_WINDOWS:
+-      return "CENTER_NEW_WINDOWS";
++    case META_PREF_NEW_WINDOW_PLACEMENT:
++      return "NEW_WINDOW_PLACEMENT";
+ 
+     case META_PREF_ATTACH_MODAL_DIALOGS:
+       return "ATTACH_MODAL_DIALOGS";
+diff --git a/src/meta/prefs.h b/src/meta/prefs.h
+index 10a345cd..30770a67 100644
+--- a/src/meta/prefs.h
++++ b/src/meta/prefs.h
+@@ -29,6 +29,23 @@
+ #include "meta/common.h"
+ #include "meta/types.h"
+ 
++
++/**
++ * MetaNewWindowPlacement:
++ * @META_NEW_WINDOW_PLACEMENT_FREE_SPACE: the first free area of the monitor, cascading from the top-left when none fits
++ * @META_NEW_WINDOW_PLACEMENT_CENTER: centred on the monitor work area
++ * @META_NEW_WINDOW_PLACEMENT_CASCADE: always cascaded diagonally from the top-left
++ *
++ * Where normal windows are placed when they are first mapped. Dialogs,
++ * modal dialogs, splash screens and transients keep Mutter's own placement.
++ */
++typedef enum
++{
++  META_NEW_WINDOW_PLACEMENT_FREE_SPACE,
++  META_NEW_WINDOW_PLACEMENT_CENTER,
++  META_NEW_WINDOW_PLACEMENT_CASCADE,
++} MetaNewWindowPlacement;
++
+ /**
+  * MetaPreference:
+  * @META_PREF_MOUSE_BUTTON_MODS: mouse button modifiers
+@@ -61,7 +78,7 @@
+  * @META_PREF_WORKSPACES_ONLY_ON_PRIMARY: workspaces only on primary
+  * @META_PREF_DRAGGABLE_BORDER_WIDTH: draggable border width
+  * @META_PREF_AUTO_MAXIMIZE: auto-maximize
+- * @META_PREF_CENTER_NEW_WINDOWS: center new windows
++ * @META_PREF_NEW_WINDOW_PLACEMENT: new window placement
+  * @META_PREF_DRAG_THRESHOLD: drag threshold
+  * @META_PREF_LOCATE_POINTER: show pointer location
+  */
+@@ -99,7 +116,7 @@ typedef enum
+   META_PREF_WORKSPACES_ONLY_ON_PRIMARY,
+   META_PREF_DRAGGABLE_BORDER_WIDTH,
+   META_PREF_AUTO_MAXIMIZE,
+-  META_PREF_CENTER_NEW_WINDOWS,
++  META_PREF_NEW_WINDOW_PLACEMENT,
+   META_PREF_DRAG_THRESHOLD,
+   META_PREF_LOCATE_POINTER,
+   META_PREF_CHECK_ALIVE_TIMEOUT,
+@@ -187,7 +204,7 @@ META_EXPORT
+ gboolean                    meta_prefs_get_auto_maximize      (void);
+ 
+ META_EXPORT
+-gboolean                    meta_prefs_get_center_new_windows (void);
++MetaNewWindowPlacement      meta_prefs_get_new_window_placement (void);
+ 
+ META_EXPORT
+ gboolean                    meta_prefs_get_show_fallback_app_menu (void);
+diff --git a/src/tests/stacking/always-on-top-map-new-partial.metatest b/src/tests/stacking/always-on-top-map-new-partial.metatest
+index 62283773..8ce575c5 100644
+--- a/src/tests/stacking/always-on-top-map-new-partial.metatest
++++ b/src/tests/stacking/always-on-top-map-new-partial.metatest
+@@ -1,5 +1,5 @@
+ resize_monitor default 400 400
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ 
+ # Since every new spawned window will be cascaded by 50,
+ # we also need to update the always-above ones by the same value
+diff --git a/src/tests/stacking/drag-cancel.metatest b/src/tests/stacking/drag-cancel.metatest
+index 3fb456cc..3c394f26 100644
+--- a/src/tests/stacking/drag-cancel.metatest
++++ b/src/tests/stacking/drag-cancel.metatest
+@@ -1,7 +1,7 @@
+ resize_monitor default 800 600
+ new_client w wayland
+ new_client x x11
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ 
+ # With edge tiling disabled, maximize a window, drag it from the top to
+ # unmaximize, but cancel, the drag.
+diff --git a/src/tests/stacking/drag-maximized-then-remaximize.metatest b/src/tests/stacking/drag-maximized-then-remaximize.metatest
+index e45b7f9b..7315e3c7 100644
+--- a/src/tests/stacking/drag-maximized-then-remaximize.metatest
++++ b/src/tests/stacking/drag-maximized-then-remaximize.metatest
+@@ -1,5 +1,5 @@
+ resize_monitor default 800 600
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ set_pref edge-tiling true
+ new_client w wayland
+ 
+diff --git a/src/tests/stacking/drag-maximized-to-monitor.metatest b/src/tests/stacking/drag-maximized-to-monitor.metatest
+index 8345476b..f2f4c19e 100644
+--- a/src/tests/stacking/drag-maximized-to-monitor.metatest
++++ b/src/tests/stacking/drag-maximized-to-monitor.metatest
+@@ -1,6 +1,6 @@
+ resize_monitor default 800 600
+ add_monitor secondary 640 480
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ new_client w wayland
+ 
+ create w/1 csd
+diff --git a/src/tests/stacking/drag-restore-initial.metatest b/src/tests/stacking/drag-restore-initial.metatest
+index 7a191d24..97d44c7a 100644
+--- a/src/tests/stacking/drag-restore-initial.metatest
++++ b/src/tests/stacking/drag-restore-initial.metatest
+@@ -1,5 +1,5 @@
+ resize_monitor default 800 600
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ set_pref edge-tiling true
+ 
+ new_client w wayland
+diff --git a/src/tests/stacking/drag-then-unmaximize.metatest b/src/tests/stacking/drag-then-unmaximize.metatest
+index ee81b506..cbedf55f 100644
+--- a/src/tests/stacking/drag-then-unmaximize.metatest
++++ b/src/tests/stacking/drag-then-unmaximize.metatest
+@@ -1,6 +1,6 @@
+ resize_monitor default 800 600
+ add_monitor secondary 640 480
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ new_client w wayland
+ 
+ # Map as maximized
+diff --git a/src/tests/stacking/drag-workarea-invalidation.metatest b/src/tests/stacking/drag-workarea-invalidation.metatest
+index 35b4d4a4..61f83924 100644
+--- a/src/tests/stacking/drag-workarea-invalidation.metatest
++++ b/src/tests/stacking/drag-workarea-invalidation.metatest
+@@ -1,5 +1,5 @@
+ resize_monitor default 800 600
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ set_pref edge-tiling false
+ 
+ new_client w wayland
+diff --git a/src/tests/stacking/fullscreen-on-monitor.metatest b/src/tests/stacking/fullscreen-on-monitor.metatest
+index 900035e9..c481565d 100644
+--- a/src/tests/stacking/fullscreen-on-monitor.metatest
++++ b/src/tests/stacking/fullscreen-on-monitor.metatest
+@@ -1,6 +1,6 @@
+ resize_monitor default 800 600
+ add_monitor secondary 640 480
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ 
+ new_client w wayland
+ new_client x x11
+diff --git a/src/tests/stacking/keyboard-resize.metatest b/src/tests/stacking/keyboard-resize.metatest
+index 79a997b6..ebc3f6eb 100644
+--- a/src/tests/stacking/keyboard-resize.metatest
++++ b/src/tests/stacking/keyboard-resize.metatest
+@@ -1,7 +1,7 @@
+ resize_monitor default 800 600
+ new_client w wayland
+ new_client x x11
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ 
+ #
+ # Wayland
+diff --git a/src/tests/stacking/map-after-headless.metatest b/src/tests/stacking/map-after-headless.metatest
+index a82a3976..f4e1ee87 100644
+--- a/src/tests/stacking/map-after-headless.metatest
++++ b/src/tests/stacking/map-after-headless.metatest
+@@ -1,4 +1,4 @@
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ 
+ remove_monitor default
+ wait
+diff --git a/src/tests/stacking/map-fullscreen.metatest b/src/tests/stacking/map-fullscreen.metatest
+index da920bab..a0df2c0a 100644
+--- a/src/tests/stacking/map-fullscreen.metatest
++++ b/src/tests/stacking/map-fullscreen.metatest
+@@ -1,4 +1,4 @@
+-set_pref center-new-windows false
++set_pref new-window-placement free_space
+ resize_monitor default 400 400
+ new_client w wayland
+ new_client x x11
+diff --git a/src/tests/stacking/map-maximized.metatest b/src/tests/stacking/map-maximized.metatest
+index 11ecac07..2b596324 100644
+--- a/src/tests/stacking/map-maximized.metatest
++++ b/src/tests/stacking/map-maximized.metatest
+@@ -1,4 +1,4 @@
+-set_pref center-new-windows false
++set_pref new-window-placement free_space
+ resize_monitor default 400 400
+ new_client w wayland
+ new_client x x11
+diff --git a/src/tests/stacking/maximize-unmaximize-race.metatest b/src/tests/stacking/maximize-unmaximize-race.metatest
+index 0ce0d6f3..57174aca 100644
+--- a/src/tests/stacking/maximize-unmaximize-race.metatest
++++ b/src/tests/stacking/maximize-unmaximize-race.metatest
+@@ -1,5 +1,5 @@
+ resize_monitor default 800 600
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ new_client w wayland
+ 
+ create w/1 csd
+diff --git a/src/tests/stacking/move-to-monitor-minimized.metatest b/src/tests/stacking/move-to-monitor-minimized.metatest
+index 6b21c551..917fb659 100644
+--- a/src/tests/stacking/move-to-monitor-minimized.metatest
++++ b/src/tests/stacking/move-to-monitor-minimized.metatest
+@@ -1,6 +1,6 @@
+ resize_monitor default 800 600
+ add_monitor secondary 640 480
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ 
+ new_client w wayland
+ create w/1 csd
+diff --git a/src/tests/stacking/multi-monitor-placement.metatest b/src/tests/stacking/multi-monitor-placement.metatest
+index 1eaa5a8f..3c16ea35 100644
+--- a/src/tests/stacking/multi-monitor-placement.metatest
++++ b/src/tests/stacking/multi-monitor-placement.metatest
+@@ -4,7 +4,7 @@ set_monitor_order secondary default
+ assert_primary_monitor default
+ move_cursor_to 1000 20
+ num_workspaces 2
+-set_pref center-new-windows false
++set_pref new-window-placement free_space
+ set_pref workspaces-only-on-primary true
+ 
+ new_client w wayland
+diff --git a/src/tests/stacking/resize-after-unmaximize.metatest b/src/tests/stacking/resize-after-unmaximize.metatest
+index fd0fdefc..61ce48af 100644
+--- a/src/tests/stacking/resize-after-unmaximize.metatest
++++ b/src/tests/stacking/resize-after-unmaximize.metatest
+@@ -1,5 +1,5 @@
+ resize_monitor default 800 600
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ 
+ new_client w wayland
+ 
+diff --git a/src/tests/stacking/unmaximize-headless.metatest b/src/tests/stacking/unmaximize-headless.metatest
+index 4d6b285f..00d1bb44 100644
+--- a/src/tests/stacking/unmaximize-headless.metatest
++++ b/src/tests/stacking/unmaximize-headless.metatest
+@@ -1,4 +1,4 @@
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ 
+ # Test unmaximizing when there is no monitor to place on
+ 
+diff --git a/src/tests/stacking/unmaximize-placement.metatest b/src/tests/stacking/unmaximize-placement.metatest
+index 0040cbb1..8beca66f 100644
+--- a/src/tests/stacking/unmaximize-placement.metatest
++++ b/src/tests/stacking/unmaximize-placement.metatest
+@@ -1,6 +1,6 @@
+ resize_monitor default 800 600
+ add_monitor secondary 800 600
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ 
+ new_client w wayland
+ new_client x x11
+diff --git a/src/tests/stacking/unminimize.metatest b/src/tests/stacking/unminimize.metatest
+index 2d080e89..ab351760 100644
+--- a/src/tests/stacking/unminimize.metatest
++++ b/src/tests/stacking/unminimize.metatest
+@@ -1,7 +1,7 @@
+ resize_monitor default 800 600
+ add_monitor secondary 800 600
+ move_cursor_to 900 100
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ 
+ new_client w wayland
+ new_client x x11
+diff --git a/src/tests/stacking/window-placement.metatest b/src/tests/stacking/window-placement.metatest
+index 00634a31..4a32e7ca 100644
+--- a/src/tests/stacking/window-placement.metatest
++++ b/src/tests/stacking/window-placement.metatest
+@@ -1,6 +1,6 @@
+ new_client w wayland
+ resize_monitor default 250 250
+-set_pref center-new-windows false
++set_pref new-window-placement free_space
+ 
+ # Show 4 windows in a row and assert that they are placed in a grid and focused
+ # correctly.
+diff --git a/src/tests/stacking/workspace-maximized.metatest b/src/tests/stacking/workspace-maximized.metatest
+index 8f520bc8..b8863c76 100644
+--- a/src/tests/stacking/workspace-maximized.metatest
++++ b/src/tests/stacking/workspace-maximized.metatest
+@@ -1,7 +1,7 @@
+ resize_monitor default 800 600
+ add_monitor secondary 800 600
+ num_workspaces 2
+-set_pref center-new-windows true
++set_pref new-window-placement center
+ move_cursor_to 1000 100
+ activate_workspace 0
+ 
+diff --git a/src/tests/test-runner.c b/src/tests/test-runner.c
+index bb42f3c5..028f491c 100644
+--- a/src/tests/test-runner.c
++++ b/src/tests/test-runner.c
+@@ -3204,15 +3204,15 @@ test_case_do (TestCase    *test,
+ 
+           g_assert_true (g_settings_set_int (wm, "auto-raise-delay", value));
+         }
+-      else if (strcmp (argv[1], "center-new-windows") == 0)
++      else if (strcmp (argv[1], "new-window-placement") == 0)
+         {
+-          gboolean value;
++          if (strcmp (argv[2], "free_space") != 0 &&
++              strcmp (argv[2], "center") != 0 &&
++              strcmp (argv[2], "cascade") != 0)
++            BAD_COMMAND ("usage: %s %s [free_space|center|cascade]", argv[0], argv[1]);
+ 
+-          if (!str_to_bool (argv[2], &value))
+-            BAD_COMMAND ("usage: %s %s [true|false]", argv[0], argv[1]);
+-
+-          g_assert_true (g_settings_set_boolean (mutter, "center-new-windows",
+-                                                 value));
++          g_assert_true (g_settings_set_string (mutter, "new-window-placement",
++                                                argv[2]));
+         }
+       else if (strcmp (argv[1], "auto-maximize") == 0)
+         {
+diff --git a/src/tests/wayland-xdg-shell-tests.c b/src/tests/wayland-xdg-shell-tests.c
+index 626ef967..975c7291 100644
+--- a/src/tests/wayland-xdg-shell-tests.c
++++ b/src/tests/wayland-xdg-shell-tests.c
+@@ -114,7 +114,7 @@ toplevel_invalid_limits (void)
+   MetaWindow *window;
+   MtkRectangle rect;
+ 
+-  g_assert_true (g_settings_set_boolean (settings, "center-new-windows", TRUE));
++  g_assert_true (g_settings_set_string (settings, "new-window-placement", "center"));
+ 
+   wayland_test_client =
+     meta_wayland_test_client_new (test_context, "invalid-size-limits-on-map-client");
+@@ -147,7 +147,7 @@ toplevel_invalid_geometry_basic (void)
+   MetaWindow *window;
+   MtkRectangle rect;
+ 
+-  g_assert_true (g_settings_set_boolean (settings, "center-new-windows", TRUE));
++  g_assert_true (g_settings_set_string (settings, "new-window-placement", "center"));
+ 
+   wayland_test_client =
+     meta_wayland_test_client_new (test_context, "invalid-geometry");
+@@ -206,7 +206,7 @@ toplevel_invalid_geometry_subsurface (void)
+   MetaWindow *window;
+   MtkRectangle rect;
+ 
+-  g_assert_true (g_settings_set_boolean (settings, "center-new-windows", TRUE));
++  g_assert_true (g_settings_set_string (settings, "new-window-placement", "center"));
+ 
+   /* Map an additional arbitrary window. Combined with the below test client,
+    * a SIGFPE was triggered in window_would_mostly_be_covered_by_always_above_window()
+@@ -489,7 +489,7 @@ toplevel_fixed_size_fullscreen (void)
+   meta_cursor_tracker_inhibit_cursor_visibility (cursor_tracker);
+ 
+   settings = g_settings_new ("org.gnome.mutter");
+-  g_assert_true (g_settings_set_boolean (settings, "center-new-windows", FALSE));
++  g_assert_true (g_settings_set_string (settings, "new-window-placement", "free_space"));
+ 
+   views = meta_renderer_get_views (renderer);
+   g_assert_cmpint (g_list_length (views), ==, 1);
+@@ -580,7 +580,7 @@ toplevel_focus_changes_remembers_size (void)
+   MetaWaylandWindowConfiguration *pending_configuration;
+ 
+   settings = g_settings_new ("org.gnome.mutter");
+-  g_assert_true (g_settings_set_boolean (settings, "center-new-windows", TRUE));
++  g_assert_true (g_settings_set_string (settings, "new-window-placement", "center"));
+ 
+   test_client = meta_test_client_new (test_context,
+                                       "1",
+@@ -676,7 +676,7 @@ toplevel_begin_interactive_resize (void)
+   MetaWaylandWindowConfiguration *pending_configuration;
+ 
+   settings = g_settings_new ("org.gnome.mutter");
+-  g_assert_true (g_settings_set_boolean (settings, "center-new-windows", TRUE));
++  g_assert_true (g_settings_set_string (settings, "new-window-placement", "center"));
+ 
+   virtual_pointer = clutter_seat_create_virtual_device (seat,
+                                                         CLUTTER_POINTER_DEVICE);
+@@ -803,7 +803,7 @@ toplevel_resize_state (void)
+   MtkRectangle rect;
+ 
+   settings = g_settings_new ("org.gnome.mutter");
+-  g_assert_true (g_settings_set_boolean (settings, "center-new-windows", TRUE));
++  g_assert_true (g_settings_set_string (settings, "new-window-placement", "center"));
+ 
+   virtual_pointer = clutter_seat_create_virtual_device (seat,
+                                                         CLUTTER_POINTER_DEVICE);
+-- 
+2.55.0
+

@@ -36,8 +36,8 @@ and their distribution names. Generate or verify the adapters with Python:
 ./scripts/sync-package-manifest.py check
 ```
 
-The package check also compares pinned versions with `gnome-versions.json` and
-`gnoblin-version.json`. Nix consumes the same JSON for its optional package
+The package check also compares pinned versions with `versions/gnome-versions.json` and
+`versions/gnoblin-version.json`. Nix consumes the same JSON for its optional package
 adapter; it is not required to prepare native packages.
 
 Fedora's COPR packages use `gnoblin` as the install entry point. There is
@@ -114,12 +114,12 @@ host using [hardware verification](real-hardware-verification.md).
 
 ## GitHub releases
 
-Gnoblin and GNOME version independently. `gnoblin-version.json` is the
-canonical Gnoblin [SemVer](https://semver.org/) identity; `gnome-versions.json`
+Gnoblin and GNOME version independently. `versions/gnoblin-version.json` is the
+canonical Gnoblin [SemVer](https://semver.org/) identity; `versions/gnome-versions.json`
 continues to pin the compatible GNOME train. For example, Gnoblin `0.1.0` can
 target GNOME `51.0` without claiming that it is GNOME version `0.1.0`.
 
-Before release, update `gnoblin-version.json` deliberately: use a major version
+Before release, update `versions/gnoblin-version.json` deliberately: use a major version
 for incompatible Gnoblin configuration or protocol changes, a minor version for
 backwards-compatible features, and a patch version for compatible fixes. Then
 push the release commit and a signed `gnoblin-v<semver>` tag:
@@ -193,7 +193,7 @@ gate passes.
 
 ## Upgrade the GNOME base
 
-`gnome-versions.json` pins the release train.
+`versions/gnome-versions.json` pins the release train.
 
 ```sh
 ./scripts/gnome-versions.py update 52

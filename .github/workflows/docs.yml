@@ -8,8 +8,6 @@ on:
         "scripts/prepare-apt-pages.py",
         "scripts/build-apt-repository.py",
         "packaging/targets.json",
-        "package.json",
-        "package-lock.json",
         ".github/workflows/docs.yml",
       ]
   push:
@@ -21,8 +19,6 @@ on:
         "scripts/prepare-apt-pages.py",
         "scripts/build-apt-repository.py",
         "packaging/targets.json",
-        "package.json",
-        "package-lock.json",
       ]
   workflow_dispatch:
 permissions:
@@ -41,9 +37,11 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-          cache-dependency-path: package-lock.json
+          cache-dependency-path: docs/package-lock.json
       - run: npm ci
+        working-directory: docs
       - run: npm run docs:build
+        working-directory: docs
       - uses: actions/upload-artifact@v4
         with:
           name: documentation

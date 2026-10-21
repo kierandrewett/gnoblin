@@ -149,7 +149,7 @@ commit, and explain the user-visible result in the commit body.
 See [Code quality](docs/code-quality.md) for tool setup, language coverage,
 whole-repository checks and formatting selected files.
 
-For documentation prose, use `MARKDOWN_STYLE.md` as the writing guide. Jev
+For documentation prose, use `design/markdown-style.md` as the writing guide. Jev
 review is required for staged Markdown and agent documentation changes. Create
 `.env` in the repository root:
 

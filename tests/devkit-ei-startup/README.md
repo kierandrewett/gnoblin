@@ -25,7 +25,7 @@ fixture's three-second bound. The baseline seat-success control must pass.
 The patched run must pass all five cases. The timeout bounds the test process;
 the production patch adds no timeout or delay.
 
-The runner reads the pinned Mutter sources from `gnome-versions.json`, applies
+The runner reads the pinned Mutter sources from `versions/gnome-versions.json`, applies
 only 0009 in a temporary repository inside this test directory, and compiles
 the complete `mdk-ei.c` with its real headers. It neither changes the shared
 submodule nor applies 0008. Temporary files are removed, and timed-out fixture

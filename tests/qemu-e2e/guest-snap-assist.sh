@@ -8,7 +8,7 @@ export DBUS_SESSION_BUS_ADDRESS
 export WAYLAND_DISPLAY=wayland-0
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
 DRAG="${GNOBLIN_DRAG_SCRIPT:-/tmp/guest-resize-drag.py}"
-CONFIG="$HOME/.config/gnoblin/conf.d/99-test-snap-assist.lua"
+CONFIG="$HOME/.config/gnoblin/config/99-test-snap-assist.lua"
 CONFIG_DIR="$(dirname "$CONFIG")"
 foot_pid=
 config_dir_created=0

@@ -63,7 +63,7 @@ def main():
     parser.add_argument("--compile-commands", type=Path, help="read-only full translation-unit syntax checks")
     args = parser.parse_args()
     extract = runpy.run_path(str(ROOT / "tests/native-window-publish.py"))["function"]
-    pin = json.loads((ROOT / "gnome-versions.json").read_text())["components"]["mutter"]["commit"]
+    pin = json.loads((ROOT / "versions/gnome-versions.json").read_text())["components"]["mutter"]["commit"]
     with tempfile.TemporaryDirectory(prefix="gnoblin-recovery-input-") as temporary:
         directory = Path(temporary)
         subprocess.run(["git", "init", "-q", str(directory)], check=True)

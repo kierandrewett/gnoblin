@@ -194,7 +194,7 @@ function(gnoblin_component_sources name build_root)
     # Check the pinned fork before the patch run resets it.
     gnoblin_ensure_release_subprojects(mutter)
   endif()
-  set(inputs "${GNOBLIN_ROOT}/gnome-versions.json")
+  set(inputs "${GNOBLIN_ROOT}/versions/gnome-versions.json")
   file(GLOB_RECURSE patches "${GNOBLIN_ROOT}/patches/${name}/*.patch")
   list(SORT patches)
   list(APPEND inputs ${patches})

@@ -28,7 +28,7 @@ env = [
 ]
 ctl = "/usr/local/lib/gnoblin/bin/gnoblinctl"
 unit = "files-csd-proof-" + str(time.time_ns())
-config = "/home/luna/.config/gnoblin/conf.d/99-" + unit + ".lua"
+config = "/home/luna/.config/gnoblin/config/99-" + unit + ".lua"
 art = run / unit
 art.mkdir(exist_ok=False)
 records = []

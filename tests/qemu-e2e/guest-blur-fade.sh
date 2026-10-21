@@ -8,7 +8,7 @@ export DBUS_SESSION_BUS_ADDRESS
 export WAYLAND_DISPLAY=wayland-0
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the installed prefix}/bin/gnoblinctl"
 QS="${GNOBLIN_QS:-qs}"
-CONFIG="$HOME/.config/gnoblin/conf.d/99-test-blur-fade.lua"
+CONFIG="$HOME/.config/gnoblin/config/99-test-blur-fade.lua"
 QML="/tmp/gnoblin-blur-fade.qml"
 ARTIFACT_DIR="${GNOBLIN_BLUR_ARTIFACT_DIR:-$(mktemp -d /tmp/gnoblin-blur-fade.XXXXXX)}"
 PID=

@@ -505,7 +505,7 @@ G_GNUC_INTERNAL gboolean gnoblin_control_select_xkb_source(GnoblinNativeControl*
 
 /* gnoblin-control-command.c: command spawning. */
 G_GNUC_INTERNAL gboolean gnoblin_control_command_spawn(char** argv, GPid* pid, GError** error);
-G_GNUC_INTERNAL void gnoblin_control_command_reap(GPid pid, gint status, gpointer user_data);
+G_GNUC_INTERNAL gboolean gnoblin_control_reset_command_scheduling(void);
 G_GNUC_INTERNAL gboolean gnoblin_control_queue_command(const char* category, const char* name,
                                                        char** argv, GError** error);
 G_GNUC_INTERNAL void gnoblin_control_launch_command(const char* category, const char* name,

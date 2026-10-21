@@ -136,7 +136,7 @@ static gboolean run_activation_update(const char* const extra[]) {
     return TRUE;
 }
 
-static gboolean user_systemd_available(void) {
+static gboolean user_systemd_owner_once(void) {
     g_autoptr(GError) error = NULL;
     g_autoptr(GDBusConnection) bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
     if (!bus)
@@ -146,6 +146,21 @@ static gboolean user_systemd_available(void) {
         "GetNameOwner", g_variant_new("(s)", "org.freedesktop.systemd1"), G_VARIANT_TYPE("(s)"),
         G_DBUS_CALL_FLAGS_NONE, 1000, NULL, NULL);
     return owner != NULL;
+}
+
+/* On a cold first login the user manager and its dbus-broker start in parallel with this process,
+ * so the session bus or the systemd1 name can show up a moment after we run. A single check lost
+ * that race and left the session without gnoblin-session.target. When the system boots with
+ * systemd, retry for up to 10 s; on other init systems check once so startup is not delayed. */
+static gboolean user_systemd_available(void) {
+    const guint attempts = g_file_test("/run/systemd/system", G_FILE_TEST_IS_DIR) ? 50 : 1;
+    for (guint i = 0; i < attempts; i++) {
+        if (user_systemd_owner_once())
+            return TRUE;
+        if (i + 1 < attempts)
+            g_usleep(200 * 1000);
+    }
+    return FALSE;
 }
 
 /* D-Bus-activated services of the user manager that outlive the session. dbus-broker starts each as

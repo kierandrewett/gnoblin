@@ -207,18 +207,17 @@ static CoglPipeline* window_shadow_create_pipeline(ClutterOffscreenEffect* effec
     return pipeline;
 }
 
-static void window_shadow_set_uniform_layers(
-    CoglPipeline* pipeline, const char* geometry_prefix, const char* color_prefix,
-    double geometry[META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS][4],
-    double color[META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS][4], float scale_x, float scale_y) {
-    const float scale = MIN(scale_x, scale_y);
+static void
+window_shadow_set_uniform_layers(CoglPipeline* pipeline, const char* geometry_prefix,
+                                 const char* color_prefix,
+                                 double geometry[META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS][4],
+                                 double color[META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS][4]) {
     for (guint i = 0; i < META_GNOBLIN_WINDOW_SHADOW_MAX_LAYERS; i++) {
         g_autofree char* geometry_name =
             g_strdup_printf("gnoblin_shadow_geometry_%s%u", geometry_prefix, i);
         g_autofree char* color_name = g_strdup_printf("gnoblin_shadow_color_%s%u", color_prefix, i);
-        const float geometry_values[4] = {
-            (float)(geometry[i][0] * scale_x), (float)(geometry[i][1] * scale_y),
-            (float)(geometry[i][2] * scale), (float)(geometry[i][3] * scale)};
+        const float geometry_values[4] = {(float)geometry[i][0], (float)geometry[i][1],
+                                          (float)geometry[i][2], (float)geometry[i][3]};
         const float color_values[4] = {(float)color[i][0], (float)color[i][1], (float)color[i][2],
                                        (float)color[i][3]};
         cogl_pipeline_set_uniform_float(pipeline,
@@ -233,21 +232,19 @@ static void window_shadow_update_uniforms(ClutterOffscreenEffect* effect, CoglPi
     MetaGnoblinWindowShadowEffect* shadow = META_GNOBLIN_WINDOW_SHADOW_EFFECT(effect);
     ClutterActor* actor = clutter_actor_meta_get_actor(CLUTTER_ACTOR_META(effect));
     graphene_rect_t target;
-    float bounds[4];
-    float texture_bounds[4];
-    float scale_x, scale_y;
 
     if (actor && clutter_offscreen_effect_get_target_rect(effect, &target)) {
-        scale_x = target.size.width / MAX(clutter_actor_get_width(actor), 1.f);
-        scale_y = target.size.height / MAX(clutter_actor_get_height(actor), 1.f);
-        bounds[0] = target.origin.x + (float)shadow->bounds[0] * scale_x;
-        bounds[1] = target.origin.y + (float)shadow->bounds[1] * scale_y;
-        bounds[2] = target.origin.x + (float)shadow->bounds[2] * scale_x;
-        bounds[3] = target.origin.y + (float)shadow->bounds[3] * scale_y;
-        texture_bounds[0] = target.origin.x;
-        texture_bounds[1] = target.origin.y;
-        texture_bounds[2] = target.origin.x + target.size.width;
-        texture_bounds[3] = target.origin.y + target.size.height;
+        /* The target rect is in actor coordinates and is larger than the actor box: Clutter
+         * pads the offscreen texture by two pixels at the top left and one at the bottom
+         * right. The shader reads actor-local positions from the texture rect, so the
+         * window bounds and the layer geometry stay actor-local and unscaled. Stretching
+         * them by target size over actor size shifted the shadow clip edge outward by two
+         * pixels on the left and top and one on the right and bottom (GitHub #111). */
+        const float bounds[4] = {(float)shadow->bounds[0], (float)shadow->bounds[1],
+                                 (float)shadow->bounds[2], (float)shadow->bounds[3]};
+        const float texture_bounds[4] = {target.origin.x, target.origin.y,
+                                         target.origin.x + target.size.width,
+                                         target.origin.y + target.size.height};
         cogl_pipeline_set_uniform_float(
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_shadow_texture_bounds"),
             4, 1, texture_bounds);
@@ -256,7 +253,7 @@ static void window_shadow_update_uniforms(ClutterOffscreenEffect* effect, CoglPi
             bounds);
         cogl_pipeline_set_uniform_1f(
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_shadow_radius"),
-            (float)(shadow->radius * MIN(scale_x, scale_y)));
+            (float)shadow->radius);
         cogl_pipeline_set_uniform_1f(
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_shadow_exponent"),
             (float)shadow->exponent);
@@ -264,9 +261,8 @@ static void window_shadow_update_uniforms(ClutterOffscreenEffect* effect, CoglPi
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_shadow_progress"),
             (float)shadow->progress);
         window_shadow_set_uniform_layers(pipeline, "a", "a", shadow->from_geometry,
-                                         shadow->from_color, scale_x, scale_y);
-        window_shadow_set_uniform_layers(pipeline, "b", "b", shadow->to_geometry, shadow->to_color,
-                                         scale_x, scale_y);
+                                         shadow->from_color);
+        window_shadow_set_uniform_layers(pipeline, "b", "b", shadow->to_geometry, shadow->to_color);
     } else {
         cogl_pipeline_set_uniform_1f(
             pipeline, cogl_pipeline_get_uniform_location(pipeline, "gnoblin_shadow_progress"), 0.f);

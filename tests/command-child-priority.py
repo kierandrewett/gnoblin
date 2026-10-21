@@ -24,6 +24,8 @@ HEADER = r"""
 #define MAX_NATIVE_COMMAND_BYTES (64 * 1024)
 typedef struct { gboolean stopping; GHashTable *pending_captures; } GnoblinNativeControl;
 gboolean gnoblin_control_queue_command(const char *, const char *, char **, GError **);
+void gnoblin_control_launch_command(const char *, const char *, char **);
+gboolean gnoblin_control_reset_command_scheduling(void);
 gboolean gnoblin_control_capture_begin(GnoblinNativeControl *, gint64, GVariant *, GError **);
 void gnoblin_control_capture_init(GnoblinNativeControl *);
 void gnoblin_control_capture_clear(GnoblinNativeControl *);
@@ -43,6 +45,7 @@ HARNESS = r"""
 
 static gboolean completed;
 static int captured_nice;
+static int captured_policy;
 static int shared_nice;
 
 const char *gnoblin_control_operation_error_code(const GError *error) {
@@ -55,7 +58,8 @@ void gnoblin_control_dispatch_operation_completion_full(
     g_assert_true(success);
     JsonObject *object = json_node_get_object(result);
     g_assert_cmpint(json_object_get_int_member(object, "exit_code"), ==, 0);
-    captured_nice = atoi(json_object_get_string_member(object, "stdout"));
+    g_assert_cmpint(sscanf(json_object_get_string_member(object, "stdout"), "%d %d",
+                           &captured_nice, &captured_policy), ==, 2);
     completed = TRUE;
 }
 
@@ -85,10 +89,26 @@ static int sample_shared_worker(void) {
     return shared_nice;
 }
 
+static void wait_record(const char *record, int expected_nice, int expected_policy, const char *path) {
+    gint64 deadline = g_get_monotonic_time() + 5 * G_USEC_PER_SEC;
+    while (!g_file_test(record, G_FILE_TEST_EXISTS) && g_get_monotonic_time() < deadline) {
+        while (g_main_context_iteration(NULL, FALSE)) {}
+        g_usleep(1000);
+    }
+    g_autofree char *text = NULL;
+    g_assert_true(g_file_get_contents(record, &text, NULL, NULL));
+    unlink(record);
+    int nice = 0, policy = -1;
+    g_assert_cmpint(sscanf(text, "%d %d", &nice, &policy), ==, 2);
+    if (nice != expected_nice || policy != expected_policy)
+        g_error("%s: child nice %d policy %d, expected %d/%d", path, nice, policy, expected_nice,
+                expected_policy);
+}
+
 int main(int argc, char **argv) {
     if (argc == 3 && g_str_equal(argv[1], "--child")) {
-        int nice = getpriority(PRIO_PROCESS, 0);
-        g_autofree char *text = g_strdup_printf("%d\n", nice);
+        g_autofree char *text = g_strdup_printf("%d %d\n", getpriority(PRIO_PROCESS, 0),
+                                                sched_getscheduler(0));
         g_assert_true(g_file_set_contents(argv[2], text, -1, NULL));
         fputs(text, stdout);
         return 0;
@@ -107,16 +127,12 @@ int main(int argc, char **argv) {
     gnoblin_control_capture_init(&control);
     for (int repeat = 0; repeat < 3; repeat++) {
         g_autoptr(GError) error = NULL;
-        g_assert_true(gnoblin_control_queue_command("test", "priority", child_argv, &error));
-        gint64 deadline = g_get_monotonic_time() + 5 * G_USEC_PER_SEC;
-        while (!g_file_test(record, G_FILE_TEST_EXISTS) && g_get_monotonic_time() < deadline) {
-            while (g_main_context_iteration(NULL, FALSE)) {}
-            g_usleep(1000);
-        }
-        g_autofree char *text = NULL;
-        g_assert_true(g_file_get_contents(record, &text, NULL, NULL));
-        g_assert_cmpint(atoi(text), ==, expected);
-        unlink(record);
+        gnoblin_control_launch_command("shortcut", "priority", child_argv);
+        wait_record(record, expected, parent_policy, "shortcut");
+        g_assert_true(gnoblin_control_queue_command("command", "priority", child_argv, &error));
+        wait_record(record, expected, parent_policy, "command.run");
+        g_assert_true(gnoblin_control_queue_command("touchpad", "priority", child_argv, &error));
+        wait_record(record, expected, parent_policy, "touchpad");
         GVariantBuilder builder;
         g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
         g_variant_builder_add(&builder, "{sv}", "argv", g_variant_new_strv((const char **)child_argv, -1));
@@ -124,7 +140,9 @@ int main(int argc, char **argv) {
         completed = FALSE;
         g_assert_true(gnoblin_control_capture_begin(&control, repeat + 1, arguments, &error));
         wait_completed();
-        g_assert_cmpint(captured_nice, ==, expected);
+        if (captured_nice != expected || captured_policy != parent_policy)
+            g_error("capture: child nice %d policy %d, expected %d/%d", captured_nice,
+                    captured_policy, expected, parent_policy);
         unlink(record);
         g_assert_cmpint(getpriority(PRIO_PROCESS, 0), ==, parent_nice);
         g_assert_cmpint(sched_getscheduler(0), ==, parent_policy);

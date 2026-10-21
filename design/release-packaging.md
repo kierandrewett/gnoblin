@@ -131,7 +131,7 @@
 
 ## Current state (2026-09-25)
 
-- `gnome-versions.json` pins the private runtime to GNOME/Mutter/Shell 51.0.
+- `versions/gnome-versions.json` pins the private runtime to GNOME/Mutter/Shell 51.0.
 - The latest COPR release is Gnoblin 0.1.4, build 11021823, with Mutter
   51.0-20 and Shell 51.0-14. No Fedora 43 RPM build has been published yet.
 - The running host is Fedora 43 and has Fedora 43 Gnoblin 49.6-era packages.
@@ -279,7 +279,7 @@
   private Gnoblin package and exports a separate
   `nixosModules.nixos_26_05`. A full local build first failed because Shell's
   pkg-config lookup found host Wayland 1.25 through private Mutter's `.pc`
-  dependency. `nix/package.nix` now adds the private Wayland dev output to
+  dependency. `packaging/nix/package.nix` now adds the private Wayland dev output to
   Shell's pkg-config path when that adapter is selected. The full package
   output and `nix flake check --no-build` pass, and CI now builds both Mutter
   and the complete package. Nix workflow run `36159534134` on `861df019`
@@ -335,8 +335,8 @@
 
 ## Release flow
 
-1. Set the intended GNOME source pins in `gnome-versions.json` and the
-   independent Gnoblin version in `gnoblin-version.json`.
+1. Set the intended GNOME source pins in `versions/gnome-versions.json` and the
+   independent Gnoblin version in `versions/gnoblin-version.json`.
 2. Build reproducible source archives and SRPMs with
    `scripts/build-release-assets.sh`; release automation downloads upstream
    tags and validates that the release tag matches the source commit.

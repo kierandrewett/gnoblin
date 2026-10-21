@@ -267,7 +267,7 @@ def main() -> int:
     libc = ctypes.CDLL(None, use_errno=True)
     if libc.prctl(36, 1, 0, 0, 0) != 0:  # PR_SET_CHILD_SUBREAPER
         raise OSError(ctypes.get_errno(), "cannot become fixture subreaper")
-    revision = json.loads((ROOT / "gnome-versions.json").read_text())["components"]["mutter"]["commit"]
+    revision = json.loads((ROOT / "versions/gnome-versions.json").read_text())["components"]["mutter"]["commit"]
     baseline = command("git", "-C", str(ROOT / "subprojects/mutter"), "show", f"{revision}:{SOURCE}")
     # Never apply to or stage the shared submodule, even when its tree is dirty.
     with tempfile.TemporaryDirectory(prefix=".run-", dir=HERE) as scratch:

@@ -17,7 +17,7 @@ checks safe after completion and when either object is destroyed first.
 
 ---
 diff --git a/src/wayland/meta-wayland-activation.c b/src/wayland/meta-wayland-activation.c
-index 454b3820c2..e10f374e4b 100644
+index 454b3820c..e10f374e4 100644
 --- a/src/wayland/meta-wayland-activation.c
 +++ b/src/wayland/meta-wayland-activation.c
 @@ -24,6 +24,7 @@
@@ -395,7 +395,7 @@ index 454b3820c2..e10f374e4b 100644
    wl_list_init (&activation->token_list);
  
 diff --git a/src/wayland/meta-wayland-activation.h b/src/wayland/meta-wayland-activation.h
-index e00c6ec55f..1353bea89d 100644
+index e00c6ec55..1353bea89 100644
 --- a/src/wayland/meta-wayland-activation.h
 +++ b/src/wayland/meta-wayland-activation.h
 @@ -25,6 +25,7 @@
@@ -419,7 +419,7 @@ index e00c6ec55f..1353bea89d 100644
 +                                           uint32_t            serial,
 +                                           const ClutterEvent *event);
 diff --git a/src/wayland/meta-wayland-keyboard.c b/src/wayland/meta-wayland-keyboard.c
-index c679467cc5..141c507b75 100644
+index 7a31b5e3a..c255080cd 100644
 --- a/src/wayland/meta-wayland-keyboard.c
 +++ b/src/wayland/meta-wayland-keyboard.c
 @@ -57,6 +57,7 @@
@@ -428,9 +428,9 @@ index c679467cc5..141c507b75 100644
  #include "wayland/meta-wayland-private.h"
 +#include "wayland/meta-wayland-activation.h"
  
- #include <gio/gio.h>
- 
-@@ -382,6 +383,10 @@ meta_wayland_keyboard_broadcast_key (MetaWaylandKeyboard *keyboard,
+ typedef struct
+ {
+@@ -320,6 +321,10 @@ meta_wayland_keyboard_broadcast_key (MetaWaylandKeyboard *keyboard,
  
            wl_keyboard_send_key (resource, serial, time, key, key_state);
          }
@@ -442,7 +442,7 @@ index c679467cc5..141c507b75 100644
  
    /* Eat the key events if we have a focused surface. */
 diff --git a/src/wayland/meta-wayland-pointer.c b/src/wayland/meta-wayland-pointer.c
-index 0cab62fc31..21d9f3f262 100644
+index 0cab62fc3..21d9f3f26 100644
 --- a/src/wayland/meta-wayland-pointer.c
 +++ b/src/wayland/meta-wayland-pointer.c
 @@ -67,6 +67,7 @@
@@ -464,7 +464,7 @@ index 0cab62fc31..21d9f3f262 100644
      }
  
 diff --git a/src/wayland/meta-wayland-seat.c b/src/wayland/meta-wayland-seat.c
-index 19cb7e0919..52427c36ad 100644
+index 19cb7e091..52427c36a 100644
 --- a/src/wayland/meta-wayland-seat.c
 +++ b/src/wayland/meta-wayland-seat.c
 @@ -23,6 +23,7 @@
@@ -485,7 +485,7 @@ index 19cb7e0919..52427c36ad 100644
      {
        meta_wayland_tablet_seat_update (seat->tablet_seat, event);
 diff --git a/src/wayland/meta-wayland-tablet-tool.c b/src/wayland/meta-wayland-tablet-tool.c
-index d25de93c18..5df83521d3 100644
+index d25de93c1..5df83521d 100644
 --- a/src/wayland/meta-wayland-tablet-tool.c
 +++ b/src/wayland/meta-wayland-tablet-tool.c
 @@ -21,6 +21,8 @@
@@ -520,7 +520,7 @@ index d25de93c18..5df83521d3 100644
  
  static void
 diff --git a/src/wayland/meta-wayland-touch.c b/src/wayland/meta-wayland-touch.c
-index 7ff1ea7c36..4a804bf710 100644
+index 7ff1ea7c3..4a804bf71 100644
 --- a/src/wayland/meta-wayland-touch.c
 +++ b/src/wayland/meta-wayland-touch.c
 @@ -21,6 +21,8 @@
@@ -544,3 +544,4 @@ index 7ff1ea7c36..4a804bf710 100644
    touch_info->begin_delivered = TRUE;
  }
  
+

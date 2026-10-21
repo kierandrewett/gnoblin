@@ -12,8 +12,8 @@
 # window_management.workspaces_only_on_primary: a second-monitor window follows the active workspace, or not.
 # window_management.auto_raise: with sloppy focus a resting pointer raises the window under it, or not.
 # window_management.focus_new_windows: strict keeps focus on the window in use, smart focuses the new window.
-# window_management.center_new_windows: true opens a new window centred on the monitor, false uses Mutter's
-#            default placement.
+# window_management.new_window_placement: center opens a new window centred on the monitor, free_space uses
+#            Mutter's first-fit placement.
 set -u
 export XDG_RUNTIME_DIR="/run/user/$(id -u)"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
@@ -131,7 +131,7 @@ pkill -f "foot -T focus-"
 pkill -x swaybg
 sleep 1
 
-# window_management.center_new_windows: a new window opens centred on the first monitor, or at Mutter's default spot.
+# window_management.new_window_placement: a new window opens centred on the first monitor, or at Mutter's default spot.
 monitor_center="$("$G" monitor list | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
@@ -156,20 +156,20 @@ for w in json.load(sys.stdin)["windows"]:
 distance() {
     python3 -c 'import sys; a = list(map(int, sys.argv[1:5])); print(max(abs(a[0] - a[2]), abs(a[1] - a[3])))' $1 $2
 }
-apply 'gnoblin.configure {window_management = {center_new_windows = true}}'
+apply 'gnoblin.configure {window_management = {new_window_placement = "center"}}'
 centered="$(distance "$(new_window_center)" "$monitor_center")"
-apply 'gnoblin.configure {window_management = {center_new_windows = false}}'
+apply 'gnoblin.configure {window_management = {new_window_placement = "free_space"}}'
 default_spot="$(distance "$(new_window_center)" "$monitor_center")"
 if [ "$centered" -le 2 ]; then
-    echo "PASS center_new_windows true centres the new window (off by $centered px)"
+    echo "PASS new_window_placement center centres the new window (off by $centered px)"
 else
-    echo "FAIL center_new_windows true is off by $centered px"
+    echo "FAIL new_window_placement center is off by $centered px"
     fail=$((fail + 1))
 fi
 if [ "$default_spot" -gt 10 ]; then
-    echo "PASS center_new_windows false uses the default placement (off centre by $default_spot px)"
+    echo "PASS new_window_placement free_space uses the default placement (off centre by $default_spot px)"
 else
-    echo "FAIL center_new_windows false still centres the window (off by $default_spot px)"
+    echo "FAIL new_window_placement free_space still centres the window (off by $default_spot px)"
     fail=$((fail + 1))
 fi
 

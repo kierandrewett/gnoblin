@@ -394,7 +394,7 @@ exit 0
                 self.assertIn(agent_id, whitelist)
 
     def test_nix_package_has_no_gnome_shell_runtime_path(self):
-        package = (ROOT / "nix/package.nix").read_text()
+        package = (ROOT / "packaging/nix/package.nix").read_text()
         flake = (ROOT / "flake.nix").read_text()
         lock = (ROOT / "flake.lock").read_text()
         for obsolete in ("gnoblinShell", "gnomeShellSrc", "gnoblin-shell-service", "gjs"):

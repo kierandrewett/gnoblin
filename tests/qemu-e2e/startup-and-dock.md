@@ -72,3 +72,55 @@ It checks the published icon rectangle, restored focus, and uncancelled
 compositor animation events. It saves transition frames and JSON evidence,
 then removes its window and event listener. Those frames show the transition;
 they do not establish hardware frame pacing.
+
+## Dock first paint after a fresh login
+
+```sh
+python3 tests/qemu-e2e/dock-first-paint.py RUN_DIRECTORY --logins 5 --seconds 60
+```
+
+The check correlates the compositor's dock layer state with the displayed pixels.
+
+Each login restarts the native compositor and Bingux shell, then samples the
+session for `--seconds`. Every tick records:
+
+- the layer surfaces from `gnoblinctl layer list`;
+- the compositor and shell process identities;
+- the dock layout from `binguxctl ipc shell layoutSnapshot`;
+- a VNC frame taken at the same time.
+
+After the window it runs `gnoblinctl config reload`, grabs a reference frame,
+and compares the dock band to it.
+
+Only ticks after the new session starts count. That is the later of the new
+compositor and new shell start. The old dock stays on screen until its
+compositor exits, so earlier ticks prove nothing about the new dock.
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `run` | required | Prepared QEMU run directory with a synced prefix. |
+| `--logins` | `5` | Fresh GDM logins to observe. |
+| `--seconds` | `60` | Observation window per login, in seconds. |
+| `--interval` | `0.5` | Seconds between ticks. |
+| `--grace` | `2.0` | Seconds a mapped dock may take to be drawn. |
+| `--threshold` | `0.9` | Dock band match fraction that counts as drawn. |
+| `--tolerance` | `24` | Per-channel pixel tolerance for the band match. |
+| `--repaint-wait` | `2.0` | Seconds to wait after `config reload` before the reference frame. |
+| `--output` | dated directory in RUN | New artifact directory. |
+
+Outcomes per login:
+
+- `drawn`: the dock matched within `--grace` seconds of mapping.
+- `drawn-late`: the dock matched after more than `--grace` seconds. Reports
+  `draw_latency` and does not fail the run.
+- `invisible-mapped`: the dock is still mapped and undrawn at window end. Fails
+  the run.
+- `not-mapped`: the new dock never mapped. Fails the run.
+- `incomplete`: the dock mapped but never matched the reference, or no new
+  session start was observed. Fails the run.
+
+Evidence goes to a dated directory: `summary.json`, per-login `ticks.json` and
+`result.json`, the reference frame, and frames for flagged or sampled ticks.
+
+QMP screendumps fail under `virtio-vga-gl`, so frames come from VNC. A fade-in
+can keep a mapped dock undrawn for several seconds.

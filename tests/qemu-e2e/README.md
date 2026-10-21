@@ -32,10 +32,16 @@ Both scripts read the run directory from `GNOBLIN_QEMU_RUN`, or from `/tmp/gnobl
 `build/validation-install`. Output is saved in the run directory.
 
 The guest needs `pipewire`, `gnome-keyring`, `gpg`, `pinentry-gnome3`, `secret-tool`,
-`swaybg`, `foot` and `ibus`. The prompt broker checks also need a default keyring that holds
-a secret for `app prompt-e2e` and a GPG key `gnoblin-e2e@example.com` in `~/.gnupg-e2e`
-whose passphrase is `gnoblin-keyring-test`. Create both once with
-`tests/qemu-e2e/run-prompt-setup.sh`. It is safe to run again.
+`swaybg`, `foot`, `grim`, `wayland-utils`, `dbus-tools` and `ibus` (with `ibus-m17n` and
+`m17n-db` for the input source checks). The user needs a config tree (`gnoblinctl init`).
+The prompt broker checks also need a default keyring that holds a secret for
+`app prompt-e2e` and a GPG key `gnoblin-e2e@example.com` in `~/.gnupg-e2e` whose
+passphrase is `gnoblin-keyring-test`. Create both once with
+`tests/qemu-e2e/run-prompt-setup.sh`. It is safe to run again. The polkit check answers
+the prompt with `gnoblin-test`, so set that as the guest user's password
+(`echo luna:gnoblin-test | sudo chpasswd`). The grant check needs the portal backend
+running, which needs the prefix's systemd user units and portal files installed as
+described in `design/qemu-e2e-validation.md`.
 
 The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled files.
 
@@ -52,6 +58,7 @@ The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled
 - `run-snap-assist.sh`: Super + left-drag to the right edge causes Bingux SnapAssist to commit a target, verified from the window's new frame.
 - `run-clipboard.sh`: copy and paste works between `wl-copy` and `wl-paste`, between a Wayland GTK4 app and `wl-clipboard` in both directions, between an X11 GTK4 app and `wl-clipboard` in both directions through Xwayland, and for the primary selection. Sets `focus_new_windows = "allow"`, which `wl-copy` needs.
 - `run-session-lock.sh`: with swaylock holding the lock, the compositor reports `locked`, refuses screen capture, and does not fire a desktop shortcut. A killed locker leaves the `failsafe` state and the lock stays. A new locker takes over and SIGUSR1 unlocks, after which capture and the shortcut work again.
+- `run-session-lock-frames.sh`: a locker that repaints on `wl_surface.frame` callbacks, as Qt Wayland does, gets five callbacks per output while it holds the lock and then unlocks. The host builds the locker (`session-lock-frame-client.c`) and copies it into the guest, which has no compiler.
 - `run-shortcut-latency.sh`: a single tap of a media key and of a plain shortcut each reach the command they start within 150 ms (measured 4 to 5 ms), five taps each.
 - `run-embedded-defaults.sh`: a login with no user config loads the embedded default tree with the native window frame and no fallback, and `gnoblinctl config restore-default` installs a fresh copy and keeps the old folder as a backup. Restarts the guest session twice.
 - `run-bell.sh`: `compositor.visual_bell` flashes the whole screen (`fullscreen-flash`) or only the window that rang the bell (`frame-flash`), and stays quiet when off.
@@ -60,10 +67,16 @@ The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled
 - `run-window-switching.sh`: Alt+Tab, Alt+Shift+Tab, Super+Tab and Alt+Esc move focus between windows with no shell running.
 - `run-wayland-fractional.sh`: a native Wayland GTK4 app keeps its logical size at monitor scale 1.5 (at 1920x1080) and sees the fractional scale 1.5 through the fractional-scale protocol, and the layout is restored.
 - `run-x11-fractional.sh`: a GTK X11 app keeps its logical size and gets scale factor 2 at two fractional monitor scales, 1.25 at the preferred mode and 1.5 at 1920x1080, and the layout is restored.
-- `run-reload-effects.sh`: autostart entries start and stop on reload, `window_management.focus_mode` click versus hover changes focus on pointer entry, and `center_new_windows` centres or does not centre a new window, `raise_on_click` raises or does not raise a clicked window, `edge_tiling` tiles or does not tile a window dragged to the screen edge, `auto_maximize` maximizes or does not maximize a nearly monitor-sized new window, and `workspaces_only_on_primary` makes a second-monitor window follow the active workspace or stay put, `auto_raise` raises a window under a resting pointer under sloppy focus, and `focus_new_windows` strict or smart decides whether a new window takes focus.
+- `run-reload-effects.sh`: autostart entries start and stop on reload, `window_management.focus_mode` click versus hover changes focus on pointer entry, and `window_management.new_window_placement` `center` centres a new window while `free_space` uses Mutter's default placement, `raise_on_click` raises or does not raise a clicked window, `edge_tiling` tiles or does not tile a window dragged to the screen edge, `auto_maximize` maximizes or does not maximize a nearly monitor-sized new window, and `workspaces_only_on_primary` makes a second-monitor window follow the active workspace or stay put, `auto_raise` raises a window under a resting pointer under sloppy focus, and `focus_new_windows` strict or smart decides whether a new window takes focus.
 - `run-work-area.sh`: monitor records carry `work_area` (whole monitor, minus a panel's exclusive zone) and `gnoblin.monitor.changed` reports it.
 - `run-drag-constraint.sh`: with Waybar running, `window_management.constrain_drag_to_work_area` true keeps a window dragged downwards inside the work area, and false lets Mutter's 75 px rule apply.
 - `run-input-method.sh`: a GTK4 Wayland text field gets Latin text with no `ibus-daemon`, and `привет` from `privet` with the Russian transliteration engine (needs `ibus`, `ibus-m17n` and `m17n-db` in the guest).
 - `run-layer-focus.sh`: `layer_shell.preserve_active_window` keeps or moves focus when a layer surface opens.
 - `run-logout-cycles.sh`: repeated `gnoblinctl logout` ends cleanly (no core dump, no compositor errors). Set `GNOBLIN_LOGOUT_CYCLES` to change the count.
 - `guest-regression.sh` also covers protocol reload timing and Xwayland option reloads.
+
+## Screen cast checks
+
+- `run-screencast.sh`: a screen cast session on `org.gnome.Mutter.ScreenCast` gives a PipeWire node, GStreamer reads a monitor-sized frame from it that shows a window, and the compositor keeps running after the session stops.
+- `run-portal-screencast.sh`: the same through the desktop portal as a browser or recorder does (CreateSession, SelectSources, Start, OpenPipeWireRemote), with a permission rule for the test's python3 so no dialog appears. Starts from a stopped portal backend.
+- `run-portal-screencast-cycles.sh`: the portal flow repeated `CYCLES` times (default 20) with a consumer holding each stream. After every Close the compositor's stream node and the portal session object are gone, and after the run the compositor and the Gnoblin portal backend have the same number of open files as after the first cycle and less than 2 MiB more resident memory. Needs `pipewire-utils` (`pw-dump`) in the guest.
