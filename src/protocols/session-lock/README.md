@@ -68,6 +68,10 @@ On a lock transition the controller:
 8. Thaws the lock surface actor. The backing `MetaWindow` is never shown, so
    Mutter keeps its window actor frozen and the actor would stay 0x0 under the
    black cover.
+9. Accepts commits on a lock surface whose role object is closed or destroyed.
+   Toolkit lockers commit a null buffer while they tear their windows down after
+   `unlock_and_destroy`. The compositor posts no protocol error then, because no
+   object is left to post it on.
 
 `unlock_and_destroy` removes the lock scene and input embargo in one Mutter
 main-loop transaction, balances cursor/direct-scanout holds, and then reports
