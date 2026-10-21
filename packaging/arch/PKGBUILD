@@ -1,7 +1,7 @@
 # Generated from packaging/native-packages.json; do not edit.
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=gnoblin
-pkgver=0.1.10
+pkgver=0.1.11
 pkgrel=30
 pkgdesc='Standalone Gnoblin desktop session'
 arch=('x86_64')
