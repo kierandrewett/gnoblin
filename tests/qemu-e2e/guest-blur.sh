@@ -5,7 +5,7 @@ XDG_RUNTIME_DIR="/run/user/$(id -u)"
 export XDG_RUNTIME_DIR
 export WAYLAND_DISPLAY=wayland-0
 G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin/gnoblinctl"
-CONFIG="$HOME/.config/gnoblin/conf.d/99-test-blur.lua"
+CONFIG="$HOME/.config/gnoblin/config/99-test-blur.lua"
 mkdir -p "$(dirname "$CONFIG")"
 
 python3 - <<'PY'
