@@ -5,7 +5,7 @@ Edit the Markdown in `docs/`. VitePress builds the
 
 ## Preview
 
-From the repository root:
+From the `docs/` directory (the VitePress `package.json` lives there):
 
 ```sh
 npm ci
