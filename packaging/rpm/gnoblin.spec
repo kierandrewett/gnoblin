@@ -2,9 +2,11 @@
 %global _prefix /usr/lib/gnoblin
 %global _libdir %{_prefix}/%{_lib}
 %global _datadir %{_prefix}/share
-# Private libraries must never satisfy stock GNOME package dependencies.
+# Private libraries must never satisfy stock GNOME package dependencies. The private runtime ships Mutter's .pc files, and
+# RPM turns their Requires lines into pkgconfig() dependencies that name -devel packages. No pkgconfig() name is a runtime
+# requirement: the sonames and typelibs carry the real ones.
 %global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
+%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(][^)]*[)].*|typelib[(](Clutter|Cogl|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
 %global glib_version 2.81.1
 %global gobject_introspection_version 1.41.4
 %global gtk4_version 4.14.0
@@ -25,7 +27,7 @@
 Name:           gnoblin
 Version:        0.1.10
 Epoch:          1
-Release:        23%{?dist}
+Release:        24%{?dist}
 Summary:        Standalone Gnoblin desktop session
 License:        GPL-2.0-or-later
 URL:            https://github.com/kierandrewett/gnoblin

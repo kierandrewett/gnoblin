@@ -236,6 +236,14 @@ exit 0
             with self.subTest(name=name, conflicts=conflicts, obsoletes=obsoletes), self.assertRaises(ValueError):
                 isolation.validate(name, "", "", conflicts, obsoletes)
 
+    def test_rejects_development_package_requirements_and_keeps_runtime_ones(self):
+        # The private runtime ships Mutter's .pc files. A pkgconfig() requirement makes a user's install pull in a
+        # -devel package, which pulled GTK 3 onto a clean Fedora system in the 0.1.10 RPM.
+        for requirement in ("pkgconfig(libcanberra) >= 0.26", "pkgconfig(gtk4)"):
+            with self.subTest(requirement=requirement), self.assertRaises(ValueError):
+                isolation.validate("gnoblin", "", "", "", "", requirement)
+        isolation.validate("gnoblin", "", "", "", "", "libgtk-4.so.1()(64bit)\nglib2 >= 2.86.0\nlua-libs >= 5.4")
+
     def test_gnoblin_payload_provides_and_obsoletes_the_old_session_package(self):
         self.assertNotIn("/usr/lib/systemd/user/gnoblin-recovery.service", isolation.PUBLIC_FILES)
         portal_files = {

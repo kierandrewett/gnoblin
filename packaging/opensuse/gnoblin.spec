@@ -14,7 +14,9 @@
 %global wayland_server_version 1.25
 %global debug_package %{nil}
 %global __provides_exclude_from ^%{_prefix}/.*$
-%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(](libmutter|mutter-)[^)]*[)]|typelib[(](Clutter|Cogl|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
+# The private runtime ships Mutter's .pc files. No pkgconfig() name is a runtime requirement, and each one would pull a
+# -devel package onto the user's system. The sonames and typelibs carry the real requirements.
+%global __requires_exclude ^(lib(mutter[^()]*|shell-[0-9]+|st-[0-9]+)[.]so.*|pkgconfig[(][^)]*[)].*|typelib[(](Clutter|Cogl|Mtk|Shell|St)[)]([[:space:]]*=[[:space:]]*.*)?)$
 
 Name:           gnoblin
 Version:        %{gnoblin_version}

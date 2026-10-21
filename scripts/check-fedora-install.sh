@@ -44,6 +44,20 @@ if [ -n "$rpm_dir" ] && { [ -n "$version" ] || [ -n "$copr" ]; }; then
     echo "Use --rpm-dir alone, or --copr with --version." >&2
     exit 2
 fi
+# A bare "! command" never stops a script that runs under set -e, so these helpers do the negated checks.
+trap 'echo "[fedora-install] failed at line $LINENO: $BASH_COMMAND" >&2' ERR
+not_installed() {
+    if rpm -q "$1" >/dev/null 2>&1; then
+        echo "[fedora-install] $1 is installed but must not be" >&2
+        exit 1
+    fi
+}
+path_absent() {
+    if [ -e "$1" ]; then
+        echo "[fedora-install] $1 exists but must not" >&2
+        exit 1
+    fi
+}
 
 portal_conf=/usr/share/xdg-desktop-portal/gnoblin-portals.conf
 portal_file=/usr/share/xdg-desktop-portal/portals/gnoblin.portal
@@ -68,11 +82,13 @@ rpm -q gnoblin
 if [ -n "$version" ]; then
     test "$(rpm -q --qf '%{VERSION}' gnoblin)" = "$version"
 fi
-! rpm -q xdg-desktop-portal-gnoblin >/dev/null 2>&1
+not_installed xdg-desktop-portal-gnoblin
 test -f "$portal_conf"
 grep -Fxq 'default=gnoblin;*;' "$portal_conf"
 test "$(rpm -qf --qf '%{NAME}' "$portal_conf")" = gnoblin
-rpm -q --whatprovides "gnoblin-session = $(rpm -q --qf '%{VERSION}' gnoblin)" >/dev/null
+# rpm --whatprovides takes a capability name, not a versioned expression, so check the version separately.
+test "$(rpm -q --whatprovides gnoblin-session --qf '%{NAME}')" = gnoblin
+rpm -q --provides gnoblin | grep -Fxq "gnoblin-session = $(rpm -q --qf '%{VERSION}' gnoblin)"
 test -x /usr/lib/gnoblin/bin/gnoblin
 test -x /usr/bin/gnoblinctl
 test -f /usr/share/wayland-sessions/gnoblin.desktop
@@ -80,7 +96,7 @@ grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnobli
 test -f /usr/lib/systemd/user/gnoblin-session.target
 test -f /usr/lib/systemd/user/gnoblin-idle.service
 for package in "${stock_packages[@]}"; do
-    ! rpm -q "$package" >/dev/null 2>&1
+    not_installed "$package"
 done
 
 echo "[fedora-install] add the optional portal backend"
@@ -94,9 +110,9 @@ test "$(rpm -qf --qf '%{NAME}' "$portal_conf")" = gnoblin
 test -f "$portal_file"
 grep -q 'org.freedesktop.impl.portal.FileChooser;' "$portal_file"
 grep -q 'org.freedesktop.impl.portal.Inhibit;' "$portal_file"
-! rpm -q xdg-desktop-portal-gtk >/dev/null 2>&1
+not_installed xdg-desktop-portal-gtk
 for package in gnome-desktop3 gnome-desktop4 gtk3; do
-    ! rpm -q "$package" >/dev/null 2>&1
+    not_installed "$package"
 done
 
 echo "[fedora-install] check that every private library resolves"
@@ -129,10 +145,10 @@ mapfile -t gnoblin_packages < <(rpm -qa 'gnoblin*' 'xdg-desktop-portal-gnoblin*'
 if [ "${#gnoblin_packages[@]}" -gt 0 ]; then
     dnf -y remove "${gnoblin_packages[@]}"
 fi
-! test -e /usr/share/wayland-sessions/gnoblin.desktop
-! test -e "$portal_conf"
-! test -e /usr/lib/systemd/user/gnoblin-session.target
-! test -e /usr/lib/systemd/user/gnoblin-idle.service
+path_absent /usr/share/wayland-sessions/gnoblin.desktop
+path_absent "$portal_conf"
+path_absent /usr/lib/systemd/user/gnoblin-session.target
+path_absent /usr/lib/systemd/user/gnoblin-idle.service
 rpm -q "${stock_packages[@]}" >/tmp/gnome-packages-after-removal
 diff -u /tmp/stock-gnome-packages /tmp/gnome-packages-after-removal
 rpm -qf /usr/bin/gnome-shell /usr/bin/mutter >/tmp/gnome-owners-after-removal
