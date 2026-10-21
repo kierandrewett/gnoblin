@@ -245,13 +245,7 @@ Each item lands as its own commit, and the tree stays working.
 - [x] Run the Fedora binary build and its clean-install, GNOME coexistence and removal checks in a
       dry run. `fedora-rpm.yml` rebuilds both source RPMs with `rpmbuild --rebuild` as an unprivileged user,
       and `scripts/check-fedora-install.sh` runs the checks. COPR runs the same script after publication.
-      The dry run on the branch (run 39679190697) passed every job after three rounds of fixes that the Fedora
-      binary build and gate exposed. Each one would have failed in COPR, or reached users, after publication: - Mutter hardcodes `-Werror=array-bounds`, and Fedora 45's GCC reports a false positive in
-      `src/core/keybindings.c` under the RPM LTO flags. The spec adds `-Wno-error=array-bounds`. - The `gnoblin` RPM required about 50 `pkgconfig(...)` names from the private Mutter `.pc` files. Each
-      named a `-devel` package, so installing Gnoblin pulled in `gtk3`, `gtk3-devel` and `libcanberra-devel`.
-      Both RPM specs now exclude every `pkgconfig(...)` requirement, and `check-rpm-isolation.py` rejects them. - A bare `! command` does not stop a script under `set -e`, so the old "must be absent" checks never
-      enforced anything. The Fedora gate uses helpers now. The `! pacman -Q` and `! rpm -q` lines in
-      `arch-package.yml`, `opensuse-rpm.yml` and `verify.yml` have the same flaw and are not fixed yet.
+      The dry run on the branch passed every job after fixes; see "What the first dry run found" below.
 - [x] Add `scripts/prepare-release.sh`: version bump in both manifests, recipe regeneration, commit and tag,
       without a push.
 - [x] Publish one release from one script, `scripts/publish-github-release.sh`, with an asset check,
@@ -262,3 +256,19 @@ Each item lands as its own commit, and the tree stays working.
 - [ ] Cut 0.1.11 from `main` to exercise the tag path with the new stages and fix what it shows.
 - [ ] Clean up: remove the 8 development pre-releases and the 3 drafts, after the owner
       agrees.
+
+## What the first dry run found
+
+The dry run on the branch (run 39679190697) passed every job after three rounds of fixes. The new Fedora binary
+build and install gate exposed each problem. Each one would have failed in COPR, or reached users, after
+publication.
+
+- **Compiler error in Mutter.** Mutter hardcodes `-Werror=array-bounds`. Fedora 45's GCC reports a false positive in
+  `src/core/keybindings.c` under the RPM LTO flags. The spec adds `-Wno-error=array-bounds`.
+- **Development packages as runtime requirements.** The `gnoblin` RPM required about 50 `pkgconfig(...)` names from
+  the private Mutter `.pc` files. Each named a `-devel` package, so installing Gnoblin pulled in `gtk3`,
+  `gtk3-devel` and `libcanberra-devel`. Both RPM specs now exclude every `pkgconfig(...)` requirement, and
+  `scripts/check-rpm-isolation.py` rejects them.
+- **Checks that never failed.** A bare `! command` does not stop a script under `set -e`, so the old "must be
+  absent" checks enforced nothing. The Fedora gate uses helpers now. The `! pacman -Q` and `! rpm -q` lines in
+  `arch-package.yml`, `opensuse-rpm.yml` and `verify.yml` have the same flaw and are not fixed yet.
