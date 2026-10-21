@@ -45,14 +45,12 @@ accepted values, results, and compatibility limits.
 JSON wrapper. It maps each snapshot's `window_count` to the CLI's `windows`
 field.
 
-Raw socket clients can continue using the older `workspace.list` method.
-API 1.52 and newer serve that compatibility method from the Lua snapshot while
-keeping its original wrapper and `windows` count; earlier API versions use the
-native route.
+Raw socket clients have compatibility methods for list output:
 
-Raw socket clients can also use `window.list`. API 1.53 and newer serve it from
-the Lua snapshot while keeping its original wrapper and field names; earlier
-API versions use the native route.
+- `workspace.list`: API 1.52 and newer serve it from the Lua snapshot with its
+  original wrapper and `windows` count. Earlier versions use the native route.
+- `window.list`: API 1.53 and newer serve it from the Lua snapshot with its
+  original wrapper and field names. Earlier versions use the native route.
 
 The monitor and layer list commands also use their API 1.37 snapshot methods,
 `monitors.list` and `layers.list`; the CLI wraps each returned array under its
@@ -180,10 +178,8 @@ These routes preserve the legacy response shape. Older versions keep the native
 route for basic actions. Focus, menu, and interactive move or resize use their
 dedicated methods because they require verified activation or menu context.
 
-`toggle-minimize` is available through its typed method, which takes a stable
-window ID.
-See the [`gnoblinctl` window reference](/cli/#window-actions) for CLI
-arguments and ranges.
+`toggle-minimize` takes a stable window ID through its typed method. CLI
+arguments and ranges are in the [`gnoblinctl` window reference](/cli/#window-actions).
 
 `window` is a stable string ID from a previous list. For `window.move`, `x` and
 `y` are logical desktop-pixel coordinates:

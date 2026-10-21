@@ -25,19 +25,47 @@ Common event fields:
 - `revision`: an integer for the state version the record was read from. Type:
   integer.
 
-## Values with defined choices
+## Closed values and defaults
 
-- Session state is `starting`, `running`, or `stopping`.
-- Runtime state is `starting`, `running`, `restarting`, or `unavailable`.
-- Lock state is `unlocked`, `covering`, `locked`, or `failsafe`; only `locked`
-  confirms that Mutter completed the transition.
-- Color scheme is `default`, `prefer-dark`, or `prefer-light`.
-- Operation `ok` is a boolean. Successful events include `value`; failures
-  include an `Error` record.
+Fields with a closed set of values are listed below. Each payload carries the
+current value. The default column applies only where the source defines one.
 
-Other event fields are snapshots or values supplied by their source. The
+| Event                                     | Field          | Accepted values                                    | Default |
+| ----------------------------------------- | -------------- | -------------------------------------------------- | ------- |
+| `gnoblin.session.state-changed`           | `state`        | `starting`, `running`, `stopping`                  | None    |
+| `gnoblin.session.lock-state-changed`      | `state`        | `unlocked`, `covering`, `locked`, `failsafe`       | None    |
+| `gnoblin.runtime.status-changed`          | `state`        | `starting`, `running`, `restarting`, `unavailable` | None    |
+| `gnoblin.appearance.color-scheme-changed` | `color_scheme` | `default`, `prefer-dark`, `prefer-light`           | None    |
+| `gnoblin.shortcut.activated`              | `trigger`      | `press`, `release`                                 | `press` |
+| `gnoblin.shortcut.session.ended`          | `reason`       | `released`, `cancelled`                            | None    |
+| `gnoblin.input.gesture`                   | `phase`        | `begin`, `update`, `end`                           | None    |
+| `gnoblin.prompt.requested`                | `kind`         | `password`, `confirm`                              | None    |
+
+Only `locked` confirms that Mutter completed the lock transition.
+
+The `ok` field of `gnoblin.operation.completed` is a boolean. Successful
+events include `value`; failures include an `Error` record.
+
+Other fields are snapshots or values supplied by their source. The
 [shared type reference](/shell-api/types) defines the Gnoblin records used in
 these payloads.
+
+## Changed-family fields
+
+These families changed in this branch. The remaining families are described in
+their tables below.
+
+| Event                          | Field        | Type                  | Accepted values or default                                                                   |
+| ------------------------------ | ------------ | --------------------- | -------------------------------------------------------------------------------------------- |
+| `gnoblin.privacy.changed`      | `state`      | `PrivacyState` record | Privacy state snapshot; see the [shared types](/shell-api/types).                            |
+| `gnoblin.privacy.changed`      | `revision`   | integer               | Privacy state revision.                                                                      |
+| `gnoblin.capability.changed`   | `capability` | `Capability` record   | Updated record; `id` names it, such as `auth-agent`.                                         |
+| `gnoblin.capability.changed`   | `revision`   | integer               | Native state revision.                                                                       |
+| `gnoblin.focus.policy-changed` | `policy`     | focus policy record   | Effective policy after a successful config commit; see the [shared types](/shell-api/types). |
+| `gnoblin.operation.completed`  | `ok`         | boolean               | `true` on success, `false` on failure.                                                       |
+| `gnoblin.operation.completed`  | `method`     | string                | Method name of the completed operation.                                                      |
+| `gnoblin.operation.completed`  | `value`      | any                   | Present on success.                                                                          |
+| `gnoblin.operation.completed`  | `error`      | `Error` record        | Present on failure.                                                                          |
 
 #### Session and configuration
 

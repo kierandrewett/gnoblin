@@ -280,10 +280,13 @@ value. The console supports these namespace methods:
 - `move_active {workspace, follow?}` and `move_window {window, workspace, follow?}`
 
 A workspace selector is a table with exactly one of `id` or positive `number`.
+
 Creation accepts a nonempty name up to 80 characters. An optional ID must
 start with an ASCII letter or digit and contain up to 64 letters, digits,
-periods, underscores, or hyphens. `activate` and `follow` must be booleans
-when supplied. A window is `"active"` or a stable window ID.
+periods, underscores, or hyphens.
+
+`activate` and `follow` must be booleans when supplied. A window is `"active"`
+or a stable window ID.
 
 `move_active` and `move_window` return a read-only `WorkspaceMove` with the
 resulting workspace, window ID, and `follow` value. The compositor rejects
