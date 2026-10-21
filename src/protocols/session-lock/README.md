@@ -65,6 +65,9 @@ On a lock transition the controller:
 7. Answers `wl_surface.frame` requests on a mapped lock surface, including on a
    static locked screen. Toolkit lockers such as Qt Wayland wait for the callback
    before they paint their real UI.
+8. Thaws the lock surface actor. The backing `MetaWindow` is never shown, so
+   Mutter keeps its window actor frozen and the actor would stay 0x0 under the
+   black cover.
 
 `unlock_and_destroy` removes the lock scene and input embargo in one Mutter
 main-loop transaction, balances cursor/direct-scanout holds, and then reports
