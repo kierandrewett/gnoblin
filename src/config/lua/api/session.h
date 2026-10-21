@@ -79,6 +79,12 @@ function gnoblin.session.status() end
 ---@return SessionActivity
 function gnoblin.session.activity() end
 
+---Report whether this compositor is the login screen or a user session.
+---"greeter" means gnoblin was started with --greeter by a login manager. Greeter sessions
+---never register a polkit agent, handle keyring prompts, or lock.
+---@return "greeter"|"user"
+function gnoblin.session.class() end
+
 ---Request that the compositor lock the session.
 ---@return Operation<SessionLockResult>
 function gnoblin.session.lock() end

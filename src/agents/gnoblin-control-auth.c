@@ -5,6 +5,7 @@
 #include "config.h"
 
 #include "core/gnoblin-control-internal.h"
+#include "core/gnoblin-session-class.h"
 
 /* A polkit prompt waits for a shell or Lua handler. A request that nothing claims with
  * auth.begin or auth.cancel is cancelled quickly so pkexec fails instead of hanging. */
@@ -307,6 +308,9 @@ void gnoblin_control_auth_apply_config(GnoblinNativeControl* control, GVariant* 
     if (!enabled_value && auth)
         enabled_value = g_variant_lookup_value(auth, "polkit_agent", G_VARIANT_TYPE_BOOLEAN);
     gboolean enabled = enabled_value && g_variant_get_boolean(enabled_value);
+    /* Polkit allows one agent per login session; the greeter never takes that role. */
+    if (gnoblin_session_class_from_environment() == GNOBLIN_SESSION_CLASS_GREETER)
+        enabled = FALSE;
     if (enabled && !control->auth_agent) {
         auth_start(control);
         auth_publish_capability_changed(control);

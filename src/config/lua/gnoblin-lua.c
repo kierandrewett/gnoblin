@@ -159,6 +159,7 @@ const char* api_methods[] = {
     "launch.end",
     "session.lock",
     "session.activity",
+    "session.class",
     "session.status",
     "session.logout",
     "session.suspend",

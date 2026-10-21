@@ -410,7 +410,7 @@ GPid spawn_compositor(const char* path, int parent_fd, int child_fd, int stderr_
 }
 
 void usage(const char* program) {
-    g_printerr("Usage: %s [--config PATH] [--xwayland|--no-xwayland] "
+    g_printerr("Usage: %s [--config PATH] [--xwayland|--no-xwayland] [--greeter] "
                "[--devkit --wayland-display NAME]\n",
                program);
 }

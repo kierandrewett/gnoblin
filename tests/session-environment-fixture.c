@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
     g_unsetenv("DISPLAY");
     g_unsetenv("XAUTHORITY");
     g_unsetenv("GNOME_SETUP_DISPLAY");
-    if (!activate_session() || g_getenv("GNOME_SHELL_SESSION_MODE")) {
+    if (!activate_session(GNOBLIN_SESSION_CLASS_USER) || g_getenv("GNOME_SHELL_SESSION_MODE")) {
         g_printerr("session activation failed or retained the previous session mode\n");
         return EXIT_FAILURE;
     }

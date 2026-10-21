@@ -245,6 +245,8 @@ static void restore_identity_environment(void) {
         run_activation_update(restore);
 }
 
+static GnoblinSessionClass active_session_class = GNOBLIN_SESSION_CLASS_USER;
+
 static void session_cleanup(void) {
     const char* stop[] = {
         "systemctl", "--user", "stop", "gnoblin-session.target", "graphical-session.target", NULL};
@@ -273,7 +275,8 @@ static void session_cleanup(void) {
                            "XAUTHORITY=",
                            "GNOME_SETUP_DISPLAY=",
                            NULL};
-    if (session_systemd_available)
+    /* A greeter never owned graphical-session.target, so it must not stop it. */
+    if (session_systemd_available && active_session_class == GNOBLIN_SESSION_CLASS_USER)
         run_command(stop, FALSE);
     stop_stale_dbus_services();
     run_activation_update(unset);
@@ -283,14 +286,25 @@ static void session_cleanup(void) {
     g_clear_pointer(&session_prefix, g_free);
 }
 
-gboolean prepare_session_environment(void) {
+char* gnoblin_installed_prefix(void) {
     g_autofree char* exe = g_file_read_link("/proc/self/exe", NULL);
-    if (!exe) {
+    if (!exe)
+        return NULL;
+    g_autofree char* bin_dir = g_path_get_dirname(exe);
+    return g_path_get_dirname(bin_dir);
+}
+
+gboolean prepare_session_environment(GnoblinSessionClass session_class) {
+    active_session_class = session_class;
+    session_prefix = gnoblin_installed_prefix();
+    if (!session_prefix) {
         g_printerr("gnoblin: could not locate installed executable\n");
         return FALSE;
     }
-    g_autofree char* bin_dir = g_path_get_dirname(exe);
-    session_prefix = g_path_get_dirname(bin_dir);
+    /* greetd starts the greeter without XDG_SESSION_TYPE; the greeter is a Wayland
+     * compositor by definition, so supply the value the checks below require. */
+    if (session_class == GNOBLIN_SESSION_CLASS_GREETER && !g_getenv("XDG_SESSION_TYPE"))
+        g_setenv("XDG_SESSION_TYPE", "wayland", TRUE);
     if (!g_str_equal(g_getenv("XDG_SESSION_TYPE") ?: "", "wayland") ||
         !g_getenv("XDG_SESSION_ID") || !*g_getenv("XDG_SESSION_ID") ||
         (g_getenv("WAYLAND_DISPLAY") && *g_getenv("WAYLAND_DISPLAY")) ||
@@ -299,7 +313,7 @@ gboolean prepare_session_environment(void) {
         return FALSE;
     }
     session_systemd_available = user_systemd_available();
-    if (session_systemd_available) {
+    if (session_systemd_available && session_class == GNOBLIN_SESSION_CLASS_USER) {
         const char* active[] = {
             "systemctl", "--user", "is-active", "--quiet", "graphical-session.target", NULL};
         if (run_command(active, FALSE)) {
@@ -358,7 +372,7 @@ gboolean prepare_session_environment(void) {
     return TRUE;
 }
 
-gboolean activate_session(void) {
+gboolean activate_session(GnoblinSessionClass session_class) {
     atexit(session_cleanup);
     const char* clear_display[] = {
         "WAYLAND_DISPLAY=", "DISPLAY=", "XAUTHORITY=", "GNOME_SETUP_DISPLAY=", NULL};
@@ -384,7 +398,7 @@ gboolean activate_session(void) {
                           NULL};
     g_unsetenv("GNOME_SHELL_SESSION_MODE");
     run_activation_update(sync);
-    if (session_systemd_available) {
+    if (session_systemd_available && session_class == GNOBLIN_SESSION_CLASS_USER) {
         /* A lingering user manager keeps the environment and some services of
          * the previous session, for example GNOME's. The portal frontend reads
          * XDG_CURRENT_DESKTOP once at start and would keep choosing GNOME's
@@ -395,7 +409,7 @@ gboolean activate_session(void) {
         run_command(restart_portal, FALSE);
     }
     stop_stale_dbus_services();
-    if (session_systemd_available) {
+    if (session_systemd_available && session_class == GNOBLIN_SESSION_CLASS_USER) {
         const char* stop_old[] = {"systemctl", "--user", "stop",
                                   "org.gnome.SettingsDaemon.ScreensaverProxy.service", NULL};
         run_command(stop_old, FALSE);

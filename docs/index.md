@@ -20,6 +20,7 @@ The [configuration API](/config) links each setting to a detailed reference.
 - [Install Gnoblin](/installation)
 - [Choose a shell](/bring-your-own-shell)
 - [Build a desktop](/build-a-desktop)
+- [Log in with greetd](/login-managers)
 
 ## Configure
 

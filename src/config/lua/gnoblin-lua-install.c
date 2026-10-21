@@ -186,6 +186,8 @@ static void install_api(lua_State* state, LuaConfig* config) {
         } else if (g_str_equal(api_methods[i], "session.activity")) {
             lua_pushlightuserdata(state, config);
             lua_pushcclosure(state, lua_session_activity, 1);
+        } else if (g_str_equal(api_methods[i], "session.class")) {
+            lua_pushcfunction(state, lua_session_class);
         } else if (g_str_equal(api_methods[i], "input.text_target")) {
             lua_pushlightuserdata(state, config);
             lua_pushcclosure(state, lua_input_text_target, 1);

@@ -1,4 +1,5 @@
 #include "gnoblin-lua-internal.h"
+#include "../../session/gnoblin-session-class.h"
 
 int lua_capabilities_list(lua_State* state) {
     LuaConfig* config = lua_touserdata(state, lua_upvalueindex(1));
@@ -121,6 +122,14 @@ int lua_session_activity(lua_State* state) {
     push_variant(state, snapshot);
     push_readonly_copy(state, -1);
     lua_remove(state, -2);
+    return 1;
+}
+
+/* The class is fixed for the life of the compositor process, so it needs no config snapshot. */
+int lua_session_class(lua_State* state) {
+    if (lua_gettop(state) != 0)
+        return luaL_error(state, "gnoblin.session.class takes no arguments");
+    lua_pushstring(state, gnoblin_session_class_name(gnoblin_session_class_from_environment()));
     return 1;
 }
 

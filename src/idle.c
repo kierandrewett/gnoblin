@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 // Session activity monitoring and freedesktop screen saver inhibition.
 
+#include "session/gnoblin-session-class.h"
 #include <gio/gio.h>
 #include <gio/gunixfdlist.h>
 #include <glib-unix.h>
@@ -60,6 +61,7 @@ typedef struct {
     guint dbus_owner_signal;
     guint screensaver_signal;
     guint logind_lock_signal;
+    GnoblinSessionClass session_class;
     guint screensaver_registration;
     guint activity_registration;
     GSocketConnection* lock_connection;
@@ -616,6 +618,12 @@ static void handle_method_call(GDBusConnection* connection, const char* sender, 
             gboolean lock = TRUE;
             if (g_str_equal(method, "SetActive"))
                 g_variant_get(parameters, "(b)", &lock);
+            if (lock && service->session_class == GNOBLIN_SESSION_CLASS_GREETER) {
+                g_dbus_method_invocation_return_error_literal(
+                    invocation, G_DBUS_ERROR, G_DBUS_ERROR_NOT_SUPPORTED,
+                    "The login screen cannot lock a session");
+                return;
+            }
             if (!lock) {
                 g_dbus_method_invocation_return_error_literal(
                     invocation, G_DBUS_ERROR, G_DBUS_ERROR_NOT_SUPPORTED,
@@ -690,6 +698,7 @@ static gboolean on_shutdown(gpointer data) {
 int main(int argc, char** argv) {
     IdleService service = {0};
     g_autoptr(GDBusNodeInfo) node = NULL;
+    service.session_class = gnoblin_session_class_from_environment();
     g_autoptr(GError) error = NULL;
     guint name_id;
     guint terminate_id;
@@ -725,9 +734,12 @@ int main(int argc, char** argv) {
         service.session_bus, GNOME_SCREENSAVER_NAME, GNOME_SCREENSAVER_NAME, "ActiveChanged",
         GNOME_SCREENSAVER_PATH, NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_screen_saver_active_changed,
         &service, NULL);
-    service.logind_lock_signal = g_dbus_connection_signal_subscribe(
-        service.system_bus, "org.freedesktop.login1", "org.freedesktop.login1.Session", "Lock",
-        NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_logind_lock, &service, NULL);
+    /* A greeter never locks: there is no user session to lock, and logind's Lock must not
+     * start one. */
+    if (service.session_class == GNOBLIN_SESSION_CLASS_USER)
+        service.logind_lock_signal = g_dbus_connection_signal_subscribe(
+            service.system_bus, "org.freedesktop.login1", "org.freedesktop.login1.Session", "Lock",
+            NULL, NULL, G_DBUS_SIGNAL_FLAGS_NONE, on_logind_lock, &service, NULL);
     service.loop = g_main_loop_new(NULL, FALSE);
     service.lock_pending = g_string_new(NULL);
     terminate_id = g_unix_signal_add(SIGTERM, on_shutdown, &service);

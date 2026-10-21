@@ -211,6 +211,9 @@ separate GNOME login at the login screen when you need those services.
 The lean path needs a fresh Wayland login managed by logind. The login manager
 must set `XDG_SESSION_TYPE=wayland` when it starts Gnoblin.
 
+To run Gnoblin as the login screen through greetd, see
+[login managers](login-managers.md).
+
 `make install` asks for sudo. It installs these files:
 
 - The runtime, in the prefix (`/usr/local/lib/gnoblin` by default).

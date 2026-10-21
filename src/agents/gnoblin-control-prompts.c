@@ -7,6 +7,7 @@
 #include "config.h"
 
 #include "core/gnoblin-control-internal.h"
+#include "core/gnoblin-session-class.h"
 
 #define GCR_API_SUBJECT_TO_CHANGE
 #include <gcr/gcr.h>
@@ -557,6 +558,9 @@ void gnoblin_control_prompts_apply_config(GnoblinNativeControl* control, GVarian
     g_autoptr(GVariant) enabled_value =
         prompts ? g_variant_lookup_value(prompts, "enabled", G_VARIANT_TYPE_BOOLEAN) : NULL;
     gboolean enabled = enabled_value && g_variant_get_boolean(enabled_value);
+    /* Keyring and GPG prompts belong to a user session, not to the login screen. */
+    if (gnoblin_session_class_from_environment() == GNOBLIN_SESSION_CLASS_GREETER)
+        enabled = FALSE;
     if (enabled && !control->prompt_broker) {
         prompts_start(control);
     } else if (!enabled && control->prompt_broker) {

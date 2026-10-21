@@ -9,6 +9,7 @@
 #include "gnoblin-runtime-spawn.h"
 #include "gnoblin-priority.h"
 #include "gnoblin-autostart.h"
+#include "gnoblin-session-class.h"
 #include "../config/gnoblin-config.h"
 #include <errno.h>
 #include <fcntl.h>
@@ -162,8 +163,10 @@ GVariant* startup_fallback_document(const char* path, const char* failure,
                                     gboolean* used_last_good);
 GDBusConnection* claim_session_lifecycle_bus(void);
 void notify_portal_session_ending(GDBusConnection* connection);
-gboolean prepare_session_environment(void);
-gboolean activate_session(void);
+gboolean prepare_session_environment(GnoblinSessionClass session_class);
+gboolean activate_session(GnoblinSessionClass session_class);
+char* gnoblin_installed_prefix(void);
+#define GNOBLIN_GREETER_SYSTEM_CONFIG "/etc/gnoblin/greeter.lua"
 void runtime_fail(Runtime* runtime, const char* message);
 GVariant* resume_packet_payload(GVariant* document, guint64 revision, guint64 generation,
                                 guint64 operation_id_watermark, GVariant* saved_events);

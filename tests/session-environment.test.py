@@ -140,14 +140,14 @@ class SessionEnvironmentTests(unittest.TestCase):
         # overlap compositor startup, but must finish before the supervisor
         # starts configuration and autostart handling.
         self.assertLess(
-            guardian.index("if (!devkit && !prepare_session_environment())"),
+            guardian.index("if (!devkit && !prepare_session_environment(session_class))"),
             guardian.index("spawn_compositor(compositor_path"),
         )
         self.assertLess(
-            guardian.index("if (!devkit && !activate_session())"),
+            guardian.index("if (!devkit && !activate_session(session_class))"),
             guardian.index("spawn_session_supervisor("),
         )
-        activation_failure = guardian[guardian.index("if (!devkit && !activate_session()) {") :]
+        activation_failure = guardian[guardian.index("if (!devkit && !activate_session(session_class)) {") :]
         activation_failure = activation_failure[: activation_failure.index("\n    }")]
         self.assertIn("terminate_and_reap(&guardian);", activation_failure)
         self.assertIn("return EXIT_FAILURE;", activation_failure)

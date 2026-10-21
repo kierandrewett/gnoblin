@@ -2,3 +2,4 @@
 # project  source                destination
 mutter gnoblin-priority.c src/core/gnoblin-priority.c
 mutter gnoblin-priority.h src/core/gnoblin-priority.h
+mutter gnoblin-session-class.h src/core/gnoblin-session-class.h

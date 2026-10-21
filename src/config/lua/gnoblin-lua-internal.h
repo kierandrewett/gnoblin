@@ -307,6 +307,7 @@ int lua_permissions_policy(lua_State* state);
 int lua_privacy_state(lua_State* state);
 int lua_session_activity(lua_State* state);
 int lua_session_status(lua_State* state);
+int lua_session_class(lua_State* state);
 int lua_runtime_status(lua_State* state);
 int lua_permissions_check(lua_State* state);
 int lua_input_devices(lua_State* state);

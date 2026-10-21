@@ -108,13 +108,24 @@ static void guardian_stop_supervisor(GPid* supervisor_pid, gboolean graceful) {
     g_spawn_close_pid(pid);
 }
 
+/* Greeter configuration never comes from the user's home. An administrator file wins, then the
+ * copy shipped with the installed prefix. The caller frees the result. */
+static char* greeter_config_path(void) {
+    if (g_file_test(GNOBLIN_GREETER_SYSTEM_CONFIG, G_FILE_TEST_IS_REGULAR))
+        return g_strdup(GNOBLIN_GREETER_SYSTEM_CONFIG);
+    g_autofree char* prefix = gnoblin_installed_prefix();
+    return g_build_filename(prefix, "share", "gnoblin", "greeter.lua", NULL);
+}
+
 static int session_guardian_main(int argc, char** argv) {
     g_autofree char* compositor_path = g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR, NULL);
     g_autofree char* config_path = NULL;
     const char* wayland_display = NULL;
     g_autofree char* xwayland_program = g_find_program_in_path("Xwayland");
     gboolean xwayland = xwayland_program != NULL;
+    gboolean xwayland_requested = FALSE;
     gboolean devkit = FALSE;
+    gboolean greeter = FALSE;
     Runtime guardian = {.channel_fd = -1,
                         .compositor_stderr_fd = -1,
                         .session_log_fd = -1,
@@ -128,13 +139,27 @@ static int session_guardian_main(int argc, char** argv) {
             wayland_display = argv[++i];
         else if (g_str_equal(argv[i], "--no-xwayland"))
             xwayland = FALSE;
-        else if (g_str_equal(argv[i], "--xwayland"))
+        else if (g_str_equal(argv[i], "--xwayland")) {
             xwayland = TRUE;
+            xwayland_requested = TRUE;
+        } else if (g_str_equal(argv[i], "--greeter"))
+            greeter = TRUE;
         else {
             usage(argv[0]);
             return EXIT_FAILURE;
         }
     }
+    if (greeter && (devkit || wayland_display)) {
+        usage(argv[0]);
+        g_printerr("gnoblin: --greeter cannot be combined with devkit mode\n");
+        return EXIT_FAILURE;
+    }
+    /* A greeter has no user to load extra X clients for: Xwayland stays off unless asked. */
+    if (greeter && !xwayland_requested)
+        xwayland = FALSE;
+    const GnoblinSessionClass session_class =
+        greeter ? GNOBLIN_SESSION_CLASS_GREETER : GNOBLIN_SESSION_CLASS_USER;
+    g_setenv(GNOBLIN_SESSION_CLASS_ENV, gnoblin_session_class_name(session_class), TRUE);
     if (devkit != (wayland_display != NULL) ||
         (wayland_display &&
          (!g_regex_match_simple("^[A-Za-z0-9_.-]{1,128}$", wayland_display, 0, 0) ||
@@ -151,7 +176,7 @@ static int session_guardian_main(int argc, char** argv) {
     session_diagnostic_event(&guardian, "guardian started");
     guardian_started_us = g_get_monotonic_time();
     discard_stale_crash_notice();
-    if (!devkit && !prepare_session_environment()) {
+    if (!devkit && !prepare_session_environment(session_class)) {
         session_diagnostic_event(&guardian, "prepare-session-environment failed");
         if (compositor_log_fd >= 0)
             close(compositor_log_fd);
@@ -159,16 +184,21 @@ static int session_guardian_main(int argc, char** argv) {
             close(guardian.session_log_fd);
         return EXIT_FAILURE;
     }
-    if (!config_path)
+    if (!config_path && session_class == GNOBLIN_SESSION_CLASS_GREETER)
+        config_path = greeter_config_path();
+    else if (!config_path)
         config_path = gnoblin_config_path();
     g_setenv("GNOBLIN_CONFIG", config_path, TRUE);
     /* The guardian must not execute user Lua. The worker applies user
-     * portal routes only after the configuration transaction is accepted. */
-    g_autoptr(GVariant) initial_document = gnoblin_config_default_document();
-    g_autoptr(GError) portal_error = NULL;
-    if (!gnoblin_config_sync_portal_selection(initial_document, NULL, &portal_error))
-        g_warning("gnoblin: could not update portal selection from Lua config: %s",
-                  portal_error ? portal_error->message : "unknown error");
+     * portal routes only after the configuration transaction is accepted.
+     * A greeter has no user portal selection to publish. */
+    if (session_class == GNOBLIN_SESSION_CLASS_USER) {
+        g_autoptr(GVariant) initial_document = gnoblin_config_default_document();
+        g_autoptr(GError) portal_error = NULL;
+        if (!gnoblin_config_sync_portal_selection(initial_document, NULL, &portal_error))
+            g_warning("gnoblin: could not update portal selection from Lua config: %s",
+                      portal_error ? portal_error->message : "unknown error");
+    }
     if (!g_file_test(compositor_path, G_FILE_TEST_IS_EXECUTABLE)) {
         session_diagnostic_event(&guardian, "compositor executable unavailable");
         g_printerr("gnoblin: installed compositor is unavailable: %s\n", compositor_path);
@@ -232,7 +262,7 @@ static int session_guardian_main(int argc, char** argv) {
     /* Activating the systemd and D-Bus session runs a dozen short commands. Do it while the
      * compositor starts, not before it: the compositor needs none of the result, and waiting
      * here put about a quarter of a second between login and the first frame. */
-    if (!devkit && !activate_session()) {
+    if (!devkit && !activate_session(session_class)) {
         session_diagnostic_event(&guardian, "activate-session failed");
         terminate_and_reap(&guardian);
         close(guardian.channel_fd);

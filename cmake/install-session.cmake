@@ -173,6 +173,7 @@ gnoblin_remove(
 
 gnoblin_install_file("${ROOT}/src/tools/gnoblin-seed-config" "${INSTALL_PREFIX}/libexec/gnoblin-seed-config" MODE_755)
 gnoblin_install_file("${ROOT}/src/data/init.lua.example" "${INSTALL_PREFIX}/share/gnoblin/init.lua.example" MODE_644)
+gnoblin_install_file("${ROOT}/src/data/session/greeter.lua" "${INSTALL_PREFIX}/share/gnoblin/greeter.lua" MODE_644)
 file(COPY "${ROOT}/src/data/default-config/" DESTINATION "${INSTALL_PREFIX}/share/gnoblin/default-config"
   USE_SOURCE_PERMISSIONS)
 gnoblin_install_file("${ROOT}/src/data/gnoblin-portals.conf"

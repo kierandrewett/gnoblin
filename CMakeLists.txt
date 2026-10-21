@@ -227,6 +227,12 @@ set_property(CACHE GNOBLIN_SOURCE_MODE PROPERTY STRINGS checkout release-archive
 set(GNOBLIN_JOBS "4" CACHE STRING "Parallel jobs inside each Meson build")
 
 get_filename_component(GNOBLIN_PREFIX "${GNOBLIN_PREFIX}" ABSOLUTE)
+# Greeter mode needs the staged guardian, which the Mutter component builds.
+add_test(NAME greeter-mode
+  COMMAND "${PROJECT_SOURCE_DIR}/tests/greeter-mode.test.sh"
+    "${GNOBLIN_STAGE_ROOT}${GNOBLIN_PREFIX}/bin/gnoblin"
+    "${PROJECT_SOURCE_DIR}/src/data/session/greeter.lua")
+set_tests_properties(greeter-mode PROPERTIES TIMEOUT 60)
 if(GNOBLIN_PREFIX MATCHES "^(/|/usr|/usr/local|/bin|/sbin|/lib|/lib64)$")
   message(FATAL_ERROR "Use a private install prefix, such as ./install")
 endif()
