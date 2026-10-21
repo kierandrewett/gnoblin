@@ -20,16 +20,16 @@ Changes apply on configuration reload. Omitted fields use the defaults below.
 
 ### Placement and responsiveness
 
-| Key                           | Values          | Default | Effect                                                                   |
-| ----------------------------- | --------------- | ------- | ------------------------------------------------------------------------ |
-| `auto_maximize`               | Boolean         | `true`  | Maximize new windows that nearly fill the monitor.                       |
-| `check_alive_timeout`         | 0–4294967295 ms | `5000`  | Client ping timeout before it is marked frozen; `0` disables the check.  |
-| `workspaces_only_on_primary`  | Boolean         | `false` | Keep workspaces on the primary monitor.                                  |
-| `edge_tiling`                 | Boolean         | `false` | Enable Mutter's edge tiling.                                             |
-| `new_window_placement`        | `"free_space"`, `"center"`, `"cascade"` | `"free_space"` | Where a new normal window opens. See the note below the table.         |
-| `attach_modal_dialogs`        | Boolean         | `false` | Place modal dialogs with their parent window.                            |
-| `disable_workarounds`         | Boolean         | `false` | Disable Mutter's compatibility workarounds for broken X11 applications.  |
-| `constrain_drag_to_work_area` | Boolean         | `true`  | Keep dragged windows inside the work area. See the note below the table. |
+| Key                           | Values                                  | Default        | Effect                                                                   |
+| ----------------------------- | --------------------------------------- | -------------- | ------------------------------------------------------------------------ |
+| `auto_maximize`               | Boolean                                 | `true`         | Maximize new windows that nearly fill the monitor.                       |
+| `check_alive_timeout`         | 0–4294967295 ms                         | `5000`         | Client ping timeout before it is marked frozen; `0` disables the check.  |
+| `workspaces_only_on_primary`  | Boolean                                 | `false`        | Keep workspaces on the primary monitor.                                  |
+| `edge_tiling`                 | Boolean                                 | `false`        | Enable Mutter's edge tiling.                                             |
+| `new_window_placement`        | `"free_space"`, `"center"`, `"cascade"` | `"free_space"` | Where a new normal window opens. See the note below the table.           |
+| `attach_modal_dialogs`        | Boolean                                 | `false`        | Place modal dialogs with their parent window.                            |
+| `disable_workarounds`         | Boolean                                 | `false`        | Disable Mutter's compatibility workarounds for broken X11 applications.  |
+| `constrain_drag_to_work_area` | Boolean                                 | `true`         | Keep dragged windows inside the work area. See the note below the table. |
 
 Leave `disable_workarounds` set to `false` unless you are debugging an X11
 application. Enabling it can make some applications behave incorrectly.
