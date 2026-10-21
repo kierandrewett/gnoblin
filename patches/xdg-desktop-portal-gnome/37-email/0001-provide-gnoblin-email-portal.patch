@@ -1,11 +1,16 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From a57df71abf3661a45d8453b7554bcecbe6595180 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 20:59:15 +0000
 Subject: [PATCH] portal: provide Gnoblin Email through the mailto handler
 
 ---
+ data/meson.build               | 1 +
+ src/meson.build                | 1 +
+ src/xdg-desktop-portal-gnome.c | 7 +++++++
+ 3 files changed, 9 insertions(+)
+
 diff --git a/data/meson.build b/data/meson.build
-index bcbc8d5..ed8a4ce 100644
+index 05251e1..3619057 100644
 --- a/data/meson.build
 +++ b/data/meson.build
 @@ -11,6 +11,7 @@ gnome_portal_interfaces = [
@@ -17,10 +22,10 @@ index bcbc8d5..ed8a4ce 100644
    'org.freedesktop.impl.portal.GlobalShortcuts',
    'org.freedesktop.impl.portal.InputCapture',
 diff --git a/src/meson.build b/src/meson.build
-index d182a4e..506853b 100644
+index 9e5f52f..9d515c0 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -104,6 +104,7 @@ sources = built_sources + files(
+@@ -103,6 +103,7 @@ sources = built_sources + files(
    'clipboard.c',
    'displaystatetracker.c',
    'dynamic-launcher.c',
@@ -53,3 +58,6 @@ index bd1a3f7..f3af8c4 100644
    if (!access_init (connection, &error))
      {
        g_warning ("error: %s\n", error->message);
+-- 
+2.55.0
+

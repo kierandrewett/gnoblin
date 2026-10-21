@@ -1,11 +1,15 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 8029ee5366f2a25af89eae19c9421b4ef2c0fabf Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 20:59:15 +0000
 Subject: [PATCH] portal: preview wallpapers without GNOME Desktop libraries
 
 ---
+ src/meson.build        |   3 +-
+ src/wallpaperpreview.c | 214 +++++++++++++++++++++++++++++++++++------
+ 2 files changed, 186 insertions(+), 31 deletions(-)
+
 diff --git a/src/meson.build b/src/meson.build
-index 215995b..87ef3b0 100644
+index 332b966..cab6a6c 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -81,13 +81,12 @@ deps = [
@@ -294,3 +298,6 @@ index a27a526..b4e7bdc 100644
    gtk_stack_set_visible_child (GTK_STACK (self->stack), self->desktop_preview);
  
    gtk_drawing_area_set_draw_func (GTK_DRAWING_AREA (self->drawing_area),
+-- 
+2.55.0
+

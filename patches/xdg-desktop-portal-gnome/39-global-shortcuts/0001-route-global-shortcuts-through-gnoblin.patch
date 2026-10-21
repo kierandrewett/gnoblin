@@ -1,9 +1,17 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 86a0f4c26b69e914a0a8f412afc98daf9bb14b2c Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 20:59:15 +0000
 Subject: [PATCH] route global shortcuts through Gnoblin
 
 ---
+ ....gnoblin.Shell.GlobalShortcutsProvider.xml |   27 +
+ ...rg.gnoblin.Shell.GlobalShortcutsRebind.xml |   13 +
+ src/globalshortcuts.c                         | 1206 +++++++++++------
+ src/meson.build                               |    5 +-
+ 4 files changed, 850 insertions(+), 401 deletions(-)
+ create mode 100644 data/org.gnoblin.Shell.GlobalShortcutsProvider.xml
+ create mode 100644 data/org.gnoblin.Shell.GlobalShortcutsRebind.xml
+
 diff --git a/data/org.gnoblin.Shell.GlobalShortcutsProvider.xml b/data/org.gnoblin.Shell.GlobalShortcutsProvider.xml
 new file mode 100644
 index 0000000..9eba819
@@ -1547,7 +1555,7 @@ index fae05fc..003e6e0 100644
                                                                            error);
    if (settings == NULL)
 diff --git a/src/meson.build b/src/meson.build
-index d139976..215995b 100644
+index 2e1dbe4..332b966 100644
 --- a/src/meson.build
 +++ b/src/meson.build
 @@ -38,8 +38,8 @@ shell_dbus_interfaces = files(
@@ -1569,3 +1577,6 @@ index d139976..215995b 100644
    dependency('gtk4', version: '>= 4.0'),
    dependency('gtk4-unix-print', version: '>= 4.0'),
    dependency('gsettings-desktop-schemas', version: '>= 47.alpha'),
+-- 
+2.55.0
+

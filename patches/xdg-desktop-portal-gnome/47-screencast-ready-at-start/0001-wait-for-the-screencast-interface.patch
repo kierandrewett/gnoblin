@@ -1,7 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 8ba7b81c8ec74c7eb482091517d9bccafefbf36a Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 8 Oct 2026 20:30:00 +0100
-Subject: [PATCH] screencast: wait for the interface before the backend takes its bus name
+Subject: [PATCH] screencast: wait for the interface before the backend takes
+ its bus name
 
 The ScreenCast interface is exported when the name org.gnome.Mutter.ScreenCast appears,
 which needs the main loop. The portal frontend starts this backend on demand, and its
@@ -11,13 +12,15 @@ backend started did not work.
 
 Run the main loop for up to two seconds in screen_cast_init, until the interface is
 exported.
-
 ---
+ src/screencast.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
 diff --git a/src/screencast.c b/src/screencast.c
-index b59a5ef..698109f 100644
+index be9354f..8946775 100644
 --- a/src/screencast.c
 +++ b/src/screencast.c
-@@ -1036,10 +1036,14 @@ screen_cast_session_class_init (ScreenCastSessionClass *klass)
+@@ -954,10 +954,14 @@ screen_cast_session_class_init (ScreenCastSessionClass *klass)
    session_class->close = screen_cast_session_close;
  }
  
@@ -32,7 +35,7 @@ index b59a5ef..698109f 100644
    /*
     * Ensure ShellIntrospect and DisplayStateTracker are initialized before
     * any screencast session is created to avoid race conditions when restoring
-@@ -1056,5 +1060,19 @@ screen_cast_init (GDBusConnection  *connection,
+@@ -974,5 +978,19 @@ screen_cast_init (GDBusConnection  *connection,
    g_signal_connect (gnome_screen_cast, "disabled",
                      G_CALLBACK (on_gnome_screen_cast_disabled), NULL);
  
@@ -52,3 +55,6 @@ index b59a5ef..698109f 100644
 +
    return TRUE;
  }
+-- 
+2.55.0
+

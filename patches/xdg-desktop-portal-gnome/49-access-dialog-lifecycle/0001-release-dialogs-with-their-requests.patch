@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 55e866f1e4cc41a0cd544232494fd5896db6bf59 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 13 Oct 2026 04:00:00 +0000
 Subject: [PATCH] access: release local dialogs when their request ends
@@ -10,22 +10,18 @@ on response, owner Close, original caller loss and frontend loss.
 xdg-desktop-portal 1.20.4 Screenshot does not forward Close during Access
 consent. Its Access call uses the default D-Bus timeout and its timeout
 handler only responds to and unexports the public Request. Check that
-verified frontend request asynchronously so a timed-out dialog is removed
+frontend request asynchronously so a timed-out dialog is removed
 without imposing an arbitrary consent deadline. Report cancellation as a
 method error so the frontend does not store it as a user denial.
-
 ---
+ src/access.c | 183 +++++++++++++++++++++++++++++++++++++++++++++++++--
+ 1 file changed, 176 insertions(+), 7 deletions(-)
+
 diff --git a/src/access.c b/src/access.c
+index 29bb4e2..1cb643d 100644
 --- a/src/access.c
 +++ b/src/access.c
-@@ -1,5 +1,6 @@
- #include "config.h"
- #include "gnoblin-portal-policy.h"
-+#include "gnoblin-portal-identity.h"
- 
- #include <glib/gi18n.h>
- 
-@@ -21,6 +22,14 @@
+@@ -20,6 +20,14 @@ typedef struct {
    GHashTable *choices;
  
    int response;
@@ -40,7 +36,7 @@ diff --git a/src/access.c b/src/access.c
  } AccessDialogHandle;
  
  static void
-@@ -28,6 +37,12 @@
+@@ -27,6 +35,12 @@ access_dialog_handle_free (gpointer data)
  {
    AccessDialogHandle *handle = data;
  
@@ -53,7 +49,7 @@ diff --git a/src/access.c b/src/access.c
    g_clear_object (&handle->external_parent);
    g_clear_object (&handle->request);
    g_clear_object (&handle->dialog);
-@@ -39,7 +54,15 @@
+@@ -38,7 +52,15 @@ access_dialog_handle_free (gpointer data)
  static void
  access_dialog_handle_close (AccessDialogHandle *handle)
  {
@@ -69,11 +65,10 @@ diff --git a/src/access.c b/src/access.c
    access_dialog_handle_free (handle);
  }
  
-@@ -47,6 +70,20 @@
- send_response (AccessDialogHandle *handle)
+@@ -47,6 +69,20 @@ send_response (AccessDialogHandle *handle)
  {
    GVariantBuilder opt_builder;
-+
+ 
 +  if (handle->completed)
 +    return;
 +  handle->completed = TRUE;
@@ -87,10 +82,11 @@ diff --git a/src/access.c b/src/access.c
 +  if (handle->request_check)
 +    g_source_remove (handle->request_check);
 +  g_signal_handlers_disconnect_by_data (handle->request, handle);
- 
++
    g_variant_builder_init (&opt_builder, G_VARIANT_TYPE_VARDICT);
  
-@@ -87,12 +124,144 @@
+   if (handle->request->exported)
+@@ -86,14 +122,140 @@ send_response (AccessDialogHandle *handle)
        g_variant_builder_add (&opt_builder, "{sv}", "choices", g_variant_builder_end (&choice_builder));
      }
  
@@ -114,8 +110,8 @@ diff --git a/src/access.c b/src/access.c
 +                                            g_variant_builder_end (&opt_builder));
  
    access_dialog_handle_close (handle);
-+}
-+
+ }
+ 
 +static gboolean
 +handle_close (XdpImplRequest        *request,
 +              GDBusMethodInvocation *invocation,
@@ -205,12 +201,9 @@ diff --git a/src/access.c b/src/access.c
 +}
 +
 +static void
-+watch_request (AccessDialogHandle *handle,
-+               const char         *app_id)
++watch_request (AccessDialogHandle *handle)
 +{
 +  GDBusConnection *connection = g_dbus_method_invocation_get_connection (handle->invocation);
-+  g_autofree char *identity = gnoblin_portal_requester_identity (
-+    connection, handle->request->sender, app_id, handle->request->id);
 +  const char *prefix = "/org/freedesktop/portal/desktop/request/";
 +
 +  handle->sender_watch = g_bus_watch_name_on_connection (
@@ -229,17 +222,16 @@ diff --git a/src/access.c b/src/access.c
 +          connection, caller, G_BUS_NAME_WATCHER_FLAGS_NONE,
 +          NULL, peer_vanished, handle, NULL);
 +    }
-+  if (identity)
-+    {
-+      handle->frontend_watch = g_bus_watch_name_on_connection (
-+        connection, "org.freedesktop.portal.Desktop", G_BUS_NAME_WATCHER_FLAGS_NONE,
-+        NULL, peer_vanished, handle, NULL);
-+      check_public_request (handle);
-+    }
- }
- 
++  handle->frontend_watch = g_bus_watch_name_on_connection (
++    connection, "org.freedesktop.portal.Desktop", G_BUS_NAME_WATCHER_FLAGS_NONE,
++    NULL, peer_vanished, handle, NULL);
++  check_public_request (handle);
++}
++
  static void
-@@ -103,7 +272,10 @@
+ access_dialog_response (GtkWidget  *widget,
+                         const char *response,
+@@ -102,7 +264,10 @@ access_dialog_response (GtkWidget  *widget,
    AccessDialogHandle *handle = user_data;
  
    if (strcmp (response, "close") == 0)
@@ -251,7 +243,7 @@ diff --git a/src/access.c b/src/access.c
    else if (strcmp (response, "deny") == 0)
      handle->response = 1;
    else if (strcmp (response, "grant") == 0)
-@@ -361,8 +533,10 @@
+@@ -344,8 +509,10 @@ handle_access_dialog (XdpImplAccess         *object,
                                       &choice_table);
  
        handle = g_new0 (AccessDialogHandle, 1);
@@ -264,13 +256,16 @@ diff --git a/src/access.c b/src/access.c
        handle->request = g_object_ref (request);
        handle->dialog = g_object_ref (dialog);
        handle->external_parent = external_parent;
-@@ -370,7 +544,9 @@
+@@ -353,7 +520,9 @@ handle_access_dialog (XdpImplAccess         *object,
  
        g_signal_connect (dialog, "response", G_CALLBACK (access_dialog_response), handle);
  
 +      g_signal_connect (request, "handle-close", G_CALLBACK (handle_close), handle);
        request_export (request, g_dbus_method_invocation_get_connection (invocation));
-+      watch_request (handle, arg_app_id);
++      watch_request (handle);
      }
    else /* otherwise delegate to gnome-shell */
      {
+-- 
+2.55.0
+

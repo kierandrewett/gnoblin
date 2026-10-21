@@ -1,11 +1,16 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From b9c4849e17dfaca37b9c59c8c9a0485db742432c Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 20:59:15 +0000
 Subject: [PATCH] portal: let GTK handle file selection without Nautilus
 
 ---
+ data/meson.build               | 1 -
+ src/meson.build                | 1 -
+ src/xdg-desktop-portal-gnome.c | 7 -------
+ 3 files changed, 9 deletions(-)
+
 diff --git a/data/meson.build b/data/meson.build
-index bcbc8d5..8290989 100644
+index 05251e1..6f8b823 100644
 --- a/data/meson.build
 +++ b/data/meson.build
 @@ -11,7 +11,6 @@ gnome_portal_interfaces = [
@@ -17,10 +22,10 @@ index bcbc8d5..8290989 100644
    'org.freedesktop.impl.portal.InputCapture',
    'org.freedesktop.impl.portal.Lockdown',
 diff --git a/src/meson.build b/src/meson.build
-index 8103dc5..829770b 100644
+index f1e9f5b..2dbb88f 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -105,7 +105,6 @@ sources = built_sources + files(
+@@ -104,7 +104,6 @@ sources = built_sources + files(
    'displaystatetracker.c',
    'dynamic-launcher.c',
    'fc-monitor.c',
@@ -53,3 +58,6 @@ index bd1a3f7..e3f474e 100644
    if (!access_init (connection, &error))
      {
        g_warning ("error: %s\n", error->message);
+-- 
+2.55.0
+
