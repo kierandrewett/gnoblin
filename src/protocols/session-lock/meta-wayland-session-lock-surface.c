@@ -199,6 +199,19 @@ apply_state (MetaWaylandSurfaceRole  *surface_role,
   MetaWaylandSurface *surface = meta_wayland_surface_role_get_surface (surface_role);
   MetaWaylandSurfaceRoleClass *parent_class;
 
+  /* After unlock_and_destroy or after the client destroys the role object, the
+   * wl_surface keeps its role but there is no protocol object left to post an
+   * error on. Toolkits commit a null buffer at this point while they tear their
+   * lock windows down. That is legal, so accept the commit without the
+   * lock-surface checks. */
+  if (lock_surface->closed || !lock_surface->resource)
+    {
+      parent_class = META_WAYLAND_SURFACE_ROLE_CLASS (
+        meta_wayland_session_lock_surface_parent_class);
+      parent_class->apply_state (surface_role, pending);
+      return;
+    }
+
   if (pending->newly_attached && !pending->buffer)
     {
       meta_wayland_actor_surface_queue_frame_callbacks (actor_surface, pending);
@@ -251,7 +264,7 @@ post_apply_state (MetaWaylandSurfaceRole  *surface_role,
     meta_wayland_session_lock_surface_parent_class);
   if (parent_class->post_apply_state)
     parent_class->post_apply_state (surface_role, pending);
-  if (!lock_surface->mapped)
+  if (!lock_surface->mapped || lock_surface->closed)
     return;
 
   actor = meta_wayland_actor_surface_get_actor (META_WAYLAND_ACTOR_SURFACE (lock_surface));

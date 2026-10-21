@@ -1,7 +1,9 @@
 /*
  * Minimal ext-session-lock-v1 client that, like Qt Wayland and other toolkit lockers, paces its
  * redraws on wl_surface.frame callbacks. It locks the session, paints every lock surface, then
- * repaints once per frame callback. After FRAMES callbacks on every surface it unlocks and exits 0.
+ * repaints once per frame callback. After FRAMES callbacks on every surface it unlocks, tears its
+ * surfaces down the way Qt does (destroy the lock surface, commit a null buffer, destroy the
+ * wl_surface) and exits 0.
  * If a surface receives no callback within TIMEOUT seconds it exits 1 and leaves the session locked
  * in the failsafe state (the caller must recover it).
  *
@@ -205,5 +207,19 @@ int main(int argc, char** argv) {
     ext_session_lock_v1_unlock_and_destroy(lock);
     wl_display_roundtrip(display);
     printf("unlocked\n");
+    fflush(stdout);
+    /* Toolkits destroy their lock windows after the unlock. The compositor must treat a commit on a
+     * wl_surface whose lock surface object is already gone as legal. */
+    wl_list_for_each(out, &outputs, link) {
+        ext_session_lock_surface_v1_destroy(out->lock_surface);
+        wl_surface_attach(out->surface, NULL, 0, 0);
+        wl_surface_commit(out->surface);
+        wl_surface_destroy(out->surface);
+    }
+    if (wl_display_roundtrip(display) < 0) {
+        fprintf(stderr, "the compositor dropped the connection during teardown\n");
+        return 4;
+    }
+    printf("torn down\n");
     return 0;
 }

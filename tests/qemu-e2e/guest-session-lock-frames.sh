@@ -2,7 +2,7 @@
 # Guest: a locker that repaints on wl_surface.frame callbacks (the Qt Wayland pattern) must receive them while it holds
 # the lock. Without them the locker never paints its real UI and the session cannot be unlocked from its own screen.
 # The locker (session-lock-frame-client) takes the lock, paints, and repaints on every callback. After five callbacks per
-# output it unlocks and exits 0; with no callback inside 15 s it exits 1 and leaves the session in the failsafe state,
+# output it unlocks, tears its surfaces down like Qt (a null-buffer commit after the role object is gone) and exits 0; with no callback inside 15 s it exits 1 and leaves the session in the failsafe state,
 # which swaylock then clears.
 # The host script puts the locker at /tmp/session-lock-frame-client before this part runs.
 set -u
