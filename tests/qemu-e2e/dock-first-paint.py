@@ -288,8 +288,12 @@ def observe_login(args, probe, vnc, login_dir):
         time.sleep(max(0.0, args.interval - (time.monotonic() - tick_started)))
 
     # Force a full stage repaint, then take the reference frame from the repainted output.
-    subprocess.run([str(RUNNER), "guest", str(args.run), "--", "gnoblinctl", "--timeout", "5", "config", "reload"],
-                   check=True, capture_output=True, text=True)
+    subprocess.run(
+        [str(RUNNER), "guest", str(args.run), "--", "gnoblinctl", "--timeout", "5", "config", "reload"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
     time.sleep(args.repaint_wait)
     reference_sample = probe.sample()
     reference = vnc.frame()
@@ -301,7 +305,8 @@ def observe_login(args, probe, vnc, login_dir):
         "restart_requested_guest": ticks[0]["probe"]["restart_requested"],
         "reference_dock": dock_ref,
         "reference_top_bar_mapped": bool(bar_ref and bar_ref.get("mapped")),
-        "new_compositor_start_guest": new_starts([t["probe"] for t in ticks], "compositors", old["compositors"])[:1] or None,
+        "new_compositor_start_guest": new_starts([t["probe"] for t in ticks], "compositors", old["compositors"])[:1]
+        or None,
         "new_shell_start_guest": new_starts([t["probe"] for t in ticks], "shells", old["shells"])[:1] or None,
     }
     if not dock_ref or not dock_ref.get("mapped"):
@@ -346,7 +351,9 @@ def observe_login(args, probe, vnc, login_dir):
     invisible = [t["index"] for t in ticks if t["invisible_mapped"]]
     first_shown = next((t for t in ticks if t["dock_shown"]), None)
     last = ticks[-1]
-    draw_latency = None if first_shown is None or first_mapped is None else round(first_shown["probe"]["guest"] - first_mapped, 3)
+    draw_latency = (
+        None if first_shown is None or first_mapped is None else round(first_shown["probe"]["guest"] - first_mapped, 3)
+    )
     result.update(
         session_epoch_guest=epoch,
         first_dock_mapped_guest=first_mapped,
@@ -391,7 +398,9 @@ def main():
     parser.add_argument("--logins", type=int, default=5, help="fresh GDM logins (default: 5)")
     parser.add_argument("--seconds", type=float, default=60, help="observation per login (default: 60)")
     parser.add_argument("--interval", type=float, default=0.5, help="seconds between ticks (default: 0.5)")
-    parser.add_argument("--grace", type=float, default=2.0, help="seconds a mapped dock may take to be drawn (default: 2)")
+    parser.add_argument(
+        "--grace", type=float, default=2.0, help="seconds a mapped dock may take to be drawn (default: 2)"
+    )
     parser.add_argument("--threshold", type=float, default=0.9, help="dock band match fraction (default: 0.9)")
     parser.add_argument("--tolerance", type=int, default=24, help="per-channel pixel tolerance (default: 24)")
     parser.add_argument("--repaint-wait", type=float, default=2.0, help="seconds after config reload (default: 2)")
@@ -422,8 +431,10 @@ def main():
             result = observe_login(args, probe, vnc, login_dir)
             summary["logins"].append({"login": login, "dir": str(login_dir), **result})
             failed |= result["outcome"] in ("invisible-mapped", "not-mapped", "incomplete")
-            print(f"login {login}: {result['outcome']}; invisible-mapped frames={result.get('invisible_mapped_count', '-')}",
-                  flush=True)
+            print(
+                f"login {login}: {result['outcome']}; invisible-mapped frames={result.get('invisible_mapped_count', '-')}",
+                flush=True,
+            )
     finally:
         summary["finished_utc"] = utc_text()
         (output / "summary.json").write_text(json.dumps(summary, indent=1, default=str) + "\n")
