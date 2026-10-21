@@ -9,8 +9,6 @@
 #include <glib/gstdio.h>
 #include <glib/gi18n.h>
 
-#include "gnoblin-portal-identity.h"
-#include "gnoblin-portal-policy.h"
 #include "gnoblin-screenshot-capture.h"
 #include "request.h"
 #include "screenshot.h"
@@ -165,12 +163,6 @@ static void dialog_response(GtkDialog* dialog, int response, gpointer data) {
     take_screenshot(shot, pointer);
 }
 
-static gboolean screenshot_needs_consent(GnoblinPermissionLevel permission, gboolean interactive,
-                                         gboolean permission_store_checked) {
-    return interactive || permission == GNOBLIN_PERMISSION_ASK ||
-           (permission != GNOBLIN_PERMISSION_ALLOW && !permission_store_checked);
-}
-
 static void show_consent(Screenshot* shot, const char* app_id, const char* parent_window,
                          gboolean modal) {
     g_autofree char* desktop_id = *app_id ? g_strconcat(app_id, ".desktop", NULL) : NULL;
@@ -208,21 +200,8 @@ static void show_consent(Screenshot* shot, const char* app_id, const char* paren
 static gboolean handle_screenshot(XdpImplScreenshot* impl, GDBusMethodInvocation* invocation,
                                   const char* handle, const char* app_id, const char* parent_window,
                                   GVariant* options) {
-    /* permission_store_checked belongs to the frontend, never to a direct
-     * caller that merely supplied an app ID or a matching-looking handle. */
-    g_autofree char* identity = gnoblin_portal_requester_identity(
-        g_dbus_method_invocation_get_connection(invocation),
-        g_dbus_method_invocation_get_sender(invocation), app_id, handle);
-    g_auto(GnoblinPermission) permission =
-        gnoblin_permission_for_request(invocation, "screenshot", app_id, handle);
-    if (!identity || permission.level == GNOBLIN_PERMISSION_DENY) {
-        xdp_impl_screenshot_complete_screenshot(
-            impl, invocation, 2, g_variant_new_array(G_VARIANT_TYPE("{sv}"), NULL, 0));
-        return TRUE;
-    }
-    gboolean interactive = FALSE, checked = FALSE, modal = TRUE;
-    g_variant_lookup(options, "interactive", "b", &interactive);
-    g_variant_lookup(options, "permission_store_checked", "b", &checked);
+    /* Every request shows the consent dialog. No policy or frontend hint skips it. */
+    gboolean modal = TRUE;
     g_variant_lookup(options, "modal", "b", &modal);
     Screenshot* shot = g_new0(Screenshot, 1);
     shot->refs = 1;
@@ -235,10 +214,7 @@ static gboolean handle_screenshot(XdpImplScreenshot* impl, GDBusMethodInvocation
     shot->frontend_watch = g_bus_watch_name_on_connection(
         g_dbus_method_invocation_get_connection(invocation), "org.freedesktop.portal.Desktop",
         G_BUS_NAME_WATCHER_FLAGS_NONE, NULL, frontend_vanished, shot, NULL);
-    if (screenshot_needs_consent(permission.level, interactive, checked))
-        show_consent(shot, app_id, parent_window, modal);
-    else
-        take_screenshot(shot, FALSE);
+    show_consent(shot, app_id, parent_window, modal);
     return TRUE;
 }
 

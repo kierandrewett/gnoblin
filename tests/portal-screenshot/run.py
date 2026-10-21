@@ -79,7 +79,6 @@ def main():
         "-I" + str(UPSTREAM / "src"),
         "-I" + str(UPSTREAM / "subprojects/libgxdp/src"),
         HERE / "backend-fixture.c",
-        SOURCE / "gnoblin-portal-identity.c",
         UPSTREAM / "src/request.c",
         build / "xdg-desktop-portal-dbus.c",
         *flags("gtk4", "gio-unix-2.0"),

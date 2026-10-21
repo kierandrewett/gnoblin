@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
-/* Real Access handler and GTK dialog. Only policy and external parenting are
- * substitutes; tests use an isolated Broadway display and private bus. */
+/* Real Access handler and GTK dialog. Only external parenting is a substitute; tests use an
+ * isolated Broadway display and private bus. */
 #include <stdio.h>
 #include "access.c"
 
@@ -10,13 +10,6 @@ GxdpExternalWindow* gxdp_external_window_new_from_handle(const char* handle) {
 
 void gxdp_external_window_set_parent_of(GxdpExternalWindow* window, GdkSurface* surface) {
     g_assert_not_reached();
-}
-
-GnoblinPermission gnoblin_permission_for_request(GDBusMethodInvocation* invocation,
-                                                 const char* capability, const char* app_id,
-                                                 const char* handle) {
-    g_assert_cmpstr(capability, ==, "access");
-    return (GnoblinPermission){.level = GNOBLIN_PERMISSION_DEFAULT};
 }
 
 static void control(GDBusConnection* bus, const char* sender, const char* path,

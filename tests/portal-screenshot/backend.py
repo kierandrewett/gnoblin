@@ -39,7 +39,7 @@ def main():
         thread = threading.Thread(target=loop.run, daemon=True)
         thread.start()
         try:
-            for i, case in enumerate(("success", "deny", "direct", "close", "wrong-close", "disconnect", "pick-color")):
+            for i, case in enumerate(("success", "close", "wrong-close", "disconnect", "pick-color")):
                 handle = PATH + "/request/" + conn.get_unique_name()[1:].replace(".", "_") + "/test" + str(i)
                 result = []
                 event = threading.Event()
@@ -52,16 +52,7 @@ def main():
                         result.append(error)
                     event.set()
 
-                caller = other if case == "direct" else conn
-                params = GLib.Variant(
-                    "(ossa{sv})",
-                    (
-                        handle,
-                        "deny" if case == "deny" else "",
-                        "",
-                        {"permission_store_checked": GLib.Variant("b", True)},
-                    ),
-                )
+                params = GLib.Variant("(ossa{sv})", (handle, "", "", {}))
                 if case == "disconnect":
                     # Losing the frontend name invalidates all of its pending requests.
                     conn.call(
@@ -80,7 +71,7 @@ def main():
                         None,
                     )
                 else:
-                    caller.call(
+                    conn.call(
                         NAME,
                         PATH,
                         IFACE,
@@ -134,7 +125,7 @@ def main():
                 else:
                     assert code != 0 and "uri" not in values, (case, result)
                 time.sleep(0.3)
-                if case in ("deny", "direct", "pick-color"):
+                if case == "pick-color":
                     assert not any(line.strip() == "CAPTURE" for line in logs[log_start:]), (case, logs)
                 assert not list(Path(os.environ["TMPDIR"]).glob("gnoblin-screenshot-*")), case
                 # A completed request must no longer accept Close.

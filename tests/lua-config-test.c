@@ -1,5 +1,4 @@
 #include "gnoblin-config.h"
-#include "gnoblin-portal-policy.h"
 #include <glib/gstdio.h>
 #include <string.h>
 

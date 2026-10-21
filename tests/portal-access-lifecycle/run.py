@@ -76,7 +76,6 @@ def main():
         "-I" + str(upstream / "subprojects/libgxdp/src"),
         str(HERE / "backend.c"),
         str(upstream / "src/request.c"),
-        str(ROOT / "src/portal/backend/gnoblin-portal-identity.c"),
         str(work / "xdg-desktop-portal-dbus.c"),
         *flags,
         "-o",
