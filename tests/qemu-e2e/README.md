@@ -73,3 +73,9 @@ The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled
 - `run-layer-focus.sh`: `layer_shell.preserve_active_window` keeps or moves focus when a layer surface opens.
 - `run-logout-cycles.sh`: repeated `gnoblinctl logout` ends cleanly (no core dump, no compositor errors). Set `GNOBLIN_LOGOUT_CYCLES` to change the count.
 - `guest-regression.sh` also covers protocol reload timing and Xwayland option reloads.
+
+## Screen cast checks
+
+- `run-screencast.sh`: a screen cast session on `org.gnome.Mutter.ScreenCast` gives a PipeWire node, GStreamer reads a monitor-sized frame from it that shows a window, and the compositor keeps running after the session stops.
+- `run-portal-screencast.sh`: the same through the desktop portal as a browser or recorder does (CreateSession, SelectSources, Start, OpenPipeWireRemote), with a permission rule for the test's python3 so no dialog appears. Starts from a stopped portal backend.
+- `run-portal-screencast-cycles.sh`: the portal flow repeated `CYCLES` times (default 20) with a consumer holding each stream. After every Close the compositor's stream node and the portal session object are gone, and after the run the compositor and the Gnoblin portal backend have the same number of open files as after the first cycle and less than 2 MiB more resident memory. Needs `pipewire-utils` (`pw-dump`) in the guest.
