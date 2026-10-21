@@ -116,13 +116,17 @@ for package in gnome-desktop3 gnome-desktop4 gtk3; do
 done
 
 echo "[fedora-install] check that every private library resolves"
+# The stock Fedora container image has no diff, and the final comparisons need it.
+dnf -y install diffutils >/dev/null
 mapfile -t mutter_libdirs < <(find /usr/lib/gnoblin -maxdepth 2 -type d -name 'mutter-*')
 library_path="/usr/lib/gnoblin/lib64"
 for dir in "${mutter_libdirs[@]}"; do
     library_path="$library_path:$dir"
 done
+checked=0
 while IFS= read -r -d '' binary; do
     if [[ $(head -c 4 "$binary") == $'\x7fELF' ]]; then
+        checked=$((checked + 1))
         linkage="$(LD_LIBRARY_PATH="$library_path" ldd "$binary" 2>&1 || true)"
         if [[ $linkage == *'not found'* ]]; then
             echo "Unresolved library in $binary" >&2
@@ -131,6 +135,12 @@ while IFS= read -r -d '' binary; do
         fi
     fi
 done < <(find /usr/lib/gnoblin -type f -perm /111 -print0)
+# A check that looked at nothing proves nothing, for example when the private runtime moved to another path.
+if [ "$checked" -lt 5 ]; then
+    echo "[fedora-install] only $checked ELF files found under /usr/lib/gnoblin" >&2
+    exit 1
+fi
+echo "[fedora-install] $checked ELF files resolve"
 
 echo "[fedora-install] install stock GNOME beside Gnoblin"
 dnf -y install "${stock_packages[@]}"
