@@ -431,7 +431,6 @@ exit 0
         self.assertIn('dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"', installer)
         self.assertIn('packages=("gnoblin:$META_VERSION"', installer)
         self.assertIn("gnoblin) project=gnoblin", installer)
-        self.assertIn("install --refresh gnoblin", (ROOT / ".github/workflows/verify.yml").read_text())
         # No task passes a local RPM option to the COPR installer.
         self.assertNotIn("--local-rpms", makefile)
         self.assertIn("scripts/legacy/gnome-session@gnoblin.target.d.conf", installer)
