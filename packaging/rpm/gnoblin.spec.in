@@ -70,7 +70,10 @@ BuildRequires: gettext-devel git-core
 BuildRequires: gcc-c++
 BuildRequires: pkgconfig(libcanberra)
 BuildRequires: pkgconfig(json-glib-1.0)
-BuildRequires: pkgconfig(gsettings-desktop-schemas) >= %{gsettings_desktop_schemas_version}
+# Named as a package, not as pkgconfig(gsettings-desktop-schemas). A COPR project can hold another package that
+# provides that pkgconfig name, and the build then installs it in place of this one. Its GIR files are not in
+# /usr/share/gir-1.0, and the Mutter introspection build fails with "Couldn't find include GDesktopEnums-3.0.gir".
+BuildRequires: gsettings-desktop-schemas-devel >= %{gsettings_desktop_schemas_version}
 BuildRequires: pkgconfig(gtk4) >= %{gtk4_version}
 BuildRequires: meson
 BuildRequires: pkgconfig(gbm)

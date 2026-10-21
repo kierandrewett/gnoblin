@@ -415,7 +415,7 @@ exit 0
     def test_system_schemas_are_required_before_the_compositor(self):
         publisher = (ROOT / "scripts/publish-copr.sh").read_text()
         gnoblin = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin.spec")], text=True)
-        self.assertIn("BuildRequires: pkgconfig(gsettings-desktop-schemas) >= 49.1", gnoblin)
+        self.assertIn("BuildRequires: gsettings-desktop-schemas-devel >= 49.1", gnoblin)
         self.assertIn("BuildRequires:  pkgconfig(lua)", gnoblin)
         self.assertIn("Requires:       gsettings-desktop-schemas >= 49.1", gnoblin)
         component_build = (ROOT / "cmake/component-build.cmake").read_text()

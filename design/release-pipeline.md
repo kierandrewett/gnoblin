@@ -272,3 +272,19 @@ publication.
 - **Checks that never failed.** A bare `! command` does not stop a script under `set -e`, so the old "must be
   absent" checks enforced nothing. The Fedora gate uses helpers now. The `! pacman -Q` and `! rpm -q` lines in
   `arch-package.yml`, `opensuse-rpm.yml` and `verify.yml` have the same flaw and are not fixed yet.
+
+## What the first release found
+
+The tag `gnoblin-v0.1.11` (run 39687336333) passed the source, package and publish stages. The GitHub release is
+public with 15 assets. The COPR job then failed, so the release exists without a COPR build.
+
+- **COPR resolved a build requirement to an old package.** COPR builds in a minimal root with the project's own
+  repository enabled. That repository still holds `gnoblin-gsettings-desktop-schemas`, which provides
+  `pkgconfig(gsettings-desktop-schemas)`. The spec asked for the `pkgconfig` name, so COPR installed the old package
+  and not `gsettings-desktop-schemas-devel`. The old package keeps its GIR files under `/usr/lib/gnoblin`, and the
+  Mutter build stopped with `Couldn't find include 'GDesktopEnums-3.0.gir'`. The spec now requires
+  `gsettings-desktop-schemas-devel` by name. An offline rebuild in a Fedora 45 container with the COPR repository
+  enabled failed the same way before the change and passed after it.
+- **The Fedora CI job cannot see this.** It has no COPR repository, so the `pkgconfig` name resolved to the Fedora
+  package. The COPR project still holds the old packages `gnoblin-mutter`, `gnoblin-shell`, `gnoblin-portal` and
+  `gnoblin-gsettings-desktop-schemas`. The owner decides when to delete them.
