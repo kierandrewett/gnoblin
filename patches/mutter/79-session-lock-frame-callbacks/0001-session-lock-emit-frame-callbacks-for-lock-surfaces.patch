@@ -1,0 +1,83 @@
+From be3c6ffd3cd670d4b577f00b5b42312ac1aafd93 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Wed, 21 Oct 2026 18:26:06 +0100
+Subject: [PATCH] session-lock: emit frame callbacks for lock surfaces
+
+A lock surface lives in the lock scene on top of the opaque cover, not in
+the window stack that meta_surface_actor_wayland_is_view_primary() ranks. A
+toolkit locker such as Qt Wayland (Quickshell WlSessionLock) commits its first
+frame with a wl_surface.frame request and waits for the callback before it
+renders its real UI. Gnoblin never answered, so the screen stayed black and
+the session could not be unlocked with the locker's own UI.
+
+Treat a mapped lock surface like a layer-shell surface: emit its callbacks
+when it is mapped and on the stage view, and add it to the 16 ms fallback
+source so callbacks still arrive when the locked screen is static and no
+stage view update follows.
+---
+ src/wayland/meta-wayland.c | 21 +++++++++++++++++++--
+ 1 file changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/src/wayland/meta-wayland.c b/src/wayland/meta-wayland.c
+index 7a8bc2ae2c..a6b94021b2 100644
+--- a/src/wayland/meta-wayland.c
++++ b/src/wayland/meta-wayland.c
+@@ -63,6 +63,7 @@
+ #include "wayland/meta-wayland-region.h"
+ #include "wayland/meta-wayland-seat.h"
+ #include "wayland/meta-wayland-session-lock.h"
++#include "wayland/meta-wayland-session-lock-surface.h"
+ #include "wayland/meta-wayland-subsurface.h"
+ #include "wayland/meta-wayland-system-bell.h"
+ #include "wayland/meta-wayland-tablet-manager.h"
+@@ -128,6 +129,13 @@ typedef struct
+ static void meta_wayland_compositor_update_focus (MetaWaylandCompositor *compositor,
+                                                   MetaWindow            *window);
+ 
++static gboolean
++surface_is_session_lock (MetaWaylandSurface *surface)
++{
++  return surface && surface->role &&
++         META_IS_WAYLAND_SESSION_LOCK_SURFACE (surface->role);
++}
++
+ static gboolean
+ surface_should_emit_frame_callbacks_for_stage_view (MetaWaylandSurface *surface,
+                                                     MetaSurfaceActor   *actor,
+@@ -136,6 +144,13 @@ surface_should_emit_frame_callbacks_for_stage_view (MetaWaylandSurface *surface,
+   if (meta_surface_actor_wayland_is_view_primary (actor, stage_view))
+     return TRUE;
+ 
++  /* A lock surface sits in the lock scene, outside the window stack that
++   * the primary-view predicate looks at. */
++  if (surface_is_session_lock (surface))
++    return clutter_actor_is_mapped (CLUTTER_ACTOR (actor)) &&
++           clutter_actor_is_effectively_on_stage_view (CLUTTER_ACTOR (actor),
++                                                       stage_view);
++
+   if (!meta_wayland_surface_is_layer_shell (surface))
+     return FALSE;
+ 
+@@ -264,7 +279,8 @@ emit_layer_shell_frame_callbacks (gpointer user_data)
+ 
+       l = l->next;
+ 
+-      if (!meta_wayland_surface_is_layer_shell (surface))
++      if (!meta_wayland_surface_is_layer_shell (surface) &&
++          !surface_is_session_lock (surface))
+         continue;
+ 
+       actor_surface = META_WAYLAND_ACTOR_SURFACE (surface->role);
+@@ -679,7 +695,8 @@ meta_wayland_compositor_add_frame_callback_surface (MetaWaylandCompositor *compo
+     g_list_prepend (compositor->frame_callback_surfaces, surface);
+   compositor->frame_callback_surfaces = surface->frame_callback_surface_link;
+ 
+-  if (meta_wayland_surface_is_layer_shell (surface))
++  if (meta_wayland_surface_is_layer_shell (surface) ||
++      surface_is_session_lock (surface))
+     schedule_layer_shell_frame_callbacks (compositor);
+ }
+ 
+-- 
+2.55.0
+

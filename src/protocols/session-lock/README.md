@@ -62,6 +62,9 @@ On a lock transition the controller:
    authorised portal monitor stream sees the lock scene after `LOCKED` and
    presentation; authorised remote input then routes to the active lock
    surface. Earlier transitions and failsafe refuse remote input.
+7. Answers `wl_surface.frame` requests on a mapped lock surface, including on a
+   static locked screen. Toolkit lockers such as Qt Wayland wait for the callback
+   before they paint their real UI.
 
 `unlock_and_destroy` removes the lock scene and input embargo in one Mutter
 main-loop transaction, balances cursor/direct-scanout holds, and then reports
