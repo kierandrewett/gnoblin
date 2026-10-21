@@ -32,10 +32,16 @@ Both scripts read the run directory from `GNOBLIN_QEMU_RUN`, or from `/tmp/gnobl
 `build/validation-install`. Output is saved in the run directory.
 
 The guest needs `pipewire`, `gnome-keyring`, `gpg`, `pinentry-gnome3`, `secret-tool`,
-`swaybg`, `foot` and `ibus`. The prompt broker checks also need a default keyring that holds
-a secret for `app prompt-e2e` and a GPG key `gnoblin-e2e@example.com` in `~/.gnupg-e2e`
-whose passphrase is `gnoblin-keyring-test`. Create both once with
-`tests/qemu-e2e/run-prompt-setup.sh`. It is safe to run again.
+`swaybg`, `foot`, `grim`, `wayland-utils`, `dbus-tools` and `ibus` (with `ibus-m17n` and
+`m17n-db` for the input source checks). The user needs a config tree (`gnoblinctl init`).
+The prompt broker checks also need a default keyring that holds a secret for
+`app prompt-e2e` and a GPG key `gnoblin-e2e@example.com` in `~/.gnupg-e2e` whose
+passphrase is `gnoblin-keyring-test`. Create both once with
+`tests/qemu-e2e/run-prompt-setup.sh`. It is safe to run again. The polkit check answers
+the prompt with `gnoblin-test`, so set that as the guest user's password
+(`echo luna:gnoblin-test | sudo chpasswd`). The grant check needs the portal backend
+running, which needs the prefix's systemd user units and portal files installed as
+described in `design/qemu-e2e-validation.md`.
 
 The scripts leave the test Lua configs in `~/.config/gnoblin/config` as disabled files.
 
