@@ -86,9 +86,6 @@ releases the client’s bindings and other resources.
 | 1.11            | Connection-owned `shortcut.bind` and `shortcut.unbind`; canonical `gnoblin.operation.completed` event |
 | 1.12            | Trusted interactive window grabs and their capability                                                 |
 | 1.13            | `gnoblin.focus.policy-changed`                                                                        |
-| 1.14            | Portal grant listing and revocation                                                                   |
-| 1.15            | Portal grant snapshots and lifecycle events                                                           |
-| 1.16            | Permission policy snapshots and `gnoblin.permission.changed`                                          |
 | 1.17            | Privacy state reads and `gnoblin.privacy.changed`                                                     |
 | 1.18            | Animation registry, preview operations, and animation lifecycle events                                |
 | 1.19            | Shared Lua reads for version, capabilities, focus, and settings                                       |
@@ -118,10 +115,6 @@ releases the client’s bindings and other resources.
 | 1.39            | `launches.snapshot` with collection revision                                                                      |
 | 1.40            | Shared `shortcuts.list` snapshot read                                                                             |
 | 1.41            | Shared `shortcuts.actions` read backed by the installed Lua runtime                                               |
-| 1.42            | Adds Lua-backed `permissions.list`; all client versions now use it                                                |
-| 1.43            | Adds Lua-backed `permissions.check`; all client versions now use it                                               |
-| 1.44            | Adds Lua-backed `permissions.policy`; all client versions now use it                                              |
-| 1.45            | Adds the Lua-backed `portals.grants` read; all client versions now use it                                         |
 | 1.46            | Adds shared Lua input reads; all client versions now use them                                                     |
 | 1.47            | Adds Lua-backed `privacy.state`; all client versions now use it                                                   |
 | 1.48            | Adds Lua operation for `window.restore_or_minimize`; all clients now use it                                       |
@@ -159,3 +152,4 @@ releases the client’s bindings and other resources.
 | 1.81            | Adds `work_area` to monitor records and to the monitor `changed` list                                             |
 | 1.84            | Reserved; no API changes                                                                                          |
 | 1.85            | Replaces `window_management.center_new_windows` with `new_window_placement` (`free_space`, `center` or `cascade`) |
+| 1.86            | Removes the permission and portal grant API and its events; see `CHANGELOG.md`                                    |

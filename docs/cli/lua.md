@@ -135,32 +135,6 @@ print(launch.state)
 gnoblin.launches.finish(token)
 ```
 
-`gnoblin.permissions.policy()` returns the committed permission policy as a
-deeply read-only `PermissionPolicy` record:
-
-```lua
-local policy = gnoblin.permissions.policy()
-print(policy.default, policy.revision)
-for _, rule in ipairs(policy.rules) do
-    print(rule.name, rule.level)
-end
-```
-
-Use `gnoblin.permissions.list()` to also read the supported capabilities,
-permission levels, and configuration path. Its nested values are deeply
-read-only.
-
-Check how the committed policy evaluates a capability for an application
-identity. The console accepts either two strings or a table:
-
-```lua
-local decision = gnoblin.permissions.check {
-    capability = "remote-desktop",
-    identity = "app-id:org.example.Remote",
-}
-print(decision.level, decision.rule, decision.revision)
-```
-
 `gnoblin.session.status()` returns a read-only `SessionStatus`. When lock state
 is unavailable, `lock_state` is omitted; that does not mean the session is
 unlocked. `revision` identifies the current lock-state snapshot and matches
@@ -294,35 +268,6 @@ local preview = gnoblin.animations.preview {
 preview = preview:seek(0.5)
 print(preview.progress)
 preview:stop()
-```
-
-Portal grants are read-only `PortalGrant` records. Filter by kind and revoke a
-grant from the snapshot:
-
-```lua
-for _, grant in ipairs(gnoblin.portals.grants { kind = "remote-desktop" }) do
-    print(grant.requester, table.concat(grant.devices, ", "))
-    grant:revoke()
-end
-```
-
-Revocation uses the record's creation time, so a stale record cannot revoke a
-new grant that reuses its ID. The console waits for each revoke to complete.
-Both `PortalGrant:revoke()` and `gnoblin.grant.revoke(args)` return deeply
-read-only results.
-Scripts can also use the shared `gnoblin.grant.revoke` call directly; pass the
-timestamp from the snapshot to keep the same stale-record check:
-
-```lua
-local grants = gnoblin.portals.grants { kind = "remote-desktop" }
-local grant = grants[1]
-if grant then
-    gnoblin.grant.revoke {
-        kind = grant.kind,
-        id = grant.id,
-        created_at = grant.created_at,
-    }
-end
 ```
 
 Shortcut snapshots return read-only `ShortcutState` and `ShortcutAction`

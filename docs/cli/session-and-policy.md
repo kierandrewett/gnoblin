@@ -1,6 +1,6 @@
 # Session and Policy Commands
 
-Inspect session state, permissions, privacy, launch feedback, and request session actions.
+Inspect session state, privacy, launch feedback, and request session actions.
 
 Session commands require a running compositor; system power actions depend on host session services.
 
@@ -24,10 +24,6 @@ Session commands require a running compositor; system power actions depend on ho
 | `privacy`                                                         | Read the privacy activity sources available in this session                              |
 | `privacy stop-sharing`                                            | Ask Mutter to stop tracked screen-sharing sessions (API 1.31+)                           |
 | `privacy stop-recording`                                          | Ask Mutter to stop tracked recording sessions (API 1.31+)                                |
-| `permissions list`                                                | Read portal rules and capabilities through the Lua runtime (API 1.42+)                   |
-| `permissions policy`                                              | Read the committed policy and its revision through Lua (API 1.44+)                       |
-| `permissions check CAPABILITY IDENTITY`                           | Explain a decision for `app-id:…` or `host-exe:…` (API 1.43+)                            |
-| `grant list`, `grant revoke KIND ID`                              | List or revoke persistent portal grants; kind is `screen-cast` or `remote-desktop`       |
 | `launch status`                                                   | List pending launch feedback and its revision (API 1.39+)                                |
 | `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN`       | Start or end busy-cursor feedback; duration defaults to 3000 ms, clamped to 100–10000 ms |
 | `shortcut capture`                                                | Briefly grab the keyboard and print a GTK accelerator or `Super` binding                 |
@@ -38,17 +34,9 @@ unavailable. `session lock` requests a lock from a subscribed external shell
 client. A successful request means the client received it; use the session
 lock state to confirm that the screen is locked.
 
-`permissions list` requires a connected Lua supervisor. Older socket clients
-that request API 1.41 or earlier retain the native compatibility route.
-`permissions check` accepts a capability from `permissions list` and an
-identity in `app-id:ID` or `host-exe:PATH` form. It also requires the
-supervisor; clients requesting API 1.42 or earlier retain the native route.
-`permissions policy` requires the supervisor at API 1.44; older API clients
-retain the native route.
-
 The privacy stop commands ask Mutter to stop matching tracked sessions. Their
 `requested` count reports how many stop calls were issued; it does not confirm
-that the sessions have closed. They do not revoke saved portal grants.
+that the sessions have closed.
 
 In a standalone native session, `gnoblinctl config reload` validates and
 applies the complete configuration while the session is running. Native
@@ -62,14 +50,11 @@ Reload does not replay open animations for windows already mapped.
 For example, to inspect a portal decision and change keyboard source:
 
 ```sh
-gnoblinctl permissions check screen-cast app-id:org.example.Recorder
-gnoblinctl permissions policy --json
 gnoblinctl input list --json
 gnoblinctl input select xkb us
 ```
 
-Use a capability from `permissions list` and a source from `input list`.
-See [permission policy](/guides/permissions) and [launch feedback](/shell-api/launch-feedback).
+Use a source from `input list`. See [launch feedback](/shell-api/launch-feedback).
 Launch feedback does not start an application.
 
 Run `gnoblinctl privacy` to see activity and availability for each source.
@@ -95,17 +80,6 @@ supervisor.
 | Microphone     | `available.microphone_in_use` | `microphone_in_use`     |
 | Camera         | `available.camera_in_use`     | `camera_in_use`         |
 | Location       | `available.location_in_use`   | `location_in_use`       |
-
-`grant list` waits for the portal backend and prints validated persistent
-grants. Supported kinds are `screen-cast` and `remote-desktop`.
-
-`grant revoke KIND ID` takes one of those two kind values and the opaque ID
-printed by `grant list`. IDs are case-sensitive; pass the complete value.
-The [runtime API reference](/shell-api/permissions-privacy) defines each grant
-record.
-
-Human-readable output prints each full grant ID on its own line, even when it
-exceeds the terminal width. Use `--json` for machine-readable output.
 
 Lists use the headed table style in a terminal. `gnoblinctl capabilities`
 prints each capability's ID, availability, and description in aligned columns.

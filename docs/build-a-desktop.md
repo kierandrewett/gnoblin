@@ -5,12 +5,12 @@ components can use. A shell supplies the visible controls. The shell can be one
 program or a collection of smaller clients; it is independent of Gnoblin.
 Bingux is one separate project built on these interfaces.
 
-| Piece            | Gnoblin provides                                        | Your desktop chooses                           |
-| ---------------- | ------------------------------------------------------- | ---------------------------------------------- |
-| Windows          | Focus, move, resize, workspaces, rules and decorations  | Dock grouping, switcher order and menus        |
-| Input            | Keybindings and input-source control                    | Launcher, search and popup design              |
-| Surfaces         | Layer-shell placement, exclusive zones and effects      | Bar, dock, wallpaper and overlays              |
-| Desktop services | Portals, permission policy and optional native features | Notification daemon and other visible controls |
+| Piece            | Gnoblin provides                                       | Your desktop chooses                                           |
+| ---------------- | ------------------------------------------------------ | -------------------------------------------------------------- |
+| Windows          | Focus, move, resize, workspaces, rules and decorations | Dock grouping, switcher order and menus                        |
+| Input            | Keybindings and input-source control                   | Launcher, search and popup design                              |
+| Surfaces         | Layer-shell placement, exclusive zones and effects     | Bar, dock, wallpaper and overlays                              |
+| Desktop services | Portal routing, and optional native features           | Portal backend, notification daemon and other visible controls |
 
 ![Firefox in a Gnoblin session with the Bingux dock](images/gnoblin-bingux-firefox.png)
 
@@ -95,9 +95,9 @@ several languages.
 | React to a window or workspace event | Lua callback registered with `gnoblin.events.on`           |
 | Supply an application titlebar       | Frame rule and optional renderer service                   |
 
-The desktop portal has its own permission policy. Disabling a Wayland protocol
-does not replace [portal permissions](/guides/permissions) for screen sharing or
-remote control.
+The desktop portal backend decides what each app may do. Disabling a Wayland
+protocol does not change what a portal backend allows for screen sharing or
+remote control; see [portal routing](/config/configure/portals).
 
 ## Work on the desktop in a nested session
 

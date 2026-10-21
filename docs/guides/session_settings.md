@@ -96,8 +96,8 @@ Each protocol name accepts `true` or `false` and defaults to `true`. Set a
 protocol to `false` to keep Gnoblin from advertising that interface to new
 clients.
 
-This does not block all screen sharing: apps using the desktop portal follow
-[portal permissions](/guides/permissions) instead.
+This does not block all screen sharing. Portal backends decide what apps may do;
+see [portal routing](/config/configure/portals).
 Disabling protocols your shell uses can prevent its features from working.
 See the [protocol catalog](/wayland-protocols) for the advertised interface
 names, related guides and interfaces that are not yet supported.

@@ -44,7 +44,6 @@ for the result and event fields.
 - [`gnoblin.configure.input_sources`](/config/configure/input_sources)
 - [`gnoblin.configure.monitors`](/config/configure/monitors)
 - [`gnoblin.configure.touchpad_gestures`](/config/configure/touchpad_gestures)
-- [`gnoblin.configure.permissions`](/config/configure/permissions)
 - [`gnoblin.configure.location`](/config/configure/location)
 - [`gnoblin.configure.prompts`](/config/configure/prompts)
 - [`gnoblin.configure.auth`](/config/configure/auth)
@@ -84,7 +83,6 @@ gnoblin.configure {
     input_sources = {...}?,
     monitors = {...}?,
     touchpad_gestures = {...}?,
-    permissions = {...}?,
     location = {...}?,
     prompts = {...}?,
     auth = {...}?,

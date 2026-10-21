@@ -14,7 +14,7 @@ gnoblin.configure {
 This policy controls whether Gnoblin can approve location requests and the
 maximum precision it can return. It does not approve individual applications.
 A shell or Lua handler must still answer each
-[`gnoblin.location.authorization-requested`](/shell-api/#privacy-and-permissions)
+[`gnoblin.location.authorization-requested`](/shell-api/privacy)
 event.
 
 | Field          | Type and accepted values                                                       | Default                                             | Effect                                  |

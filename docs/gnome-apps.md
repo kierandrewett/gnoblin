@@ -1,12 +1,16 @@
 # Use GNOME applications
 
-Install each GNOME application with your distribution's package manager. Its
-package should bring the libraries it needs. On a minimal system, also install
-these shared desktop services:
+Install each GNOME application with your distribution's package manager. The
+application's package should pull in the libraries it needs.
 
-- `gvfs` provides GIO file access, such as mounts and trash.
-- `gnome-keyring` stores secrets for apps.
-- `xdg-user-dirs` creates the standard user folders, such as Documents and Downloads.
+## Install shared services
+
+On a minimal system, also install these shared desktop services:
+
+- `gvfs`: GIO file access, such as mounts and trash. Install it if your file
+  manager uses GIO mounts.
+- `gnome-keyring`: stores secrets for apps.
+- `xdg-user-dirs`: creates the standard user folders, such as Documents and Downloads.
 
 Install them with your distribution's package manager:
 
@@ -21,42 +25,57 @@ the Files app with:
 sudo dnf --setopt=install_weak_deps=False install gvfs gnome-keyring xdg-user-dirs nautilus
 ```
 
-It does not install a file manager, calendar, browser, GNOME Settings, or the
+This does not install a file manager, calendar, browser, GNOME Settings, or the
 full GNOME desktop. Install the apps you want separately.
 
 If you want prompts to rename standard folders when your display language
 changes, install `xdg-user-dirs-gtk` separately. Gnoblin does not start that
 updater at login.
 
+## Keyring and online accounts
+
 GNOME Keyring starts when an app requests its secret service. Some features
-need an app-specific service. Online accounts need an account manager and the
-relevant GVfs backend.
+need an app-specific service.
+
+Online accounts need an account manager and the relevant GVfs backend.
+
+## Removable media
 
 Gnoblin does not start GNOME Shell's removable-media automount and autorun
 components. Open removable media through your file manager when needed.
 
-Install `gvfs` if your file manager uses GIO mounts.
+## Portals
 
 Portal selection affects the Gnoblin session only. Other sessions keep their
 own backend selection.
 
 Gnoblin's optional backend handles file selection, Settings, screen sharing,
 remote desktop, and inhibition. Its file chooser uses GTK4. Install
-`xdg-desktop-portal-gnoblin` to use it. The core session package already routes Gnoblin to
-this backend when installed, with another installed backend as fallback.
+`xdg-desktop-portal-gnoblin` to use it. When installed, the core session
+package routes Gnoblin to this backend, with another installed backend as
+fallback.
+
+Gnoblin routes portal interfaces but does not manage app permissions. The
+selected backend decides what each app may do. The Gnoblin backend shows its
+normal consent dialogs.
 
 Choose another backend or mix backends in your normal Lua config; see
 [`gnoblin.configure.portals`](/config/configure/portals).
 
+## Email, file managers and inhibition
+
 Email requests open your configured email app; install one separately if you
 need it. Nautilus is optional; install it only if you want a file manager.
 
-In the lean login, portal apps can inhibit idle and
-suspend. Logout and user-switch inhibition return an unsupported response.
-The optional GNOME Session login uses GNOME SessionManager for all four types.
-The standalone login continues to use Gnoblin's idle service if a GNOME
-SessionManager process remains on the user's D-Bus session bus.
+Portal apps can inhibit idle and suspend. How that works depends on the login:
+
+- Lean login: logout and user-switch inhibition return an unsupported response.
+- Optional GNOME Session login: GNOME SessionManager handles all four types.
+- Standalone login: Gnoblin's idle service handles requests while a GNOME
+  SessionManager process remains on the user's D-Bus session bus.
+
+## Source builds
 
 For a [source build](install-source.md), install these services with your
-distribution's package manager if you need them. `make` never installs
-host packages.
+distribution's package manager if you need them. `make` never installs host
+packages.

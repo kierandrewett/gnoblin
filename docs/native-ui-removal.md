@@ -18,7 +18,6 @@ See [choose a shell](bring-your-own-shell.md) and [native feature settings](/gui
 - Screen locking and authentication
 - Keyring, network and mount prompts
 - Accessibility services
-- Portal permission and selection dialogs
 
 ## Removed from this session
 

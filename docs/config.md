@@ -6,7 +6,6 @@ Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and a
 
 - [`gnoblin.configure`](/config/configure) — set compositor, shell, input and window-management options.
 - [`gnoblin.window_rule`](/config/window_rule) — add a window or layer-surface rule.
-- [`gnoblin.permission_rule`](/config/permission_rule) — add a portal permission rule.
 - [`gnoblin.animation`](/config/animation) — register a named animation.
 - [`gnoblin.config`](/config/config) — inspect or edit the config assembled during loading.
 - [`gnoblin.load`](/config/load) — load another Lua config file.

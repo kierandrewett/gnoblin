@@ -114,14 +114,14 @@ lock.
 
 ## Portal and remote access while locked
 
-Existing portal permission remains in force. A monitor stream already
-authorised through the desktop portal receives the compositor lock scene while
-the session is locked, rather than normal desktop content.
+Remote and portal streams are routed by the selected portal backend. While the
+session is locked, a monitor stream that is already running receives the
+compositor lock scene rather than normal desktop content.
 
 Remote keyboard and pointer input is available after `locked` and lock-scene
 presentation, and is routed only to the active lock surface. It is refused
-during the transition and failsafe states. This requires no lock-specific
-portal setting, opt-in, or change to an existing authorised grant.
+during the transition and failsafe states. No lock-specific portal setting is
+required.
 
 ## Locker requirements
 

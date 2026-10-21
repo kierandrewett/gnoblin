@@ -5,11 +5,7 @@ Availability depends on the standalone session and the relevant service.
 
 ## `org.gnoblin.Compositor`
 
-The compositor exports this interface at `/org/gnoblin/Compositor`. Its
-`CheckPermission` method is restricted to the Gnoblin portal backend. The
-method takes two strings and returns a decision, matching rule, matching rule
-names, revision, and a boolean result. Portal clients should use the supported
-[permission workflow](/guides/permissions) instead of calling it directly.
+The compositor exports this interface at `/org/gnoblin/Compositor`.
 
 ## `org.gnoblin.SessionIdle`
 

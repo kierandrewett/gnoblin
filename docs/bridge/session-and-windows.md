@@ -192,6 +192,13 @@ snapshot for this read; the Lua supervisor must be connected.
 { "op": "api", "id": "layers", "api_version": { "major": 1, "minor": 2 }, "method": "layer.list", "arguments": {} }
 ```
 
+Request API 1.31 or newer to read `layer.animation_policy` with a `namespace`
+string of 1–128 UTF-8 bytes. It returns the enter and exit phases and
+`window_shadow`. Without a matching animation rule, each phase uses its first
+enabled event registration, or `none` if no event is registered.
+`window_shadow` defaults to `false` unless a matching default-window rule
+supplies a shadow value.
+
 ## Shell UI sessions
 
 ### API version 1.75

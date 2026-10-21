@@ -13,8 +13,8 @@ socket. The bridge provides versioned snapshots, events, and operations.
   text insertion, snapping, and focus policy.
 - [Shortcuts and events](/bridge/shortcuts-and-events): event subscriptions,
   shortcut bindings, and operation completion.
-- [Permissions and privacy](/bridge/permissions-and-privacy): portal grants,
-  permission policy, privacy state, and monitor privacy screens.
+- [Privacy](/bridge/privacy): privacy state, monitor privacy screens, and
+  location authorisation.
 - [Runtime and appearance](/bridge/runtime-and-appearance): runtime health,
   orientation lock, and desktop appearance.
 - [Examples](/bridge/examples): complete shell, Python, Node.js, and Go clients.

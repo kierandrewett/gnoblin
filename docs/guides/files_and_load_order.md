@@ -72,8 +72,7 @@ gnoblin.configure {window_management = {raise_on_click = true}}
 The result keeps sloppy focus and raises windows when clicked. The second call
 does not remove settings that it does not mention.
 
-Lists replace earlier values. This applies to `window_rules`, `shortcuts`,
-`autostart` and permission `rules`.
+Lists replace earlier values. This applies to `window_rules`, `shortcuts`, and `autostart`.
 
 To add a window rule while keeping previous rules, use:
 

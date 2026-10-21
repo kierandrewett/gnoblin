@@ -205,10 +205,6 @@ The socket exposes these reads at the listed API versions:
 | 1.39        | `launches.snapshot`       | `gnoblin.launches.snapshot()`       | None                                                       |
 | 1.40        | `shortcuts.list`          | `gnoblin.shortcuts.list()`          | None                                                       |
 | 1.41        | `shortcuts.actions`       | `gnoblin.shortcuts.actions(group?)` | Optional `group`: `wm`, `mutter`, or `wayland`             |
-| 1.42        | `permissions.list`        | `gnoblin.permissions.list()`        | None                                                       |
-| 1.43        | `permissions.check`       | `gnoblin.permissions.check(args)`   | `capability`, `identity`                                   |
-| 1.44        | `permissions.policy`      | `gnoblin.permissions.policy()`      | None                                                       |
-| 1.45        | `portals.grants`          | `gnoblin.portals.grants(filter?)`   | Optional `kind`: `screen-cast` or `remote-desktop`         |
 | 1.24        | `session.activity`        | `gnoblin.session.activity()`        | None                                                       |
 | 1.29        | `session.status`          | `gnoblin.session.status()`          | None                                                       |
 | 1.70        | `appearance.color_scheme` | `gnoblin.appearance.color_scheme()` | None                                                       |

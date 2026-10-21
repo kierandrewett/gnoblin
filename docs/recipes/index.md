@@ -31,8 +31,6 @@ After editing the file, apply the changes with `gnoblinctl config reload`.
   XKB layouts, keyboard options and touchpad gestures.
 - [Make pointer feedback easier to see](/recipes/pointer-feedback): enlarge
   the cursor and enable locate-pointer and visual-bell effects.
-- [Prepare remote support access](/recipes/remote-support): scope screen-share
-  and input permissions to one trusted program.
 - [Set up a pen display](/recipes/pen-display-workflow): map a tablet and
   configure a stylus button.
 - [Organize a growing config](/recipes/organize-config-files): split rules and

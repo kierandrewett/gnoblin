@@ -1,7 +1,10 @@
 # gnoblin.configure.portals
 
 Choose which installed XDG Desktop Portal backend handles each portal
-interface in a Gnoblin session.
+interface in a Gnoblin session. Gnoblin routes interfaces only. It does not
+manage app permissions: the selected backend decides what each app may do. The
+Gnoblin backend shows its normal consent dialogs. A shell can also ship its own
+backend and route interfaces to it; Bingux does this.
 
 ```lua
 gnoblin.configure {
