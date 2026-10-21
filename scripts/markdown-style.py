@@ -15,7 +15,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent.parent
-PROFILE = ROOT / "MARKDOWN_STYLE.md"
+PROFILE = ROOT / "design" / "markdown-style.md"
 SKIP_DIRS = {".git", "node_modules", ".vitepress", "dist", "build"}
 
 
@@ -246,7 +246,7 @@ def cmd_review(args: argparse.Namespace) -> int:
     style = PROFILE.read_text(encoding="utf-8")
     rules = style_sections(style)
     if not rules:
-        print("No level-two rule sections found in MARKDOWN_STYLE.md.", file=sys.stderr)
+        print("No level-two rule sections found in design/markdown-style.md.", file=sys.stderr)
         return 2
     print(paint(f"Jev Markdown review  ·  {provider}  ·  {selected_model}", "1;36", color))
     print(

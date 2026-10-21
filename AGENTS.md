@@ -85,11 +85,11 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
 - An agent changing Markdown must run
   `python3 scripts/markdown-style.py review --fail-on-flags` on the changed
   files under `docs/` before finishing. The review uses the editorial rules in
-  `MARKDOWN_STYLE.md` and deterministic checks for long paragraphs, long table
+  `design/markdown-style.md` and deterministic checks for long paragraphs, long table
   cells, and repeated table definitions. Missing credentials, request failures,
   or unresolved flags block completion. The script sends selected files and
-  `MARKDOWN_STYLE.md` to the provider configured in the ignored repo-root
-  `.env`. Fix every flag; the report prints its exact rule. `MARKDOWN_STYLE.md`
+  `design/markdown-style.md` to the provider configured in the ignored repo-root
+  `.env`. Fix every flag; the report prints its exact rule. `design/markdown-style.md`
   is the source of truth. The `split` command previews a single explicit
   paragraph break.
 

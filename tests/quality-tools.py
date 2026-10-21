@@ -20,7 +20,7 @@ class QualityToolsTest(unittest.TestCase):
                 ".prettierignore",
                 ".clang-format",
                 ".stylua.toml",
-                "ruff.toml",
+                ".ruff.toml",
                 "eslint.config.mjs",
                 "scripts/quality.sh",
                 "scripts/format-qt.py",
