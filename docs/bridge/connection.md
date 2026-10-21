@@ -2,74 +2,81 @@
 
 Connect to the local compositor socket and exchange newline-delimited JSON requests.
 
-The bridge API is versioned; the server greeting reports its supported version. These connection rules apply to API 1.x.
+The bridge API is versioned. The server greeting reports the API version it supports. These connection rules apply to API 1.x.
 
 ## Connect
 
-Socket: `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
-Use `GNOBLIN_COMPOSITOR_SOCKET` on both ends for a private test path.
+The socket path is set by one of these, in order:
 
-The server sends a greeting with its API version, current state revision,
-methods, events, and capabilities. The `features` array is empty.
+- `GNOBLIN_COMPOSITOR_SOCKET`, when set. Use it on both ends for a private test path.
+- `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`, the default. The `gnoblinctl` CLI falls back to `/run/user/<uid>/gnoblin/compositor-v1.sock` when `XDG_RUNTIME_DIR` is unset.
 
-Send one UTF-8 JSON object per line, followed by a newline, and keep the
-connection open.
+The server rejects a socket directory that is not owned by your user or that is accessible to other users.
 
-`state_revision` is the latest revision for compositor state. `revision_scope`
-names the kinds of state covered by that revision:
+After the connection opens, the server sends one greeting line with `"event": "hello"`. It has these fields:
 
-- windows, workspaces, monitors, and layer surfaces;
-- input devices and input sources.
+| Field                               | Type             | Meaning                                                                                      |
+| ----------------------------------- | ---------------- | -------------------------------------------------------------------------------------------- |
+| `version`, `api_major`              | integer          | Major API version. Both fields hold the same value, currently `1`.                           |
+| `api_minor`                         | integer          | Highest minor version this server accepts, currently `86`.                                   |
+| `state_revision`                    | integer          | Latest revision for the state named in `revision_scope`.                                     |
+| `revision_scope`                    | string           | The exact string `window-workspace-monitor-layer-input-device-source-capability-state`.      |
+| `revision_semantics`                | string           | `monotonic-per-session`. The revision only increases for the life of the compositor session. |
+| `methods`, `events`, `capabilities` | array of strings | Names this server supports. Read them from the greeting; they change with the API version.   |
+| `features`                          | array            | Always empty.                                                                                |
 
-The revision advances when any covered state changes. Launch feedback uses a
-separate revision on each launch record and `gnoblin.launch.changed` event.
+`state_revision` advances when any state in its scope changes. That scope covers windows, workspaces, monitors, layer surfaces, input devices, and input sources. Launch feedback uses a separate revision on each launch record and on the `gnoblin.launch.changed` event.
 
-Clients can request a protocol version with `api_version`, an object containing
-integer `major` and `minor` fields. The equivalent top-level `api_major` and
-`api_minor` integer fields are also accepted.
+Send one UTF-8 JSON object per line, followed by a newline. Keep the connection open for later requests and events.
 
-The major version must match the server. The requested minor version must be
-zero or higher and no greater than the server’s advertised minor version. A
-malformed or unsupported version closes the connection after the error reply.
+## Request fields
 
-Both fields are required together. If you omit the version, the connection uses
-API 1.0 compatibility behavior. For this server, request major `1` and a minor
-integer from `0` through `81`.
+| Field                    | Type    | Meaning                                                                                         |
+| ------------------------ | ------- | ----------------------------------------------------------------------------------------------- |
+| `op`                     | string  | Operation to run. See [top-level operations](#top-level-operations).                            |
+| `id`                     | string  | Request ID, 1 to 64 bytes. The reply carries the same ID.                                       |
+| `api_version`            | object  | Requested protocol version: `{ "major": <integer>, "minor": <integer> }`.                       |
+| `api_major`, `api_minor` | integer | Top-level alternative to `api_version`. Use both together or use `api_version`, not both forms. |
+
+The version rules:
+
+- `major` must equal the server's major version, `1`.
+- `minor` must be from `0` through the server's `api_minor`, currently `86`.
+- If you omit the version, the connection uses API 1.0 compatibility behavior.
+- A malformed or unsupported version gets an error reply, and the server then closes the connection.
 
 ```json
-{ "api_version": { "major": 1, "minor": 81 } }
+{ "api_version": { "major": 1, "minor": 86 } }
 ```
 
-Send a transport ping to confirm that the socket responds; it does not require
-an API version:
+`ping` does not need an API version. It accepts only `op` and `id`:
 
 ```json
 { "op": "ping", "id": "health-check" }
 ```
 
-The reply uses the matching ID and contains `{"pong":"pong"}` in `result`.
+The reply has the same `id` and contains `{"pong":"pong"}` in `result`.
 
 ## Top-level operations
 
 | `op`       | Request fields                             | Response                                       |
 | ---------- | ------------------------------------------ | ---------------------------------------------- |
+| `ping`     | `id` only                                  | `{"pong":"pong"}` in `result`.                 |
 | `events`   | API version and event names                | Subscription acknowledgement and later events. |
 | `windows`  | API version, when subscribing              | Initial snapshot and later window changes.     |
 | `monitors` | API version, when subscribing              | Initial snapshot and later monitor changes.    |
 | `api`      | API version, request ID, method, arguments | One result or error.                           |
 
-The greeting advertises the available methods, events, capabilities, and API
-version. Its `features` array is empty.
-
 ## Limits and disconnects
 
-The socket directory is private to the user. Gnoblin supports up to 32 clients
-and 32 bindings per client. Each connection can queue 64 records and 4 MiB of
-output; requests are limited to 16 KiB.
+| Limit                               | Value    | What happens when it is exceeded                                |
+| ----------------------------------- | -------- | --------------------------------------------------------------- |
+| Request line                        | 64 KiB   | Error reply `request is too large`, then the connection closes. |
+| Queued output per connection        | 1 MiB    | The connection closes.                                          |
+| Event names in one `events` request | 64       | Error reply; the connection stays open.                         |
+| Request `id`                        | 64 bytes | Error reply; the connection stays open.                         |
 
-Oversized input, malformed JSON, or a full output queue disconnects the client.
-Other invalid requests return an error and keep the connection open. Disconnect
-releases the client’s bindings and other resources.
+Malformed JSON and oversized input disconnect the client. Other invalid requests return an error and keep the connection open. Disconnect releases the client's bindings and other resources.
 
 ### API additions
 
