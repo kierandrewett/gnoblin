@@ -229,19 +229,12 @@ static int session_guardian_main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
     session_diagnostic_event(&guardian, "compositor spawned pid=%d", (int)guardian.compositor_pid);
-    /* Activating the systemd and D-Bus session runs a dozen short commands. Do it while the
-     * compositor starts, not before it: the compositor needs none of the result, and waiting
-     * here put about a quarter of a second between login and the first frame. */
-    if (!devkit && !activate_session()) {
-        session_diagnostic_event(&guardian, "activate-session failed");
-        terminate_and_reap(&guardian);
-        close(guardian.channel_fd);
-        if (compositor_log_fd >= 0)
-            close(compositor_log_fd);
-        if (guardian.session_log_fd >= 0)
-            close(guardian.session_log_fd);
-        return EXIT_FAILURE;
-    }
+    /* Activating the systemd and D-Bus session runs a dozen short commands, which take seconds on
+     * a loaded boot. The compositor and the Lua worker need none of the result, so it runs after
+     * both have been spawned. Autostart waits for it: the loop below starts no child before
+     * activation is done. The supervisor must not inherit the previous session's mode. */
+    if (!devkit)
+        g_unsetenv("GNOME_SHELL_SESSION_MODE");
     g_autofree char* executable = g_file_read_link("/proc/self/exe", NULL);
     if (!executable) {
         g_printerr("gnoblin: could not locate installed executable\n");
@@ -263,6 +256,7 @@ static int session_guardian_main(int argc, char** argv) {
     gboolean autostart_received = FALSE;
     gboolean autostart_complete = FALSE;
     gboolean native_channel_started = FALSE;
+    gboolean session_activated = FALSE;
     gboolean supervisor_ready = FALSE;
     gboolean session_ready = FALSE;
     gboolean session_lifecycle_supported = FALSE;
@@ -310,6 +304,15 @@ static int session_guardian_main(int argc, char** argv) {
             session_diagnostic_event(&guardian, "session supervisor spawned pid=%d",
                                      (int)supervisor_pid);
             error = NULL;
+            if (!devkit && !session_activated) {
+                if (!activate_session()) {
+                    session_diagnostic_event(&guardian, "activate-session failed");
+                    guardian.exit_status = EXIT_FAILURE;
+                    stop_session = TRUE;
+                    break;
+                }
+                session_activated = TRUE;
+            }
         }
 
         struct pollfd polls[2] = {{.fd = status_fd, .events = POLLIN | POLLHUP},
