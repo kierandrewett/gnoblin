@@ -28,12 +28,19 @@ check() {
     guest install
     restart
     result="$(guest read)"
+    # The recovery notice must be on screen without a VT switch or a new client.
+    if painted="$(python3 "$here/vnc-frame-check.py" "$run")"; then
+        result="$result"$'\n'"screen=painted"
+    else
+        result="$result"$'\n'"screen=black ($painted)"
+    fi
     guest clean
     restart
     check "the session keeps running with an invalid config" "$result" "status=\"state\":\"running\""
     check "the compositor stays up" "$result" "compositors=4"
     check "the marker names the fallback" "$result" "marker=last-good"
     check "the marker keeps the error" "$result" "init.lua"
+    check "the recovery notice is painted without a VT switch" "$result" "screen=painted"
     check "the session log names the choice and the file" "$result" "log=configuration fell back to the last good configuration:"
     echo "failures: $fail"
 } 2>&1 | tee "$out"
