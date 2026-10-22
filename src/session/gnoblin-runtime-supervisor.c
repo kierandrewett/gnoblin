@@ -1,5 +1,28 @@
 #include "gnoblin-runtime-internal.h"
 
+/* CPU time (user plus system) that PID has used, in microseconds, or -1 when
+ * /proc/PID/stat cannot be read. */
+static gint64 process_cpu_time_us(pid_t pid) {
+    g_autofree char* path = g_strdup_printf("/proc/%d/stat", (int)pid);
+    g_autofree char* contents = NULL;
+    if (!g_file_get_contents(path, &contents, NULL, NULL))
+        return -1;
+    /* The command name is in parentheses and may contain spaces. Fields 14 and
+     * 15 (utime, stime) follow the last closing parenthesis after 11 fields. */
+    const char* cursor = strrchr(contents, ')');
+    if (!cursor)
+        return -1;
+    guint64 utime = 0;
+    guint64 stime = 0;
+    if (sscanf(cursor + 1, " %*c %*d %*d %*d %*d %*d %*u %*u %*u %*u %*u %" G_GUINT64_FORMAT
+                           " %" G_GUINT64_FORMAT, &utime, &stime) != 2)
+        return -1;
+    long ticks = sysconf(_SC_CLK_TCK);
+    if (ticks <= 0)
+        return -1;
+    return (gint64)((utime + stime) * G_USEC_PER_SEC / (guint64)ticks);
+}
+
 static gboolean perform_power_action(int exit_status) {
     static const struct {
         int exit_status;
@@ -376,10 +399,14 @@ int session_supervisor_main(int argc, char** argv) {
                 restart_count = 0;
             /* Lua evaluation happens before the worker's own GLib timeout
              * exists. Bound it here while native bootstrap waits for CONFIG. */
-            if (!worker_start_packet_sent && !worker_ready &&
-                g_get_monotonic_time() - worker_spawned_us > WORKER_CONFIG_TIMEOUT_MS * 1000) {
-                startup_recovery = "Lua runtime did not produce a startup configuration in time";
-                kill(worker_pid, SIGKILL);
+            if (!worker_start_packet_sent && !worker_ready) {
+                const gint64 waited_us = g_get_monotonic_time() - worker_spawned_us;
+                const gint64 cpu_us = process_cpu_time_us(worker_pid);
+                if (waited_us > WORKER_CONFIG_WALL_TIMEOUT_MS * 1000 ||
+                    (cpu_us >= 0 && cpu_us > WORKER_CONFIG_CPU_TIMEOUT_MS * 1000)) {
+                    startup_recovery = "Lua runtime did not produce a startup configuration in time";
+                    kill(worker_pid, SIGKILL);
+                }
             }
             int worker_status = 0;
             pid_t worker_result = waitpid(worker_pid, &worker_status, WNOHANG);
