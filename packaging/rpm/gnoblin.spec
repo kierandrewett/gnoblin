@@ -25,7 +25,7 @@
 %global wayland_server_version 1.25
 
 Name:           gnoblin
-Version:        0.1.11
+Version:        0.1.12
 Epoch:          1
 Release:        24%{?dist}
 Summary:        Standalone Gnoblin desktop session
