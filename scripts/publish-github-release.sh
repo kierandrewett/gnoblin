@@ -43,6 +43,7 @@ required_patterns=(
     'gnoblin-[0-9]*.PKGBUILD'
     'gnoblin-[0-9]*-x86_64.pkg.tar.zst'
     'xdg-desktop-portal-gnoblin-[0-9]*-x86_64.pkg.tar.zst'
+    'gnoblin.db'
     'gnoblin-[0-9]*.src.rpm'
     'xdg-desktop-portal-gnoblin-[0-9]*.src.rpm'
     'gnoblin-[0-9]*.fc[0-9]*.x86_64.rpm'

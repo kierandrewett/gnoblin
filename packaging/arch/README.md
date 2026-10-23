@@ -43,6 +43,25 @@ portal backend.
 The repository copy of `PKGBUILD` uses `SKIP` only as a generated development
 template. Do not use it to install a release: use the checked release asset.
 
+## Pacman repository
+
+The release workflow (`.github/workflows/arch-package.yml`) builds both
+packages, then runs `repo-add` to create `gnoblin.db`, a regular file that
+lists each package with its SHA-256. The release publishes `gnoblin.db` beside
+the `.pkg.tar.zst` files, so
+`Server = https://github.com/kierandrewett/gnoblin/releases/latest/download`
+works as a pacman server. Ananicy releases use `--latest=false`, so they do not
+take over `latest`. The runtime job installs both packages through a `file://`
+server that uses this database. The packages are not signed with a pacman key,
+so users set `SigLevel = Optional TrustAll`.
+
+`gnoblin.db` is part of the release asset set. `scripts/publish-github-release.sh`
+refuses to publish a release without it. Releases up to 0.1.12 predate it.
+
+An AUR package is not published. The released `gnoblin-<version>.PKGBUILD`
+already names the release tag's source archive and its real SHA-256, so it
+works as an AUR recipe. Publishing it needs an AUR account and SSH key.
+
 ## Current status
 
 The recipe is designed for a clean Arch build environment without stock GNOME
@@ -51,7 +70,7 @@ distribution must provide the development-library and desktop-schema versions
 required by the pinned GNOME sources; an older desktop-schema major version
 blocks the package build.
 
-Publishing an Arch repository or AUR package requires separate evidence that a
-stock GNOME installation, a Gnoblin login, and Gnoblin removal all work on the
-same target. Until those checks run for a release, this is a source packaging
-path rather than a supported binary distribution channel.
+`packaging/targets.json` lists Arch as a candidate. The release workflow proves
+package build, installation, coexistence with stock GNOME and removal. The
+graphical-session gate stays open: Bingux reports that it boots this package in
+QEMU, but that is not a Gnoblin CI run.
