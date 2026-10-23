@@ -225,7 +225,8 @@ GVariant* gnoblin_native_control_receive_runtime_config(int runtime_fd, guint64*
     g_return_val_if_fail(runtime_fd >= 0, NULL);
     g_return_val_if_fail(error == NULL || *error == NULL, NULL);
     g_autoptr(GnoblinRuntimeReader) reader = gnoblin_runtime_reader_new();
-    gint64 deadline = g_get_monotonic_time() + 10 * G_USEC_PER_SEC;
+    gint64 deadline =
+        g_get_monotonic_time() + (gint64)GNOBLIN_RUNTIME_CONFIG_WAIT_MS * G_TIME_SPAN_MILLISECOND;
     for (;;) {
         GnoblinRuntimePacket packet = {0};
         gboolean available = FALSE;

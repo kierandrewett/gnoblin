@@ -9,6 +9,15 @@ G_BEGIN_DECLS
 #define GNOBLIN_RUNTIME_PROTOCOL_MINOR 6
 #define GNOBLIN_RUNTIME_PROTOCOL_MAX_PAYLOAD (16u * 1024u * 1024u)
 
+/* How long each end waits for the other during start-up, in milliseconds. The first start on a
+ * loaded machine takes 14 to 30 s for Mutter alone, so these catch a peer that is stuck, not one
+ * that is slow. A dead peer is noticed at once through the closed channel or the guardian's
+ * reaping, not through these limits. The compositor's wait for the first configuration must
+ * outlast the supervisor's limits for the first Lua worker plus the recovery worker that follows
+ * them (WORKER_CONFIG_WALL_TIMEOUT_MS in src/session/gnoblin-runtime-internal.h). */
+#define GNOBLIN_RUNTIME_CONFIG_WAIT_MS 60000
+#define GNOBLIN_RUNTIME_HANDSHAKE_WAIT_MS 60000
+
 typedef enum {
     GNOBLIN_RUNTIME_PACKET_HELLO = 1,
     GNOBLIN_RUNTIME_PACKET_CONFIG = 2,

@@ -117,6 +117,23 @@ static char* greeter_config_path(void) {
     return g_build_filename(prefix, "share", "gnoblin", "greeter.lua", NULL);
 }
 
+/* The Lua runtime could not be recovered. A user session stays up: the person's applications keep
+ * running and the recovery panel can say what failed. A greeter has no applications to keep and
+ * nothing to show without its client, so it ends with an error and the login manager starts it
+ * again. Returns TRUE when the session is kept. */
+static gboolean guardian_keep_unrecoverable_session(GnoblinSessionClass session_class,
+                                                    Runtime* guardian, const char* reason) {
+    if (session_class == GNOBLIN_SESSION_CLASS_GREETER) {
+        g_printerr("gnoblin: %s; ending the greeter session so the login manager starts it again\n",
+                   reason);
+        guardian->exit_status = EXIT_FAILURE;
+        return FALSE;
+    }
+    g_printerr("gnoblin: %s; keeping the session alive\n", reason);
+    notify_runtime_recovery_failed(guardian->channel_fd);
+    return TRUE;
+}
+
 static int session_guardian_main(int argc, char** argv) {
     g_autofree char* compositor_path = g_canonicalize_filename(GNOBLIN_DEFAULT_COMPOSITOR, NULL);
     g_autofree char* config_path = NULL;
@@ -437,9 +454,9 @@ static int session_guardian_main(int argc, char** argv) {
         }
         if (WIFEXITED(supervisor_status) &&
             WEXITSTATUS(supervisor_status) == EXIT_RESUME_REJECTED) {
-            g_printerr("gnoblin: Mutter rejected supervisor recovery; keeping the session alive\n");
-            notify_runtime_recovery_failed(guardian.channel_fd);
-            retain_session = TRUE;
+            retain_session = guardian_keep_unrecoverable_session(
+                session_class, &guardian, "Mutter rejected supervisor recovery");
+            stop_session = !retain_session;
             break;
         }
         if (host_reap_compositor(&guardian)) {
@@ -458,11 +475,12 @@ static int session_guardian_main(int argc, char** argv) {
                     stop_session = TRUE;
                     break;
                 }
-                g_printerr("gnoblin: could not suspend Mutter for supervisor recovery; keeping the "
-                           "session alive: %s\n",
-                           suspend_error ? suspend_error->message : "no acknowledgement");
-                notify_runtime_recovery_failed(guardian.channel_fd);
-                retain_session = TRUE;
+                g_autofree char* reason =
+                    g_strdup_printf("could not suspend Mutter for supervisor recovery: %s",
+                                    suspend_error ? suspend_error->message : "no acknowledgement");
+                retain_session =
+                    guardian_keep_unrecoverable_session(session_class, &guardian, reason);
+                stop_session = !retain_session;
                 break;
             }
             native_channel_started = FALSE;
@@ -470,10 +488,9 @@ static int session_guardian_main(int argc, char** argv) {
         }
         restart_count++;
         if (restart_count > WORKER_MAX_RESTARTS) {
-            g_printerr("gnoblin: session supervisor recovery failed repeatedly; keeping Mutter "
-                       "and the session alive\n");
-            notify_runtime_recovery_failed(guardian.channel_fd);
-            retain_session = TRUE;
+            retain_session = guardian_keep_unrecoverable_session(
+                session_class, &guardian, "session supervisor recovery failed repeatedly");
+            stop_session = !retain_session;
             break;
         }
         g_printerr("gnoblin: restarting session supervisor (attempt %u of %u)\n", restart_count,
