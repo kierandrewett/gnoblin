@@ -1,23 +1,23 @@
-From 86a0f4c26b69e914a0a8f412afc98daf9bb14b2c Mon Sep 17 00:00:00 2001
+From 65ae05e3c3ee544095743a943bb9149318fe2ae3 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 20:59:15 +0000
 Subject: [PATCH] route global shortcuts through Gnoblin
 
 ---
- ....gnoblin.Shell.GlobalShortcutsProvider.xml |   27 +
- ...rg.gnoblin.Shell.GlobalShortcutsRebind.xml |   13 +
- src/globalshortcuts.c                         | 1206 +++++++++++------
+ ....gnoblin.Shell.GlobalShortcutsProvider.xml |   32 +
+ ...rg.gnoblin.Shell.GlobalShortcutsRebind.xml |   14 +
+ src/globalshortcuts.c                         | 1238 +++++++++++------
  src/meson.build                               |    5 +-
- 4 files changed, 850 insertions(+), 401 deletions(-)
+ 4 files changed, 876 insertions(+), 413 deletions(-)
  create mode 100644 data/org.gnoblin.Shell.GlobalShortcutsProvider.xml
  create mode 100644 data/org.gnoblin.Shell.GlobalShortcutsRebind.xml
 
 diff --git a/data/org.gnoblin.Shell.GlobalShortcutsProvider.xml b/data/org.gnoblin.Shell.GlobalShortcutsProvider.xml
 new file mode 100644
-index 0000000..9eba819
+index 0000000..99c1070
 --- /dev/null
 +++ b/data/org.gnoblin.Shell.GlobalShortcutsProvider.xml
-@@ -0,0 +1,27 @@
+@@ -0,0 +1,32 @@
 +<!DOCTYPE node PUBLIC
 +'-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'
 +'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>
@@ -29,11 +29,15 @@ index 0000000..9eba819
 +      accelerators approved by the user. The shell may remember those choices.
 +      Each shortcut entry is (id, {description?: s, preferred_trigger?: s});
 +      each result is (id, {description?: s, shortcuts: as}).
++      The handle is the caller's Request object path. The shell uses it,
++      with app_id, to identify the requester; ConfigureShortcuts takes the
++      handle from the BindShortcuts call that created the session.
 +    -->
 +    <method name="BindShortcuts">
 +      <arg type="s" name="app_id" direction="in"/>
 +      <arg type="s" name="parent_window" direction="in"/>
 +      <arg type="a(sa{sv})" name="shortcuts" direction="in"/>
++      <arg type="o" name="handle" direction="in"/>
 +      <arg type="a(sa{sv})" name="results" direction="out"/>
 +    </method>
 +
@@ -41,16 +45,17 @@ index 0000000..9eba819
 +    <method name="ConfigureShortcuts">
 +      <arg type="s" name="app_id" direction="in"/>
 +      <arg type="s" name="parent_window" direction="in"/>
++      <arg type="o" name="handle" direction="in"/>
 +      <arg type="a(sa{sv})" name="results" direction="out"/>
 +    </method>
 +  </interface>
 +</node>
 diff --git a/data/org.gnoblin.Shell.GlobalShortcutsRebind.xml b/data/org.gnoblin.Shell.GlobalShortcutsRebind.xml
 new file mode 100644
-index 0000000..213ab4e
+index 0000000..83ebfe0
 --- /dev/null
 +++ b/data/org.gnoblin.Shell.GlobalShortcutsRebind.xml
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,14 @@
 +<!DOCTYPE node PUBLIC
 +'-//freedesktop//DTD D-BUS Object Introspection 1.0//EN'
 +'http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd'>
@@ -61,11 +66,12 @@ index 0000000..213ab4e
 +    <method name="RebindShortcuts">
 +      <arg type="s" name="app_id" direction="in"/>
 +      <arg type="a(sa{sv})" name="shortcuts" direction="in"/>
++      <arg type="o" name="handle" direction="in"/>
 +    </method>
 +  </interface>
 +</node>
 diff --git a/src/globalshortcuts.c b/src/globalshortcuts.c
-index fae05fc..003e6e0 100644
+index fae05fc..723987b 100644
 --- a/src/globalshortcuts.c
 +++ b/src/globalshortcuts.c
 @@ -3,31 +3,69 @@
@@ -148,7 +154,7 @@ index fae05fc..003e6e0 100644
  typedef struct _Shortcut
  {
    gchar *shortcut_id; /* Client identifier */
-@@ -42,9 +80,12 @@ typedef struct {
+@@ -42,17 +80,22 @@ typedef struct {
    GVariant *shortcuts;
    GPtrArray *mapped_accelerators;
    gboolean canceled;
@@ -162,7 +168,8 @@ index fae05fc..003e6e0 100644
  {
    Session parent;
    char *app_id;
-@@ -52,7 +93,8 @@ typedef struct _GlobalShortcutsSession
++  char *bind_handle;
+   GArray *shortcuts;
    GVariant *initial_shortcuts;
  
    gboolean bound;
@@ -172,7 +179,7 @@ index fae05fc..003e6e0 100644
  
  typedef struct _GlobalShortcutsSessionClass
  {
-@@ -80,6 +122,544 @@ static void
+@@ -80,6 +123,544 @@ static void
  clear_accelerator (Accelerator *accel)
  {
    g_free (accel->accelerator);
@@ -717,7 +724,7 @@ index fae05fc..003e6e0 100644
  }
  
  static void
-@@ -94,6 +674,7 @@ shortcuts_handle_free (BindShortcutsHandle *handle)
+@@ -94,6 +675,7 @@ shortcuts_handle_free (BindShortcutsHandle *handle)
        g_object_unref (handle->request);
      }
    g_clear_pointer (&handle->shortcuts, g_variant_unref);
@@ -725,7 +732,7 @@ index fae05fc..003e6e0 100644
    g_free (handle);
  }
  
-@@ -143,60 +724,20 @@ settings_response_to_shortcuts (GlobalShortcutsSession *session,
+@@ -143,60 +725,20 @@ settings_response_to_shortcuts (GlobalShortcutsSession *session,
      }
  }
  
@@ -795,7 +802,13 @@ index fae05fc..003e6e0 100644
  }
  
  static void
-@@ -219,25 +760,20 @@ global_shortcuts_session_finalize (GObject *object)
+@@ -214,30 +756,26 @@ global_shortcuts_session_finalize (GObject *object)
+   g_clear_pointer (&session->shortcuts, g_array_unref);
+   g_clear_pointer (&session->initial_shortcuts, g_variant_unref);
+   g_free (session->app_id);
++  g_free (session->bind_handle);
+ 
+   G_OBJECT_CLASS (global_shortcuts_session_parent_class)->finalize (object);
  }
  
  static void
@@ -828,7 +841,7 @@ index fae05fc..003e6e0 100644
  
    /* When a session is closed, we need to unbind its shortcuts */
    g_debug ("Closing session %s", session_get_id (session));
-@@ -249,19 +785,25 @@ global_shortcuts_session_close (Session *session)
+@@ -249,19 +787,25 @@ global_shortcuts_session_close (Session *session)
      }
  
    shortcuts_session = (GlobalShortcutsSession *) session;
@@ -864,7 +877,7 @@ index fae05fc..003e6e0 100644
  }
  
  static void
-@@ -306,6 +848,8 @@ handle_create_session (XdpImplGlobalShortcuts *object,
+@@ -306,6 +850,8 @@ handle_create_session (XdpImplGlobalShortcuts *object,
        goto out;
      }
  
@@ -873,7 +886,7 @@ index fae05fc..003e6e0 100644
    g_debug ("creating session %s", session_get_id (session));
  
    response = 0;
-@@ -339,6 +883,24 @@ shortcuts_to_response_variant (GArray *shortcuts)
+@@ -339,6 +885,24 @@ shortcuts_to_response_variant (GArray *shortcuts)
        shortcut = &g_array_index (shortcuts, Shortcut, i);
        g_variant_builder_init (&accels_builder, G_VARIANT_TYPE ("a{sv}"));
  
@@ -898,7 +911,7 @@ index fae05fc..003e6e0 100644
        if (shortcut->desc)
          {
            g_variant_builder_add (&accels_builder, "{sv}",
-@@ -346,24 +908,17 @@ shortcuts_to_response_variant (GArray *shortcuts)
+@@ -346,24 +910,17 @@ shortcuts_to_response_variant (GArray *shortcuts)
                                   g_variant_new_string (shortcut->desc));
          }
  
@@ -928,7 +941,7 @@ index fae05fc..003e6e0 100644
          }
  
        if (str)
-@@ -519,80 +1074,136 @@ portal_shortcuts_to_settings (GVariant *input)
+@@ -519,80 +1076,136 @@ portal_shortcuts_to_settings (GVariant *input)
  }
  
  static void
@@ -1110,7 +1123,7 @@ index fae05fc..003e6e0 100644
                                                                                  &response,
                                                                                  result,
                                                                                  &error))
-@@ -617,13 +1228,8 @@ settings_bind_shortcuts_done (GObject      *source,
+@@ -617,13 +1230,8 @@ settings_bind_shortcuts_done (GObject      *source,
      }
  
    settings_response_to_shortcuts (session, response);
@@ -1126,7 +1139,13 @@ index fae05fc..003e6e0 100644
  }
  
  static gboolean
-@@ -675,7 +1281,7 @@ handle_bind_shortcuts (XdpImplGlobalShortcuts *object,
+@@ -671,11 +1279,13 @@ handle_bind_shortcuts (XdpImplGlobalShortcuts *object,
+                   g_dbus_method_invocation_get_connection (invocation));
+ 
+   shortcuts_session->initial_shortcuts = g_variant_ref (arg_shortcuts);
++  g_free (shortcuts_session->bind_handle);
++  shortcuts_session->bind_handle = g_strdup (arg_handle);
+   shortcuts_session->bound = TRUE;
  
    g_assert (object == global_shortcuts);
    handle = g_new0 (BindShortcutsHandle, 1);
@@ -1135,7 +1154,7 @@ index fae05fc..003e6e0 100644
    handle->invocation = g_object_ref (invocation);
    handle->request = g_object_ref (request);
    handle->shortcuts = g_variant_ref (arg_shortcuts);
-@@ -686,7 +1292,7 @@ handle_bind_shortcuts (XdpImplGlobalShortcuts *object,
+@@ -686,10 +1296,11 @@ handle_bind_shortcuts (XdpImplGlobalShortcuts *object,
  
    settings_shortcuts = portal_shortcuts_to_settings (arg_shortcuts);
  
@@ -1144,7 +1163,11 @@ index fae05fc..003e6e0 100644
                                                                      shortcuts_session->app_id,
                                                                      arg_parent_window,
                                                                      settings_shortcuts,
-@@ -746,83 +1352,6 @@ out:
++                                                                    arg_handle,
+                                                                     NULL,
+                                                                     settings_bind_shortcuts_done,
+                                                                     g_steal_pointer (&handle));
+@@ -746,88 +1357,11 @@ out:
    return TRUE;
  }
  
@@ -1226,9 +1249,26 @@ index fae05fc..003e6e0 100644
 -}
 -
  static gboolean
- match_app_id (Session       *session,
-               gconstpointer  data)
-@@ -847,29 +1376,35 @@ rebind_session_shortcuts (GlobalShortcutsSession  *session,
+-match_app_id (Session       *session,
+-              gconstpointer  data)
++match_bind_handle (Session       *session,
++                   gconstpointer  data)
+ {
+-  const char *app_id = data;
++  const char *bind_handle = data;
+   GlobalShortcutsSession *shortcuts_session;
+ 
+   if (!is_global_shortcuts_session (session))
+@@ -835,7 +1369,7 @@ match_app_id (Session       *session,
+ 
+   shortcuts_session = (GlobalShortcutsSession *) session;
+ 
+-  if (g_strcmp0 (shortcuts_session->app_id, app_id) != 0)
++  if (g_strcmp0 (shortcuts_session->bind_handle, bind_handle) != 0)
+     return FALSE;
+ 
+   return TRUE;
+@@ -847,41 +1381,48 @@ rebind_session_shortcuts (GlobalShortcutsSession  *session,
                            GDBusMethodInvocation   *invocation)
  {
    g_autoptr(BindShortcutsHandle) handle = NULL;
@@ -1274,23 +1314,32 @@ index fae05fc..003e6e0 100644
 +handle_rebind_shortcuts (OrgGnoblinShellGlobalShortcutsRebind *object,
                           GDBusMethodInvocation         *invocation,
                           const char                    *arg_app_id,
-                          GVariant                      *arg_shortcuts)
-@@ -881,7 +1416,7 @@ handle_rebind_shortcuts (OrgGnomeGlobalShortcutsRebind *object,
+-                         GVariant                      *arg_shortcuts)
++                         GVariant                      *arg_shortcuts,
++                         const char                    *arg_handle)
+ {
+   Session *session;
+ 
+-  session = find_session (match_app_id, arg_app_id);
++  session = find_session (match_bind_handle, arg_handle);
+ 
    if (!session)
      {
-       g_debug ("Session for app %s not found in RebindShortcuts", arg_app_id);
+-      g_debug ("Session for app %s not found in RebindShortcuts", arg_app_id);
 -      org_gnome_global_shortcuts_rebind_complete_rebind_shortcuts (object, invocation);
++      g_debug ("Session for app %s handle %s not found in RebindShortcuts", arg_app_id, arg_handle);
 +      org_gnoblin_shell_global_shortcuts_rebind_complete_rebind_shortcuts (object, invocation);
        return TRUE;
      }
  
-@@ -898,14 +1433,14 @@ settings_configure_shortcuts_done (GObject      *source,
+@@ -898,14 +1439,14 @@ settings_configure_shortcuts_done (GObject      *source,
                                     GAsyncResult *result,
                                     gpointer      data)
  {
 -  OrgGnomeSettingsGlobalShortcutsProvider *proxy = (OrgGnomeSettingsGlobalShortcutsProvider *) source;
+-  g_autofree char *app_id = data;
 +  OrgGnoblinShellGlobalShortcutsProvider *proxy = (OrgGnoblinShellGlobalShortcutsProvider *) source;
-   g_autofree char *app_id = data;
++  g_autofree char *bind_handle = data;
    g_autoptr(GVariant) response = NULL;
    g_autoptr(GError) error = NULL;
    Session *session;
@@ -1301,7 +1350,20 @@ index fae05fc..003e6e0 100644
                                                                                       &response,
                                                                                       result,
                                                                                       &error))
-@@ -967,7 +1502,7 @@ handle_configure_shortcuts (XdpImplGlobalShortcuts *object,
+@@ -914,10 +1455,10 @@ settings_configure_shortcuts_done (GObject      *source,
+       return;
+     }
+ 
+-  session = find_session (match_app_id, app_id);
++  session = find_session (match_bind_handle, bind_handle);
+   if (!session)
+     {
+-      g_debug ("Session for app %s not found in ConfigureShortcuts response", app_id);
++      g_debug ("Session for handle %s not found in ConfigureShortcuts response", bind_handle);
+       return;
+     }
+ 
+@@ -967,12 +1508,13 @@ handle_configure_shortcuts (XdpImplGlobalShortcuts *object,
  
    if (shortcuts_session->bound)
      {
@@ -1309,8 +1371,15 @@ index fae05fc..003e6e0 100644
 +      org_gnoblin_shell_global_shortcuts_provider_call_configure_shortcuts (settings,
                                                                               shortcuts_session->app_id,
                                                                               arg_parent_window,
++                                                                             shortcuts_session->bind_handle,
                                                                               NULL,
-@@ -981,7 +1516,7 @@ handle_configure_shortcuts (XdpImplGlobalShortcuts *object,
+                                                                              settings_configure_shortcuts_done,
+-                                                                             g_strdup (shortcuts_session->app_id));
++                                                                             g_strdup (shortcuts_session->bind_handle));
+     }
+   else if (shortcuts_session->initial_shortcuts)
+     {
+@@ -981,13 +1523,14 @@ handle_configure_shortcuts (XdpImplGlobalShortcuts *object,
        g_debug ("Recovering session by calling BindShortcuts internally");
        shortcuts_session->bound = TRUE;
        settings_shortcuts = portal_shortcuts_to_settings (shortcuts_session->initial_shortcuts);
@@ -1319,7 +1388,15 @@ index fae05fc..003e6e0 100644
                                                                          shortcuts_session->app_id,
                                                                          arg_parent_window,
                                                                          settings_shortcuts,
-@@ -1003,170 +1538,53 @@ handle_configure_shortcuts (XdpImplGlobalShortcuts *object,
++                                                                        shortcuts_session->bind_handle,
+                                                                         NULL,
+                                                                         settings_configure_shortcuts_done,
+-                                                                        g_strdup (shortcuts_session->app_id));
++                                                                        g_strdup (shortcuts_session->bind_handle));
+     }
+   else
+     {
+@@ -1003,170 +1546,53 @@ handle_configure_shortcuts (XdpImplGlobalShortcuts *object,
  }
  
  static gboolean
@@ -1512,7 +1589,7 @@ index fae05fc..003e6e0 100644
  }
  
  gboolean
-@@ -1187,33 +1605,23 @@ global_shortcuts_init (GDBusConnection *bus,
+@@ -1187,33 +1613,23 @@ global_shortcuts_init (GDBusConnection *bus,
                                           error))
      return FALSE;
  

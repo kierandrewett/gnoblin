@@ -26,3 +26,12 @@ backend keeps its normal consent dialogs.
 2. Write permission rules in the portal backend you use. Bingux reads its own
    rules.
 3. Stop subscribing to the removed events and calling the removed commands.
+
+### Changed
+
+`org.gnoblin.Shell.GlobalShortcutsProvider` `BindShortcuts` and
+`ConfigureShortcuts`, and `org.gnoblin.Shell.GlobalShortcutsRebind`
+`RebindShortcuts`, take a trailing request handle (`o`), the caller's
+`org.freedesktop.portal.Request` object path. The shell uses it, with the
+application ID, to identify the requester. Calls with the old argument lists
+are not supported. Deploy the portal backend and the shell provider together.

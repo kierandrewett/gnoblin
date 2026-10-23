@@ -71,8 +71,11 @@ Own the bus name `org.gnoblin.Shell.GlobalShortcutsProvider` and export the
 interface `org.gnoblin.Shell.GlobalShortcutsProvider` at
 `/org/gnoblin/Shell/GlobalShortcutsProvider`.
 
-`BindShortcuts` receives the application ID, parent window, and a shortcut list
-of type `a(sa{sv})`. Each entry can include:
+`BindShortcuts` receives the application ID, parent window, a shortcut list
+of type `a(sa{sv})`, and the request handle (`o`). The handle is the caller's
+`org.freedesktop.portal.Request` object path. The shell uses it, together with
+the application ID, to identify the requester; a host process with an empty
+application ID is identified by its executable. Each shortcut entry can include:
 
 - `description` (`s`): a label for the shortcut.
 - `preferred_trigger` (`s`): the application's suggested accelerator.
@@ -81,13 +84,15 @@ Return the same IDs with a `shortcuts` (`as`) option containing only
 user-approved accelerators. Return an empty list for shortcuts the user did
 not approve. The portal registers only returned accelerators with Gnoblin.
 
-`ConfigureShortcuts` receives the application ID and parent window. Return the
+`ConfigureShortcuts` receives the application ID, parent window, and the request
+handle (`o`) from the `BindShortcuts` call that created the session. Return the
 updated list in the same format. The shell owns the approval UI and any stored
 selection; the portal owns the portal session and activation signals.
 
 When the user changes saved bindings, call `RebindShortcuts` on
 `org.freedesktop.impl.portal.desktop.gnoblin`, at
 `/org/gnoblin/Shell/GlobalShortcuts`, using
-`org.gnoblin.Shell.GlobalShortcutsRebind`. Pass the application ID and the
-updated `a(sa{sv})` list. The portal replaces the active bindings and emits
+`org.gnoblin.Shell.GlobalShortcutsRebind`. Pass the application ID, the updated
+`a(sa{sv})` list, and the request handle (`o`) from the `BindShortcuts` call
+that created the session. The portal replaces the active bindings and emits
 `ShortcutsChanged` to portal clients.
