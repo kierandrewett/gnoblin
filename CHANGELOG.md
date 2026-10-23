@@ -16,6 +16,14 @@
   package build, install, stock GNOME coexistence and removal gates. Graphical
   session support is not claimed.
 
+### Fixed
+
+- The portal backend now destroys and releases each ScreenCast consent dialog
+  and its hidden parent window when the session ends. Before, the dialog's
+  widget tree stayed alive after every screen cast. Repeated screen casts still
+  grow the backend's open files and memory a little (tracked in
+  `gnoblin-ree0`).
+
 ### Removed
 
 Gnoblin no longer manages app permissions or persistent portal grants. Bingux

@@ -1,0 +1,85 @@
+From a6f3536ed02cbf7b277cc8bbed3725ddc370e0e2 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 23 Oct 2026 02:27:49 +0100
+Subject: [PATCH] screencast: release dialog windows with their session
+
+Each ScreenCast consent dialog leaked its invisible transient parent and
+the dialog object. Destroying the dialog window kept the GtkWindow tree
+alive, so ScreenCastWidget never finalized and its display state tracker
+and shell introspect listeners were never released. Its colors provider
+also stayed attached to the display after finalize.
+
+Destroy and unref the dialog and its fake parent when the dialog handle
+is freed, and remove the colors provider from the display on finalize.
+---
+ src/screencast.c       | 7 ++++++-
+ src/screencastwidget.c | 7 ++++++-
+ 2 files changed, 12 insertions(+), 2 deletions(-)
+
+diff --git a/src/screencast.c b/src/screencast.c
+index 8946775..a3cd9f1 100644
+--- a/src/screencast.c
++++ b/src/screencast.c
+@@ -78,6 +78,7 @@ typedef struct _ScreenCastDialogHandle
+   ScreenCastSession *session;
+ 
+   GtkWindow *dialog;
++  GtkWindow *fake_parent;
+   GxdpExternalWindow *external_parent;
+ 
+   int response;
+@@ -102,7 +103,10 @@ screen_cast_dialog_handle_free (ScreenCastDialogHandle *dialog_handle)
+ {
+   g_signal_handlers_disconnect_by_data (dialog_handle->request, dialog_handle);
+   g_signal_handlers_disconnect_by_data (dialog_handle->dialog, dialog_handle);
+-  g_clear_pointer (&dialog_handle->dialog, gtk_window_destroy);
++  gtk_window_destroy (dialog_handle->dialog);
++  g_clear_object (&dialog_handle->dialog);
++  gtk_window_destroy (dialog_handle->fake_parent);
++  g_clear_object (&dialog_handle->fake_parent);
+   g_clear_object (&dialog_handle->external_parent);
+   g_object_unref (dialog_handle->request);
+ 
+@@ -400,6 +404,7 @@ create_screen_cast_dialog (ScreenCastSession     *session,
+   dialog_handle->request = g_object_ref (request);
+   dialog_handle->external_parent = external_parent;
+   dialog_handle->dialog = dialog;
++  dialog_handle->fake_parent = GTK_WINDOW (fake_parent);
+ 
+   g_signal_connect (request, "handle-close",
+                     G_CALLBACK (on_request_handle_close_cb), dialog_handle);
+diff --git a/src/screencastwidget.c b/src/screencastwidget.c
+index f3d18b8..04e5675 100644
+--- a/src/screencastwidget.c
++++ b/src/screencastwidget.c
+@@ -66,6 +66,7 @@ struct _ScreenCastWidget
+   bool                   allow_multiple;
+   ScreenCastSourceTypes  source_types;
+ 
++  GdkDisplay            *colors_display;
+   GtkCssProvider        *colors_provider;
+ };
+ 
+@@ -465,6 +466,9 @@ screen_cast_widget_finalize (GObject *object)
+ 
+   g_clear_object (&widget->filter_model);
+ 
++  if (widget->colors_provider)
++    gtk_style_context_remove_provider_for_display (widget->colors_display,
++                                                   GTK_STYLE_PROVIDER (widget->colors_provider));
+   g_clear_object (&widget->colors_provider);
+ 
+   G_OBJECT_CLASS (screen_cast_widget_parent_class)->finalize (object);
+@@ -567,7 +571,8 @@ screen_cast_widget_init (ScreenCastWidget *widget)
+   widget->shell_introspect = shell_introspect_get ();
+ 
+   widget->colors_provider = gtk_css_provider_new ();
+-  gtk_style_context_add_provider_for_display (gtk_widget_get_display (GTK_WIDGET (widget)),
++  widget->colors_display = gtk_widget_get_display (GTK_WIDGET (widget));
++  gtk_style_context_add_provider_for_display (widget->colors_display,
+                                               GTK_STYLE_PROVIDER (widget->colors_provider),
+                                               GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
+ 
+-- 
+2.55.0
+
