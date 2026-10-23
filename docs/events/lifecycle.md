@@ -30,16 +30,18 @@ Common event fields:
 Fields with a closed set of values are listed below. Each payload carries the
 current value. The default column applies only where the source defines one.
 
-| Event                                     | Field          | Accepted values                                    | Default |
-| ----------------------------------------- | -------------- | -------------------------------------------------- | ------- |
-| `gnoblin.session.state-changed`           | `state`        | `starting`, `running`, `stopping`                  | None    |
-| `gnoblin.session.lock-state-changed`      | `state`        | `unlocked`, `covering`, `locked`, `failsafe`       | None    |
-| `gnoblin.runtime.status-changed`          | `state`        | `starting`, `running`, `restarting`, `unavailable` | None    |
-| `gnoblin.appearance.color-scheme-changed` | `color_scheme` | `default`, `prefer-dark`, `prefer-light`           | None    |
-| `gnoblin.shortcut.activated`              | `trigger`      | `press`, `release`                                 | `press` |
-| `gnoblin.shortcut.session.ended`          | `reason`       | `released`, `cancelled`                            | None    |
-| `gnoblin.input.gesture`                   | `phase`        | `begin`, `update`, `end`                           | None    |
-| `gnoblin.prompt.requested`                | `kind`         | `password`, `confirm`                              | None    |
+| Event                                     | Field          | Accepted values                                       | Default |
+| ----------------------------------------- | -------------- | ----------------------------------------------------- | ------- |
+| `gnoblin.session.state-changed`           | `state`        | `starting`, `running`, `stopping`                     | None    |
+| `gnoblin.session.lock-state-changed`      | `state`        | `unlocked`, `covering`, `locked`, `failsafe`          | None    |
+| `gnoblin.runtime.status-changed`          | `state`        | `starting`, `running`, `restarting`, `unavailable`    | None    |
+| `gnoblin.appearance.color-scheme-changed` | `color_scheme` | `default`, `prefer-dark`, `prefer-light`              | None    |
+| `gnoblin.shortcut.activated`              | `trigger`      | `press`, `release`                                    | `press` |
+| `gnoblin.shortcut.session.ended`          | `reason`       | `released`, `cancelled`                               | None    |
+| `gnoblin.input.gesture`                   | `phase`        | `begin`, `update`, `end`                              | None    |
+| `gnoblin.prompt.requested`                | `kind`         | `password`, `confirm`                                 | None    |
+| `gnoblin.window.activation-denied`        | `reason`       | `missing_context`, `invalid_context`, `stale_context` | None    |
+| `gnoblin.input.gesture`                   | `gesture`      | `swipe`, `pinch`, `hold`                              | None    |
 
 Only `locked` confirms that Mutter completed the lock transition.
 
@@ -52,8 +54,8 @@ these payloads.
 
 ## Changed-family fields
 
-These families changed in this branch. The remaining families are described in
-their tables below.
+These events carry structured records. The tables below describe the remaining
+families.
 
 | Event                          | Field        | Type                  | Accepted values or default                                                                   |
 | ------------------------------ | ------------ | --------------------- | -------------------------------------------------------------------------------------------- |

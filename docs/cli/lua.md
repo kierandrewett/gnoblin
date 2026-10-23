@@ -24,6 +24,8 @@ print(version.gnoblin, version.gnome, version.git_sha)
 :quit
 ```
 
+## Windows and focus
+
 Window reads return read-only records with the same properties and typed
 methods as the supervised runtime:
 
@@ -64,6 +66,8 @@ local policy = gnoblin.focus.policy()
 print(policy.focus_mode, policy.focus_new_windows, policy.revision)
 ```
 
+## Settings and reload
+
 `gnoblin.settings` returns the committed settings snapshot as a deeply
 read-only value. Read nested options directly from the snapshot:
 
@@ -79,6 +83,8 @@ returns a deeply read-only result; inspect it to see what was applied:
 local result = gnoblin.runtime.reload_config()
 print(result.action, result.runtime_generation)
 ```
+
+## Privacy and capabilities
 
 `gnoblin.privacy.state()` returns a deeply read-only `PrivacyState` record.
 Check `available` before reading an activity field; unavailable sources omit
@@ -110,6 +116,8 @@ for _, capability in ipairs(gnoblin.capabilities.list()) do
 end
 ```
 
+## Launch feedback
+
 Read launch feedback with `gnoblin.launches.list()`. Use
 `gnoblin.launches.snapshot()` when you also need the collection revision. Both
 calls return deeply read-only launch records:
@@ -134,6 +142,8 @@ local launch = gnoblin.launches.begin {
 print(launch.state)
 gnoblin.launches.finish(token)
 ```
+
+## Session
 
 `gnoblin.session.status()` returns a read-only `SessionStatus`. When lock state
 is unavailable, `lock_state` is omitted; that does not mean the session is
@@ -169,6 +179,8 @@ local request = gnoblin.session.lock()
 print(request.dispatched, request.subscribers)
 ```
 
+## Workspaces
+
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
 read-only `Workspace` records. The console also exposes the workspace
@@ -199,6 +211,8 @@ when supplied. A window is `"active"` or a stable window ID.
 `move_active` and `move_window` return a read-only `WorkspaceMove` with the
 resulting workspace, window ID, and `follow` value. The compositor rejects
 removal of configured, active, or nonempty workspaces.
+
+## Input, monitors and layers
 
 Input devices and sources are read-only `InputDevice` and `InputSource`
 records. Each record includes the revision of its snapshot. The current source
@@ -253,6 +267,8 @@ Read the effective animation and shadow policy for a layer namespace with
 local policy = gnoblin.layers.animation_policy("bingux-panel")
 print(policy.enter.animation, policy.exit.animation, policy.window_shadow)
 ```
+
+## Animations
 
 Animation previews return a read-only `AnimationPreview` record. Its
 `seek`, `step`, `play`, and `pause` methods return the completed updated record;

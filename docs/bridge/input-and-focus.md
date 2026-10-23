@@ -48,9 +48,10 @@ window ID:
 }
 ```
 
-`window.begin_resize` accepts the same token and an `edge` from the eight
-`ResizeEdge` values documented for API 1.12. Each token authorizes one
-operation and is consumed even when its arguments are invalid.
+`window.begin_resize` accepts the same token and an `edge`: `north`, `south`,
+`east`, `west`, `north_east`, `north_west`, `south_east` or `south_west`. Each
+token authorizes one operation and is consumed even when its arguments are
+invalid.
 
 A request rejected for an unsupported API version or a minor below 1.30 still
 consumes its matching token; request a new WM menu event before retrying.
@@ -221,6 +222,8 @@ does not require the Lua supervisor. It reports compositor availability, not
 Lua supervisor health. The socket cannot report a final state after the
 compositor stops; a failed connection means the compositor is unavailable.
 
+### API 1.20: config reload
+
 API 1.20 adds `runtime.reload_config()` with no arguments. In a standalone
 native session, reload validates and applies the complete Lua configuration
 while the session is running. Native settings, policies, autostart entries,
@@ -258,7 +261,7 @@ If a reload is already in progress, a second request returns an error. It does
 not emit `gnoblin.config.reload-failed` because Gnoblin has not loaded or
 validated a second config.
 
-#### API 1.68: modal key focus contexts
+### API 1.68: modal key focus contexts
 
 - Lua listeners may receive a `FocusContext` userdata. API 1.68 socket clients
   may receive `focus_context`, a one-use token bound to their connection.
@@ -290,6 +293,16 @@ unbound or its owner disconnects.
     }
 }
 ```
+
+This binding uses `hold: "alt"` and `mode: "modal"`:
+
+- `hold` is `none`, `super`, `control` or `alt`. The session stays active until
+  that modifier is released.
+- `mode` is `passive` or `modal`. Modal mode captures keyboard input while the
+  modifier is held.
+
+See [API 1.22](/bridge/shortcuts-and-events#api-version-1-22-held-and-modal-shortcut-sessions)
+for every field.
 
 The shell should subscribe before binding if it needs session events. Bare
 Super capture is intended for shells that open their overlay after the key is
