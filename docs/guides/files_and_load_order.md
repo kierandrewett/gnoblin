@@ -72,8 +72,7 @@ gnoblin.configure {window_management = {raise_on_click = true}}
 The result keeps sloppy focus and raises windows when clicked. The second call
 does not remove settings that it does not mention.
 
-Lists replace earlier values. This applies to `window_rules`, `shortcuts`,
-`autostart` and permission `rules`.
+Lists replace earlier values. This applies to `window_rules`, `shortcuts`, and `autostart`.
 
 To add a window rule while keeping previous rules, use:
 
@@ -134,9 +133,15 @@ hyphenated names. String values, shader uniform names and renderer names stay
 literal. Do not supply both spellings of the same key in one table.
 
 Each reload evaluates the files again; Lua variables do not survive it.
-You can use Lua's table, string, math and UTF-8 helpers. Config code cannot
-read arbitrary files, run processes or load native modules.
-Use shortcuts or autostart to launch programs.
+
+Config code can use Lua's table, string, math and UTF-8 helpers. It cannot read
+arbitrary files, run processes or load native modules. These are not available:
+
+- The `os`, `io`, `debug` and `package` libraries. `os.getenv("HOME")` fails
+  with "attempt to index a nil value (global 'os')".
+- `dofile` and `loadfile`. To load another file, use `gnoblin.load`.
+
+To launch programs, use shortcuts or autostart.
 
 Evaluation is limited to 8 MiB of Lua memory, one million instructions and
 32 nested files.

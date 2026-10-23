@@ -1,0 +1,112 @@
+name: Fedora RPM
+
+# Builds the Fedora source RPMs from the release source bundle, rebuilds them into binary RPMs the way COPR does,
+# and runs the clean install, GNOME coexistence and removal checks on those binaries. The release workflow calls this
+# before it publishes, so a spec that fails to build, or a package that fails to install, stops the release instead
+# of failing in COPR after the release is public. It never publishes anything.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch, tag or commit that holds the specs and helper scripts
+        type: string
+        required: true
+      release_tag:
+        description: Release tag, or commit-<sha> for a dry run. Names the source bundle and the package artifacts.
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: fedora:45
+    timeout-minutes: 120
+    steps:
+      - name: Install RPM tools
+        run: dnf -y install dnf-plugins-core git python3 rpm-build rpmdevtools tar xz
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: gnoblin-${{ inputs.release_tag }}
+          path: release-assets
+      - name: Build source RPMs from the release source bundle
+        run: |
+          cd release-assets
+          sha256sum -c SHA256SUMS
+          source_tarballs=(gnoblin-*-source.tar.xz)
+          if [ "${#source_tarballs[@]}" -ne 1 ] || [ ! -f "${source_tarballs[0]}" ]; then
+            echo "Expected exactly one complete Gnoblin source tarball" >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/gnoblin-source-bundle" "$RUNNER_TEMP/gnoblin-srpms"
+          tar -xf "${source_tarballs[0]}" -C "$RUNNER_TEMP/gnoblin-source-bundle"
+          mapfile -t bundle_roots < <(find "$RUNNER_TEMP/gnoblin-source-bundle" -mindepth 1 -maxdepth 1 -type d)
+          test "${#bundle_roots[@]}" -eq 1
+          source_dir="${bundle_roots[0]}/sources"
+          test -d "$source_dir"
+          install -m 0644 -- "${source_tarballs[0]}" \
+            "$source_dir/gnoblin-${bundle_roots[0]##*/gnoblin-}-source.tar.xz"
+          cd "$GITHUB_WORKSPACE"
+          for component in xdg-desktop-portal-gnoblin gnoblin; do
+            ./scripts/build-srpm.sh "$component" "$source_dir" "$RUNNER_TEMP/gnoblin-srpms"
+          done
+          mkdir -p srpms
+          cp -- "$RUNNER_TEMP"/gnoblin-srpms/*.src.rpm srpms/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: source-rpms-${{ inputs.release_tag }}
+          path: srpms/*.src.rpm
+          if-no-files-found: error
+          retention-days: 30
+      - name: Install the build requirements the source RPMs declare
+        # Only the specs name build requirements here. A package missing from a spec fails this job the way it
+        # fails a COPR build.
+        run: dnf -y builddep srpms/*.src.rpm
+      - name: Rebuild the binary RPMs as an unprivileged user
+        run: |
+          useradd -m builder
+          mkdir -p rpms
+          chown -R builder: rpms
+          for srpm in srpms/*.src.rpm; do
+            runuser -u builder -- rpmbuild --rebuild --define "_topdir /home/builder/rpmbuild" \
+              --define "_rpmdir $GITHUB_WORKSPACE/rpms" "$GITHUB_WORKSPACE/$srpm"
+          done
+          # The debug packages stay out of the release, as they do for openSUSE.
+          find rpms -type f -name '*.rpm' \( -name '*-debuginfo-*' -o -name '*-debugsource-*' \) -delete
+          find rpms -mindepth 2 -type f -name '*.rpm' -exec mv -t rpms {} +
+          find rpms -mindepth 1 -type d -empty -delete
+          ls -l rpms
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fedora-rpms-${{ inputs.release_tag }}
+          path: rpms/*.rpm
+          if-no-files-found: error
+          retention-days: 30
+
+  install:
+    needs: build
+    runs-on: ubuntu-latest
+    container: fedora:45
+    timeout-minutes: 30
+    steps:
+      - name: Install checkout tools
+        run: dnf -y install git python3
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: fedora-rpms-${{ inputs.release_tag }}
+          path: rpms
+      - name: Install, coexist with stock GNOME and remove
+        run: ./scripts/check-fedora-install.sh --rpm-dir rpms

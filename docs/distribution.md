@@ -70,17 +70,21 @@ Mutter and portal sources. Extract it and run `make` to check the
 same source route users receive. The command also writes component archives,
 an Arch recipe, and checksums into `dist/release`.
 
-A release tag starts the release workflow:
+A release tag starts the release workflow. It runs these stages:
 
-1. It creates a draft GitHub release with the source tarball.
-2. It builds the Fedora source RPMs, and builds and installs the Arch and openSUSE
-   packages.
-3. It publishes the release only when those builds and install checks have passed.
-4. COPR then builds the Fedora packages and runs the Fedora install checks.
+1. **Source.** It builds the source bundle once and uploads it as a workflow artifact.
+2. **Packages.** From that bundle, in parallel, it builds the Fedora source and binary RPMs, the
+   Arch packages and the openSUSE Tumbleweed RPMs. Each route then installs its packages on a
+   clean system, installs stock GNOME beside them and removes Gnoblin.
+3. **Publish.** It checksums every asset, records build provenance, attaches everything to one
+   release and makes the release public.
+4. **COPR.** It builds the Fedora packages in COPR and installs them from there.
 
-A failed check leaves the draft in place. A push to `main`, or a run without a tag,
-does step 2 only and publishes nothing. It does not run COPR, so a Fedora packaging
-error shows up on the first tag.
+Nothing is public until every package job and install check has passed. A failed check leaves no
+release behind, and the run keeps the built assets for 30 days.
+
+A push to `main`, a pull request that changes the packaging or the release workflow, and a manual
+run without a tag do stages 1 and 2 and publish nothing. They do not run COPR.
 
 ## Prepare Fedora source RPMs
 
@@ -119,21 +123,35 @@ canonical Gnoblin [SemVer](https://semver.org/) identity; `versions/gnome-versio
 continues to pin the compatible GNOME train. For example, Gnoblin `0.1.0` can
 target GNOME `51.0` without claiming that it is GNOME version `0.1.0`.
 
-Before release, update `versions/gnoblin-version.json` deliberately: use a major version
+Before release, choose the version deliberately: use a major version
 for incompatible Gnoblin configuration or protocol changes, a minor version for
-backwards-compatible features, and a patch version for compatible fixes. Then
-push the release commit and a signed `gnoblin-v<semver>` tag:
+backwards-compatible features, and a patch version for compatible fixes. Then run
+the preparation script from a clean `main`:
 
 ```sh
-git tag -s gnoblin-v0.1.0 -m "Gnoblin 0.1.0 (GNOME 51.0)"
-git push origin gnoblin-v0.1.0
+./scripts/prepare-release.sh 0.1.11
 ```
 
-The release workflow publishes a self-contained Gnoblin source tarball and
-the Mutter and portal source archives first, then source RPMs and binary packages.
+The script does these steps:
+
+- Sets the version in `versions/gnoblin-version.json` and `packaging/native-packages.json`.
+- Regenerates the package recipes and commits the result.
+- Creates the annotated tag `gnoblin-v0.1.11`.
+
+Add `--sign` for a signed tag, `--no-tag` to skip the tag, and `--dry-run` to check the version
+without changing anything. The script never pushes. Push the commit first, wait for the Release
+workflow to pass on `main`, then push the tag:
+
+```sh
+git push origin main
+git push origin gnoblin-v0.1.11
+```
+
+The release workflow publishes a self-contained Gnoblin source tarball, the Mutter and portal
+source archives, source and binary packages, and a checksum file.
 The main tarball builds with `make` and does not need Git or submodules.
-The Fedora source RPM and openSUSE jobs use the component archives inside that
-tarball, after checking the published source assets' SHA-256 sums.
+The Fedora and openSUSE jobs use the component archives inside that
+tarball, after checking its SHA-256 sums.
 
 ### Release assets
 
@@ -150,6 +168,8 @@ Each release page lists these files. `SHA256SUMS` covers every other file.
 | `xdg-desktop-portal-gnoblin-<portal-version>-<pkgrel>-x86_64.pkg.tar.zst`     | Arch portal package built from the recipe                         | Arch              |
 | `gnoblin-<version>-<release>.fc<N>.src.rpm`                                   | Fedora source RPM for `gnoblin`, built by COPR                    | Fedora            |
 | `xdg-desktop-portal-gnoblin-<portal-version>-<release>.fc<N>.src.rpm`         | Fedora source RPM for `xdg-desktop-portal-gnoblin`, built by COPR | Fedora            |
+| `gnoblin-<version>-<release>.fc<N>.x86_64.rpm`                                | Fedora binary RPM for `gnoblin`                                   | Fedora            |
+| `xdg-desktop-portal-gnoblin-<portal-version>-<release>.fc<N>.x86_64.rpm`      | Fedora binary RPM for `xdg-desktop-portal-gnoblin`                | Fedora            |
 | `gnoblin-<version>-<release>.tumbleweed.x86_64.rpm`                           | Binary RPM for `gnoblin`                                          | openSUSE          |
 | `xdg-desktop-portal-gnoblin-<portal-version>-<release>.tumbleweed.x86_64.rpm` | Binary RPM for `xdg-desktop-portal-gnoblin`                       | openSUSE          |
 | `SHA256SUMS`                                                                  | SHA-256 checksums of all other assets                             | All distributions |
@@ -158,26 +178,34 @@ Each release page lists these files. `SHA256SUMS` covers every other file.
 `51.0`. `<pkgrel>` and `<release>` are separate packaging counters for Arch and
 RPM, so they do not match each other.
 
-A release tag creates a versioned release. A push to `main`, or a manual run
-without a tag, builds and tests everything and publishes nothing. A manual run
-with a tag repairs a release that is still a draft. It refuses to change a
-release that is already public.
+A release tag creates a versioned release. A manual run with a tag publishes that tag, or repairs a
+release that is still a draft. It refuses to change a release that is already public. To repair a
+public release, turn it back into a draft first with `gh release edit TAG --draft`.
 
 `v<gnome-version>` tags predate this convention and remain historical releases.
 
-The release starts as a draft with the source archives. Package jobs add their
-artifacts as they pass. The Arch package is attached only after a clean
-installation resolves its runtime dependencies, then installs the optional GNOME
-app integration package.
+The publish job refuses to start unless the release has the source bundle and at least one package
+of each kind, and unless `SHA256SUMS` lists exactly the other files. It uploads to a draft release
+and makes the release public as its last step, so the release page never shows a half-filled
+release.
 
-The draft becomes public only when the source RPM, Arch and openSUSE jobs have
-all passed. If one fails, for example because its distribution repository lacks
-a required dependency version, the release stays a draft and nothing is public.
-Fix the cause and run the workflow again for the same tag.
+If a job fails, for example because its distribution repository lacks a required dependency
+version, nothing is published. Fix the cause and run the workflow again for the same tag.
 
-The COPR job installs the published Fedora package without stock GNOME, adds
-the optional app integration package, then checks coexistence with GNOME.
-The openSUSE package job checks the same installation order from its built RPMs.
+Each asset has build provenance recorded by GitHub. To check a download:
+
+```sh
+sha256sum -c SHA256SUMS --ignore-missing
+gh attestation verify FILE --repo kierandrewett/gnoblin
+```
+
+The release notes list the merged pull requests, grouped by label. `.github/release.yml` defines the
+groups.
+
+The release workflow installs the Fedora RPMs it built on a clean Fedora system, with and without
+the optional portal package, then installs stock GNOME beside them and removes Gnoblin.
+The COPR job runs the same checks, with `scripts/check-fedora-install.sh`, against the published
+COPR package. The openSUSE and Arch jobs check the same installation order from their built packages.
 
 COPR requires the repository secret `COPR_CONFIG`, containing the publisher's
 `copr-cli` configuration. Configure it once before the first automated release:

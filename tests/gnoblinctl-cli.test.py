@@ -1302,7 +1302,7 @@ def main() -> int:
                     server.bind(socket_path)
                     server.listen(9)
                     ready.set()
-                    for _ in range(125):
+                    for _ in range(114):
                         connection, _ = server.accept()
                         with connection:
                             stream = connection.makefile("rwb")
@@ -1706,50 +1706,6 @@ def main() -> int:
                                     result["enter"]["easing"] = True
                                 elif request["arguments"]["namespace"] == "negative-duration":
                                     result["enter"]["duration"] = -1
-                            elif request["method"] == "permissions.list":
-                                result = {
-                                    "policy": {"default": "deny", "rules": []},
-                                    "capabilities": ["screen-cast", "remote-desktop"],
-                                    "levels": ["deny", "ask", "allow"],
-                                    "path": "/tmp/gnoblin-permissions.json",
-                                }
-                            elif request["method"] == "permissions.check":
-                                result = {
-                                    "level": "allow",
-                                    "rule": "remote-test",
-                                    "monitors": [],
-                                    "devices": ["keyboard"],
-                                    "clipboard": True,
-                                    "revision": 9,
-                                }
-                            elif request["method"] == "permissions.policy":
-                                result = {
-                                    "default": "default",
-                                    "rules": [
-                                        {
-                                            "name": "remote-example",
-                                            "match": "^app%-id:org%.example%.Remote$",
-                                            "capabilities": ["remote-desktop"],
-                                            "level": "allow",
-                                        }
-                                    ],
-                                    "revision": 9,
-                                }
-                            elif request["method"] == "portals.grants":
-                                result = [
-                                    {
-                                        "id": "grant-17",
-                                        "kind": "remote-desktop",
-                                        "requester": "app-id:org.example.Remote",
-                                        "devices": ["keyboard", "pointer"],
-                                        "clipboard": True,
-                                        "has_screen_streams": True,
-                                        "created_at": 1720000000123,
-                                        "revision": 12,
-                                    }
-                                ]
-                            elif request["method"] == "grant.revoke":
-                                result = {"request_id": 29, "method": "grant.revoke"}
                             elif request["method"] == "shortcut.capture":
                                 result = {"request_id": 30, "method": "shortcut.capture"}
                             elif request["method"] == "window.move_to_monitor":
@@ -1802,7 +1758,6 @@ def main() -> int:
                                 "workspace.next",
                                 "workspace.previous",
                                 "workspace.move_active",
-                                "grant.revoke",
                                 "shortcut.capture",
                                 "launch.begin",
                                 "launch.end",
@@ -2022,8 +1977,6 @@ def main() -> int:
                                         }
                                     else:
                                         value = workspace
-                                elif method == "grant.revoke":
-                                    value = {"ok": True, "id": request["arguments"]["id"]}
                                 elif method == "shortcut.capture":
                                     value = {"accelerator": "<Super>Return"}
                                 elif method in {"launch.begin", "launch.end"}:
@@ -2327,48 +2280,6 @@ def main() -> int:
                 "default_bindings": ["<Alt>F4"],
             }
         ]
-        permissions_list = run(binary, "--socket", socket_path, "--format", "json", "permissions", "list")
-        assert permissions_list.returncode == 0, permissions_list.stderr
-        assert json.loads(permissions_list.stdout) == {
-            "policy": {"default": "deny", "rules": []},
-            "capabilities": ["screen-cast", "remote-desktop"],
-            "levels": ["deny", "ask", "allow"],
-            "path": "/tmp/gnoblin-permissions.json",
-        }
-        permissions_check = run(
-            binary,
-            "--socket",
-            socket_path,
-            "--format",
-            "json",
-            "permissions",
-            "check",
-            "remote-desktop",
-            "app-id:org.example.Remote",
-        )
-        assert permissions_check.returncode == 0, permissions_check.stderr
-        assert json.loads(permissions_check.stdout) == {
-            "level": "allow",
-            "rule": "remote-test",
-            "monitors": [],
-            "devices": ["keyboard"],
-            "clipboard": True,
-            "revision": 9,
-        }
-        permissions_policy = run(binary, "--socket", socket_path, "--format", "json", "permissions", "policy")
-        assert permissions_policy.returncode == 0, permissions_policy.stderr
-        assert json.loads(permissions_policy.stdout) == {
-            "default": "default",
-            "rules": [
-                {
-                    "name": "remote-example",
-                    "match": "^app%-id:org%.example%.Remote$",
-                    "capabilities": ["remote-desktop"],
-                    "level": "allow",
-                }
-            ],
-            "revision": 9,
-        }
         input_devices = run(binary, "--socket", socket_path, "--format", "json", "input", "devices")
         assert input_devices.returncode == 0, input_devices.stderr
         assert json.loads(input_devices.stdout) == {
@@ -2523,28 +2434,6 @@ def main() -> int:
         )
         animation_lua = run(binary, "--socket", socket_path, "lua", str(animation_lua_file))
         assert animation_lua.returncode == 0, animation_lua.stderr
-        grants_lua_file = Path(temporary) / "portal-grants.lua"
-        grants_lua_file.write_text(
-            "local grants = gnoblin.portals.grants()\n"
-            'assert(#grants == 1 and tostring(grants[1]) == "PortalGrant<grant-17>")\n'
-            'assert(grants[1].kind == "remote-desktop" and grants[1].requester == "app-id:org.example.Remote")\n'
-            'assert(grants[1].devices[1] == "keyboard" and grants[1].devices[2] == "pointer")\n'
-            "assert(grants[1].clipboard and grants[1].has_screen_streams)\n"
-            "assert(grants[1].created_at == 1720000000123 and grants[1].revision == 12)\n"
-            'assert(not pcall(function() grants[1].kind = "screen-cast" end))\n'
-            'assert(not pcall(function() grants[1].devices[1] = "touchscreen" end))\n'
-            'assert(not pcall(function() rawset(grants[1].devices, 1, "touchscreen") end))\n'
-            'assert(not pcall(function() gnoblin.portals.grants { requester = "invalid" } end))\n'
-            'local grant = gnoblin.grant.list { kind = "remote-desktop" }[1]\n'
-            'assert(grant.id == "grant-17" and type(grant.revoke) == "function")\n'
-            "local revoked = grant:revoke()\n"
-            'assert(revoked.ok and revoked.id == "grant-17")\n'
-            "assert(not pcall(function() revoked.ok = false end))\n"
-            "assert(not pcall(function() grant:revoke(true) end))\n",
-            encoding="utf-8",
-        )
-        grants_lua = run(binary, "--socket", socket_path, "lua", str(grants_lua_file))
-        assert grants_lua.returncode == 0, grants_lua.stderr
         input_lua_file = Path(temporary) / "input-snapshots.lua"
         input_lua_file.write_text(
             "local devices = gnoblin.input.devices()\n"
@@ -2689,21 +2578,6 @@ def main() -> int:
         )
         capability_result = run(binary, "--socket", socket_path, "lua", str(capabilities_file))
         assert capability_result.returncode == 0, capability_result.stderr
-        policy_file = Path(temporary) / "permission-policy.lua"
-        policy_file.write_text(
-            "local policy = gnoblin.permissions.policy()\n"
-            'assert(tostring(policy) == "PermissionPolicy" and policy.default == "default")\n'
-            "assert(policy.revision == 9 and #policy.rules == 1)\n"
-            'assert(policy.rules[1].name == "remote-example" and policy.rules[1].level == "allow")\n'
-            'assert(policy.rules[1].capabilities[1] == "remote-desktop")\n'
-            'assert(not pcall(function() policy.default = "deny" end))\n'
-            'assert(not pcall(function() policy.rules[1].level = "deny" end))\n'
-            'assert(not pcall(function() rawset(policy.rules[1].capabilities, 1, "access") end))\n'
-            "assert(not pcall(function() gnoblin.permissions.policy(true) end))\n",
-            encoding="utf-8",
-        )
-        policy_result = run(binary, "--socket", socket_path, "lua", str(policy_file))
-        assert policy_result.returncode == 0, policy_result.stderr
         session_status_file = Path(temporary) / "session-status.lua"
         session_status_file.write_text(
             "local unavailable = gnoblin.session.status()\n"
@@ -2736,22 +2610,6 @@ def main() -> int:
         )
         session_activity_result = run(binary, "--socket", socket_path, "lua", str(session_activity_file))
         assert session_activity_result.returncode == 0, session_activity_result.stderr
-        permission_decision_file = Path(temporary) / "permission-decision.lua"
-        permission_decision_file.write_text(
-            'local decision = gnoblin.permissions.check {capability = "remote-desktop", identity = "app-id:org.example.Remote"}\n'
-            'assert(tostring(decision) == "PermissionDecision" and decision.level == "allow")\n'
-            'assert(decision.rule == "remote-test" and decision.devices[1] == "keyboard")\n'
-            "assert(decision.clipboard and decision.revision == 9)\n"
-            'assert(not pcall(function() decision.level = "deny" end))\n'
-            'assert(not pcall(function() rawset(decision.devices, 1, "pointer") end))\n'
-            'local positional = gnoblin.permissions.check("remote-desktop", "app-id:org.example.Remote")\n'
-            'assert(positional.level == "allow" and positional.revision == 9)\n'
-            "assert(not pcall(function() gnoblin.permissions.check() end))\n"
-            'assert(not pcall(function() gnoblin.permissions.check {capability = "remote-desktop", identity = "app-id:test", extra = true} end))\n',
-            encoding="utf-8",
-        )
-        permission_decision_result = run(binary, "--socket", socket_path, "lua", str(permission_decision_file))
-        assert permission_decision_result.returncode == 0, permission_decision_result.stderr
         animation_reads_file = Path(temporary) / "animation-reads.lua"
         animation_reads_file.write_text(
             "local animations = gnoblin.animations.list()\n"
@@ -2804,19 +2662,6 @@ def main() -> int:
         )
         launch_operations_result = run(binary, "--socket", socket_path, "lua", str(launch_operations_file))
         assert launch_operations_result.returncode == 0, launch_operations_result.stderr
-        permission_list_file = Path(temporary) / "permission-list.lua"
-        permission_list_file.write_text(
-            "local permissions = gnoblin.permissions.list()\n"
-            'assert(permissions.policy.default == "deny")\n'
-            'assert(permissions.capabilities[1] == "screen-cast" and permissions.levels[2] == "ask")\n'
-            'assert(permissions.path == "/tmp/gnoblin-permissions.json")\n'
-            'assert(not pcall(function() permissions.policy.default = "allow" end))\n'
-            'assert(not pcall(function() rawset(permissions.capabilities, 1, "changed") end))\n'
-            "assert(not pcall(function() gnoblin.permissions.list(true) end))\n",
-            encoding="utf-8",
-        )
-        permission_list_result = run(binary, "--socket", socket_path, "lua", str(permission_list_file))
-        assert permission_list_result.returncode == 0, permission_list_result.stderr
         version_file = Path(temporary) / "version.lua"
         version_file.write_text(
             "local version = gnoblin.version()\n"
@@ -2944,17 +2789,6 @@ def main() -> int:
         )
         session_operations_result = run(binary, "--socket", socket_path, "lua", str(session_operations_script))
         assert session_operations_result.returncode == 0, session_operations_result.stderr
-        grant_revoke_script = Path(temporary) / "grant-revoke.lua"
-        grant_revoke_script.write_text(
-            'local result = gnoblin.grant.revoke {kind = "remote-desktop", id = "grant-cli", created_at = 1720000000123}\n'
-            'assert(result.ok and result.id == "grant-cli")\n'
-            "assert(not pcall(function() result.ok = false end))\n"
-            'assert(not pcall(function() gnoblin.grant.revoke {kind = "other", id = "x"} end))\n'
-            'assert(not pcall(function() gnoblin.grant.revoke {kind = "screen-cast", id = "x", extra = true} end))\n',
-            encoding="utf-8",
-        )
-        grant_revoke_result = run(binary, "--socket", socket_path, "lua", str(grant_revoke_script))
-        assert grant_revoke_result.returncode == 0, grant_revoke_result.stderr
         orientation_read = run(binary, "--socket", socket_path, "--format", "json", "input", "orientation-lock")
         assert orientation_read.returncode == 0, orientation_read.stderr
         assert json.loads(orientation_read.stdout) == {
@@ -3057,8 +2891,8 @@ def main() -> int:
         server_thread.join(timeout=5)
         assert not server_thread.is_alive(), "mock compositor did not finish CLI requests"
         assert not server_error, repr(server_error)
-        assert len(received) == 125
-        assert len(subscriptions) == 125
+        assert len(received) == 114
+        assert len(subscriptions) == 114
         assert received[-2]["method"] == "runtime.status"
         assert received[-2]["api_version"] == {"major": 1, "minor": 67}
         assert received[-1]["method"] == "session.status"
@@ -3099,7 +2933,7 @@ def main() -> int:
             "target": "panel:test",
             "autoplay": False,
         }
-        animation_calls = received[47:53]
+        animation_calls = received[44:50]
         assert [call["method"] for call in animation_calls] == [
             "animation.preview",
             "animation.seek",
@@ -3135,71 +2969,55 @@ def main() -> int:
         }
         assert launch_operations[1]["api_version"] == {"major": 1, "minor": 50}
         assert launch_operations[1]["arguments"] == {"token": "lua-start"}
-        permission_list_request = [call for call in received if call["method"] == "permissions.list"][-1]
-        assert permission_list_request["api_version"] == {"major": 1, "minor": 42}
-        assert permission_list_request["arguments"] == {}
         version_request = [call for call in received if call["method"] == "version"][-1]
         assert version_request["api_version"] == {"major": 1, "minor": 19}
         assert version_request["arguments"] == {}
-        assert received[53]["method"] == "portals.grants"
-        assert received[53]["api_version"] == {"major": 1, "minor": 45}
-        assert received[53]["arguments"] == {}
-        assert received[54]["method"] == "portals.grants"
-        assert received[54]["api_version"] == {"major": 1, "minor": 45}
-        assert received[54]["arguments"] == {"kind": "remote-desktop"}
-        assert received[55]["method"] == "grant.revoke"
-        assert received[55]["api_version"] == {"major": 1, "minor": 14}
-        assert received[55]["arguments"] == {
-            "id": "grant-17",
-            "kind": "remote-desktop",
-            "created_at": 1720000000123,
-        }
-        assert received[56]["method"] == "input.devices"
-        assert received[56]["api_version"] == {"major": 1, "minor": 46}
+        assert received[50]["method"] == "input.devices"
+        assert received[50]["api_version"] == {"major": 1, "minor": 46}
+        assert received[50]["arguments"] == {}
+        assert received[51]["method"] == "input.sources"
+        assert received[51]["api_version"] == {"major": 1, "minor": 46}
+        assert received[51]["arguments"] == {}
+        assert received[52]["method"] == "input.current_source"
+        assert received[52]["api_version"] == {"major": 1, "minor": 46}
+        assert received[52]["arguments"] == {}
+        assert received[53]["method"] == "input.select"
+        assert received[53]["api_version"] == {"major": 1, "minor": 6}
+        assert received[53]["arguments"] == {"type": "xkb", "id": "us"}
+        assert received[54]["method"] == "input.sources"
+        assert received[54]["api_version"] == {"major": 1, "minor": 46}
+        assert received[54]["arguments"] == {}
+        assert received[55]["method"] == "input.current_source"
+        assert received[55]["api_version"] == {"major": 1, "minor": 46}
+        assert received[55]["arguments"] == {}
+        assert received[56]["method"] == "shortcuts.list"
+        assert received[56]["api_version"] == {"major": 1, "minor": 40}
         assert received[56]["arguments"] == {}
-        assert received[57]["method"] == "input.sources"
-        assert received[57]["api_version"] == {"major": 1, "minor": 46}
-        assert received[57]["arguments"] == {}
-        assert received[58]["method"] == "input.current_source"
-        assert received[58]["api_version"] == {"major": 1, "minor": 46}
+        assert received[57]["method"] == "shortcuts.actions"
+        assert received[57]["api_version"] == {"major": 1, "minor": 41}
+        assert received[57]["arguments"] == {"group": "wm"}
+        assert received[58]["method"] == "focus.policy"
+        assert received[58]["api_version"] == {"major": 1, "minor": 19}
         assert received[58]["arguments"] == {}
-        assert received[59]["method"] == "input.select"
-        assert received[59]["api_version"] == {"major": 1, "minor": 6}
-        assert received[59]["arguments"] == {"type": "xkb", "id": "us"}
-        assert received[60]["method"] == "input.sources"
-        assert received[60]["api_version"] == {"major": 1, "minor": 46}
-        assert received[60]["arguments"] == {}
-        assert received[61]["method"] == "input.current_source"
-        assert received[61]["api_version"] == {"major": 1, "minor": 46}
-        assert received[61]["arguments"] == {}
-        assert received[62]["method"] == "shortcuts.list"
-        assert received[62]["api_version"] == {"major": 1, "minor": 40}
-        assert received[62]["arguments"] == {}
-        assert received[63]["method"] == "shortcuts.actions"
-        assert received[63]["api_version"] == {"major": 1, "minor": 41}
-        assert received[63]["arguments"] == {"group": "wm"}
-        assert received[64]["method"] == "focus.policy"
-        assert received[64]["api_version"] == {"major": 1, "minor": 19}
-        assert received[64]["arguments"] == {}
-        assert received[65]["method"] == "settings"
-        assert received[65]["api_version"] == {"major": 1, "minor": 19}
-        assert received[65]["arguments"] == {}
-        assert received[66]["method"] == "focus.history"
-        assert received[66]["api_version"] == {"major": 1, "minor": 19}
-        assert received[66]["arguments"] == {"limit": 1}
-        assert received[67]["method"] == "layer.animation_policy"
-        assert received[67]["api_version"] == {"major": 1, "minor": 31}
-        assert received[67]["arguments"] == {"namespace": "bingux-panel"}
-        assert received[110]["method"] == "input.orientation_lock"
-        assert received[110]["api_version"] == {"major": 1, "minor": 66}
-        assert received[110]["arguments"] == {}
-        assert received[111]["method"] == "input.set_orientation_lock"
-        assert received[111]["api_version"] == {"major": 1, "minor": 66}
-        assert received[111]["arguments"] == {"value": True}
-        assert received[112]["method"] == "input.orientation_lock"
-        assert received[113]["method"] == "input.set_orientation_lock"
-        assert received[113]["api_version"] == {"major": 1, "minor": 66}
-        assert received[113]["arguments"] == {"value": True}
+        assert received[59]["method"] == "settings"
+        assert received[59]["api_version"] == {"major": 1, "minor": 19}
+        assert received[59]["arguments"] == {}
+        assert received[60]["method"] == "focus.history"
+        assert received[60]["api_version"] == {"major": 1, "minor": 19}
+        assert received[60]["arguments"] == {"limit": 1}
+        assert received[61]["method"] == "layer.animation_policy"
+        assert received[61]["api_version"] == {"major": 1, "minor": 31}
+        assert received[61]["arguments"] == {"namespace": "bingux-panel"}
+        assert received[99]["method"] == "input.orientation_lock"
+        assert received[99]["api_version"] == {"major": 1, "minor": 66}
+        assert received[99]["arguments"] == {}
+        assert received[100]["method"] == "input.set_orientation_lock"
+        assert received[100]["api_version"] == {"major": 1, "minor": 66}
+        assert received[100]["arguments"] == {"value": True}
+        assert received[101]["method"] == "input.orientation_lock"
+        assert received[102]["method"] == "input.set_orientation_lock"
+        assert received[102]["api_version"] == {"major": 1, "minor": 66}
+        assert received[102]["arguments"] == {"value": True}
         privacy_screen_requests = [
             request
             for request in received
@@ -3242,36 +3060,21 @@ def main() -> int:
         assert animation_control_requests[2]["arguments"] == {"session": "preview-17"}
         assert animation_control_requests[3]["arguments"] == {"session": "preview-17"}
         assert animation_control_requests[4]["arguments"] == {"session": "preview-17"}
-        assert received[68]["method"] == "privacy.state"
-        assert received[68]["api_version"] == {"major": 1, "minor": 47}
-        assert received[68]["arguments"] == {}
-        assert received[69]["method"] == "capabilities.list"
-        assert received[69]["api_version"] == {"major": 1, "minor": 19}
-        assert received[69]["arguments"] == {}
-        assert received[70]["method"] == "permissions.policy"
-        assert received[70]["api_version"] == {"major": 1, "minor": 44}
-        assert received[70]["arguments"] == {}
-        assert received[71]["method"] == "session.status"
-        assert received[71]["api_version"] == {"major": 1, "minor": 76}
-        assert received[71]["arguments"] == {}
-        assert received[72]["method"] == "session.status"
-        assert received[72]["api_version"] == {"major": 1, "minor": 76}
-        assert received[72]["arguments"] == {}
-        assert received[73]["method"] == "session.activity"
-        assert received[73]["api_version"] == {"major": 1, "minor": 24}
-        assert received[73]["arguments"] == {}
-        assert received[74]["method"] == "permissions.check"
-        assert received[74]["api_version"] == {"major": 1, "minor": 43}
-        assert received[74]["arguments"] == {
-            "capability": "remote-desktop",
-            "identity": "app-id:org.example.Remote",
-        }
-        assert received[75]["method"] == "permissions.check"
-        assert received[75]["api_version"] == {"major": 1, "minor": 43}
-        assert received[75]["arguments"] == {
-            "capability": "remote-desktop",
-            "identity": "app-id:org.example.Remote",
-        }
+        assert received[62]["method"] == "privacy.state"
+        assert received[62]["api_version"] == {"major": 1, "minor": 47}
+        assert received[62]["arguments"] == {}
+        assert received[63]["method"] == "capabilities.list"
+        assert received[63]["api_version"] == {"major": 1, "minor": 19}
+        assert received[63]["arguments"] == {}
+        assert received[64]["method"] == "session.status"
+        assert received[64]["api_version"] == {"major": 1, "minor": 76}
+        assert received[64]["arguments"] == {}
+        assert received[65]["method"] == "session.status"
+        assert received[65]["api_version"] == {"major": 1, "minor": 76}
+        assert received[65]["arguments"] == {}
+        assert received[66]["method"] == "session.activity"
+        assert received[66]["api_version"] == {"major": 1, "minor": 24}
+        assert received[66]["arguments"] == {}
         create_request = received[6]
         assert create_request["method"] == "workspace.create"
         assert create_request["arguments"] == {
@@ -3324,80 +3127,68 @@ def main() -> int:
         assert received[20]["method"] == "shortcuts.actions"
         assert received[20]["api_version"] == {"major": 1, "minor": 41}
         assert received[20]["arguments"] == {"group": "wm"}
-        assert received[21]["method"] == "permissions.list"
-        assert received[21]["api_version"] == {"major": 1, "minor": 42}
+        assert received[21]["method"] == "input.devices"
+        assert received[21]["api_version"] == {"major": 1, "minor": 46}
         assert received[21]["arguments"] == {}
-        assert received[22]["method"] == "permissions.check"
-        assert received[22]["api_version"] == {"major": 1, "minor": 43}
-        assert received[22]["arguments"] == {
-            "capability": "remote-desktop",
-            "identity": "app-id:org.example.Remote",
-        }
-        assert received[23]["method"] == "permissions.policy"
-        assert received[23]["api_version"] == {"major": 1, "minor": 44}
-        assert received[23]["arguments"] == {}
-        assert received[24]["method"] == "input.devices"
-        assert received[24]["api_version"] == {"major": 1, "minor": 46}
-        assert received[24]["arguments"] == {}
-        assert received[25]["method"] == "privacy.state"
-        assert received[25]["api_version"] == {"major": 1, "minor": 47}
-        assert received[25]["arguments"] == {}
-        lua_request = received[26]
+        assert received[22]["method"] == "privacy.state"
+        assert received[22]["api_version"] == {"major": 1, "minor": 47}
+        assert received[22]["arguments"] == {}
+        lua_request = received[23]
         assert lua_request["op"] == "api"
         assert lua_request["method"] == "windows.list"
         assert lua_request["arguments"] == {"focused": True}
         assert "source" not in lua_request and "code" not in lua_request
-        assert received[27]["method"] == "windows.list"
-        assert received[27]["arguments"] == {"focused": True}
-        assert received[28]["method"] == "windows.list"
+        assert received[24]["method"] == "windows.list"
+        assert received[24]["arguments"] == {"focused": True}
+        assert received[25]["method"] == "windows.list"
+        assert received[25]["arguments"] == {}
+        assert received[26]["method"] == "windows.list"
+        assert received[26]["arguments"] == {}
+        assert received[27]["method"] == "window.minimize"
+        assert received[27]["api_version"] == {"major": 1, "minor": 64}
+        assert received[27]["arguments"] == {"id": "42"}
+        assert received[28]["method"] == "workspaces.list"
         assert received[28]["arguments"] == {}
-        assert received[29]["method"] == "windows.list"
+        assert received[29]["method"] == "workspaces.list"
         assert received[29]["arguments"] == {}
-        assert received[30]["method"] == "window.minimize"
-        assert received[30]["api_version"] == {"major": 1, "minor": 64}
-        assert received[30]["arguments"] == {"id": "42"}
+        assert received[30]["method"] == "workspaces.list"
+        assert received[30]["arguments"] == {}
         assert received[31]["method"] == "workspaces.list"
         assert received[31]["arguments"] == {}
-        assert received[32]["method"] == "workspaces.list"
-        assert received[32]["arguments"] == {}
-        assert received[33]["method"] == "workspaces.list"
-        assert received[33]["arguments"] == {}
-        assert received[34]["method"] == "workspaces.list"
-        assert received[34]["arguments"] == {}
-        assert received[35]["method"] == "workspace.switch"
-        assert received[35]["api_version"] == {"major": 1, "minor": 64}
-        assert received[35]["arguments"] == {"id": "codex-probe"}
-        assert received[36]["method"] == "workspace.rename"
-        assert received[36]["arguments"] == {"id": "codex-probe", "name": "Renamed"}
-        assert received[37]["method"] == "workspace.move_window"
-        assert received[37]["arguments"] == {
+        assert received[32]["method"] == "workspace.switch"
+        assert received[32]["api_version"] == {"major": 1, "minor": 64}
+        assert received[32]["arguments"] == {"id": "codex-probe"}
+        assert received[33]["method"] == "workspace.rename"
+        assert received[33]["arguments"] == {"id": "codex-probe", "name": "Renamed"}
+        assert received[34]["method"] == "workspace.move_window"
+        assert received[34]["arguments"] == {
             "window": "42",
             "workspace": {"id": "codex-probe"},
             "follow": True,
         }
-        assert received[38]["method"] == "workspace.remove"
-        assert received[38]["arguments"] == {"id": "codex-probe"}
+        assert received[35]["method"] == "workspace.remove"
+        assert received[35]["arguments"] == {"id": "codex-probe"}
+        assert received[36]["method"] == "monitors.list"
+        assert received[36]["api_version"] == {"major": 1, "minor": 37}
+        assert received[36]["arguments"] == {}
+        assert received[37]["method"] == "monitors.list"
+        assert received[37]["arguments"] == {}
+        assert received[38]["method"] == "monitors.list"
+        assert received[38]["arguments"] == {}
         assert received[39]["method"] == "monitors.list"
-        assert received[39]["api_version"] == {"major": 1, "minor": 37}
         assert received[39]["arguments"] == {}
-        assert received[40]["method"] == "monitors.list"
+        assert received[40]["method"] == "layers.list"
+        assert received[40]["api_version"] == {"major": 1, "minor": 37}
         assert received[40]["arguments"] == {}
-        assert received[41]["method"] == "monitors.list"
-        assert received[41]["arguments"] == {}
-        assert received[42]["method"] == "monitors.list"
-        assert received[42]["arguments"] == {}
-        assert received[43]["method"] == "layers.list"
-        assert received[43]["api_version"] == {"major": 1, "minor": 37}
-        assert received[43]["arguments"] == {}
-        assert received[44]["method"] == "layers.list"
-        assert received[44]["arguments"] == {
+        assert received[41]["method"] == "layers.list"
+        assert received[41]["arguments"] == {
             "monitor_id": "HDMI-1",
             "namespace": "panel:top",
             "layer": "top",
         }
-        assert received[45]["method"] == "layers.list"
-        assert received[45]["arguments"] == {}
-        unminimize_request = received[46]
+        assert received[42]["method"] == "layers.list"
+        assert received[42]["arguments"] == {}
+        unminimize_request = received[43]
         assert unminimize_request["method"] == "window.unminimize"
         assert unminimize_request["arguments"] == {"id": "42"}
         capture_calls = [call for call in received if call["method"] == "shortcut.capture"]
@@ -3466,16 +3257,6 @@ def main() -> int:
         assert all(call["arguments"] == {} for call in session_calls)
         restore_calls = [call for call in received if call["method"] == "config.restore_default"]
         assert len(restore_calls) == 1 and restore_calls[0]["arguments"] == {}
-        grant_revoke_calls = [
-            call for call in received if call["method"] == "grant.revoke" and call["arguments"].get("id") == "grant-cli"
-        ]
-        assert len(grant_revoke_calls) == 1
-        assert grant_revoke_calls[0]["api_version"] == {"major": 1, "minor": 14}
-        assert grant_revoke_calls[0]["arguments"] == {
-            "kind": "remote-desktop",
-            "id": "grant-cli",
-            "created_at": 1720000000123,
-        }
 
     print("compiled gnoblinctl CLI smoke checks passed")
     return 0

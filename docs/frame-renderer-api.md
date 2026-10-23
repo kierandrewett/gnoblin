@@ -149,8 +149,7 @@ coordinates. Clear and redeclare regions for each commit; the compositor applies
 them atomically with the pixels. At most 64 regions are allowed, and the last
 registered region wins when areas overlap. Use actual button bounds.
 
-Gnoblin excludes application content, clips the outer radius, checks permissions
-and owns move/resize grabs.
+Gnoblin excludes application content, clips the outer radius, and owns move/resize grabs.
 
 The native resize perimeter takes priority, even with zero painted side/bottom
 extents. It supplies directional cursors and respects non-resizable windows.

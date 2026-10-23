@@ -35,7 +35,12 @@
 #define WORKER_GUARDIAN_STATUS_FD 203
 #define WORKER_RECOVERY_SNAPSHOT_FD 204
 #define STARTUP_TIMEOUT_MS 10000
-#define WORKER_CONFIG_TIMEOUT_MS 3000
+/* The first Lua worker must send its configuration within this much CPU time.
+ * A loop in a config burns CPU and is stopped quickly. A worker that the
+ * kernel has not scheduled yet, on a loaded boot, is not. The wall limit stops
+ * a worker that is stuck without using CPU. */
+#define WORKER_CONFIG_CPU_TIMEOUT_MS 3000
+#define WORKER_CONFIG_WALL_TIMEOUT_MS 30000
 #define SUSPEND_TIMEOUT_MS 10000
 #define WORKER_MAX_RESTARTS 5
 #define WORKER_STABLE_RESET_MS 60000
@@ -192,7 +197,6 @@ gboolean handle_completion(Runtime* runtime, guint64 packet_id, GVariant* payloa
 void runtime_schedule_deferred_callbacks(gpointer user_data);
 void runtime_policy_event_free(gpointer data);
 void focus_policy_committed(GVariant* policy, guint64 revision, gpointer user_data);
-void permission_policy_committed(GVariant* policy, guint64 revision, gpointer user_data);
 void dispatch_reload_event(Runtime* runtime, const char* event, const char* path, guint64 revision,
                            const char* failure_message);
 gboolean handle_state(Runtime* runtime, GVariant* payload, GError** error);

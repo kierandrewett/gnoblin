@@ -308,34 +308,6 @@ JsonNode* dispatch(Cli* cli, GError** error) {
         } else if (action) {
             method = owned_method = g_strdup_printf("input.%s", action);
         }
-    } else if (is(command, "permissions")) {
-        if (is(action, "check")) {
-            if (!require_count(cli, 2, 2, error))
-                goto invalid;
-            set_string(arguments, "capability", arg(cli, 0));
-            set_string(arguments, "identity", arg(cli, 1));
-            method = "permissions.check";
-        } else if (is(action, "policy")) {
-            if (!require_count(cli, 0, 0, error))
-                goto invalid;
-            method = "permissions.policy";
-        } else {
-            method = "permissions.list";
-        }
-    } else if (is(command, "grant")) {
-        if (is(action, "revoke")) {
-            if (!require_count(cli, 2, 2, error))
-                goto invalid;
-            if (!is(arg(cli, 0), "screen-cast") && !is(arg(cli, 0), "remote-desktop")) {
-                g_set_error_literal(error, G_OPTION_ERROR, G_OPTION_ERROR_BAD_VALUE,
-                                    "grant kind must be screen-cast or remote-desktop");
-                goto invalid;
-            }
-            set_string(arguments, "kind", arg(cli, 0));
-            set_string(arguments, "id", arg(cli, 1));
-        }
-        if (action)
-            method = owned_method = g_strdup_printf("grant.%s", action);
     } else if (is(command, "launch")) {
         if (is(action, "status")) {
             if (!require_count(cli, 0, 0, error))

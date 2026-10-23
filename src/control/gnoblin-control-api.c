@@ -290,7 +290,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
                           native_runtime_fd_ready, control);
     }
     gnoblin_control_activity_publish(control, FALSE, FALSE, 120000, 0);
-    start_native_policy_dbus(control); /* D-Bus absence keeps portal grants fail closed. */
+    start_native_session_bus(control);
     g_signal_connect(control->display, "gnoblin-native-event", G_CALLBACK(native_native_event),
                      control);
     native_settings_changed(gnoblin_runtime_cache_get_settings_revision(control->runtime_cache),
@@ -509,7 +509,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
         control->runtime_write_source_id = 0;
     }
     native_runtime_fail_pending_requests(control, "Gnoblin compositor stopped before replying");
-    stop_native_policy_dbus(control);
+    stop_native_session_bus(control);
     if (control->display)
         meta_display_set_gnoblin_shortcut_activated_handler(control->display, NULL, NULL);
     revoke_focus_contexts(control);

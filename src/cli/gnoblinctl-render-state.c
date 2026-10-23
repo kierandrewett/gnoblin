@@ -82,34 +82,6 @@ static void render_privacy(JsonNode* result) {
     }
 }
 
-static void render_permissions_list(JsonNode* result) {
-    JsonObject* object = state_object(result);
-    JsonObject* policy = member_object(object, "policy");
-    if (policy) {
-        state_field(policy, "default", "default");
-        JsonNode* rules = json_object_get_member(policy, "rules");
-        if (rules && JSON_NODE_HOLDS_ARRAY(rules)) {
-            g_print("\nRULES\n");
-            state_print_array(rules);
-        }
-    }
-    state_field(object, "capabilities", "capabilities");
-    state_field(object, "levels", "levels");
-    state_field(object, "path", "path");
-}
-
-static void render_grant(JsonNode* result) {
-    JsonObject* object = state_object(result);
-    JsonNode* grants = object ? json_object_get_member(object, "grants") : NULL;
-    if (grants)
-        state_print_array(grants);
-    else {
-        const char* keys[] = {"ok", "revoked", "kind", "id", "revision"};
-        const char* labels[] = {"ok", "revoked", "kind", "id", "revision"};
-        state_fields(object, keys, labels, G_N_ELEMENTS(keys));
-    }
-}
-
 static void render_launch(JsonNode* result) {
     JsonObject* object = state_object(result);
     JsonNode* launches = object ? json_object_get_member(object, "launches") : NULL;
@@ -168,30 +140,6 @@ gboolean render_state(const char* command, const char* action, JsonNode* result)
             const char* keys[] = {"ok", "stopped", "count", "revision"};
             state_fields(state_object(result), keys, NULL, G_N_ELEMENTS(keys));
         }
-        return TRUE;
-    }
-    if (is(command, "permissions")) {
-        if (is(action, "list"))
-            render_permissions_list(result);
-        else if (is(action, "policy")) {
-            JsonObject* object = state_object(result);
-            state_field(object, "default", "default");
-            state_field(object, "revision", "revision");
-            JsonNode* rules = object ? json_object_get_member(object, "rules") : NULL;
-            if (rules) {
-                g_print("\nRULES\n");
-                state_print_array(rules);
-            }
-        } else {
-            const char* keys[] = {"level", "rule", "revision", "devices", "monitors", "clipboard"};
-            const char* labels[] = {"level",   "rule",     "revision",
-                                    "devices", "monitors", "clipboard"};
-            state_fields(state_object(result), keys, labels, G_N_ELEMENTS(keys));
-        }
-        return TRUE;
-    }
-    if (is(command, "grant")) {
-        render_grant(result);
         return TRUE;
     }
     if (is(command, "launch")) {

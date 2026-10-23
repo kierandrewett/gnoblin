@@ -13,11 +13,13 @@ running session. It reports:
 save the complete build identity as JSON, which also has the build ID and the
 GNOME and component versions.
 
-In a Git checkout, the command reads the source manifests, current commit and
+In a Git checkout, the command reads the source manifests, current commit, and
 tracking remote (or `origin`). In a release tarball, it reads the embedded
-source provenance. The installed command reads the identity recorded at build
-time. A modified source tree is marked beside its commit; the commit alone does
-not identify those local edits.
+source provenance.
+
+The installed command reads the identity recorded at build time. A modified
+source tree is marked beside its commit; the commit alone does not identify
+those local edits.
 
 `gnoblinctl version` reads the build identity through the running compositor
 API. It requires an active Gnoblin session.
@@ -222,32 +224,6 @@ print(launch.state)
 gnoblin.launches.finish(token)
 ```
 
-`gnoblin.permissions.policy()` returns the committed permission policy as a
-deeply read-only `PermissionPolicy` record:
-
-```lua
-local policy = gnoblin.permissions.policy()
-print(policy.default, policy.revision)
-for _, rule in ipairs(policy.rules) do
-    print(rule.name, rule.level)
-end
-```
-
-Use `gnoblin.permissions.list()` to also read the supported capabilities,
-permission levels, and configuration path. Its nested values are deeply
-read-only.
-
-Check how the committed policy evaluates a capability for an application
-identity. The console accepts either two strings or a table:
-
-```lua
-local decision = gnoblin.permissions.check {
-    capability = "remote-desktop",
-    identity = "app-id:org.example.Remote",
-}
-print(decision.level, decision.rule, decision.revision)
-```
-
 `gnoblin.session.status()` returns a read-only `SessionStatus`. When lock state
 is unavailable, `lock_state` is omitted; that does not mean the session is
 unlocked. `revision` identifies the current lock-state snapshot and matches
@@ -304,10 +280,13 @@ value. The console supports these namespace methods:
 - `move_active {workspace, follow?}` and `move_window {window, workspace, follow?}`
 
 A workspace selector is a table with exactly one of `id` or positive `number`.
+
 Creation accepts a nonempty name up to 80 characters. An optional ID must
 start with an ASCII letter or digit and contain up to 64 letters, digits,
-periods, underscores, or hyphens. `activate` and `follow` must be booleans
-when supplied. A window is `"active"` or a stable window ID.
+periods, underscores, or hyphens.
+
+`activate` and `follow` must be booleans when supplied. A window is `"active"`
+or a stable window ID.
 
 `move_active` and `move_window` return a read-only `WorkspaceMove` with the
 resulting workspace, window ID, and `follow` value. The compositor rejects
@@ -387,35 +366,6 @@ local preview = gnoblin.animations.preview {
 preview = preview:seek(0.5)
 print(preview.progress)
 preview:stop()
-```
-
-Portal grants are read-only `PortalGrant` records. Filter by kind and revoke a
-grant from the snapshot:
-
-```lua
-for _, grant in ipairs(gnoblin.portals.grants { kind = "remote-desktop" }) do
-    print(grant.requester, table.concat(grant.devices, ", "))
-    grant:revoke()
-end
-```
-
-Revocation uses the record's creation time, so a stale record cannot revoke a
-new grant that reuses its ID. The console waits for each revoke to complete.
-Both `PortalGrant:revoke()` and `gnoblin.grant.revoke(args)` return deeply
-read-only results.
-Scripts can also use the shared `gnoblin.grant.revoke` call directly; pass the
-timestamp from the snapshot to keep the same stale-record check:
-
-```lua
-local grants = gnoblin.portals.grants { kind = "remote-desktop" }
-local grant = grants[1]
-if grant then
-    gnoblin.grant.revoke {
-        kind = grant.kind,
-        id = grant.id,
-        created_at = grant.created_at,
-    }
-end
 ```
 
 Shortcut snapshots return read-only `ShortcutState` and `ShortcutAction`
@@ -971,10 +921,6 @@ clicked window with an XDG Activation token through the
 | `privacy`                                                         | Read the privacy activity sources available in this session                              |
 | `privacy stop-sharing`                                            | Ask Mutter to stop tracked screen-sharing sessions (API 1.31+)                           |
 | `privacy stop-recording`                                          | Ask Mutter to stop tracked recording sessions (API 1.31+)                                |
-| `permissions list`                                                | Read portal rules and capabilities through the Lua runtime (API 1.42+)                   |
-| `permissions policy`                                              | Read the committed policy and its revision through Lua (API 1.44+)                       |
-| `permissions check CAPABILITY IDENTITY`                           | Explain a decision for `app-id:…` or `host-exe:…` (API 1.43+)                            |
-| `grant list`, `grant revoke KIND ID`                              | List or revoke persistent portal grants; kind is `screen-cast` or `remote-desktop`       |
 | `launch status`                                                   | List pending launch feedback and its revision (API 1.39+)                                |
 | `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN`       | Start or end busy-cursor feedback; duration defaults to 3000 ms, clamped to 100–10000 ms |
 | `shortcut capture`                                                | Briefly grab the keyboard and print a GTK accelerator or `Super` binding                 |
@@ -985,15 +931,9 @@ unavailable. `session lock` requests a lock from a subscribed external shell
 client. A successful request means the client received it; use the session
 lock state to confirm that the screen is locked.
 
-`permissions list` requires a connected Lua supervisor. Older socket clients
-that request API 1.41 or earlier retain the native compatibility route.
-`permissions check` also requires the supervisor; clients requesting API 1.42
-or earlier retain its native compatibility route. `permissions policy`
-requires the supervisor at API 1.44; older API clients retain the native route.
-
 The privacy stop commands ask Mutter to stop matching tracked sessions. Their
 `requested` count reports how many stop calls were issued; it does not confirm
-that the sessions have closed. They do not revoke saved portal grants.
+that the sessions have closed.
 
 In a standalone native session, `gnoblinctl config reload` validates and
 applies the complete configuration while the session is running. Native
@@ -1007,14 +947,11 @@ Reload does not replay open animations for windows already mapped.
 For example, to inspect a portal decision and change keyboard source:
 
 ```sh
-gnoblinctl permissions check screen-cast app-id:org.example.Recorder
-gnoblinctl permissions policy --json
 gnoblinctl input list --json
 gnoblinctl input select xkb us
 ```
 
-Use a capability from `permissions list` and a source from `input list`.
-See [permission policy](/guides/permissions) and [launch feedback](launch-feedback.md).
+Use a source from `input list`. See [launch feedback](launch-feedback.md).
 Launch feedback does not start an application.
 
 Run `gnoblinctl privacy` to see activity and availability for each source.
@@ -1040,13 +977,6 @@ supervisor.
 | Microphone     | `available.microphone_in_use` | `microphone_in_use`     |
 | Camera         | `available.camera_in_use`     | `camera_in_use`         |
 | Location       | `available.location_in_use`   | `location_in_use`       |
-
-`grant list` waits for the portal backend and prints its validated persistent
-grants. Use a listed grant's exact `kind` and opaque `id` with `grant revoke`.
-See the [runtime API reference](/config/runtime-api#privacy-and-permissions)
-for the fields in each grant record.
-Human-readable output prints each full grant ID on its own line, even when it
-exceeds the terminal width. Use `--json` for machine-readable output.
 
 See the [shortcuts guide](/guides/shortcuts#key-names) for configuration
 examples.

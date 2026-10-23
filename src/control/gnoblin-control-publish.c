@@ -244,22 +244,11 @@ void publish_native_socket_event(GnoblinNativeControl* control, JsonNode* payloa
     /* json_node_copy() shares the object: preserve the mutations above for
      * callers (including Lua), but only encode once a client can receive it. */
     g_autofree char* line = NULL;
-    gint64 completed_operation_id = 0;
-    gboolean operation_completion = g_str_equal(name, "gnoblin.operation.completed") &&
-                                    json_object_has_member(object, "operation_id");
-    if (operation_completion)
-        completed_operation_id = json_object_get_int_member(object, "operation_id");
     GList* clients = g_hash_table_get_keys(control->clients);
     for (GList* item = clients; item; item = item->next) {
         Client* client = item->data;
         gboolean subscribed = client->event_api_minor >= 9 && client->event_subscriptions &&
                               g_hash_table_contains(client->event_subscriptions, name);
-        if (g_str_equal(name, "gnoblin.operation.completed") && completed_operation_id > 0 &&
-            client->pending_grant_operations) {
-            g_autofree char* key = g_strdup_printf("%" G_GINT64_FORMAT, completed_operation_id);
-            if (g_hash_table_remove(client->pending_grant_operations, key))
-                subscribed = client->api_minor >= 14;
-        }
         if (subscribed && g_str_equal(name, "gnoblin.location.authorization-requested") &&
             json_object_has_member(object, "request_id")) {
             gint64 request_id = json_object_get_int_member(object, "request_id");

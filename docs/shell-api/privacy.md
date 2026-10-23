@@ -1,4 +1,4 @@
-# Permissions and privacy
+# Privacy
 
 | Method                                    | Arguments                                              | Successful result                                                |
 | ----------------------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------- |
@@ -6,23 +6,6 @@
 | `gnoblin.privacy.stop_sharing()`          | None                                                   | `Operation<{requested: integer}>`                                |
 | `gnoblin.privacy.stop_recording()`        | None                                                   | `Operation<{requested: integer}>`                                |
 | `gnoblin.location.authorize_app(options)` | `request_id`, `allow`, `accuracy` from a pending event | Runtime: `Operation<Result>`; `gnoblinctl lua`: read-only result |
-| `gnoblin.permissions.list()`              | None                                                   | Read-only policy, capabilities, levels, and config path          |
-| `gnoblin.permissions.policy()`            | None                                                   | Immutable policy with `default`, `rules`, and `revision`         |
-| `gnoblin.permissions.check(args)`         | `capability`, `identity`                               | Permission decision with scope details                           |
-| `gnoblin.grant.list()`                    | None                                                   | `{grants = {Grant, ...}}`                                        |
-| `gnoblin.grant.revoke(args)`              | `kind`, `id`                                           | `{ok, id}`                                                       |
-
-## Permission policy
-
-Permission capabilities, identities, grant kinds, and scope fields use the
-same values as [session permissions](/config/configure/permissions).
-`gnoblinctl lua` exposes `gnoblin.permissions.list()` as a deeply read-only
-snapshot.
-
-`gnoblin.permissions.check` returns an immutable decision with `level`, `rule`,
-`monitors` (a string array), `devices` (an array containing any of
-`"keyboard"`, `"pointer"`, and `"touchscreen"`), `clipboard`, and `revision`.
-The revision identifies the committed permission-policy snapshot.
 
 ## Privacy state
 
@@ -129,67 +112,4 @@ handles. `gnoblin.privacy.stop_recording()` requests closure of tracked
 recording handles. Each operation result contains integer `requested`, the
 number of handles passed to `meta_remote_access_handle_stop()`. A positive
 count confirms that the calls were issued, not that a session has already
-closed. Mutter reports closure later through `gnoblin.privacy.changed`; these
-methods do not revoke a saved portal grant.
-
-## Permission snapshots
-
-`gnoblin.permissions.policy()` returns the committed Gnoblin policy. The record has a
-default level, ordered rules, and revision. Subscribe to
-`gnoblin.permission.changed` to observe committed changes.
-
-`gnoblin.permissions.list()` returns that policy with capability names, supported
-levels, and the configuration path.
-
-## Portal grants
-
-Use `gnoblin.grant.revoke {kind, id}` with the `kind` and `id` from a listed
-portal grant. The optional `created_at` timestamp rejects a stale record if a
-new grant reuses its ID. `gnoblinctl lua` exposes this operation and returns a
-deeply read-only result after the compositor confirms completion.
-
-Each grant record contains:
-
-| Field           | Type and values                                                  |
-| --------------- | ---------------------------------------------------------------- |
-| `id`            | Opaque string returned by `gnoblin.grant.list()`.                |
-| `kind`          | `"screen-cast"` or `"remote-desktop"`.                           |
-| `requester`     | Verified portal identity, such as `app-id:org.example.Recorder`. |
-| `devices`       | Integer bitmask: keyboard `1`, pointer `2`, touchscreen `4`.     |
-| `clipboard`     | Boolean.                                                         |
-| `screenStreams` | Boolean indicating whether a screen-stream selection is stored.  |
-
-Both methods return `Operation` handles. Grant listing and revocation run in
-the portal backend, which validates the stored record before returning or
-removing it. A missing grant, invalid record, or unavailable backend fails the
-operation.
-
-The native Lua runtime also provides `gnoblin.portals.grants(filter?)` for an
-immediate snapshot. Pass `{kind = "screen-cast"}` or
-`{kind = "remote-desktop"}` to filter the records. Each immutable
-`PortalGrant` record contains:
-
-| Field                | Type and values                                                 |
-| -------------------- | --------------------------------------------------------------- |
-| `id`                 | Opaque portal grant ID.                                         |
-| `kind`               | `"screen-cast"` or `"remote-desktop"`.                          |
-| `requester`          | Verified portal identity.                                       |
-| `devices`            | Array of `"keyboard"`, `"pointer"`, or `"touchscreen"`.         |
-| `clipboard`          | Boolean.                                                        |
-| `has_screen_streams` | Boolean indicating whether a screen-stream selection is stored. |
-| `created_at`         | Unix timestamp in milliseconds.                                 |
-| `revision`           | Revision of the current native grant snapshot.                  |
-
-Call `grant:revoke()` on a record from this snapshot. It returns an
-`Operation` whose successful value contains `ok` and `id`. The portal backend
-checks that the record still has the same creation time before revoking it.
-Stale records fail.
-
-New grants store their creation time. Older grants use file modification time
-at whole-second precision; this is inferred metadata, not a verified consent
-time. The collection is available after the native portal grant snapshot has
-loaded.
-
-Subscribe to `gnoblin.portal.grant-added` and
-`gnoblin.portal.grant-removed` to track changes. The [compositor bridge](/bridge/)
-documents the socket methods and event subscriptions.
+closed. Mutter reports closure later through `gnoblin.privacy.changed`.

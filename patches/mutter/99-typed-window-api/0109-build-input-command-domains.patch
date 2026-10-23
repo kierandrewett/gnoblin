@@ -10,7 +10,7 @@ index 1a36b89d7d..a299e0e751 100644
 +++ b/src/meson.build
 @@ -1201,6 +1201,8 @@ libmutter = library(libmutter_name,
    files('core/gnoblin-control-privacy.c'),
-   files('core/gnoblin-control-grants.c'),
+   files('core/gnoblin-control-session-activity.c'),
    files('core/gnoblin-control-prompts.c'),
 +  files('core/gnoblin-control-input-sources.c'),
 +  files('core/gnoblin-control-command.c'),

@@ -13,7 +13,7 @@
 G_BEGIN_DECLS
 
 #define GNOBLIN_NATIVE_CONTROL_API_MAJOR 1
-#define GNOBLIN_NATIVE_CONTROL_API_MINOR 85
+#define GNOBLIN_NATIVE_CONTROL_API_MINOR 86
 
 typedef struct _GnoblinNativeControl GnoblinNativeControl;
 GVariant* gnoblin_control_output_list(MetaDisplay* display, GError** error);
@@ -198,8 +198,3 @@ GVariant* gnoblin_native_control_commit_snap_context(MetaDisplay* display, GVari
                                                      GError** error);
 GVariant* gnoblin_native_control_restore_or_minimize_window(MetaDisplay* display,
                                                             GVariant* arguments, GError** error);
-
-/* Dispatch portal grant reads and revocations through the session portal. */
-gboolean gnoblin_native_control_portal_grant_operation(MetaDisplay* display, const char* method,
-                                                       GVariant* arguments, gint64 request_id,
-                                                       GError** error);

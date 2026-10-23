@@ -20,6 +20,11 @@ backend. Install `xdg-desktop-portal-gnoblin` to add Gnoblin's GTK-based backend
 The route uses it when installed and otherwise selects another installed
 backend.
 
+Gnoblin routes portal interfaces to the backend you select. It does not manage
+app permissions; the selected backend decides what each app may do. The Gnoblin
+backend shows its normal consent dialogs. A shell can ship its own backend and
+route interfaces to it.
+
 To route individual interfaces to other backends, use the Lua config. Install
 the backend with `sudo dnf install xdg-desktop-portal-gnoblin`; this command skips packages
 recommended by dependencies. Install optional services you need using the

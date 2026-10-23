@@ -1,2 +1,2 @@
 # project source destination
-mutter gnoblin-control-grants.c src/core/gnoblin-control-grants.c
+mutter gnoblin-control-session-activity.c src/core/gnoblin-control-session-activity.c

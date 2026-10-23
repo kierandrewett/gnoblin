@@ -32,7 +32,7 @@ locked. Unlock first, then reload the configuration.
 | Lua key                           | Advertised interface (linked XML)                                                                                                                                                  | XML version | Use it for                                           | Guide                                        |
 | --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- | ---------------------------------------------------- | -------------------------------------------- |
 | `wlr_layer_shell`                 | [`zwlr_layer_shell_v1`](https://github.com/swaywm/wlroots/blob/master/protocol/wlr-layer-shell-unstable-v1.xml)                                                                    | 5           | Bars, docks, launchers, overlays and exclusive zones | [Choose a shell](bring-your-own-shell.md)    |
-| `wlr_screencopy`                  | [`zwlr_screencopy_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/screencopy/wlr-screencopy-unstable-v1.xml)                                         | 3           | Native output capture                                | [Permissions](/guides/permissions)           |
+| `wlr_screencopy`                  | [`zwlr_screencopy_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/screencopy/wlr-screencopy-unstable-v1.xml)                                         | 3           | Native output capture                                | [Session settings](/guides/session_settings) |
 | `ext_foreign_toplevel_list`       | [`ext_foreign_toplevel_list_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml)                          | 1           | Enumerate toplevel windows                           | [Shell integration](shell-integration.md)    |
 | `wlr_foreign_toplevel_management` | [`zwlr_foreign_toplevel_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/foreign-toplevel-management/wlr-foreign-toplevel-management-unstable-v1.xml) | 3           | Inspect and control windows                          | [Shell integration](shell-integration.md)    |
 | `ext_data_control`                | [`ext_data_control_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/data-control/ext-data-control-v1.xml)                                             | 1           | Clipboard managers                                   | [Session settings](/guides/session_settings) |
@@ -46,19 +46,19 @@ locked. Unlock first, then reload the configuration.
 | `window_frame_renderer`           | [`gnoblin_window_frame_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/window-frame/gnoblin-window-frame-v1.xml)                                     | 1           | External frame renderer service                      | [Frame renderer API](frame-renderer-api.md)  |
 | `blur_fade`                       | [`gnoblin_blur_fade_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/blur-fade/gnoblin-blur-fade-v1.xml)                                              | 1           | Per-item blur fade metadata                          | [Background effects](background-effects.md)  |
 
-The XML version is the interface's maximum. Bind the version advertised by
-the running compositor or a lower one. For Gnoblin-owned protocols, the linked
-XML defines requests, events, errors and arguments.
+The XML version is the interface's maximum. Bind the version the running
+compositor advertises, or a lower one.
 
-For standard protocol requests, events and enum values, see the
-[Wayland protocol documentation](https://wayland.freedesktop.org/docs/book/)
-and the [wayland-protocols source](https://gitlab.freedesktop.org/wayland/wayland-protocols).
-This catalog identifies the interface to use and where to find its details.
+Standard requests, events, and enums are documented in the
+[Wayland book](https://wayland.freedesktop.org/docs/book/) and the
+[wayland-protocols source](https://gitlab.freedesktop.org/wayland/wayland-protocols).
 
-For example, a layer-shell client controls its anchors, keyboard interactivity
-and exclusive zone. Gnoblin then places the surface and applies any matching
-`type = "layer"` [window rules](/guides/window_rules). A panel that animates its own
-whole surface can disable the compositor's layer animation for its namespace.
+A layer-shell client sets its anchors, keyboard interactivity, and exclusive
+zone. Gnoblin places the surface and applies matching `type = "layer"`
+[window rules](/guides/window_rules).
+
+A panel that animates its whole surface can disable the layer animation for its
+namespace.
 
 ![Quickshell panel above Firefox in a Gnoblin session](images/gnoblin-quickshell-firefox.png)
 
@@ -68,9 +68,9 @@ _Quickshell positions the panel with the layer-shell protocol._
 
 _Layer-shell panels remain separate from ordinary application windows._
 
-Screen capture through `wlr_screencopy` is separate from capture through the
-desktop portal. The latter follows [portal permission policy](/guides/permissions).
-Turning off this global is not a blanket screen-sharing policy.
+Screen capture through `wlr_screencopy` is separate from the desktop portal.
+The portal path depends on the selected backend. Disabling this global does not
+block screen sharing.
 
 ## Interfaces not yet available
 
@@ -80,8 +80,9 @@ shell depend on it yet.
 
 ## Inspect a running session
 
-Check the running compositor when packaging or debugging a client. A Wayland
-registry inspector such as `wayland-info` can show advertised globals; run it
-inside the Gnoblin session or devkit terminal so it connects to the right
-`WAYLAND_DISPLAY`. A source checkout, package manifest or XML file cannot prove
-that a particular login session has advertised a global.
+Inspect the running compositor when you package or debug a client. Use a
+registry tool such as `wayland-info` inside the Gnoblin session or devkit
+terminal, so it reaches the right `WAYLAND_DISPLAY`.
+
+A source checkout or XML file does not show which globals a login session
+advertises.

@@ -119,11 +119,10 @@ the compositor operation and returns its result as a deeply read-only value.
 session stops first, the candidate is discarded and that event is not sent, even
 if the Lua operation already reported successful staging.
 
-After the commit, the runtime also emits `gnoblin.focus.policy-changed` and
-`gnoblin.permission.changed` when those effective policies changed. These
-events carry the committed policy snapshot and configuration revision. A
-failed reload emits `gnoblin.config.reload-failed` while the previous runtime
-remains active.
+After the commit, the runtime also emits `gnoblin.focus.policy-changed` when the
+effective focus policy changed. This event carries the committed policy snapshot
+and configuration revision. A failed reload emits `gnoblin.config.reload-failed`
+while the previous runtime remains active.
 
 ### Reload warnings
 

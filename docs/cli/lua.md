@@ -24,6 +24,8 @@ print(version.gnoblin, version.gnome, version.git_sha)
 :quit
 ```
 
+## Windows and focus
+
 Window reads return read-only records with the same properties and typed
 methods as the supervised runtime:
 
@@ -64,6 +66,8 @@ local policy = gnoblin.focus.policy()
 print(policy.focus_mode, policy.focus_new_windows, policy.revision)
 ```
 
+## Settings and reload
+
 `gnoblin.settings` returns the committed settings snapshot as a deeply
 read-only value. Read nested options directly from the snapshot:
 
@@ -79,6 +83,8 @@ returns a deeply read-only result; inspect it to see what was applied:
 local result = gnoblin.runtime.reload_config()
 print(result.action, result.runtime_generation)
 ```
+
+## Privacy and capabilities
 
 `gnoblin.privacy.state()` returns a deeply read-only `PrivacyState` record.
 Check `available` before reading an activity field; unavailable sources omit
@@ -110,6 +116,8 @@ for _, capability in ipairs(gnoblin.capabilities.list()) do
 end
 ```
 
+## Launch feedback
+
 Read launch feedback with `gnoblin.launches.list()`. Use
 `gnoblin.launches.snapshot()` when you also need the collection revision. Both
 calls return deeply read-only launch records:
@@ -135,31 +143,7 @@ print(launch.state)
 gnoblin.launches.finish(token)
 ```
 
-`gnoblin.permissions.policy()` returns the committed permission policy as a
-deeply read-only `PermissionPolicy` record:
-
-```lua
-local policy = gnoblin.permissions.policy()
-print(policy.default, policy.revision)
-for _, rule in ipairs(policy.rules) do
-    print(rule.name, rule.level)
-end
-```
-
-Use `gnoblin.permissions.list()` to also read the supported capabilities,
-permission levels, and configuration path. Its nested values are deeply
-read-only.
-
-Check how the committed policy evaluates a capability for an application
-identity. The console accepts either two strings or a table:
-
-```lua
-local decision = gnoblin.permissions.check {
-    capability = "remote-desktop",
-    identity = "app-id:org.example.Remote",
-}
-print(decision.level, decision.rule, decision.revision)
-```
+## Session
 
 `gnoblin.session.status()` returns a read-only `SessionStatus`. When lock state
 is unavailable, `lock_state` is omitted; that does not mean the session is
@@ -195,6 +179,8 @@ local request = gnoblin.session.lock()
 print(request.dispatched, request.subscribers)
 ```
 
+## Workspaces
+
 Workspace snapshots are available through `gnoblin.workspaces.list()`,
 `gnoblin.workspaces.active()`, and `gnoblin.workspaces.by_id(id)`. They return
 read-only `Workspace` records. The console also exposes the workspace
@@ -225,6 +211,8 @@ when supplied. A window is `"active"` or a stable window ID.
 `move_active` and `move_window` return a read-only `WorkspaceMove` with the
 resulting workspace, window ID, and `follow` value. The compositor rejects
 removal of configured, active, or nonempty workspaces.
+
+## Input, monitors and layers
 
 Input devices and sources are read-only `InputDevice` and `InputSource`
 records. Each record includes the revision of its snapshot. The current source
@@ -280,6 +268,8 @@ local policy = gnoblin.layers.animation_policy("bingux-panel")
 print(policy.enter.animation, policy.exit.animation, policy.window_shadow)
 ```
 
+## Animations
+
 Animation previews return a read-only `AnimationPreview` record. Its
 `seek`, `step`, `play`, and `pause` methods return the completed updated record;
 `stop` returns its completion result:
@@ -294,35 +284,6 @@ local preview = gnoblin.animations.preview {
 preview = preview:seek(0.5)
 print(preview.progress)
 preview:stop()
-```
-
-Portal grants are read-only `PortalGrant` records. Filter by kind and revoke a
-grant from the snapshot:
-
-```lua
-for _, grant in ipairs(gnoblin.portals.grants { kind = "remote-desktop" }) do
-    print(grant.requester, table.concat(grant.devices, ", "))
-    grant:revoke()
-end
-```
-
-Revocation uses the record's creation time, so a stale record cannot revoke a
-new grant that reuses its ID. The console waits for each revoke to complete.
-Both `PortalGrant:revoke()` and `gnoblin.grant.revoke(args)` return deeply
-read-only results.
-Scripts can also use the shared `gnoblin.grant.revoke` call directly; pass the
-timestamp from the snapshot to keep the same stale-record check:
-
-```lua
-local grants = gnoblin.portals.grants { kind = "remote-desktop" }
-local grant = grants[1]
-if grant then
-    gnoblin.grant.revoke {
-        kind = grant.kind,
-        id = grant.id,
-        created_at = grant.created_at,
-    }
-end
 ```
 
 Shortcut snapshots return read-only `ShortcutState` and `ShortcutAction`

@@ -336,8 +336,16 @@ static void gnoblin_imgui_content_paint(ClutterContent* content, ClutterActor* a
      * else invalidating the overlay the remainder would sit unprocessed until
      * the next keypress, which drops or reorders text. Keep painting until the
      * queue drains. */
-    if (!overlay->input_tick_id && (io.MouseDown[0] || io.MouseDown[1] || io.MouseDown[2] ||
-                                    ImGui::GetCurrentContext()->InputEventsQueue.Size > 0))
+    /* ImGui hides a new auto-sized window for its first frames while it measures
+     * the content. Without another paint the stage stays idle and the window
+     * never appears, so the recovery notice stayed invisible on a still screen. */
+    bool window_settling = false;
+    for (const ImGuiWindow* window : ImGui::GetCurrentContext()->Windows)
+        if (window->HiddenFramesCannotSkipItems > 0 || window->HiddenFramesCanSkipItems > 0)
+            window_settling = true;
+    if (!overlay->input_tick_id &&
+        (io.MouseDown[0] || io.MouseDown[1] || io.MouseDown[2] || window_settling ||
+         ImGui::GetCurrentContext()->InputEventsQueue.Size > 0))
         overlay->input_tick_id = g_timeout_add(16, gnoblin_imgui_input_tick, overlay);
     gnoblin_imgui_render_draw_data(overlay, framebuffer, ImGui::GetDrawData());
 }

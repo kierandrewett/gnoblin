@@ -88,7 +88,6 @@ The default build uses portal services already installed on the system. To
 build Gnoblin's optional backend, run `./build.sh --with-portal`. A GNOME
 session can continue using GNOME's backend. To choose another backend for
 Gnoblin, see [`gnoblin.configure.portals`](/config/configure/portals).
-See [permission policy](/guides/permissions) when testing remote access.
 
 ## Verify changes
 

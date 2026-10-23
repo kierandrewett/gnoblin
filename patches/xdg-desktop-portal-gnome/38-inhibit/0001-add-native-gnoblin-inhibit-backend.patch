@@ -1,11 +1,16 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From e5c7ec540c0b685ee3f271656665e4c70c3718c3 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 20:59:15 +0000
 Subject: [PATCH] portal: add native Gnoblin inhibit backend
 
 ---
+ data/meson.build               | 1 +
+ src/meson.build                | 1 +
+ src/xdg-desktop-portal-gnome.c | 7 +++++++
+ 3 files changed, 9 insertions(+)
+
 diff --git a/data/meson.build b/data/meson.build
-index ed8a4ce..255982d 100644
+index 3619057..33f55f4 100644
 --- a/data/meson.build
 +++ b/data/meson.build
 @@ -15,6 +15,7 @@ gnome_portal_interfaces = [
@@ -17,10 +22,10 @@ index ed8a4ce..255982d 100644
    'org.freedesktop.impl.portal.Notification',
    'org.freedesktop.impl.portal.Print',
 diff --git a/src/meson.build b/src/meson.build
-index 506853b..76053a8 100644
+index 9d515c0..2e1dbe4 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -105,6 +105,7 @@ sources = built_sources + files(
+@@ -104,6 +104,7 @@ sources = built_sources + files(
    'displaystatetracker.c',
    'dynamic-launcher.c',
    'gnoblin-email.c',
@@ -53,3 +58,6 @@ index f3af8c4..e2f8094 100644
    if (!access_init (connection, &error))
      {
        g_warning ("error: %s\n", error->message);
+-- 
+2.55.0
+

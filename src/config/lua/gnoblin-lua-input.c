@@ -389,11 +389,28 @@ static void register_pointer_binding_callbacks(lua_State* state, int config_inde
 }
 
 static const char* const known_configure_sections[] = {
-    "keybindings",  "window-management", "compositor",  "input",     "input-sources",
-    "monitors",     "touchpad-gestures", "permissions", "location",  "prompts",
-    "auth",         "portals",           "layer-shell", "protocols", "frame-renderers",
-    "cursor",       "xwayland",          "shortcuts",   "autostart", "workspaces",
-    "window-rules", "animations",        NULL,
+    "keybindings",
+    "window-management",
+    "compositor",
+    "input",
+    "input-sources",
+    "monitors",
+    "touchpad-gestures",
+    "location",
+    "prompts",
+    "auth",
+    "portals",
+    "layer-shell",
+    "protocols",
+    "frame-renderers",
+    "cursor",
+    "xwayland",
+    "shortcuts",
+    "autostart",
+    "workspaces",
+    "window-rules",
+    "animations",
+    NULL,
 };
 static const char* const known_protocols[] = {
     "wlr-layer-shell",

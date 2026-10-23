@@ -45,14 +45,12 @@ accepted values, results, and compatibility limits.
 JSON wrapper. It maps each snapshot's `window_count` to the CLI's `windows`
 field.
 
-Raw socket clients can continue using the older `workspace.list` method.
-API 1.52 and newer serve that compatibility method from the Lua snapshot while
-keeping its original wrapper and `windows` count; earlier API versions use the
-native route.
+Raw socket clients have compatibility methods for list output:
 
-Raw socket clients can also use `window.list`. API 1.53 and newer serve it from
-the Lua snapshot while keeping its original wrapper and field names; earlier
-API versions use the native route.
+- `workspace.list`: API 1.52 and newer serve it from the Lua snapshot with its
+  original wrapper and `windows` count. Earlier versions use the native route.
+- `window.list`: API 1.53 and newer serve it from the Lua snapshot with its
+  original wrapper and field names. Earlier versions use the native route.
 
 The monitor and layer list commands also use their API 1.37 snapshot methods,
 `monitors.list` and `layers.list`; the CLI wraps each returned array under its
@@ -66,23 +64,21 @@ completes after Mutter confirms the selected keyboard layout.
 runtime at API 1.41. Its optional group filter and action records match
 `gnoblin.shortcuts.actions(group?)`.
 
-| Group         | Methods                                                                                                                                                                                                                              |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `workspace`   | `list`, `create`, `rename`, `remove`, `switch`, `next`, `previous`, `move_active`, `move_window`                                                                                                                                     |
-| `window`      | `list`, `match`, `action`, `close`, `minimize`, `toggle_minimize`, `restore`, `restore_or_minimize`, `set_maximized`, `set_fullscreen`, `set_above`, `set_sticky`, `move`, `resize`, `move_to_workspace`, `move_to_monitor`, `focus` |
-| `layer`       | `list`                                                                                                                                                                                                                               |
-| `monitor`     | `list`                                                                                                                                                                                                                               |
-| `animation`   | `list`, `surfaces`, `inspect`, `preview`, `seek`, `step`, `play`, `pause`, `stop`                                                                                                                                                    |
-| `feature`     | `list`, `show`, `enable`, `disable`                                                                                                                                                                                                  |
-| `script`      | `list`                                                                                                                                                                                                                               |
-| `input`       | `list`, `current`, `select`                                                                                                                                                                                                          |
-| `privacy`     | `get`                                                                                                                                                                                                                                |
-| `permissions` | `list`, `check`                                                                                                                                                                                                                      |
-| `grant`       | `list`, `revoke`                                                                                                                                                                                                                     |
-| `launch`      | `status`, `begin`, `end`                                                                                                                                                                                                             |
-| `shell`       | `ping`, `version`, `status`, `reload`                                                                                                                                                                                                |
-| `config`      | `reload`                                                                                                                                                                                                                             |
-| `shortcut`    | `list`, `actions`, `capture`                                                                                                                                                                                                         |
+| Group       | Methods                                                                                                                                                                                                                              |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `workspace` | `list`, `create`, `rename`, `remove`, `switch`, `next`, `previous`, `move_active`, `move_window`                                                                                                                                     |
+| `window`    | `list`, `match`, `action`, `close`, `minimize`, `toggle_minimize`, `restore`, `restore_or_minimize`, `set_maximized`, `set_fullscreen`, `set_above`, `set_sticky`, `move`, `resize`, `move_to_workspace`, `move_to_monitor`, `focus` |
+| `layer`     | `list`                                                                                                                                                                                                                               |
+| `monitor`   | `list`                                                                                                                                                                                                                               |
+| `animation` | `list`, `surfaces`, `inspect`, `preview`, `seek`, `step`, `play`, `pause`, `stop`                                                                                                                                                    |
+| `feature`   | `list`, `show`, `enable`, `disable`                                                                                                                                                                                                  |
+| `script`    | `list`                                                                                                                                                                                                                               |
+| `input`     | `list`, `current`, `select`                                                                                                                                                                                                          |
+| `privacy`   | `get`                                                                                                                                                                                                                                |
+| `launch`    | `status`, `begin`, `end`                                                                                                                                                                                                             |
+| `shell`     | `ping`, `version`, `status`, `reload`                                                                                                                                                                                                |
+| `config`    | `reload`                                                                                                                                                                                                                             |
+| `shortcut`  | `list`, `actions`, `capture`                                                                                                                                                                                                         |
 
 `shortcut.capture` options:
 
@@ -136,8 +132,8 @@ the operation:
 | `workspace-switch` | Activate a workspace by ID or number. |
 | `window`           | Apply an action to a listed window.   |
 
-Errors use `event: "error"`, retain the request ID, and include a message.
 Replies use `event: "reply"`; `result` contains operation-specific data.
+
 `pending: true` acknowledges an asynchronous request, not its final state.
 See the [bridge operation reference](/bridge/#operation-index) for
 payload fields and selector values.
@@ -145,9 +141,10 @@ payload fields and selector values.
 ## Change a window
 
 For a typed native operation, call its canonical method with a stable window
-ID. The CLI maps each supported action to its typed method. The
-`restore-or-minimize` action is handled natively and restores a saved snap frame
-when one exists.
+ID. The CLI maps each supported action to its typed method.
+
+The `restore-or-minimize` action is handled natively and restores a saved snap
+frame when one exists.
 
 Setters take an `enabled` boolean. Move takes `x` and `y`; resize takes `width`
 and `height`.
@@ -181,10 +178,8 @@ These routes preserve the legacy response shape. Older versions keep the native
 route for basic actions. Focus, menu, and interactive move or resize use their
 dedicated methods because they require verified activation or menu context.
 
-`toggle-minimize` is available through its typed method, which takes a stable
-window ID.
-See the [`gnoblinctl` window reference](/cli/#window-actions) for CLI
-arguments and ranges.
+`toggle-minimize` takes a stable window ID through its typed method. CLI
+arguments and ranges are in the [`gnoblinctl` window reference](/cli/#window-actions).
 
 `window` is a stable string ID from a previous list. For `window.move`, `x` and
 `y` are logical desktop-pixel coordinates:

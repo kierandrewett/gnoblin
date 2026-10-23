@@ -79,7 +79,6 @@ int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_monitor_record(state);
     register_lua_cli_layer_surface_record(state);
     register_lua_cli_animation_preview_record(state);
-    register_lua_cli_portal_grant_record(state);
     register_lua_cli_input_record(state, GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE);
     register_lua_cli_input_record(state, GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE);
     register_lua_cli_shortcut_record(state, GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE);
@@ -89,8 +88,6 @@ int run_lua_console(Cli* cli, const char* file) {
     register_lua_cli_layer_animation_policy_record(state);
     register_lua_cli_privacy_state_record(state);
     register_lua_cli_capability_record(state);
-    register_lua_cli_permission_policy_record(state);
-    register_lua_cli_permission_decision_record(state);
     register_lua_cli_session_status_record(state);
     register_lua_cli_session_activity_record(state);
     lua_newtable(state);
@@ -336,30 +333,6 @@ void print_table(JsonArray* array) {
     }
 }
 
-static void print_grants(JsonArray* grants) {
-    guint count = json_array_get_length(grants);
-    if (count == 0) {
-        g_print("No items.\n");
-        return;
-    }
-    for (guint i = 0; i < count; i++) {
-        JsonNode* node = json_array_get_element(grants, i);
-        if (!JSON_NODE_HOLDS_OBJECT(node))
-            continue;
-        JsonObject* grant = json_node_get_object(node);
-        const char* fields[] = {"id", "kind", "requester", "devices", "clipboard", "screenStreams"};
-        for (guint field = 0; field < G_N_ELEMENTS(fields); field++) {
-            if (!json_object_has_member(grant, fields[field]))
-                continue;
-            g_autofree char* label = human_label(fields[field]);
-            g_autofree char* value = node_text(json_object_get_member(grant, fields[field]));
-            g_print("%s: %s\n", label, value);
-        }
-        if (i + 1 < count)
-            g_print("\n");
-    }
-}
-
 static gboolean boolean_member(JsonObject* object, const char* name, gboolean* value) {
     JsonNode* node = object ? json_object_get_member(object, name) : NULL;
     if (!node || !JSON_NODE_HOLDS_VALUE(node) || json_node_get_value_type(node) != G_TYPE_BOOLEAN)
@@ -439,10 +412,7 @@ void render(const char* command, const char* action, JsonNode* result, const cha
         }
         if (array_member_count == 1) {
             JsonArray* array = json_node_get_array(json_object_get_member(object, array_member));
-            if (g_str_equal(array_member, "grants"))
-                print_grants(array);
-            else
-                print_table(array);
+            print_table(array);
             for (GList* item = members; item; item = item->next) {
                 if (g_str_equal(item->data, array_member))
                     continue;
@@ -516,10 +486,6 @@ static const char* action_usage(const char* command, const char* action) {
         return "[--workspace-id ID] [--monitor-id ID] [--limit 1..256]";
     if (g_str_equal(command, "shortcut") && g_str_equal(action, "actions"))
         return "[wm | mutter | wayland]";
-    if (g_str_equal(command, "permissions") && g_str_equal(action, "check"))
-        return "CAPABILITY IDENTITY";
-    if (g_str_equal(command, "grant") && g_str_equal(action, "revoke"))
-        return "(screen-cast | remote-desktop) ID";
     if (g_str_equal(command, "launch")) {
         if (g_str_equal(action, "begin"))
             return "TOKEN APPLICATION [MILLISECONDS]";

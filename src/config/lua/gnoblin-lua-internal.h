@@ -3,7 +3,6 @@
 
 /* Restricted, single-state Lua configuration evaluator. */
 #include "gnoblin-config.h"
-#include "gnoblin-portal-policy.h"
 #include <gio/gio.h>
 #include <glib/gstdio.h>
 #include <json-glib/json-glib.h>
@@ -106,8 +105,6 @@ typedef struct {
     guint64 shortcut_revision;
     GVariant* launch_snapshot;
     guint64 launch_revision;
-    GVariant* portal_grant_snapshot;
-    guint64 portal_grant_revision;
     GVariant* animation_snapshot;
     guint64 animation_revision;
     GVariant* privacy_snapshot;
@@ -204,8 +201,6 @@ extern GnoblinConfigRuntimeWakeupFunc runtime_wakeup_callback;
 extern gpointer runtime_wakeup_data;
 extern GnoblinConfigFocusPolicyChangedFunc focus_policy_changed_callback;
 extern gpointer focus_policy_changed_data;
-extern GnoblinConfigPermissionPolicyChangedFunc permission_policy_changed_callback;
-extern gpointer permission_policy_changed_data;
 extern GnoblinConfigSettingsChangedFunc settings_changed_callback;
 extern gpointer settings_changed_data;
 void push_menu_context(lua_State* state, guint64 handle, guint64 generation,
@@ -302,14 +297,11 @@ int lua_monitors_privacy_screen(lua_State* state);
 int lua_monitors_set_privacy_screen(lua_State* state);
 int lua_layers_list(lua_State* state);
 int lua_capabilities_list(lua_State* state);
-int lua_permissions_list(lua_State* state);
-int lua_permissions_policy(lua_State* state);
 int lua_privacy_state(lua_State* state);
 int lua_session_activity(lua_State* state);
 int lua_session_status(lua_State* state);
 int lua_session_class(lua_State* state);
 int lua_runtime_status(lua_State* state);
-int lua_permissions_check(lua_State* state);
 int lua_input_devices(lua_State* state);
 int lua_input_sources(lua_State* state);
 int lua_input_current_source(lua_State* state);
@@ -318,7 +310,6 @@ int lua_input_orientation_lock(lua_State* state);
 int lua_shortcuts_list(lua_State* state);
 int lua_launches_list(lua_State* state);
 int lua_launches_snapshot(lua_State* state);
-int lua_portal_grants(lua_State* state);
 int call_launch_operation(lua_State* state, const char* method, int arguments);
 int lua_launches_begin(lua_State* state);
 int lua_launches_finish(lua_State* state);

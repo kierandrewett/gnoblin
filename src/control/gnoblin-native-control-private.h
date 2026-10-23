@@ -53,7 +53,6 @@
 #include "core/keybindings-private.h"
 #include "core/util-private.h"
 #include "core/window-private.h"
-#include "wayland/gnoblin-portal-policy.h"
 #include "wayland/gnoblin-lua-pattern.h"
 #include "wayland/meta-wayland-private.h"
 #include "wayland/meta-wayland-layer-shell.h"
@@ -102,9 +101,6 @@
 #define MAX_PENDING_THUMBNAILS 4
 #define MAX_PENDING_THUMBNAILS_PER_CLIENT 1
 #define FOCUS_CONTEXT_LIFETIME_US (5 * G_USEC_PER_SEC)
-#define NATIVE_POLICY_BUS_NAME "org.gnoblin.Compositor"
-#define NATIVE_POLICY_OBJECT_PATH "/org/gnoblin/Compositor"
-#define NATIVE_POLICY_INTERFACE "org.gnoblin.Compositor"
 typedef struct _NativeMutterSignalWatch NativeMutterSignalWatch;
 struct _NativeMutterSignalWatch {
     GnoblinNativeControl* control;
@@ -275,8 +271,8 @@ gboolean native_runtime_begin_thumbnail(GnoblinNativeControl* control, gint64 op
 extern const NativeCapability native_capabilities[];
 extern const gsize native_capabilities_count;
 extern const char* native_socket_events[];
-gboolean start_native_policy_dbus(GnoblinNativeControl* control);
-void stop_native_policy_dbus(GnoblinNativeControl* control);
+gboolean start_native_session_bus(GnoblinNativeControl* control);
+void stop_native_session_bus(GnoblinNativeControl* control);
 void native_shortcut_free(gpointer data);
 GVariant* native_shortcut_snapshot(GnoblinNativeControl* control);
 void native_window_state_free(gpointer data);

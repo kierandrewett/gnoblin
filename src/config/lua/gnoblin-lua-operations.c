@@ -424,8 +424,6 @@ int lua_generic_api_action(lua_State* state) {
         push_operation_handle(state, config, request_id, method);
         return 1;
     }
-    if (g_str_equal(method, "grant.list") && lua_gettop(state) != 0)
-        return luaL_error(state, "grant.list takes no arguments");
     if ((g_str_equal(method, "privacy.stop_sharing") ||
          g_str_equal(method, "privacy.stop_recording")) &&
         lua_gettop(state) != 0)
@@ -440,29 +438,6 @@ int lua_generic_api_action(lua_State* state) {
         return luaL_error(state, "%s takes no arguments", method);
     if (g_str_equal(method, "console.toggle") && lua_gettop(state) != 0)
         return luaL_error(state, "console.toggle takes no arguments");
-    if (g_str_equal(method, "grant.revoke")) {
-        static const char* const fields[] = {"kind", "id", "created_at", NULL};
-        if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||
-            !table_fields_allowed(state, 1, fields))
-            return luaL_error(state, "grant.revoke requires kind and id, with optional created_at");
-        lua_getfield(state, 1, "kind");
-        gboolean valid_kind = lua_type(state, -1) == LUA_TSTRING &&
-                              (g_str_equal(lua_tostring(state, -1), "screen-cast") ||
-                               g_str_equal(lua_tostring(state, -1), "remote-desktop"));
-        lua_pop(state, 1);
-        lua_getfield(state, 1, "id");
-        gboolean valid_id =
-            lua_type(state, -1) == LUA_TSTRING && lua_tostring(state, -1)[0] != '\0';
-        lua_pop(state, 1);
-        if (!valid_kind || !valid_id)
-            return luaL_error(state, "grant.revoke requires a supported kind and opaque id");
-        lua_getfield(state, 1, "created_at");
-        gboolean valid_created_at =
-            lua_isnil(state, -1) || (lua_isinteger(state, -1) && lua_tointeger(state, -1) >= 0);
-        lua_pop(state, 1);
-        if (!valid_created_at)
-            return luaL_error(state, "grant.revoke created_at must be a nonnegative integer");
-    }
     if (g_str_equal(method, "location.authorize_app")) {
         static const char* const fields[] = {"request_id", "allow", "accuracy", NULL};
         if (lua_gettop(state) != 1 || !lua_istable(state, 1) ||

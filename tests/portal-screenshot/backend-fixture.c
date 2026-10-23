@@ -29,14 +29,6 @@ GListModel* __wrap_gdk_display_get_monitors(GdkDisplay* display) {
 void __wrap_gdk_monitor_get_geometry(GdkMonitor* monitor, GdkRectangle* rectangle) {
     *rectangle = (GdkRectangle){0, 0, 64, 32};
 }
-GnoblinPermission gnoblin_permission_for_request(GDBusMethodInvocation* invocation,
-                                                 const char* capability, const char* app_id,
-                                                 const char* handle) {
-    g_assert_cmpstr(capability, ==, "screenshot");
-    return (GnoblinPermission){.level = g_strcmp0(app_id, "deny") == 0
-                                            ? GNOBLIN_PERMISSION_DENY
-                                            : GNOBLIN_PERMISSION_DEFAULT};
-}
 static void discard(gpointer data) {
     g_unlink(data);
     g_free(data);
@@ -76,12 +68,6 @@ static gboolean access_allowed(XdpImplAccess* impl, GDBusMethodInvocation* invoc
 }
 int main(void) {
     setvbuf(stdout, NULL, _IOLBF, 0);
-    /* The frontend hint never substitutes for interactive consent or ask. */
-    g_assert_false(screenshot_needs_consent(GNOBLIN_PERMISSION_DEFAULT, FALSE, TRUE));
-    g_assert_true(screenshot_needs_consent(GNOBLIN_PERMISSION_DEFAULT, FALSE, FALSE));
-    g_assert_true(screenshot_needs_consent(GNOBLIN_PERMISSION_ASK, FALSE, TRUE));
-    g_assert_false(screenshot_needs_consent(GNOBLIN_PERMISSION_ALLOW, FALSE, FALSE));
-    g_assert_true(screenshot_needs_consent(GNOBLIN_PERMISSION_ALLOW, TRUE, TRUE));
     g_autoptr(GError) error = NULL;
     g_autoptr(GDBusConnection) bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
     g_assert_no_error(error);

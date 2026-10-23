@@ -1,129 +1,8 @@
-# Permissions and Privacy
+# Privacy
 
-Inspect permission policy, portal grants, and privacy state or request supported privacy actions.
+Inspect privacy state or request supported privacy actions.
 
 The bridge exposes these operations in the standalone session at the minimum API versions stated below.
-
-### API version 1.14: portal grants
-
-API 1.14 adds the `grant.list` and `grant.revoke` methods. They use the portal
-backend that owns the persistent grants. Each request returns an operation
-descriptor; the same connection receives its `gnoblin.operation.completed`
-event when the backend finishes. Match the event's `operation_id` to the
-descriptor's `request_id`.
-
-```json
-{
-    "op": "api",
-    "id": "list-grants",
-    "api_version": { "major": 1, "minor": 14 },
-    "method": "grant.list",
-    "arguments": {}
-}
-```
-
-Each item in `value.grants` contains:
-
-| Field           | Meaning                                               |
-| --------------- | ----------------------------------------------------- |
-| `id`            | Opaque value returned by the listing method.          |
-| `kind`          | `screen-cast` or `remote-desktop`.                    |
-| `requester`     | Verified portal identity.                             |
-| `devices`       | Bitmask: keyboard `1`, pointer `2`, touchscreen `4`.  |
-| `clipboard`     | Boolean permission.                                   |
-| `screenStreams` | Boolean indicating whether screen streams are stored. |
-
-Revoke a record using its listed `kind` and `id`:
-
-```json
-{
-    "op": "api",
-    "id": "revoke-grant",
-    "api_version": { "major": 1, "minor": 14 },
-    "method": "grant.revoke",
-    "arguments": { "kind": "screen-cast", "id": "OPAQUE_ID_FROM_LIST" }
-}
-```
-
-The successful value is `{ "ok": true, "id": "..." }`. The operation fails
-if the grant no longer exists, its stored record is invalid, or the portal
-backend is unavailable. `gnoblinctl grant list` and `gnoblinctl grant revoke`
-wait for this completion before returning.
-
-### API version 1.15: portal grant snapshots and events
-
-API 1.15 adds a native snapshot of persistent portal grants. The optional
-filter selects one portal kind. Each record contains its opaque ID, verified
-requester, permission scope, creation timestamp, and snapshot revision:
-
-| Field                | Meaning                                            |
-| -------------------- | -------------------------------------------------- |
-| `id`                 | Opaque portal grant ID.                            |
-| `kind`               | `screen-cast` or `remote-desktop`.                 |
-| `requester`          | Verified portal identity.                          |
-| `devices`            | Array of `keyboard`, `pointer`, or `touchscreen`.  |
-| `clipboard`          | Whether remote-desktop clipboard access is stored. |
-| `has_screen_streams` | Whether a screen-stream selection is stored.       |
-| `created_at`         | Unix time in milliseconds.                         |
-| `revision`           | Revision of the current grant snapshot.            |
-
-```json
-{
-    "op": "api",
-    "id": "grants",
-    "api_version": { "major": 1, "minor": 15 },
-    "method": "portals.grants",
-    "arguments": { "kind": "remote-desktop" }
-}
-```
-
-Use `kind`, `id`, and `created_at` from a record when revoking it. API 1.15
-rechecks the creation time in the portal backend, so a stale record cannot
-revoke a later grant that reused the same ID. The older API 1.14 request shape
-without `created_at` remains available for compatibility.
-
-The portal backend stores creation time for new records. Older stored records
-use their file modification time rounded to whole seconds; this is inferred
-metadata, not a verified consent time.
-
-Subscribe to the portal grant events with API 1.15. Both include the current
-snapshot revision, event sequence, and monotonic time.
-
-- `gnoblin.portal.grant-added` carries a `grant` record.
-- `gnoblin.portal.grant-removed` carries the grant ID and portal kind.
-
-```json
-{
-    "op": "events",
-    "api_version": { "major": 1, "minor": 15 },
-    "events": ["gnoblin.portal.grant-added", "gnoblin.portal.grant-removed"]
-}
-```
-
-### API version 1.16: permission policy
-
-API 1.16 adds `permissions.policy`. It returns the committed default level,
-ordered rules, and revision.
-
-The compatibility method `permissions.list` keeps its existing response shape.
-
-```json
-{
-    "op": "api",
-    "id": "policy",
-    "api_version": { "major": 1, "minor": 16 },
-    "method": "permissions.policy",
-    "arguments": {}
-}
-```
-
-`gnoblin.permission.changed` reports a policy change after a successful
-configuration commit. Its payload contains the committed policy and standard
-revision, sequence, and monotonic-time metadata.
-
-```json
-{ "op": "events", "api_version": { "major": 1, "minor": 16 }, "events": ["gnoblin.permission.changed"] }
-```
 
 ### API version 1.17: privacy state
 
@@ -211,7 +90,7 @@ returns an error and closes that connection.
 Use the API-version tables above to choose a socket method and its minimum
 version. For Lua calls, see the [runtime API reference](/shell-api/).
 
-### API version 1.31: privacy stop methods and layer animation policy
+### API version 1.31: privacy stop methods
 
 API 1.31 adds `privacy.stop_sharing` and `privacy.stop_recording`. Each method
 takes no arguments and calls `stop()` on matching tracked Mutter handles. The
@@ -223,7 +102,7 @@ counts handles passed to `meta_remote_access_handle_stop()`. The request is
 synchronous, but the count does not confirm session closure.
 
 Mutter updates the privacy snapshot and `gnoblin.privacy.changed` after a
-handle stops. These methods do not revoke persistent grants.
+handle stops.
 
 ```json
 {
@@ -234,15 +113,6 @@ handle stops. These methods do not revoke persistent grants.
     "arguments": {}
 }
 ```
-
-Call `layer.animation_policy` with a `namespace` string of 1–128 UTF-8 bytes
-to read its enter and exit phases and `window_shadow`. It requires API 1.31.
-
-Without a matching animation rule, each phase uses its first enabled event
-registration, or `none` if no event is registered.
-
-`window_shadow` defaults to `false` unless a matching default-window rule
-supplies a shadow value.
 
 ### API version 1.33: capability availability changes
 

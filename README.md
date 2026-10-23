@@ -49,9 +49,9 @@ Select Gnoblin at login; the regular GNOME session stays available.
   event, so your shell draws the dialog and sends the answer back. Both are
   opt-in. See [authentication](docs/shell-api/authentication.md) and
   [passphrase prompts](docs/shell-api/passphrase-prompts.md).
-- **Portal permissions.** The optional [Gnoblin portal backend](docs/guides/permissions.md) supports persistent,
-  identity-checked rules for Screen Cast, Remote Desktop, input capture,
-  screenshots and Access. Stock GNOME keeps its normal portal behaviour.
+- **Portal routing.** Gnoblin routes portal interfaces to the backend you choose.
+  It does not manage app permissions; the selected backend decides them. The
+  Gnoblin backend shows its normal consent dialogs.
 - **Lua runtime.** Configure the compositor and handle supported runtime events
   with Lua. See [how Lua configuration works](docs/user-scripts.md).
 
@@ -78,12 +78,10 @@ independently; hyprlock, swaylock, gtklock, waylock and other conforming
 clients can use the same protocol. A normal GNOME session continues to use
 GNOME's own lock screen. See [session locking](docs/session-lock.md).
 
-Existing authorised portal monitor streams remain subject to their established
-portal permission. While locked, those streams show the lock scene. Remote
-input is available only after `locked` and the lock
-scene has presented, and is routed to the active lock surface; it is refused
-during transitions and failsafe. No lock-specific portal setting or opt-in is
-required.
+Existing portal streams keep running. While locked, those streams show the lock
+scene. Remote input is available only after `locked` and the lock scene has
+presented, and is routed to the active lock surface; it is refused during
+transitions and failsafe. No lock-specific portal setting is required.
 
 ## Get started
 

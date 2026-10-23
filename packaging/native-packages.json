@@ -20,7 +20,7 @@
         "wireplumber"
       ],
       "replaces": ["gnoblin-mutter", "gnoblin-mutter-devel"],
-      "version": "0.1.10"
+      "version": "0.1.12"
     },
     "xdg-desktop-portal-gnoblin": {
       "requires": ["gdk-pixbuf", "gtk4", "json-glib", "libpipewire", "xdg-desktop-portal"],
@@ -30,10 +30,10 @@
   },
   "release": {
     "archPkgRelease": 30,
-    "gnoblinVersion": "0.1.10",
+    "gnoblinVersion": "0.1.12",
     "gnomeMajor": 51,
     "gnomeVersion": "51.0",
-    "gnoblinRpmRelease": 22,
+    "gnoblinRpmRelease": 24,
     "mutterApi": "51",
     "rpmEpoch": 1
   },

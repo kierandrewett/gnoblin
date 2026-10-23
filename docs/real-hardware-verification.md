@@ -46,15 +46,14 @@ locked, and the shell recovers after unlock.
 
 ## 6. Screen sharing and remote input
 
-With the patched portal backend installed:
+With the desktop portal backend installed:
 
-1. Under the default policy, start a share and complete the source picker.
+1. Start a share and complete the backend's consent dialog.
 2. Confirm the selected monitor is the one actually shared.
-3. Test an explicit `ask` rule, then a `deny` rule.
-4. For an `allow` rule, test both permitted and broader device requests.
-5. Stop sharing and confirm the stream ends.
+3. Test remote input and confirm the backend's device prompts.
+4. Stop sharing and confirm the stream ends.
 
-See [portal permissions](/guides/permissions) for current permission policy.
+Gnoblin only routes the portal request. The selected backend decides access.
 
 ## 7. Return to GNOME
 

@@ -38,9 +38,14 @@ PUBLIC_FILES = {
 }
 
 
-def validate(name, files, provides, conflicts, obsoletes):
+def validate(name, files, provides, conflicts, obsoletes, requires=""):
     if name not in PACKAGES:
         raise ValueError(f"not a side-by-side Gnoblin package: {name}")
+    # A pkgconfig() requirement names a -devel package. The private runtime ships Mutter's .pc files, and RPM would
+    # otherwise add one for every library they list, so installing Gnoblin would pull development packages onto the system.
+    for requirement in requires.splitlines():
+        if requirement.startswith("pkgconfig("):
+            raise ValueError(f"{name} requires a development package through {requirement}")
     if conflicts.strip():
         raise ValueError(f"{name} declares Conflicts")
     for obsolete in obsoletes.splitlines():
@@ -74,7 +79,14 @@ def check_package(path):
     def query(*args):
         return subprocess.check_output(["rpm", "-qp", *args, str(path)], text=True).strip()
 
-    validate(query("--qf", "%{NAME}"), query("--list"), query("--provides"), query("--conflicts"), query("--obsoletes"))
+    validate(
+        query("--qf", "%{NAME}"),
+        query("--list"),
+        query("--provides"),
+        query("--conflicts"),
+        query("--obsoletes"),
+        query("--requires"),
+    )
 
 
 def main():

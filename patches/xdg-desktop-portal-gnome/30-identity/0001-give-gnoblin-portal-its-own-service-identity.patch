@@ -1,11 +1,16 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 42af8850b92af0362688c62044b3c9e06a5326d2 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 20:59:15 +0000
 Subject: [PATCH] portal: give Gnoblin its own backend identity
 
 ---
+ data/meson.build               | 18 +++++++++---------
+ src/meson.build                |  2 +-
+ src/xdg-desktop-portal-gnome.c |  6 +++---
+ 3 files changed, 13 insertions(+), 13 deletions(-)
+
 diff --git a/data/meson.build b/data/meson.build
-index 33504d1..bcbc8d5 100644
+index 33504d1..05251e1 100644
 --- a/data/meson.build
 +++ b/data/meson.build
 @@ -29,16 +29,16 @@ gnome_portal_conf.set('PORTALS', ';'.join(gnome_portal_interfaces))
@@ -29,7 +34,7 @@ index 33504d1..bcbc8d5 100644
    configuration: libexecdir_conf,
    install_dir: dbus_service_dir,
  )
-@@ -46,8 +47,8 @@ configure_file(
+@@ -46,8 +46,8 @@ configure_file(
  # systemd unit
  if systemduserunitdir != ''
    configure_file(
@@ -40,7 +45,7 @@ index 33504d1..bcbc8d5 100644
      configuration: libexecdir_conf,
      install_dir: systemduserunitdir,
    )
-@@ -55,15 +56,15 @@ endif
+@@ -55,15 +55,15 @@ endif
  
  # Desktop file
  desktop_in = configure_file(
@@ -60,10 +65,10 @@ index 33504d1..bcbc8d5 100644
    install: true,
    install_dir: datadir / 'applications',
 diff --git a/src/meson.build b/src/meson.build
-index 4582a7e..8103dc5 100644
+index 451af5a..f1e9f5b 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -141,7 +141,7 @@ common_flags = []
+@@ -139,7 +139,7 @@ common_flags = []
  add_project_arguments(common_flags, language: 'c')
  
  executable(
@@ -103,3 +108,6 @@ index 8f0d15c..bd1a3f7 100644
                               G_BUS_NAME_OWNER_FLAGS_ALLOW_REPLACEMENT | (opt_replace ? G_BUS_NAME_OWNER_FLAGS_REPLACE : 0),
                               on_bus_acquired,
                               on_name_acquired,
+-- 
+2.55.0
+

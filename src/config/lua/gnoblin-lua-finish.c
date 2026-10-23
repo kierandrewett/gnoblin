@@ -8,8 +8,6 @@ void gnoblin_config_finish_load(gboolean commit) {
     if (commit) {
         g_autoptr(GVariant) previous_focus_policy =
             active_runtime ? focus_policy_snapshot(active_runtime->document, 0) : NULL;
-        g_autoptr(GVariant) previous_permission_policy =
-            active_runtime ? gnoblin_permission_policy_snapshot(active_runtime->document, 0) : NULL;
         gboolean settings_changed =
             !active_runtime || !active_runtime->document ||
             !g_variant_equal(active_runtime->document, pending_runtime->document);
@@ -43,16 +41,6 @@ void gnoblin_config_finish_load(gboolean commit) {
                 active_runtime->document, active_runtime->config.settings_revision);
             focus_policy_changed_callback(policy, active_runtime->config.settings_revision,
                                           focus_policy_changed_data);
-        }
-        g_autoptr(GVariant) committed_permission_policy =
-            gnoblin_permission_policy_snapshot(active_runtime->document, 0);
-        if (previous_permission_policy && committed_permission_policy &&
-            !g_variant_equal(previous_permission_policy, committed_permission_policy) &&
-            permission_policy_changed_callback) {
-            g_autoptr(GVariant) policy = gnoblin_permission_policy_snapshot(
-                active_runtime->document, active_runtime->config.settings_revision);
-            permission_policy_changed_callback(policy, active_runtime->config.settings_revision,
-                                               permission_policy_changed_data);
         }
         if (settings_changed && settings_changed_callback)
             settings_changed_callback(active_runtime->config.settings_revision,
@@ -148,12 +136,6 @@ void gnoblin_config_set_focus_policy_changed_callback(GnoblinConfigFocusPolicyCh
     focus_policy_changed_data = user_data;
 }
 
-void gnoblin_config_set_permission_policy_changed_callback(
-    GnoblinConfigPermissionPolicyChangedFunc callback, gpointer user_data) {
-    permission_policy_changed_callback = callback;
-    permission_policy_changed_data = user_data;
-}
-
 void gnoblin_config_set_settings_changed_callback(GnoblinConfigSettingsChangedFunc callback,
                                                   gpointer user_data) {
     settings_changed_callback = callback;
@@ -179,8 +161,6 @@ void gnoblin_config_finish_event(gboolean commit) {
     if (commit) {
         g_autoptr(GVariant) previous_focus_policy =
             focus_policy_snapshot(active_runtime->document, 0);
-        g_autoptr(GVariant) previous_permission_policy =
-            gnoblin_permission_policy_snapshot(active_runtime->document, 0);
         gboolean settings_changed =
             !active_runtime->document ||
             !g_variant_equal(active_runtime->document, active_runtime->pending_document);
@@ -199,16 +179,6 @@ void gnoblin_config_finish_event(gboolean commit) {
                 active_runtime->document, active_runtime->config.settings_revision);
             focus_policy_changed_callback(policy, active_runtime->config.settings_revision,
                                           focus_policy_changed_data);
-        }
-        g_autoptr(GVariant) committed_permission_policy =
-            gnoblin_permission_policy_snapshot(active_runtime->document, 0);
-        if (previous_permission_policy && committed_permission_policy &&
-            !g_variant_equal(previous_permission_policy, committed_permission_policy) &&
-            permission_policy_changed_callback) {
-            g_autoptr(GVariant) policy = gnoblin_permission_policy_snapshot(
-                active_runtime->document, active_runtime->config.settings_revision);
-            permission_policy_changed_callback(policy, active_runtime->config.settings_revision,
-                                               permission_policy_changed_data);
         }
         if (settings_changed && settings_changed_callback)
             settings_changed_callback(active_runtime->config.settings_revision,

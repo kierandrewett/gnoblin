@@ -16,79 +16,147 @@ Window event records also include `revision`, `sequence`, and monotonic `time`.
 Nested `window` and `last` records carry their own `revision`, matching the
 event revision.
 
-## Values with defined choices
+Common event fields:
 
-- Session state is `starting`, `running`, or `stopping`.
-- Runtime state is `starting`, `running`, `restarting`, or `unavailable`.
-- Lock state is `unlocked`, `covering`, `locked`, or `failsafe`; only `locked`
-  confirms that Mutter completed the transition.
-- Color scheme is `default`, `prefer-dark`, or `prefer-light`.
-- Operation `ok` is a boolean. Successful events include `value`; failures
-  include an `Error` record.
+- `name`: the event name, such as `gnoblin.window.focused`. Type: string.
+- `sequence`: an integer that increases across the event stream, so clients can
+  order events.
+- `time`: a monotonic timestamp, not wall-clock time.
+- `revision`: an integer for the state version the record was read from. Type:
+  integer.
 
-Other event fields are snapshots or values supplied by their source. The
+## Closed values and defaults
+
+Fields with a closed set of values are listed below. Each payload carries the
+current value. The default column applies only where the source defines one.
+
+| Event                                     | Field          | Accepted values                                       | Default |
+| ----------------------------------------- | -------------- | ----------------------------------------------------- | ------- |
+| `gnoblin.session.state-changed`           | `state`        | `starting`, `running`, `stopping`                     | None    |
+| `gnoblin.session.lock-state-changed`      | `state`        | `unlocked`, `covering`, `locked`, `failsafe`          | None    |
+| `gnoblin.runtime.status-changed`          | `state`        | `starting`, `running`, `restarting`, `unavailable`    | None    |
+| `gnoblin.appearance.color-scheme-changed` | `color_scheme` | `default`, `prefer-dark`, `prefer-light`              | None    |
+| `gnoblin.shortcut.activated`              | `trigger`      | `press`, `release`                                    | `press` |
+| `gnoblin.shortcut.session.ended`          | `reason`       | `released`, `cancelled`                               | None    |
+| `gnoblin.input.gesture`                   | `phase`        | `begin`, `update`, `end`                              | None    |
+| `gnoblin.prompt.requested`                | `kind`         | `password`, `confirm`                                 | None    |
+| `gnoblin.window.activation-denied`        | `reason`       | `missing_context`, `invalid_context`, `stale_context` | None    |
+| `gnoblin.input.gesture`                   | `gesture`      | `swipe`, `pinch`, `hold`                              | None    |
+
+Only `locked` confirms that Mutter completed the lock transition.
+
+The `ok` field of `gnoblin.operation.completed` is a boolean. Successful
+events include `value`; failures include an `Error` record.
+
+Other fields are snapshots or values supplied by their source. The
 [shared type reference](/shell-api/types) defines the Gnoblin records used in
 these payloads.
 
-| Event name                                 | Fields                                                                                                                                                                    | Dispatched when                                                                                                                                   |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gnoblin.session.lock-state-changed`       | `state`, `revision`, `sequence`, `time`                                                                                                                                   | Mutter reports a lock-state transition in a native session.                                                                                       |
-| `gnoblin.session.state-changed`            | `state`, `revision`, `sequence`, `time`                                                                                                                                   | The session moves from `starting` to `running` or `stopping`, or from `running` to `stopping`. Only in a session started by Gnoblin's supervisor. |
-| `gnoblin.runtime.status-changed`           | `state`, `generation`, `sequence`, `time`                                                                                                                                 | The worker state or accepted runtime generation changes; matches `gnoblin.runtime.status()`.                                                      |
-| `gnoblin.config.reloaded`                  | `path`, `revision`, `warnings`, `sequence`, `time`                                                                                                                        | The candidate config commits. See [reload warnings](/shell-api/session-runtime#reload-warnings) for diagnostic strings.                           |
-| `gnoblin.config.reload-failed`             | `path`, `error`, `sequence`, `time`                                                                                                                                       | Candidate loading, validation, or apply fails while the active runtime stays available.                                                           |
-| `gnoblin.workspace.created`                | `workspace`                                                                                                                                                               | A runtime workspace is created.                                                                                                                   |
-| `gnoblin.workspace.renamed`                | `workspace`                                                                                                                                                               | A workspace display name changes.                                                                                                                 |
-| `gnoblin.workspace.changed`                | `workspace`, `changed`                                                                                                                                                    | Its position, window count, or persistence state changes.                                                                                         |
-| `gnoblin.workspace.removed`                | `workspace_id`, `last`                                                                                                                                                    | A temporary workspace is removed.                                                                                                                 |
-| `gnoblin.workspace.activated`              | `workspace`, optional `previous_id`                                                                                                                                       | The active workspace changes.                                                                                                                     |
-| `gnoblin.workspace.window-moved`           | `window_id`, `from_id`, `to_id`                                                                                                                                           | A window moves from one workspace to another.                                                                                                     |
-| `gnoblin.monitor.added`                    | `monitor`                                                                                                                                                                 | An active logical monitor appears in the native runtime.                                                                                          |
-| `gnoblin.monitor.changed`                  | `monitor`, `changed`                                                                                                                                                      | A listed monitor property changes; `changed` names the changed properties.                                                                        |
-| `gnoblin.monitor.removed`                  | `monitor_id`, `last`                                                                                                                                                      | An active logical monitor is removed.                                                                                                             |
-| `gnoblin.monitor.privacy-screen-changed`   | `requested_enabled`, `source`, `revision`, `monitors`, `sequence`, `time`                                                                                                 | The effective request, its source, or a monitor's privacy-screen state changes.                                                                   |
-| `gnoblin.layer.created`                    | `layer`                                                                                                                                                                   | A layer-shell surface appears in the published snapshot.                                                                                          |
-| `gnoblin.layer.changed`                    | `layer_id`, `layer`, `changed`                                                                                                                                            | A published layer record changes, including mapped or unmapped transitions.                                                                       |
-| `gnoblin.layer.removed`                    | `layer_id`, `last`                                                                                                                                                        | A layer-shell surface disappears from the published snapshot.                                                                                     |
-| `gnoblin.input.device-added`               | `device`                                                                                                                                                                  | An input device appears in the native runtime.                                                                                                    |
-| `gnoblin.input.device-removed`             | `device_id`, `last`                                                                                                                                                       | An input device is removed from the native runtime.                                                                                               |
-| `gnoblin.input.sources-changed`            | `sources`                                                                                                                                                                 | The configured, available XKB source list changes.                                                                                                |
-| `gnoblin.input.source-changed`             | `available`, optional `source`                                                                                                                                            | Mutter confirms a different Gnoblin-owned keymap group, or the current source becomes unknown.                                                    |
-| `gnoblin.input.orientation-lock-changed`   | `available`, `locked`, `orientation`, `source`, `revision`, `sequence`, `time`                                                                                            | Orientation-lock state or its source changes.                                                                                                     |
-| `gnoblin.input.gesture`                    | `gesture`, `phase`, `fingers`, `sequence`, `time`, and gesture-specific fields                                                                                            | A touchpad gesture phase reaches the standalone native Lua runtime.                                                                               |
-| `gnoblin.launch.changed`                   | `launch`                                                                                                                                                                  | A native launch-feedback record is created or changes state.                                                                                      |
-| `gnoblin.portal.grant-added`               | `grant`, `revision`, `sequence`, `time`                                                                                                                                   | A validated persistent portal grant is added or updated.                                                                                          |
-| `gnoblin.portal.grant-removed`             | `grant_id`, `kind`, `revision`, `sequence`, `time`                                                                                                                        | A persistent portal grant is revoked.                                                                                                             |
-| `gnoblin.privacy.changed`                  | `state`, `revision`, `sequence`, `time`                                                                                                                                   | A monitored privacy activity changes; `state` is a `PrivacyState` snapshot.                                                                       |
-| `gnoblin.location.authorization-requested` | `request_id`, `app_id`, `requested_accuracy`, `expires_at_us`, `sequence`, `time`                                                                                         | GeoClue asks Gnoblin to authorize an application's location request.                                                                              |
-| `gnoblin.auth.requested`                   | `request_id`, `action_id`, `message`, `icon_name`, `details`, `identities`, `sequence`, `time`                                                                            | A program asks the session's polkit agent for authentication.                                                                                     |
-| `gnoblin.auth.prompt`                      | `request_id`, `prompt`, `echo`, `sequence`, `time`                                                                                                                        | The authentication check needs input from the user.                                                                                               |
-| `gnoblin.auth.message`                     | `request_id`, `text`, `error`, `sequence`, `time`                                                                                                                         | The authentication check has a line of text for the user.                                                                                         |
-| `gnoblin.auth.finished`                    | `request_id`, `result`, `sequence`, `time`                                                                                                                                | An authentication request ends.                                                                                                                   |
-| `gnoblin.prompt.requested`                 | `request_id`, `kind`, `title`, `message`, `description`, `warning`, `password_new`, `choice_label`, `caller_window`, `continue_label`, `cancel_label`, `sequence`, `time` | A keyring or GPG prompt asks for a password or a confirmation.                                                                                    |
-| `gnoblin.prompt.finished`                  | `request_id`, `result`, `sequence`, `time`                                                                                                                                | A keyring or GPG prompt ends.                                                                                                                     |
-| `gnoblin.capability.changed`               | `capability`, `revision`, `sequence`, `time`                                                                                                                              | A native capability changes; `capability` is the updated `Capability` record.                                                                     |
-| `gnoblin.appearance.color-scheme-changed`  | `color_scheme` (`default`, `prefer-dark`, `prefer-light`), `sequence`, `time`                                                                                             | The desktop color-scheme preference changes.                                                                                                      |
-| `gnoblin.window.created`                   | `window`                                                                                                                                                                  | The native compositor runtime observes a new managed window.                                                                                      |
-| `gnoblin.window.changed`                   | `window_id`, `changed`, `window`                                                                                                                                          | A mapped window property changes in the native compositor runtime.                                                                                |
-| `gnoblin.window.focused`                   | `window_id`, `window`                                                                                                                                                     | A window gains keyboard focus in the native compositor runtime.                                                                                   |
-| `gnoblin.window.unfocused`                 | `window_id`, `window`                                                                                                                                                     | A window loses keyboard focus in the native compositor runtime.                                                                                   |
-| `gnoblin.window.attention-changed`         | `window_id`, `window`, `demands_attention`                                                                                                                                | Mutter's attention state changes.                                                                                                                 |
-| `gnoblin.window.activation-denied`         | `window_id`, `reason`                                                                                                                                                     | Strict focus policy denies an application's activation request.                                                                                   |
-| `gnoblin.window.closed`                    | `window_id`, `last`                                                                                                                                                       | The native compositor runtime removes a managed window.                                                                                           |
-| `gnoblin.focus.policy-changed`             | `policy`, `revision`, `sequence`, `time`                                                                                                                                  | The effective focus policy changes after a successful config commit.                                                                              |
-| `gnoblin.permission.changed`               | `policy`, `revision`, `sequence`, `time`                                                                                                                                  | The committed portal permission policy changes after a successful config commit.                                                                  |
-| `gnoblin.shortcut.activated`               | `shortcut`, `trigger`, `focus_context`                                                                                                                                    | A configured native command shortcut is activated by a trusted key press in the native runtime.                                                   |
-| `gnoblin.shortcut.binding-activated`       | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `focus_context`                                                                                             | A Lua-registered dynamic shortcut activates. Only the first activation can carry focus authority.                                                 |
-| `gnoblin.shortcut.binding-deactivated`     | `id`, `accelerator`, `input_time`                                                                                                                                         | A press-triggered dynamic shortcut is physically released.                                                                                        |
-| `gnoblin.shortcut.session.activated`       | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                                                                                                               | A held dynamic shortcut starts or repeats its modal session.                                                                                      |
-| `gnoblin.shortcut.session.key`             | `id`, `session_id`, key fields, optional `focus_context`                                                                                                                  | A modal key event; real, non-repeat input may carry one-use focus authority.                                                                      |
-| `gnoblin.shortcut.session.ended`           | `id`, `session_id`, `reason`, `time`                                                                                                                                      | A held shortcut session ends or is cancelled.                                                                                                     |
-| `gnoblin.osd.requested`                    | `monitor_id`, `output_names?`, `icon?`, `label?`, `sequence`, `time`                                                                                                      | Mutter requests an OSD; a shell decides whether and how to display it.                                                                            |
-| `gnoblin.pointer.locate-requested`         | `x`, `y`, `monitor_id?`, `output_names?`, `sequence`, `time`                                                                                                              | The user pressed the locate-pointer key; a listener shows the pointer.                                                                            |
-| `gnoblin.animation.started`                | `animation`, `target`, `event`, `cancelled`                                                                                                                               | A configured window or layer animation, workspace transition, or preview starts.                                                                  |
-| `gnoblin.animation.finished`               | `animation`, `target`, `event`, `cancelled`                                                                                                                               | A configured window or layer animation, workspace transition, or preview completes or stops.                                                      |
-| `gnoblin.operation.completed`              | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time`                                                                                        | An asynchronous operation completes; `error` is an `Error` record.                                                                                |
+## Changed-family fields
+
+These events carry structured records. The tables below describe the remaining
+families.
+
+| Event                          | Field        | Type                  | Accepted values or default                                                                   |
+| ------------------------------ | ------------ | --------------------- | -------------------------------------------------------------------------------------------- |
+| `gnoblin.privacy.changed`      | `state`      | `PrivacyState` record | Privacy state snapshot; see the [shared types](/shell-api/types).                            |
+| `gnoblin.privacy.changed`      | `revision`   | integer               | Privacy state revision.                                                                      |
+| `gnoblin.capability.changed`   | `capability` | `Capability` record   | Updated record; `id` names it, such as `auth-agent`.                                         |
+| `gnoblin.capability.changed`   | `revision`   | integer               | Native state revision.                                                                       |
+| `gnoblin.focus.policy-changed` | `policy`     | focus policy record   | Effective policy after a successful config commit; see the [shared types](/shell-api/types). |
+| `gnoblin.operation.completed`  | `ok`         | boolean               | `true` on success, `false` on failure.                                                       |
+| `gnoblin.operation.completed`  | `method`     | string                | Method name of the completed operation.                                                      |
+| `gnoblin.operation.completed`  | `value`      | any                   | Present on success.                                                                          |
+| `gnoblin.operation.completed`  | `error`      | `Error` record        | Present on failure.                                                                          |
+
+#### Session and configuration
+
+| Event name                           | Fields                                             | Dispatched when                                                                                                                                   |
+| ------------------------------------ | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gnoblin.session.lock-state-changed` | `state`, `revision`, `sequence`, `time`            | Mutter reports a lock-state transition in a native session.                                                                                       |
+| `gnoblin.session.state-changed`      | `state`, `revision`, `sequence`, `time`            | The session moves from `starting` to `running` or `stopping`, or from `running` to `stopping`. Only in a session started by Gnoblin's supervisor. |
+| `gnoblin.runtime.status-changed`     | `state`, `generation`, `sequence`, `time`          | The worker state or accepted runtime generation changes; matches `gnoblin.runtime.status()`.                                                      |
+| `gnoblin.config.reloaded`            | `path`, `revision`, `warnings`, `sequence`, `time` | The candidate config commits. See [reload warnings](/shell-api/session-runtime#reload-warnings) for diagnostic strings.                           |
+| `gnoblin.config.reload-failed`       | `path`, `error`, `sequence`, `time`                | Candidate loading, validation, or apply fails while the active runtime stays available.                                                           |
+
+#### Workspaces, monitors, and layers
+
+| Event name                               | Fields                                                                    | Dispatched when                                                                 |
+| ---------------------------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `gnoblin.workspace.created`              | `workspace`                                                               | A runtime workspace is created.                                                 |
+| `gnoblin.workspace.renamed`              | `workspace`                                                               | A workspace display name changes.                                               |
+| `gnoblin.workspace.changed`              | `workspace`, `changed`                                                    | Its position, window count, or persistence state changes.                       |
+| `gnoblin.workspace.removed`              | `workspace_id`, `last`                                                    | A temporary workspace is removed.                                               |
+| `gnoblin.workspace.activated`            | `workspace`, optional `previous_id`                                       | The active workspace changes.                                                   |
+| `gnoblin.workspace.window-moved`         | `window_id`, `from_id`, `to_id`                                           | A window moves from one workspace to another.                                   |
+| `gnoblin.monitor.added`                  | `monitor`                                                                 | An active logical monitor appears in the native runtime.                        |
+| `gnoblin.monitor.changed`                | `monitor`, `changed`                                                      | A listed monitor property changes; `changed` names the changed properties.      |
+| `gnoblin.monitor.removed`                | `monitor_id`, `last`                                                      | An active logical monitor is removed.                                           |
+| `gnoblin.monitor.privacy-screen-changed` | `requested_enabled`, `source`, `revision`, `monitors`, `sequence`, `time` | The effective request, its source, or a monitor's privacy-screen state changes. |
+| `gnoblin.layer.created`                  | `layer`                                                                   | A layer-shell surface appears in the published snapshot.                        |
+| `gnoblin.layer.changed`                  | `layer_id`, `layer`, `changed`                                            | A published layer record changes, including mapped or unmapped transitions.     |
+| `gnoblin.layer.removed`                  | `layer_id`, `last`                                                        | A layer-shell surface disappears from the published snapshot.                   |
+
+#### Windows and focus
+
+| Event name                         | Fields                                     | Dispatched when                                                      |
+| ---------------------------------- | ------------------------------------------ | -------------------------------------------------------------------- |
+| `gnoblin.window.created`           | `window`                                   | The native compositor runtime observes a new managed window.         |
+| `gnoblin.window.changed`           | `window_id`, `changed`, `window`           | A mapped window property changes in the native compositor runtime.   |
+| `gnoblin.window.focused`           | `window_id`, `window`                      | A window gains keyboard focus in the native compositor runtime.      |
+| `gnoblin.window.unfocused`         | `window_id`, `window`                      | A window loses keyboard focus in the native compositor runtime.      |
+| `gnoblin.window.attention-changed` | `window_id`, `window`, `demands_attention` | Mutter's attention state changes.                                    |
+| `gnoblin.window.activation-denied` | `window_id`, `reason`                      | Strict focus policy denies an application's activation request.      |
+| `gnoblin.window.closed`            | `window_id`, `last`                        | The native compositor runtime removes a managed window.              |
+| `gnoblin.focus.policy-changed`     | `policy`, `revision`, `sequence`, `time`   | The effective focus policy changes after a successful config commit. |
+
+#### Input, launch, privacy, and appearance
+
+| Event name                                | Fields                                                                         | Dispatched when                                                                                |
+| ----------------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `gnoblin.input.device-added`              | `device`                                                                       | An input device appears in the native runtime.                                                 |
+| `gnoblin.input.device-removed`            | `device_id`, `last`                                                            | An input device is removed from the native runtime.                                            |
+| `gnoblin.input.sources-changed`           | `sources`                                                                      | The configured, available XKB source list changes.                                             |
+| `gnoblin.input.source-changed`            | `available`, optional `source`                                                 | Mutter confirms a different Gnoblin-owned keymap group, or the current source becomes unknown. |
+| `gnoblin.input.orientation-lock-changed`  | `available`, `locked`, `orientation`, `source`, `revision`, `sequence`, `time` | Orientation-lock state or its source changes.                                                  |
+| `gnoblin.input.gesture`                   | `gesture`, `phase`, `fingers`, `sequence`, `time`, and gesture-specific fields | A touchpad gesture phase reaches the standalone native Lua runtime.                            |
+| `gnoblin.launch.changed`                  | `launch`                                                                       | A native launch-feedback record is created or changes state.                                   |
+| `gnoblin.privacy.changed`                 | `state`, `revision`, `sequence`, `time`                                        | A monitored privacy activity changes; `state` is a `PrivacyState` snapshot.                    |
+| `gnoblin.capability.changed`              | `capability`, `revision`, `sequence`, `time`                                   | A native capability changes; `capability` is the updated `Capability` record.                  |
+| `gnoblin.appearance.color-scheme-changed` | `color_scheme` (`default`, `prefer-dark`, `prefer-light`), `sequence`, `time`  | The desktop color-scheme preference changes.                                                   |
+
+#### Shortcuts
+
+| Event name                             | Fields                                                                        | Dispatched when                                                                                   |
+| -------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `gnoblin.shortcut.activated`           | `shortcut`, `trigger`, `focus_context`                                        | A configured native command shortcut is activated by a trusted key press in the native runtime.   |
+| `gnoblin.shortcut.binding-activated`   | `id`, `accelerator`, `trigger`, `first`, `modifiers`, `time`, `focus_context` | A Lua-registered dynamic shortcut activates. Only the first activation can carry focus authority. |
+| `gnoblin.shortcut.binding-deactivated` | `id`, `accelerator`, `input_time`                                             | A press-triggered dynamic shortcut is physically released.                                        |
+| `gnoblin.shortcut.session.activated`   | `id`, `session_id`, `first`, `trigger`, `modifiers`, `time`                   | A held dynamic shortcut starts or repeats its modal session.                                      |
+| `gnoblin.shortcut.session.key`         | `id`, `session_id`, key fields, optional `focus_context`                      | A modal key event; real, non-repeat input may carry one-use focus authority.                      |
+| `gnoblin.shortcut.session.ended`       | `id`, `session_id`, `reason`, `time`                                          | A held shortcut session ends or is cancelled.                                                     |
+
+#### Shell requests: OSD, pointer, location, and authentication
+
+| Event name                                 | Fields                                                                                                                                                                    | Dispatched when                                                        |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `gnoblin.osd.requested`                    | `monitor_id`, `output_names?`, `icon?`, `label?`, `sequence`, `time`                                                                                                      | Mutter requests an OSD; a shell decides whether and how to display it. |
+| `gnoblin.pointer.locate-requested`         | `x`, `y`, `monitor_id?`, `output_names?`, `sequence`, `time`                                                                                                              | The user pressed the locate-pointer key; a listener shows the pointer. |
+| `gnoblin.location.authorization-requested` | `request_id`, `app_id`, `requested_accuracy`, `expires_at_us`, `sequence`, `time`                                                                                         | GeoClue asks Gnoblin to authorize an application's location request.   |
+| `gnoblin.auth.requested`                   | `request_id`, `action_id`, `message`, `icon_name`, `details`, `identities`, `sequence`, `time`                                                                            | A program asks the session's polkit agent for authentication.          |
+| `gnoblin.auth.prompt`                      | `request_id`, `prompt`, `echo`, `sequence`, `time`                                                                                                                        | The authentication check needs input from the user.                    |
+| `gnoblin.auth.message`                     | `request_id`, `text`, `error`, `sequence`, `time`                                                                                                                         | The authentication check has a line of text for the user.              |
+| `gnoblin.auth.finished`                    | `request_id`, `result`, `sequence`, `time`                                                                                                                                | An authentication request ends.                                        |
+| `gnoblin.prompt.requested`                 | `request_id`, `kind`, `title`, `message`, `description`, `warning`, `password_new`, `choice_label`, `caller_window`, `continue_label`, `cancel_label`, `sequence`, `time` | A keyring or GPG prompt asks for a password or a confirmation.         |
+| `gnoblin.prompt.finished`                  | `request_id`, `result`, `sequence`, `time`                                                                                                                                | A keyring or GPG prompt ends.                                          |
+
+#### Animations and operations
+
+| Event name                    | Fields                                                                             | Dispatched when                                                                              |
+| ----------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `gnoblin.animation.started`   | `animation`, `target`, `event`, `cancelled`                                        | A configured window or layer animation, workspace transition, or preview starts.             |
+| `gnoblin.animation.finished`  | `animation`, `target`, `event`, `cancelled`                                        | A configured window or layer animation, workspace transition, or preview completes or stops. |
+| `gnoblin.operation.completed` | `operation_id`, `method`, `ok`, `value` or `error`, `revision`, `sequence`, `time` | An asynchronous operation completes; `error` is an `Error` record.                           |
 
 ### Reloads and appearance
 

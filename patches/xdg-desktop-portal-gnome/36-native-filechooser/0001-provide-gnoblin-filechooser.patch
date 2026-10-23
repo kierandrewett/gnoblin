@@ -1,11 +1,16 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From ef1e460fc25088dff9e7aec6f5620f58d6d53f4e Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Sat, 26 Sep 2026 20:59:15 +0000
 Subject: [PATCH] portal: provide Gnoblin file chooser with GTK4
 
 ---
+ data/meson.build               | 1 +
+ src/meson.build                | 1 +
+ src/xdg-desktop-portal-gnome.c | 7 +++++++
+ 3 files changed, 9 insertions(+)
+
 diff --git a/data/meson.build b/data/meson.build
-index 8290989..bcbc8d5 100644
+index 6f8b823..05251e1 100644
 --- a/data/meson.build
 +++ b/data/meson.build
 @@ -11,6 +11,7 @@ gnome_portal_interfaces = [
@@ -17,10 +22,10 @@ index 8290989..bcbc8d5 100644
    'org.freedesktop.impl.portal.InputCapture',
    'org.freedesktop.impl.portal.Lockdown',
 diff --git a/src/meson.build b/src/meson.build
-index 829770b..d182a4e 100644
+index 2dbb88f..9e5f52f 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -105,6 +105,7 @@ sources = built_sources + files(
+@@ -104,6 +104,7 @@ sources = built_sources + files(
    'displaystatetracker.c',
    'dynamic-launcher.c',
    'fc-monitor.c',
@@ -53,3 +58,6 @@ index e3f474e..bd1a3f7 100644
    if (!access_init (connection, &error))
      {
        g_warning ("error: %s\n", error->message);
+-- 
+2.55.0
+

@@ -1,5 +1,4 @@
 #include "gnoblin-config.h"
-#include "gnoblin-portal-policy.h"
 #include <glib/gstdio.h>
 #include <string.h>
 
@@ -259,8 +258,9 @@ static void dispatch_gesture_sequence_event(gint64 source_sequence) {
     gnoblin_config_finish_event(TRUE);
 }
 
-/* A last-good document that an older Gnoblin saved can hold deprecated enum spellings. Mutter would read an unknown
- * name as its fallback, so the loader must refuse such a document and accept the same setting with its new name. */
+/* A last-good document that an older Gnoblin saved can hold deprecated enum spellings. Mutter would
+ * read an unknown name as its fallback, so the loader must refuse such a document and accept the
+ * same setting with its new name. */
 static void test_last_good_refuses_deprecated_enum_names(const char* config_path) {
     struct {
         const char* value;
@@ -308,7 +308,8 @@ static void test_input_gesture_sequence(const char* path) {
 
 int main(void) {
     g_autoptr(GError) error = NULL;
-    /* GLib reads XDG_STATE_HOME once, so set it before any call that asks for the state directory. */
+    /* GLib reads XDG_STATE_HOME once, so set it before any call that asks for the state directory.
+     */
     g_autofree char* state_home = g_dir_make_tmp("gnoblin-lua-state-XXXXXX", &error);
     g_assert_no_error(error);
     g_assert_true(g_setenv("XDG_STATE_HOME", state_home, TRUE));
@@ -395,8 +396,7 @@ int main(void) {
 
     g_assert_true(g_file_set_contents(module, "return { name = 'module' }\n", -1, &error));
     g_assert_true(g_file_set_contents(
-        nested,
-        "local g=require('gnoblin'); g.configure {compositor={locate_pointer=true}}\n", -1,
+        nested, "local g=require('gnoblin'); g.configure {compositor={locate_pointer=true}}\n", -1,
         &error));
     g_autofree char* fragment = g_build_filename(conf, "10-bingux.lua", NULL);
     g_assert_true(g_file_set_contents(
@@ -500,22 +500,23 @@ int main(void) {
 
     static const char* const valid_workspaces[] = {"{id = 'code'}", "{number = 2}"};
     for (guint k = 0; k < G_N_ELEMENTS(valid_workspaces); k++) {
-        g_autofree char* contents = g_strdup_printf(
-            "local g=require('gnoblin')\n"
-            "g.window_rule {match={type='window'}, workspace=%s}\n",
-            valid_workspaces[k]);
+        g_autofree char* contents =
+            g_strdup_printf("local g=require('gnoblin')\n"
+                            "g.window_rule {match={type='window'}, workspace=%s}\n",
+                            valid_workspaces[k]);
         g_assert_true(g_file_set_contents(padding_config, contents, -1, &error));
         g_autoptr(GVariant) valid_workspace = load(padding_config, NULL, &error);
         g_assert_no_error(error);
         g_assert_nonnull(valid_workspace);
     }
-    static const char* const invalid_workspaces[] = {
-        "{number = 0}", "{number = 1025}", "{id = ''}", "{id = 'a', number = 1}", "{foo = 1}", "'x'"};
+    static const char* const invalid_workspaces[] = {"{number = 0}", "{number = 1025}",
+                                                     "{id = ''}",    "{id = 'a', number = 1}",
+                                                     "{foo = 1}",    "'x'"};
     for (guint k = 0; k < G_N_ELEMENTS(invalid_workspaces); k++) {
-        g_autofree char* contents = g_strdup_printf(
-            "local g=require('gnoblin')\n"
-            "g.window_rule {match={type='window'}, workspace=%s}\n",
-            invalid_workspaces[k]);
+        g_autofree char* contents =
+            g_strdup_printf("local g=require('gnoblin')\n"
+                            "g.window_rule {match={type='window'}, workspace=%s}\n",
+                            invalid_workspaces[k]);
         g_assert_true(g_file_set_contents(padding_config, contents, -1, &error));
         g_autoptr(GVariant) invalid_workspace = load(padding_config, NULL, &error);
         g_assert_null(invalid_workspace);
@@ -535,10 +536,9 @@ int main(void) {
     static const char* const invalid_blurs[] = {"blur=101", "blur=-1", "blur='x'",
                                                 "blur_ignore_shadows=1"};
     for (guint k = 0; k < G_N_ELEMENTS(invalid_blurs); k++) {
-        g_autofree char* contents = g_strdup_printf(
-            "local g=require('gnoblin')\n"
-            "g.window_rule {match={type='window'}, %s}\n",
-            invalid_blurs[k]);
+        g_autofree char* contents = g_strdup_printf("local g=require('gnoblin')\n"
+                                                    "g.window_rule {match={type='window'}, %s}\n",
+                                                    invalid_blurs[k]);
         g_assert_true(g_file_set_contents(padding_config, contents, -1, &error));
         g_autoptr(GVariant) invalid_blur = load(padding_config, NULL, &error);
         g_assert_null(invalid_blur);
@@ -571,7 +571,8 @@ int main(void) {
         /* A window started from a launcher, or a password dialog, must take focus. */
         g_assert_cmpstr(g_variant_get_string(example_focus_new_windows, NULL), ==, "allow");
         gboolean edge_tiling = FALSE;
-        g_assert_true(g_variant_lookup(example_window_management, "edge-tiling", "b", &edge_tiling));
+        g_assert_true(
+            g_variant_lookup(example_window_management, "edge-tiling", "b", &edge_tiling));
         g_assert_true(edge_tiling);
         gboolean only_on_primary = FALSE;
         g_assert_true(g_variant_lookup(example_window_management, "workspaces-only-on-primary", "b",
@@ -813,7 +814,8 @@ int main(void) {
         g_clear_error(&error);
     }
 
-    g_assert_true(g_file_set_contents(explicit_root, "gnoblin.configure {prompts = {enabled = true}}\n", -1, &error));
+    g_assert_true(g_file_set_contents(
+        explicit_root, "gnoblin.configure {prompts = {enabled = true}}\n", -1, &error));
     g_clear_pointer(&document, g_variant_unref);
     document = load(explicit_root, NULL, &error);
     g_assert_no_error(error);
@@ -1413,9 +1415,6 @@ int main(void) {
         "duration=321, easing='linear'}}\n"
         "g.window_rule {match={type='window', focused=true},"
         "corners={shadow={x=0, y=8, blur=20, opacity=0.2}}}\n"
-        "g.permission_rule {name='remote-test', match='^app%-id:org%.example%.Remote$', "
-        "capabilities={'remote-desktop'}, level='allow', devices={'keyboard','touchscreen'}, "
-        "clipboard=true}\n"
         "g.on('mutter.touchpad.gesture', function(event)\n"
         "  if event.phase == 'begin' then g.workspaces.next() end\n"
         "end)\n"
@@ -1462,12 +1461,6 @@ int main(void) {
         "  assert(not pcall(function() animation.name='changed' end))\n"
         "  assert(not pcall(function() g.animations.get() end))\n"
         "  assert(not pcall(function() g.animations.get('bad name') end))\n"
-        "  local decision=g.permissions.check('remote-desktop','app-id:org.example.Remote')\n"
-        "  assert(decision.level=='allow' and decision.rule=='remote-test', "
-        "'permission decision was '..tostring(decision.level)..' from '..tostring(decision.rule))\n"
-        "  assert(#decision.devices==2 and decision.devices[1]=='keyboard' and "
-        "decision.devices[2]=='touchscreen')\n"
-        "  assert(decision.clipboard and decision.revision==g.permissions.policy().revision)\n"
         "end)\n"
         "g.on('gnoblin.shortcut.binding-activated', function(event)\n"
         "  assert(event.first==true)\n"
@@ -1499,10 +1492,6 @@ int main(void) {
         gnoblin_config_load_runtime(explicit_root, NULL, NULL, &error);
     g_assert_no_error(error);
     g_assert_nonnull(runtime_document);
-    g_auto(GnoblinPermission) expected_permission = gnoblin_permission_policy_evaluate(
-        runtime_document, "remote-desktop", "app-id:org.example.Remote");
-    g_assert_cmpint(expected_permission.level, ==, GNOBLIN_PERMISSION_ALLOW);
-    g_assert_cmpstr(expected_permission.rule, ==, "remote-test");
     gnoblin_config_finish_load(TRUE);
 
     /* A callback failure must be contained. It is reported once and that
@@ -1539,8 +1528,7 @@ int main(void) {
                           g_variant_new_strv(failing_handler_ids, -1));
     g_autoptr(GVariant) failing_input =
         g_variant_ref_sink(g_variant_builder_end(&failing_input_builder));
-    g_autoptr(GVariant) failing_input_result =
-        gnoblin_config_dispatch_input(failing_input, &error);
+    g_autoptr(GVariant) failing_input_result = gnoblin_config_dispatch_input(failing_input, &error);
     g_assert_no_error(error);
     g_assert_nonnull(failing_input_result);
     g_autofree char* input_callback_failure = gnoblin_config_take_runtime_callback_error();
@@ -2453,90 +2441,6 @@ int main(void) {
     const char* capability_id = NULL;
     g_assert_true(g_variant_lookup(capability, "id", "&s", &capability_id));
     g_assert_cmpstr(capability_id, ==, "window-list");
-
-    g_autoptr(GVariant) permission_list =
-        gnoblin_config_read_api("permissions.list", empty_read_arguments, &error);
-    g_assert_no_error(error);
-    g_assert_true(g_variant_is_of_type(permission_list, G_VARIANT_TYPE_VARDICT));
-    g_autoptr(GVariant) permission_policy =
-        g_variant_lookup_value(permission_list, "policy", G_VARIANT_TYPE_VARDICT);
-    g_assert_nonnull(permission_policy);
-    g_autoptr(GVariant) permission_capabilities =
-        g_variant_lookup_value(permission_list, "capabilities", NULL);
-    g_assert_nonnull(permission_capabilities);
-
-    g_autoptr(GVariant) permission_policy_read =
-        gnoblin_config_read_api("permissions.policy", empty_read_arguments, &error);
-    g_assert_no_error(error);
-    g_assert_true(g_variant_is_of_type(permission_policy_read, G_VARIANT_TYPE_VARDICT));
-    const char* policy_default = NULL;
-    g_assert_true(g_variant_lookup(permission_policy_read, "default", "&s", &policy_default));
-    g_assert_cmpstr(policy_default, ==, "inherit");
-    gint64 permission_policy_revision = 0;
-    g_assert_true(
-        g_variant_lookup(permission_policy_read, "revision", "x", &permission_policy_revision));
-
-    GVariantBuilder permission_check_arguments_builder;
-    g_variant_builder_init(&permission_check_arguments_builder, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&permission_check_arguments_builder, "{sv}", "capability",
-                          g_variant_new_string("remote-desktop"));
-    g_variant_builder_add(&permission_check_arguments_builder, "{sv}", "identity",
-                          g_variant_new_string("app-id:org.example.Remote"));
-    g_autoptr(GVariant) permission_check_arguments =
-        g_variant_ref_sink(g_variant_builder_end(&permission_check_arguments_builder));
-    g_autoptr(GVariant) permission_check =
-        gnoblin_config_read_api("permissions.check", permission_check_arguments, &error);
-    g_assert_no_error(error);
-    g_assert_true(g_variant_is_of_type(permission_check, G_VARIANT_TYPE_VARDICT));
-    const char* permission_level = NULL;
-    const char* permission_rule = NULL;
-    g_assert_true(g_variant_lookup(permission_check, "level", "&s", &permission_level));
-    g_assert_true(g_variant_lookup(permission_check, "rule", "&s", &permission_rule));
-    g_assert_cmpstr(permission_level, ==, "inherit");
-    g_assert_cmpstr(permission_rule, ==, "");
-
-    GVariantBuilder portal_grant_builder;
-    g_variant_builder_init(&portal_grant_builder, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&portal_grant_builder, "{sv}", "id", g_variant_new_string("grant-1"));
-    g_variant_builder_add(&portal_grant_builder, "{sv}", "kind",
-                          g_variant_new_string("screen-cast"));
-    GVariantBuilder portal_grants_builder;
-    g_variant_builder_init(&portal_grants_builder, G_VARIANT_TYPE("aa{sv}"));
-    g_variant_builder_add_value(&portal_grants_builder,
-                                g_variant_builder_end(&portal_grant_builder));
-    GVariantBuilder portal_snapshot_builder;
-    g_variant_builder_init(&portal_snapshot_builder, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&portal_snapshot_builder, "{sv}", "grants",
-                          g_variant_builder_end(&portal_grants_builder));
-    g_variant_builder_add(&portal_snapshot_builder, "{sv}", "revision", g_variant_new_int64(23));
-    g_autoptr(GVariant) portal_snapshot =
-        g_variant_ref_sink(g_variant_builder_end(&portal_snapshot_builder));
-    gnoblin_config_update_portal_grant_snapshot(portal_snapshot, 23);
-    g_autoptr(GVariant) portal_grants =
-        gnoblin_config_read_api("portals.grants", empty_read_arguments, &error);
-    g_assert_no_error(error);
-    g_assert_true(g_variant_is_of_type(portal_grants, G_VARIANT_TYPE("av")));
-    g_assert_cmpuint(g_variant_n_children(portal_grants), ==, 1);
-    g_autoptr(GVariant) portal_grant_box = g_variant_get_child_value(portal_grants, 0);
-    g_autoptr(GVariant) portal_grant = g_variant_get_variant(portal_grant_box);
-    const char* portal_grant_kind = NULL;
-    g_assert_true(g_variant_lookup(portal_grant, "kind", "&s", &portal_grant_kind));
-    g_assert_cmpstr(portal_grant_kind, ==, "screen-cast");
-    gint64 portal_grant_revision = 0;
-    g_assert_true(g_variant_lookup(portal_grant, "revision", "x", &portal_grant_revision));
-    g_assert_cmpint(portal_grant_revision, ==, 23);
-
-    GVariantBuilder portal_filter_builder;
-    g_variant_builder_init(&portal_filter_builder, G_VARIANT_TYPE_VARDICT);
-    g_variant_builder_add(&portal_filter_builder, "{sv}", "kind",
-                          g_variant_new_string("remote-desktop"));
-    g_autoptr(GVariant) portal_filter =
-        g_variant_ref_sink(g_variant_builder_end(&portal_filter_builder));
-    g_autoptr(GVariant) filtered_portal_grants =
-        gnoblin_config_read_api("portals.grants", portal_filter, &error);
-    g_assert_no_error(error);
-    g_assert_true(g_variant_is_of_type(filtered_portal_grants, G_VARIANT_TYPE("av")));
-    g_assert_cmpuint(g_variant_n_children(filtered_portal_grants), ==, 0);
 
     g_autoptr(GVariant) input_devices_read =
         gnoblin_config_read_api("input.devices", empty_read_arguments, &error);

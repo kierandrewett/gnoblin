@@ -34,10 +34,8 @@ import json, sys
 for c in json.load(sys.stdin):
     print(c["id"], c["available"])')"
 check "capability auth-agent off by default" "$caps" "auth-agent False"
-check "capability portal-grants" "$caps" "portal-grants True"
 check "capability prompt-broker present" "$caps" "prompt-broker"
 check "privacy state" "$("$G" privacy 2>&1)" "microphone_in_use"
-check "grant list" "$("$G" grant list 2>&1)" '"grants"'
 check "version commit" "$("$G" --version 2>&1)" "Commit"
 
 echo "-- capture"
@@ -411,47 +409,6 @@ for kill_number in 1 2; do
 done
 disable_config 99-test-recovery.lua
 sleep 2
-
-echo "-- permissions default"
-# permissions.default is the fallback when no rule decides a portal request. A reload must change the level that
-# `permissions check` reports for an application with no rule, and `permissions policy` must report the same default.
-permission_level() {
-    "$G" permissions check screen-cast app-id:org.example.Recorder 2>&1 | python3 -c 'import sys,json; print(json.load(sys.stdin).get("level"))' 2>&1
-}
-for mode in ask deny inherit; do
-    printf 'gnoblin.configure {permissions = {default = "%s"}}\n' "$mode" >"$CONFIG_DIR/99-test-permissions.lua"
-    "$G" config reload >/dev/null 2>&1
-    sleep 2
-    check "permissions.default $mode: the decision level" "$(permission_level)" "$mode"
-    check "permissions.default $mode: the committed policy" "$("$G" permissions policy 2>&1)" "\"default\":\"$mode\""
-done
-# "default" is the deprecated spelling of "inherit": it must still load and be reported as "inherit".
-printf 'gnoblin.configure {permissions = {default = "default"}}\n' >"$CONFIG_DIR/99-test-permissions.lua"
-"$G" config reload >/dev/null 2>&1
-sleep 2
-check "permissions.default default (deprecated): the decision level" "$(permission_level)" "inherit"
-check "permissions.default default (deprecated): the committed policy" "$("$G" permissions policy 2>&1)" '"default":"inherit"'
-# A rule that still says level = "default" must also be reported as "inherit".
-cat >"$CONFIG_DIR/99-test-permissions.lua" <<'LUA'
-gnoblin.configure {
-    permissions = {
-        default = "ask",
-        rules = {
-            {name = "regression-old-level", match = "^app%-id:org%.example%.Old$", capabilities = {"screen-cast"},
-             level = "default"},
-        },
-    },
-}
-LUA
-if "$G" config reload >/dev/null 2>&1; then
-    echo "PASS a rule with the deprecated default level reloads"
-else
-    echo "FAIL a rule with the deprecated default level reloads"
-    fail=$((fail + 1))
-fi
-policy_json=$("$G" permissions policy 2>&1 | tr -d ' \n')
-check "a rule with level default is reported as inherit" "$policy_json" '"level":"inherit"'
-disable_config 99-test-permissions.lua
 
 echo "-- touchpad gesture when"
 # "normal" and "unlock-screen" are the deprecated spellings of "unlocked" and "locked". They must still load, and the

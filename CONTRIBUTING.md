@@ -36,9 +36,11 @@ make test    # build the tests, then run the CTest suites
 Run `tests/test-window-manager.sh` only when the real-host and RPM gates are required. The testing guide records which
 checks need a real seat, hardware or a running private session.
 
-Before you merge a change to `release.yml`, the packages or their generator, run
-`gh workflow run release.yml --ref BRANCH -f dry_run=true`. The package jobs and install
-checks run only on `main` and on tags, so a pull request does not reach them.
+A pull request that changes `release.yml`, the package recipes or the release scripts runs the whole
+release pipeline as a dry run. It builds and tests every package and publishes nothing. To run the
+same check on a branch without a pull request, use
+`gh workflow run release.yml --ref BRANCH -f dry_run=true`. To cut a release, see
+[Packaging and releases](docs/distribution.md).
 
 Strict scheduled and manually dispatched app E2E failures create or update a
 Beads/GitHub compatibility issue with the failed outcomes and workflow

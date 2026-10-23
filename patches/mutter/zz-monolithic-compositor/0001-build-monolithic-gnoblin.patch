@@ -21,7 +21,7 @@ diff --git a/src/meson.build b/src/meson.build
 index 3fc274ded..c7c57b7bb 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -1224,30 +1224,123 @@ libmutter_dep = declare_dependency(
+@@ -1224,30 +1224,121 @@ libmutter_dep = declare_dependency(
    ],
  )
  
@@ -126,8 +126,6 @@ index 3fc274ded..c7c57b7bb 100644
 +  gnoblin_root / 'src/config/lua/gnoblin-lua-pattern.c',
 +  gnoblin_root / 'src/config/gnoblin-glob.c',
 +  gnoblin_root / 'src/input/gnoblin-keybinding-catalog.c',
-+  gnoblin_root / 'src/portal/backend/gnoblin-portal-identity.c',
-+  gnoblin_root / 'src/portal/backend/gnoblin-portal-policy.c',
 +)
 +gnoblin_session_sources = files(
 +  gnoblin_root / 'src/main.c',

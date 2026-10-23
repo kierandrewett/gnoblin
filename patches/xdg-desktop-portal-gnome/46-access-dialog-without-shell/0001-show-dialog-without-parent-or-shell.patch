@@ -1,7 +1,8 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From bfa86e4af26335474635c4eb4c555d4cf672a62f Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Thu, 8 Oct 2026 20:00:00 +0100
-Subject: [PATCH] access: show the dialog without a parent window when GNOME Shell is absent
+Subject: [PATCH] access: show the dialog without a parent window when GNOME
+ Shell is absent
 
 A portal request from an app with no parent window, such as a command-line
 tool or a background app, asks the backend for an access dialog. The backend
@@ -10,13 +11,15 @@ with ServiceUnknown and the whole request, for example a screenshot, failed.
 
 Show the dialog itself when org.gnome.Shell has no owner. Keep the delegation
 when it does. An empty parent window handle no longer logs a warning.
-
 ---
+ src/access.c | 34 +++++++++++++++++++++++++++++++---
+ 1 file changed, 31 insertions(+), 3 deletions(-)
+
 diff --git a/src/access.c b/src/access.c
-index e28ea80..a56b036 100644
+index 05bd579..29bb4e2 100644
 --- a/src/access.c
 +++ b/src/access.c
-@@ -251,7 +251,8 @@ create_access_dialog (GxdpExternalWindow  *parent,
+@@ -250,7 +250,8 @@ create_access_dialog (GxdpExternalWindow  *parent,
  
    gtk_widget_realize (dialog);
  
@@ -26,7 +29,7 @@ index e28ea80..a56b036 100644
  
    gtk_window_present (GTK_WINDOW (dialog));
  
-@@ -277,6 +278,31 @@ shell_access_dialog_ready_cb (GObject      *source_object,
+@@ -276,6 +277,31 @@ shell_access_dialog_ready_cb (GObject      *source_object,
      g_dbus_method_invocation_return_value (invocation, params);
  }
  
@@ -58,8 +61,8 @@ index e28ea80..a56b036 100644
  static gboolean
  handle_access_dialog (XdpImplAccess         *object,
                        GDBusMethodInvocation *invocation,
-@@ -306,7 +332,7 @@ handle_access_dialog (XdpImplAccess         *object,
-     }
+@@ -289,7 +315,7 @@ handle_access_dialog (XdpImplAccess         *object,
+ {
    GxdpExternalWindow *external_parent = NULL;
  
 - if (arg_parent_window)
@@ -67,7 +70,7 @@ index e28ea80..a56b036 100644
      {
        external_parent = gxdp_external_window_new_from_handle (arg_parent_window);
        if (!external_parent)
-@@ -314,7 +340,9 @@ handle_access_dialog (XdpImplAccess         *object,
+@@ -297,7 +323,9 @@ handle_access_dialog (XdpImplAccess         *object,
                     arg_parent_window);
      }
  
@@ -78,3 +81,6 @@ index e28ea80..a56b036 100644
      {
        g_autoptr(Request) request = NULL;
        AccessDialogHandle *handle;
+-- 
+2.55.0
+

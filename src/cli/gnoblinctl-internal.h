@@ -105,7 +105,6 @@ typedef struct {
 #define GNOBLINCTL_MONITOR_RECORD_METATABLE "gnoblinctl.Monitor"
 #define GNOBLINCTL_LAYER_SURFACE_RECORD_METATABLE "gnoblinctl.LayerSurface"
 #define GNOBLINCTL_ANIMATION_PREVIEW_RECORD_METATABLE "gnoblinctl.AnimationPreview"
-#define GNOBLINCTL_PORTAL_GRANT_RECORD_METATABLE "gnoblinctl.PortalGrant"
 #define GNOBLINCTL_INPUT_DEVICE_RECORD_METATABLE "gnoblinctl.InputDevice"
 #define GNOBLINCTL_INPUT_SOURCE_RECORD_METATABLE "gnoblinctl.InputSource"
 #define GNOBLINCTL_SHORTCUT_STATE_RECORD_METATABLE "gnoblinctl.ShortcutState"
@@ -115,10 +114,8 @@ typedef struct {
 #define GNOBLINCTL_LAYER_ANIMATION_POLICY_RECORD_METATABLE "gnoblinctl.LayerAnimationPolicy"
 #define GNOBLINCTL_PRIVACY_STATE_RECORD_METATABLE "gnoblinctl.PrivacyState"
 #define GNOBLINCTL_CAPABILITY_RECORD_METATABLE "gnoblinctl.Capability"
-#define GNOBLINCTL_PERMISSION_POLICY_RECORD_METATABLE "gnoblinctl.PermissionPolicy"
 #define GNOBLINCTL_SESSION_STATUS_RECORD_METATABLE "gnoblinctl.SessionStatus"
 #define GNOBLINCTL_SESSION_ACTIVITY_RECORD_METATABLE "gnoblinctl.SessionActivity"
-#define GNOBLINCTL_PERMISSION_DECISION_RECORD_METATABLE "gnoblinctl.PermissionDecision"
 #define GNOBLINCTL_EVENT_SUBSCRIPTION_METATABLE "gnoblinctl.EventSubscription"
 #define GNOBLINCTL_FOCUS_CONTEXT_METATABLE "gnoblinctl.FocusContext"
 #define GNOBLINCTL_MENU_CONTEXT_METATABLE "gnoblinctl.MenuContext"
@@ -243,12 +240,7 @@ int lua_cli_runtime_status(lua_State* state);
 int lua_cli_session_operation(lua_State* state);
 void register_lua_cli_capability_record(lua_State* state);
 int lua_cli_capabilities_list(lua_State* state);
-void register_lua_cli_permission_policy_record(lua_State* state);
-int lua_cli_permissions_list(lua_State* state);
 int lua_cli_version(lua_State* state);
-int lua_cli_permissions_policy(lua_State* state);
-void register_lua_cli_permission_decision_record(lua_State* state);
-int lua_cli_permissions_check(lua_State* state);
 void register_lua_cli_session_status_record(lua_State* state);
 int lua_cli_session_status(lua_State* state);
 void register_lua_cli_session_activity_record(lua_State* state);
@@ -260,12 +252,9 @@ int lua_cli_input_snapshot(lua_State* state);
 int lua_cli_appearance_color_scheme(lua_State* state);
 int lua_cli_input_select_source(lua_State* state);
 int lua_cli_input_set_orientation_lock(lua_State* state);
-int lua_cli_grant_revoke(lua_State* state);
-int lua_cli_portal_grants(lua_State* state);
 int lua_cli_layers_list(lua_State* state);
 void register_lua_cli_layer_surface_record(lua_State* state);
 void register_lua_cli_animation_preview_record(lua_State* state);
-void register_lua_cli_portal_grant_record(lua_State* state);
 void register_lua_cli_input_record(lua_State* state, const char* metatable);
 int lua_cli_monitors_list(lua_State* state);
 int lua_cli_monitors_primary(lua_State* state);

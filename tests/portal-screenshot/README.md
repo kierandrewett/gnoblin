@@ -17,9 +17,8 @@ private buses and do not operate the host or VM desktop.
   connection, or frame timeout yields failure without a file.
 - Malformed dimensions, strides, offsets, short/corrupted chunks, unsupported
   formats, and unexpected crop metadata cannot expose out-of-bounds pixels.
-- Portal deny creates no capture session. Interactive and ask requests need
-  consent. Close completes once, unexports the request, and cancels capture.
-- Only the trusted portal frontend can assert `permission_store_checked`.
+- Every Screenshot request shows the consent dialog; no policy or frontend hint
+  skips it. Close completes once, unexports the request, and cancels capture.
   Another bus peer cannot close a request it does not own.
 
 The pixel fixture uses real SPA buffer layouts and the production reader.
@@ -41,8 +40,8 @@ dbus-run-session -- python3 tests/portal-screenshot/pipewire.py /var/tmp/portal-
 
 The frontend check uses the installed `xdg-desktop-portal` and permission store
 on a private bus with temporary XDG directories. Access consent and image
-production are substitutes; screenshot handling, identity verification and
-request export/close are production code. It checks the public `Response`
+production are substitutes; screenshot handling and request export/close are
+production code. It checks the public `Response`
 signal and verifies that `Close` emits no response.
 
 The PipeWire check requires `gst-launch-1.0`, `videotestsrc`, `pipewiresink`,
@@ -146,8 +145,7 @@ states.
 Repeat after a monitor layout change, with a rotated display and with
 mixed/fractional scales; the resulting PNG need not have logical dimensions.
 
-After one successful non-interactive request has established frontend consent,
-lock the guest through its real locker. From the guest's existing remote
+After one successful request has been approved in the consent dialog, lock the guest through its real locker. From the guest's existing remote
 terminal with the same session bus, run:
 
 ```sh
@@ -197,53 +195,7 @@ sandboxed screenshot client through the public portal: its returned document
 URI must be readable inside that sandbox. The host-app probe cannot prove
 sandbox document export.
 
-## Cold-start consent regression (#143)
-
-`consent-startup.py` exercises the actual frontend and a separately built full
-backend. It uses a private D-Bus daemon with backend activation, a new real
-PermissionStore, a Bubblewrap app identity and real GTK dialogs on Broadway.
-It never operates the desktop's services or permission database.
-
-```sh
-python3 tests/portal-screenshot/consent-startup.py /var/tmp/consent-baseline \
-  --backend /path/to/build/src/xdg-desktop-portal-gnoblin
-python3 tests/portal-screenshot/consent-startup.py /var/tmp/consent-candidate \
-  --backend /path/to/build/src/xdg-desktop-portal-gnoblin \
-  --frontend /path/to/patched/xdg-desktop-portal
-```
-
-Each output directory must be new. The runner requires the normal portal
-build dependencies, a C compiler, PyGObject, Bubblewrap, `dbus-run-session`,
-`gtk4-broadwayd` and `/usr/libexec/xdg-permission-store`. The backend must be
-built with GTK X11 support: the isolated Broadway display uses libgxdp's
-ordinary GTK initialization branch. It does not connect to an X11 server.
-
-The 23 cases cover repeated warm/cold requests, saved approvals and denials,
-policy `inherit`/`ask`/`allow`/`deny`, unavailable policy, dismissal and explicit
-Allow/Deny. Before each cold request, the runner stops only its private backend
-and waits three seconds. The frontend stays alive. A cold request must preserve
-the permission-store and generic Access path of a warm request.
-Required consent must produce a mapped dialog. The runner also checks backend
-Screenshot call counts and permission hints after the dialog response, so an
-early failure cannot substitute for the expected consent or capture route.
-
-The backend's policy client and identity checks are production code. The
-compositor policy endpoint supplies controlled replies. The observer library
-only reports real GTK windows and activates their response signals. No capture
-function is replaced, and no compositor or pixel service is supplied. Approved
-requests therefore fail to capture; this test cannot prove PNG delivery.
-
-`results.json` records each case and `verdict.json` lists parity failures.
-`bus.jsonl` contains timestamped calls and replies, including Access, Screenshot,
-policy decisions and backend owner changes. `run.log` and `processes.log` retain
-process output. Temporary permissions and sandbox metadata remain beneath the
-output directory for inspection.
-
-The unmodified frontend 1.20.4 fails this regression: backend disappearance
-clears its cached Screenshot version, and the next request takes the legacy
-path without consulting stored permissions or calling Access. The merged
-Gnoblin backend asks locally when the frontend permission hint is absent, so
-this test distinguishes missing generic Access from unattended capture.
+## Frontend consent candidate
 
 `consent-frontend-1.20.4.patch` is a candidate for the separate upstream
 `xdg-desktop-portal` frontend. Apply it to a disposable copy of that version's

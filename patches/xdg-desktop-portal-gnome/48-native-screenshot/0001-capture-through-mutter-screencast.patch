@@ -1,4 +1,4 @@
-From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From 14c8ad1758df8c1adf28f0f38e87876d27fc98ec Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 13 Oct 2026 01:30:00 +0000
 Subject: [PATCH] portal: capture screenshots through Mutter ScreenCast
@@ -6,12 +6,29 @@ Subject: [PATCH] portal: capture screenshots through Mutter ScreenCast
 Use the Gnoblin-owned screenshot backend and one-frame PipeWire reader.
 The pinned upstream ScreenCast session keeps inhibition, peer ownership and
 Gnoblin lock checks at the existing compositor boundary.
-
 ---
+ po/POTFILES.in  | 2 +-
+ src/meson.build | 6 ++++--
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/po/POTFILES.in b/po/POTFILES.in
+index d5af233..f491671 100644
+--- a/po/POTFILES.in
++++ b/po/POTFILES.in
+@@ -16,7 +16,7 @@ src/remotedesktopdialog.ui
+ src/screencastdialog.ui
+ src/screencastwidget.c
+ src/screencastwidget.ui
+-src/screenshotdialog.c
++src/gnoblin-screenshot.c
+ src/screenshotdialog.ui
+ src/settings.c
+ src/usbdialog.c
 diff --git a/src/meson.build b/src/meson.build
+index cab6a6c..02c51df 100644
 --- a/src/meson.build
 +++ b/src/meson.build
-@@ -83,6 +83,8 @@
+@@ -83,6 +83,8 @@ deps = [
    dependency('glib-2.0', version: '>= 2.76'),
    dependency('glycin-2'),
    dependency('gio-unix-2.0'),
@@ -20,7 +37,7 @@ diff --git a/src/meson.build b/src/meson.build
    dependency('json-glib-1.0'),
    dependency('gtk4', version: '>= 4.0'),
    dependency('gtk4-unix-print', version: '>= 4.0'),
-@@ -122,8 +124,8 @@
+@@ -118,8 +120,8 @@ sources = built_sources + files(
    'remotedesktop.c',
    'remotedesktopdialog.c',
    'request.c',
@@ -31,15 +48,6 @@ diff --git a/src/meson.build b/src/meson.build
    'screencast.c',
    'screencastgeometrycontainer.c',
    'screencastwidget.c',
-diff --git a/po/POTFILES.in b/po/POTFILES.in
---- a/po/POTFILES.in
-+++ b/po/POTFILES.in
-@@ -16,7 +16,7 @@
- src/screencastdialog.ui
- src/screencastwidget.c
- src/screencastwidget.ui
--src/screenshotdialog.c
-+src/gnoblin-screenshot.c
- src/screenshotdialog.ui
- src/settings.c
- src/usbdialog.c
+-- 
+2.55.0
+

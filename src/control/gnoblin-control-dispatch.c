@@ -153,29 +153,14 @@ void native_control_maybe_free_stopped(GnoblinNativeControl* control) {
     /* Runtime abort can precede compositor teardown while async callbacks drain. */
     if (!control || !control->stopping || !control->teardown_complete ||
         control->pending_input_source_ops != 0 || control->pending_ibus_queries != 0 ||
-        control->pending_portal_grant_ops != 0 || control->pending_thumbnail_count != 0 ||
-        control->pending_activity_queries != 0)
+        control->pending_thumbnail_count != 0 || control->pending_activity_queries != 0)
         return;
     gnoblin_control_input_sources_release(control);
     g_clear_pointer(&control->session_activity_snapshot, g_variant_unref);
     g_free(control);
 }
 
-static void clear_pending_grant_delivery(GnoblinNativeControl* control, gint64 request_id) {
-    if (!control || request_id <= 0 || !control->clients)
-        return;
-    g_autofree char* key = g_strdup_printf("%" G_GINT64_FORMAT, request_id);
-    GHashTableIter iter;
-    gpointer client_value;
-    g_hash_table_iter_init(&iter, control->clients);
-    while (g_hash_table_iter_next(&iter, &client_value, NULL)) {
-        Client* client = client_value;
-        if (client->pending_grant_operations)
-            g_hash_table_remove(client->pending_grant_operations, key);
-    }
-}
-
-/* Exported names for static helpers that gnoblin-control-grants.c calls. */
+/* Exported names for static helpers that gnoblin-control-session-activity.c calls. */
 void gnoblin_control_maybe_free_stopped(GnoblinNativeControl* control) {
     native_control_maybe_free_stopped(control);
 }
@@ -194,11 +179,6 @@ void gnoblin_control_send_response(Client* client, char* response) {
 
 gboolean gnoblin_control_focus_token_random(char token[65]) {
     return focus_token_random(token);
-}
-
-void gnoblin_control_clear_pending_grant_delivery(GnoblinNativeControl* control,
-                                                  gint64 request_id) {
-    clear_pending_grant_delivery(control, request_id);
 }
 
 void stop_native_shortcut_capture(GnoblinNativeControl* control, gboolean complete, gboolean ok,

@@ -1,0 +1,27 @@
+# Groups the generated release notes. GitHub reads this file when the release workflow runs gh release create
+# --generate-notes. A pull request lands in the first category whose label it carries.
+changelog:
+  exclude:
+    labels:
+      - duplicate
+      - invalid
+      - wontfix
+  categories:
+    - title: Features
+      labels:
+        - enhancement
+        - type::feature
+    - title: Fixes
+      labels:
+        - bug
+        - type::bug
+    - title: Packaging and release
+      labels:
+        - packaging
+        - arch
+    - title: Documentation
+      labels:
+        - documentation
+    - title: Other changes
+      labels:
+        - "*"

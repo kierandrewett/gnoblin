@@ -77,16 +77,23 @@
       "lifecycle": "upstream-pre-release",
       "adapter": "rpm-fedora",
       "status": "existing-path",
-      "support": "unsupported",
-      "ci": [".github/workflows/verify.yml", ".github/workflows/copr.yml"],
+      "support": "candidate",
+      "ci": [".github/workflows/copr.yml", ".github/workflows/fedora-rpm.yml", ".github/workflows/verify.yml"],
       "gates": {
-        "dependency-probe": false,
-        "package-build": false,
-        "install": false,
-        "coinstall": false,
+        "dependency-probe": true,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
-      }
+        "removal": true
+      },
+      "evidence": [
+        {
+          "gate": "package-build, install, coinstall, removal",
+          "source": ".github/workflows/fedora-rpm.yml",
+          "detail": "Release run 39855522942 (gnoblin-v0.1.12): fedora-package / build rebuilds the binary RPMs from the source RPMs in a clean fedora:45 container. fedora-package / install runs scripts/check-fedora-install.sh: install, stock gnome-shell and mutter beside Gnoblin, removal, and an unchanged stock package set. copr / install-smoke (45) installs the published COPR package."
+        }
+      ]
     },
     {
       "id": "el-8",
@@ -287,16 +294,28 @@
       "lifecycle": "rolling",
       "adapter": "pkgbuild",
       "status": "existing-path",
-      "support": "unsupported",
-      "ci": [".github/workflows/verify.yml", ".github/workflows/release.yml"],
+      "support": "candidate",
+      "ci": [".github/workflows/arch-package.yml", ".github/workflows/release.yml", ".github/workflows/verify.yml"],
       "gates": {
-        "dependency-probe": false,
-        "package-build": false,
-        "install": false,
-        "coinstall": false,
+        "dependency-probe": true,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
-      }
+        "removal": true
+      },
+      "evidence": [
+        {
+          "gate": "package-build, install, coinstall, removal",
+          "source": ".github/workflows/arch-package.yml",
+          "detail": "Release run 39855522942 (gnoblin-v0.1.12): arch-package / package builds the release PKGBUILD in a clean archlinux:base container, installs it without stock GNOME, installs stock gnome-shell and mutter beside it, then removes Gnoblin and checks the stock packages are unchanged. arch-package / runtime installs the built packages on a clean image and checks library resolution."
+        },
+        {
+          "gate": "graphical-session (not set)",
+          "source": "kierandrewett/bingux PR 36: tests/distro-boot.py, tests/distro-install.py",
+          "detail": "Since 2026-10-21 Bingux builds the generated release PKGBUILD (scripts/build-release-assets.sh --source-only) in a clean archlinux container with makepkg, installs it into a live ISO and boots it in QEMU (UEFI and BIOS, many boots): greeter-mode session, user session, lock and unlock, logout, and an installer-to-installed-disk boot all work. This is reported evidence from another repository, not a Gnoblin CI run, so graphical-session stays false."
+        }
+      ]
     },
     {
       "id": "opensuse-leap-15.5",
@@ -371,16 +390,23 @@
       "lifecycle": "rolling",
       "adapter": "rpm-opensuse",
       "status": "existing-path",
-      "support": "unsupported",
+      "support": "candidate",
       "ci": [".github/workflows/opensuse-rpm.yml", ".github/workflows/rpm-target-probes.yml"],
       "gates": {
-        "dependency-probe": false,
-        "package-build": false,
-        "install": false,
-        "coinstall": false,
+        "dependency-probe": true,
+        "package-build": true,
+        "install": true,
+        "coinstall": true,
         "graphical-session": false,
-        "removal": false
-      }
+        "removal": true
+      },
+      "evidence": [
+        {
+          "gate": "package-build, install, coinstall, removal",
+          "source": ".github/workflows/opensuse-rpm.yml",
+          "detail": "Release run 39855522942 (gnoblin-v0.1.12): opensuse-package / Tumbleweed RPM dependency chain builds the private RPM chain and checks package isolation. opensuse-package / Tumbleweed GNOME coexistence and removal installs it, installs stock GNOME beside it, removes Gnoblin and checks stock GNOME again."
+        }
+      ]
     },
     {
       "id": "nixos-25.05",

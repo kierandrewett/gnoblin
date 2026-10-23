@@ -13,7 +13,7 @@ index d56776fac7..0fc61863c7 100644
    files('core/gnoblin-control-auth.c'),
    files('core/gnoblin-control-capture.c'),
 +  files('core/gnoblin-control-privacy.c'),
-+  files('core/gnoblin-control-grants.c'),
++  files('core/gnoblin-control-session-activity.c'),
    files('core/gnoblin-touchpad-router.c'),
    files('core/gnoblin-keybinding-catalog.c'),
    version: '0.0.0',

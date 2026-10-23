@@ -53,8 +53,8 @@ pointer leaves a client surface; then the window fields are empty strings.
 - [Mutter](mutter)
 - [Gnoblin lifecycle](lifecycle)
 - [Input and shortcuts](input-shortcuts)
-- [Session and permissions](session)
-- [Launch and portal](launch-portal)
+- [Session events](session)
+- [Launch events](launch-portal)
 - [Window, workspace, and monitor records](desktop-state)
 - [Listen to all forwarded events](listen-all)
 

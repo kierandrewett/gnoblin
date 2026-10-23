@@ -96,9 +96,6 @@ gboolean client_connected(GSocketService* service, GSocketConnection* connection
         "shortcut.list",
         "shortcut.session.end",
         "shortcut.unbind",
-        "permissions.list",
-        "permissions.policy",
-        "permissions.check",
         "privacy.state",
         "privacy.stop_sharing",
         "privacy.stop_recording",
@@ -118,9 +115,6 @@ gboolean client_connected(GSocketService* service, GSocketConnection* connection
         "animation.play",
         "animation.pause",
         "animation.stop",
-        "grant.list",
-        "grant.revoke",
-        "portals.grants",
         "window.list",
         "windows.list",
         "window.match",
@@ -191,7 +185,6 @@ gboolean client_connected(GSocketService* service, GSocketConnection* connection
     client->outgoing = g_queue_new();
     client->focus_grants = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
     client->menu_grants = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
-    client->pending_grant_operations = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
     g_hash_table_add(control->clients, client);
     g_autoptr(JsonNode) greeting = json_node_new(JSON_NODE_OBJECT);
     JsonObject* hello = json_object_new();

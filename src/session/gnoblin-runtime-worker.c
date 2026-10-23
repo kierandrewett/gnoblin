@@ -265,7 +265,6 @@ int runtime_worker_main(int argc, char** argv) {
     g_queue_init(&runtime.policy_events);
     g_queue_init(&runtime.deferred_packets);
     gnoblin_config_set_focus_policy_changed_callback(focus_policy_committed, &runtime);
-    gnoblin_config_set_permission_policy_changed_callback(permission_policy_committed, &runtime);
     runtime.loop = g_main_loop_new(NULL, FALSE);
     gnoblin_priority_notice_start();
     RuntimeSignal sigterm = {.runtime = &runtime, .signal_number = SIGTERM};
@@ -276,7 +275,6 @@ int runtime_worker_main(int argc, char** argv) {
         gnoblin_runtime_writer_free(runtime.writer);
         gnoblin_runtime_reader_free(runtime.reader);
         gnoblin_config_set_focus_policy_changed_callback(NULL, NULL);
-        gnoblin_config_set_permission_policy_changed_callback(NULL, NULL);
         g_hash_table_unref(runtime.state_revisions);
         g_hash_table_unref(runtime.pending_logout_ids);
         g_hash_table_unref(runtime.pending_operation_ids);
@@ -293,7 +291,6 @@ int runtime_worker_main(int argc, char** argv) {
         gnoblin_runtime_writer_free(runtime.writer);
         gnoblin_runtime_reader_free(runtime.reader);
         gnoblin_config_set_focus_policy_changed_callback(NULL, NULL);
-        gnoblin_config_set_permission_policy_changed_callback(NULL, NULL);
         g_hash_table_unref(runtime.state_revisions);
         g_hash_table_unref(runtime.pending_logout_ids);
         g_hash_table_unref(runtime.pending_operation_ids);
@@ -318,7 +315,6 @@ int runtime_worker_main(int argc, char** argv) {
         gnoblin_runtime_writer_free(runtime.writer);
         gnoblin_runtime_reader_free(runtime.reader);
         gnoblin_config_set_focus_policy_changed_callback(NULL, NULL);
-        gnoblin_config_set_permission_policy_changed_callback(NULL, NULL);
         g_queue_clear_full(&runtime.policy_events, runtime_policy_event_free);
         g_hash_table_unref(runtime.state_revisions);
         g_hash_table_unref(runtime.pending_logout_ids);
@@ -359,7 +355,6 @@ int runtime_worker_main(int argc, char** argv) {
     gnoblin_runtime_writer_free(runtime.writer);
     gnoblin_runtime_reader_free(runtime.reader);
     gnoblin_config_set_focus_policy_changed_callback(NULL, NULL);
-    gnoblin_config_set_permission_policy_changed_callback(NULL, NULL);
     gnoblin_config_set_runtime_wakeup_callback(NULL, NULL);
     g_queue_clear_full(&runtime.policy_events, runtime_policy_event_free);
     g_clear_pointer(&runtime.initial_document, g_variant_unref);

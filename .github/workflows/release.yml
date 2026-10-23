@@ -1,53 +1,82 @@
 name: Release
 
+# Stages (design/release-pipeline.md has the reasoning):
+#   1. source    builds the source bundle once and uploads it as an artifact
+#   2. packages  Fedora, openSUSE and Arch build from that artifact in parallel, then install, coexist and remove
+#   3. publish   attaches every asset to one release, checksums and attests them, and makes the release public
+#   4. copr      submits the published source RPMs to COPR
+#
+# Only a release tag publishes. A push to main, a pull request that changes the pipeline, and a manual run without a
+# tag run stages 1 and 2 as a dry run and publish nothing. The assets stay as workflow artifacts for 30 days.
+
 on:
   push:
     branches:
       - main
     tags:
       - "gnoblin-v*"
+  pull_request:
+    paths:
+      - ".github/release.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/fedora-rpm.yml"
+      - ".github/workflows/opensuse-rpm.yml"
+      - ".github/workflows/arch-package.yml"
+      - ".github/workflows/copr.yml"
+      - "packaging/**"
+      - "scripts/build-srpm.sh"
+      - "scripts/build-release-assets.sh"
+      - "scripts/check-fedora-install.sh"
+      - "scripts/check-release-tag.sh"
+      - "scripts/check-rpm-isolation.py"
+      - "scripts/install-arch-build-deps.sh"
+      - "scripts/make-tarball.sh"
+      - "scripts/publish-github-release.sh"
+      - "scripts/sync-package-manifest.py"
+      - "tests/*packaging*"
+      - "versions/**"
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing release tag to build or repair. Leave empty for a dry run.
+        description: Existing release tag to build and publish, or to repair while it is a draft. Leave empty for a dry run.
         required: false
         type: string
       dry_run:
-        description: Build and test the source bundle, the Arch and Tumbleweed packages and their install gates, and publish nothing. COPR does not run. Leave the tag empty.
+        description: Build and test every package and install gate, and publish nothing. COPR does not run. Leave the tag empty.
         required: false
         default: false
         type: boolean
 
 permissions:
-  contents: write
-  pages: write
+  contents: read
 
-# One run per release tag at a time. The publish step checks whether the release is a draft, then uploads, and the final
-# job publishes it. Two runs for the same tag could interleave, with one publishing while the other still replaces
-# assets, so the second waits for the first. Runs for other refs, such as a dry run on a branch, do not wait for it.
+# One run per release tag at a time. The publish job checks whether the release is a draft, then uploads, then makes it
+# public. Two runs for the same tag could interleave, so the second waits for the first. A pull request run replaces
+# the previous run for the same pull request. Runs for other refs, such as a dry run on a branch, do not wait.
 concurrency:
   group: release-${{ inputs.tag || github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  source-packages:
+  source:
     outputs:
       release_tag: ${{ steps.meta.outputs.release_tag }}
       is_release: ${{ steps.meta.outputs.is_release }}
-      dry_run: ${{ steps.meta.outputs.dry_run }}
+      ref: ${{ steps.meta.outputs.ref }}
     runs-on: ubuntu-latest
     container: fedora:45
     timeout-minutes: 30
     env:
       GIT_COMMITTER_NAME: Gnoblin release automation
       GIT_COMMITTER_EMAIL: release@gnoblin.local
+      GH_TOKEN: ${{ github.token }}
     steps:
       - name: Install release tools
-        run: dnf -y install cmake git meson patch tar xz
+        run: dnf -y install cmake gh git meson patch tar xz
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag || github.ref }}
@@ -57,16 +86,15 @@ jobs:
         env:
           INPUT_TAG: ${{ inputs.tag }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          dry_run=false
           if [ "$INPUT_DRY_RUN" = true ] && [ -n "$INPUT_TAG" ]; then
             echo "A dry run builds the selected ref. Leave the tag empty." >&2
             exit 1
           fi
-          if [ "$INPUT_DRY_RUN" = true ]; then
+          if [ "$INPUT_DRY_RUN" = true ] || [ "$EVENT_NAME" = pull_request ]; then
             release_tag="commit-${GITHUB_SHA:0:12}"
             is_release=false
-            dry_run=true
           elif [ -n "$INPUT_TAG" ]; then
             release_tag="$INPUT_TAG"
             is_release=true
@@ -77,11 +105,24 @@ jobs:
             # A push to main builds and tests everything and publishes nothing. Only a release tag publishes.
             release_tag="commit-${GITHUB_SHA:0:12}"
             is_release=false
-            dry_run=true
           fi
-          printf 'release_tag=%s\nis_release=%s\ndry_run=%s\n' "$release_tag" "$is_release" "$dry_run" >> "$GITHUB_OUTPUT"
+          printf 'release_tag=%s\nis_release=%s\nref=%s\n' "$release_tag" "$is_release" \
+            "${INPUT_TAG:-$GITHUB_REF}" >> "$GITHUB_OUTPUT"
       - name: Set checkout ownership
         run: chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+      - name: Stop early if the release is already public
+        # Publishing refuses to change a public release. Saying so here saves the hour that the package jobs take.
+        if: steps.meta.outputs.is_release == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
+        run: |
+          state="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,isDraft \
+            --jq ".[] | select(.tagName == \"$RELEASE_TAG\") | .isDraft")"
+          if [ "$state" = false ]; then
+            echo "$RELEASE_TAG is already published. To repair it, turn it back into a draft first:" >&2
+            echo "  gh release edit $RELEASE_TAG --draft" >&2
+            exit 1
+          fi
       - name: Fetch pinned sources, retrying GNOME GitLab errors
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
@@ -95,7 +136,7 @@ jobs:
         run: |
           ./scripts/check-release-tag.sh "$RELEASE_TAG"
           test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(git rev-parse HEAD)"
-      - name: Build release assets
+      - name: Build the source bundle
         env:
           RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
           IS_RELEASE: ${{ steps.meta.outputs.is_release }}
@@ -110,342 +151,67 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  publish-sources:
-    if: ${{ needs.source-packages.outputs.dry_run != 'true' }}
-    needs: source-packages
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ needs.source-packages.outputs.release_tag }}
-      IS_RELEASE: ${{ needs.source-packages.outputs.is_release }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: gnoblin-${{ needs.source-packages.outputs.release_tag }}
-          path: release-assets
-      - name: Publish source tarballs first
-        run: |
-          source_tarballs=(release-assets/gnoblin-*-source.tar.xz)
-          if [ "${#source_tarballs[@]}" -ne 1 ] || [ ! -f "${source_tarballs[0]}" ]; then
-            echo "Expected exactly one complete Gnoblin source tarball" >&2
-            exit 1
-          fi
-          other_assets=()
-          for asset in release-assets/*; do
-            if [ "$asset" != "${source_tarballs[0]}" ]; then
-              other_assets+=("$asset")
-            fi
-          done
-          # The release stays a draft until github-release has attached every package and every gate has passed.
-          if [ "$IS_RELEASE" != true ]; then
-            echo "Only a release tag publishes. This run should have been a dry run." >&2
-            exit 1
-          fi
-          # gh release upload --clobber deletes an existing asset before it uploads the new one. On a release that is
-          # already public, a failed upload or a later failed gate would leave the live release incomplete. So only a
-          # draft, or a new release, takes assets here.
-          state="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 200 --json tagName,isDraft \
-            --jq ".[] | select(.tagName == \"$RELEASE_TAG\") | .isDraft")"
-          case "$state" in
-            false)
-              echo "$RELEASE_TAG is already published, so this run will not replace its assets." >&2
-              echo "To repair it, turn it back into a draft first: gh release edit $RELEASE_TAG --draft" >&2
-              exit 1
-              ;;
-            true)
-              gh release upload "$RELEASE_TAG" "${source_tarballs[0]}" --repo "$GITHUB_REPOSITORY" --clobber
-              ;;
-            *)
-              gh release create "$RELEASE_TAG" "${source_tarballs[0]}" \
-                --repo "$GITHUB_REPOSITORY" --draft --verify-tag --generate-notes \
-                --title "Gnoblin ${RELEASE_TAG#gnoblin-v}"
-              ;;
-          esac
-          if [ "${#other_assets[@]}" -gt 0 ]; then
-            gh release upload "$RELEASE_TAG" "${other_assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
-          fi
-
-  source-rpms:
-    if: ${{ !cancelled() && needs.source-packages.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.publish-sources.result) }}
-    needs: [source-packages, publish-sources]
-    runs-on: ubuntu-latest
-    container: fedora:45
-    timeout-minutes: 30
-    steps:
-      - name: Install source RPM tools
-        run: dnf -y install git rpm-build rpmdevtools tar xz
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: gnoblin-${{ needs.source-packages.outputs.release_tag }}
-          path: release-assets
-      - name: Build source RPMs from the published source tarball
-        run: |
-          cd release-assets
-          sha256sum -c SHA256SUMS
-          source_tarballs=(gnoblin-*-source.tar.xz)
-          if [ "${#source_tarballs[@]}" -ne 1 ] || [ ! -f "${source_tarballs[0]}" ]; then
-            echo "Expected exactly one complete Gnoblin source tarball" >&2
-            exit 1
-          fi
-          mkdir -p "$RUNNER_TEMP/gnoblin-source-bundle" "$RUNNER_TEMP/gnoblin-rpms"
-          tar -xf "${source_tarballs[0]}" -C "$RUNNER_TEMP/gnoblin-source-bundle"
-          mapfile -t bundle_roots < <(find "$RUNNER_TEMP/gnoblin-source-bundle" -mindepth 1 -maxdepth 1 -type d)
-          test "${#bundle_roots[@]}" -eq 1
-          source_dir="${bundle_roots[0]}/sources"
-          test -d "$source_dir"
-          install -m 0644 -- "${source_tarballs[0]}" \
-            "$source_dir/gnoblin-${bundle_roots[0]##*/gnoblin-}-source.tar.xz"
-          cd "$GITHUB_WORKSPACE"
-          for component in xdg-desktop-portal-gnoblin gnoblin; do
-            ./scripts/build-srpm.sh "$component" "$source_dir" "$RUNNER_TEMP/gnoblin-rpms"
-          done
-      - uses: actions/upload-artifact@v4
-        with:
-          name: source-rpms-${{ needs.source-packages.outputs.release_tag }}
-          path: ${{ runner.temp }}/gnoblin-rpms/*.src.rpm
-          if-no-files-found: error
-          retention-days: 30
-
-  publish-source-rpms:
-    # Only after publish-sources accepted the release, so a refused published release is not touched here either.
-    if: ${{ needs.source-packages.outputs.dry_run != 'true' && needs.publish-sources.result == 'success' }}
-    needs: [source-packages, source-rpms, publish-sources]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ needs.source-packages.outputs.release_tag }}
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: source-rpms-${{ needs.source-packages.outputs.release_tag }}
-          path: source-rpms
-      - name: Publish source RPMs
-        run: gh release upload "$RELEASE_TAG" source-rpms/*.src.rpm --repo "$GITHUB_REPOSITORY" --clobber
+  fedora-package:
+    needs: source
+    uses: ./.github/workflows/fedora-rpm.yml
+    with:
+      ref: ${{ needs.source.outputs.ref }}
+      release_tag: ${{ needs.source.outputs.release_tag }}
 
   opensuse-package:
-    if: ${{ !cancelled() && needs.source-packages.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.publish-sources.result) }}
-    needs: [source-packages, publish-sources]
+    needs: source
     uses: ./.github/workflows/opensuse-rpm.yml
     with:
-      ref: ${{ inputs.tag || github.ref }}
-      source_artifact: gnoblin-${{ needs.source-packages.outputs.release_tag }}
+      ref: ${{ needs.source.outputs.ref }}
+      source_artifact: gnoblin-${{ needs.source.outputs.release_tag }}
 
   arch-package:
-    if: ${{ !cancelled() && needs.source-packages.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.publish-sources.result) }}
-    needs: [source-packages, publish-sources]
-    runs-on: ubuntu-latest
-    container: archlinux:base
-    timeout-minutes: 180
-    env:
-      RELEASE_TAG: ${{ needs.source-packages.outputs.release_tag }}
-    steps:
-      - name: Install the tools that fetch the sources
-        run: pacman -Syu --noconfirm --needed git
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.tag || github.ref }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: gnoblin-${{ env.RELEASE_TAG }}
-          path: release-assets
-      - name: Install the packages the released recipes declare, without stock Shell or Mutter
-        run: |
-          ./scripts/install-arch-build-deps.sh release-assets/*.PKGBUILD
-          ! pacman -Q gnome-shell >/dev/null 2>&1
-          ! pacman -Q mutter >/dev/null 2>&1
-          ! pacman -Q gnome-session >/dev/null 2>&1
-          ! pacman -Q gnome-settings-daemon >/dev/null 2>&1
-      - name: Build the release Arch package from its local source asset
-        run: |
-          source_archive="$(find release-assets -maxdepth 1 -name 'gnoblin-*-source.tar.xz' -print -quit)"
-          portal_source="$(find release-assets -maxdepth 1 -name 'xdg-desktop-portal-gnome-*.tar.xz' -print -quit)"
-          pkgbuild="$(find release-assets -maxdepth 1 -name 'gnoblin-[0-9]*.PKGBUILD' -print -quit)"
-          portal_pkgbuild="$(find release-assets -maxdepth 1 -name 'xdg-desktop-portal-gnoblin-*.PKGBUILD' -print -quit)"
-          test -n "$source_archive"
-          test -n "$portal_source"
-          test -n "$pkgbuild"
-          test -n "$portal_pkgbuild"
-          mkdir -p build
-          cp "$source_archive" build/
-          cp "$pkgbuild" build/PKGBUILD
-          # The released recipe has a remote source URL. This gate changes only
-          # that URL fragment so makepkg consumes the just-built local asset;
-          # the filename and checked SHA-256 remain unchanged.
-          sed -i -E 's#::https://github.com/kierandrewett/gnoblin/releases/download/[^/]+/[^\"]+##' build/PKGBUILD
-          useradd -m builder
-          chown -R builder:builder build
-          runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$GITHUB_WORKSPACE/build"
-          mkdir -p build/portal
-          cp "$portal_source" "$portal_pkgbuild" build/portal/
-          mv build/portal/"$(basename "$portal_pkgbuild")" build/portal/PKGBUILD
-          sed -i -E 's#::https://github.com/kierandrewett/gnoblin/releases/download/[^/]+/[^\"]+##' build/portal/PKGBUILD
-          chown -R builder:builder build/portal
-          runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$GITHUB_WORKSPACE/build/portal"
-          cp build/portal/*.pkg.tar.zst build/
-      - name: Install on a system without stock Shell or Mutter
-        run: |
-          package="$(find build -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
-          portal_package="$(find build -maxdepth 1 -name 'xdg-desktop-portal-gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
-          test -n "$package"
-          test -n "$portal_package"
-          pacman -U --noconfirm "$package"
-          pacman -Q gnoblin
-          ! pacman -Q xdg-desktop-portal-gnoblin >/dev/null 2>&1
-          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
-          pacman -U --noconfirm "$portal_package"
-          pacman -Q xdg-desktop-portal-gnoblin
-          test ! -e /usr/lib/gnoblin/bin/gnoblin-mutter
-          test -x /usr/lib/gnoblin/bin/gnoblin
-          test -x /usr/bin/gnoblinctl
-          test -f /usr/share/wayland-sessions/gnoblin.desktop
-          grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
-          test -f /usr/lib/systemd/user/gnoblin-session.target
-          test -f /usr/lib/systemd/user/gnoblin-idle.service
-          test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
-          grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          ! pacman -Q xdg-desktop-portal-gtk >/dev/null 2>&1
-          ! pacman -Q gnome-session >/dev/null 2>&1
-          ! pacman -Q gnome-settings-daemon >/dev/null 2>&1
-          ! pacman -Q gnome-shell >/dev/null 2>&1
-          ! pacman -Q mutter >/dev/null 2>&1
-      - name: Check stock GNOME coexistence and package removal
-        run: |
-          pacman -S --noconfirm --needed gnome-shell mutter
-          pacman -Q gnome-shell mutter > /tmp/stock-gnome-packages
-          pacman -Qo /usr/bin/gnome-shell > /tmp/stock-gnome-shell-owner
-          pacman -Qo /usr/bin/mutter > /tmp/stock-mutter-owner
-          cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
-          cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
-          cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
-          pacman -R --noconfirm xdg-desktop-portal-gnoblin gnoblin
-          ! pacman -Q gnoblin
-          ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          ! test -e /usr/lib/systemd/user/gnoblin-session.target
-          ! test -e /usr/lib/systemd/user/gnoblin-idle.service
-          cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
-          cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
-          cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
-      - uses: actions/upload-artifact@v4
-        with:
-          name: arch-package-${{ env.RELEASE_TAG }}
-          path: build/*.pkg.tar.zst
-          if-no-files-found: error
-          retention-days: 30
-      - name: Remove package cache
-        if: always()
-        run: pacman -Scc --noconfirm
+    needs: source
+    uses: ./.github/workflows/arch-package.yml
+    with:
+      ref: ${{ needs.source.outputs.ref }}
+      release_tag: ${{ needs.source.outputs.release_tag }}
 
-  arch-package-runtime:
-    if: ${{ !cancelled() && needs.arch-package.result == 'success' }}
-    needs: [source-packages, arch-package]
-    runs-on: ubuntu-latest
-    container: archlinux:base
-    timeout-minutes: 30
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: arch-package-${{ needs.source-packages.outputs.release_tag }}
-          path: packages
-      - name: Install the core package and optional portal on a clean Arch system
-        run: |
-          pacman -Syu --noconfirm
-          mapfile -t packages < <(find packages -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -type f)
-          mapfile -t portal_packages < <(find packages -maxdepth 1 -name 'xdg-desktop-portal-gnoblin-[0-9]*.pkg.tar.zst' -type f)
-          test "${#packages[@]}" -eq 1
-          test "${#portal_packages[@]}" -eq 1
-          pacman -U --noconfirm "${packages[0]}"
-          pacman -Q gnoblin
-          ! pacman -Q xdg-desktop-portal-gnoblin >/dev/null 2>&1
-          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
-          test ! -e /usr/lib/gnoblin/bin/gnoblin-mutter
-          test -x /usr/lib/gnoblin/bin/gnoblin
-          test -f /usr/share/wayland-sessions/gnoblin.desktop
-          pacman -U --noconfirm "${portal_packages[0]}"
-          pacman -Q xdg-desktop-portal-gnoblin
-          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
-          test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          grep -q 'org.freedesktop.impl.portal.FileChooser;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          grep -q 'org.freedesktop.impl.portal.Inhibit;' /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          ! pacman -Q xdg-desktop-portal-gtk >/dev/null 2>&1
-          for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon nautilus; do
-            ! pacman -Q "$stock_package" >/dev/null 2>&1
-          done
-          mapfile -t mutter_libdirs < <(find /usr/lib/gnoblin/lib -maxdepth 1 -type d -name 'mutter-*')
-          test "${#mutter_libdirs[@]}" -eq 1
-          export LD_LIBRARY_PATH="/usr/lib/gnoblin/lib:${mutter_libdirs[0]}"
-          while IFS= read -r -d '' binary; do
-            if [[ $(head -c 4 "$binary") == $'\x7fELF' ]]; then
-              linkage="$(ldd "$binary" 2>&1 || true)"
-              if [[ $linkage == *'not found'* ]]; then
-                echo "Unresolved library in $binary" >&2
-                echo "$linkage" >&2
-                exit 1
-              fi
-            fi
-          done < <(find /usr/lib/gnoblin -type f -print0)
-          for stock_package in gnome-shell mutter gnome-session gnome-settings-daemon nautilus; do
-            ! pacman -Q "$stock_package" >/dev/null 2>&1
-          done
-          pacman -R --noconfirm xdg-desktop-portal-gnoblin gnoblin
-          ! pacman -Q gnoblin >/dev/null 2>&1
-          ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-
-  github-release:
-    # Publish only when every gate passed. Otherwise the release stays a draft with the source tarball.
-    if: >-
-      ${{ !cancelled() && needs.publish-sources.result == 'success' && needs.publish-source-rpms.result == 'success' &&
-      needs.arch-package-runtime.result == 'success' && needs.opensuse-package.result == 'success' }}
-    needs:
-      - source-packages
-      - publish-sources
-      - publish-source-rpms
-      - arch-package-runtime
-      - opensuse-package
+  publish:
+    # Runs only for a release tag, and only when every package job and install gate passed. A failed gate leaves no
+    # release behind. The run keeps the built assets as artifacts, so the fix needs a new run, not a rebuild by hand.
+    if: needs.source.outputs.is_release == 'true'
+    needs: [source, fedora-package, opensuse-package, arch-package]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_TAG: ${{ needs.source-packages.outputs.release_tag }}
+      RELEASE_TAG: ${{ needs.source.outputs.release_tag }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.source.outputs.ref }}
       - uses: actions/download-artifact@v4
         with:
-          name: gnoblin-${{ needs.source-packages.outputs.release_tag }}
+          name: gnoblin-${{ needs.source.outputs.release_tag }}
           path: release-assets
       - uses: actions/download-artifact@v4
-        if: needs.arch-package-runtime.result == 'success'
         with:
-          name: arch-package-${{ needs.source-packages.outputs.release_tag }}
+          name: source-rpms-${{ needs.source.outputs.release_tag }}
           path: release-assets
-          merge-multiple: true
       - uses: actions/download-artifact@v4
-        if: needs.publish-source-rpms.result == 'success'
         with:
-          name: source-rpms-${{ needs.source-packages.outputs.release_tag }}
+          name: fedora-rpms-${{ needs.source.outputs.release_tag }}
           path: release-assets
       - uses: actions/download-artifact@v4
-        if: needs.opensuse-package.result == 'success'
+        with:
+          name: arch-package-${{ needs.source.outputs.release_tag }}
+          path: release-assets
+      - uses: actions/download-artifact@v4
         with:
           name: opensuse-tumbleweed-rpms
           path: opensuse-rpms
           merge-multiple: true
-      - name: Flatten openSUSE RPM assets
-        if: needs.opensuse-package.result == 'success'
+      - name: Add the openSUSE RPMs under release names
         run: |
-          mkdir -p release-assets
           mapfile -d '' rpms < <(
             find opensuse-rpms -type f -name '*.rpm' \
               ! -name '*-debuginfo-*' ! -name '*-debugsource-*' -print0
@@ -457,22 +223,48 @@ jobs:
             [[ $name =~ ^(.+)\.([^.]+)\.rpm$ ]]
             cp -- "$rpm" "release-assets/${BASH_REMATCH[1]}.tumbleweed.${BASH_REMATCH[2]}.rpm"
           done
-      - name: Checksum all release assets
+      - name: Checksum every release asset
         run: |
           cd release-assets
           find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\n' |
             LC_ALL=C sort | xargs sha256sum > SHA256SUMS
-      - name: Add package assets to the release
-        run: gh release upload "$RELEASE_TAG" release-assets/* --repo "$GITHUB_REPOSITORY" --clobber
-      - name: Publish the release
-        run: gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --draft=false
+      - name: Attest build provenance
+        # Lets a user check that an asset came from this workflow: gh attestation verify FILE --repo OWNER/REPO
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release-assets/*
+      - name: Write the release notes header
+        run: |
+          version="${RELEASE_TAG#gnoblin-v}"
+          cat > "$RUNNER_TEMP/release-notes.md" <<EOF
+          Gnoblin $version targets GNOME $(python3 scripts/gnoblin-version.py get gnomeVersion).
 
-  copr-repository:
-    # COPR reads the source RPMs from the published release, so it runs after github-release.
-    if: ${{ needs.source-packages.outputs.is_release == 'true' && needs.github-release.result == 'success' }}
-    needs: [source-packages, github-release]
+          ## Install
+
+          - Fedora: enable the COPR repository. It receives this release shortly after publication. The \`fc45\` RPMs below also install with \`dnf install ./gnoblin-*.rpm\`.
+          - Arch: download the \`gnoblin\` package, then run \`pacman -U\`. The \`PKGBUILD\` files rebuild it.
+          - openSUSE Tumbleweed: install the \`tumbleweed\` RPMs with \`zypper install\`.
+          - Other systems: build the source bundle with \`make\`.
+
+          Instructions: https://github.com/$GITHUB_REPOSITORY/blob/$RELEASE_TAG/docs/installation.md
+
+          ## Verify the download
+
+          \`\`\`sh
+          sha256sum -c SHA256SUMS --ignore-missing
+          gh attestation verify FILE --repo $GITHUB_REPOSITORY
+          \`\`\`
+          EOF
+      - name: Publish the release
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: ./scripts/publish-github-release.sh "$RELEASE_TAG" release-assets "$RUNNER_TEMP/release-notes.md"
+
+  copr:
+    # COPR reads the source RPMs from the published release, so it runs after publish.
+    needs: [source, publish]
     uses: ./.github/workflows/copr.yml
     with:
-      tag: ${{ needs.source-packages.outputs.release_tag }}
+      tag: ${{ needs.source.outputs.release_tag }}
     secrets:
       COPR_CONFIG: ${{ secrets.COPR_CONFIG }}

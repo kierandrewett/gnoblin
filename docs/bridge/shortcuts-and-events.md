@@ -227,7 +227,7 @@ accelerator. The native bridge reports activation through
 modifier sessions, a switcher fallback, or buffered typing. See
 [API version 1.11](#api-version-111-dynamic-shortcuts) for the request shape.
 
-Window, workspace, input, permission, portal-grant, privacy, animation, and
+Window, workspace, input, privacy, animation, and
 launch methods are listed in the API-version tables above. They use
 `op: "api"` with a version, request ID, method name, and arguments object.
 
