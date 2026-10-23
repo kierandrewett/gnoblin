@@ -74,6 +74,18 @@ jobs:
           chown -R builder:builder build/portal
           runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$GITHUB_WORKSPACE/build/portal"
           cp build/portal/*.pkg.tar.zst build/
+      - name: Build the pacman repository database
+        run: |
+          # pacman reads <Server>/gnoblin.db and then each package file the database names. The release assets
+          # already carry the package files, so the database is the only extra asset. The database holds each
+          # package's SHA-256, which pacman checks after the download.
+          cd build
+          repo-add --nocolor gnoblin.db.tar.zst gnoblin-[0-9]*.pkg.tar.zst xdg-desktop-portal-gnoblin-[0-9]*.pkg.tar.zst
+          # repo-add writes gnoblin.db as a symlink. A release asset must be a regular file.
+          cp --remove-destination gnoblin.db.tar.zst gnoblin.db
+          rm -f gnoblin.db.tar.zst gnoblin.files gnoblin.files.tar.zst gnoblin.db.tar.zst.old gnoblin.files.tar.zst.old
+          tar -tf gnoblin.db | grep -q '^gnoblin-[0-9]'
+          tar -tf gnoblin.db | grep -q '^xdg-desktop-portal-gnoblin-[0-9]'
       - name: Install on a system without stock Shell or Mutter
         run: |
           package="$(find build -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
@@ -124,7 +136,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: arch-package-${{ env.RELEASE_TAG }}
-          path: build/*.pkg.tar.zst
+          path: |
+            build/*.pkg.tar.zst
+            build/gnoblin.db
           if-no-files-found: error
           retention-days: 30
       - name: Remove package cache
@@ -186,3 +200,19 @@ jobs:
           pacman -R --noconfirm xdg-desktop-portal-gnoblin gnoblin
           ! pacman -Q gnoblin >/dev/null 2>&1
           ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+      - name: Install through the pacman repository database
+        run: |
+          test -f packages/gnoblin.db
+          # The release serves these same files from one URL. A file:// server exercises the same database,
+          # package names and checksums that pacman reads over HTTPS.
+          cat >> /etc/pacman.conf <<CONF
+
+          [gnoblin]
+          SigLevel = Optional TrustAll
+          Server = file://$GITHUB_WORKSPACE/packages
+          CONF
+          pacman -Sy --noconfirm gnoblin xdg-desktop-portal-gnoblin
+          pacman -Q gnoblin xdg-desktop-portal-gnoblin
+          test "$(pacman -Si gnoblin | awk -F' : ' '/^Repository/ {print $2}')" = gnoblin
+          test -x /usr/lib/gnoblin/bin/gnoblin
+          pacman -R --noconfirm xdg-desktop-portal-gnoblin gnoblin
