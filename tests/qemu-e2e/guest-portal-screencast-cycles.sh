@@ -19,7 +19,8 @@ G="${GNOBLIN_PREFIX:?set GNOBLIN_PREFIX to the prefix synced into the guest}/bin
 F="$HOME/.config/gnoblin/config/99-test-portal-screencast-cycles.lua"
 CYCLES="${CYCLES:-10}"
 fail=0
-trap 'rm -f "$F" /tmp/portal-cycles.py /tmp/portal-cycles.jsonl /tmp/portal-cycles.log; "$G" config reload >/dev/null 2>&1' EXIT
+painter=""
+trap '[ -z "$painter" ] || kill "$painter" 2>/dev/null; rm -f "$F" /tmp/portal-cycles.py /tmp/portal-cycles.jsonl /tmp/portal-cycles.log; "$G" config reload >/dev/null 2>&1' EXIT
 
 check() {
     # check NAME ACTUAL EXPECTED
@@ -35,6 +36,12 @@ check() {
 printf 'gnoblin.configure {window_management = {focus_new_windows = "allow"}}\n' >"$F"
 "$G" config reload >/dev/null 2>&1
 sleep 3
+
+# The compositor sends a stream frame only when the screen changes. On an idle desktop GStreamer waits for buffers
+# until it times out, so keep a terminal repainting for the whole run.
+setsid foot -e sh -c 'while :; do date; sleep 0.2; done' >/dev/null 2>&1 &
+painter=$!
+sleep 2
 
 cat >/tmp/portal-cycles.py <<'PY'
 import json
@@ -147,7 +154,15 @@ def request(method, sig, args, token):
             while not dialog_focused() and time.monotonic() < end:
                 pump(0.25)
             if dialog_focused():
+                # The dialog fills its monitor list asynchronously and Share stays insensitive until then, so
+                # give it a moment before the keys, and press Return once more if the dialog is still open.
+                pump(1.5)
                 key_presses([KEY_TAB, KEY_TAB, KEY_RETURN])
+                settle = time.monotonic() + 6
+                while "response" not in done and dialog_focused() and time.monotonic() < settle:
+                    pump(0.25)
+                if "response" not in done and dialog_focused():
+                    key_presses([KEY_RETURN])
             else:
                 done["dialog"] = "never focused"
         end = time.monotonic() + 40
