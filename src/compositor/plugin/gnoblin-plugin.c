@@ -12,6 +12,7 @@
 #include "config.h"
 
 #include <gdk-pixbuf/gdk-pixbuf.h>
+#include <math.h>
 
 #include "clutter/clutter.h"
 #include "meta/display.h"
@@ -38,6 +39,7 @@
 
 #include "gnoblin-plugin-ui.h"
 #include "gnoblin-plugin-input.h"
+#include "backends/native/gnoblin-kms-console.h"
 
 typedef struct _MetaGnoblinPlugin MetaGnoblinPlugin;
 typedef struct _MetaGnoblinPluginClass MetaGnoblinPluginClass;
@@ -52,6 +54,9 @@ struct _MetaGnoblinPlugin {
     /* Decoded once per image path; monitors share it. */
     CoglTexture* background_texture;
     GnoblinPluginUi* diagnostics_ui;
+    /* The framebuffer the kernel shows between two compositors, painted with the background. */
+    GnoblinKmsConsole* console;
+    guint console_idle_id;
     GnoblinPluginInput input;
     gulong session_lock_callback_id;
     MetaWaylandCompositor* wayland_compositor;
@@ -194,6 +199,83 @@ static void gnoblin_plugin_update_backgrounds(MetaGnoblinPlugin* self) {
 
         clutter_actor_add_child(self->background_group, actor);
     }
+}
+
+/* Cover-scale the image to width x height and cut the centre, as the background's zoom style
+ * does. The caller owns the result, which is at least that big, or NULL when it cannot be read. */
+static GdkPixbuf* gnoblin_plugin_load_cover(const char* path, int width, int height) {
+    int image_width = 0;
+    int image_height = 0;
+    if (!gdk_pixbuf_get_file_info(path, &image_width, &image_height) || image_width <= 0 ||
+        image_height <= 0)
+        return NULL;
+    double scale = MAX((double)width / image_width, (double)height / image_height);
+    int scaled_width = MAX(width, (int)ceil(image_width * scale));
+    int scaled_height = MAX(height, (int)ceil(image_height * scale));
+    g_autoptr(GdkPixbuf) scaled =
+        gdk_pixbuf_new_from_file_at_scale(path, scaled_width, scaled_height, FALSE, NULL);
+    if (!scaled)
+        return NULL;
+    g_autoptr(GdkPixbuf) oriented = gdk_pixbuf_apply_embedded_orientation(scaled);
+    GdkPixbuf* source = oriented ? oriented : scaled;
+    if (gdk_pixbuf_get_width(source) < width || gdk_pixbuf_get_height(source) < height)
+        return gdk_pixbuf_scale_simple(source, width, height, GDK_INTERP_BILINEAR);
+    return g_object_ref(source);
+}
+
+/* The pixels for one console framebuffer: the background colour, with the image over it. Each
+ * pixel is the bytes B, G, R, unused, which is what the kernel's console framebuffer holds. */
+static GBytes* gnoblin_plugin_render_console(int width, int height, gpointer user_data) {
+    MetaGnoblinPlugin* self = user_data;
+    gsize row = (gsize)width * 4;
+    g_autofree guint8* pixels = g_malloc(row * height);
+    /* The colour sits over black, so its alpha scales it. */
+    guint8 base[3] = {0, 0, 0};
+    base[0] = (self->background_color.blue * self->background_color.alpha + 127) / 255;
+    base[1] = (self->background_color.green * self->background_color.alpha + 127) / 255;
+    base[2] = (self->background_color.red * self->background_color.alpha + 127) / 255;
+    for (gsize i = 0; i < (gsize)width * height; i++) {
+        pixels[i * 4] = base[0];
+        pixels[i * 4 + 1] = base[1];
+        pixels[i * 4 + 2] = base[2];
+        pixels[i * 4 + 3] = 0xff;
+    }
+    g_autoptr(GdkPixbuf) cover =
+        self->background_image ? gnoblin_plugin_load_cover(self->background_image, width, height)
+                               : NULL;
+    if (cover) {
+        int channels = gdk_pixbuf_get_n_channels(cover);
+        gboolean alpha = gdk_pixbuf_get_has_alpha(cover);
+        gsize stride = gdk_pixbuf_get_rowstride(cover);
+        const guint8* source = gdk_pixbuf_read_pixels(cover);
+        int offset_x = (gdk_pixbuf_get_width(cover) - width) / 2;
+        int offset_y = (gdk_pixbuf_get_height(cover) - height) / 2;
+        for (int y = 0; y < height; y++) {
+            const guint8* in = source + (gsize)(y + offset_y) * stride + (gsize)offset_x * channels;
+            guint8* out = pixels + (gsize)y * row;
+            for (int x = 0; x < width; x++, in += channels, out += 4) {
+                guint a = alpha ? in[3] : 0xff;
+                out[0] = (in[2] * a + out[0] * (0xff - a) + 127) / 255;
+                out[1] = (in[1] * a + out[1] * (0xff - a) + 127) / 255;
+                out[2] = (in[0] * a + out[2] * (0xff - a) + 127) / 255;
+            }
+        }
+    }
+    return g_bytes_new_take(g_steal_pointer(&pixels), row * height);
+}
+
+static gboolean gnoblin_plugin_paint_console(gpointer user_data) {
+    MetaGnoblinPlugin* self = user_data;
+    self->console_idle_id = 0;
+    gnoblin_kms_console_paint(self->console, gnoblin_plugin_render_console, self);
+    return G_SOURCE_REMOVE;
+}
+
+/* Painting waits for an idle moment after the first frame: decoding the image must not delay it. */
+static void gnoblin_plugin_schedule_console(MetaGnoblinPlugin* self) {
+    if (self->console && self->console_idle_id == 0)
+        self->console_idle_id =
+            g_idle_add_full(G_PRIORITY_LOW, gnoblin_plugin_paint_console, self, NULL);
 }
 
 static void gnoblin_plugin_monitors_changed(MetaMonitorManager* manager, MetaGnoblinPlugin* self) {
@@ -387,6 +469,7 @@ static void gnoblin_plugin_background_bridge(const char* color, const char* imag
     MetaGnoblinPlugin* plugin = user_data;
     gnoblin_plugin_set_background(plugin, color, image);
     gnoblin_plugin_update_backgrounds(plugin);
+    gnoblin_plugin_schedule_console(plugin);
 }
 
 static void gnoblin_plugin_start(MetaPlugin* plugin) {
@@ -410,6 +493,9 @@ static void gnoblin_plugin_start(MetaPlugin* plugin) {
                      G_CALLBACK(gnoblin_plugin_monitors_changed), plugin);
     gnoblin_plugin_load_configured_background(self);
     gnoblin_plugin_update_backgrounds(self);
+    /* Before the stage is shown, the displays still scan out the kernel's console framebuffer. */
+    self->console = gnoblin_kms_console_capture(backend);
+    gnoblin_plugin_schedule_console(self);
 
     /* Diagnostics belong directly to the stage, after Mutter's window,
      * popup, input-panel, and feedback groups. Layer-shell overlay surfaces
@@ -448,6 +534,8 @@ static void meta_gnoblin_plugin_dispose(GObject* object) {
         self->wayland_compositor = NULL;
     }
     gnoblin_plugin_clipboard_shutdown();
+    g_clear_handle_id(&self->console_idle_id, g_source_remove);
+    g_clear_pointer(&self->console, gnoblin_kms_console_free);
     g_clear_pointer(&self->diagnostics_ui, gnoblin_plugin_ui_free);
     g_clear_pointer(&self->background_group, clutter_actor_destroy);
     g_clear_pointer(&self->background_image, g_free);

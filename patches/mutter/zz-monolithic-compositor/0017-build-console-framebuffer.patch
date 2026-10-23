@@ -1,0 +1,29 @@
+From 4172500e3cd7ce031e8b10bc2cb74052da3ec6d9 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Fri, 23 Oct 2026 20:57:30 +0100
+Subject: [PATCH] mutter: build the Gnoblin console framebuffer module
+
+Gnoblin paints compositor.background into the framebuffer the kernel puts back
+on the display when the last compositor closes the DRM device, so a login
+handover keeps the wallpaper on screen. The module reads private KMS state and
+needs the DRM fd, so it is compiled into libmutter beside the native backend.
+---
+ src/meson.build | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/meson.build b/src/meson.build
+index 168508cd4..cde3eeab6 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -700,6 +700,8 @@ mutter_sources += [
+ mutter_sources += [
+   'wayland/meta-wayland-drm-lease.c',
+   'wayland/meta-wayland-drm-lease.h',
++  'backends/native/gnoblin-kms-console.c',
++  'backends/native/gnoblin-kms-console.h',
+   'backends/native/meta-backend-native.c',
+   'backends/native/meta-backend-native.h',
+   'backends/native/meta-backend-native-private.h',
+-- 
+2.55.0
+

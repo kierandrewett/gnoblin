@@ -1,0 +1,3 @@
+# project source destination
+mutter gnoblin-kms-console.c src/backends/native/gnoblin-kms-console.c
+mutter gnoblin-kms-console.h src/backends/native/gnoblin-kms-console.h

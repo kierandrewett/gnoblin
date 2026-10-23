@@ -4,6 +4,12 @@
 
 ### Added
 
+- A native session paints `compositor.background` into the framebuffer the
+  kernel shows between two compositors, once its first frame is up. A handover
+  such as login screen to user session no longer shows black or console text.
+  Gnoblin writes only a linear XRGB8888 or ARGB8888 framebuffer that the driver
+  can map. The kernel's text console still draws over it, so the display must
+  have no text console bound; the compositor page shows how.
 - Releases publish a pacman repository database, `gnoblin.db`, beside the Arch
   packages. Add `Server = https://github.com/kierandrewett/gnoblin/releases/latest/download`
   to a `[gnoblin]` section in `pacman.conf`. The release refuses to publish
@@ -18,6 +24,11 @@
 
 ### Fixed
 
+- A slow first start no longer ends the session. The compositor waits 60 s
+  for the first Lua configuration, was 10 s. The Lua worker waits 60 s for the
+  compositor, was 10 s.
+- A greeter session whose Lua runtime cannot be recovered now ends with an
+  error, so the login manager starts it again. A user session still stays up.
 - The portal backend now destroys and releases each ScreenCast consent dialog
   and its hidden parent window when the session ends. Before, the dialog's
   widget tree stayed alive after every screen cast.
