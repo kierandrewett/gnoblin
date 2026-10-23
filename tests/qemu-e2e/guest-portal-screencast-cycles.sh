@@ -20,7 +20,11 @@ F="$HOME/.config/gnoblin/config/99-test-portal-screencast-cycles.lua"
 CYCLES="${CYCLES:-10}"
 fail=0
 painter=""
-trap '[ -z "$painter" ] || kill "$painter" 2>/dev/null; rm -f "$F" /tmp/portal-cycles.py /tmp/portal-cycles.jsonl /tmp/portal-cycles.log; "$G" config reload >/dev/null 2>&1' EXIT
+restore_backend() {
+    systemctl --user unset-environment GSK_RENDERER 2>/dev/null
+    pkill -f libexec/xdg-desktop-portal-gnoblin 2>/dev/null
+}
+trap '[ -z "$painter" ] || kill "$painter" 2>/dev/null; restore_backend; rm -f "$F" /tmp/portal-cycles.py /tmp/portal-cycles.jsonl /tmp/portal-cycles.log; "$G" config reload >/dev/null 2>&1' EXIT
 
 check() {
     # check NAME ACTUAL EXPECTED
@@ -36,6 +40,14 @@ check() {
 printf 'gnoblin.configure {window_management = {focus_new_windows = "allow"}}\n' >"$F"
 "$G" config reload >/dev/null 2>&1
 sleep 3
+
+# Run the portal backend on GTK's cairo renderer. Any GTK 4 window on the GL renderer leaks one sync_file in the client and
+# one dmabuf in the compositor each time it opens and closes in this guest (virtio-gpu GL), with or without a portal; the
+# cairo and Vulkan renderers do not. The consent dialog is such a window, so the GL renderer would hide what this test is
+# for: growth in the screen cast path itself. The next request starts the backend again with the setting.
+systemctl --user set-environment GSK_RENDERER=cairo
+pkill -f libexec/xdg-desktop-portal-gnoblin || true
+sleep 2
 
 # The compositor sends a stream frame only when the screen changes. On an idle desktop GStreamer waits for buffers
 # until it times out, so keep a terminal repainting for the whole run.
