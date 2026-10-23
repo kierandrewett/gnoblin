@@ -456,7 +456,7 @@ G_GNUC_INTERNAL void gnoblin_control_privacy_new_handle(MetaRemoteAccessControll
 G_GNUC_INTERNAL GVariant* gnoblin_control_stop_privacy_sessions(GnoblinNativeControl* control,
                                                                 gboolean recording, GError** error);
 
-/* gnoblin-control-grants.c: session activity. */
+/* gnoblin-control-session-activity.c: session activity. */
 G_GNUC_INTERNAL void gnoblin_control_activity_watch(GnoblinNativeControl* control);
 G_GNUC_INTERNAL void gnoblin_control_activity_publish(GnoblinNativeControl* control,
                                                       gboolean available, gboolean idle,

@@ -160,7 +160,7 @@ void native_control_maybe_free_stopped(GnoblinNativeControl* control) {
     g_free(control);
 }
 
-/* Exported names for static helpers that gnoblin-control-grants.c calls. */
+/* Exported names for static helpers that gnoblin-control-session-activity.c calls. */
 void gnoblin_control_maybe_free_stopped(GnoblinNativeControl* control) {
     native_control_maybe_free_stopped(control);
 }
