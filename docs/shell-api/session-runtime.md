@@ -41,6 +41,9 @@ and failed method calls are errors. The operation confirms that Gnoblin
 accepted the request. The machine may stop the Lua runtime as the action
 begins.
 
+In a [hosted session](/hosted), these operations and `gnoblin.session.logout()`
+report the request to the session manager. The session keeps running.
+
 The focus reads are available as `gnoblin.focus.history(filter)` and
 `gnoblin.focus.policy()`. See [Focus and activation](/shell-api/focus-activation)
 for their fields and filter values.

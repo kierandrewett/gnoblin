@@ -31,6 +31,7 @@ static gboolean guardian_drain_status(int fd, gboolean* native_channel_started,
             if (!*supervisor_ready)
                 *ready_since_us = g_get_monotonic_time();
             *supervisor_ready = TRUE;
+            hosted_service_set_ready();
             if (!*session_ready)
                 report_previous_crash();
             *session_ready = TRUE;
@@ -124,7 +125,7 @@ static int session_guardian_main(int argc, char** argv) {
     g_autofree char* xwayland_program = g_find_program_in_path("Xwayland");
     gboolean xwayland = xwayland_program != NULL;
     gboolean xwayland_requested = FALSE;
-    gboolean devkit = FALSE;
+    GnoblinNestedMode nested = GNOBLIN_NESTED_NONE;
     gboolean greeter = FALSE;
     Runtime guardian = {.channel_fd = -1,
                         .compositor_stderr_fd = -1,
@@ -133,9 +134,12 @@ static int session_guardian_main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (g_str_equal(argv[i], "--config") && i + 1 < argc)
             config_path = g_canonicalize_filename(argv[++i], NULL);
-        else if (g_str_equal(argv[i], "--devkit"))
-            devkit = TRUE;
-        else if (g_str_equal(argv[i], "--wayland-display") && i + 1 < argc)
+        else if (g_str_equal(argv[i], "--devkit") || g_str_equal(argv[i], "--hosted")) {
+            if (!nested_mode_select(&nested, g_str_equal(argv[i], "--devkit")
+                                                 ? GNOBLIN_NESTED_DEVKIT
+                                                 : GNOBLIN_NESTED_HOSTED))
+                return EXIT_FAILURE;
+        } else if (g_str_equal(argv[i], "--wayland-display") && i + 1 < argc)
             wayland_display = argv[++i];
         else if (g_str_equal(argv[i], "--no-xwayland"))
             xwayland = FALSE;
@@ -149,9 +153,9 @@ static int session_guardian_main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
     }
-    if (greeter && (devkit || wayland_display)) {
+    if (greeter && (nested != GNOBLIN_NESTED_NONE || wayland_display)) {
         usage(argv[0]);
-        g_printerr("gnoblin: --greeter cannot be combined with devkit mode\n");
+        g_printerr("gnoblin: --greeter cannot be combined with --devkit or --hosted\n");
         return EXIT_FAILURE;
     }
     /* A greeter has no user to load extra X clients for: Xwayland stays off unless asked. */
@@ -160,12 +164,8 @@ static int session_guardian_main(int argc, char** argv) {
     const GnoblinSessionClass session_class =
         greeter ? GNOBLIN_SESSION_CLASS_GREETER : GNOBLIN_SESSION_CLASS_USER;
     g_setenv(GNOBLIN_SESSION_CLASS_ENV, gnoblin_session_class_name(session_class), TRUE);
-    if (devkit != (wayland_display != NULL) ||
-        (wayland_display &&
-         (!g_regex_match_simple("^[A-Za-z0-9_.-]{1,128}$", wayland_display, 0, 0) ||
-          g_str_equal(wayland_display, ".") || g_str_equal(wayland_display, "..")))) {
+    if (!nested_mode_display_valid(nested, wayland_display)) {
         usage(argv[0]);
-        g_printerr("gnoblin: devkit mode needs a valid Wayland display name\n");
         return EXIT_FAILURE;
     }
     gnoblin_restore_interactive_priority("guardian");
@@ -176,7 +176,11 @@ static int session_guardian_main(int argc, char** argv) {
     session_diagnostic_event(&guardian, "guardian started");
     guardian_started_us = g_get_monotonic_time();
     discard_stale_crash_notice();
-    if (!devkit && !prepare_session_environment(session_class)) {
+    /* A hosted session still joins the user's systemd and D-Bus session, so it prepares the
+     * environment like a login session. It has no seat, so only the checks that need a logind
+     * session id are relaxed. A devkit session takes its environment from its launcher. */
+    if (nested != GNOBLIN_NESTED_DEVKIT &&
+        !prepare_session_environment(session_class, nested == GNOBLIN_NESTED_HOSTED)) {
         session_diagnostic_event(&guardian, "prepare-session-environment failed");
         if (compositor_log_fd >= 0)
             close(compositor_log_fd);
@@ -210,6 +214,18 @@ static int session_guardian_main(int argc, char** argv) {
     }
     /* The guardian owns the lifecycle name even while supervisors restart. */
     g_autoptr(GDBusConnection) lifecycle_bus = claim_session_lifecycle_bus();
+    /* The session manager cannot learn that the session is usable without this interface, so a
+     * hosted session that cannot publish it does not start. */
+    if (nested == GNOBLIN_NESTED_HOSTED &&
+        (!lifecycle_bus || !hosted_service_start(lifecycle_bus, wayland_display))) {
+        session_diagnostic_event(&guardian, "hosted readiness interface unavailable");
+        g_printerr("gnoblin: could not publish %s on the session bus\n", HOSTED_BUS_NAME);
+        if (compositor_log_fd >= 0)
+            close(compositor_log_fd);
+        if (guardian.session_log_fd >= 0)
+            close(guardian.session_log_fd);
+        return EXIT_FAILURE;
+    }
     struct sigaction action = {.sa_handler = host_signal_handler};
     sigemptyset(&action.sa_mask);
     sigaction(SIGTERM, &action, NULL);
@@ -244,7 +260,7 @@ static int session_guardian_main(int argc, char** argv) {
     guardian.compositor_stderr_fd = compositor_stderr[0];
     guardian.compositor_pid =
         spawn_compositor(compositor_path, sockets[0], sockets[1], compositor_stderr[1], xwayland,
-                         devkit, wayland_display, &error);
+                         nested, wayland_display, &error);
     close(sockets[1]);
     close(compositor_stderr[1]);
     if (!guardian.compositor_pid) {
@@ -262,7 +278,7 @@ static int session_guardian_main(int argc, char** argv) {
     /* Activating the systemd and D-Bus session runs a dozen short commands. Do it while the
      * compositor starts, not before it: the compositor needs none of the result, and waiting
      * here put about a quarter of a second between login and the first frame. */
-    if (!devkit && !activate_session(session_class)) {
+    if (nested != GNOBLIN_NESTED_DEVKIT && !activate_session(session_class)) {
         session_diagnostic_event(&guardian, "activate-session failed");
         terminate_and_reap(&guardian);
         close(guardian.channel_fd);
@@ -321,7 +337,7 @@ static int session_guardian_main(int argc, char** argv) {
             status_fd = status_sockets[0];
             autostart_fd = autostart_sockets[0];
             supervisor_pid = spawn_session_supervisor(
-                executable, config_path, devkit, wayland_display, guardian.channel_fd,
+                executable, config_path, nested, wayland_display, guardian.channel_fd,
                 status_sockets[0], status_sockets[1], autostart_sockets[0], autostart_sockets[1],
                 resume_supervisor, resume_revision, resume_generation,
                 resume_operation_id_watermark, autostart_complete, resume_snapshot, &error);

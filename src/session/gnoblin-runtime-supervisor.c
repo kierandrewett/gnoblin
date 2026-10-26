@@ -49,10 +49,10 @@ failed:
     return FALSE;
 }
 
-GPid spawn_session_supervisor(const char* executable, const char* config_path, gboolean devkit,
-                              const char* wayland_display, int runtime_fd, int status_parent_fd,
-                              int status_child_fd, int autostart_parent_fd, int autostart_child_fd,
-                              gboolean resume, guint64 settings_revision,
+GPid spawn_session_supervisor(const char* executable, const char* config_path,
+                              GnoblinNestedMode nested, const char* wayland_display, int runtime_fd,
+                              int status_parent_fd, int status_child_fd, int autostart_parent_fd,
+                              int autostart_child_fd, gboolean resume, guint64 settings_revision,
                               guint64 runtime_generation, guint64 operation_id_watermark,
                               gboolean autostart_complete, GVariant* recovery_snapshot,
                               GError** error) {
@@ -141,8 +141,8 @@ GPid spawn_session_supervisor(const char* executable, const char* config_path, g
     g_ptr_array_add(argv, g_strdup("--internal-session-supervisor"));
     g_ptr_array_add(argv, g_strdup("--config"));
     g_ptr_array_add(argv, g_strdup(config_path));
-    if (devkit) {
-        g_ptr_array_add(argv, g_strdup("--devkit"));
+    if (nested != GNOBLIN_NESTED_NONE) {
+        g_ptr_array_add(argv, g_strdup(nested_mode_option(nested)));
         g_ptr_array_add(argv, g_strdup("--wayland-display"));
         g_ptr_array_add(argv, g_strdup(wayland_display));
     }
@@ -200,7 +200,7 @@ fail:
 int session_supervisor_main(int argc, char** argv) {
     g_autofree char* config_path = NULL;
     const char* wayland_display = NULL;
-    gboolean devkit = FALSE;
+    GnoblinNestedMode nested = GNOBLIN_NESTED_NONE;
     gboolean resume_supervisor = FALSE;
     gboolean autostart_complete = FALSE;
     guint64 supervisor_seed_revision = 0, supervisor_seed_generation = 0;
@@ -208,9 +208,12 @@ int session_supervisor_main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (g_str_equal(argv[i], "--config") && i + 1 < argc)
             config_path = g_canonicalize_filename(argv[++i], NULL);
-        else if (g_str_equal(argv[i], "--devkit"))
-            devkit = TRUE;
-        else if (g_str_equal(argv[i], "--wayland-display") && i + 1 < argc)
+        else if (g_str_equal(argv[i], "--devkit") || g_str_equal(argv[i], "--hosted")) {
+            if (!nested_mode_select(&nested, g_str_equal(argv[i], "--devkit")
+                                                 ? GNOBLIN_NESTED_DEVKIT
+                                                 : GNOBLIN_NESTED_HOSTED))
+                return EXIT_FAILURE;
+        } else if (g_str_equal(argv[i], "--wayland-display") && i + 1 < argc)
             wayland_display = argv[++i];
         else if (g_str_equal(argv[i], "--internal-session-supervisor"))
             ;
@@ -229,12 +232,8 @@ int session_supervisor_main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
     }
-    if (devkit != (wayland_display != NULL) ||
-        (wayland_display &&
-         (!g_regex_match_simple("^[A-Za-z0-9_.-]{1,128}$", wayland_display, 0, 0) ||
-          g_str_equal(wayland_display, ".") || g_str_equal(wayland_display, "..")))) {
+    if (!nested_mode_display_valid(nested, wayland_display)) {
         usage(argv[0]);
-        g_printerr("gnoblin: devkit mode needs a valid Wayland display name\n");
         return EXIT_FAILURE;
     }
     if (!config_path)
@@ -304,7 +303,7 @@ int session_supervisor_main(int argc, char** argv) {
     g_autoptr(GVariant) host_autostart_environment = NULL;
     host_autostart_started = autostart_complete;
     worker_pid = spawn_runtime_worker(
-        executable, config_path, devkit, wayland_display, resume_supervisor, !autostart_complete,
+        executable, config_path, nested, wayland_display, resume_supervisor, !autostart_complete,
         NULL, recovery_snapshot, supervisor_seed_revision, supervisor_seed_generation,
         supervisor_seed_operation_id_watermark, host.channel_fd, host_control_sockets[1],
         GUARDIAN_STATUS_FD, &ready_fd, &error);
@@ -495,7 +494,7 @@ int session_supervisor_main(int argc, char** argv) {
                 }
                 g_clear_error(&error);
                 worker_pid = spawn_runtime_worker(
-                    executable, config_path, devkit, wayland_display, !bootstrap_retry, TRUE,
+                    executable, config_path, nested, wayland_display, !bootstrap_retry, TRUE,
                     startup_recovery, resume_snapshot, resume_revision, resume_generation,
                     resume_operation_id_watermark, host.channel_fd, host_control_sockets[1],
                     GUARDIAN_STATUS_FD, &ready_fd, &error);

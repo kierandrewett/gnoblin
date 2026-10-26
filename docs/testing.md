@@ -10,6 +10,7 @@ nested preview, and real login each verify a different part of the session.
 | `make check`                              | Source manifests, patch metadata, scripts, configuration, and packaging checks                         | Python and repository tooling                                      |
 | `make test`                               | CTest runtime, Lua configuration, protocol, and CLI tests                                              | A configured build in `build/make`                                 |
 | `tests/test-gnoblin-devkit.sh`            | Config, native controls, and visible workspace animation frames in a fresh nested Gnoblin session      | A working Wayland desktop and `grim`                               |
+| `tests/hosted-session.py`                 | Hosted session readiness, virtual monitors, frames, layer surfaces, and lock and power requests        | A staged build, PipeWire, `foot`, and `pw-link`                    |
 | `tests/test-privacy-pipewire.py`          | Live microphone and camera activity through `gnoblin.privacy.state()`                                  | Source build, Wayland desktop, PipeWire tools                      |
 | `tests/test-window-csd-reconstruction.py` | Lua `remove_csd` pixel behavior in a fresh nested Gnoblin session                                      | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
 | `tests/test-window-native-borders.py`     | Lua border rule pixels in a fresh nested Gnoblin session                                               | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
@@ -46,6 +47,22 @@ make preview
 
 See the [devkit guide](/devkit) for launching shell clients and choosing a
 configuration snapshot.
+
+## Test a hosted session
+
+`tests/hosted-session.py` starts `gnoblin --hosted` as your user with a private
+session bus and PipeWire daemon, and never touches your desktop. It creates two
+virtual monitors, reads their frames, and checks readiness, layer surfaces,
+and lock and power requests. Run it against a staged build:
+
+```sh
+make
+scripts/run-staged.sh /usr/local/lib/gnoblin build/stage \
+    python3 tests/hosted-session.py --evidence /tmp/hosted-evidence
+```
+
+The evidence directory receives the logs, JSON snapshots and PNG frames. The
+test exits non-zero if a check fails. See [hosted sessions](/hosted).
 
 Run `python3 tests/test-privacy-pipewire.py` to check live microphone and camera
 transitions. It starts a private PipeWire graph for the nested session, so the

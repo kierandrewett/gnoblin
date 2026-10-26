@@ -226,13 +226,23 @@ gboolean handle_completion(Runtime* runtime, guint64 packet_id, GVariant* payloa
 
     if (logout_operation) {
         g_hash_table_remove(runtime->pending_logout_ids, &packet_id);
-        if (matching_success) {
+        if (matching_success && runtime->hosted) {
+            /* The session manager ends a hosted session, not the session itself. */
+            hosted_report_action("logout");
+        } else if (matching_success) {
             runtime->logout_requested = TRUE;
             runtime->exit_status = EXIT_SUCCESS;
             g_main_loop_quit(runtime->loop);
         }
     }
-    if (power_exit_status) {
+    if (power_exit_status && runtime->hosted) {
+        /* Reboot, power off, suspend and hibernate belong to the session manager. Calling logind
+         * from inside a hosted session would bypass its protection and transitions. */
+        hosted_report_action(power_exit_status == EXIT_POWER_SUSPEND     ? "suspend"
+                             : power_exit_status == EXIT_POWER_HIBERNATE ? "hibernate"
+                             : power_exit_status == EXIT_POWER_REBOOT    ? "reboot"
+                                                                         : "poweroff");
+    } else if (power_exit_status) {
         runtime->exit_status = power_exit_status;
         g_main_loop_quit(runtime->loop);
     }

@@ -309,7 +309,10 @@ char* gnoblin_installed_prefix(void) {
     return g_path_get_dirname(bin_dir);
 }
 
-gboolean prepare_session_environment(GnoblinSessionClass session_class) {
+/* A hosted session has no seat. It still runs under a logind session of the user, but a manager
+ * that creates the session itself may not export XDG_SESSION_ID to this process, so the id is
+ * optional there. Everything else a login session guarantees is still required. */
+gboolean prepare_session_environment(GnoblinSessionClass session_class, gboolean hosted) {
     active_session_class = session_class;
     session_prefix = gnoblin_installed_prefix();
     if (!session_prefix) {
@@ -321,10 +324,12 @@ gboolean prepare_session_environment(GnoblinSessionClass session_class) {
     if (session_class == GNOBLIN_SESSION_CLASS_GREETER && !g_getenv("XDG_SESSION_TYPE"))
         g_setenv("XDG_SESSION_TYPE", "wayland", TRUE);
     if (!g_str_equal(g_getenv("XDG_SESSION_TYPE") ?: "", "wayland") ||
-        !g_getenv("XDG_SESSION_ID") || !*g_getenv("XDG_SESSION_ID") ||
+        (!hosted && (!g_getenv("XDG_SESSION_ID") || !*g_getenv("XDG_SESSION_ID"))) ||
         (g_getenv("WAYLAND_DISPLAY") && *g_getenv("WAYLAND_DISPLAY")) ||
         (g_getenv("DISPLAY") && *g_getenv("DISPLAY"))) {
-        g_printerr("gnoblin: start it from a fresh Wayland login session\n");
+        g_printerr("gnoblin: start it from a fresh Wayland %s\n",
+                   hosted ? "session (XDG_SESSION_TYPE=wayland, no WAYLAND_DISPLAY or DISPLAY)"
+                          : "login session");
         return FALSE;
     }
     session_systemd_available = user_systemd_available();
@@ -444,4 +449,153 @@ gboolean activate_session(GnoblinSessionClass session_class) {
             g_warning("gnoblin: systemd user-session integration could not be activated");
     }
     return TRUE;
+}
+
+/* Hosted-session service (docs/hosted.md). The guardian publishes it on the session bus so the
+ * external session manager can learn that the compositor serves session-local clients and can
+ * watch for the session ending. The guardian loop does not iterate the default main context, so
+ * the object is served from its own thread and context. */
+static const char hosted_introspection_xml[] =
+    "<node><interface name='" HOSTED_INTERFACE "'>"
+    "<property name='Ready' type='b' access='read'/>"
+    "<property name='WaylandDisplay' type='s' access='read'/>"
+    "<method name='RequestAction'><arg name='action' type='s' direction='in'/></method>"
+    "<signal name='ActionRequested'><arg name='action' type='s'/></signal>"
+    "</interface></node>";
+
+static struct {
+    GDBusConnection* connection;
+    GMainContext* context;
+    char* wayland_display;
+    gint ready;
+    GMutex lock;
+    GCond registered_cond;
+    gboolean registered;
+    gboolean registration_ok;
+} hosted_service;
+
+static GVariant* hosted_get_property(GDBusConnection* connection, const char* sender,
+                                     const char* object_path, const char* interface_name,
+                                     const char* property_name, GError** error,
+                                     gpointer user_data) {
+    if (g_str_equal(property_name, "Ready"))
+        return g_variant_new_boolean(g_atomic_int_get(&hosted_service.ready));
+    if (g_str_equal(property_name, "WaylandDisplay"))
+        return g_variant_new_string(hosted_service.wayland_display);
+    g_set_error(error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_PROPERTY, "unknown property %s",
+                property_name);
+    return NULL;
+}
+
+/* Anything in the session asks for logout, reboot, power off, suspend or hibernate. The service
+ * re-emits the request as ActionRequested so one sender, the owner of the name, speaks for the
+ * session. The manager decides; nothing here acts on the request. */
+static void hosted_method_call(GDBusConnection* connection, const char* sender,
+                               const char* object_path, const char* interface_name,
+                               const char* method_name, GVariant* parameters,
+                               GDBusMethodInvocation* invocation, gpointer user_data) {
+    static const char* const actions[] = {"logout",  "reboot",    "poweroff",
+                                          "suspend", "hibernate", NULL};
+    const char* action = NULL;
+    g_variant_get(parameters, "(&s)", &action);
+    if (!g_strv_contains(actions, action)) {
+        g_dbus_method_invocation_return_error(invocation, G_DBUS_ERROR, G_DBUS_ERROR_INVALID_ARGS,
+                                              "unknown session action %s", action);
+        return;
+    }
+    g_autoptr(GError) error = NULL;
+    if (!g_dbus_connection_emit_signal(connection, NULL, HOSTED_OBJECT_PATH, HOSTED_INTERFACE,
+                                       "ActionRequested", g_variant_new("(s)", action), &error)) {
+        g_dbus_method_invocation_return_gerror(invocation, error);
+        return;
+    }
+    g_dbus_method_invocation_return_value(invocation, NULL);
+}
+
+static gpointer hosted_service_thread(gpointer user_data) {
+    static const GDBusInterfaceVTable vtable = {.method_call = hosted_method_call,
+                                                .get_property = hosted_get_property};
+    g_autoptr(GMainLoop) loop = g_main_loop_new(hosted_service.context, FALSE);
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GDBusNodeInfo) node = g_dbus_node_info_new_for_xml(hosted_introspection_xml, NULL);
+    g_main_context_push_thread_default(hosted_service.context);
+    guint id =
+        node ? g_dbus_connection_register_object(hosted_service.connection, HOSTED_OBJECT_PATH,
+                                                 node->interfaces[0], &vtable, NULL, NULL, &error)
+             : 0;
+    g_mutex_lock(&hosted_service.lock);
+    hosted_service.registered = TRUE;
+    hosted_service.registration_ok = id != 0;
+    g_cond_signal(&hosted_service.registered_cond);
+    g_mutex_unlock(&hosted_service.lock);
+    if (id)
+        g_main_loop_run(loop);
+    g_main_context_pop_thread_default(hosted_service.context);
+    return NULL;
+}
+
+/* Export the interface, then take the well-known name so a client that sees the name can read the
+ * properties at once. Returns FALSE when the object or name is unavailable. */
+gboolean hosted_service_start(GDBusConnection* connection, const char* wayland_display) {
+    g_return_val_if_fail(connection && wayland_display, FALSE);
+    hosted_service.connection = connection;
+    hosted_service.wayland_display = g_strdup(wayland_display);
+    hosted_service.context = g_main_context_new();
+    g_autoptr(GThread) thread = g_thread_new("gnoblin-hosted", hosted_service_thread, NULL);
+    g_mutex_lock(&hosted_service.lock);
+    while (!hosted_service.registered)
+        g_cond_wait(&hosted_service.registered_cond, &hosted_service.lock);
+    gboolean registered = hosted_service.registration_ok;
+    g_mutex_unlock(&hosted_service.lock);
+    if (!registered)
+        return FALSE;
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GVariant) reply = g_dbus_connection_call_sync(
+        connection, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+        "RequestName", g_variant_new("(su)", HOSTED_BUS_NAME, 4u), G_VARIANT_TYPE("(u)"),
+        G_DBUS_CALL_FLAGS_NONE, 2000, NULL, &error);
+    guint32 result = 0;
+    if (reply)
+        g_variant_get(reply, "(u)", &result);
+    if (result != 1)
+        g_printerr("gnoblin: could not own %s: %s\n", HOSTED_BUS_NAME,
+                   error ? error->message : "another session owns it");
+    return result == 1;
+}
+
+static gboolean hosted_emit_ready_changed(gpointer user_data) {
+    GVariantBuilder changed;
+    g_variant_builder_init(&changed, G_VARIANT_TYPE_VARDICT);
+    g_variant_builder_add(&changed, "{sv}", "Ready", g_variant_new_boolean(TRUE));
+    g_autoptr(GError) error = NULL;
+    if (!g_dbus_connection_emit_signal(
+            hosted_service.connection, NULL, HOSTED_OBJECT_PATH, "org.freedesktop.DBus.Properties",
+            "PropertiesChanged", g_variant_new("(sa{sv}as)", HOSTED_INTERFACE, &changed, NULL),
+            &error))
+        g_printerr("gnoblin: could not announce hosted readiness: %s\n", error->message);
+    return G_SOURCE_REMOVE;
+}
+
+/* The guardian calls this when the compositor's runtime handshake completed. Ready stays true
+ * across supervisor restarts because Mutter keeps serving its clients. Does nothing outside a
+ * hosted session. */
+void hosted_service_set_ready(void) {
+    if (!hosted_service.context || !g_atomic_int_compare_and_exchange(&hosted_service.ready, 0, 1))
+        return;
+    g_main_context_invoke(hosted_service.context, hosted_emit_ready_changed, NULL);
+}
+
+/* Tell the session manager that something inside the session asked to log out or change the power
+ * state. The manager decides; the session keeps running. Called from the Lua runtime worker. */
+void hosted_report_action(const char* action) {
+    g_autoptr(GError) error = NULL;
+    g_autoptr(GDBusConnection) bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &error);
+    g_autoptr(GVariant) reply =
+        bus ? g_dbus_connection_call_sync(
+                  bus, HOSTED_BUS_NAME, HOSTED_OBJECT_PATH, HOSTED_INTERFACE, "RequestAction",
+                  g_variant_new("(s)", action), NULL, G_DBUS_CALL_FLAGS_NONE, 2000, NULL, &error)
+            : NULL;
+    if (!reply)
+        g_printerr("gnoblin: could not report the %s request to the session manager: %s\n", action,
+                   error ? error->message : "unknown error");
 }

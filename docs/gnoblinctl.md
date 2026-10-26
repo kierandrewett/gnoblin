@@ -78,6 +78,9 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl lua`                               | Open a local Lua console for the session API                 |
 | `gnoblinctl ping`                              | Check whether the compositor control socket responds         |
 
+A [hosted session](/hosted) reports these requests to its session manager and
+does not act on them.
+
 Run `gnoblinctl --help` for the commands and options, `gnoblinctl help window`
 for the actions of a command, and `gnoblinctl help window thumbnail` for the
 arguments of one action. Each command and action has a one-line description. A

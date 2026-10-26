@@ -54,7 +54,7 @@ int runtime_worker_main(int argc, char** argv) {
     }
     g_autofree char* config_path = NULL;
     const char* wayland_display = NULL;
-    gboolean devkit = FALSE;
+    GnoblinNestedMode nested = GNOBLIN_NESTED_NONE;
     gboolean resume_worker = FALSE;
     gboolean send_autostart = FALSE;
     int ready_fd = -1;
@@ -66,9 +66,12 @@ int runtime_worker_main(int argc, char** argv) {
     for (int i = 1; i < argc; i++) {
         if (g_str_equal(argv[i], "--config") && i + 1 < argc)
             config_path = g_canonicalize_filename(argv[++i], NULL);
-        else if (g_str_equal(argv[i], "--devkit"))
-            devkit = TRUE;
-        else if (g_str_equal(argv[i], "--wayland-display") && i + 1 < argc)
+        else if (g_str_equal(argv[i], "--devkit") || g_str_equal(argv[i], "--hosted")) {
+            if (!nested_mode_select(&nested, g_str_equal(argv[i], "--devkit")
+                                                 ? GNOBLIN_NESTED_DEVKIT
+                                                 : GNOBLIN_NESTED_HOSTED))
+                return EXIT_FAILURE;
+        } else if (g_str_equal(argv[i], "--wayland-display") && i + 1 < argc)
             wayland_display = argv[++i];
         else if (g_str_equal(argv[i], "--internal-runtime-worker"))
             ;
@@ -91,12 +94,8 @@ int runtime_worker_main(int argc, char** argv) {
             return EXIT_FAILURE;
         }
     }
-    if (devkit != (wayland_display != NULL) ||
-        (wayland_display &&
-         (!g_regex_match_simple("^[A-Za-z0-9_.-]{1,128}$", wayland_display, 0, 0) ||
-          g_str_equal(wayland_display, ".") || g_str_equal(wayland_display, "..")))) {
+    if (!nested_mode_display_valid(nested, wayland_display)) {
         usage(argv[0]);
-        g_printerr("gnoblin: devkit mode needs a valid Wayland display name\n");
         return EXIT_FAILURE;
     }
     send_autostart |= !resume_worker;
@@ -242,6 +241,7 @@ int runtime_worker_main(int argc, char** argv) {
         .host_control_fd = host_control_fd,
         .guardian_status_fd = WORKER_GUARDIAN_STATUS_FD,
         .initial_document = send_autostart && !recovery_snapshot ? g_variant_ref(document) : NULL,
+        .hosted = nested == GNOBLIN_NESTED_HOSTED,
         .resume_worker = resume_worker,
         .send_initial_autostart = send_autostart && !recovery_snapshot,
         .config_fallback = config_fallback || !resume_worker || recovery_snapshot != NULL,
@@ -443,7 +443,7 @@ int create_recovery_snapshot_fd(GVariant* snapshot, GError** error) {
     return fd;
 }
 
-GPid spawn_runtime_worker(const char* executable, const char* config_path, gboolean devkit,
+GPid spawn_runtime_worker(const char* executable, const char* config_path, GnoblinNestedMode nested,
                           const char* wayland_display, gboolean resume, gboolean send_autostart,
                           const char* startup_recovery, GVariant* recovery_snapshot,
                           guint64 settings_revision, guint64 runtime_generation,
@@ -569,8 +569,8 @@ GPid spawn_runtime_worker(const char* executable, const char* config_path, gbool
     }
     if (send_autostart)
         g_ptr_array_add(argv, g_strdup("--send-initial-autostart"));
-    if (devkit) {
-        g_ptr_array_add(argv, g_strdup("--devkit"));
+    if (nested != GNOBLIN_NESTED_NONE) {
+        g_ptr_array_add(argv, g_strdup(nested_mode_option(nested)));
         g_ptr_array_add(argv, g_strdup("--wayland-display"));
         g_ptr_array_add(argv, g_strdup(wayland_display));
     }

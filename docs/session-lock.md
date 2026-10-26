@@ -20,6 +20,9 @@ installed, run its command (for example, `hyprlock`) in your Gnoblin session.
 Your shell or idle daemon decides when to run that command; Gnoblin does not
 set a timeout or launch a locker for you.
 
+A [hosted session](/hosted) is run by an external session manager. That manager
+receives the request and handles the lock itself.
+
 The regular GNOME session is separate. It does not advertise this protocol and
 continues to use GNOME ScreenShield.
 

@@ -50,12 +50,23 @@
 #define GUARDIAN_STATUS_LOGOUT 3
 #define GUARDIAN_STATUS_SESSION_LIFECYCLE_SUPPORTED 4
 #define SESSION_SUPERVISOR_BUS_NAME "org.gnoblin.SessionSupervisor"
+#define HOSTED_BUS_NAME "org.gnoblin.Hosted1"
+#define HOSTED_OBJECT_PATH "/org/gnoblin/Hosted1"
+#define HOSTED_INTERFACE "org.gnoblin.Hosted1"
 #define PORTAL_BACKEND_BUS_NAME "org.freedesktop.impl.portal.desktop.gnoblin"
 #define PORTAL_LIFECYCLE_INTERFACE "org.gnoblin.Portal.InhibitLifecycle"
 #define SESSION_DIAGNOSTIC_MAX_BYTES (64 * 1024)
 #ifndef GNOBLIN_DEFAULT_COMPOSITOR
 #define GNOBLIN_DEFAULT_COMPOSITOR "/usr/bin/gnoblin"
 #endif
+/* How the compositor is hosted. NONE is a login session that owns the seat. DEVKIT is a nested
+ * session shown by Mutter's viewer. HOSTED is a headless session whose outputs and input belong to
+ * an external session manager (docs/hosted.md). */
+typedef enum {
+    GNOBLIN_NESTED_NONE,
+    GNOBLIN_NESTED_DEVKIT,
+    GNOBLIN_NESTED_HOSTED,
+} GnoblinNestedMode;
 typedef struct {
     GMainLoop* loop;
     GnoblinRuntimeWriter* writer;
@@ -80,6 +91,9 @@ typedef struct {
     gboolean ready;
     gboolean failed;
     gboolean logout_requested;
+    /* The session is hosted by an external manager: logout and power requests are reported on
+     * the session bus instead of ending the session or calling logind. */
+    gboolean hosted;
     gboolean resume_worker;
     gboolean send_initial_autostart;
     gboolean config_fallback;
@@ -163,7 +177,13 @@ GVariant* startup_fallback_document(const char* path, const char* failure,
                                     gboolean* used_last_good);
 GDBusConnection* claim_session_lifecycle_bus(void);
 void notify_portal_session_ending(GDBusConnection* connection);
-gboolean prepare_session_environment(GnoblinSessionClass session_class);
+gboolean prepare_session_environment(GnoblinSessionClass session_class, gboolean hosted);
+gboolean hosted_service_start(GDBusConnection* connection, const char* wayland_display);
+void hosted_service_set_ready(void);
+void hosted_report_action(const char* action);
+const char* nested_mode_option(GnoblinNestedMode mode);
+gboolean nested_mode_select(GnoblinNestedMode* mode, GnoblinNestedMode requested);
+gboolean nested_mode_display_valid(GnoblinNestedMode mode, const char* wayland_display);
 gboolean activate_session(GnoblinSessionClass session_class);
 char* gnoblin_installed_prefix(void);
 #define GNOBLIN_GREETER_SYSTEM_CONFIG "/etc/gnoblin/greeter.lua"
@@ -206,7 +226,7 @@ gboolean runtime_channel_ready(gint fd, GIOCondition condition, gpointer user_da
 void terminate_and_reap(Runtime* runtime);
 gboolean host_reap_compositor(Runtime* runtime);
 GPid spawn_compositor(const char* path, int parent_fd, int child_fd, int stderr_fd,
-                      gboolean xwayland, gboolean devkit, const char* wayland_display,
+                      gboolean xwayland, GnoblinNestedMode nested, const char* wayland_display,
                       GError** error);
 void usage(const char* program);
 GVariant* read_recovery_snapshot(int fd, GError** error);
@@ -215,7 +235,7 @@ extern volatile sig_atomic_t host_signal_number;
 void host_signal_handler(int signal_number);
 gboolean move_fd_above_runtime_targets(int fd, int* moved_fd, GError** error);
 int create_recovery_snapshot_fd(GVariant* snapshot, GError** error);
-GPid spawn_runtime_worker(const char* executable, const char* config_path, gboolean devkit,
+GPid spawn_runtime_worker(const char* executable, const char* config_path, GnoblinNestedMode nested,
                           const char* wayland_display, gboolean resume, gboolean send_autostart,
                           const char* startup_recovery, GVariant* recovery_snapshot,
                           guint64 settings_revision, guint64 runtime_generation,
@@ -240,10 +260,10 @@ gboolean forward_autostart_to_guardian(int fd, GVariant* entries, GVariant* envi
                                        GError** error);
 void reap_autostart_children(GPtrArray* children);
 void stop_autostart_children(GPtrArray* children);
-GPid spawn_session_supervisor(const char* executable, const char* config_path, gboolean devkit,
-                              const char* wayland_display, int runtime_fd, int status_parent_fd,
-                              int status_child_fd, int autostart_parent_fd, int autostart_child_fd,
-                              gboolean resume, guint64 settings_revision,
+GPid spawn_session_supervisor(const char* executable, const char* config_path,
+                              GnoblinNestedMode nested, const char* wayland_display, int runtime_fd,
+                              int status_parent_fd, int status_child_fd, int autostart_parent_fd,
+                              int autostart_child_fd, gboolean resume, guint64 settings_revision,
                               guint64 runtime_generation, guint64 operation_id_watermark,
                               gboolean autostart_complete, GVariant* recovery_snapshot,
                               GError** error);

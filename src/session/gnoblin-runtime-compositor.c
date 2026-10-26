@@ -346,7 +346,7 @@ gboolean host_reap_compositor(Runtime* runtime) {
 }
 
 GPid spawn_compositor(const char* path, int parent_fd, int child_fd, int stderr_fd,
-                      gboolean xwayland, gboolean devkit, const char* wayland_display,
+                      gboolean xwayland, GnoblinNestedMode nested, const char* wayland_display,
                       GError** error) {
     /* This private capability marker makes packet 17 opt-in across mixed
      * Gnoblin/Mutter installations. Do not leak it to applications spawned
@@ -384,10 +384,16 @@ GPid spawn_compositor(const char* path, int parent_fd, int child_fd, int stderr_
     g_autoptr(GPtrArray) argv = g_ptr_array_new_with_free_func(g_free);
     g_ptr_array_add(argv, g_strdup(path));
     g_ptr_array_add(argv, g_strdup("--wayland"));
-    if (devkit) {
+    if (nested == GNOBLIN_NESTED_DEVKIT) {
         g_ptr_array_add(argv, g_strdup("--virtual-monitor"));
         g_ptr_array_add(argv, g_strdup("1280x720@60"));
         g_ptr_array_add(argv, g_strdup("--devkit"));
+        g_ptr_array_add(argv, g_strdup("--wayland-display"));
+        g_ptr_array_add(argv, g_strdup(wayland_display));
+    } else if (nested == GNOBLIN_NESTED_HOSTED) {
+        /* Mutter's headless backend starts with no monitors and no viewer. The session manager
+         * adds virtual monitors through org.gnome.Mutter.ScreenCast RecordVirtual. */
+        g_ptr_array_add(argv, g_strdup("--headless"));
         g_ptr_array_add(argv, g_strdup("--wayland-display"));
         g_ptr_array_add(argv, g_strdup(wayland_display));
     }
@@ -411,6 +417,42 @@ GPid spawn_compositor(const char* path, int parent_fd, int child_fd, int stderr_
 
 void usage(const char* program) {
     g_printerr("Usage: %s [--config PATH] [--xwayland|--no-xwayland] [--greeter] "
-               "[--devkit --wayland-display NAME]\n",
+               "[--devkit|--hosted --wayland-display NAME]\n",
                program);
+}
+
+const char* nested_mode_option(GnoblinNestedMode mode) {
+    switch (mode) {
+    case GNOBLIN_NESTED_DEVKIT:
+        return "--devkit";
+    case GNOBLIN_NESTED_HOSTED:
+        return "--hosted";
+    case GNOBLIN_NESTED_NONE:
+        break;
+    }
+    return NULL;
+}
+
+/* Record one nested-mode option. A command line names at most one mode. */
+gboolean nested_mode_select(GnoblinNestedMode* mode, GnoblinNestedMode requested) {
+    if (*mode != GNOBLIN_NESTED_NONE && *mode != requested) {
+        g_printerr("gnoblin: --devkit and --hosted cannot be combined\n");
+        return FALSE;
+    }
+    *mode = requested;
+    return TRUE;
+}
+
+/* A nested mode needs a socket name for its session-local Wayland display, and only a nested mode
+ * takes one. The name becomes a path below XDG_RUNTIME_DIR, so it stays a single plain component.
+ */
+gboolean nested_mode_display_valid(GnoblinNestedMode mode, const char* wayland_display) {
+    gboolean valid = (mode != GNOBLIN_NESTED_NONE) == (wayland_display != NULL) &&
+                     (!wayland_display ||
+                      (g_regex_match_simple("^[A-Za-z0-9_.-]{1,128}$", wayland_display, 0, 0) &&
+                       !g_str_equal(wayland_display, ".") && !g_str_equal(wayland_display, "..")));
+    if (!valid)
+        g_printerr("gnoblin: %s needs a valid Wayland display name\n",
+                   nested_mode_option(mode) ?: "--wayland-display");
+    return valid;
 }

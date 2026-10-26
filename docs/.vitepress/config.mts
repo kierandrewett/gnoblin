@@ -235,6 +235,7 @@ export default defineConfig({
                     { text: "Frame Renderer Architecture", link: "/window-frame-renderers" },
                     { text: "Frame Renderer API", link: "/frame-renderer-api" },
                     { text: "Session Locking", link: "/session-lock" },
+                    { text: "Hosted Sessions", link: "/hosted" },
                     { text: "Native and External UI", link: "/native-ui-removal" },
                 ],
             },

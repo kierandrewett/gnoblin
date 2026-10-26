@@ -1,9 +1,39 @@
 #include "gnoblinctl-internal.h"
 
+/* A session hosted by an external session manager (gnoblin --hosted) does not own the machine.
+ * It reports the request on org.gnoblin.Hosted1 and the manager decides. *handled stays FALSE
+ * when this session is not hosted. */
+static gboolean request_hosted_action(const char* action, gboolean* handled, GError** error) {
+    g_autoptr(GDBusConnection) bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, NULL);
+    *handled = FALSE;
+    if (!bus)
+        return TRUE;
+    g_autoptr(GVariant) owned = g_dbus_connection_call_sync(
+        bus, "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+        "NameHasOwner", g_variant_new("(s)", "org.gnoblin.Hosted1"), G_VARIANT_TYPE("(b)"),
+        G_DBUS_CALL_FLAGS_NONE, 1000, NULL, NULL);
+    gboolean hosted = FALSE;
+    if (owned)
+        g_variant_get(owned, "(b)", &hosted);
+    if (!hosted)
+        return TRUE;
+    *handled = TRUE;
+    g_autoptr(GVariant) reply = g_dbus_connection_call_sync(
+        bus, "org.gnoblin.Hosted1", "/org/gnoblin/Hosted1", "org.gnoblin.Hosted1", "RequestAction",
+        g_variant_new("(s)", action), NULL, G_DBUS_CALL_FLAGS_NONE, 5000, NULL, error);
+    if (!reply && error && *error)
+        g_dbus_error_strip_remote_error(*error);
+    return reply != NULL;
+}
+
 /* Suspend, hibernate, restart and power off go to systemd-logind, which the session user may
  * already call. They do not involve the compositor, so they work from a terminal, a shell or a
- * keybinding. */
+ * keybinding. A hosted session reports them to its session manager instead. */
 static gboolean run_power_action(const char* action, GError** error) {
+    gboolean handled = FALSE;
+    gboolean reported = request_hosted_action(action, &handled, error);
+    if (handled)
+        return reported;
     static const struct {
         const char* action;
         const char* method;
