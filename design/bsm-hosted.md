@@ -139,6 +139,36 @@ behaviour must stay as it is.
 guardian, so the name owner speaks for the session. Any process of the user can
 call it. That is the same trust as `gnoblinctl` itself.
 
+## Slow start under load
+
+Reported from VM runs under host load: the first hosted start took over 20 s,
+the Lua worker's 10 s wait for Mutter's `HELLO` expired, the worker was replaced,
+and the replacement loaded built-in defaults and never received the login
+autostart snapshot. Bingux never launched. The standalone session has the same
+10 s limits (`STARTUP_TIMEOUT_MS`, `WORKER_CONFIG_TIMEOUT_MS`).
+
+Hosted mode now scales every start-up wait from one value,
+`GNOBLIN_HOSTED_STARTUP_WAIT_MS` (default 60000, accepted 2000 to 900000). The
+guardian validates it once and exports the checked number, so the worker, the
+supervisor, the first-packet flush and the compositor's wait for the first
+configuration agree. The compositor waits `2 * value + 10 s` for that
+configuration, because the supervisor lets the first worker run for `value` and
+then runs a recovery worker for as long again. Limits stay finite, so a compositor
+that never answers still ends the session; a dead peer is noticed at once through
+the closed channel. Standalone, devkit and greeter limits are unchanged.
+
+The fallback itself is unchanged: if the handshake does time out, the recovery
+worker still loads defaults and the notice says so. Retrying with the user's
+configuration would risk looping a configuration that crashes the runtime, which is
+what that design prevents. The fix is that a slow compositor no longer reaches it.
+
+`tests/hosted-slow-start.py` reproduces the load by stopping the compositor with
+`SIGSTOP` for 25 s right after it appears. With the default wait the session becomes
+ready, the autostart marker runs and no restart or defaults notice appears. With
+`GNOBLIN_HOSTED_STARTUP_WAIT_MS=5000` the old failure returns, which shows the first
+case passes because of the wait. A stopped process models a starved one, but it
+is not real CPU contention.
+
 ## Verification
 
 `tests/hosted-session.py` ran 55 checks, all passing, against a stage built from

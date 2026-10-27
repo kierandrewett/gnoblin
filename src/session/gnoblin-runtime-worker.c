@@ -337,7 +337,9 @@ int runtime_worker_main(int argc, char** argv) {
     gnoblin_config_set_runtime_wakeup_callback(runtime_schedule_deferred_callbacks, &runtime);
     g_unix_fd_add(runtime.channel_fd, G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
                   runtime_channel_ready, &runtime);
-    runtime.startup_timeout_id = g_timeout_add(STARTUP_TIMEOUT_MS, startup_timeout, &runtime);
+    runtime.startup_timeout_id =
+        g_timeout_add(runtime.hosted ? (guint)hosted_startup_wait_ms() : STARTUP_TIMEOUT_MS,
+                      startup_timeout, &runtime);
     g_main_loop_run(runtime.loop);
     if (runtime.startup_timeout_id)
         g_source_remove(runtime.startup_timeout_id);

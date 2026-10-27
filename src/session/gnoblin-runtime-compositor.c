@@ -421,6 +421,22 @@ void usage(const char* program) {
                program);
 }
 
+/* How long a hosted session waits for each step of its start. GNOBLIN_HOSTED_STARTUP_WAIT_MS
+ * overrides the default of 60 s; values outside 2 s to 15 min are ignored. */
+gint64 hosted_startup_wait_ms(void) {
+    const char* text = g_getenv(HOSTED_STARTUP_WAIT_ENV);
+    char* end = NULL;
+    gint64 value = text ? g_ascii_strtoll(text, &end, 10) : 0;
+    if (text && end && !*end && value >= HOSTED_STARTUP_WAIT_MIN_MS &&
+        value <= HOSTED_STARTUP_WAIT_MAX_MS)
+        return value;
+    if (text)
+        g_printerr("gnoblin: ignoring %s=%s; it must be %d to %d milliseconds\n",
+                   HOSTED_STARTUP_WAIT_ENV, text, HOSTED_STARTUP_WAIT_MIN_MS,
+                   HOSTED_STARTUP_WAIT_MAX_MS);
+    return HOSTED_STARTUP_WAIT_DEFAULT_MS;
+}
+
 const char* nested_mode_option(GnoblinNestedMode mode) {
     switch (mode) {
     case GNOBLIN_NESTED_DEVKIT:

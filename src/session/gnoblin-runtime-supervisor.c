@@ -285,6 +285,11 @@ int session_supervisor_main(int argc, char** argv) {
     guint restart_count = 0;
     gint64 worker_ready_since_us = 0;
     gint64 worker_spawned_us = g_get_monotonic_time();
+    /* Hosted: the first worker may be starved as long as Mutter is, so give it the same wait. */
+    const gint64 startup_timeout_ms =
+        nested == GNOBLIN_NESTED_HOSTED ? hosted_startup_wait_ms() : STARTUP_TIMEOUT_MS;
+    const gint64 config_timeout_ms =
+        nested == GNOBLIN_NESTED_HOSTED ? hosted_startup_wait_ms() : WORKER_CONFIG_TIMEOUT_MS;
     const char* startup_recovery = NULL;
     guint64 resume_revision = 0, resume_generation = 0;
     guint64 resume_operation_id_watermark = 0;
@@ -365,7 +370,7 @@ int session_supervisor_main(int argc, char** argv) {
             }
             if (worker_ready && !host_autostart_entries && !host_autostart_started &&
                 worker_ready_since_us &&
-                g_get_monotonic_time() - worker_ready_since_us > STARTUP_TIMEOUT_MS * 1000) {
+                g_get_monotonic_time() - worker_ready_since_us > startup_timeout_ms * 1000) {
                 g_printerr("gnoblin: Lua runtime became ready without an autostart snapshot; "
                            "restarting recovery worker\n");
                 kill(worker_pid, SIGKILL);
@@ -376,7 +381,7 @@ int session_supervisor_main(int argc, char** argv) {
             /* Lua evaluation happens before the worker's own GLib timeout
              * exists. Bound it here while native bootstrap waits for CONFIG. */
             if (!worker_start_packet_sent && !worker_ready &&
-                g_get_monotonic_time() - worker_spawned_us > WORKER_CONFIG_TIMEOUT_MS * 1000) {
+                g_get_monotonic_time() - worker_spawned_us > config_timeout_ms * 1000) {
                 startup_recovery = "Lua runtime did not produce a startup configuration in time";
                 kill(worker_pid, SIGKILL);
             }

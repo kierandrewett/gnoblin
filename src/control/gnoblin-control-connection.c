@@ -232,7 +232,17 @@ GVariant* gnoblin_native_control_receive_runtime_config(int runtime_fd, guint64*
     g_return_val_if_fail(runtime_fd >= 0, NULL);
     g_return_val_if_fail(error == NULL || *error == NULL, NULL);
     g_autoptr(GnoblinRuntimeReader) reader = gnoblin_runtime_reader_new();
-    gint64 deadline = g_get_monotonic_time() + 10 * G_USEC_PER_SEC;
+    /* A hosted session on a loaded machine starves the Lua worker as much as Mutter. The guardian
+     * exports the wait it checked (GNOBLIN_HOSTED_STARTUP_WAIT_MS); the supervisor lets the first
+     * worker run that long, then runs a recovery worker for as long again, so wait for both. */
+    const char* hosted_wait = g_getenv("GNOBLIN_HOSTED_STARTUP_WAIT_MS");
+    gint64 wait_us = 10 * G_USEC_PER_SEC;
+    if (hosted_wait) {
+        gint64 hosted_ms = g_ascii_strtoll(hosted_wait, NULL, 10);
+        if (hosted_ms >= 2000 && hosted_ms <= 900000)
+            wait_us = (2 * hosted_ms + 10000) * G_TIME_SPAN_MILLISECOND;
+    }
+    gint64 deadline = g_get_monotonic_time() + wait_us;
     for (;;) {
         GnoblinRuntimePacket packet = {0};
         gboolean available = FALSE;

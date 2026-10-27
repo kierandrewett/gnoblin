@@ -168,6 +168,13 @@ static int session_guardian_main(int argc, char** argv) {
         usage(argv[0]);
         return EXIT_FAILURE;
     }
+    /* The compositor reads the same value, so one number sets every wait of the hosted start. */
+    if (nested == GNOBLIN_NESTED_HOSTED) {
+        g_autofree char* wait_ms = g_strdup_printf("%" G_GINT64_FORMAT, hosted_startup_wait_ms());
+        g_setenv(HOSTED_STARTUP_WAIT_ENV, wait_ms, TRUE);
+    } else {
+        g_unsetenv(HOSTED_STARTUP_WAIT_ENV);
+    }
     gnoblin_restore_interactive_priority("guardian");
     rotate_session_diagnostic("session-last.log", "session-previous.log");
     rotate_session_diagnostic("compositor-last.log", "compositor-previous.log");

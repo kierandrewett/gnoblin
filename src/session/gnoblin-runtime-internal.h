@@ -49,6 +49,16 @@
 #define GUARDIAN_STATUS_READY 2
 #define GUARDIAN_STATUS_LOGOUT 3
 #define GUARDIAN_STATUS_SESSION_LIFECYCLE_SUPPORTED 4
+/* A hosted session starts beside other sessions on a loaded machine, where Mutter's first start
+ * was measured above 20 s. Each end of the private runtime channel waits this long for the other
+ * (milliseconds). Timing out the compositor handshake restarts the Lua worker, which loses the
+ * login autostart snapshot and so never starts the shell. The limit stays finite, so a compositor
+ * that never answers still fails the session. A dead peer is noticed at once through the closed
+ * channel. The guardian exports the checked value to its children; the compositor reads it too. */
+#define HOSTED_STARTUP_WAIT_ENV "GNOBLIN_HOSTED_STARTUP_WAIT_MS"
+#define HOSTED_STARTUP_WAIT_DEFAULT_MS 60000
+#define HOSTED_STARTUP_WAIT_MIN_MS 2000
+#define HOSTED_STARTUP_WAIT_MAX_MS 900000
 #define SESSION_SUPERVISOR_BUS_NAME "org.gnoblin.SessionSupervisor"
 #define HOSTED_BUS_NAME "org.gnoblin.Hosted1"
 #define HOSTED_OBJECT_PATH "/org/gnoblin/Hosted1"
@@ -181,6 +191,7 @@ gboolean prepare_session_environment(GnoblinSessionClass session_class, gboolean
 gboolean hosted_service_start(GDBusConnection* connection, const char* wayland_display);
 void hosted_service_set_ready(void);
 void hosted_report_action(const char* action);
+gint64 hosted_startup_wait_ms(void);
 const char* nested_mode_option(GnoblinNestedMode mode);
 gboolean nested_mode_select(GnoblinNestedMode* mode, GnoblinNestedMode requested);
 gboolean nested_mode_display_valid(GnoblinNestedMode mode, const char* wayland_display);

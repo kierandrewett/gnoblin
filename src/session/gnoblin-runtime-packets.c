@@ -330,7 +330,8 @@ gboolean queue_packet(Runtime* runtime, GnoblinRuntimePacketType type, guint64 r
  * status. Otherwise a supervisor killed in that gap could make the guardian
  * restart without suspending Mutter. */
 gboolean flush_startup_packet(Runtime* runtime, GError** error) {
-    gint64 deadline = g_get_monotonic_time() + STARTUP_TIMEOUT_MS * 1000;
+    gint64 deadline = g_get_monotonic_time() +
+                      (runtime->hosted ? hosted_startup_wait_ms() : STARTUP_TIMEOUT_MS) * 1000;
     for (;;) {
         g_autoptr(GError) flush_error = NULL;
         if (gnoblin_runtime_writer_flush(runtime->writer, runtime->channel_fd, &flush_error))

@@ -46,6 +46,20 @@ Leave `WAYLAND_DISPLAY` and `DISPLAY` unset. Gnoblin refuses to start when
 either is set. `XDG_SESSION_ID` is optional because a hosted session has no
 seat.
 
+### Startup waits
+
+The first start on a loaded machine can take over 20 seconds, mostly in Mutter.
+A hosted session waits up to 60 seconds for each step of startup instead of 10.
+If a step still times out, Gnoblin restarts its Lua runtime with the built-in
+defaults, so your autostart entries do not run. Set
+`GNOBLIN_HOSTED_STARTUP_WAIT_MS` to change the wait:
+
+| Variable                         | Accepted values               | Default |
+| -------------------------------- | ----------------------------- | ------- |
+| `GNOBLIN_HOSTED_STARTUP_WAIT_MS` | 2000 to 900000 (milliseconds) | 60000   |
+
+A value outside the range is ignored with a message on standard error.
+
 ## How hosted mode differs
 
 | Mode               | Outputs                                | Viewer      | Seat and logind device control |
