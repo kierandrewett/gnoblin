@@ -165,6 +165,19 @@ if wanted repos; then
     python3 -c 'import json,sys; [print(p["family"], p["release"], p["name"], p["version"]) for p in json.load(open(sys.argv[1]))["packages"]]' "$work/site2/$project/nightly/manifest.json"
     stop_servers
     server_pids=()
+
+    say "retention: the same merge with --keep-nightlies 1 keeps only the newest nightly of each package"
+    cp -r "$work/existing/s2-nightly" "$work/existing/s2r-nightly"
+    PORT=$port2
+    build_channel s2r nightly nightly-2 --keep-nightlies 1 | grep -E "retention|built"
+    python3 - "$work/trees/s2r-nightly/bingux/nightly/manifest.json" <<'PY'
+import json, sys
+versions = sorted({p["version"] for p in json.load(open(sys.argv[1]))["packages"]})
+print("versions left:", versions)
+assert not any("20261031" in v for v in versions), "the older nightly must be gone"
+assert any("20261105" in v for v in versions), "the newest nightly must stay"
+PY
+    test -z "$(find "$work/trees/s2r-nightly" -name '*20261031*')" && echo "no file of the older nightly is left in the tree"
 fi
 
 # --- 3. clients --------------------------------------------------------------------------------------------------------
