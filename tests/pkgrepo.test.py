@@ -98,6 +98,44 @@ class Ordering(unittest.TestCase):
         self.assertEqual(versions.pacman_compare("1:0.1-1", "2.0-1"), 1)
 
 
+@unittest.skipUnless(shutil.which("git"), "git is not installed")
+class GitDescribe(unittest.TestCase):
+    def repo(self):
+        directory = Path(tempfile.mkdtemp(prefix="pkgrepo-git-"))
+        self.addCleanup(shutil.rmtree, directory, True)
+        subprocess.run(["git", "init", "-q", str(directory)], check=True)
+        return directory
+
+    def commit(self, directory):
+        subprocess.run(
+            ["git", "-C", str(directory), "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "x"],
+            check=True,
+        )
+
+    def test_counts_commits_since_the_last_stable_tag(self):
+        from pkgrepo import cli
+
+        directory = self.repo()
+        self.commit(directory)
+        subprocess.run(["git", "-C", str(directory), "tag", "gnoblin-v0.1.12"], check=True)
+        self.commit(directory)
+        self.commit(directory)
+        last, count, commit, date = cli.describe_git(directory, "gnoblin-v")
+        self.assertEqual((last, count), ("0.1.12", 2))
+        self.assertRegex(commit, "^[0-9a-f]{7}$")
+        self.assertRegex(date, "^[0-9]{8}$")
+
+    def test_without_a_tag_the_tree_version_names_the_coming_release(self):
+        from pkgrepo import cli
+
+        directory = self.repo()
+        self.commit(directory)
+        self.commit(directory)
+        last, count, _, _ = cli.describe_git(directory, "v")
+        self.assertEqual((last, count), ("0.0.0", 2))
+        self.assertEqual(versions.next_stable(last, "0.1.0"), "0.1.0")
+
+
 class Merge(unittest.TestCase):
     def entry(self, **kwargs):
         return tree.Entry(package(**kwargs), Path("/dev/null"), new=True)

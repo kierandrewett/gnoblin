@@ -27,11 +27,17 @@ def _git(directory: Path, *arguments: str) -> str:
 
 def describe_git(directory: Path, tag_prefix: str) -> tuple[str, int, str, str]:
     """(last stable version, commits since its tag, short commit, commit date as YYYYMMDD in UTC) of HEAD."""
-    tag = _git(directory, "describe", "--tags", "--abbrev=0", "--match", f"{tag_prefix}[0-9]*", "HEAD")
     commit = _git(directory, "rev-parse", "--short=7", "HEAD")
-    count = int(_git(directory, "rev-list", "--count", f"{tag}..HEAD"))
     stamp = int(_git(directory, "log", "-1", "--format=%ct", "HEAD"))
-    return tag[len(tag_prefix) :], count, commit, datetime.fromtimestamp(stamp, timezone.utc).strftime("%Y%m%d")
+    date = datetime.fromtimestamp(stamp, timezone.utc).strftime("%Y%m%d")
+    try:
+        tag = _git(directory, "describe", "--tags", "--abbrev=0", "--match", f"{tag_prefix}[0-9]*", "HEAD")
+    except CommandError:
+        # No release yet: every commit counts, and the version in the tree (which is ahead of 0.0.0) names the release
+        # that is coming.
+        return "0.0.0", int(_git(directory, "rev-list", "--count", "HEAD")), commit, date
+    count = int(_git(directory, "rev-list", "--count", f"{tag}..HEAD"))
+    return tag[len(tag_prefix) :], count, commit, date
 
 
 def cmd_version(args: argparse.Namespace) -> int:
