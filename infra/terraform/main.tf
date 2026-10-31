@@ -79,8 +79,9 @@ resource "cloudflare_workers_script" "website" {
   assets = {
     directory = "${path.module}/../website/.vitepress/dist"
     config = {
-      html_handling = "auto-trailing-slash"
-      redirects     = file("${path.module}/../website/.vitepress/dist/_redirects")
+      html_handling      = "auto-trailing-slash"
+      not_found_handling = "404-page"
+      redirects          = file("${path.module}/../website/.vitepress/dist/_redirects")
     }
   }
 

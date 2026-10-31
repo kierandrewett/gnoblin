@@ -64,11 +64,41 @@ const Index: FC<{ prefix: string; entries: Entry[] }> = ({ prefix, entries }) =>
     </html>
 );
 
+const NotFound: FC<{ path: string }> = ({ path }) => (
+    <html lang="en">
+        <head>
+            <meta charset="utf-8" />
+            <meta name="color-scheme" content="light dark" />
+            <title>404 Not Found</title>
+        </head>
+        <body>
+            <h1>Not Found</h1>
+            <p>The requested URL {path} was not found on this server.</p>
+            <p>
+                <a href="/">Back to the repository index</a>
+            </p>
+        </body>
+    </html>
+);
+
+const htmlResponse = (request: Request, status: number, html: string, cacheControl: string): Response =>
+    new Response(request.method === "HEAD" ? null : `<!doctype html>${html}`, {
+        status,
+        headers: { "content-type": "text/html; charset=utf-8", "cache-control": cacheControl },
+    });
+
+const notFound = (request: Request): Response =>
+    htmlResponse(request, 404, (<NotFound path={new URL(request.url).pathname} />).toString(), "no-store");
+
 export default {
     async fetch(request: Request, env: { REPO: R2Bucket }): Promise<Response> {
         const url = new URL(request.url);
-        if ((request.method !== "GET" && request.method !== "HEAD") || !url.pathname.endsWith("/"))
-            return fetch(request);
+        if ((request.method !== "GET" && request.method !== "HEAD") || !url.pathname.endsWith("/")) {
+            const upstream = await fetch(request);
+            return upstream.status === 404 && (request.method === "GET" || request.method === "HEAD")
+                ? notFound(request)
+                : upstream;
+        }
 
         const prefix = decodeURIComponent(url.pathname.slice(1));
         const folders: string[] = [];
@@ -81,8 +111,7 @@ export default {
             cursor = page.truncated ? page.cursor : undefined;
         } while (cursor);
 
-        if (prefix !== "" && folders.length === 0 && files.length === 0)
-            return new Response("Not found", { status: 404 });
+        if (prefix !== "" && folders.length === 0 && files.length === 0) return notFound(request);
 
         const entries: Entry[] = [
             ...folders.map((folder) => ({
@@ -99,9 +128,11 @@ export default {
             })),
         ];
 
-        const html = `<!doctype html>${(<Index prefix={prefix} entries={entries} />).toString()}`;
-        return new Response(request.method === "HEAD" ? null : html, {
-            headers: { "content-type": "text/html; charset=utf-8", "cache-control": "public, max-age=60" },
-        });
+        return htmlResponse(
+            request,
+            200,
+            (<Index prefix={prefix} entries={entries} />).toString(),
+            "public, max-age=60",
+        );
     },
 };
