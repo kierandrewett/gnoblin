@@ -1069,6 +1069,8 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     double smoothing = 0;
     double border_width = 0;
     double border_color[4] = {128. / 255., 128. / 255., 128. / 255., 1.};
+    double inner_border_width = 0;
+    double inner_border_color[4] = {128. / 255., 128. / 255., 128. / 255., 1.};
     double padding[4] = {0, 0, 0, 0};
     gboolean keep_maximized = TRUE;
     gboolean keep_fullscreen = FALSE;
@@ -1183,6 +1185,11 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
         border_width = CLAMP(border_width, -40., 40.);
         if (!native_rule_get_color(corners, "border_color", border_color))
             native_rule_get_color(corners, "border-color", border_color);
+        if (!native_rule_get_number(corners, "inner_border_width", &inner_border_width))
+            native_rule_get_number(corners, "inner-border-width", &inner_border_width);
+        inner_border_width = CLAMP(inner_border_width, 0., 40.);
+        if (!native_rule_get_color(corners, "inner_border_color", inner_border_color))
+            native_rule_get_color(corners, "inner-border-color", inner_border_color);
         native_rule_get_padding(corners, padding);
         native_rule_get_boolean(corners, "keep_maximized", "keep-maximized", &keep_maximized);
         native_rule_get_boolean(corners, "keep_fullscreen", "keep-fullscreen", &keep_fullscreen);
@@ -1321,6 +1328,7 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                              (!tiled || keep_tiled);
     gboolean clip_enabled = allowed && radius > 0;
     const gboolean border_enabled = allowed && fabs(border_width) > 0.001;
+    const gboolean inner_border_enabled = allowed && inner_border_width > 0.001;
     gboolean has_padding = FALSE;
     for (guint i = 0; i < G_N_ELEMENTS(padding); i++)
         has_padding |= fabs(padding[i]) > 0.001;
@@ -1354,8 +1362,10 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     if (clip_enabled && g_str_equal(mode, "auto") && !csd_detected &&
         native_corner_toolkit_should_skip(control, window, skip_libadwaita, skip_libhandy))
         clip_enabled = FALSE;
-    const double effect_radius = clip_enabled ? radius : border_enabled ? 0.5 : 0;
-    const gboolean effect_enabled = clip_enabled || border_enabled;
+    const double effect_radius = clip_enabled                               ? radius
+                                 : (border_enabled || inner_border_enabled) ? 0.5
+                                                                            : 0;
+    const gboolean effect_enabled = clip_enabled || border_enabled || inner_border_enabled;
     const double exponent = 2 + CLAMP(smoothing, 0, 1) * 4;
     /* A negotiated server frame is drawn rounded around square client content.
      * Auto mode preserves the app's own corners, which would leave the content
@@ -1397,6 +1407,10 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
     g_variant_dict_insert(&frame_style, "border-width", "d", effect_enabled ? border_width : 0.);
     g_variant_dict_insert(&frame_style, "border-color", "(dddd)", border_color[0], border_color[1],
                           border_color[2], border_color[3]);
+    g_variant_dict_insert(&frame_style, "inner-border-width", "d",
+                          effect_enabled ? inner_border_width : 0.);
+    g_variant_dict_insert(&frame_style, "inner-border-color", "(dddd)", inner_border_color[0],
+                          inner_border_color[1], inner_border_color[2], inner_border_color[3]);
     g_autoptr(GVariant) frame_style_options = g_variant_ref_sink(g_variant_dict_end(&frame_style));
     meta_gnoblin_window_frame_style(window, frame_style_options);
     g_autoptr(GError) frame_error = NULL;
@@ -1409,6 +1423,8 @@ static void native_apply_window_rules(GnoblinNativeControl* control, MetaWindow*
                   meta_window_get_title(window) ?: "(untitled)", frame_error->message);
     meta_gnoblin_window_effects_set_rounded_border(CLUTTER_ACTOR(actor),
                                                    effect_enabled ? border_width : 0, border_color);
+    meta_gnoblin_window_effects_set_rounded_inner_border(
+        CLUTTER_ACTOR(actor), effect_enabled ? inner_border_width : 0, inner_border_color);
     const gboolean shadow_state_allowed =
         normal && !g_str_equal(mode, "off") && (!meta_window_is_maximized(window) || keep_shadow) &&
         (!meta_window_is_fullscreen(window) || keep_shadow) && (!tiled || keep_shadow);

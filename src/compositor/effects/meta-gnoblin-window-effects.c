@@ -815,6 +815,8 @@ typedef struct {
     double padding[4];
     double border_width;
     double border_color[4];
+    double inner_border_width;
+    double inner_border_color[4];
     gboolean csd_reconstruction;
     double csd_insets[4];
     double client_bounds[4];
@@ -1076,6 +1078,8 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
             "uniform float gnoblin_rounded_clip_border_width;"
             "uniform vec4 gnoblin_rounded_clip_border_color;"
             "uniform float gnoblin_rounded_clip_outline_only;"
+            "uniform float gnoblin_rounded_clip_inner_width;"
+            "uniform vec4 gnoblin_rounded_clip_inner_color;"
             "float sourceAlpha(vec2 point){"
             "vec2 uv=(point-gnoblin_rounded_clip_texture_bounds.xy)/"
             "(gnoblin_rounded_clip_texture_bounds.zw-gnoblin_rounded_clip_texture_bounds.xy);"
@@ -1145,7 +1149,20 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
             "float diagonal=sourceAlpha(origin+direction*0.75);"
             "float horizontal=sourceAlpha(origin+direction*vec2(inset,0.75));"
             "float vertical=sourceAlpha(origin+direction*vec2(0.75,inset));"
-            "return reference>0.02&&min(diagonal,min(horizontal,vertical))>=reference*0.85;}",
+            "return reference>0.02&&min(diagonal,min(horizontal,vertical))>=reference*0.85;}"
+            /* The inner line is the band between the clip shape and the same shape inset by its
+             * width, composited over the content and under the outer border. @keep limits it to
+             * pixels the client drew, so it stays off corners the client rounds itself. */
+            "vec4 innerLine(vec2 point,vec4 content,float coverage,float radius,float keep,"
+            "vec4 colorIn){"
+            "float width=gnoblin_rounded_clip_inner_width;"
+            "if(width<=0.01)return content;"
+            "vec4 innerBounds=gnoblin_rounded_clip_bounds+vec4(width,width,-width,-width);"
+            "float line=max(0.0,coverage-roundedCoverage(point,innerBounds,"
+            "max(0.0,radius-width),gnoblin_rounded_clip_exponent))*keep;"
+            "float alpha=line*gnoblin_rounded_clip_inner_color.a;"
+            "vec4 inner=vec4(gnoblin_rounded_clip_inner_color.rgb*alpha,alpha);"
+            "return inner*colorIn+content*(1.0-alpha*colorIn.a);}",
             "vec2 p=gnoblin_rounded_clip_texture_bounds.xy+"
             "cogl_tex_coord_in[0].st*(gnoblin_rounded_clip_texture_bounds.zw-"
             "gnoblin_rounded_clip_texture_bounds.xy);"
@@ -1190,6 +1207,11 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
             "bool preserve=gnoblin_rounded_clip_automatic>0.5&&corner&&"
             "!squareCorner(p,radius)&&!csdCorner;"
             "float coverage=preserve?1.0:1.0-smoothstep(radius-0.5,radius+0.5,distance);"
+            "float keep=gnoblin_rounded_clip_automatic>0.5?"
+            "clamp(cogl_color_out.a/max(cogl_color_in.a,0.0001),0.0,1.0):1.0;"
+            "vec4 content=gnoblin_rounded_clip_outline_only>0.5?vec4(0.0):"
+            "cogl_color_out*coverage;"
+            "content=innerLine(p,content,coverage,radius,keep,cogl_color_in);"
             "float borderWidth=gnoblin_rounded_clip_border_width;"
             "if(abs(borderWidth)>0.01){"
             "float borderCoverage;"
@@ -1208,13 +1230,14 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
             "borderCoverage=max(0.0,outerCoverage-coverage);}"
             "float borderAlpha=borderCoverage*gnoblin_rounded_clip_border_color.a;"
             "vec4 border=vec4(gnoblin_rounded_clip_border_color.rgb*borderAlpha,borderAlpha);"
-            "cogl_color_out=border*cogl_color_in+"
-            "cogl_color_out*coverage*(1.0-borderAlpha);"
-            "if(gnoblin_rounded_clip_outline_only>0.5)cogl_color_out=border*cogl_color_in;}"
-            "else cogl_color_out*=coverage;}"
+            "cogl_color_out=border*cogl_color_in+content*(1.0-borderAlpha);}"
+            "else cogl_color_out=content;}"
             "else{"
             "float coverage=roundedCoverage(p,gnoblin_rounded_clip_bounds,0.0,"
             "gnoblin_rounded_clip_exponent);"
+            "vec4 content=gnoblin_rounded_clip_outline_only>0.5?vec4(0.0):"
+            "cogl_color_out*coverage;"
+            "content=innerLine(p,content,coverage,0.0,1.0,cogl_color_in);"
             "float borderWidth=gnoblin_rounded_clip_border_width;"
             "if(abs(borderWidth)>0.01){"
             "float borderCoverage;"
@@ -1232,10 +1255,8 @@ static CoglPipeline* rounded_clip_create_pipeline(ClutterOffscreenEffect* effect
             "borderCoverage=max(0.0,outerCoverage-coverage);}"
             "float borderAlpha=borderCoverage*gnoblin_rounded_clip_border_color.a;"
             "vec4 border=vec4(gnoblin_rounded_clip_border_color.rgb*borderAlpha,borderAlpha);"
-            "cogl_color_out=border*cogl_color_in+"
-            "cogl_color_out*coverage*(1.0-borderAlpha);"
-            "if(gnoblin_rounded_clip_outline_only>0.5)cogl_color_out=border*cogl_color_in;}"
-            "else cogl_color_out*=coverage;} ");
+            "cogl_color_out=border*cogl_color_in+content*(1.0-borderAlpha);}"
+            "else cogl_color_out=content;} ");
     cogl_pipeline_add_snippet(pipeline, snippet);
     return pipeline;
 }
@@ -1252,6 +1273,8 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
     float radius;
     float border_width;
     float border_color[4];
+    float inner_border_width;
+    float inner_border_color[4];
     float padding_top;
     float padding_right;
     float padding_bottom;
@@ -1271,6 +1294,9 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
         border_width = (float)(clip->border_width * MIN(scale_x, scale_y));
         for (guint i = 0; i < G_N_ELEMENTS(border_color); i++)
             border_color[i] = (float)clip->border_color[i];
+        inner_border_width = (float)(clip->inner_border_width * MIN(scale_x, scale_y));
+        for (guint i = 0; i < G_N_ELEMENTS(inner_border_color); i++)
+            inner_border_color[i] = (float)clip->inner_border_color[i];
         padding_top = (float)(clip->padding[0] * scale_y);
         padding_right = (float)(clip->padding[1] * scale_x);
         padding_bottom = (float)(clip->padding[2] * scale_y);
@@ -1332,6 +1358,14 @@ static void rounded_clip_paint_target(ClutterOffscreenEffect* effect, ClutterPai
             pipeline,
             cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_border_color"), 4, 1,
             border_color);
+        cogl_pipeline_set_uniform_1f(
+            pipeline,
+            cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_inner_width"),
+            inner_border_width);
+        cogl_pipeline_set_uniform_float(
+            pipeline,
+            cogl_pipeline_get_uniform_location(pipeline, "gnoblin_rounded_clip_inner_color"), 4, 1,
+            inner_border_color);
     } else {
         /* Uniforms persist on a pipeline. Force the fragment's no-op branch
          * while an actor is being detached or has no offscreen target. */
@@ -1355,6 +1389,10 @@ static void meta_gnoblin_rounded_clip_init(MetaGnoblinRoundedClip* clip) {
     clip->border_color[1] = 128. / 255.;
     clip->border_color[2] = 128. / 255.;
     clip->border_color[3] = 1.;
+    clip->inner_border_color[0] = 128. / 255.;
+    clip->inner_border_color[1] = 128. / 255.;
+    clip->inner_border_color[2] = 128. / 255.;
+    clip->inner_border_color[3] = 1.;
 }
 
 static MetaGnoblinRoundedClip* find_rounded_clip(ClutterActor* actor) {
@@ -1401,9 +1439,40 @@ void meta_gnoblin_window_effects_set_rounded_border(ClutterActor* actor, double 
     clutter_effect_queue_repaint(CLUTTER_EFFECT(clip));
 }
 
+void meta_gnoblin_window_effects_set_rounded_inner_border(ClutterActor* actor, double width,
+                                                          const double color[4]) {
+    MetaGnoblinRoundedClip* clip;
+
+    g_return_if_fail(CLUTTER_IS_ACTOR(actor));
+    g_return_if_fail(color != NULL);
+    if (!isfinite(width))
+        return;
+    for (guint i = 0; i < 4; i++) {
+        if (!isfinite(color[i]))
+            return;
+    }
+
+    clip = find_rounded_clip(actor);
+    if (!clip)
+        return;
+
+    width = CLAMP(width, 0., 40.);
+    double clamped_color[4];
+    for (guint i = 0; i < G_N_ELEMENTS(clamped_color); i++)
+        clamped_color[i] = CLAMP(color[i], 0., 1.);
+    if (clip->inner_border_width == width &&
+        memcmp(clip->inner_border_color, clamped_color, sizeof(clamped_color)) == 0)
+        return;
+
+    clip->inner_border_width = width;
+    memcpy(clip->inner_border_color, clamped_color, sizeof(clamped_color));
+    clutter_effect_queue_repaint(CLUTTER_EFFECT(clip));
+}
+
 void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent, const double bounds[4],
                                                     double radius, double exponent, double width,
-                                                    const double color[4]) {
+                                                    const double color[4], double inner_width,
+                                                    const double inner_color[4]) {
     ClutterActor* outline;
     MetaGnoblinRoundedClip* clip;
     ClutterEffect* effect;
@@ -1412,8 +1481,10 @@ void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent, const 
 
     g_return_if_fail(CLUTTER_IS_ACTOR(parent));
     outline = g_object_get_data(G_OBJECT(parent), WINDOW_OUTLINE_ACTOR_KEY);
-    if (!bounds || !color || !isfinite(radius) || !isfinite(exponent) || !isfinite(width) ||
-        radius < 0 || fabs(width) <= 0.001 || bounds[2] <= bounds[0] || bounds[3] <= bounds[1]) {
+    if (!bounds || !color || !inner_color || !isfinite(radius) || !isfinite(exponent) ||
+        !isfinite(width) || !isfinite(inner_width) || radius < 0 ||
+        (fabs(width) <= 0.001 && inner_width <= 0.001) || bounds[2] <= bounds[0] ||
+        bounds[3] <= bounds[1]) {
         if (outline) {
             g_object_set_data(G_OBJECT(parent), WINDOW_OUTLINE_ACTOR_KEY, NULL);
             clutter_actor_destroy(outline);
@@ -1450,6 +1521,7 @@ void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent, const 
     meta_gnoblin_window_effects_set_rounded_clip(outline, MAX(radius, 0.001), exponent, FALSE,
                                                  padding);
     meta_gnoblin_window_effects_set_rounded_border(outline, width, color);
+    meta_gnoblin_window_effects_set_rounded_inner_border(outline, inner_width, inner_color);
     effect = clutter_actor_get_effect(outline, ROUNDED_CLIP_EFFECT_NAME);
     if (!effect || !META_IS_GNOBLIN_ROUNDED_CLIP(effect))
         return;
@@ -1598,7 +1670,8 @@ void meta_gnoblin_window_effects_set_rounded_clip_geometry(ClutterActor* actor,
     }
     if (!clip)
         return;
-    if (!bounds && clip->radius <= 0. && fabs(clip->border_width) <= 0.001) {
+    if (!bounds && clip->radius <= 0. && fabs(clip->border_width) <= 0.001 &&
+        clip->inner_border_width <= 0.001) {
         meta_gnoblin_window_effects_clear_rounded_clip(actor);
         return;
     }

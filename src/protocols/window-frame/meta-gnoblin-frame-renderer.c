@@ -662,7 +662,7 @@ static void frame_destroyed(ClutterActor* actor, gpointer data) {
      * frame and client without clipping the shadow. Remove it with the frame.
      */
     if (parent)
-        meta_gnoblin_window_effects_set_window_outline(parent, NULL, 0, 2, 0, NULL);
+        meta_gnoblin_window_effects_set_window_outline(parent, NULL, 0, 2, 0, NULL, 0, NULL);
     frames = g_list_remove(frames, frame);
     /* The strips outlive this handler: destroying the root's children unmaps
      * them and delivers a leave event, which must not reach the freed frame. */
@@ -769,9 +769,11 @@ static void update_frame(Frame* frame) {
     int scale = meta_window_wayland_get_geometry_scale(frame->window);
     int* b = frame->layout.border;
     double outline_width = 0;
+    double inner_outline_width = 0;
     double outline_radius = 0;
     double outline_exponent = 2;
     double outline_color[4] = {128. / 255., 128. / 255., 128. / 255., 1.};
+    double inner_outline_color[4] = {128. / 255., 128. / 255., 128. / 255., 1.};
     if (options) {
         g_variant_lookup(options, "renderer", "&s", &name);
         g_variant_lookup(options, "style", "&s", &style);
@@ -780,6 +782,7 @@ static void update_frame(Frame* frame) {
             "&s", &bg);
         g_variant_lookup(options, "foreground", "&s", &fg);
         g_variant_lookup(options, "border-width", "d", &outline_width);
+        g_variant_lookup(options, "inner-border-width", "d", &inner_outline_width);
         g_variant_lookup(options, "radius", "d", &outline_radius);
         g_variant_lookup(options, "exponent", "d", &outline_exponent);
         g_autoptr(GVariant) outline_color_value =
@@ -787,6 +790,12 @@ static void update_frame(Frame* frame) {
         if (outline_color_value)
             g_variant_get(outline_color_value, "(dddd)", &outline_color[0], &outline_color[1],
                           &outline_color[2], &outline_color[3]);
+        g_autoptr(GVariant) inner_outline_color_value =
+            g_variant_lookup_value(options, "inner-border-color", G_VARIANT_TYPE("(dddd)"));
+        if (inner_outline_color_value)
+            g_variant_get(inner_outline_color_value, "(dddd)", &inner_outline_color[0],
+                          &inner_outline_color[1], &inner_outline_color[2],
+                          &inner_outline_color[3]);
     }
     renderer = renderers ? g_hash_table_lookup(renderers, name) : NULL;
     if (renderer != frame->renderer) {
@@ -799,7 +808,8 @@ static void update_frame(Frame* frame) {
     frame->height = rect.height / scale;
     if (frame->width <= 0 || frame->height <= 0) {
         meta_gnoblin_window_effects_set_window_outline(
-            CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), NULL, 0, 2, 0, NULL);
+            CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), NULL, 0, 2, 0, NULL,
+            0, NULL);
         return;
     }
     clutter_actor_set_position(frame->root, (rect.x - buffer.x) / (float)scale,
@@ -811,7 +821,7 @@ static void update_frame(Frame* frame) {
     if (!visible) {
         meta_gnoblin_window_effects_set_window_outline(
             CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), NULL, 0, 2, 0,
-            outline_color);
+            outline_color, 0, NULL);
         clutter_actor_hide(frame->root);
         release_map(frame);
         return;
@@ -825,7 +835,8 @@ static void update_frame(Frame* frame) {
     };
     meta_gnoblin_window_effects_set_window_outline(
         CLUTTER_ACTOR(meta_window_get_compositor_private(frame->window)), outline_bounds,
-        outline_radius, outline_exponent, outline_width, outline_color);
+        outline_radius, outline_exponent, outline_width, outline_color, inner_outline_width,
+        inner_outline_color);
     CoglColor background, foreground;
     if (!cogl_color_from_string(&background, bg))
         cogl_color_from_string(&background, "#242424");

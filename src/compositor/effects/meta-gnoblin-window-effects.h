@@ -30,9 +30,16 @@ void meta_gnoblin_window_effects_clear_rounded_clip(ClutterActor* actor);
  * finite, normalized RGBA. */
 void meta_gnoblin_window_effects_set_rounded_border(ClutterActor* actor, double width,
                                                     const double color[4]);
+
+/* Configure the inner line on an existing rounded clip below @actor. It is drawn inward from the
+ * clip bounds over the window content and under the border set above. Width is in logical actor
+ * units and clamped to 0..40, where 0 disables the line; @color is finite, normalized RGBA. */
+void meta_gnoblin_window_effects_set_rounded_inner_border(ClutterActor* actor, double width,
+                                                          const double color[4]);
 void meta_gnoblin_window_effects_set_window_outline(ClutterActor* parent, const double bounds[4],
                                                     double radius, double exponent, double width,
-                                                    const double color[4]);
+                                                    const double color[4], double inner_width,
+                                                    const double inner_color[4]);
 
 /*
  * Detect client-rendered rounded corner cutouts from the shaped texture. The
