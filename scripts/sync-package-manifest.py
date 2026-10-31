@@ -11,6 +11,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from pkgrepo.versions import semver_to_arch, semver_to_rpm  # noqa: E402
+
 MANIFEST_SOURCE = ROOT / "packaging/native-packages.json"
 PROJECT_URL = "https://github.com/kierandrewett/gnoblin"
 
@@ -75,7 +79,9 @@ def native_requirement(manifest: dict, name: str, adapter: str) -> tuple[str, st
 
 def render_rpm(manifest: dict) -> str:
     gnoblin = manifest["packages"]["gnoblin"]
-    version = gnoblin["version"]
+    # A release is MAJOR.MINOR.PATCH. A pre-release (a nightly) is SemVer with a hyphen, which RPM cannot hold.
+    source_version = gnoblin["version"]
+    version = semver_to_rpm(source_version)
     epoch = manifest["release"]["rpmEpoch"]
     gnoblin_release = manifest["release"]["gnoblinRpmRelease"]
     next_major = manifest["release"]["gnomeMajor"] + 1
@@ -94,6 +100,7 @@ def render_rpm(manifest: dict) -> str:
     template = (ROOT / "packaging/rpm/gnoblin.spec.in").read_text()
     replacements = {
         "@VERSION@": version,
+        "@SOURCE_VERSION@": source_version,
         "@EPOCH@": str(epoch),
         "@GNOBLIN_RELEASE@": str(gnoblin_release),
         "@GNOME_MAJOR@": str(manifest["release"]["gnomeMajor"]),
@@ -107,8 +114,10 @@ def render_rpm(manifest: dict) -> str:
     return template
 
 
-def render_arch(manifest: dict, source_sha256: str = "SKIP", release_tag: str = "gnoblin-v$pkgver") -> str:
-    version = manifest["packages"]["gnoblin"]["version"]
+def render_arch(manifest: dict, source_sha256: str = "SKIP", release_tag: str = "gnoblin-v$_srcver") -> str:
+    # pkgver cannot hold a hyphen, so a pre-release has its own spelling; the source bundle keeps the SemVer one.
+    source_version = manifest["packages"]["gnoblin"]["version"]
+    version = semver_to_arch(source_version)
     package_release = manifest["release"]["archPkgRelease"]
     gnome_version = manifest["release"]["gnomeVersion"]
     _, _, requirements = dependency_closure(manifest, "gnoblin")
@@ -137,6 +146,7 @@ def render_arch(manifest: dict, source_sha256: str = "SKIP", release_tag: str = 
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=gnoblin
 pkgver={version}
+_srcver={source_version}
 pkgrel={package_release}
 pkgdesc='Standalone Gnoblin desktop session'
 arch=('x86_64')
@@ -148,13 +158,13 @@ conflicts=({" ".join(f"'{name}'" for name in replaced_packages)})
 replaces=({" ".join(f"'{name}'" for name in replaced_packages)})
 options=('!debug')
 
-source=("$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/$pkgname-$pkgver-gnome-{gnome_version}-source.tar.xz")
+source=("$pkgname-$_srcver-gnome-{gnome_version}-source.tar.xz::{PROJECT_URL}/releases/download/{release_tag}/$pkgname-$_srcver-gnome-{gnome_version}-source.tar.xz")
 sha256sums=('{source_sha256}')
 
 _prefix=/usr/lib/gnoblin
 
 prepare() {{
-    cd "$srcdir/$pkgname-$pkgver" || return
+    cd "$srcdir/$pkgname-$_srcver" || return
     archive=(sources/mutter-*.tar.xz)
     test ${{#archive[@]}} -eq 1
     mkdir -p subprojects/mutter
@@ -162,15 +172,15 @@ prepare() {{
 }}
 
 build() {{
-    cd "$srcdir/$pkgname-$pkgver" || return
+    cd "$srcdir/$pkgname-$_srcver" || return
     # ./build.sh is the only build. The system layout adds the public entries below the stage root.
     GNOBLIN_LIBDIR=lib GNOBLIN_BUILD_TYPE=release \\
         ./build.sh --layout system --without-portal --prefix "$_prefix" \\
-        --destdir "$srcdir/$pkgname-$pkgver/stage" --jobs "$(nproc)"
+        --destdir "$srcdir/$pkgname-$_srcver/stage" --jobs "$(nproc)"
 }}
 
 package() {{
-    cd "$srcdir/$pkgname-$pkgver" || return
+    cd "$srcdir/$pkgname-$_srcver" || return
     cp -a stage/. "$pkgdir/"
     api="$(scripts/gnome-versions.py get mutter api)"
     find "$pkgdir$_prefix" -type f -print0 | while IFS= read -r -d '' file; do
@@ -261,7 +271,7 @@ def main() -> int:
             render_arch(
                 manifest,
                 args.source_sha256,
-                args.release_tag or "gnoblin-v$pkgver",
+                args.release_tag or "gnoblin-v$_srcver",
             )
         )
         print(f"wrote {args.output}")

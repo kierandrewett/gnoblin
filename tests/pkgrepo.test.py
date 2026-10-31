@@ -317,6 +317,55 @@ class PublishPlans(unittest.TestCase):
             publish.publish("rsync", self.directory / "tree", "gnoblin", "stable", "x", previous=None, apply=False)
 
 
+class GnoblinNightlyRecipes(unittest.TestCase):
+    """A nightly version reaches the Fedora spec and the Arch recipe in the spelling of each package manager."""
+
+    def setUp(self):
+        self.copy = Path(tempfile.mkdtemp(prefix="pkgrepo-gnoblin-"))
+        self.addCleanup(shutil.rmtree, self.copy, True)
+        for name in ("scripts", "versions", "packaging"):
+            shutil.copytree(ROOT / name, self.copy / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
+    def run_script(self, *args):
+        return subprocess.run(
+            [sys.executable, str(self.copy / "scripts" / args[0]), *args[1:]], capture_output=True, text=True
+        )
+
+    def test_release_recipes_are_unchanged_by_the_source_version_split(self):
+        result = self.run_script("sync-package-manifest.py", "check")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_nightly_version_in_the_recipes(self):
+        semver = "0.1.13-nightly.20261031.142.gabc1234"
+        result = self.run_script("apply-nightly-version.py", semver)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        spec = (self.copy / "packaging/rpm/gnoblin.spec").read_text()
+        self.assertIn("Version:        0.1.13~nightly.20261031.142.gabc1234\n", spec)
+        self.assertIn(f"%global source_version {semver}\n", spec)
+        self.assertIn("Source0:        gnoblin-%{source_version}-source.tar.xz", spec)
+        self.assertIn("Epoch:          1\n", spec)
+        arch = (self.copy / "packaging/arch/PKGBUILD").read_text()
+        self.assertIn("pkgver=0.1.13nightly20261031.142\n", arch)
+        self.assertIn(f"_srcver={semver}\n", arch)
+        portal = (self.copy / "packaging/arch/portal/PKGBUILD").read_text()
+        original = (ROOT / "packaging/arch/portal/PKGBUILD").read_text()
+        version_line = lambda text: next(line for line in text.splitlines() if line.startswith("pkgver="))  # noqa: E731
+        self.assertEqual(version_line(portal), version_line(original), "the portal keeps its own GNOME version")
+        # The same copy still passes the consistency check.
+        self.assertEqual(self.run_script("sync-package-manifest.py", "check").returncode, 0)
+
+    def test_only_nightly_versions_are_accepted(self):
+        self.assertEqual(self.run_script("apply-nightly-version.py", "0.1.13").returncode, 2)
+        self.assertEqual(self.run_script("apply-nightly-version.py", "0.1.13-rc1").returncode, 2)
+
+    def test_the_spellings_agree_with_the_tool(self):
+        value = versions.nightly("0.1.12", "0.1.12", "20261031", 142, "abc1234")
+        self.assertEqual(versions.semver_to_rpm(value.semver), value.rpm)
+        self.assertEqual(versions.semver_to_arch(value.semver), value.arch)
+        self.assertEqual(versions.semver_to_rpm("0.2.0"), "0.2.0")
+        self.assertEqual(versions.semver_to_arch("0.2.0-rc.1"), "0.2.0rc1")
+
+
 @unittest.skipUnless(shutil.which("rsync"), "rsync is not installed")
 class RsyncApply(unittest.TestCase):
     def test_publishes_to_a_directory_and_removes_stale_files(self):

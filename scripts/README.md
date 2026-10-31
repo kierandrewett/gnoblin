@@ -100,6 +100,8 @@ Run by the workflows and by `./build.sh package`.
 | `install-system.sh`                         | Install the published Fedora packages from COPR                         | by hand                                  |
 | `publish-copr.sh`                           | Send source RPMs to COPR                                                | `copr.yml`                               |
 | `prepare-apt-pages.py`                      | Add the already-published APT archive to the docs site                  | `docs.yml`                               |
+| `pkgrepo/`                                  | Build, sign and upload the RPM, APT and pacman repositories             | `package-repository.yml`, `nightly.yml`  |
+| `apply-nightly-version.py`                  | Give a CI checkout a nightly version in every recipe                    | `release.yml`, `fedora-rpm.yml`          |
 
 ## Patches
 

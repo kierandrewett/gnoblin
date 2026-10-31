@@ -2,6 +2,7 @@
 # shellcheck shell=bash disable=SC2034,SC2154
 pkgname=gnoblin
 pkgver=0.1.12
+_srcver=0.1.12
 pkgrel=30
 pkgdesc='Standalone Gnoblin desktop session'
 arch=('x86_64')
@@ -13,13 +14,13 @@ conflicts=('gnoblin-mutter' 'gnoblin-mutter-devel')
 replaces=('gnoblin-mutter' 'gnoblin-mutter-devel')
 options=('!debug')
 
-source=("$pkgname-$pkgver-gnome-51.0-source.tar.xz::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v$pkgver/$pkgname-$pkgver-gnome-51.0-source.tar.xz")
+source=("$pkgname-$_srcver-gnome-51.0-source.tar.xz::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v$_srcver/$pkgname-$_srcver-gnome-51.0-source.tar.xz")
 sha256sums=('SKIP')
 
 _prefix=/usr/lib/gnoblin
 
 prepare() {
-    cd "$srcdir/$pkgname-$pkgver" || return
+    cd "$srcdir/$pkgname-$_srcver" || return
     archive=(sources/mutter-*.tar.xz)
     test ${#archive[@]} -eq 1
     mkdir -p subprojects/mutter
@@ -27,15 +28,15 @@ prepare() {
 }
 
 build() {
-    cd "$srcdir/$pkgname-$pkgver" || return
+    cd "$srcdir/$pkgname-$_srcver" || return
     # ./build.sh is the only build. The system layout adds the public entries below the stage root.
     GNOBLIN_LIBDIR=lib GNOBLIN_BUILD_TYPE=release \
         ./build.sh --layout system --without-portal --prefix "$_prefix" \
-        --destdir "$srcdir/$pkgname-$pkgver/stage" --jobs "$(nproc)"
+        --destdir "$srcdir/$pkgname-$_srcver/stage" --jobs "$(nproc)"
 }
 
 package() {
-    cd "$srcdir/$pkgname-$pkgver" || return
+    cd "$srcdir/$pkgname-$_srcver" || return
     cp -a stage/. "$pkgdir/"
     api="$(scripts/gnome-versions.py get mutter api)"
     find "$pkgdir$_prefix" -type f -print0 | while IFS= read -r -d '' file; do

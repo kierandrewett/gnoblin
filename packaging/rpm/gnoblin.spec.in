@@ -23,6 +23,8 @@
 %global mutter_api_version 51
 %global wayland_protocols_version 1.48
 %global wayland_server_version 1.25
+# The source bundle and its top directory carry the SemVer spelling; Version cannot hold a hyphen (a nightly is 0.1.13~nightly..., its source 0.1.13-nightly...).
+%global source_version @SOURCE_VERSION@
 
 Name:           gnoblin
 Version:        @VERSION@
@@ -31,7 +33,7 @@ Release:        @GNOBLIN_RELEASE@%{?dist}
 Summary:        Standalone Gnoblin desktop session
 License:        GPL-2.0-or-later
 URL:            https://github.com/kierandrewett/gnoblin
-Source0:        gnoblin-%{version}-source.tar.xz
+Source0:        gnoblin-%{source_version}-source.tar.xz
 Provides:       gnoblin-session = %{version}
 Obsoletes:      gnoblin-session < @GNOME_MAJOR@
 Obsoletes:      gnoblin-shell < @GNOME_MAJOR@
@@ -131,7 +133,7 @@ It replaces the earlier
 gnoblin-session payload package on upgrade.
 
 %prep
-%autosetup -n gnoblin-%{version}
+%autosetup -n gnoblin-%{source_version}
 
 %build
 # ./build.sh is the only build. The system layout adds the public entries (command links, session file, systemd
