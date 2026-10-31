@@ -561,6 +561,8 @@ static const ApiMember api_fields_WindowRuleCorners[] = {
     {"smoothing", "number", TRUE, "Corner smoothing."},
     {"border_width", "number", TRUE, "Border width; clamped by the compositor to -40 through 40."},
     {"border_color", "string", TRUE, "Border color."},
+    {"inner_border_width", "number", TRUE, "Inner line width in logical pixels, drawn inward from the visible bounds; 0 through 40, where 0 disables it."},
+    {"inner_border_color", "string", TRUE, "Inner line color, `#RRGGBB` or `#RRGGBBAA`."},
     {"padding", "number[]", TRUE, "Four finite numbers, each from -128 to 128, in top, right, bottom, left order."},
     {"keep_maximized", "boolean", TRUE, "Preserve corner treatment for maximized windows."},
     {"keep_fullscreen", "boolean", TRUE, "Preserve corner treatment for fullscreen windows."},
@@ -571,7 +573,7 @@ static const ApiMember api_fields_WindowRuleCorners[] = {
     {"keep_shadow", "boolean", TRUE, "Preserve the window shadow."},
     {"shadow", "boolean|WindowShadowLayer|WindowShadowLayer[]", FALSE, "Enable the default shadow, configure one layer, or configure up to four layers."},
     {"shadow_animation", "table", FALSE, "Shadow transition settings read by the compositor."},
-    {"mode", "\"auto\"|\"force\"|\"off\"", TRUE, "Corner handling mode; `off` disables corner, border, and shadow effects."},
+    {"mode", "\"auto\"|\"force\"|\"off\"", TRUE, "Corner handling mode; `off` disables corner, border, inner line, and shadow effects."},
 };
 static const ApiMember api_fields_WindowRuleFrame[] = {
     {"mode", "\"off\"|\"auto\"|\"prefer-server\"|\"replace\"", TRUE, "Frame mode."},
@@ -740,7 +742,7 @@ static const ApiClass api_classes[] = {
     {"WindowPosition", "", api_fields_WindowPosition, 2},
     {"WindowRuleAnimation", "Animation names by event. The reserved `in` key aliases `layer_open`; `out` aliases `layer_close`.", api_fields_WindowRuleAnimation, 15},
     {"WindowRuleArgs", "", api_fields_WindowRuleArgs, 10},
-    {"WindowRuleCorners", "", api_fields_WindowRuleCorners, 15},
+    {"WindowRuleCorners", "", api_fields_WindowRuleCorners, 17},
     {"WindowRuleFrame", "", api_fields_WindowRuleFrame, 9},
     {"WindowRuleMatch", "", api_fields_WindowRuleMatch, 7},
     {"WindowRuleWorkspace", "", api_fields_WindowRuleWorkspace, 2},

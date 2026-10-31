@@ -21,6 +21,9 @@
 ---@field smoothing? number Corner smoothing.
 ---@field border_width? number Border width; clamped by the compositor to -40 through 40.
 ---@field border_color? string Border color.
+---@field inner_border_width? number Inner line width in logical pixels, drawn inward from the
+visible bounds; 0 through 40, where 0 disables it.
+---@field inner_border_color? string Inner line color, `#RRGGBB` or `#RRGGBBAA`.
 ---@field padding? number[] Four finite numbers, each from -128 to 128, in top, right, bottom, left
 order.
 ---@field keep_maximized? boolean Preserve corner treatment for maximized windows.
@@ -33,8 +36,8 @@ order.
 ---@field shadow boolean|WindowShadowLayer|WindowShadowLayer[] Enable the default shadow, configure
 one layer, or configure up to four layers.
 ---@field shadow_animation table Shadow transition settings read by the compositor.
----@field mode? "auto"|"force"|"off" Corner handling mode; `off` disables corner, border, and shadow
-effects.
+---@field mode? "auto"|"force"|"off" Corner handling mode; `off` disables corner, border, inner
+line, and shadow effects.
 
 ---@class WindowShadowLayer
 ---@field x? number Horizontal offset.

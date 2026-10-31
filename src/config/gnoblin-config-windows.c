@@ -370,6 +370,52 @@ static gboolean validate_window_rule_padding(GVariant* section, gsize rule_index
     return TRUE;
 }
 
+static gboolean window_rule_color_is_valid(const char* text) {
+    const gsize length = strlen(text);
+    if ((length != 7 && length != 9) || text[0] != '#')
+        return FALSE;
+    for (gsize i = 1; i < length; i++) {
+        if (!g_ascii_isxdigit(text[i]))
+            return FALSE;
+    }
+    return TRUE;
+}
+
+/* The inner outline is new, so unlike border_width (which the compositor clamps) a bad value is a
+ * configuration error. The Lua loader may store the keys with underscores or hyphens. */
+static gboolean validate_window_rule_inner_border(GVariant* corners, gsize rule_index,
+                                                  GError** error) {
+    static const char* const width_keys[] = {"inner_border_width", "inner-border-width"};
+    static const char* const color_keys[] = {"inner_border_color", "inner-border-color"};
+    for (guint i = 0; i < G_N_ELEMENTS(width_keys); i++) {
+        g_autoptr(GVariant) width = g_variant_lookup_value(corners, width_keys[i], NULL);
+        if (!width)
+            continue;
+        double number;
+        if (!input_number(width, &number) || number < 0 || number > 40) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "window-rules[%zu].corners.inner_border_width must be a finite number "
+                        "from 0 to 40",
+                        rule_index);
+            return FALSE;
+        }
+    }
+    for (guint i = 0; i < G_N_ELEMENTS(color_keys); i++) {
+        g_autoptr(GVariant) color = g_variant_lookup_value(corners, color_keys[i], NULL);
+        if (!color)
+            continue;
+        if (!g_variant_is_of_type(color, G_VARIANT_TYPE_STRING) ||
+            !window_rule_color_is_valid(g_variant_get_string(color, NULL))) {
+            g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
+                        "window-rules[%zu].corners.inner_border_color must be #RRGGBB or "
+                        "#RRGGBBAA",
+                        rule_index);
+            return FALSE;
+        }
+    }
+    return TRUE;
+}
+
 static gboolean validate_window_rule_blur(GVariant* rule, gsize rule_index, GError** error) {
     g_autoptr(GVariant) blur = g_variant_lookup_value(rule, "blur", NULL);
     if (blur) {
@@ -481,14 +527,19 @@ gboolean validate_window_rule_patterns(GVariant* document, GError** error) {
         if (legacy_borders) {
             g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
                         "window-rules[%zu].borders is not supported in standalone Gnoblin; "
-                        "use corners.border_width and corners.border_color for one native "
-                        "outline",
+                        "use corners.border_width and corners.border_color for the outline, and "
+                        "corners.inner_border_width and corners.inner_border_color for an inner "
+                        "line",
                         i + 1);
             return FALSE;
         }
         if (!validate_window_rule_workspace(rule, i + 1, error))
             return FALSE;
         if (!validate_window_rule_blur(rule, i + 1, error))
+            return FALSE;
+        g_autoptr(GVariant) corners = g_variant_lookup_value(rule, "corners", NULL);
+        if (corners && g_variant_is_of_type(corners, G_VARIANT_TYPE_VARDICT) &&
+            !validate_window_rule_inner_border(corners, i + 1, error))
             return FALSE;
         g_autoptr(GVariant) match = g_variant_lookup_value(rule, "match", NULL);
         if (!match || !g_variant_is_of_type(match, G_VARIANT_TYPE_VARDICT))
