@@ -1,9 +1,23 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
+
+// The pages sit outside this folder, so bare imports they compile to (vue) would not find node_modules.
+const modules = (name: string) => fileURLToPath(new URL(`../node_modules/${name}`, import.meta.url));
 
 export default defineConfig({
     title: "Gnoblin",
     description: "Build a floating Wayland desktop with Gnoblin's compositor tools and public APIs.",
     base: "/",
+    // The pages live in the repository's docs/ folder; this folder holds only the site build.
+    srcDir: "../../docs",
+    vite: {
+        server: { fs: { allow: ["../.."] } },
+        resolve: {
+            alias: [
+                { find: /^vue(\/.*)?$/, replacement: `${modules("vue")}$1` },
+            ],
+        },
+    },
     sitemap: { hostname: "https://gnoblin.org" },
     cleanUrls: true,
     themeConfig: {

@@ -5,7 +5,7 @@ Edit the Markdown in `docs/`. VitePress builds the
 
 ## Preview
 
-From the `docs/` directory (the VitePress `package.json` lives there):
+From the `infra/website/` directory. It holds the VitePress project and reads the pages from `docs/`:
 
 ```sh
 npm ci
@@ -19,21 +19,16 @@ npm run docs:build
 ```
 
 The preview command serves the site on localhost. The production build goes to
-`docs/.vitepress/dist/`. The build checks local page links and writes redirects
+`infra/website/.vitepress/dist/`. The build checks local page links and writes redirects
 from the previous MkDocs URLs. Links to files outside `docs/` should point
 directly to their source on GitHub.
 
 ## Publish
 
-The Documentation workflow checks pull requests and deploys changes merged to
-`main` to the Cloudflare Pages project `gnoblin-docs`.
-
-Set these repository values in **Settings → Secrets and variables → Actions**:
-
-| Name                    | Type     | Value                                                   |
-| ----------------------- | -------- | ------------------------------------------------------- |
-| `CLOUDFLARE_API_TOKEN`  | Secret   | Token with **Account → Cloudflare Pages → Edit** access |
-| `CLOUDFLARE_ACCOUNT_ID` | Variable | Cloudflare account ID that owns `gnoblin-docs`          |
+The Documentation workflow builds pull requests to catch broken pages. Changes merged to
+`main` are deployed by the Infrastructure workflow, which builds the site and uploads it
+to the `gnoblin-website` Worker with Terraform. See `infra/README.md` in the source
+repository.
 
 ## Write for the reader
 

@@ -10,11 +10,6 @@ import {
 }
 
 import {
-  to = cloudflare_r2_custom_domain.repo
-  id = "${var.account_id}/gnoblin-repo/repo.gnoblin.org"
-}
-
-import {
   to = cloudflare_dns_record.dmarc
   id = "${var.zone_id}/2aab56a35035f97cb6a32f7298cc698e"
 }
@@ -27,4 +22,14 @@ import {
 import {
   to = cloudflare_dns_record.spf
   id = "${var.zone_id}/5bc2c291e903ddf43f4c9bffe68fa89f"
+}
+
+import {
+  to = cloudflare_workers_script.repo_index
+  id = "${var.account_id}/repo-index"
+}
+
+import {
+  to = cloudflare_workers_route.repo_index
+  id = "${var.zone_id}/${one([for r in data.cloudflare_workers_routes.all.result : r.id if r.pattern == "repo.gnoblin.org/*"])}"
 }

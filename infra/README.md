@@ -4,11 +4,11 @@ What runs outside this repository, and where it is defined. New infrastructure c
 
 Everything is on one Cloudflare account, zone `gnoblin.org`.
 
-| Part                     | What it is                                             | Defined in                                                                                     |
-| ------------------------ | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| Website and docs         | Cloudflare Pages project `gnoblin-docs`                | `.github/workflows/docs.yml`                                                                   |
-| Package repositories     | R2 bucket `gnoblin-repo`, served at `repo.gnoblin.org` | `scripts/pkgrepo`, `.github/workflows/package-repository.yml`, `.github/workflows/nightly.yml` |
-| Repository index (pages) | Worker `repo-index` on `repo.gnoblin.org/*`            | `infra/repo-index/`                                                                            |
+| Part                     | What it is                                                                      | Defined in                                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| Website and docs         | Worker `gnoblin-website` (static assets) on `gnoblin.org` and `www.gnoblin.org` | `infra/terraform/`, `infra/website/`, `.github/workflows/infra.yml`                            |
+| Package repositories     | R2 bucket `gnoblin-repo`, served at `repo.gnoblin.org`                          | `scripts/pkgrepo`, `.github/workflows/package-repository.yml`, `.github/workflows/nightly.yml` |
+| Repository index (pages) | Worker `repo-index` on `repo.gnoblin.org/*`                                     | `infra/terraform/`, `infra/repo-index/`                                                        |
 
 ## Package repositories
 
@@ -21,15 +21,22 @@ Everything is on one Cloudflare account, zone `gnoblin.org`.
 
 R2 serves exact object names only, so a folder URL has no listing. The Worker in `infra/repo-index/` answers paths that end in `/` with an HTML list of that folder. All other paths go straight to the bucket, so `dnf`, `apt` and `pacman` are not affected.
 
-Deploy with the Cloudflare CLI. It needs Node 22.18 or later and a logged-in profile (`cf auth login`).
+Terraform deploys it (see Terraform below). To build the bundle locally:
 
 ```sh
 cd infra/repo-index
 yarn install
-cf deploy --dry-run
-cf deploy
+yarn build
 ```
 
 Every request to `repo.gnoblin.org` runs the Worker, including package downloads. The free plan has a daily request limit.
 
 Do not add a zone redirect rule for `repo.gnoblin.org`. Redirect rules run before Workers and would hide the index.
+
+## Terraform
+
+`infra/terraform/` defines the R2 buckets, the mail DNS records and both Workers. State is in the private R2 bucket `gnoblin-tfstate`. The R2 custom domain `repo.gnoblin.org` is not in Terraform, because the provider cannot import it.
+
+`.github/workflows/infra.yml` builds the Worker bundle and the website, then runs `terraform plan`. Pull requests only check formatting and validity, because the secrets in the `infra` environment are limited to `main`. A run on `main` applies the plan only when the repository variable `INFRA_AUTO_APPLY` is `true`. A manual run applies only when you set the `apply` input.
+
+The website Worker needs `gnoblin.org` and `www.gnoblin.org` to have no existing DNS record. The old CNAMEs to `gnoblin-docs.pages.dev` must be deleted before the first apply. Between that delete and the apply the site is down.
