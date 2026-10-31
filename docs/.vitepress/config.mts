@@ -31,6 +31,7 @@ export default defineConfig({
                         collapsed: true,
                         items: [
                             { text: "Choose Your System", link: "/installation" },
+                            { text: "Package Repositories", link: "/package-repositories" },
                             { text: "Fedora", link: "/install-fedora" },
                             { text: "Arch", link: "/install-arch" },
                             { text: "NixOS", link: "/install-nixos" },

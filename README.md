@@ -101,6 +101,9 @@ setup. `make preview` tries the build in a window first, and
 
 [Install](docs/installation.md) on Fedora, Arch, openSUSE, NixOS or from source, or
 [try a nested session](docs/devkit.md) without logging out.
+Fedora, openSUSE and Arch also have
+[signed package repositories](docs/package-repositories.md) with `stable` and
+`nightly` channels.
 On a minimal installation, [add GNOME application services](docs/gnome-apps.md)
 only if you need them.
 

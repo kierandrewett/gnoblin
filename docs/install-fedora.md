@@ -7,6 +7,9 @@ See [platform support](platform-support.md) for the current status.
 
 ## 1. Install Gnoblin
 
+To install from Gnoblin's own signed repository, with a `stable` or a `nightly`
+channel, follow [package repositories](package-repositories.md). To use COPR:
+
 ```sh
 sudo dnf install dnf-plugins-core
 sudo dnf copr enable kierandrewett/gnoblin

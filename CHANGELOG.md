@@ -4,6 +4,12 @@
 
 ### Added
 
+- Signed package repositories for Fedora, openSUSE Tumbleweed and Arch, each with
+  a `stable` and a `nightly` channel. A release tag publishes the stable channel.
+  A daily build of the main branch publishes the nightly channel when main has
+  moved. `scripts/pkgrepo` builds, signs and uploads the repositories, and
+  `design/package-repositories.md` describes the layout. See
+  [package repositories](docs/package-repositories.md).
 - Releases publish a pacman repository database, `gnoblin.db`, beside the Arch
   packages. Add `Server = https://github.com/kierandrewett/gnoblin/releases/latest/download`
   to a `[gnoblin]` section in `pacman.conf`. The release refuses to publish
@@ -11,6 +17,10 @@
 
 ### Changed
 
+- The RPM spec and the Arch recipe accept a pre-release version. The source
+  bundle keeps the SemVer spelling (`0.1.13-nightly.…`) and the package
+  version is spelled for the package manager (`0.1.13~nightly.…` for RPM).
+  Release versions are unchanged.
 - `packaging/targets.json` and the platform support page list Arch, Fedora 45
   and openSUSE Tumbleweed as candidates. Release run 39855522942 passed their
   package build, install, stock GNOME coexistence and removal gates. Graphical

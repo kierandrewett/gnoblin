@@ -49,6 +49,11 @@ session helpers.
 | NixOS               | [Experimental package and module](install-nixos.md)                                         |
 | Other releases      | [Build from source](install-source.md)                                                      |
 
+Fedora, openSUSE Tumbleweed and Arch also have signed
+[package repositories](package-repositories.md) with a `stable` channel for
+releases and a `nightly` channel for the newest build of the main branch. Add a
+repository and your package manager installs and updates Gnoblin.
+
 For Debian and Ubuntu, use the source instructions when installed development
 libraries meet the pinned GNOME requirements. There is currently no Gnoblin
 APT package.

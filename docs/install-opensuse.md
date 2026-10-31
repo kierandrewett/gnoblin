@@ -14,7 +14,9 @@ GJS. Keep a working session available while installing. See
 
 ## Install
 
-Download the RPM assets from the
+Release packages are also available from a signed repository: see
+[package repositories](package-repositories.md). To install the release RPMs
+yourself, download the RPM assets from the
 [latest Gnoblin release](https://github.com/kierandrewett/gnoblin/releases),
 if it includes files named `*.tumbleweed.x86_64.rpm`. Install the runtime RPMs
 together. With GitHub CLI:

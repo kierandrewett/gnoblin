@@ -10,6 +10,11 @@ checks them beside stock GNOME, and removes them. See
 [platform support](platform-support.md) before using the package as a login
 session.
 
+## Install from the package repository
+
+Gnoblin's signed pacman repository has a `stable` and a `nightly` channel and
+checks every package signature. See [package repositories](package-repositories.md).
+
 ## Install from the release repository
 
 Add the repository to `/etc/pacman.conf`:
