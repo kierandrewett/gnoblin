@@ -28,6 +28,7 @@ alias pkgrepo='podman run --rm --network=host -v "$PWD:/work:Z" -v "$PWD/scripts
 | `build`       | Merge new packages with the pulled ones, apply retention, write and sign the metadata, then verify it |
 | `verify`      | Check the checksums and signatures of a built tree the way a client would                             |
 | `publish`     | Upload a built tree with the `rsync`, `s3` or `pages` back end. A dry run unless `--apply` is given   |
+| `package`     | Build rpm, deb and Arch packages from the `nfpm.yaml` files beside the code (see below)               |
 
 `build` expects the new packages as `PACKAGES/fedora/<release>/*.rpm`,
 `PACKAGES/opensuse/<release>/*.rpm`, `PACKAGES/deb/<suite>/*.deb` and
@@ -43,6 +44,41 @@ pkgrepo build --project gnoblin --channel nightly --packages packages --output t
 pkgrepo publish --project gnoblin --channel nightly --tree tree --backend rsync --destination site       # prints the plan
 pkgrepo publish --project gnoblin --channel nightly --tree tree --backend rsync --destination site --apply
 ```
+
+## Building packages: `package`
+
+A package is described once, in an `nfpm.yaml` next to the code it packages (for example `crates/config/nfpm.yaml`).
+`package` walks the source tree, finds every `nfpm.yaml` and runs [nFPM](https://nfpm.goreleaser.com/) for each one in
+each format. The packages hold the files of a staged prefix, so build and stage first (for Gnoblin,
+`./build.sh --layout system --destdir DIR`).
+
+```sh
+python3 scripts/pkgrepo package --list
+python3 scripts/pkgrepo package --stage DIR --version 0.1.12 --output packages --format rpm
+```
+
+| Option                | Meaning                                                                          |
+| --------------------- | -------------------------------------------------------------------------------- |
+| `--root DIR`          | Source tree to search. Default: the current directory                            |
+| `--stage DIR`         | Staged prefix. A manifest reads its files from `${STAGE}`                        |
+| `--version SEMVER`    | `0.1.12`, or a nightly such as `0.1.13-nightly.20261031.142.gabc1234`            |
+| `--format LIST`       | `rpm`, `deb`, `archlinux`, comma separated. Default: all three                   |
+| `--arch ARCH`         | `amd64` or `arm64`. Default `amd64`                                              |
+| `--package NAME`      | Build only this package. Repeatable                                              |
+| `--dependencies FILE` | A JSON dependency table on top of the shared `scripts/pkgrepo/dependencies.json` |
+
+A manifest sets `version: ${VERSION}`, `version_schema: none` and `release: 1`, so each format gets the version string
+that `versions.py` orders. It lists its distro libraries in `depends`, and may use two helpers in that list:
+
+- `"@name"` or `"@name >= 1.4"` is a library name from the dependency table. It becomes that distro's package name,
+  in the version syntax of the format (`pkg >= 1.4`, `pkg (>= 1.4)`, `pkg>=1.4`). The table maps one name to the
+  package names of `rpm`, `deb` and `archlinux`. A project adds its own names in `packaging/dependencies.json`.
+- `"@scan"` adds the packages that own every library the packaged programs need. It reads the NEEDED entries of each
+  ELF file in the manifest's `src:` paths and asks the package manager which package owns each library, so it must run
+  on a distro of the target format (an Arch container for `archlinux`). A library that no installed package owns stops
+  the build. nFPM does not look inside the binaries by itself.
+
+Libraries loaded with `dlopen` are not visible to `@scan`. List them with `@name`.
 
 ## Tests
 

@@ -1,0 +1,16 @@
+{
+  "fontconfig": { "rpm": "fontconfig", "deb": "fontconfig", "archlinux": "fontconfig" },
+  "glib-tools": { "rpm": "glib2", "deb": "libglib2.0-bin", "archlinux": "glib2" },
+  "hicolor-icon-theme": {
+    "rpm": "hicolor-icon-theme",
+    "deb": "hicolor-icon-theme",
+    "archlinux": "hicolor-icon-theme"
+  },
+  "mesa-dri": { "rpm": "mesa-dri-drivers", "deb": "libgl1-mesa-dri", "archlinux": "mesa" },
+  "mesa-egl": { "rpm": "mesa-libEGL", "deb": "libegl1", "archlinux": "libglvnd" },
+  "shared-mime-info": { "rpm": "shared-mime-info", "deb": "shared-mime-info", "archlinux": "shared-mime-info" },
+  "wayland-client": { "rpm": "libwayland-client", "deb": "libwayland-client0", "archlinux": "wayland" },
+  "wayland-egl": { "rpm": "libwayland-egl", "deb": "libwayland-egl1", "archlinux": "wayland" },
+  "xdg-utils": { "rpm": "xdg-utils", "deb": "xdg-utils", "archlinux": "xdg-utils" },
+  "xkbcommon": { "rpm": "libxkbcommon", "deb": "libxkbcommon0", "archlinux": "libxkbcommon" }
+}
