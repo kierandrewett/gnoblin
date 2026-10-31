@@ -547,6 +547,106 @@ int main(void) {
         g_clear_error(&error);
     }
 
+    /* The inner outline sits beside border_width/border_color and survives loading unchanged. */
+    g_assert_true(g_file_set_contents(
+        padding_config,
+        "local g=require('gnoblin')\n"
+        "g.window_rule {match={type='window'}, corners={radius=12, border_width=-1,\n"
+        "    border_color='#00000080', inner_border_width=1, inner_border_color='#ffffff40'}}\n",
+        -1, &error));
+    g_autoptr(GVariant) inner_document = load(padding_config, NULL, &error);
+    g_assert_no_error(error);
+    g_assert_nonnull(inner_document);
+    g_autoptr(GVariant) inner_rules =
+        g_variant_lookup_value(inner_document, "window-rules", G_VARIANT_TYPE("av"));
+    g_assert_nonnull(inner_rules);
+    g_autoptr(GVariant) inner_rule_box = g_variant_get_child_value(inner_rules, 0);
+    g_autoptr(GVariant) inner_rule = g_variant_get_variant(inner_rule_box);
+    g_autoptr(GVariant) inner_corners =
+        g_variant_lookup_value(inner_rule, "corners", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(inner_corners);
+    g_autoptr(GVariant) inner_width =
+        g_variant_lookup_value(inner_corners, "inner_border_width", NULL);
+    if (!inner_width)
+        inner_width = g_variant_lookup_value(inner_corners, "inner-border-width", NULL);
+    g_assert_nonnull(inner_width);
+    g_assert_true(g_variant_is_of_type(inner_width, G_VARIANT_TYPE_INT64) ||
+                  g_variant_is_of_type(inner_width, G_VARIANT_TYPE_DOUBLE));
+    g_assert_cmpfloat(g_variant_is_of_type(inner_width, G_VARIANT_TYPE_INT64)
+                          ? (double)g_variant_get_int64(inner_width)
+                          : g_variant_get_double(inner_width),
+                      ==, 1.0);
+    g_autoptr(GVariant) inner_color =
+        g_variant_lookup_value(inner_corners, "inner_border_color", NULL);
+    if (!inner_color)
+        inner_color = g_variant_lookup_value(inner_corners, "inner-border-color", NULL);
+    g_assert_nonnull(inner_color);
+    g_assert_cmpstr(g_variant_get_string(inner_color, NULL), ==, "#ffffff40");
+    g_autoptr(GVariant) outer_width = g_variant_lookup_value(inner_corners, "border_width", NULL);
+    if (!outer_width)
+        outer_width = g_variant_lookup_value(inner_corners, "border-width", NULL);
+    g_assert_nonnull(outer_width);
+
+    static const char* const valid_inner_borders[] = {
+        "inner_border_width=0",
+        "inner_border_width=40",
+        "inner_border_width=0.5, inner_border_color='#ffffff'",
+        "inner_border_color='#00000080'",
+    };
+    for (guint k = 0; k < G_N_ELEMENTS(valid_inner_borders); k++) {
+        g_autofree char* contents =
+            g_strdup_printf("local g=require('gnoblin')\n"
+                            "g.window_rule {match={type='window'}, corners={%s}}\n",
+                            valid_inner_borders[k]);
+        g_assert_true(g_file_set_contents(padding_config, contents, -1, &error));
+        g_autoptr(GVariant) valid_inner = load(padding_config, NULL, &error);
+        g_assert_no_error(error);
+        g_assert_nonnull(valid_inner);
+    }
+    static const struct {
+        const char* rule;
+        const char* expected;
+    } invalid_inner_borders[] = {
+        {"match={type='window'}, corners={inner_border_width=-1}",
+         "window-rules[1].corners.inner_border_width"},
+        {"match={type='window'}, corners={inner_border_width=40.5}",
+         "window-rules[1].corners.inner_border_width"},
+        {"match={type='window'}, corners={inner_border_width=41}",
+         "window-rules[1].corners.inner_border_width"},
+        {"match={type='window'}, corners={inner_border_width=1/0}", "must be finite"},
+        {"match={type='window'}, corners={inner_border_width=0/0}", "must be finite"},
+        {"match={type='window'}, corners={inner_border_width='1'}",
+         "window-rules[1].corners.inner_border_width"},
+        {"match={type='window'}, corners={inner_border_width=true}",
+         "window-rules[1].corners.inner_border_width"},
+        {"corners={inner_border_width=100}", "window-rules[1].corners.inner_border_width"},
+        {"match={type='window'}, corners={inner_border_color='white'}",
+         "window-rules[1].corners.inner_border_color"},
+        {"match={type='window'}, corners={inner_border_color='#fff'}",
+         "window-rules[1].corners.inner_border_color"},
+        {"match={type='window'}, corners={inner_border_color='#ffffff4'}",
+         "window-rules[1].corners.inner_border_color"},
+        {"match={type='window'}, corners={inner_border_color='#ggggggff'}",
+         "window-rules[1].corners.inner_border_color"},
+        {"match={type='window'}, corners={inner_border_color='ffffff'}",
+         "window-rules[1].corners.inner_border_color"},
+        {"match={type='window'}, corners={inner_border_color=7}",
+         "window-rules[1].corners.inner_border_color"},
+    };
+    for (guint k = 0; k < G_N_ELEMENTS(invalid_inner_borders); k++) {
+        g_autofree char* contents = g_strdup_printf("local g=require('gnoblin')\n"
+                                                    "g.window_rule {%s}\n",
+                                                    invalid_inner_borders[k].rule);
+        g_assert_true(g_file_set_contents(padding_config, contents, -1, &error));
+        g_autoptr(GVariant) invalid_inner = load(padding_config, NULL, &error);
+        g_assert_null(invalid_inner);
+        g_assert_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL);
+        if (!strstr(error->message, invalid_inner_borders[k].expected))
+            g_error("%s: expected \"%s\" in \"%s\"", invalid_inner_borders[k].rule,
+                    invalid_inner_borders[k].expected, error->message);
+        g_clear_error(&error);
+    }
+
     const char* source_root = g_getenv("GNOBLIN_TEST_SOURCE_ROOT");
     if (source_root) {
         g_clear_pointer(&document, g_variant_unref);

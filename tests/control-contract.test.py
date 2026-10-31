@@ -50,6 +50,23 @@ class ControlContractTest(unittest.TestCase):
         ):
             self.assertIn(f'native_rule_get_boolean(corners, "{field}"', implementation)
 
+    def test_corner_rule_inner_border_reaches_the_effect_and_the_server_frame(self):
+        matcher = CONTROL.index("static gboolean native_window_rule_matches(")
+        start = CONTROL.index("static void native_apply_window_rules(", matcher)
+        end = CONTROL.index("static void native_apply_all_window_rules(", start)
+        implementation = CONTROL[start:end]
+
+        for key in ("inner_border_width", "inner-border-width"):
+            self.assertIn(f'native_rule_get_number(corners, "{key}"', implementation)
+        for key in ("inner_border_color", "inner-border-color"):
+            self.assertIn(f'native_rule_get_color(corners, "{key}"', implementation)
+        # The inner line follows the same state policy as the outer outline.
+        self.assertIn("const gboolean inner_border_enabled = allowed &&", implementation)
+        self.assertIn("effect_enabled ? inner_border_width : 0", implementation)
+        self.assertIn('"inner-border-width"', implementation)
+        self.assertIn('"inner-border-color"', implementation)
+        self.assertIn("meta_gnoblin_window_effects_set_rounded_inner_border(", implementation)
+
 
 if __name__ == "__main__":
     unittest.main()

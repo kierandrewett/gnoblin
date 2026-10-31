@@ -226,6 +226,61 @@ static void test_warning_bounds(void) {
     runtime_clear(&runtime);
 }
 
+/* The current document may spell Lua snake_case keys with hyphens; the compositor reads both. */
+static GVariant* current_corners_field(const char* key, const char* hyphenated_key) {
+    g_autoptr(GVariant) current = gnoblin_config_current_document();
+    g_autoptr(GVariant) rules =
+        g_variant_lookup_value(current, "window-rules", G_VARIANT_TYPE("av"));
+    g_assert_nonnull(rules);
+    g_assert_cmpuint(g_variant_n_children(rules), ==, 1);
+    g_autoptr(GVariant) boxed = g_variant_get_child_value(rules, 0);
+    g_autoptr(GVariant) rule = g_variant_get_variant(boxed);
+    g_autoptr(GVariant) corners = g_variant_lookup_value(rule, "corners", G_VARIANT_TYPE_VARDICT);
+    g_assert_nonnull(corners);
+    GVariant* value = g_variant_lookup_value(corners, key, NULL);
+    return value ? value : g_variant_lookup_value(corners, hyphenated_key, NULL);
+}
+
+static void test_window_rule_inner_border_reload(void) {
+    Runtime runtime = {.host_control_fd = -1, .ready_fd = -1};
+    runtime_init(&runtime);
+    request_reload(&runtime,
+                   "gnoblin.window_rule {match = {type = 'window'}, corners = {radius = 12,"
+                   " border_width = -1, border_color = '#00000080', inner_border_width = 1,"
+                   " inner_border_color = '#ffffff40'}}",
+                   TRUE);
+    g_autoptr(GVariant) warnings = successful_warnings();
+    g_assert_cmpuint(g_variant_n_children(warnings), ==, 0);
+    g_autoptr(GVariant) width = current_corners_field("inner_border_width", "inner-border-width");
+    g_assert_nonnull(width);
+    g_assert_true(g_variant_is_of_type(width, G_VARIANT_TYPE_INT64));
+    g_assert_cmpint(g_variant_get_int64(width), ==, 1);
+    g_autoptr(GVariant) color = current_corners_field("inner_border_color", "inner-border-color");
+    g_assert_nonnull(color);
+    g_assert_cmpstr(g_variant_get_string(color, NULL), ==, "#ffffff40");
+
+    /* A bad inner line rejects the whole reload and keeps the working rule. */
+    g_autoptr(GVariant) previous = gnoblin_config_current_document();
+    guint64 revision = gnoblin_config_settings_revision();
+    const char* rejected_sources[] = {
+        "gnoblin.window_rule {match = {type = 'window'}, corners = {inner_border_width = 41}}",
+        "gnoblin.window_rule {match = {type = 'window'}, corners = {inner_border_width = -1}}",
+        "gnoblin.window_rule {match = {type = 'window'}, corners = {inner_border_color = 'white'}}",
+        "gnoblin.window_rule {match = {type = 'window'}, corners = {inner_border_color = '#fff'}}",
+    };
+    for (guint i = 0; i < G_N_ELEMENTS(rejected_sources); i++) {
+        /* Native acceptance is simulated as success: only validation can reject these. */
+        request_reload(&runtime, rejected_sources[i], TRUE);
+        gboolean ok = TRUE;
+        g_assert_true(g_variant_lookup(response, "ok", "b", &ok));
+        g_assert_false(ok);
+        g_autoptr(GVariant) current = gnoblin_config_current_document();
+        g_assert_true(g_variant_equal(previous, current));
+        g_assert_cmpuint(gnoblin_config_settings_revision(), ==, revision);
+    }
+    runtime_clear(&runtime);
+}
+
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     g_log_set_always_fatal(G_LOG_LEVEL_ERROR | G_LOG_LEVEL_CRITICAL);
@@ -240,6 +295,7 @@ int main(int argc, char** argv) {
     g_setenv("GNOBLIN_CONFIG", config_path, TRUE);
     g_test_add_func("/reload/public-warnings", test_public_warnings);
     g_test_add_func("/reload/warning-bounds", test_warning_bounds);
+    g_test_add_func("/reload/window-rule-inner-border", test_window_rule_inner_border_reload);
     g_test_add_func("/reload/warnings-preserve-crash-notice", test_warnings_preserve_crash_notice);
     int status = g_test_run();
     g_autofree char* cache = g_build_filename(directory, "gnoblin", "last-good-config.gv", NULL);
