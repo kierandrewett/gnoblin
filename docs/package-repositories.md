@@ -19,7 +19,7 @@ The packages and the repository metadata are signed. The signing key is
 published at `https://repo.gnoblin.org/gpg.key`. Its fingerprint is:
 
 ```text
-REPLACE-WITH-KEY-FINGERPRINT
+91BA A379 0941 B9B3 BBA6  3BC4 F1B8 D899 DF3D 786E
 ```
 
 Compare the fingerprint your package manager shows with this one before you
@@ -68,7 +68,7 @@ Trust the key, add the repository to `/etc/pacman.conf`, then install:
 ```sh
 curl -fsSL -o gnoblin.key https://repo.gnoblin.org/gpg.key
 sudo pacman-key --add gnoblin.key
-sudo pacman-key --lsign-key REPLACE-WITH-KEY-FINGERPRINT
+sudo pacman-key --lsign-key 91BAA3790941B9B3BBA63BC4F1B8D899DF3D786E
 printf '\n' | sudo tee -a /etc/pacman.conf > /dev/null
 curl -fsSL https://repo.gnoblin.org/gnoblin/stable/arch/gnoblin.conf | sudo tee -a /etc/pacman.conf
 sudo pacman -Syu gnoblin
@@ -140,6 +140,6 @@ Delete the `[gnoblin]` and `[gnoblin-nightly]` sections from `/etc/pacman.conf`,
 then run:
 
 ```sh
-sudo pacman-key --delete REPLACE-WITH-KEY-FINGERPRINT
+sudo pacman-key --delete 91BAA3790941B9B3BBA63BC4F1B8D899DF3D786E
 sudo pacman -Sy
 ```

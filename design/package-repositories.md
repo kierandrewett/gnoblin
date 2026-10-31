@@ -6,8 +6,11 @@ have, and how the CI builds and publishes them. Users read
 [`docs/package-repositories.md`](../docs/package-repositories.md). The tool is
 `scripts/pkgrepo` (see its [README](../scripts/pkgrepo/README.md)).
 
-Nothing described here is published yet. The domain, the signing key, the host
-and the CI secrets do not exist; "What is left to do" lists them.
+Nothing described here is published yet. Set up so far: the R2 bucket `gnoblin-repo`
+behind `repo.gnoblin.org`, and the signing key (fingerprint in the user documentation).
+The key's private part and passphrase are the CI secrets `REPO_GPG_PRIVATE_KEY` and
+`REPO_GPG_PASSPHRASE` of the Gnoblin and Bingux repositories. The upload credentials and
+the `REPO_*` variables are still missing; "What is left to do" lists them.
 
 ## Decisions
 
@@ -374,12 +377,16 @@ the package, so an `aarch64` build needs a runner and nothing else.
 
 ## What is left to do
 
-Nothing was published, and no DNS, account or secret was created.
+Nothing was published. Done: the R2 bucket `gnoblin-repo` (S3 API token to be created for
+it), `repo.gnoblin.org` as its custom domain (minimum TLS 1.2), the signing key (RSA 4096,
+no expiry, stored in the owner's Bitwarden) and the signing secrets in both repositories.
 
-1. Create the key as above. Fill in the fingerprint in the user documentation.
-2. Choose the host, create `repo.gnoblin.org` and point it at the host.
-3. Add the secrets and variables in the table above to the Gnoblin and Bingux
-   repositories.
+1. Done: the key is created and its fingerprint is in the user documentation.
+2. Done: `repo.gnoblin.org` points at the bucket. Upload `gpg.key` to its root.
+3. Add the upload secrets and the variables in the table above to the Gnoblin and
+   Bingux repositories: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL`,
+   `REPO_BACKEND` (`s3`) and `REPO_DESTINATION` (`s3://gnoblin-repo`). Only the signing
+   secrets exist so far.
 4. Run the tool once by hand with `--apply` for each project and channel
    (`scripts/pkgrepo/README.md`), and install from the result on a clean machine.
 5. Merge the branch. Cut a release to publish the first stable channel, or run
