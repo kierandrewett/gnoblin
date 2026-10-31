@@ -6,5 +6,6 @@
   "devDependencies": {
     "cf": "^1.0.0-beta.26",
     "wrangler": "^4.156.0"
-  }
+  },
+  "packageManager": "yarn@4.17.1"
 }
