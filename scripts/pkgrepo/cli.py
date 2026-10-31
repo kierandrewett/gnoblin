@@ -8,11 +8,10 @@ import os
 import subprocess
 import sys
 import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import check, publish as publisher, signing, tree, versions
+from . import check, http, publish as publisher, signing, tree, versions
 from .runner import CommandError
 
 DEFAULT_BASE_URL = "https://repo.gnoblin.org"
@@ -86,7 +85,7 @@ def cmd_needs_build(args: argparse.Namespace) -> int:
     """Print needs_build=true when the published channel was built from another commit (or is not published yet)."""
     url = f"{args.url.rstrip('/')}/{args.project}/{args.channel}/manifest.json"
     try:
-        with urllib.request.urlopen(url, timeout=60) as response:
+        with http.open_url(url) as response:
             published = json.loads(response.read())["source"]["commit"]
     except urllib.error.HTTPError as error:
         if error.code != 404:
