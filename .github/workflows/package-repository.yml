@@ -1,0 +1,169 @@
+name: Package repository
+
+# Builds the signed RPM, APT and pacman repository of one Gnoblin channel from the packages the release pipeline built,
+# checks it the way a client would, and uploads it. The release workflow calls this after its package jobs: the stable
+# channel after a release tag publishes, the nightly channel from nightly.yml. design/package-repositories.md has the
+# layout, the version rules and the key handling.
+#
+# Without the signing key (a fork, a pull request, a run before the key exists) the tree is built and verified with a
+# throw-away key, kept as a workflow artifact, and not uploaded. Publication needs all of:
+#   secret   REPO_GPG_PRIVATE_KEY          the ASCII-armoured private key of the repository
+#   secret   REPO_GPG_PASSPHRASE           its passphrase, when it has one
+#   variable REPO_BACKEND                  rsync, s3 or pages
+#   variable REPO_DESTINATION              user@host:/srv/repo, s3://bucket/prefix, or the Git URL of the Pages repository
+#   variable REPO_URL                      the public base URL, https://repo.gnoblin.org by default
+# and, per back end, the secrets REPO_RSYNC_KEY and REPO_RSYNC_KNOWN_HOSTS, or AWS_ACCESS_KEY_ID and
+# AWS_SECRET_ACCESS_KEY (variable AWS_ENDPOINT_URL for R2 or MinIO), or REPO_PAGES_TOKEN.
+
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: stable or nightly
+        type: string
+        required: true
+      ref:
+        description: Branch, tag or commit that holds the repository tool
+        type: string
+        required: true
+      release_tag:
+        description: Release tag, or commit-<sha> for a dry run. Names the package artifacts of the release workflow.
+        type: string
+        required: true
+      source_commit:
+        description: The commit the packages were built from; recorded in the manifest and compared by the nightly check
+        type: string
+        required: true
+      publish:
+        description: Upload the tree after it verifies. Nothing is uploaded without the secrets and variables above.
+        type: boolean
+        default: false
+    secrets:
+      REPO_GPG_PRIVATE_KEY:
+        required: false
+      REPO_GPG_PASSPHRASE:
+        required: false
+      REPO_RSYNC_KEY:
+        required: false
+      REPO_RSYNC_KNOWN_HOSTS:
+        required: false
+      REPO_PAGES_TOKEN:
+        required: false
+      AWS_ACCESS_KEY_ID:
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        required: false
+
+permissions:
+  contents: read
+
+# One publication per channel at a time: the job pulls the published channel, merges and uploads, so two runs at once
+# could drop each other's packages.
+concurrency:
+  group: package-repository-gnoblin-${{ inputs.channel }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  repository:
+    runs-on: ubuntu-latest
+    container: debian:trixie
+    timeout-minutes: 60
+    env:
+      PROJECT: gnoblin
+      CHANNEL: ${{ inputs.channel }}
+      REPO_URL: ${{ vars.REPO_URL || 'https://repo.gnoblin.org' }}
+    steps:
+      - name: Install Git for the checkout
+        run: apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates git
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Install the repository tools
+        run: ./scripts/pkgrepo/container/install-tools.sh
+      - uses: actions/download-artifact@v4
+        with:
+          name: fedora-rpms-${{ inputs.release_tag }}
+          path: raw/fedora
+      - uses: actions/download-artifact@v4
+        if: inputs.channel == 'stable'
+        with:
+          name: opensuse-tumbleweed-rpms
+          path: raw/opensuse
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: arch-package-${{ inputs.release_tag }}
+          path: raw/arch
+      - name: Arrange the packages by distribution
+        run: |
+          mkdir -p packages/arch
+          # The release the RPMs were built for is in their release tag (.fc45), so it is not written down twice.
+          mapfile -t fedora < <(find raw/fedora -type f -name '*.rpm' ! -name '*.src.rpm')
+          test "${#fedora[@]}" -gt 0
+          fedora_release="$(rpm -qp --nosignature --queryformat '%{RELEASE}\n' "${fedora[0]}" | sed -n 's/.*\.fc\([0-9][0-9]*\)$/\1/p')"
+          test -n "$fedora_release"
+          mkdir -p "packages/fedora/$fedora_release"
+          cp -- "${fedora[@]}" "packages/fedora/$fedora_release/"
+          if [ -d raw/opensuse ]; then
+            mkdir -p packages/opensuse/tumbleweed
+            find raw/opensuse -type f -name '*.rpm' ! -name '*.src.rpm' ! -name '*-debuginfo-*' ! -name '*-debugsource-*' \
+              -exec cp -t packages/opensuse/tumbleweed {} +
+          fi
+          find raw/arch -type f -name '*.pkg.tar.zst' -exec cp -t packages/arch {} +
+          find packages -type f | sort
+      - name: Pull the published channel
+        run: |
+          python3 scripts/pkgrepo pull --project "$PROJECT" --channel "$CHANNEL" --url "$REPO_URL" \
+            --output existing --allow-missing
+      - name: Signing key
+        id: key
+        env:
+          REPO_GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
+        run: |
+          export GNUPGHOME="$RUNNER_TEMP/gnupg"
+          if [ -n "$REPO_GPG_PRIVATE_KEY" ]; then
+            python3 scripts/pkgrepo key-import --gnupg-home "$GNUPGHOME"
+            echo "real=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::REPO_GPG_PRIVATE_KEY is not set. The tree is signed with a throw-away key and is not published."
+            mkdir -m 700 "$GNUPGHOME"
+            gpg --batch --pinentry-mode loopback --passphrase '' \
+              --quick-generate-key 'throw-away repository check <noreply@example.invalid>' rsa3072 sign 1d
+            echo "real=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+      - name: Build and verify the signed tree
+        env:
+          REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
+          SOURCE_COMMIT: ${{ inputs.source_commit }}
+        run: |
+          python3 scripts/pkgrepo build --project "$PROJECT" --channel "$CHANNEL" --packages packages \
+            --output tree --existing existing --gnupg-home "$GNUPGHOME" --base-url "$REPO_URL" \
+            --source-commit "$SOURCE_COMMIT" --source-ref "$GITHUB_REF_NAME"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: repository-${{ env.PROJECT }}-${{ inputs.channel }}-${{ inputs.release_tag }}
+          path: tree
+          retention-days: 14
+          if-no-files-found: error
+      - name: Publish
+        if: inputs.publish && steps.key.outputs.real == 'true' && vars.REPO_BACKEND != '' && vars.REPO_DESTINATION != ''
+        env:
+          BACKEND: ${{ vars.REPO_BACKEND }}
+          DESTINATION: ${{ vars.REPO_DESTINATION }}
+          REPO_RSYNC_KEY: ${{ secrets.REPO_RSYNC_KEY }}
+          REPO_RSYNC_KNOWN_HOSTS: ${{ secrets.REPO_RSYNC_KNOWN_HOSTS }}
+          REPO_PAGES_TOKEN: ${{ secrets.REPO_PAGES_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: ${{ vars.AWS_ENDPOINT_URL }}
+        run: |
+          python3 scripts/pkgrepo publish --project "$PROJECT" --channel "$CHANNEL" --tree tree --backend "$BACKEND" \
+            --destination "$DESTINATION" --previous existing --apply
+      - name: Say why nothing was published
+        if: inputs.publish && !(steps.key.outputs.real == 'true' && vars.REPO_BACKEND != '' && vars.REPO_DESTINATION != '')
+        run: echo "::notice::Not published. Set REPO_GPG_PRIVATE_KEY, REPO_BACKEND and REPO_DESTINATION (see the header of this workflow)."

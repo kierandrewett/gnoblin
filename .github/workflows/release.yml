@@ -5,6 +5,7 @@ name: Release
 #   2. packages  Fedora, openSUSE and Arch build from that artifact in parallel, then install, coexist and remove
 #   3. publish   attaches every asset to one release, checksums and attests them, and makes the release public
 #   4. copr      submits the published source RPMs to COPR
+#   5. repository  builds the signed RPM, APT and pacman repository from the packages of stage 2 and uploads it
 #
 # Only a release tag publishes. A push to main, a pull request that changes the pipeline, and a manual run without a
 # tag run stages 1 and 2 as a dry run and publish nothing. The assets stay as workflow artifacts for 30 days.
@@ -32,9 +33,18 @@ on:
       - "scripts/install-arch-build-deps.sh"
       - "scripts/make-tarball.sh"
       - "scripts/publish-github-release.sh"
+      - "scripts/pkgrepo/**"
+      - "scripts/apply-nightly-version.py"
+      - ".github/workflows/package-repository.yml"
       - "scripts/sync-package-manifest.py"
       - "tests/*packaging*"
       - "versions/**"
+  workflow_call:
+    inputs:
+      nightly:
+        description: Build the nightly channel. The version becomes a pre-release of the next release, openSUSE and the GitHub release are skipped, and the repository stage publishes the nightly channel.
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       tag:
@@ -67,6 +77,8 @@ jobs:
       release_tag: ${{ steps.meta.outputs.release_tag }}
       is_release: ${{ steps.meta.outputs.is_release }}
       ref: ${{ steps.meta.outputs.ref }}
+      commit: ${{ steps.meta.outputs.commit }}
+      nightly_version: ${{ steps.nightly.outputs.version }}
     runs-on: ubuntu-latest
     container: fedora:45
     timeout-minutes: 30
@@ -106,8 +118,8 @@ jobs:
             release_tag="commit-${GITHUB_SHA:0:12}"
             is_release=false
           fi
-          printf 'release_tag=%s\nis_release=%s\nref=%s\n' "$release_tag" "$is_release" \
-            "${INPUT_TAG:-$GITHUB_REF}" >> "$GITHUB_OUTPUT"
+          printf 'release_tag=%s\nis_release=%s\nref=%s\ncommit=%s\n' "$release_tag" "$is_release" \
+            "${INPUT_TAG:-$GITHUB_REF}" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - name: Set checkout ownership
         run: chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
       - name: Stop early if the release is already public
@@ -136,6 +148,19 @@ jobs:
         run: |
           ./scripts/check-release-tag.sh "$RELEASE_TAG"
           test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(git rev-parse HEAD)"
+      - name: Give the checkout a nightly version
+        # The nightly channel needs versions that sort between the last release and the next one (0.1.13~nightly...).
+        # The version goes into the recipes and the source bundle of this throw-away checkout and is committed there,
+        # because the bundle archives HEAD. scripts/pkgrepo is the one place that spells the version.
+        id: nightly
+        if: inputs.nightly
+        run: |
+          version="$(python3 scripts/pkgrepo version --git . --tag-prefix gnoblin-v \
+            --tree-version "$(python3 scripts/gnoblin-version.py get version)" --format semver)"
+          python3 scripts/apply-nightly-version.py "$version"
+          git -c user.name="$GIT_COMMITTER_NAME" -c user.email="$GIT_COMMITTER_EMAIL" \
+            commit --all --message "Nightly version $version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - name: Build the source bundle
         env:
           RELEASE_TAG: ${{ steps.meta.outputs.release_tag }}
@@ -157,8 +182,11 @@ jobs:
     with:
       ref: ${{ needs.source.outputs.ref }}
       release_tag: ${{ needs.source.outputs.release_tag }}
+      nightly_version: ${{ needs.source.outputs.nightly_version }}
 
   opensuse-package:
+    # The nightly channel has no openSUSE packages yet: the openSUSE spec takes its version from the checkout.
+    if: ${{ !inputs.nightly }}
     needs: source
     uses: ./.github/workflows/opensuse-rpm.yml
     with:
@@ -268,3 +296,28 @@ jobs:
       tag: ${{ needs.source.outputs.release_tag }}
     secrets:
       COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
+
+  repository:
+    # The signed package repository. A release tag publishes the stable channel and the nightly run the nightly channel.
+    # Any other run builds and verifies the tree with a throw-away key, so a change that breaks it is seen before a tag.
+    needs: [source, fedora-package, opensuse-package, arch-package, publish]
+    if: >-
+      ${{ !cancelled() && needs.source.result == 'success' && needs.fedora-package.result == 'success'
+      && (needs.opensuse-package.result == 'success' || needs.opensuse-package.result == 'skipped')
+      && needs.arch-package.result == 'success'
+      && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
+    uses: ./.github/workflows/package-repository.yml
+    with:
+      channel: ${{ inputs.nightly && 'nightly' || 'stable' }}
+      ref: ${{ needs.source.outputs.ref }}
+      release_tag: ${{ needs.source.outputs.release_tag }}
+      source_commit: ${{ needs.source.outputs.commit }}
+      publish: ${{ needs.source.outputs.is_release == 'true' || inputs.nightly == true }}
+    secrets:
+      REPO_GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
+      REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
+      REPO_RSYNC_KEY: ${{ secrets.REPO_RSYNC_KEY }}
+      REPO_RSYNC_KNOWN_HOSTS: ${{ secrets.REPO_RSYNC_KNOWN_HOSTS }}
+      REPO_PAGES_TOKEN: ${{ secrets.REPO_PAGES_TOKEN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

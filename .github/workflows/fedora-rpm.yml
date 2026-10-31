@@ -16,6 +16,11 @@ on:
         description: Release tag, or commit-<sha> for a dry run. Names the source bundle and the package artifacts.
         type: string
         required: true
+      nightly_version:
+        description: SemVer pre-release of a nightly build, empty for a release or a dry run. The specs take it from the checkout, so it is applied here as in the source stage.
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -35,6 +40,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+      - name: Give the checkout the nightly version
+        if: inputs.nightly_version != ''
+        run: python3 scripts/apply-nightly-version.py "${{ inputs.nightly_version }}"
       - uses: actions/download-artifact@v4
         with:
           name: gnoblin-${{ inputs.release_tag }}
