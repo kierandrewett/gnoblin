@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from .runner import quote, require, run
+from .runner import CommandError, quote, require, run
 
 PACKAGE_SUFFIXES = (".rpm", ".deb")
 PACKAGE_GLOBS = ("*.rpm", "*.deb", "*.pkg.tar.*")
@@ -118,7 +118,17 @@ def _write_secret(directory: Path, name: str, value: str) -> Path:
     return path
 
 
-def plan_rsync(root: Path, scope: str, destination: str, changed: list[str], *, env: dict[str, str]) -> Plan:
+def already_published(scope: str) -> ValueError:
+    return ValueError(
+        f"{scope}/manifest.json already exists at the destination, but no published copy was pulled to merge with. "
+        "Uploading would remove the packages the destination has and this build lacks. Check that REPO_URL and "
+        "the destination name the same place, pull the channel, and build again"
+    )
+
+
+def plan_rsync(
+    root: Path, scope: str, destination: str, changed: list[str], *, env: dict[str, str], first: bool = False
+) -> Plan:
     """rsync to a path on a server (user@host:/srv/repo) or a local directory.
 
     REPO_RSYNC_KEY holds an SSH private key and REPO_RSYNC_KNOWN_HOSTS the server's host key line; without them
@@ -138,6 +148,20 @@ def plan_rsync(root: Path, scope: str, destination: str, changed: list[str], *, 
     source = f"{root}/"
     target = destination.rstrip("/") + "/"
     package_filter = ["--include=*/", *[f"--include={g}" for g in PACKAGE_GLOBS], "--exclude=*"]
+    if first:
+
+        def guard() -> None:
+            result = subprocess.run(
+                ["rsync", "--list-only", *ssh_options, f"{target}{scope}/manifest.json"], capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                raise already_published(scope)
+            if result.returncode != 23:  # 23 is "no such file"; anything else is a failure to look
+                raise CommandError(f"could not look at the destination: {result.stderr.strip()}")
+
+        plan.steps.append(
+            Step("check that the destination has no copy of this channel that was not pulled", action=guard)
+        )
     changed_list = scratch / "changed.txt"
     changed_list.write_text("".join(path + "\n" for path in changed))
     plan.steps.append(
@@ -182,12 +206,26 @@ def plan_rsync(root: Path, scope: str, destination: str, changed: list[str], *, 
 # --- S3 and compatible stores (Cloudflare R2, MinIO) -------------------------------------------------------------------
 
 
-def plan_s3(root: Path, scope: str, destination: str, changed: list[str], *, env: dict[str, str]) -> Plan:
+def plan_s3(
+    root: Path, scope: str, destination: str, changed: list[str], *, env: dict[str, str], first: bool = False
+) -> Plan:
     """aws s3 to s3://bucket/prefix. AWS_ENDPOINT_URL (R2, MinIO) and the usual AWS_* credentials come from the environment."""
     if not destination.startswith("s3://"):
         raise ValueError("the s3 destination must look like s3://bucket/prefix")
     plan = Plan()
     base = destination.rstrip("/")
+    if first:
+
+        def guard() -> None:
+            result = subprocess.run(
+                ["aws", "s3", "ls", f"{base}/{scope}/manifest.json"], capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                raise already_published(scope)
+            if result.returncode != 1:  # 1 is "no such key"; anything else is a failure to look
+                raise CommandError(f"could not look at the bucket: {result.stderr.strip()}")
+
+        plan.steps.append(Step("check that the bucket has no copy of this channel that was not pulled", action=guard))
     package_filter = ["--exclude", "*", *[arg for g in PACKAGE_GLOBS for arg in ("--include", g)]]
     metadata_filter = [arg for g in PACKAGE_GLOBS for arg in ("--exclude", g)]
     for relative in changed:
@@ -260,7 +298,14 @@ def plan_s3(root: Path, scope: str, destination: str, changed: list[str], *, env
 
 
 def plan_pages(
-    root: Path, scope: str, destination: str, changed: list[str], *, env: dict[str, str], branch: str = "gh-pages"
+    root: Path,
+    scope: str,
+    destination: str,
+    changed: list[str],
+    *,
+    env: dict[str, str],
+    first: bool = False,
+    branch: str = "gh-pages",
 ) -> Plan:
     """Replace this channel in a branch of a Git repository served by GitHub Pages, as one commit.
 
@@ -291,6 +336,8 @@ def plan_pages(
 
     def replace_channel() -> None:
         target = work / scope
+        if first and (target / "manifest.json").exists():
+            raise already_published(scope)
         shutil.rmtree(target, ignore_errors=True)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(root / scope, target)
@@ -343,10 +390,13 @@ def publish(
     if not (root / scope / "manifest.json").is_file():
         raise ValueError(f"{root / scope} is not a built channel (no manifest.json)")
     env = dict(os.environ if environment is None else environment)
-    changed = changed_packages(root, scope, previous_hashes(previous, scope))
+    previous_manifest = previous_hashes(previous, scope)
+    changed = changed_packages(root, scope, previous_manifest)
     if apply:
         require({"rsync": "rsync", "s3": "aws", "pages": "git"}[backend])
-    kwargs = {"branch": branch} if backend == "pages" and branch else {}
+    kwargs: dict[str, object] = {"first": previous_manifest is None}
+    if backend == "pages" and branch:
+        kwargs["branch"] = branch
     plan = BACKENDS[backend](root, scope, destination, changed, env=env, **kwargs)
     print(f"{'Publishing' if apply else 'Dry run of publishing'} {scope} with {backend} to {destination}")
     print(plan.show())

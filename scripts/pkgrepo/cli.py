@@ -92,6 +92,11 @@ def cmd_needs_build(args: argparse.Namespace) -> int:
         if error.code != 404:
             raise
         published = ""
+    except urllib.error.URLError as error:
+        if not args.allow_unreachable:
+            raise CommandError(f"cannot reach {url}: {error.reason}") from error
+        print(f"pkgrepo: cannot reach {url} ({error.reason}); assuming a build is needed", file=sys.stderr)
+        published = ""
     needed = published != args.commit
     print(f"needs_build={'true' if needed else 'false'}")
     print(f"published_commit={published}", file=sys.stderr)
@@ -99,7 +104,9 @@ def cmd_needs_build(args: argparse.Namespace) -> int:
 
 
 def cmd_pull(args: argparse.Namespace) -> int:
-    count = tree.pull(args.url, args.project, args.channel, Path(args.output), args.allow_missing)
+    count = tree.pull(
+        args.url, args.project, args.channel, Path(args.output), args.allow_missing, args.allow_unreachable
+    )
     print(f"pulled {count} packages of {args.project}/{args.channel}")
     return 0
 
@@ -194,6 +201,9 @@ def parser() -> argparse.ArgumentParser:
     channel_arguments(p)
     p.add_argument("--url", default=DEFAULT_BASE_URL)
     p.add_argument("--commit", required=True)
+    p.add_argument(
+        "--allow-unreachable", action="store_true", help="treat a host that cannot be reached as not published"
+    )
     p.set_defaults(run=cmd_needs_build)
 
     p = sub.add_parser("pull", help="download the published packages of a channel, to merge a build with them")
@@ -201,6 +211,12 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--url", default=DEFAULT_BASE_URL)
     p.add_argument("--output", required=True)
     p.add_argument("--allow-missing", action="store_true", help="a channel that is not published yet is not an error")
+    p.add_argument(
+        "--allow-unreachable",
+        action="store_true",
+        help="a host that cannot be reached is not an error either. Only for runs that publish nothing: "
+        "a publication built without the published packages would remove them",
+    )
     p.set_defaults(run=cmd_pull)
 
     p = sub.add_parser("build", help="produce the signed repository tree of a channel")

@@ -434,6 +434,112 @@ class RsyncApply(unittest.TestCase):
         self.assertTrue(other_project.exists(), "another project is untouched")
 
 
+@unittest.skipUnless(shutil.which("rsync"), "rsync is not installed")
+class FirstPublicationGuard(unittest.TestCase):
+    """A build that did not pull the published channel must not remove it."""
+
+    def setUp(self):
+        self.directory = Path(tempfile.mkdtemp(prefix="pkgrepo-test-"))
+        self.addCleanup(shutil.rmtree, self.directory, True)
+        build_tree(self.directory / "tree", packages={"fedora/43/x86_64/a-2.rpm": b"two"})
+        self.site = self.directory / "site"
+        old = self.site / "bingux" / "nightly"
+        (old / "fedora/43/x86_64").mkdir(parents=True)
+        (old / "fedora/43/x86_64/a-1.rpm").write_bytes(b"one")
+        (old / "manifest.json").write_text("{}")
+
+    def publish(self, previous):
+        return publish.publish(
+            "rsync",
+            self.directory / "tree",
+            "bingux",
+            "nightly",
+            str(self.site),
+            previous=previous,
+            apply=True,
+            environment={},
+        )
+
+    def test_refuses_to_replace_a_channel_it_did_not_pull(self):
+        with self.assertRaisesRegex(ValueError, "already exists at the destination"):
+            self.publish(previous=None)
+        self.assertTrue((self.site / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists(), "nothing was removed")
+
+    def test_publishes_when_the_published_copy_was_pulled(self):
+        pulled = self.directory / "pulled"
+        build_tree(pulled, packages={"fedora/43/x86_64/a-1.rpm": b"one"})
+        self.publish(previous=pulled)
+        self.assertTrue((self.site / "bingux/nightly/fedora/43/x86_64/a-2.rpm").exists())
+        self.assertFalse((self.site / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists(), "the tree dropped it")
+
+    def test_a_first_publication_to_an_empty_destination_works(self):
+        shutil.rmtree(self.site)
+        self.publish(previous=None)
+        self.assertTrue((self.site / "bingux/nightly/manifest.json").exists())
+
+
+class Unreachable(unittest.TestCase):
+    def test_pull_and_needs_build_fail_on_an_unreachable_host_unless_allowed(self):
+        from pkgrepo import cli
+
+        url = "http://127.0.0.1:9"  # the discard port; nothing listens
+        with tempfile.TemporaryDirectory() as out:
+            self.assertEqual(
+                cli.main(
+                    [
+                        "pull",
+                        "--project",
+                        "bingux",
+                        "--channel",
+                        "nightly",
+                        "--url",
+                        url,
+                        "--output",
+                        out,
+                        "--allow-missing",
+                    ]
+                ),
+                1,
+            )
+            self.assertEqual(
+                cli.main(
+                    [
+                        "pull",
+                        "--project",
+                        "bingux",
+                        "--channel",
+                        "nightly",
+                        "--url",
+                        url,
+                        "--output",
+                        out,
+                        "--allow-unreachable",
+                    ]
+                ),
+                0,
+            )
+        self.assertEqual(
+            cli.main(["needs-build", "--project", "bingux", "--channel", "nightly", "--url", url, "--commit", "abc"]), 1
+        )
+        self.assertEqual(
+            cli.main(
+                [
+                    "needs-build",
+                    "--project",
+                    "bingux",
+                    "--channel",
+                    "nightly",
+                    "--url",
+                    url,
+                    "--commit",
+                    "abc",
+                    "--allow-unreachable",
+                ]
+            ),
+            0,
+        )
+
+
 @unittest.skipUnless(shutil.which("git"), "git is not installed")
 class PagesApply(unittest.TestCase):
     def git(self, *args, cwd=None):
@@ -454,13 +560,29 @@ class PagesApply(unittest.TestCase):
         self.git("push", str(remote), "gh-pages", cwd=seed)
 
         build_tree(directory / "tree", packages={"fedora/43/x86_64/a-1.rpm": b"one"})
+        pull = {"previous": None}
         for round_number in (1, 2):
             publish.publish(
-                "pages", directory / "tree", "bingux", "nightly", str(remote), previous=None, apply=True, environment={}
+                "pages", directory / "tree", "bingux", "nightly", str(remote), apply=True, environment={}, **pull
             )
+            pull = {"previous": directory / "tree"}  # from the second round on, the channel is known to be published
+        # A third publication with other content is still one commit.
+        shutil.rmtree(directory / "tree")
+        build_tree(directory / "tree", packages={"fedora/43/x86_64/a-2.rpm": b"two"})
+        publish.publish(
+            "pages",
+            directory / "tree",
+            "bingux",
+            "nightly",
+            str(remote),
+            previous=directory / "tree",
+            apply=True,
+            environment={},
+        )
         clone = directory / "clone"
         self.git("clone", "--branch", "gh-pages", str(remote), str(clone))
-        self.assertTrue((clone / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists())
+        self.assertTrue((clone / "bingux/nightly/fedora/43/x86_64/a-2.rpm").exists())
+        self.assertFalse((clone / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists(), "the replaced file is gone")
         self.assertTrue((clone / "gnoblin/stable/manifest.json").exists(), "the other project is kept")
         self.assertTrue((clone / ".nojekyll").exists())
         self.assertEqual(

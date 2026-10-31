@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -287,7 +288,9 @@ def _fetch(url: str, destination: Path | None = None) -> bytes | None:
     return data
 
 
-def pull(url: str, project: str, channel: str, output: Path, allow_missing: bool) -> int:
+def pull(
+    url: str, project: str, channel: str, output: Path, allow_missing: bool, allow_unreachable: bool = False
+) -> int:
     """Download the manifest and the package files of a published channel, so a build can merge with them.
 
     Only the manifest and the files it lists are fetched. Metadata is rebuilt on every run, so it is not.
@@ -295,7 +298,15 @@ def pull(url: str, project: str, channel: str, output: Path, allow_missing: bool
     """
     base = f"{url.rstrip('/')}/{project}/{channel}"
     root = channel_root(output, project, channel)
-    manifest_bytes = _fetch(f"{base}/manifest.json")
+    try:
+        manifest_bytes = _fetch(f"{base}/manifest.json")
+    except urllib.error.URLError as error:
+        if not allow_unreachable:
+            raise TreeError(f"cannot reach {base}/manifest.json: {error.reason}") from error
+        print(
+            f"pkgrepo: cannot reach {base} ({error.reason}); building without the published packages", file=sys.stderr
+        )
+        return 0
     if manifest_bytes is None:
         if allow_missing:
             return 0
