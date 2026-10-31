@@ -31,7 +31,7 @@ timing matrix; this check specifically exercises Cogl's real array uploads.
 
 ## Supported minimum and generated shader
 
-The source audit uses the build pin in `versions/gnome-versions.json`, Mutter
+The source audit uses the build pin in `src/gnome-versions.json`, Mutter
 `138a14fbeef09d49ebf5be8a0cb83b042dd5c841`:
 
 - `cogl/cogl/driver/gl/gles2/cogl-driver-gles2.c`,

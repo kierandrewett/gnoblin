@@ -1,9 +1,31 @@
-name: Gnoblin Lua runtime validation
+name: Gnoblin Lua validation
 
 on:
   push:
     branches: [main]
+    paths:
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "build.sh"
+      - "patches/**"
+      - "subprojects/**"
+      - "scripts/**"
+      - "tests/**"
+      - "packaging/rpm/*.spec"
+      - ".github/workflows/lua-runtime.yml"
   pull_request:
+    paths:
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "build.sh"
+      - "patches/**"
+      - "subprojects/**"
+      - "scripts/**"
+      - "tests/**"
+      - "packaging/rpm/*.spec"
+      - ".github/workflows/lua-runtime.yml"
   schedule:
     - cron: "41 2 * * *"
   workflow_dispatch:
@@ -16,6 +38,26 @@ defaults:
     shell: bash
 
 jobs:
+  # Fast configuration and console tests on two distributions.
+  config:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image: ["fedora:45", "archlinux:base"]
+    container: ${{ matrix.image }}
+    steps:
+      - name: Install test dependencies
+        run: |
+          if command -v pacman >/dev/null; then
+            pacman -Syu --needed --noconfirm git base-devel cmake ninja glib2-devel json-glib gsettings-desktop-schemas libxkbcommon lua
+          else
+            dnf -y install git gcc cmake ninja-build pkgconf-pkg-config glib2-devel json-glib-devel gsettings-desktop-schemas libxkbcommon-devel lua-devel
+          fi
+      - uses: actions/checkout@v4
+      - name: Test configuration and console behavior
+        run: bash tests/test-config.sh
+
+  # Full build and the whole CTest suite on Fedora.
   native-runtime:
     runs-on: ubuntu-latest
     container: fedora:45

@@ -156,7 +156,7 @@ The version is applied to a throw-away CI checkout, never to the repository.
 1. `scripts/pkgrepo version --git .` computes the SemVer pre-release
    (`0.1.13-nightly.20261031.142.gabc1234`).
 2. `scripts/apply-nightly-version.py` writes it into
-   `versions/gnoblin-version.json` and the Gnoblin entries of
+   `src/gnoblin-version.json` and the Gnoblin entries of
    `packaging/native-packages.json`.
 3. It runs `sync-package-manifest.py write`, which spells the version for each
    recipe.
@@ -393,7 +393,7 @@ no expiry, stored in the owner's Bitwarden) and the signing secrets in both repo
    `nightly.yml` with `force`.
 6. Bingux: after the Gnoblin branch is merged, set `packaging/pkgrepo.ref` of
    Bingux to the merged commit if it is not the one it names.
-7. `docs.yml` still copies an APT archive from the `gh-pages` branch into
+7. `infra.yml` still copies an APT archive from the `gh-pages` branch into
    `gnoblin.org/apt` and `scripts/prepare-apt-pages.py` still exists, although
    the builder of that archive was removed in `1f53b8c6`. Decide whether to
    delete the old archive.

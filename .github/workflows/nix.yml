@@ -3,7 +3,33 @@ name: Nix compatibility
 on:
   push:
     branches: [main]
+    paths:
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "build.sh"
+      - "patches/**"
+      - "subprojects/**"
+      - "scripts/**"
+      - "tests/**"
+      - "flake.nix"
+      - "flake.lock"
+      - "packaging/nix/**"
+      - ".github/workflows/nix.yml"
   pull_request:
+    paths:
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "build.sh"
+      - "patches/**"
+      - "subprojects/**"
+      - "scripts/**"
+      - "tests/**"
+      - "flake.nix"
+      - "flake.lock"
+      - "packaging/nix/**"
+      - ".github/workflows/nix.yml"
   workflow_dispatch:
     inputs:
       ref:

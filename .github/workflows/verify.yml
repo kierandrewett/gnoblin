@@ -3,7 +3,31 @@ name: Verify installation guide
 on:
   push:
     branches: [main]
+    paths:
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "build.sh"
+      - "patches/**"
+      - "subprojects/**"
+      - "scripts/**"
+      - "tests/**"
+      - "packaging/**"
+      - "flake.nix"
+      - ".github/workflows/verify.yml"
   pull_request:
+    paths:
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "build.sh"
+      - "patches/**"
+      - "subprojects/**"
+      - "scripts/**"
+      - "tests/**"
+      - "packaging/**"
+      - "flake.nix"
+      - ".github/workflows/verify.yml"
   workflow_dispatch:
 
 defaults:

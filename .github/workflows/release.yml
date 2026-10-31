@@ -14,6 +14,33 @@ on:
   push:
     branches:
       - main
+    paths:
+      - ".github/release.yml"
+      - ".github/workflows/release.yml"
+      - ".github/workflows/fedora-rpm.yml"
+      - ".github/workflows/opensuse-rpm.yml"
+      - ".github/workflows/arch-package.yml"
+      - ".github/workflows/copr.yml"
+      - "packaging/**"
+      - "scripts/build-srpm.sh"
+      - "scripts/build-release-assets.sh"
+      - "scripts/check-fedora-install.sh"
+      - "scripts/check-release-tag.sh"
+      - "scripts/check-rpm-isolation.py"
+      - "scripts/install-arch-build-deps.sh"
+      - "scripts/make-tarball.sh"
+      - "scripts/publish-github-release.sh"
+      - "scripts/pkgrepo/**"
+      - "scripts/apply-nightly-version.py"
+      - ".github/workflows/package-repository.yml"
+      - "scripts/sync-package-manifest.py"
+      - "tests/*packaging*"
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "build.sh"
+      - "patches/**"
+      - "subprojects/**"
     tags:
       - "gnoblin-v*"
   pull_request:
@@ -38,7 +65,12 @@ on:
       - ".github/workflows/package-repository.yml"
       - "scripts/sync-package-manifest.py"
       - "tests/*packaging*"
-      - "versions/**"
+      - "src/**"
+      - "cmake/**"
+      - "CMakeLists.txt"
+      - "build.sh"
+      - "patches/**"
+      - "subprojects/**"
   workflow_call:
     inputs:
       nightly:

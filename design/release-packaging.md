@@ -131,7 +131,7 @@
 
 ## Current state (2026-09-25)
 
-- `versions/gnome-versions.json` pins the private runtime to GNOME/Mutter/Shell 51.0.
+- `src/gnome-versions.json` pins the private runtime to GNOME/Mutter/Shell 51.0.
 - The latest COPR release is Gnoblin 0.1.4, build 11021823, with Mutter
   51.0-20 and Shell 51.0-14. No Fedora 43 RPM build has been published yet.
 - The running host is Fedora 43 and has Fedora 43 Gnoblin 49.6-era packages.
@@ -335,8 +335,8 @@
 
 ## Release flow
 
-1. Set the intended GNOME source pins in `versions/gnome-versions.json` and the
-   independent Gnoblin version in `versions/gnoblin-version.json`.
+1. Set the intended GNOME source pins in `src/gnome-versions.json` and the
+   independent Gnoblin version in `src/gnoblin-version.json`.
 2. Build reproducible source archives and SRPMs with
    `scripts/build-release-assets.sh`; release automation downloads upstream
    tags and validates that the release tag matches the source commit.

@@ -25,10 +25,13 @@ directly to their source on GitHub.
 
 ## Publish
 
-The Documentation workflow builds pull requests to catch broken pages. Changes merged to
-`main` are deployed by the Infrastructure workflow, which builds the site and uploads it
-to the `gnoblin-website` Worker with Terraform. See `infra/README.md` in the source
-repository.
+The Infrastructure workflow builds the site on pull requests, which catches broken pages.
+On `main` it plans the deployment. It uploads the build only in these cases:
+
+- The repository variable `INFRA_AUTO_APPLY` is `true`.
+- You run the workflow by hand with `apply` set.
+
+Terraform uploads the build to the `gnoblin-website` Worker. See `infra/README.md` in the source repository.
 
 ## Write for the reader
 

@@ -3,6 +3,10 @@ name: RPM target capability probes
 on:
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/rpm-target-probes.yml"
+      - "scripts/probe-rpm-target.py"
+      - "tests/rpm-target-probe.test.py"
   pull_request:
     paths:
       - ".github/workflows/rpm-target-probes.yml"
