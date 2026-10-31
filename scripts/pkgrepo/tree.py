@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import SCHEMA, formats, http, index
+from . import SCHEMA, download, formats, index
 from .packages import Package, scan, sha256_of
 from .signing import Signer
 from .versions import CHANNELS, NIGHTLY, STABLE, comparator
@@ -275,7 +275,7 @@ def _suites(entries: list[Entry]) -> dict[str, list[Entry]]:
 
 def _fetch(url: str, destination: Path | None = None) -> bytes | None:
     try:
-        with http.open_url(url) as response:
+        with download.open_url(url) as response:
             data = response.read()
     except urllib.error.HTTPError as error:
         if error.code == 404:
