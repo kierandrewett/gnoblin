@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const docs = path.join(root, "docs");
-const output = path.join(docs, ".vitepress", "dist");
+const output = path.join(root, "infra", "website", ".vitepress", "dist");
 const entries = await readdir(docs, { withFileTypes: true });
 const base = "/";
 const movedConfigPages = {
