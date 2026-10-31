@@ -17,12 +17,11 @@ import shutil
 import sys
 import urllib.error
 import urllib.parse
-import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import SCHEMA, formats, index
+from . import SCHEMA, formats, http, index
 from .packages import Package, scan, sha256_of
 from .signing import Signer
 from .versions import CHANNELS, NIGHTLY, STABLE, comparator
@@ -276,7 +275,7 @@ def _suites(entries: list[Entry]) -> dict[str, list[Entry]]:
 
 def _fetch(url: str, destination: Path | None = None) -> bytes | None:
     try:
-        with urllib.request.urlopen(url, timeout=60) as response:
+        with http.open_url(url) as response:
             data = response.read()
     except urllib.error.HTTPError as error:
         if error.code == 404:
