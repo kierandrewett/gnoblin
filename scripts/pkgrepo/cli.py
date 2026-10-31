@@ -1,4 +1,4 @@
-"""Command line: version, key-import, needs-build, pull, build, verify, publish."""
+"""Command line: version, key-import, needs-build, pull, build, verify, publish, package."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import check, download, publish as publisher, signing, tree, versions
+from . import check, download, package, publish as publisher, signing, tree, versions
 from .runner import CommandError
 
 DEFAULT_BASE_URL = "https://repo.gnoblin.org"
@@ -154,6 +154,36 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 1 if problems else 0
 
 
+def cmd_package(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    manifests = {package.package_name(path): path for path in package.find_manifests(root)}
+    if args.list:
+        for name, path in sorted(manifests.items()):
+            print(f"{name}\t{path.relative_to(root)}")
+        return 0
+    for option in ("stage", "version", "output"):
+        if not getattr(args, option):
+            raise CommandError(f"--{option} is required")
+    if unknown := [name for name in args.package or [] if name not in manifests]:
+        raise CommandError(f"no nfpm.yaml for: {', '.join(unknown)}")
+    formats = args.format.split(",")
+    if bad := [name for name in formats if name not in package.FORMATS]:
+        raise CommandError(f"unknown format: {', '.join(bad)}")
+    chosen = [path for name, path in sorted(manifests.items()) if not args.package or name in args.package]
+    table = package.load_table(root / "packaging" / "dependencies.json", *(Path(p) for p in args.dependencies or []))
+    built = package.build(
+        chosen,
+        stage=Path(args.stage),
+        version=args.version,
+        output=Path(args.output),
+        formats=formats,
+        arch=args.arch,
+        table=table,
+    )
+    print(f"built {len(built)} packages: {', '.join(built)}")
+    return 0
+
+
 def cmd_publish(args: argparse.Namespace) -> int:
     publisher.publish(
         args.backend,
@@ -265,6 +295,18 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--previous", help="the pulled copy of the published channel, to upload only changed packages")
     p.add_argument("--apply", action="store_true", help="upload for real. Without it, only the plan is printed")
     p.set_defaults(run=cmd_publish)
+
+    p = sub.add_parser("package", help="build packages from the nfpm.yaml files beside the code")
+    p.add_argument("--root", default=".", help="source tree to search for nfpm.yaml; default the current directory")
+    p.add_argument("--list", action="store_true", help="print the packages found and stop")
+    p.add_argument("--stage", help="staged prefix the manifests read from (${STAGE})")
+    p.add_argument("--version", help="semver version, for example 0.1.0 or 0.1.1-nightly.20261031.5.gabc1234")
+    p.add_argument("--output", help="directory that receives the packages")
+    p.add_argument("--format", default=",".join(package.FORMATS), help="comma list; default %(default)s")
+    p.add_argument("--arch", default="amd64", help="Go architecture name, amd64 or arm64; default %(default)s")
+    p.add_argument("--package", action="append", help="build only this package (repeatable)")
+    p.add_argument("--dependencies", action="append", help="extra dependency table (JSON) on top of the shared one")
+    p.set_defaults(run=cmd_package)
     return root
 
 

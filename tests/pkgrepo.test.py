@@ -20,6 +20,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from pkgrepo import index, publish, tree, versions  # noqa: E402
+from pkgrepo import package as packager  # noqa: E402
+from pkgrepo.runner import CommandError  # noqa: E402
 from pkgrepo.packages import Package  # noqa: E402
 
 
@@ -702,6 +704,64 @@ class PagesApply(unittest.TestCase):
             "1",
             "one snapshot commit, not history",
         )
+
+
+class PackageManifests(unittest.TestCase):
+    """nfpm.yaml files beside the code, with distro library names resolved per package format."""
+
+    TABLE = {
+        "pipewire": {"rpm": "pipewire", "deb": "libpipewire-0.3-0t64", "archlinux": "pipewire"},
+        "xkbcommon": {"rpm": "libxkbcommon", "deb": "libxkbcommon0", "archlinux": "libxkbcommon"},
+    }
+
+    def test_a_version_constraint_uses_the_syntax_of_each_format(self):
+        text = 'depends:\n  - "@pipewire >= 1.4.11"\n  - "@xkbcommon"\n  - geoclue2\n'
+        self.assertIn("- pipewire >= 1.4.11\n  - libxkbcommon\n  - geoclue2", packager.resolve(text, "rpm", self.TABLE))
+        self.assertIn(
+            "- libpipewire-0.3-0t64 (>= 1.4.11)\n  - libxkbcommon0", packager.resolve(text, "deb", self.TABLE)
+        )
+        self.assertIn("- pipewire>=1.4.11\n  - libxkbcommon", packager.resolve(text, "archlinux", self.TABLE))
+        self.assertIn("(<< 2)", packager.resolve('depends:\n  - "@pipewire < 2"\n', "deb", self.TABLE))
+
+    def test_a_name_missing_for_one_format_stops_the_build_and_names_the_line(self):
+        table = {"pipewire": {"rpm": "pipewire"}}
+        with self.assertRaisesRegex(CommandError, r"nfpm.yaml:2: no deb package for @pipewire"):
+            packager.resolve("depends:\n  - '@pipewire'\n", "deb", table, "nfpm.yaml")
+
+    def test_scan_expands_to_the_scanned_packages_at_the_same_indent(self):
+        text = 'depends:\n    - "@scan"\n    - fontconfig\n'
+        self.assertEqual(
+            packager.resolve(text, "rpm", {}, scanned=["glibc", "gtk4"]),
+            "depends:\n    - glibc\n    - gtk4\n    - fontconfig\n",
+        )
+        self.assertEqual(packager.resolve(text, "rpm", {}), "depends:\n    - fontconfig\n")
+
+    def test_manifests_are_found_below_the_root_but_not_in_build_output_or_vendored_code(self):
+        root = Path(tempfile.mkdtemp(prefix="pkgrepo-manifests-"))
+        self.addCleanup(shutil.rmtree, root, True)
+        for where in ("crates/config", "packaging/geoclue", "build/stage", "vendor/winit", "node_modules/x"):
+            (root / where).mkdir(parents=True)
+            (root / where / "nfpm.yaml").write_text("name: x\n")
+        found = [str(path.relative_to(root)) for path in packager.find_manifests(root)]
+        self.assertEqual(found, ["crates/config/nfpm.yaml", "packaging/geoclue/nfpm.yaml"])
+
+    def test_packaged_files_follow_the_manifest_sources_and_skip_symlinks(self):
+        stage = Path(tempfile.mkdtemp(prefix="pkgrepo-stage-"))
+        self.addCleanup(shutil.rmtree, stage, True)
+        (stage / "usr/lib/app").mkdir(parents=True)
+        (stage / "usr/lib/app/lib.so").write_bytes(b"x")
+        (stage / "usr/bin").mkdir(parents=True)
+        (stage / "usr/bin/app").symlink_to("../lib/app/lib.so")
+        (stage / "usr/bin/other").write_bytes(b"x")
+        text = "contents:\n  - src: ${STAGE}/usr/lib/app\n    dst: /usr/lib/app\n  - src: ${STAGE}/usr/bin/*\n    dst: /usr/bin/\n"
+        names = sorted(path.name for path in packager.packaged_files(text, stage))
+        self.assertEqual(names, ["lib.so", "other"])
+
+    def test_the_archlinux_version_is_the_one_the_repository_orders_by(self):
+        semver = "0.1.13-nightly.20261031.142.gabc1234"
+        self.assertEqual(packager.format_version(semver, "archlinux"), versions.semver_to_arch(semver))
+        self.assertEqual(packager.format_version(semver, "rpm"), "0.1.13~nightly.20261031.142.gabc1234")
+        self.assertEqual(packager.format_version(semver, "deb"), "0.1.13~nightly.20261031.142.gabc1234")
 
 
 if __name__ == "__main__":
