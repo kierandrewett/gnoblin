@@ -1,0 +1,8 @@
+# The image the repository tool runs in: every program it starts is installed here, so a CI job and a laptop produce
+# the same repository. Debian 13 carries all three repository toolchains (install-tools.sh lists them).
+#
+#   podman build -t pkgrepo-builder -f scripts/pkgrepo/container/Containerfile scripts/pkgrepo/container
+FROM docker.io/library/debian:trixie
+COPY install-tools.sh /usr/local/bin/install-tools.sh
+RUN /usr/local/bin/install-tools.sh
+WORKDIR /work
