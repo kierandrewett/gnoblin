@@ -11,15 +11,16 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           ACCOUNT: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          set -euo pipefail
-          api() { curl -fsS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4$1"; }
-          echo "account var set: $([ -n "$ACCOUNT" ] && echo yes || echo no)"
-          id=$(api /accounts/$ACCOUNT/tokens/verify | python3 -c 'import sys,json;j=json.load(sys.stdin);print(j["result"]["id"],j["result"]["status"])' 2>&1) || id=$(api /user/tokens/verify | python3 -c 'import sys,json;j=json.load(sys.stdin);print(j["result"]["id"],j["result"]["status"])')
-          echo "verify: ${id#* } (id hidden)"
-          tid=${id%% *}
-          api /accounts/$ACCOUNT/tokens/$tid 2>/dev/null | python3 -c '
-          import sys,json
-          j=json.load(sys.stdin)["result"]
-          for p in j["policies"]:
-              print(p["effect"], ", ".join(g["name"] for g in p["permission_groups"]), "->", list(p["resources"].keys()))
-          ' || echo "could not read policies"
+          set -u
+          zone=$(curl -sS -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4/zones?name=gnoblin.org" | python3 -c 'import sys,json;r=json.load(sys.stdin)["result"];print(r[0]["id"] if r else "")')
+          probe() { code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" "https://api.cloudflare.com/client/v4$2"); echo "$1: HTTP $code"; }
+          echo "zone found: $([ -n "$zone" ] && echo yes || echo no)"
+          probe "read zone" "/zones/$zone"
+          probe "read dns records" "/zones/$zone/dns_records"
+          probe "read r2 buckets" "/accounts/$ACCOUNT/r2/buckets"
+          probe "read worker scripts" "/accounts/$ACCOUNT/workers/scripts"
+          probe "read worker routes" "/zones/$zone/workers/routes"
+          probe "read worker custom domains" "/accounts/$ACCOUNT/workers/domains"
+          probe "read r2 custom domains" "/accounts/$ACCOUNT/r2/buckets/gnoblin-repo/domains/custom"
+          probe "read pages projects" "/accounts/$ACCOUNT/pages/projects"
+          probe "read account tokens" "/accounts/$ACCOUNT/tokens"
