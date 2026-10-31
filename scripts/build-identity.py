@@ -57,8 +57,8 @@ def native_api_version():
     return f"{major.group(1)}.{minor.group(1)}"
 
 
-release = json.loads((root / "versions/gnoblin-version.json").read_text())
-gnome = json.loads((root / "versions/gnome-versions.json").read_text())
+release = json.loads((root / "src/gnoblin-version.json").read_text())
+gnome = json.loads((root / "src/gnome-versions.json").read_text())
 components = gnome["components"]
 # Only list components included in this build's installed session.
 shipped_components = {"mutter": components["mutter"]}

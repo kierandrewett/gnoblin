@@ -3,7 +3,15 @@ name: Packaging target inventory
 on:
   push:
     branches: [main]
+    paths:
+      - "packaging/targets.json"
+      - "scripts/check-packaging-targets.py"
+      - ".github/workflows/packaging-targets.yml"
   pull_request:
+    paths:
+      - "packaging/targets.json"
+      - "scripts/check-packaging-targets.py"
+      - ".github/workflows/packaging-targets.yml"
   workflow_dispatch:
 
 permissions:

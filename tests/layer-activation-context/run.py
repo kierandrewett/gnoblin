@@ -21,7 +21,7 @@ FILES = [
 
 
 def prepare(directory, baseline):
-    pin = json.loads((ROOT / "versions/gnome-versions.json").read_text())["components"]["mutter"]["commit"]
+    pin = json.loads((ROOT / "src/gnome-versions.json").read_text())["components"]["mutter"]["commit"]
     subprocess.run(["git", "init", "-q", str(directory)], check=True)
     for name in FILES:
         target = directory / name

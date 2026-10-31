@@ -10,8 +10,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parent.parent
-MANIFEST = ROOT / "versions/gnoblin-version.json"
-GNOME_MANIFEST = ROOT / "versions/gnome-versions.json"
+MANIFEST = ROOT / "src/gnoblin-version.json"
+GNOME_MANIFEST = ROOT / "src/gnome-versions.json"
 SEMVER = re.compile(
     r"^(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$"
 )

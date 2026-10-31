@@ -23,7 +23,15 @@ from pkgrepo import index, publish, tree, versions  # noqa: E402
 from pkgrepo.packages import Package  # noqa: E402
 
 
-def package(name="bingux", version="0.1.12-1", family="fedora", release="43", arch="x86_64", fmt="rpm", sha="a" * 64):
+def package(
+    name="bingux",
+    version="0.1.12-1",
+    family="fedora",
+    release="43",
+    arch="x86_64",
+    fmt="rpm",
+    sha="a" * 64,
+):
     return Package(fmt, family, release, name, version, arch, f"{name}-{version}.{arch}", 1, sha)
 
 
@@ -108,7 +116,18 @@ class GitDescribe(unittest.TestCase):
 
     def commit(self, directory):
         subprocess.run(
-            ["git", "-C", str(directory), "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "x"],
+            [
+                "git",
+                "-C",
+                str(directory),
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "x",
+            ],
             check=True,
         )
 
@@ -174,7 +193,10 @@ class Retention(unittest.TestCase):
         self.assertEqual(len(dropped), 2)
         self.assertEqual(
             sorted(e.package.version for e in dropped),
-            ["0.1.13~nightly.20261030.0.gabc1234-1", "0.1.13~nightly.20261031.1.gabc1234-1"],
+            [
+                "0.1.13~nightly.20261030.0.gabc1234-1",
+                "0.1.13~nightly.20261031.1.gabc1234-1",
+            ],
         )
 
     def test_stable_is_never_pruned(self):
@@ -220,10 +242,17 @@ class Layout(unittest.TestCase):
 class ClientFiles(unittest.TestCase):
     def test_rpm_repo_file_checks_packages_and_metadata(self):
         text = index.rpm_repo_file(
-            "https://repo.example", "gnoblin", "nightly", "fedora/$releasever/$basearch", "F" * 40
+            "https://repo.example",
+            "gnoblin",
+            "nightly",
+            "fedora/$releasever/$basearch",
+            "F" * 40,
         )
         self.assertIn("[gnoblin-nightly]", text)
-        self.assertIn("baseurl=https://repo.example/gnoblin/nightly/fedora/$releasever/$basearch", text)
+        self.assertIn(
+            "baseurl=https://repo.example/gnoblin/nightly/fedora/$releasever/$basearch",
+            text,
+        )
         self.assertIn("gpgcheck=1\nrepo_gpgcheck=1", text)
         self.assertIn("gpgkey=https://repo.example/gpg.key", text)
 
@@ -247,7 +276,13 @@ def build_tree(directory: Path, project="bingux", channel="nightly", packages=No
         path.write_bytes(content)
         import hashlib
 
-        records.append({"filename": path.name, "path": relative, "sha256": hashlib.sha256(content).hexdigest()})
+        records.append(
+            {
+                "filename": path.name,
+                "path": relative,
+                "sha256": hashlib.sha256(content).hexdigest(),
+            }
+        )
     (scope / "manifest.json").write_text(json.dumps({"schema": 1, "packages": records}))
     (scope / "index.html").write_text("<html></html>")
     (scope / "fedora").mkdir(exist_ok=True)
@@ -283,14 +318,20 @@ class PublishPlans(unittest.TestCase):
     def test_only_changed_packages_are_uploaded(self):
         # The published copy lists a-1.rpm unchanged and b-1.rpm with other content.
         published = self.directory / "published"
-        build_tree(published, packages={**self.packages, "fedora/43/x86_64/b-1.rpm": b"different"})
+        build_tree(
+            published,
+            packages={**self.packages, "fedora/43/x86_64/b-1.rpm": b"different"},
+        )
         previous = publish.previous_hashes(published, "bingux/nightly")
         changed = publish.changed_packages(self.directory / "tree", "bingux/nightly", previous)
         self.assertEqual(changed, ["bingux/nightly/fedora/43/x86_64/b-1.rpm"])
 
     def test_a_signature_is_uploaded_with_a_changed_package_only(self):
         published = self.directory / "published"
-        build_tree(published, packages={**self.packages, "arch/x86_64/c-1-1-x86_64.pkg.tar.zst": b"old"})
+        build_tree(
+            published,
+            packages={**self.packages, "arch/x86_64/c-1-1-x86_64.pkg.tar.zst": b"old"},
+        )
         previous = publish.previous_hashes(published, "bingux/nightly")
         changed = publish.changed_packages(self.directory / "tree", "bingux/nightly", previous)
         self.assertIn("bingux/nightly/arch/x86_64/c-1-1-x86_64.pkg.tar.zst.sig", changed)
@@ -329,7 +370,10 @@ class PublishPlans(unittest.TestCase):
             "bingux/nightly",
             "user@host:/srv/repo",
             [],
-            env={"REPO_RSYNC_KEY": "PRIVATE", "REPO_RSYNC_KNOWN_HOSTS": "host ssh-ed25519 AAAA"},
+            env={
+                "REPO_RSYNC_KEY": "PRIVATE",
+                "REPO_RSYNC_KNOWN_HOSTS": "host ssh-ed25519 AAAA",
+            },
         )
         self.addCleanup(lambda: [c() for c in plan.cleanup])
         command = plan.steps[0].command
@@ -339,20 +383,43 @@ class PublishPlans(unittest.TestCase):
 
     def test_s3_plan_syncs_packages_before_metadata_and_never_prints_credentials(self):
         plan = publish.plan_s3(
-            self.directory / "tree", "bingux/nightly", "s3://bucket/prefix", [], env={"AWS_SECRET_ACCESS_KEY": "s"}
+            self.directory / "tree",
+            "bingux/nightly",
+            "s3://bucket/prefix",
+            [],
+            env={"AWS_SECRET_ACCESS_KEY": "s"},
         )
         text = plan.show()
         self.assertNotIn("AWS_SECRET_ACCESS_KEY", text)
         order = [s.description for s in plan.steps]
-        self.assertLess(order.index("upload package files the bucket lacks"), order.index("upload metadata and pages"))
+        self.assertLess(
+            order.index("upload package files the bucket lacks"),
+            order.index("upload metadata and pages"),
+        )
         with self.assertRaises(ValueError):
             publish.plan_s3(self.directory / "tree", "bingux/nightly", "bucket/prefix", [], env={})
 
     def test_unknown_backend_and_unbuilt_channel(self):
         with self.assertRaises(ValueError):
-            publish.publish("ftp", self.directory / "tree", "bingux", "nightly", "x", previous=None, apply=False)
+            publish.publish(
+                "ftp",
+                self.directory / "tree",
+                "bingux",
+                "nightly",
+                "x",
+                previous=None,
+                apply=False,
+            )
         with self.assertRaises(ValueError):
-            publish.publish("rsync", self.directory / "tree", "gnoblin", "stable", "x", previous=None, apply=False)
+            publish.publish(
+                "rsync",
+                self.directory / "tree",
+                "gnoblin",
+                "stable",
+                "x",
+                previous=None,
+                apply=False,
+            )
 
 
 class GnoblinNightlyRecipes(unittest.TestCase):
@@ -361,12 +428,21 @@ class GnoblinNightlyRecipes(unittest.TestCase):
     def setUp(self):
         self.copy = Path(tempfile.mkdtemp(prefix="pkgrepo-gnoblin-"))
         self.addCleanup(shutil.rmtree, self.copy, True)
-        for name in ("scripts", "versions", "packaging"):
-            shutil.copytree(ROOT / name, self.copy / name, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        for name in ("scripts", "packaging"):
+            shutil.copytree(
+                ROOT / name,
+                self.copy / name,
+                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+            )
+        (self.copy / "src").mkdir()
+        for name in ("gnoblin-version.json", "gnome-versions.json"):
+            shutil.copy(ROOT / "src" / name, self.copy / "src" / name)
 
     def run_script(self, *args):
         return subprocess.run(
-            [sys.executable, str(self.copy / "scripts" / args[0]), *args[1:]], capture_output=True, text=True
+            [sys.executable, str(self.copy / "scripts" / args[0]), *args[1:]],
+            capture_output=True,
+            text=True,
         )
 
     def test_release_recipes_are_unchanged_by_the_source_version_split(self):
@@ -388,7 +464,11 @@ class GnoblinNightlyRecipes(unittest.TestCase):
         portal = (self.copy / "packaging/arch/portal/PKGBUILD").read_text()
         original = (ROOT / "packaging/arch/portal/PKGBUILD").read_text()
         version_line = lambda text: next(line for line in text.splitlines() if line.startswith("pkgver="))  # noqa: E731
-        self.assertEqual(version_line(portal), version_line(original), "the portal keeps its own GNOME version")
+        self.assertEqual(
+            version_line(portal),
+            version_line(original),
+            "the portal keeps its own GNOME version",
+        )
         # The same copy still passes the consistency check.
         self.assertEqual(self.run_script("sync-package-manifest.py", "check").returncode, 0)
 
@@ -463,14 +543,20 @@ class FirstPublicationGuard(unittest.TestCase):
     def test_refuses_to_replace_a_channel_it_did_not_pull(self):
         with self.assertRaisesRegex(ValueError, "already exists at the destination"):
             self.publish(previous=None)
-        self.assertTrue((self.site / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists(), "nothing was removed")
+        self.assertTrue(
+            (self.site / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists(),
+            "nothing was removed",
+        )
 
     def test_publishes_when_the_published_copy_was_pulled(self):
         pulled = self.directory / "pulled"
         build_tree(pulled, packages={"fedora/43/x86_64/a-1.rpm": b"one"})
         self.publish(previous=pulled)
         self.assertTrue((self.site / "bingux/nightly/fedora/43/x86_64/a-2.rpm").exists())
-        self.assertFalse((self.site / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists(), "the tree dropped it")
+        self.assertFalse(
+            (self.site / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists(),
+            "the tree dropped it",
+        )
 
     def test_a_first_publication_to_an_empty_destination_works(self):
         shutil.rmtree(self.site)
@@ -519,7 +605,20 @@ class Unreachable(unittest.TestCase):
                 0,
             )
         self.assertEqual(
-            cli.main(["needs-build", "--project", "bingux", "--channel", "nightly", "--url", url, "--commit", "abc"]), 1
+            cli.main(
+                [
+                    "needs-build",
+                    "--project",
+                    "bingux",
+                    "--channel",
+                    "nightly",
+                    "--url",
+                    url,
+                    "--commit",
+                    "abc",
+                ]
+            ),
+            1,
         )
         self.assertEqual(
             cli.main(
@@ -563,7 +662,14 @@ class PagesApply(unittest.TestCase):
         pull = {"previous": None}
         for round_number in (1, 2):
             publish.publish(
-                "pages", directory / "tree", "bingux", "nightly", str(remote), apply=True, environment={}, **pull
+                "pages",
+                directory / "tree",
+                "bingux",
+                "nightly",
+                str(remote),
+                apply=True,
+                environment={},
+                **pull,
             )
             pull = {"previous": directory / "tree"}  # from the second round on, the channel is known to be published
         # A third publication with other content is still one commit.
@@ -582,11 +688,19 @@ class PagesApply(unittest.TestCase):
         clone = directory / "clone"
         self.git("clone", "--branch", "gh-pages", str(remote), str(clone))
         self.assertTrue((clone / "bingux/nightly/fedora/43/x86_64/a-2.rpm").exists())
-        self.assertFalse((clone / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists(), "the replaced file is gone")
-        self.assertTrue((clone / "gnoblin/stable/manifest.json").exists(), "the other project is kept")
+        self.assertFalse(
+            (clone / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists(),
+            "the replaced file is gone",
+        )
+        self.assertTrue(
+            (clone / "gnoblin/stable/manifest.json").exists(),
+            "the other project is kept",
+        )
         self.assertTrue((clone / ".nojekyll").exists())
         self.assertEqual(
-            self.git("rev-list", "--count", "HEAD", cwd=clone).strip(), "1", "one snapshot commit, not history"
+            self.git("rev-list", "--count", "HEAD", cwd=clone).strip(),
+            "1",
+            "one snapshot commit, not history",
         )
 
 

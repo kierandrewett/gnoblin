@@ -42,7 +42,7 @@ def main():
     parser.add_argument("--cogl-pc", default="mutter-cogl-51")
     parser.add_argument("--sanitize", action="store_true", help="enable ASan/UBSan in the fixture")
     args = parser.parse_args()
-    revision = json.loads((ROOT / "versions/gnome-versions.json").read_text())["components"]["mutter"]["commit"]
+    revision = json.loads((ROOT / "src/gnome-versions.json").read_text())["components"]["mutter"]["commit"]
     flags = shlex.split(subprocess.check_output(["pkg-config", "--cflags", "--libs", args.cogl_pc], text=True))
     with tempfile.TemporaryDirectory(prefix="gnoblin-csd-pixels-") as directory:
         temporary = Path(directory)

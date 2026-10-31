@@ -39,4 +39,4 @@ Do not add a zone redirect rule for `repo.gnoblin.org`. Redirect rules run befor
 
 `.github/workflows/infra.yml` builds the Worker bundle and the website, then runs `terraform plan`. Pull requests only check formatting and validity, because the secrets in the `infra` environment are limited to `main`. A run on `main` applies the plan only when the repository variable `INFRA_AUTO_APPLY` is `true`. A manual run applies only when you set the `apply` input.
 
-The website Worker needs `gnoblin.org` and `www.gnoblin.org` to have no existing DNS record. The old CNAMEs to `gnoblin-docs.pages.dev` must be deleted before the first apply. Between that delete and the apply the site is down.
+A Worker custom domain cannot attach to a hostname that already has a DNS record. `gnoblin.org` and `www.gnoblin.org` had CNAMEs to `gnoblin-docs.pages.dev`. They were deleted before the first apply, and Terraform now owns these hostnames. The old Pages project `gnoblin-docs` is unused.

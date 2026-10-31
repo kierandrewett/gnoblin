@@ -24,7 +24,7 @@ def main():
     parser.add_argument("--sanitize", action="store_true")
     args = parser.parse_args()
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    revision = json.loads((ROOT / "versions/gnome-versions.json").read_text())["components"]["mutter"]["commit"]
+    revision = json.loads((ROOT / "src/gnome-versions.json").read_text())["components"]["mutter"]["commit"]
     flags = shlex.split(
         subprocess.check_output(["pkg-config", "--cflags", "--libs", "gio-2.0", "libei-1.0", "libeis-1.0"], text=True)
     )

@@ -21,8 +21,8 @@ PROJECT_URL = "https://github.com/kierandrewett/gnoblin"
 
 def load_manifest() -> dict:
     manifest = json.loads(MANIFEST_SOURCE.read_text())
-    versions = json.loads((ROOT / "versions/gnome-versions.json").read_text())
-    release = json.loads((ROOT / "versions/gnoblin-version.json").read_text())
+    versions = json.loads((ROOT / "src/gnome-versions.json").read_text())
+    release = json.loads((ROOT / "src/gnoblin-version.json").read_text())
     metadata = manifest["release"]
 
     expected = {
@@ -38,9 +38,9 @@ def load_manifest() -> dict:
     for name, source in manifest["sources"].items():
         component = versions["components"][name]
         if source != {key: component[key] for key in ("commit", "version")}:
-            raise ValueError(f"{MANIFEST_SOURCE.name}: sources.{name} differs from versions/gnome-versions.json")
+            raise ValueError(f"{MANIFEST_SOURCE.name}: sources.{name} differs from src/gnome-versions.json")
     if set(manifest["sources"]) != set(versions["components"]):
-        raise ValueError(f"{MANIFEST_SOURCE.name}: sources must match versions/gnome-versions.json")
+        raise ValueError(f"{MANIFEST_SOURCE.name}: sources must match src/gnome-versions.json")
     for name, package in manifest["packages"].items():
         source_name = package.get("source")
         expected_version = versions["components"][source_name]["version"] if source_name else release["version"]

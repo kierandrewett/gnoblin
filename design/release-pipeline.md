@@ -235,7 +235,7 @@ Each item lands as its own commit, and the tree stays working.
       A package missing from a recipe now fails CI the way it fails a user. A name-by-name check
       across distros was not added: the same library has a different package name on each one.
 - [ ] Keep the other hand-written lists in step with their recipes: `packaging/nix/package.nix`,
-      `packaging/opensuse/gnoblin.spec`, and the small installs in `lua.yml`.
+      `packaging/opensuse/gnoblin.spec`, and the small installs in `lua-runtime.yml`.
 - [x] Mark `design/release-packaging.md` as a historical log, with a pointer to this file.
 - [x] Dry run a release from a branch. `gh workflow run release.yml --ref BRANCH -f dry_run=true`
       builds the source bundle and the Fedora source RPMs, builds the Arch package and runs its

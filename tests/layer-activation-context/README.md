@@ -13,7 +13,7 @@ protocols, `wayland-scanner`, Git, Python, and a C compiler. The optional
 syntax checks only and writes no objects into that build.
 
 The runner reconstructs seven files from the Mutter revision in
-`versions/gnome-versions.json`, then applies the patch series to a temporary directory.
+`src/gnome-versions.json`, then applies the patch series to a temporary directory.
 It compiles the whole production activation translation unit and extracts the
 production keyboard, pointer, touch, and tablet delivery functions verbatim.
 Keyboard and pointer grab validation also use the production functions.

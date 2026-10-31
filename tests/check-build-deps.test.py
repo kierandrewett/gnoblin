@@ -71,7 +71,7 @@ bundled_dep = dependency('bundled-lib')
         )
 
     def test_pinned_meson_sources_produce_versioned_requirements(self):
-        versions = json.loads((ROOT / "versions/gnome-versions.json").read_text())
+        versions = json.loads((ROOT / "src/gnome-versions.json").read_text())
         projects = {
             "mutter": "meson.build",
             "xdg-desktop-portal-gnome": "src/meson.build",
@@ -91,7 +91,7 @@ bundled_dep = dependency('bundled-lib')
                 self.assertTrue(all(module for module, _version in requirements))
 
     def test_pinned_portal_sources_include_required_gnome_desktop_modules(self):
-        versions = json.loads((ROOT / "versions/gnome-versions.json").read_text())
+        versions = json.loads((ROOT / "src/gnome-versions.json").read_text())
         revision = versions["components"]["xdg-desktop-portal-gnome"]["commit"]
         result = subprocess.run(
             [

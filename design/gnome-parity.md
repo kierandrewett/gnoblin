@@ -1,6 +1,6 @@
 # GNOME session parity gaps
 
-This compares a stock GNOME 51 Wayland session (the Mutter and GNOME Shell versions pinned in `versions/gnome-versions.json`) with Gnoblin plus the Bingux shell. “Gap” means a user-visible behavior or control surface that is missing or less integrated; it does not mean the underlying Linux service or Wayland protocol is absent.
+This compares a stock GNOME 51 Wayland session (the Mutter and GNOME Shell versions pinned in `src/gnome-versions.json`) with Gnoblin plus the Bingux shell. “Gap” means a user-visible behavior or control surface that is missing or less integrated; it does not mean the underlying Linux service or Wayland protocol is absent.
 
 Effort estimates are for a small, reviewable first implementation, not full GNOME feature completeness.
 
@@ -174,7 +174,7 @@ Repository evidence includes `docs/gnome-apps.md`, `docs/wayland-protocols.md`, 
 
 The review describes source/documentation capability; it does not claim fresh-session runtime verification for every row.
 
-The upstream comparison is GNOME 51 because `versions/gnome-versions.json` pins Mutter 51.0. Relevant primary sources:
+The upstream comparison is GNOME 51 because `src/gnome-versions.json` pins Mutter 51.0. Relevant primary sources:
 
 - [GNOME Shell 51.0 UI source](https://gitlab.gnome.org/GNOME/gnome-shell/-/tree/51.0/js/ui), including `altTab.js`, `overview.js`, `windowManager.js`, `notificationDaemon.js`, `screenshot.js`, and `screencast.js`.
 - [Mutter 51.0 source](https://gitlab.gnome.org/GNOME/mutter/-/tree/51.0/src), including `core/`, `wayland/`, monitor configuration, window ping handling, input, and color management.

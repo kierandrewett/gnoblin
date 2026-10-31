@@ -49,7 +49,7 @@ def main():
     if args.baseline and args.source_tree:
         parser.error("--baseline and --source-tree are mutually exclusive")
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    revision = json.loads((ROOT / "versions/gnome-versions.json").read_text())["components"]["mutter"]["commit"]
+    revision = json.loads((ROOT / "src/gnome-versions.json").read_text())["components"]["mutter"]["commit"]
     with tempfile.TemporaryDirectory(prefix="gnoblin-capture-cursor-") as scratch:
         directory = Path(scratch)
         tree = args.source_tree.resolve() if args.source_tree else directory

@@ -12,7 +12,7 @@ The baseline deliberately exits 1: embedded area and monitor streams leave
 the renderer stale on both enable and disable. The patched run must pass
 all ten cases. The regression was run and failed before the patch was created.
 
-The runner reads the Mutter revision from `versions/gnome-versions.json` using
+The runner reads the Mutter revision from `src/gnome-versions.json` using
 `git show`, applies the new patch in a temporary directory, and compiles
 complete production functions verbatim. It does not edit the shared submodule.
 It requires Python 3, a C compiler, `pkg-config`, Git and GLib development files.
