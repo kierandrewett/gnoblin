@@ -26,7 +26,10 @@ defaults:
 
 jobs:
   check:
-    # Skips the hour-long build when nothing changed. A repository without a published nightly yet builds.
+    # Skips the hour-long build when nothing changed. A repository without a published nightly yet builds. Without a
+    # publication destination (REPO_DESTINATION) there is nothing to publish to, so the scheduled run does nothing; a
+    # manual run still builds, to try the pipeline.
+    if: ${{ vars.REPO_DESTINATION != '' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     outputs:
       needs_build: ${{ steps.check.outputs.needs_build }}

@@ -115,10 +115,6 @@ jobs:
           fi
           find raw/arch -type f -name '*.pkg.tar.zst' -exec cp -t packages/arch {} +
           find packages -type f | sort
-      - name: Pull the published channel
-        run: |
-          python3 scripts/pkgrepo pull --project "$PROJECT" --channel "$CHANNEL" --url "$REPO_URL" \
-            --output existing --allow-missing
       - name: Signing key
         id: key
         env:
@@ -136,6 +132,21 @@ jobs:
             echo "real=false" >> "$GITHUB_OUTPUT"
           fi
           echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+      - name: Pull the published channel
+        env:
+          PUBLISH: ${{ inputs.publish }}
+          KEY_IS_REAL: ${{ steps.key.outputs.real }}
+          BACKEND: ${{ vars.REPO_BACKEND }}
+          DESTINATION: ${{ vars.REPO_DESTINATION }}
+        run: |
+          # A run that publishes must reach the published channel: building without its packages and uploading
+          # would remove them. A run that publishes nothing may build without them when the host is not there yet.
+          unreachable=()
+          if [ "$PUBLISH" != true ] || [ "$KEY_IS_REAL" != true ] || [ -z "$BACKEND" ] || [ -z "$DESTINATION" ]; then
+            unreachable=(--allow-unreachable)
+          fi
+          python3 scripts/pkgrepo pull --project "$PROJECT" --channel "$CHANNEL" --url "$REPO_URL" \
+            --output existing --allow-missing "${unreachable[@]}"
       - name: Build and verify the signed tree
         env:
           REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}

@@ -253,6 +253,16 @@ file:
 
 `--dry-run` is the default: the tool prints the plan, and only `--apply` uploads.
 
+A build merges with the packages that are already published, so a build made
+without them would remove them on upload. Two checks guard against it:
+
+- `pkgrepo pull` fails when the published host cannot be reached. A run that
+  publishes nothing (no key, no destination, a pull request) may pass
+  `--allow-unreachable` and build without them.
+- `pkgrepo publish` refuses a first publication when the destination already
+  has a `manifest.json` for the channel. That is the sign that `REPO_URL` and
+  `REPO_DESTINATION` name different places, or that the pull saw nothing.
+
 | Back end | Destination                           | Credentials (secrets)                                                                     |
 | -------- | ------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `rsync`  | `user@host:/srv/repo`, or a directory | `REPO_RSYNC_KEY`, `REPO_RSYNC_KNOWN_HOSTS`                                                |
@@ -302,7 +312,7 @@ Gnoblin (`.github/workflows`):
   the stable channel from the Fedora, openSUSE and Arch packages of stage 2 and
   publishes it. A push to `main`, a pull request or a manual dry run builds and
   verifies the tree with a throw-away key and publishes nothing.
-- `nightly.yml` runs at 02:17 UTC and on demand. It compares the commit in the
+- `nightly.yml` runs at 02:17 UTC and on demand, and only where `REPO_DESTINATION` is set. It compares the commit in the
   published `nightly/manifest.json` with the commit of the run and stops when they
   are equal. Otherwise it calls `release.yml` with `nightly: true`, which gives
   the checkout the nightly version, skips openSUSE and the GitHub release, runs the
