@@ -76,28 +76,53 @@ with their parent. See the [workspaces section of the window rules guide](/guide
 
 ## Corners
 
-| Field                           | Default          | Values                                                                    |
-| ------------------------------- | ---------------- | ------------------------------------------------------------------------- |
-| `radius`                        | `0`              | 0–200 logical pixels                                                      |
-| `smoothing`                     | `0`              | 0–1; circular to a squarer curve                                          |
-| `mode`                          | `"auto"`         | `auto`, `force`, `off`; `off` disables corner, border, and shadow effects |
-| `padding`                       | `{0, 0, 0, 0}`   | Top/right/bottom/left inset, −128–128 logical pixels                      |
-| `keep_maximized`                | `true`           | Keep rounding when maximised                                              |
-| `keep_fullscreen`, `keep_tiled` | `false`          | Keep rounding in those states                                             |
-| `skip_libadwaita`               | `true`           | Preserve libadwaita corners in auto mode                                  |
-| `skip_libhandy`                 | `false`          | Skip libhandy windows in auto mode                                        |
-| `remove_csd`                    | `false`          | [Detect and replace client-drawn rounded corners](#remove-csd)            |
-| `border_width`, `border_color`  | `0`, `#808080ff` | Single native outline; width −40–40 logical pixels                        |
-| `shadow`                        | `false`          | `true` for the default shadow, one table, or a list of 1–4 layers         |
-| `keep_shadow`                   | `false`          | Keep replacement shadows in maximised/fullscreen/tiled states             |
+| Field                           | Default          | Values                                                                 |
+| ------------------------------- | ---------------- | ---------------------------------------------------------------------- |
+| `radius`                        | `0`              | 0–200 logical pixels                                                   |
+| `smoothing`                     | `0`              | 0–1; circular to a squarer curve                                       |
+| `mode`                          | `"auto"`         | `auto`, `force`, `off`; `off` disables corners, outlines, and shadows  |
+| `padding`                       | `{0, 0, 0, 0}`   | Top/right/bottom/left inset, −128–128 logical pixels                   |
+| `keep_maximized`                | `true`           | Keep rounding when maximised                                           |
+| `keep_fullscreen`, `keep_tiled` | `false`          | Keep rounding in those states                                          |
+| `skip_libadwaita`               | `true`           | Preserve libadwaita corners in auto mode                               |
+| `skip_libhandy`                 | `false`          | Skip libhandy windows in auto mode                                     |
+| `remove_csd`                    | `false`          | [Detect and replace client-drawn rounded corners](#remove-csd)         |
+| `border_width`, `border_color`  | `0`, `#808080ff` | [Outline](#outlines); width −40–40 logical pixels, negative is outside |
+| `inner_border_width`            | `0`              | [Inner line](#outlines) width, 0–40 logical pixels; `0` disables it    |
+| `inner_border_color`            | `#808080ff`      | Inner line colour, `#RRGGBB` or `#RRGGBBAA`                            |
+| `shadow`                        | `false`          | `true` for the default shadow, one table, or a list of 1–4 layers      |
+| `keep_shadow`                   | `false`          | Keep replacement shadows in maximised/fullscreen/tiled states          |
+
+## Outlines
+
+`corners.border_width` and `corners.border_color` set the outline. Positive
+widths draw inward from the visible edge. Negative widths draw outward where
+the client's existing buffer has room.
+
+`corners.inner_border_width` and `corners.inner_border_color` set a second line
+inside the window. It is drawn inward from the same visible edge, follows the
+corner radius and smoothing, and is painted over the window content and under
+the outline.
+
+- When both lines draw inward, the outline covers the first pixels of the inner
+  line. For a line on each side of the edge, use a negative `border_width` with
+  a positive `inner_border_width`.
+- Both lines follow the corner state policy (`keep_maximized`,
+  `keep_fullscreen`, `keep_tiled`) and are disabled by `mode = "off"`.
+- For a client that draws its own shadow margin, the visible edge is the window
+  geometry the client declares, not the edge of its buffer.
+- In `auto` mode the inner line stays within the pixels the client drew, so it
+  does not cross corners the client rounds itself. A translucent client shows
+  the line at its own opacity.
+- A width outside 0–40, a non-number, or a colour that is not `#RRGGBB` or
+  `#RRGGBBAA` makes the configuration fail to load. The error names the field.
+
+See [window outlines](/guides/window_effects#window-outlines) for examples.
 
 ## Shadows
 
-The single native outline is configured by `corners.border_width` and
-`corners.border_color` above. Positive widths draw inward; negative widths
-draw outward where the client's existing buffer has room. The `corners.shadow`
-field accepts `false`, `true` for the default, one table, or a list of 1–4
-shadow layers.
+The `corners.shadow` field accepts `false`, `true` for the default, one table,
+or a list of 1–4 shadow layers.
 
 | Field                                | Values / default                                           |
 | ------------------------------------ | ---------------------------------------------------------- |
@@ -239,6 +264,8 @@ gnoblin.window_rule {
         padding = {number, number, number, number}?,
         border_width = number?, -- -40 to 40
         border_color = string?, -- #RRGGBB or #RRGGBBAA
+        inner_border_width = number?, -- 0 to 40
+        inner_border_color = string?, -- #RRGGBB or #RRGGBBAA
         keep_maximized = boolean?,
         keep_fullscreen = boolean?,
         keep_tiled = boolean?,

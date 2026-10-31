@@ -13,19 +13,20 @@ nested preview, and real login each verify a different part of the session.
 | `tests/test-privacy-pipewire.py`          | Live microphone and camera activity through `gnoblin.privacy.state()`                                  | Source build, Wayland desktop, PipeWire tools                      |
 | `tests/test-window-csd-reconstruction.py` | Lua `remove_csd` pixel behavior in a fresh nested Gnoblin session                                      | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
 | `tests/test-window-native-borders.py`     | Lua border rule pixels in a fresh nested Gnoblin session                                               | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
+| `tests/test-window-inner-border.py`       | Lua `inner_border_width` and outline pixels on both sides of the window edge in a fresh nested session | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
 | `tests/test-window-rule-lifecycle.py`     | Repeated Lua window-rule reloads preserve a live window in a fresh nested session                      | Source-build prefix, Wayland desktop, and Quickshell               |
 | `tests/test-window-native-shadows.py`     | Lua replacement shadow pixels, rule removal, and translucent content in a fresh nested Gnoblin session | Source-build prefix, Wayland desktop, Quickshell, grim, and Pillow |
 | `tests/test-window-manager.sh`            | Mutter unit, Wayland, backend, and focus tests                                                         | A working seat and file-monitoring support                         |
 
 `make` builds the session and `make test` runs the CTest suites after it. The nested pixel tests
-(`test-window-csd-reconstruction`, `test-window-native-borders`, `test-window-rule-lifecycle` and
-`test-window-native-shadows`) run through the nested viewer. For example:
+(`test-window-csd-reconstruction`, `test-window-native-borders`, `test-window-inner-border`,
+`test-window-rule-lifecycle` and `test-window-native-shadows`) run through the nested viewer. For example:
 
 ```sh
 GNOBLIN_DEVKIT_EXEC='python3 tests/test-window-csd-reconstruction.py' make preview
 ```
 
-Use the same form for the other three tests. Replace the script name in `GNOBLIN_DEVKIT_EXEC`.
+Use the same form for the other four tests. Replace the script name in `GNOBLIN_DEVKIT_EXEC`.
 `test-window-rule-lifecycle` also needs `GNOBLIN_DEVKIT_CONFIG_SOURCE=tests/configs/window-rule-lifecycle`.
 
 ## Test the Lua runtime in a preview

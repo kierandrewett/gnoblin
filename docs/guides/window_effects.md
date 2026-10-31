@@ -99,8 +99,9 @@ Shell developers can [specify a blur region](/background-effects) instead.
 
 ## Window outlines
 
-Gnoblin draws one native outline around each window. Set its width and colour
-inside `corners`:
+Gnoblin draws up to two native lines around each window: an outline set by
+`border_width` and `border_color`, and an inner line set by `inner_border_width`
+and `inner_border_color`. Set them inside `corners`:
 
 ```lua
 gnoblin.window_rule {
@@ -113,16 +114,50 @@ gnoblin.window_rule {
 }
 ```
 
-Positive widths draw inside the rounded edge. Negative widths draw outside
-where the client buffer has room. Width accepts −40 to 40 logical pixels and
-defaults to 0.
+Positive outline widths draw inside the rounded edge. Negative widths draw
+outside where the client buffer has room. Width accepts −40 to 40 logical
+pixels and defaults to 0.
 
 Colours use `#RRGGBB` or `#RRGGBBAA`. The last two digits control transparency:
 `ff` is opaque and `00` is transparent.
 
-The outline follows the `corners` state policy, including `keep_maximized`, and
-is disabled when `mode = "off"`. See the
-[corner reference](/config/window_rule#corners) for all options.
+### A line on each side of the edge
+
+The inner line is drawn inward from the window's visible edge, over the window
+content and under the outline. Combine it with a negative outline width to get
+a dark hairline just outside the window and a light hairline just inside it:
+
+```lua
+gnoblin.window_rule {
+    match = {type = "window"},
+    corners = {
+        radius = 12,
+        border_width = -1,
+        border_color = "#00000080",
+        inner_border_width = 1,
+        inner_border_color = "#ffffff40",
+    },
+}
+```
+
+The outer line is black at 50% opacity and the inner line is white at 25%.
+Both are one logical pixel wide, so on a display with scale 2 each is two
+device pixels. The inner width accepts 0 to 40 and defaults to 0, which turns
+the line off. The inner colour defaults to `#808080ff`.
+
+Apps that draw their own shadow margin, such as GTK 4 and libadwaita apps,
+declare the visible window inside their buffer. Both lines follow that
+declared edge rather than the buffer edge.
+
+In `auto` mode, the inner line stays within the pixels the app drew, so it does
+not cross corners the app rounds itself. Set `mode = "force"` to apply
+Gnoblin's corner shape instead.
+
+Both lines follow the `corners` state policy, including `keep_maximized`, and
+are disabled when `mode = "off"`. To change the colours with the desktop's
+light or dark preference, see
+[light and dark appearance](/guides/theming#follow-the-preference-in-window-rules).
+See the [corner reference](/config/window_rule#corners) for all options.
 
 ## Shadows
 

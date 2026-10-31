@@ -8,6 +8,13 @@
   packages. Add `Server = https://github.com/kierandrewett/gnoblin/releases/latest/download`
   to a `[gnoblin]` section in `pacman.conf`. The release refuses to publish
   without it.
+- Window rules accept `corners.inner_border_width` (0–40 logical pixels) and
+  `corners.inner_border_color` (`#RRGGBB` or `#RRGGBBAA`). They draw a second
+  line inward from the window's visible edge, under the existing outline set
+  by `border_width` and `border_color`. A negative `border_width` with a
+  positive `inner_border_width` gives one line on each side of the edge, as on
+  macOS. A width outside 0–40 or a malformed colour makes the configuration
+  fail to load.
 
 ### Changed
 

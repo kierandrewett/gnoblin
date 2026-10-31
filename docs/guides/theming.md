@@ -33,7 +33,8 @@ shells or apps that opt in.
 
 Add a later rule for the selected palette. The example keeps all rules already
 loaded, then replaces the window-rule list with the current palette each time
-GNOME reports a change:
+GNOME reports a change. It draws a dark hairline outside each window and a
+light hairline inside it, with a stronger outer line in dark mode:
 
 ```lua
 local base_rules = gnoblin.snapshot().window_rules or {}
@@ -42,10 +43,15 @@ gnoblin.events.on("gnoblin.appearance.color-scheme-changed", function(event)
     local rules = {}
     for i, rule in ipairs(base_rules) do rules[i] = rule end
 
-    local border = event.color_scheme == "prefer-dark" and "#aab2bd99" or "#35405299"
+    local dark = event.color_scheme == "prefer-dark"
     rules[#rules + 1] = {
         match = {type = "window"},
-        corners = {border_width = 1, border_color = border},
+        corners = {
+            border_width = -1,
+            border_color = dark and "#00000080" or "#00000033",
+            inner_border_width = 1,
+            inner_border_color = dark and "#ffffff2e" or "#ffffff66",
+        },
     }
     gnoblin.configure {window_rules = rules}
 end)
