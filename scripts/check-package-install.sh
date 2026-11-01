@@ -68,7 +68,12 @@ pm_refresh() {
     case "$kind" in
         rpm) dnf -y install diffutils findutils >/dev/null ;;
         suse) zypper -n --gpg-auto-import-keys refresh >/dev/null && zypper -n install diffutils findutils >/dev/null ;;
-        arch) pacman -Syu --noconfirm --needed diffutils findutils >/dev/null ;;
+        arch)
+            # pacman downloads as an unprivileged user inside a Landlock sandbox. A container runtime may refuse the
+            # Landlock calls ("restricting filesystem access failed"), and the container is the sandbox here.
+            grep -q '^DisableSandbox' /etc/pacman.conf || sed -i 's/^\[options\]$/[options]\nDisableSandbox/' /etc/pacman.conf
+            pacman -Syu --noconfirm --needed diffutils findutils >/dev/null
+            ;;
         apk) apk update >/dev/null && apk add diffutils findutils >/dev/null ;;
         deb) apt-get update -qq >/dev/null && apt-get install -y -qq --no-install-recommends diffutils findutils >/dev/null ;;
     esac
