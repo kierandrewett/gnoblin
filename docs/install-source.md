@@ -18,8 +18,8 @@ Install these with your package manager:
   (`libpipewire-0.3`), Glycin, `gdk-pixbuf-2.0`, `xdg-desktop-portal` 1.20 or newer, and the
   `gsettings-desktop-schemas` development package
 
-You do not need `gnome-shell` or `mutter`. The build stops with a message that names any missing library and the
-version it needs. To check before you build, run `python3 scripts/check-build-deps.py` in the source directory.
+You do not need `gnome-shell` or `mutter`. To check your libraries before you build, run
+`python3 scripts/check-build-deps.py` in the source directory.
 
 To build without Gnoblin's portal backend, run `./build.sh --without-portal` instead of `make`. You then need no
 GTK4, libadwaita or Glycin.
@@ -143,11 +143,5 @@ sudo rm -rf /usr/local/lib/gnoblin
 
 If you set another `PREFIX`, remove that directory instead of `/usr/local/lib/gnoblin`. Your shell and your
 configuration stay.
-
-## If the build fails
-
-- **Missing or old library:** the build names it. Install or update it with your package manager and run `make`
-  again. Keep the error and the log path it prints when you report a problem.
-- **Disk quota exceeded:** build on a filesystem with more space. Run `df -h .` to check.
 
 See [source development](source-development.md) to rebuild one component.

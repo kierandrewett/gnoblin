@@ -39,9 +39,4 @@ sudo dnf remove gnoblin
 
 Your shell and your configuration stay. Remove the shell separately if you no longer want it.
 
-## If installation fails
-
-- **Package not found:** Gnoblin has packages for Fedora 45 only. Check your release with `cat /etc/fedora-release`.
-- **Missing dependency:** run `sudo dnf upgrade --refresh`, then install again. If it still fails, report the full error.
-
 See [troubleshooting](troubleshooting.md) if the session does not start.

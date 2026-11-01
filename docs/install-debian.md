@@ -44,9 +44,4 @@ sudo apt purge gnoblin
 
 Your shell and your configuration stay. Remove the shell separately if you no longer want it.
 
-## If installation fails
-
-- **404 when you download the sources file:** your release is not Debian testing. Gnoblin has no packages for it.
-- **Unmet dependencies:** run `sudo apt update` and install again. If it still fails, report the full error.
-
 See [troubleshooting](troubleshooting.md) if the session does not start.

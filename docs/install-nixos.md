@@ -1,7 +1,7 @@
 # NixOS
 
-Gnoblin is available as a flake for NixOS on x86_64. It is experimental and works with NixOS unstable. Stable
-channels are not supported until their libraries are new enough.
+Gnoblin is available as a flake for NixOS on x86_64. It is experimental and needs NixOS unstable. Stable channels are
+not supported yet.
 
 ## Install
 
@@ -54,14 +54,5 @@ Log out and back in to use the new version.
 
 Remove the Gnoblin module and the `programs.gnoblin.enable` line, then rebuild. Your shell and your configuration
 stay.
-
-## If the build fails
-
-The build stops with a list of blockers when your channel has libraries that are too old. Use NixOS unstable, or
-wait for a newer channel. To see the blockers for each channel:
-
-```sh
-nix eval --json github:kierandrewett/gnoblin#lib.nixChannelEvaluations.x86_64-linux
-```
 
 See [troubleshooting](troubleshooting.md) if the session does not start.
