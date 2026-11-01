@@ -75,7 +75,7 @@ checks coexistence and removal before it publishes.
 
 ### 4. Build dependencies are declared in too many places
 
-Dependencies live in `packaging/nix/package.nix`, `packaging/native-packages.json` and the
+Dependencies live in `nix/package.nix`, `pkgsmith/` and the
 RPM and Arch files made from it, `lua-runtime.yml`, `verify.yml`,
 `application-e2e.yml`, `release.yml` and `docs/install-source.md`.
 
@@ -234,7 +234,7 @@ Each item lands as its own commit, and the tree stays working.
       requires. Arch jobs install with `scripts/install-arch-build-deps.sh` from the PKGBUILDs.
       A package missing from a recipe now fails CI the way it fails a user. A name-by-name check
       across distros was not added: the same library has a different package name on each one.
-- [ ] Keep the other hand-written lists in step with their recipes: `packaging/nix/package.nix`,
+- [ ] Keep the other hand-written lists in step with their recipes: `nix/package.nix`,
       `packaging/opensuse/gnoblin.spec`, and the small installs in `lua-runtime.yml`.
 - [x] Mark `design/release-packaging.md` as a historical log, with a pointer to this file.
 - [x] Dry run a release from a branch. `gh workflow run release.yml --ref BRANCH -f dry_run=true`

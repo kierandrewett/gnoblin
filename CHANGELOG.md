@@ -4,24 +4,36 @@
 
 ### Added
 
-- Signed package repositories for Fedora, openSUSE Tumbleweed and Arch, each with
+- Packages for Debian testing (`.deb`) and Alpine edge (`.apk`, release assets only), and arm64
+  builds of every package. A single build
+  now writes the rpm, deb, Arch and tar packages: `scripts/build-prefix.sh` builds Gnoblin
+  into a prefix and pkgsmith writes the packages from it with the definitions in `pkgsmith/`.
+  See [packaging and releases](docs/distribution.md).
+- Signed package repositories for Fedora, openSUSE Tumbleweed, Debian testing and Arch, each with
   a `stable` and a `nightly` channel. A release tag publishes the stable channel.
   A daily build of the main branch publishes the nightly channel when main has
   moved. `scripts/pkgrepo` builds, signs and uploads the repositories, and
   `design/package-repositories.md` describes the layout. See
   [package repositories](docs/package-repositories.md).
-- Releases publish a pacman repository database, `gnoblin.db`, beside the Arch
-  packages. Add `Server = https://github.com/kierandrewett/gnoblin/releases/latest/download`
-  to a `[gnoblin]` section in `pacman.conf`. The release refuses to publish
-  without it.
 
 ### Changed
 
-- The RPM spec and the Arch recipe accept a pre-release version. The source
-  bundle keeps the SemVer spelling (`0.1.13-nightly.…`) and the package
-  version is spelled for the package manager (`0.1.13~nightly.…` for RPM).
-  Release versions are unchanged.
-- `packaging/targets.json` and the platform support page list Arch, Fedora 45
+- The RPM specs, the PKGBUILDs, the openSUSE chain and `packaging/` are gone. Package
+  names, the Fedora epoch and the `Provides` and `Obsoletes` entries are unchanged, so
+  existing installs upgrade. The portal backend is now version `51.0.0` with a release
+  number that follows the Gnoblin release. `gnoblin-ananicy-rules` and
+  `gnoblin-geoclue-integration` are built for every format and take the Gnoblin version.
+- COPR no longer receives releases, because pkgsmith writes binary packages and COPR builds
+  source RPMs. The release no longer carries source RPMs, PKGBUILDs or `gnoblin.db`. Use
+  the package repositories or the release packages. `scripts/install-system.sh`, which
+  installed from COPR, is removed. The `gnoblin-ananicy-v*` releases are replaced by the
+  package of the same name in every Gnoblin release.
+- `scripts/prepare-release.sh` sets the version in `src/gnoblin-version.json` only.
+- The Nix package and module moved from `packaging/nix/` to `nix/`. The flake's outputs are unchanged.
+- Packages accept a pre-release version. The source bundle keeps the SemVer
+  spelling (`0.1.13-nightly.…`) and pkgsmith spells the package version for the
+  package manager (`0.1.13~nightly.…` for RPM). Release versions are unchanged.
+- `design/package-targets.json` (formerly `packaging/targets.json`) and the platform support page list Arch, Fedora 45
   and openSUSE Tumbleweed as candidates. Release run 39855522942 passed their
   package build, install, stock GNOME coexistence and removal gates. Graphical
   session support is not claimed.

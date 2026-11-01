@@ -241,7 +241,7 @@ done
 # compositor a higher one. They are plain data files, and removing them restores the daemon's defaults.
 if [ -d /etc/ananicy.d ]; then
     for rule_file in 99-gnoblin.types 99-gnoblin.rules; do
-        install_public_file "$GNOBLIN_ROOT/packaging/ananicy/$rule_file" "/etc/ananicy.d/$rule_file"
+        install_public_file "$GNOBLIN_ROOT/src/data/ananicy/$rule_file" "/etc/ananicy.d/$rule_file"
     done
     if systemctl is-active --quiet ananicy-cpp 2>/dev/null; then
         sudo systemctl restart ananicy-cpp

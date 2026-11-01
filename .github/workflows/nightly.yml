@@ -2,8 +2,8 @@ name: Nightly
 
 # Builds the nightly channel of the package repositories from main, once a day, when main has moved since the channel
 # was last built. The packages come from the release pipeline (release.yml with nightly: true), so a nightly goes through
-# the same build, clean-install and removal checks as a release, and its repository stage signs and publishes the
-# nightly channel. A nightly never creates a GitHub release and never touches the stable channel.
+# the same prefix build, pkgsmith packages, clean-install and removal checks as a release, and its repository stage signs
+# and publishes the nightly channel. A nightly never creates a GitHub release and never touches the stable channel.
 # design/package-repositories.md has the version rules (0.1.13~nightly.<date>.<count>.g<commit>).
 
 on:

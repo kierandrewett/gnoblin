@@ -1,10 +1,8 @@
 # openSUSE Tumbleweed
 
-Use the source tarball on a system whose development libraries meet the pinned
-GNOME requirements. The Tumbleweed RPM adapter can produce packages when its
-repositories provide those versions, including the required desktop-schema
-major version. Check [source build prerequisites](install-source.md) before
-choosing a release asset.
+Gnoblin publishes RPMs for openSUSE Tumbleweed. They need the library versions of the pinned GNOME
+sources, which current Tumbleweed has. Check [source build prerequisites](install-source.md) if
+installation reports a missing version.
 
 The `gnoblin` RPM contains the compositor and session. The
 `xdg-desktop-portal-gnoblin` RPM is optional.
@@ -14,12 +12,10 @@ GJS. Keep a working session available while installing. See
 
 ## Install
 
-Release packages are also available from a signed repository: see
-[package repositories](package-repositories.md). To install the release RPMs
-yourself, download the RPM assets from the
-[latest Gnoblin release](https://github.com/kierandrewett/gnoblin/releases),
-if it includes files named `*.tumbleweed.x86_64.rpm`. Install the runtime RPMs
-together. With GitHub CLI:
+Install from Gnoblin's signed repository, which has a `stable` and a `nightly` channel: see
+[package repositories](package-repositories.md). To install the release RPMs yourself, download the
+`tumbleweed` files from the [latest Gnoblin release](https://github.com/kierandrewett/gnoblin/releases).
+With GitHub CLI:
 
 ```sh
 mkdir -p gnoblin-rpms

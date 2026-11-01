@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The build's system layout step gives every public file the package recipes list.
+# The build's system layout step gives every public file that the packages in pkgsmith/ ship.
 #
 # usage: tests/system-layout.test.sh [BUILT_PREFIX]
 #        tests/system-layout.test.sh --stage STAGE_ROOT
@@ -7,7 +7,8 @@
 # With BUILT_PREFIX, a private prefix made by ./build.sh (default: ./install), the test copies it into a scratch stage
 # root as /usr/lib/gnoblin and runs cmake/system-layout.cmake on it. With --stage, it checks a stage root that
 # ./build.sh --layout system --destdir STAGE_ROOT made, so it tests the real build output. Either way it checks:
-#   - every absolute /usr and /etc path in the %files sections of the RPM specs exists in the stage root;
+#   - every public /usr and /etc path that pkgsmith/runtime.star and pkgsmith/integrations.star rely on exists in the
+#     stage root;
 #   - the command links, the session file, the polkit action and the schema cache are right;
 #   - a second run changes nothing.
 # It writes its result to build/logs/system-layout-<time>.txt as a record of the run.
@@ -62,21 +63,29 @@ check() {
     if ! "$STAGED_BY_BUILD"; then
         mkdir -p "$STAGE$PRIVATE"
         cp -a "$BUILT/." "$STAGE$PRIVATE/"
-        GNOBLIN_LAYOUT_GEOCLUE=1 GNOBLIN_STAGE_ROOT="$STAGE" cmake -DGNOBLIN_PRIVATE_PREFIX="$PRIVATE" -DGNOBLIN_SYSTEM_PREFIX=/usr -P "$ROOT/cmake/system-layout.cmake" >/dev/null
+        GNOBLIN_LAYOUT_GEOCLUE=1 GNOBLIN_LAYOUT_ANANICY=1 GNOBLIN_STAGE_ROOT="$STAGE" cmake -DGNOBLIN_PRIVATE_PREFIX="$PRIVATE" -DGNOBLIN_SYSTEM_PREFIX=/usr -P "$ROOT/cmake/system-layout.cmake" >/dev/null
     fi
 
-    # The recipes' own file lists are the contract. Take every literal /usr and /etc path from their %files sections.
-    expected="$(awk '/^%files/ {in_files = 1; next} /^%(package|description|changelog|posttrans|postun|check)/ {in_files = 0}
-        in_files && $NF ~ /^\/(usr|etc)\// && $NF !~ /%/ {print $NF}' \
-        "$ROOT/packaging/rpm/gnoblin.spec.in" "$ROOT/packaging/rpm/xdg-desktop-portal-gnoblin.spec" | sort -u)"
-    # Only the Fedora recipe asks for the GeoClue file. A stage made without GNOBLIN_LAYOUT_GEOCLUE=1 has none.
-    if "$STAGED_BY_BUILD" && [ "${GNOBLIN_LAYOUT_GEOCLUE:-0}" != 1 ]; then
-        expected="$(grep -v '^/etc/geoclue/' <<<"$expected" || true)"
+    # The public paths that the packages in pkgsmith/ ship are the contract. The GeoClue and ananicy-cpp files exist only
+    # where the build asked for them (GNOBLIN_LAYOUT_GEOCLUE, GNOBLIN_LAYOUT_ANANICY).
+    expected="/usr/bin/gnoblin
+/usr/bin/gnoblinctl
+/usr/share/wayland-sessions/gnoblin.desktop
+/usr/share/xdg-desktop-portal/gnoblin-portals.conf
+/usr/lib/systemd/user/gnoblin-session.target
+/usr/lib/systemd/user/gnoblin-idle.service
+/usr/share/polkit-1/actions/org.gnoblin.mutter.backlight-helper.policy
+/usr/share/man/man1/gnoblin.1*
+/usr/share/man/man1/gnoblinctl.1*"
+    if "$STAGED_BY_BUILD"; then
+        [ "${GNOBLIN_LAYOUT_GEOCLUE:-0}" != 1 ] || expected+=$'\n/etc/geoclue/conf.d/50-gnoblin.conf'
+        [ "${GNOBLIN_LAYOUT_ANANICY:-0}" != 1 ] || expected+=$'\n/etc/ananicy.d/99-gnoblin.rules\n/etc/ananicy.d/99-gnoblin.types'
+    else
+        expected+=$'\n/etc/geoclue/conf.d/50-gnoblin.conf\n/etc/ananicy.d/99-gnoblin.rules\n/etc/ananicy.d/99-gnoblin.types'
     fi
-    check "the RPM specs list public paths" "$([ -n "$expected" ] && echo yes)" "yes"
     while IFS= read -r path; do
         [ -n "$path" ] || continue
-        # A path with a * is a glob: the package compresses man pages, so its file list ends in .1*.
+        # A path with a * is a glob: the build compresses man pages, so its file list ends in .1*.
         if [[ $path == *"*"* ]]; then
             check "the layout provides $path" "$(compgen -G "$STAGE$path" >/dev/null && echo yes)" "yes"
         else
@@ -99,17 +108,19 @@ check() {
 
     if ! "$STAGED_BY_BUILD"; then
         before="$(cd "$STAGE" && find . \( -type f -o -type l \) -print0 | sort -z | xargs -0 sha256sum 2>/dev/null | sha256sum)"
-        GNOBLIN_LAYOUT_GEOCLUE=1 GNOBLIN_STAGE_ROOT="$STAGE" cmake -DGNOBLIN_PRIVATE_PREFIX="$PRIVATE" -DGNOBLIN_SYSTEM_PREFIX=/usr -P "$ROOT/cmake/system-layout.cmake" >/dev/null
+        GNOBLIN_LAYOUT_GEOCLUE=1 GNOBLIN_LAYOUT_ANANICY=1 GNOBLIN_STAGE_ROOT="$STAGE" cmake -DGNOBLIN_PRIVATE_PREFIX="$PRIVATE" -DGNOBLIN_SYSTEM_PREFIX=/usr -P "$ROOT/cmake/system-layout.cmake" >/dev/null
         after="$(cd "$STAGE" && find . \( -type f -o -type l \) -print0 | sort -z | xargs -0 sha256sum 2>/dev/null | sha256sum)"
         check "a second run changes nothing" "$after" "$before"
 
-        # Without the GeoClue request, the file is absent. The Arch and openSUSE packages do not list it.
+        # Without the request, the GeoClue and ananicy-cpp files are absent: gnoblin does not ship them.
         PLAIN="$(mktemp -d "${TMPDIR:-/tmp}/gnoblin-layout-plain.XXXXXX")"
         mkdir -p "$PLAIN$PRIVATE"
         cp -a "$BUILT/." "$PLAIN$PRIVATE/"
         GNOBLIN_STAGE_ROOT="$PLAIN" cmake -DGNOBLIN_PRIVATE_PREFIX="$PRIVATE" -DGNOBLIN_SYSTEM_PREFIX=/usr -P "$ROOT/cmake/system-layout.cmake" >/dev/null
-        check "GeoClue is left out unless the recipe asks for it" \
+        check "GeoClue is left out unless the build asks for it" \
             "$([ -e "$PLAIN/etc/geoclue/conf.d/50-gnoblin.conf" ] && echo present || echo absent)" "absent"
+        check "the ananicy-cpp rules are left out unless the build asks for them" \
+            "$([ -e "$PLAIN/etc/ananicy.d/99-gnoblin.rules" ] && echo present || echo absent)" "absent"
         rm -rf -- "$PLAIN"
     fi
 

@@ -311,21 +311,22 @@ in `debian:trixie` and call the same `install-tools.sh`.
 
 Gnoblin (`.github/workflows`):
 
-- `release.yml` gains a `repository` stage after `publish`. A release tag builds
-  the stable channel from the Fedora, openSUSE and Arch packages of stage 2 and
-  publishes it. A push to `main`, a pull request or a manual dry run builds and
-  verifies the tree with a throw-away key and publishes nothing.
-- `nightly.yml` runs at 02:17 UTC and on demand, and only where `REPO_DESTINATION` is set. It compares the commit in the
-  published `nightly/manifest.json` with the commit of the run and stops when they
-  are equal. Otherwise it calls `release.yml` with `nightly: true`, which gives
-  the checkout the nightly version, skips openSUSE and the GitHub release, runs the
-  same build and clean-install checks as a release, and publishes the nightly
-  channel.
+- `release.yml` builds the source bundle, calls `packages.yml`, publishes the GitHub release for a
+  tag, and then calls `package-repository.yml`. `packages.yml` builds the bundle into a prefix on
+  Fedora 45 (amd64 and arm64), writes the rpm, deb, Arch and tar packages with pkgsmith, and
+  installs them on clean Fedora, openSUSE, Arch and Debian testing systems.
+- A release tag builds the stable channel and publishes it. A push to `main`, a pull request or a
+  manual dry run builds and verifies the tree with a throw-away key and publishes nothing.
+- `nightly.yml` runs at 02:17 UTC and on demand, and only where `REPO_DESTINATION` is set. It compares the
+  commit in the published `nightly/manifest.json` with the commit of the run and stops when they
+  are equal. Otherwise it calls `release.yml` with `nightly: true`, which gives the checkout the
+  nightly version, skips the GitHub release, runs the same build and clean-install checks as a
+  release, and publishes the nightly channel.
 - `package-repository.yml` is the reusable stage. It takes one concurrency group
-  per channel, so two publications never interleave.
+  per channel, so two publications never interleave. It sorts the packages into `fedora/45`,
+  `opensuse/tumbleweed`, `deb/forky` and `arch`.
 
-Bingux (`.github/workflows/packages.yml` and `nightly.yml`): the same stages, with
-`make rpm-package`, `make arch-package` and `scripts/build-debs.sh` as the builds.
+Bingux has its own workflows with the same stages and its own pkgsmith definitions.
 
 Jobs are gated so that a fork builds and verifies only. Publication needs all of:
 
@@ -340,24 +341,16 @@ Jobs are gated so that a fork builds and verifies only. Publication needs all of
 
 ## What each project builds today
 
-| Project | Format | Targets built by CI today                      | Not built                                                                        |
-| ------- | ------ | ---------------------------------------------- | -------------------------------------------------------------------------------- |
-| Gnoblin | RPM    | Fedora 45 and openSUSE Tumbleweed, x86_64      | Fedora 43 and 44, Enterprise Linux, openSUSE Leap (see `packaging/targets.json`) |
-| Gnoblin | pacman | Arch Linux, x86_64                             | aarch64                                                                          |
-| Gnoblin | deb    | Nothing                                        | Debian and Ubuntu: no recipe exists. See the note below the table.               |
-| Bingux  | RPM    | Fedora 43 (`make rpm-package`), x86_64         | aarch64                                                                          |
-| Bingux  | pacman | Arch Linux (`make arch-package`), x86_64       | aarch64                                                                          |
-| Bingux  | deb    | Debian 13 source package in `packaging/debian` | See the Bingux design note for what was built                                    |
+| Project | Format | Targets built by CI                           | Not built                                      |
+| ------- | ------ | --------------------------------------------- | ---------------------------------------------- |
+| Gnoblin | RPM    | Fedora 45 and openSUSE Tumbleweed, both archs | Fedora 43 and 44, Enterprise Linux, Leap       |
+| Gnoblin | pacman | Arch Linux, both archs                        |                                                |
+| Gnoblin | deb    | Debian testing (`forky`), both archs          | Debian 13 and Ubuntu: the libraries are older  |
+| Gnoblin | apk    | Alpine edge, both archs, release assets only  | The repository tool has no apk back end        |
 
-Gnoblin published DEBs until the lean native runtime removed their recipe
-(`1f53b8c6`). The current patched Mutter runtime has no Debian recipe and has not
-been built against Debian's libraries, so no Gnoblin DEB is built or claimed.
-`design/debian12-ubuntu2204-private-runtime.md` records why older releases
-cannot work.
-
-No package of either project is built for `aarch64`: the PKGBUILDs say
-`arch=('x86_64')` and CI has no ARM runner. The tool takes the architecture from
-the package, so an `aarch64` build needs a runner and nothing else.
+Both architectures are built, installed in containers and published by the same jobs.
+The arm64 packages have been written and checked here only from an amd64 prefix (names, metadata);
+the first arm64 CI run is the first real arm64 build.
 
 ## Rejected alternatives
 

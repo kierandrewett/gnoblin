@@ -5,15 +5,22 @@ import argparse
 import json
 from pathlib import Path, PurePosixPath
 import re
+import stat
 import subprocess
 
 
 PACKAGES = {
     "gnoblin",
     "xdg-desktop-portal-gnoblin",
+    "gnoblin-geoclue-integration",
+    "gnoblin-ananicy-rules",
 }
-MANIFEST = json.loads((Path(__file__).resolve().parents[1] / "packaging/native-packages.json").read_text())
-GNOME_MAJOR = MANIFEST["release"]["gnomeMajor"]
+# The two configuration packages ship one directory of files each.
+CONFIG_FILES = {
+    "gnoblin-geoclue-integration": ("/etc/geoclue/conf.d/",),
+    "gnoblin-ananicy-rules": ("/etc/ananicy.d/",),
+}
+GNOME_MAJOR = json.loads((Path(__file__).resolve().parents[1] / "src/gnome-versions.json").read_text())["major"]
 ALLOWED_OBSOLETES = {
     f"gnoblin-session < {GNOME_MAJOR}",
     f"gnoblin-shell < {GNOME_MAJOR}",
@@ -68,7 +75,10 @@ def validate(name, files, provides, conflicts, obsoletes, requires=""):
             continue
         if filename.startswith(
             ("/usr/lib/gnoblin/", "/usr/lib/.build-id/", f"/usr/share/licenses/{name}/", f"/usr/share/doc/{name}/")
+            + CONFIG_FILES.get(name, ())
         ):
+            continue
+        if filename in tuple(prefix.rstrip("/") for prefix in CONFIG_FILES.get(name, ())):
             continue
         if filename in (f"/usr/share/licenses/{name}", f"/usr/share/doc/{name}"):
             continue
@@ -79,9 +89,16 @@ def check_package(path):
     def query(*args):
         return subprocess.check_output(["rpm", "-qp", *args, str(path)], text=True).strip()
 
+    # The files of the package. A folder that the package shares with the system, such as /usr/share/dbus-1, is not a
+    # file, and the stock package that owns it owns it too.
+    files = "\n".join(
+        line.split(" ", 1)[1]
+        for line in query("--qf", "[%{FILEMODES} %{FILENAMES}\\n]").splitlines()
+        if not stat.S_ISDIR(int(line.split(" ", 1)[0]))
+    )
     validate(
         query("--qf", "%{NAME}"),
-        query("--list"),
+        files,
         query("--provides"),
         query("--conflicts"),
         query("--obsoletes"),

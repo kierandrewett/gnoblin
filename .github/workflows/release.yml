@@ -1,11 +1,12 @@
 name: Release
 
 # Stages (design/release-pipeline.md has the reasoning):
-#   1. source    builds the source bundle once and uploads it as an artifact
-#   2. packages  Fedora, openSUSE and Arch build from that artifact in parallel, then install, coexist and remove
-#   3. publish   attaches every asset to one release, checksums and attests them, and makes the release public
-#   4. copr      submits the published source RPMs to COPR
-#   5. repository  builds the signed RPM, APT and pacman repository from the packages of stage 2 and uploads it
+#   1. source      builds the source bundle once and uploads it as an artifact
+#   2. packages    builds a checkout of the same ref into a prefix on Fedora and on Alpine, writes the rpm, deb, Arch,
+#                  apk and tar packages from the prefixes with pkgsmith, and installs them on clean Fedora, openSUSE,
+#                  Arch, Debian and Alpine systems (packages.yml)
+#   3. publish     attaches every asset to one release, checksums and attests them, and makes the release public
+#   4. repository  builds the signed RPM, APT and pacman repository from the packages of stage 2 and uploads it
 #
 # Only a release tag publishes. A push to main, a pull request that changes the pipeline, and a manual run without a
 # tag run stages 1 and 2 as a dry run and publish nothing. The assets stay as workflow artifacts for 30 days.
@@ -17,24 +18,22 @@ on:
     paths:
       - ".github/release.yml"
       - ".github/workflows/release.yml"
-      - ".github/workflows/fedora-rpm.yml"
-      - ".github/workflows/opensuse-rpm.yml"
-      - ".github/workflows/arch-package.yml"
-      - ".github/workflows/copr.yml"
-      - "packaging/**"
-      - "scripts/build-srpm.sh"
-      - "scripts/build-release-assets.sh"
-      - "scripts/check-fedora-install.sh"
-      - "scripts/check-release-tag.sh"
-      - "scripts/check-rpm-isolation.py"
-      - "scripts/install-arch-build-deps.sh"
-      - "scripts/make-tarball.sh"
-      - "scripts/publish-github-release.sh"
-      - "scripts/pkgrepo/**"
-      - "scripts/apply-nightly-version.py"
+      - ".github/workflows/packages.yml"
       - ".github/workflows/package-repository.yml"
-      - "scripts/sync-package-manifest.py"
-      - "tests/*packaging*"
+      - ".github/actions/**"
+      - "pkgsmith/**"
+      - "scripts/apply-nightly-version.py"
+      - "scripts/build-packages.sh"
+      - "scripts/build-prefix.sh"
+      - "scripts/build-release-assets.sh"
+      - "scripts/check-package-install.sh"
+      - "scripts/check-release-tag.sh"
+      - "scripts/install-fedora-build-deps.sh"
+      - "scripts/install-pkgsmith.sh"
+      - "scripts/make-tarball.sh"
+      - "scripts/pkgrepo/**"
+      - "scripts/pkgsmith.ref"
+      - "scripts/publish-github-release.sh"
       - "src/**"
       - "cmake/**"
       - "CMakeLists.txt"
@@ -47,24 +46,22 @@ on:
     paths:
       - ".github/release.yml"
       - ".github/workflows/release.yml"
-      - ".github/workflows/fedora-rpm.yml"
-      - ".github/workflows/opensuse-rpm.yml"
-      - ".github/workflows/arch-package.yml"
-      - ".github/workflows/copr.yml"
-      - "packaging/**"
-      - "scripts/build-srpm.sh"
-      - "scripts/build-release-assets.sh"
-      - "scripts/check-fedora-install.sh"
-      - "scripts/check-release-tag.sh"
-      - "scripts/check-rpm-isolation.py"
-      - "scripts/install-arch-build-deps.sh"
-      - "scripts/make-tarball.sh"
-      - "scripts/publish-github-release.sh"
-      - "scripts/pkgrepo/**"
-      - "scripts/apply-nightly-version.py"
+      - ".github/workflows/packages.yml"
       - ".github/workflows/package-repository.yml"
-      - "scripts/sync-package-manifest.py"
-      - "tests/*packaging*"
+      - ".github/actions/**"
+      - "pkgsmith/**"
+      - "scripts/apply-nightly-version.py"
+      - "scripts/build-packages.sh"
+      - "scripts/build-prefix.sh"
+      - "scripts/build-release-assets.sh"
+      - "scripts/check-package-install.sh"
+      - "scripts/check-release-tag.sh"
+      - "scripts/install-fedora-build-deps.sh"
+      - "scripts/install-pkgsmith.sh"
+      - "scripts/make-tarball.sh"
+      - "scripts/pkgrepo/**"
+      - "scripts/pkgsmith.ref"
+      - "scripts/publish-github-release.sh"
       - "src/**"
       - "cmake/**"
       - "CMakeLists.txt"
@@ -74,7 +71,7 @@ on:
   workflow_call:
     inputs:
       nightly:
-        description: Build the nightly channel. The version becomes a pre-release of the next release, openSUSE and the GitHub release are skipped, and the repository stage publishes the nightly channel.
+        description: Build the nightly channel. The version becomes a pre-release of the next release, the GitHub release is skipped, and the repository stage publishes the nightly channel.
         type: boolean
         default: false
   workflow_dispatch:
@@ -84,7 +81,7 @@ on:
         required: false
         type: string
       dry_run:
-        description: Build and test every package and install gate, and publish nothing. COPR does not run. Leave the tag empty.
+        description: Build and test every package and install gate, and publish nothing. Leave the tag empty.
         required: false
         default: false
         type: boolean
@@ -182,8 +179,8 @@ jobs:
           test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$(git rev-parse HEAD)"
       - name: Give the checkout a nightly version
         # The nightly channel needs versions that sort between the last release and the next one (0.1.13~nightly...).
-        # The version goes into the recipes and the source bundle of this throw-away checkout and is committed there,
-        # because the bundle archives HEAD. scripts/pkgrepo is the one place that spells the version.
+        # The version goes into the source bundle of this throw-away checkout and is committed there, because the bundle
+        # archives HEAD. pkgsmith spells it for each package format. scripts/pkgrepo works out the number.
         id: nightly
         if: inputs.nightly
         run: |
@@ -200,7 +197,7 @@ jobs:
         run: |
           tag_arguments=()
           if [ "$IS_RELEASE" = true ]; then tag_arguments=(--release-tag "$RELEASE_TAG"); fi
-          ./build.sh package --output "$RUNNER_TEMP/gnoblin-release" "${tag_arguments[@]}" --public-tag "$RELEASE_TAG"
+          ./build.sh package --output "$RUNNER_TEMP/gnoblin-release" "${tag_arguments[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: gnoblin-${{ steps.meta.outputs.release_tag }}
@@ -208,35 +205,20 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  fedora-package:
+  packages:
     needs: source
-    uses: ./.github/workflows/fedora-rpm.yml
+    uses: ./.github/workflows/packages.yml
     with:
       ref: ${{ needs.source.outputs.ref }}
       release_tag: ${{ needs.source.outputs.release_tag }}
-      nightly_version: ${{ needs.source.outputs.nightly_version }}
-
-  opensuse-package:
-    # The nightly channel has no openSUSE packages yet: the openSUSE spec takes its version from the checkout.
-    if: ${{ !inputs.nightly }}
-    needs: source
-    uses: ./.github/workflows/opensuse-rpm.yml
-    with:
-      ref: ${{ needs.source.outputs.ref }}
-      source_artifact: gnoblin-${{ needs.source.outputs.release_tag }}
-
-  arch-package:
-    needs: source
-    uses: ./.github/workflows/arch-package.yml
-    with:
-      ref: ${{ needs.source.outputs.ref }}
-      release_tag: ${{ needs.source.outputs.release_tag }}
+      # The prefix jobs build their own checkout, so a nightly version reaches them as an input.
+      version: ${{ needs.source.outputs.nightly_version }}
 
   publish:
     # Runs only for a release tag, and only when every package job and install gate passed. A failed gate leaves no
     # release behind. The run keeps the built assets as artifacts, so the fix needs a new run, not a rebuild by hand.
     if: needs.source.outputs.is_release == 'true'
-    needs: [source, fedora-package, opensuse-package, arch-package]
+    needs: [source, packages]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -255,34 +237,9 @@ jobs:
           path: release-assets
       - uses: actions/download-artifact@v4
         with:
-          name: source-rpms-${{ needs.source.outputs.release_tag }}
+          pattern: packages-${{ needs.source.outputs.release_tag }}-*
           path: release-assets
-      - uses: actions/download-artifact@v4
-        with:
-          name: fedora-rpms-${{ needs.source.outputs.release_tag }}
-          path: release-assets
-      - uses: actions/download-artifact@v4
-        with:
-          name: arch-package-${{ needs.source.outputs.release_tag }}
-          path: release-assets
-      - uses: actions/download-artifact@v4
-        with:
-          name: opensuse-tumbleweed-rpms
-          path: opensuse-rpms
           merge-multiple: true
-      - name: Add the openSUSE RPMs under release names
-        run: |
-          mapfile -d '' rpms < <(
-            find opensuse-rpms -type f -name '*.rpm' \
-              ! -name '*-debuginfo-*' ! -name '*-debugsource-*' -print0
-          )
-          (("${#rpms[@]}" > 0))
-          # Name the files like the Fedora assets: <package>-<version>-<release>.<tag>.<arch>.rpm
-          for rpm in "${rpms[@]}"; do
-            name="$(basename "$rpm")"
-            [[ $name =~ ^(.+)\.([^.]+)\.rpm$ ]]
-            cp -- "$rpm" "release-assets/${BASH_REMATCH[1]}.tumbleweed.${BASH_REMATCH[2]}.rpm"
-          done
       - name: Checksum every release asset
         run: |
           cd release-assets
@@ -301,9 +258,12 @@ jobs:
 
           ## Install
 
-          - Fedora: enable the COPR repository. It receives this release shortly after publication. The \`fc45\` RPMs below also install with \`dnf install ./gnoblin-*.rpm\`.
-          - Arch: download the \`gnoblin\` package, then run \`pacman -U\`. The \`PKGBUILD\` files rebuild it.
-          - openSUSE Tumbleweed: install the \`tumbleweed\` RPMs with \`zypper install\`.
+          - Fedora 45: use the signed repository (docs/package-repositories.md), or download the \`fc45\` RPMs and run \`dnf install ./gnoblin-*.fc45.*.rpm\`.
+          - openSUSE Tumbleweed: use the signed repository, or install the \`tumbleweed\` RPMs with \`zypper install\`.
+          - Arch Linux: use the signed repository, or download the packages and run \`pacman -U\`.
+          - Debian testing: use the signed repository, or download the \`.deb\` files and run \`apt install ./gnoblin_*.deb\`.
+          - Alpine edge: download the \`.apk\` files and run \`apk add --allow-untrusted ./gnoblin-*.apk\`.
+          - Any other glibc system: the \`.tar.xz\` packages hold the same files. Extract one with \`tar -C / -xf\` as root.
           - Other systems: build the source bundle with \`make\`.
 
           Instructions: https://github.com/$GITHUB_REPOSITORY/blob/$RELEASE_TAG/docs/installation.md
@@ -320,23 +280,12 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: ./scripts/publish-github-release.sh "$RELEASE_TAG" release-assets "$RUNNER_TEMP/release-notes.md"
 
-  copr:
-    # COPR reads the source RPMs from the published release, so it runs after publish.
-    needs: [source, publish]
-    uses: ./.github/workflows/copr.yml
-    with:
-      tag: ${{ needs.source.outputs.release_tag }}
-    secrets:
-      COPR_CONFIG: ${{ secrets.COPR_CONFIG }}
-
   repository:
     # The signed package repository. A release tag publishes the stable channel and the nightly run the nightly channel.
     # Any other run builds and verifies the tree with a throw-away key, so a change that breaks it is seen before a tag.
-    needs: [source, fedora-package, opensuse-package, arch-package, publish]
+    needs: [source, packages, publish]
     if: >-
-      ${{ !cancelled() && needs.source.result == 'success' && needs.fedora-package.result == 'success'
-      && (needs.opensuse-package.result == 'success' || needs.opensuse-package.result == 'skipped')
-      && needs.arch-package.result == 'success'
+      ${{ !cancelled() && needs.source.result == 'success' && needs.packages.result == 'success'
       && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
     uses: ./.github/workflows/package-repository.yml
     with:

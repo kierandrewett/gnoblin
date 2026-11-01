@@ -14,7 +14,7 @@ on:
       - "tests/**"
       - "flake.nix"
       - "flake.lock"
-      - "packaging/nix/**"
+      - "nix/**"
       - ".github/workflows/nix.yml"
   pull_request:
     paths:
@@ -28,7 +28,7 @@ on:
       - "tests/**"
       - "flake.nix"
       - "flake.lock"
-      - "packaging/nix/**"
+      - "nix/**"
       - ".github/workflows/nix.yml"
   workflow_dispatch:
     inputs:

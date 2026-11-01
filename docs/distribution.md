@@ -9,49 +9,98 @@ as supported until its graphical-session gate has passed.
 
 ## Package layout
 
-Gnoblin installs as its own session and can coexist with GNOME.
+Gnoblin installs as its own session and can coexist with GNOME. Four packages come from one build:
 
-- RPM names: `gnoblin`, the optional `xdg-desktop-portal-gnoblin`, and the optional
-  `gnoblin-geoclue-integration` subpackage.
-- The RPM and Arch `gnoblin` packages contain the single `gnoblin` compositor
-  executable, login entry, Lua runtime, session services, and Gnoblin-specific
-  portal route. They do not require a portal backend or a separate Mutter
-  runtime package.
-- Private runtime: `/usr/lib/gnoblin`.
-- Public files: login entry, control tool, service units and named policy files.
-- Private libraries must not satisfy stock GNOME dependencies.
-- `gnoblinctl` uses GLib/GIO and JSON-GLib at runtime. Python is a build tool,
-  not a base package requirement.
+| Package                       | Contents                                                               | Optional |
+| ----------------------------- | ---------------------------------------------------------------------- | -------- |
+| `gnoblin`                     | Compositor, Lua runtime, session services, private Mutter, login entry | No       |
+| `xdg-desktop-portal-gnoblin`  | Gnoblin's GTK-based portal backend                                     | Yes      |
+| `gnoblin-geoclue-integration` | The GeoClue agent authorization file                                   | Yes      |
+| `gnoblin-ananicy-rules`       | The `ananicy-cpp` rules for the Gnoblin processes                      | Yes      |
+
+- The private runtime is `/usr/lib/gnoblin`. Public files are the login entry, `gnoblin` and
+  `gnoblinctl` links, service units and named policy files.
+- `gnoblin` does not require a portal backend or a separate Mutter runtime package. It provides
+  `gnoblin-session` and replaces `gnoblin-session`, `gnoblin-shell`, `gnoblin-mutter` and
+  `gnoblin-mutter-devel`, so systems with the old packages upgrade.
+- Private libraries must not satisfy stock GNOME dependencies. `gnoblinctl` needs GLib and
+  JSON-GLib at runtime. Python is a build tool.
+- The four packages have the same version, the Gnoblin version in `src/gnoblin-version.json`,
+  and epoch 1. The portal backend keeps the version of its GNOME source (`51.0.0`). Its release
+  number follows the Gnoblin release, so each release has a distinct portal package.
 
 Nix uses separate store outputs. Source builds use their own prefix, `/usr/local/lib/gnoblin` by default.
 Bingux owns and releases its shell package separately.
 
-## Package definitions
+## How the packages are made
 
-`packaging/native-packages.json` defines the RPM and Arch package requirements
-and their distribution names. Generate or verify the adapters with Python:
+Nothing is built by a distribution recipe. One build serves every package format:
+
+1. `scripts/build-prefix.sh` runs `./build.sh --layout system` on Fedora and writes a prefix, a
+   folder laid out like an installed system. It links Lua statically and puts libraries in `lib`,
+   because Fedora, openSUSE, Arch and Debian name the Lua library and the library directory
+   differently.
+2. `scripts/build-packages.sh` runs [pkgsmith](https://github.com/kierandrewett/pkgsmith) on the
+   prefix with the definitions in `pkgsmith/`. It reads the architecture, the libraries the
+   programs need and the glibc floor from the prefix files.
+3. `scripts/check-package-install.sh` installs the packages on a clean system, installs stock GNOME
+   beside them and removes Gnoblin.
+
+To try it on a Fedora 45 system with Rust installed:
 
 ```sh
-./scripts/sync-package-manifest.py write
-./scripts/sync-package-manifest.py check
+./scripts/install-fedora-build-deps.sh
+./scripts/build-prefix.sh --prefix prefix
+PATH="$(./scripts/install-pkgsmith.sh):$PATH" ./scripts/build-packages.sh --prefix prefix --output dist
 ```
 
-The package check also compares pinned versions with `src/gnome-versions.json` and
-`src/gnoblin-version.json`. Nix consumes the same JSON for its optional package
-adapter; it is not required to prepare native packages.
+These files make up the definitions:
 
-Fedora's COPR packages use `gnoblin` as the install entry point. There is
-currently no Gnoblin APT or pacman repository.
+- `scripts/pkgsmith.ref` pins the pkgsmith commit.
+- `pkgsmith/runtime.star` writes `gnoblin` and the portal backend. It lists the portal's files, so
+  everything else in the prefix belongs to `gnoblin`.
+- `pkgsmith/integrations.star` writes the two configuration packages.
+- `pkgsmith/dependencies.star` maps each library to the Debian and Arch package that ships it.
 
-RPM and Arch login entries launch the lean session directly, as
-installing a source build with `make install` does. GNOME Session and
-Settings Daemon are not package requirements. The source tarball remains the
-primary install route until a distribution package passes its login gate.
+The build stops when a program needs a library that is not listed. Run
+`python3 tests/pkgsmith-packages.test.py` after you change these files.
 
-The optional `xdg-desktop-portal-gnoblin` package provides Gnoblin's GTK-based backend.
-Users can choose another portal instead. Packages do not install
-applications. [Use GNOME applications](gnome-apps.md) lists the shared desktop
-services to install with your package manager.
+| Format      | File                                  | Systems                                |
+| ----------- | ------------------------------------- | -------------------------------------- |
+| `rpm`       | `gnoblin-<v>-1.fc45.x86_64.rpm`       | Fedora 45                              |
+| `rpm`       | `gnoblin-<v>-1.tumbleweed.x86_64.rpm` | openSUSE Tumbleweed                    |
+| `deb`       | `gnoblin_<v>-1_amd64.deb`             | Debian testing (`forky`)               |
+| `archlinux` | `gnoblin-1:<v>-1-x86_64.pkg.tar.zst`  | Arch Linux                             |
+| `apk`       | `gnoblin-<v>-r1.apk`                  | Alpine edge                            |
+| `tar`       | `gnoblin-<v>-amd64.tar.xz`            | Other glibc systems, extract below `/` |
+
+CI builds amd64 and arm64. The two rpm files differ only in dependency names. Every format needs
+glibc 2.43 or newer, which the build reads from the programs.
+
+### The apk packages
+
+A prefix built on Fedora links glibc and does not run on Alpine, which uses musl. The apk packages
+therefore come from a second prefix that `packages.yml` builds in `alpine:edge` with the same
+`scripts/build-prefix.sh`. `scripts/install-alpine-build-deps.sh` installs its build requirements.
+
+- Alpine edge is the only target, because it is the only Alpine release with GNOME 51 libraries.
+- Dependencies name each library as `so:<soname>`, which `apk` resolves itself.
+- apk has no epoch, so an apk is ordered by version and release only.
+- The repository tool has no apk back end. The apk packages are release assets and are not in the
+  signed repositories.
+
+A glibc prefix makes no apk, and a musl prefix makes only apk packages.
+
+### Upgrading from the old packages
+
+Package names, the Fedora epoch and the `Provides` and `Obsoletes` entries are those of the old
+Fedora and Arch packages, and the new version is higher, so `dnf`, `zypper` and `pacman` upgrade
+them.
+
+Fedora packages came from COPR before. The COPR project `kierandrewett/gnoblin` keeps its old
+builds, but releases no longer go there: COPR builds from a source RPM, and pkgsmith writes
+binary packages only. Switch to the [package repositories](package-repositories.md) or the
+release assets.
 
 ## Prepare the source tarball
 
@@ -61,8 +110,7 @@ From a clean release checkout, build the source assets first:
 ./build.sh package --output ./dist/release
 ```
 
-`--output` sets the directory, which must be empty. `--srpm` also builds the Fedora
-source RPMs and needs `rpm-build`. `--release-tag TAG` checks `TAG` against the
+`--output` sets the directory, which must be empty. `--release-tag TAG` checks `TAG` against the
 version in the tree, for a release build.
 
 The `gnoblin-*-source.tar.xz` file contains Gnoblin and its patched, pinned
@@ -73,48 +121,19 @@ an Arch recipe, and checksums into `dist/release`.
 A release tag starts the release workflow. It runs these stages:
 
 1. **Source.** It builds the source bundle once and uploads it as a workflow artifact.
-2. **Packages.** From that bundle, in parallel, it builds the Fedora source and binary RPMs, the
-   Arch packages and the openSUSE Tumbleweed RPMs. Each route then installs its packages on a
-   clean system, installs stock GNOME beside them and removes Gnoblin.
+2. **Packages.** From a checkout of the same ref, for amd64 and arm64, it builds a prefix on
+   Fedora and another on Alpine, writes the packages with pkgsmith, installs them on clean Fedora,
+   openSUSE, Arch, Debian and Alpine systems, installs stock GNOME beside them and removes Gnoblin.
 3. **Publish.** It checksums every asset, records build provenance, attaches everything to one
    release and makes the release public.
-4. **COPR.** It builds the Fedora packages in COPR and installs them from there.
+4. **Repository.** It builds the signed repository from the packages and uploads it. See
+   [package repositories](package-repositories.md).
 
 Nothing is public until every package job and install check has passed. A failed check leaves no
 release behind, and the run keeps the built assets for 30 days.
 
 A push to `main`, a pull request that changes the packaging or the release workflow, and a manual
-run without a tag do stages 1 and 2 and publish nothing. They do not run COPR.
-
-## Prepare Fedora source RPMs
-
-Use a clean release checkout with `rpm-build` installed. The package does not
-build the optional Adwaita vector cursor theme.
-
-```sh
-./build.sh package --output ./dist/rpm-assets --srpm
-```
-
-The command writes the source tarball before building source RPMs for the
-unified `gnoblin` runtime and optional portal backend. Archives include
-Gnoblin's overlays and patches. They must not be replaced with unpatched
-upstream archives.
-
-## Publish to COPR
-
-Configure a Fedora account using the [COPR API page](https://copr.fedorainfracloud.org/api/).
-Keep credentials outside the repository.
-
-```sh
-scripts/publish-copr.sh OWNER/gnoblin PATH_TO_PORTAL_SRPM PATH_TO_GNOBLIN_SRPM
-```
-
-Replace the owner and paths. The script publishes the unified `gnoblin`
-runtime and portal extension. It does not build or publish GNOME Shell.
-
-Use a currently available chroot supplying the required dependencies.
-After all builds succeed, test package resolution, login and removal on a clean
-host using [hardware verification](real-hardware-verification.md).
+run without a tag do stages 1 and 2 and publish nothing.
 
 ## GitHub releases
 
@@ -134,8 +153,7 @@ the preparation script from a clean `main`:
 
 The script does these steps:
 
-- Sets the version in `src/gnoblin-version.json` and `packaging/native-packages.json`.
-- Regenerates the package recipes and commits the result.
+- Sets the version in `src/gnoblin-version.json`, the one place that holds it, and commits it.
 - Creates the annotated tag `gnoblin-v0.1.11`.
 
 Add `--sign` for a signed tag, `--no-tag` to skip the tag, and `--dry-run` to check the version
@@ -148,35 +166,29 @@ git push origin gnoblin-v0.1.11
 ```
 
 The release workflow publishes a self-contained Gnoblin source tarball, the Mutter and portal
-source archives, source and binary packages, and a checksum file.
-The main tarball builds with `make` and does not need Git or submodules.
-The Fedora and openSUSE jobs use the component archives inside that
-tarball, after checking its SHA-256 sums.
+source archives, the packages and a checksum file.
+The main tarball builds with `make` and does not need Git or submodules. The package build uses
+that tarball, after checking its SHA-256 sums.
 
 ### Release assets
 
-Each release page lists these files. `SHA256SUMS` covers every other file.
+Each release page lists these files for each architecture. `SHA256SUMS` covers every other file.
 
-| Asset name                                                                    | What it is                                                        | Used by           |
-| ----------------------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------- |
-| `gnoblin-<version>-gnome-<gnome>-source.tar.xz`                               | Complete source tarball, built with `make`                        | All distributions |
-| `mutter-<gnome>.tar.xz`                                                       | Patched Mutter source archive                                     | RPM and Arch      |
-| `xdg-desktop-portal-gnome-<gnome>.tar.xz`                                     | Patched portal backend source archive                             | RPM and Arch      |
-| `gnoblin-<version>.PKGBUILD`                                                  | Arch recipe for `gnoblin`                                         | Arch              |
-| `xdg-desktop-portal-gnoblin-<portal-version>.PKGBUILD`                        | Arch recipe for `xdg-desktop-portal-gnoblin`                      | Arch              |
-| `gnoblin-<version>-<pkgrel>-x86_64.pkg.tar.zst`                               | Arch package built from the recipe                                | Arch              |
-| `xdg-desktop-portal-gnoblin-<portal-version>-<pkgrel>-x86_64.pkg.tar.zst`     | Arch portal package built from the recipe                         | Arch              |
-| `gnoblin-<version>-<release>.fc<N>.src.rpm`                                   | Fedora source RPM for `gnoblin`, built by COPR                    | Fedora            |
-| `xdg-desktop-portal-gnoblin-<portal-version>-<release>.fc<N>.src.rpm`         | Fedora source RPM for `xdg-desktop-portal-gnoblin`, built by COPR | Fedora            |
-| `gnoblin-<version>-<release>.fc<N>.x86_64.rpm`                                | Fedora binary RPM for `gnoblin`                                   | Fedora            |
-| `xdg-desktop-portal-gnoblin-<portal-version>-<release>.fc<N>.x86_64.rpm`      | Fedora binary RPM for `xdg-desktop-portal-gnoblin`                | Fedora            |
-| `gnoblin-<version>-<release>.tumbleweed.x86_64.rpm`                           | Binary RPM for `gnoblin`                                          | openSUSE          |
-| `xdg-desktop-portal-gnoblin-<portal-version>-<release>.tumbleweed.x86_64.rpm` | Binary RPM for `xdg-desktop-portal-gnoblin`                       | openSUSE          |
-| `SHA256SUMS`                                                                  | SHA-256 checksums of all other assets                             | All distributions |
+| Asset name                                      | What it is                                   |
+| ----------------------------------------------- | -------------------------------------------- |
+| `gnoblin-<version>-gnome-<gnome>-source.tar.xz` | Complete source tarball, built with `make`   |
+| `mutter-<gnome>.tar.xz`                         | Patched Mutter source archive                |
+| `xdg-desktop-portal-gnome-<gnome>.tar.xz`       | Patched portal backend source archive        |
+| `<package>-<version>-1.fc<N>.<arch>.rpm`        | Fedora RPM                                   |
+| `<package>-<version>-1.tumbleweed.<arch>.rpm`   | openSUSE Tumbleweed RPM                      |
+| `<package>_<version>-1_<arch>.deb`              | Debian package                               |
+| `<package>-1.<version>-1-<arch>.pkg.tar.zst`    | Arch package, with the epoch written as `1.` |
+| `<package>-<version>-<arch>.tar.xz`             | Files of the package, for any glibc system   |
+| `SHA256SUMS`                                    | SHA-256 checksums of all other assets        |
 
-`<gnome>` and `<portal-version>` are the pinned GNOME version, for example
-`51.0`. `<pkgrel>` and `<release>` are separate packaging counters for Arch and
-RPM, so they do not match each other.
+`<package>` is one of the four package names. `<gnome>` is the pinned GNOME version, for example
+`51.0`. GitHub does not keep the colon of an Arch file name that has an epoch, so the workflow writes it as a dot.
+The Arch epoch belongs to the package, which pacman reads from the file, not from its name.
 
 A release tag creates a versioned release. A manual run with a tag publishes that tag, or repairs a
 release that is still a draft. It refuses to change a release that is already public. To repair a
@@ -202,19 +214,21 @@ gh attestation verify FILE --repo kierandrewett/gnoblin
 The release notes list the merged pull requests, grouped by label. `.github/release.yml` defines the
 groups.
 
-The release workflow installs the Fedora RPMs it built on a clean Fedora system, with and without
-the optional portal package, then installs stock GNOME beside them and removes Gnoblin.
-The COPR job runs the same checks, with `scripts/check-fedora-install.sh`, against the published
-COPR package. The openSUSE and Arch jobs check the same installation order from their built packages.
+The release workflow installs the packages it built on clean Fedora, openSUSE, Arch and Debian
+systems with `scripts/check-package-install.sh`. The script installs `gnoblin`, runs it, adds the
+portal backend and the two configuration packages, installs stock GNOME beside them and removes
+Gnoblin. Stock GNOME must be unchanged afterwards, and no Gnoblin path may remain.
 
-COPR requires the repository secret `COPR_CONFIG`, containing the publisher's
-`copr-cli` configuration. Configure it once before the first automated release:
+The signed repositories need these repository secrets and variables. `package-repository.yml`
+lists them, and `design/package-repositories.md` explains each one.
 
-```sh
-gh secret set COPR_CONFIG < ~/.config/copr
-```
+| Name                                          | Kind     | Purpose                            |
+| --------------------------------------------- | -------- | ---------------------------------- |
+| `REPO_GPG_PRIVATE_KEY`, `REPO_GPG_PASSPHRASE` | secret   | Sign the packages and the metadata |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`  | secret   | Upload to the R2 bucket            |
+| `REPO_BACKEND`, `REPO_DESTINATION`            | variable | `s3` and `s3://gnoblin-repo`       |
+| `AWS_ENDPOINT_URL`                            | variable | The R2 S3 endpoint                 |
 
-Fedora users receive the resulting COPR update through normal `dnf` updates.
 Check the completed release workflow before telling users a package candidate
 is available. Do not claim graphical-session support until the target's login
 gate passes.

@@ -48,6 +48,7 @@ export default defineConfig({
                             { text: "Package Repositories", link: "/package-repositories" },
                             { text: "Fedora", link: "/install-fedora" },
                             { text: "Arch", link: "/install-arch" },
+                            { text: "Debian", link: "/install-debian" },
                             { text: "NixOS", link: "/install-nixos" },
                             { text: "openSUSE", link: "/install-opensuse" },
                             { text: "Build from Source", link: "/install-source" },

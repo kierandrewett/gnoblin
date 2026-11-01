@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
-# Build the reproducible Gnoblin source tarball before optional package assets.
+# Build the reproducible Gnoblin source tarball and the component source archives.
+#
+# usage: build-release-assets.sh [OUTPUT [RELEASE_TAG]]
+#
+# The packages are not made here. They come from a prefix that scripts/build-prefix.sh builds from this tarball, and from
+# scripts/build-packages.sh.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,15 +15,9 @@ if ! git -C "$ROOT" diff --ignore-submodules=all --quiet HEAD -- ||
 fi
 OUTPUT="$(realpath -m "${1:-$ROOT/dist/release}")"
 RELEASE_TAG="${2:-}"
-SOURCE_ONLY="${3:-}"
-if [ -n "$SOURCE_ONLY" ] && [ "$SOURCE_ONLY" != --source-only ]; then
-    echo "Unknown option: $SOURCE_ONLY" >&2
-    exit 2
-fi
 GNOME_VERSION="$($ROOT/scripts/gnome-versions.py get mutter version)"
 SCHEMAS_VERSION="$($ROOT/scripts/gnome-versions.py get gsettings-desktop-schemas version)"
 GNOBLIN_VERSION="$($ROOT/scripts/gnoblin-version.py get version)"
-PUBLIC_RELEASE_TAG="${4:-gnoblin-v$GNOBLIN_VERSION}"
 EXPECTED_TAG="gnoblin-v$GNOBLIN_VERSION"
 
 if [[ -n "$RELEASE_TAG" ]]; then
@@ -37,8 +36,7 @@ cleanup() {
 trap cleanup EXIT
 
 SOURCES="$WORK/sources"
-SRPMS="$WORK/srpms"
-mkdir -p "$OUTPUT" "$SOURCES" "$SRPMS"
+mkdir -p "$OUTPUT" "$SOURCES"
 
 "$ROOT/scripts/make-tarball.sh" mutter "$SOURCES"
 "$ROOT/scripts/make-tarball.sh" xdg-desktop-portal-gnome "$SOURCES"
@@ -52,26 +50,6 @@ SOURCE_BUNDLE="$OUTPUT/gnoblin-$GNOBLIN_VERSION-gnome-$GNOME_VERSION-source.tar.
     "$SOURCES/mutter-$GNOME_VERSION.tar.xz" \
     "$SOURCES/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" \
     "$SOURCES/gsettings-desktop-schemas-$SCHEMAS_VERSION.tar.xz"
-# The main source RPM consumes the same complete bundle under its Source0
-# filename. Keep this alias in the private staging directory; the public
-# release still publishes one versioned source bundle.
-install -m 0644 -- "$SOURCE_BUNDLE" "$SOURCES/gnoblin-$GNOBLIN_VERSION-source.tar.xz"
-SOURCE_BUNDLE_SHA256="$(sha256sum "$SOURCE_BUNDLE" | awk '{print $1}')"
-python3 "$ROOT/scripts/sync-package-manifest.py" arch-release \
-    --output "$OUTPUT/gnoblin-$GNOBLIN_VERSION.PKGBUILD" \
-    --source-sha256 "$SOURCE_BUNDLE_SHA256" \
-    --release-tag "$PUBLIC_RELEASE_TAG"
-PORTAL_SOURCE_SHA256="$(sha256sum "$OUTPUT/xdg-desktop-portal-gnome-$GNOME_VERSION.tar.xz" | awk '{print $1}')"
-python3 "$ROOT/scripts/sync-package-manifest.py" arch-portal-release \
-    --output "$OUTPUT/xdg-desktop-portal-gnoblin-$GNOME_VERSION.PKGBUILD" \
-    --source-sha256 "$PORTAL_SOURCE_SHA256" \
-    --release-tag "$PUBLIC_RELEASE_TAG"
-
-if [ "$SOURCE_ONLY" != --source-only ]; then
-    "$ROOT/scripts/build-srpm.sh" xdg-desktop-portal-gnoblin "$SOURCES" "$SRPMS"
-    "$ROOT/scripts/build-srpm.sh" gnoblin "$SOURCES" "$SRPMS"
-    find "$SRPMS" -maxdepth 1 -type f -name '*.src.rpm' -exec install -m 0644 -t "$OUTPUT" -- {} +
-fi
 
 (
     cd "$OUTPUT"

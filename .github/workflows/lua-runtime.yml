@@ -12,7 +12,6 @@ on:
       - "subprojects/**"
       - "scripts/**"
       - "tests/**"
-      - "packaging/rpm/*.spec"
       - ".github/workflows/lua-runtime.yml"
   pull_request:
     paths:
@@ -24,7 +23,6 @@ on:
       - "subprojects/**"
       - "scripts/**"
       - "tests/**"
-      - "packaging/rpm/*.spec"
       - ".github/workflows/lua-runtime.yml"
   schedule:
     - cron: "41 2 * * *"
@@ -77,12 +75,9 @@ jobs:
 
       - name: Install build dependencies
         run: |
-          # Build requirements come from the RPM specs, the same source the native session job uses. Only tools that
-          # no spec requires are named here.
-          dnf -y install \
-            dnf-plugins-core git make pkgconf-pkg-config python3-packaging adwaita-cursor-theme \
-            util-linux-user xorg-x11-server-Xwayland
-          dnf -y builddep packaging/rpm/gnoblin.spec packaging/rpm/xdg-desktop-portal-gnoblin.spec
+          # Build requirements come from scripts/install-fedora-build-deps.sh, the list that the package build uses.
+          dnf -y install git
+          ./scripts/install-fedora-build-deps.sh --with-test-tools
 
       - name: Build all targets as an unprivileged user
         run: |

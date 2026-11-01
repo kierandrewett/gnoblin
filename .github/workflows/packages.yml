@@ -1,0 +1,254 @@
+name: Packages
+
+# Builds Gnoblin into a prefix, writes the packages from that prefix with pkgsmith, and installs them on clean systems.
+# The release workflow calls this after it builds the source bundle. It never publishes anything.
+#
+#   1. prefix    builds a Git checkout of ref into a prefix with scripts/build-prefix.sh, once per architecture: on
+#                Fedora 45 for the glibc packages, and on Alpine edge for the apk packages. ./build.sh needs a checkout
+#                with its submodules, so the source bundle cannot be the input
+#   2. packages  runs pkgsmith on each prefix: rpm, deb, Arch and tar packages for gnoblin, xdg-desktop-portal-gnoblin,
+#                gnoblin-geoclue-integration and gnoblin-ananicy-rules
+#   3. install   installs the packages on a clean Fedora, openSUSE, Arch, Debian and Alpine system, installs stock GNOME
+#                beside them and removes Gnoblin (scripts/check-package-install.sh)
+#
+# One glibc prefix serves the rpm, deb, Arch and tar formats, so Lua is linked statically and the libraries are in lib. A
+# glibc prefix does not run on Alpine, so the apk packages come from a second prefix built on Alpine.
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch, tag or commit to build, and that holds pkgsmith/ and the helper scripts
+        type: string
+        required: true
+      release_tag:
+        description: Release tag, or commit-<sha> for a dry run. Names the source bundle and the package artifacts.
+        type: string
+        required: true
+      version:
+        description: Nightly version to give the checkout (scripts/apply-nightly-version.py). Empty builds the version in the tree.
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prefix:
+    name: prefix (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    container: fedora:45
+    timeout-minutes: 150
+    env:
+      # ./build.sh applies the Mutter patch series as commits, which needs a committer.
+      GIT_COMMITTER_NAME: Gnoblin release automation
+      GIT_COMMITTER_EMAIL: release@gnoblin.local
+    steps:
+      - name: Install tools
+        run: dnf -y install git-core tar xz zstd
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - name: Set checkout ownership
+        run: |
+          chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Fetch pinned sources, retrying GNOME GitLab errors
+        run: ./scripts/checkout-submodules-with-retry.sh
+      - name: Give the checkout the nightly version
+        # scripts/build-prefix.sh fetches the upstream tags of the Mutter and portal checkouts itself.
+        if: inputs.version != ''
+        env:
+          NIGHTLY_VERSION: ${{ inputs.version }}
+        run: python3 scripts/apply-nightly-version.py "$NIGHTLY_VERSION"
+      - name: Install the build requirements
+        run: ./scripts/install-fedora-build-deps.sh
+      - name: Build the prefix
+        run: ./scripts/build-prefix.sh --prefix "$RUNNER_TEMP/prefix"
+      - name: Archive the prefix
+        # An artifact does not keep symbolic links or modes, and the prefix has both.
+        run: tar --zstd -cf "$RUNNER_TEMP/prefix.tar.zst" -C "$RUNNER_TEMP/prefix" .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prefix-${{ inputs.release_tag }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/prefix.tar.zst
+          if-no-files-found: error
+          retention-days: 7
+
+  prefix-alpine:
+    name: prefix, Alpine (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    # The job runs on the host, because JavaScript actions do not run in an Alpine container on an arm64 runner. Only
+    # the build runs in an alpine:edge container, started with docker.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    env:
+      GIT_COMMITTER_NAME: Gnoblin release automation
+      GIT_COMMITTER_EMAIL: release@gnoblin.local
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - name: Fetch pinned sources, retrying GNOME GitLab errors
+        run: ./scripts/checkout-submodules-with-retry.sh
+      - name: Give the checkout the nightly version
+        if: inputs.version != ''
+        env:
+          NIGHTLY_VERSION: ${{ inputs.version }}
+        run: python3 scripts/apply-nightly-version.py "$NIGHTLY_VERSION"
+      - name: Build the prefix on Alpine
+        # The container runs as root, so it hands every file it wrote back to the runner user before it exits. The
+        # runner cleans up the workspace and uploads the archive as that user.
+        run: |
+          mkdir "$RUNNER_TEMP/out"
+          docker run --rm -i \
+            --volume "$GITHUB_WORKSPACE:/work" --volume "$RUNNER_TEMP/out:/out" --workdir /work \
+            --env "HOST_OWNER=$(id -u):$(id -g)" --env GIT_COMMITTER_NAME --env GIT_COMMITTER_EMAIL \
+            alpine:edge sh -eu <<'SCRIPT'
+          trap 'chown -R "$HOST_OWNER" /work /out' EXIT
+          apk add --no-cache bash git tar xz zstd
+          git config --global --add safe.directory '*'
+          ./scripts/install-alpine-build-deps.sh
+          ./scripts/build-prefix.sh --prefix /out/prefix
+          # An artifact does not keep symbolic links or modes, and the prefix has both.
+          tar --zstd -cf /out/prefix.tar.zst -C /out/prefix .
+          SCRIPT
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prefix-musl-${{ inputs.release_tag }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/out/prefix.tar.zst
+          if-no-files-found: error
+          retention-days: 7
+
+  packages:
+    name: packages (${{ matrix.arch }})
+    needs: [prefix, prefix-alpine]
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    # pkgsmith writes a package for any architecture on any machine: it reads the prefix and does not run it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: gnoblin-${{ inputs.release_tag }}
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: prefix-${{ inputs.release_tag }}-${{ matrix.arch }}
+          path: prefix-archive
+      - name: Restore the pkgsmith build
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gnoblin/pkgsmith
+          key: pkgsmith-${{ runner.os }}-${{ hashFiles('scripts/pkgsmith.ref') }}
+      - name: Build pkgsmith
+        run: echo "$(scripts/install-pkgsmith.sh)" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@v4
+        with:
+          name: prefix-musl-${{ inputs.release_tag }}-${{ matrix.arch }}
+          path: prefix-musl-archive
+      - name: Unpack the prefixes
+        run: |
+          mkdir prefix prefix-musl
+          tar --zstd -xf prefix-archive/prefix.tar.zst -C prefix
+          tar --zstd -xf prefix-musl-archive/prefix.tar.zst -C prefix-musl
+      - name: Read the version the source bundle was built with
+        # A nightly gives the bundle its own version, and the packages must carry the same one.
+        run: |
+          bundle="$(find release-assets -maxdepth 1 -name 'gnoblin-*-source.tar.xz' -print -quit)"
+          version="$(tar -xOf "$bundle" --wildcards 'gnoblin-*/src/gnoblin-version.json' | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Plan and write the packages
+        run: |
+          pkgsmith plugins
+          scripts/build-packages.sh --prefix prefix --output dist --version "$PACKAGE_VERSION"
+          scripts/build-packages.sh --prefix prefix-musl --output dist --version "$PACKAGE_VERSION"
+      - name: Check the package definitions and that the rpms stay out of GNOME's way
+        run: |
+          sudo apt-get install -y -qq rpm
+          python3 tests/pkgsmith-packages.test.py
+          python3 scripts/check-rpm-isolation.py dist/*.rpm
+      - name: List the files of every package
+        run: |
+          scripts/build-packages.sh --prefix prefix --list --version "$PACKAGE_VERSION" | tail -n 400
+          scripts/build-packages.sh --prefix prefix-musl --list --version "$PACKAGE_VERSION" | tail -n 400
+      - name: Give the Arch packages names that an artifact keeps
+        # The epoch makes an Arch file name hold a colon (gnoblin-1:0.1.13-1-x86_64.pkg.tar.zst). An artifact refuses a
+        # colon and a GitHub release turns it into a dot, which would no longer match SHA256SUMS. pacman reads the name
+        # from the package, and scripts/pkgrepo reads the version from it.
+        run: |
+          for file in dist/*:*; do
+            [ -e "$file" ] || continue
+            mv -- "$file" "$(dirname -- "$file")/$(basename -- "$file" | tr : .)"
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ inputs.release_tag }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  install:
+    name: install (${{ matrix.system }}, ${{ matrix.arch }})
+    needs: packages
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        system: [fedora, opensuse, arch, debian, alpine]
+        include:
+          - { system: fedora, image: "fedora:45" }
+          - { system: opensuse, image: "registry.opensuse.org/opensuse/tumbleweed:latest" }
+          - { system: arch, image: "archlinux:base" }
+          - { system: debian, image: "debian:testing" }
+          - { system: alpine, image: "alpine:edge" }
+          # archlinux:base has no arm64 image. Arch Linux ARM is the arm64 port.
+          - { arch: arm64, system: arch, image: "menci/archlinuxarm:base" }
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    # The job runs on the host, because JavaScript actions do not run in an Alpine container on an arm64 runner. Only the
+    # check runs in the image of the system, started with docker.
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages-${{ inputs.release_tag }}-${{ matrix.arch }}
+          path: packages
+      - name: Install, coexist with stock GNOME and remove
+        env:
+          IMAGE: ${{ matrix.image }}
+          SYSTEM: ${{ matrix.system }}
+        run: |
+          # The check needs bash. Alpine does not ship it.
+          prepare=true
+          if [ "$SYSTEM" = alpine ]; then prepare='apk add --no-cache bash'; fi
+          docker run --rm --volume "$GITHUB_WORKSPACE:/work" --workdir /work --env PREPARE="$prepare" "$IMAGE" \
+            sh -euc 'eval "$PREPARE" && exec bash ./scripts/check-package-install.sh packages'

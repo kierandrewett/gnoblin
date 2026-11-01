@@ -1,20 +1,20 @@
 # Fedora
 
-The COPR build targets Fedora 45. Check the latest release and COPR results
-before installing: the GNOME library requirements changed with the pinned
-upstream source. Keep GNOME or another session available.
+The Gnoblin packages target Fedora 45. Keep GNOME or another session available.
 See [platform support](platform-support.md) for the current status.
 
 ## 1. Install Gnoblin
 
-To install from Gnoblin's own signed repository, with a `stable` or a `nightly`
-channel, follow [package repositories](package-repositories.md). To use COPR:
+Install from Gnoblin's signed repository, with a `stable` or a `nightly` channel:
+follow [package repositories](package-repositories.md). To install a release file, download the
+`fc45` RPM from the [release](https://github.com/kierandrewett/gnoblin/releases):
 
 ```sh
-sudo dnf install dnf-plugins-core
-sudo dnf copr enable kierandrewett/gnoblin
-sudo dnf --setopt=install_weak_deps=False install --refresh gnoblin
+sudo dnf --setopt=install_weak_deps=False install ./gnoblin-*.fc45.x86_64.rpm
 ```
+
+Packages from the old COPR project stop at version 0.1.12. The repository packages replace
+them, so `sudo dnf upgrade gnoblin` moves you over once you add the repository.
 
 `gnoblin` installs the Lua-supervised session, its private Mutter runtime, and
 the portal route for Gnoblin sessions. The session and compositor run from one

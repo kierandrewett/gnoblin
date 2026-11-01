@@ -74,7 +74,12 @@ _ARCH_FILE = re.compile(
 
 
 def read_arch(path: Path) -> tuple[str, str, str]:
-    """Return (name, version, arch) from a pacman package. The file name carries the three values; .PKGINFO must agree."""
+    """Return (name, version, arch) from a pacman package. The file name carries the three values; .PKGINFO must agree.
+
+    A workflow artifact and a GitHub release asset cannot hold a colon, so a package with an epoch is stored as
+    name-1.0.1.13-1-x86_64.pkg.tar.zst instead of name-1:0.1.13-1-x86_64.pkg.tar.zst. The file name then reads the
+    colon of the epoch as a dot, and .PKGINFO gives the real version.
+    """
     match = _ARCH_FILE.match(path.name)
     if not match:
         raise ValueError(f"{path.name} is not named name-pkgver-pkgrel-arch.pkg.tar.*")
@@ -84,9 +89,9 @@ def read_arch(path: Path) -> tuple[str, str, str]:
         key, sep, value = line.partition(" = ")
         if sep and key in ("pkgname", "pkgver", "arch"):
             values[key] = value
-    if (values.get("pkgname"), values.get("pkgver"), values.get("arch")) != (
+    if (values.get("pkgname"), values.get("pkgver", "").replace(":", "."), values.get("arch")) != (
         match["name"],
-        f"{match['pkgver']}-{match['pkgrel']}",
+        f"{match['pkgver']}-{match['pkgrel']}".replace(":", "."),
         match["arch"],
     ):
         raise ValueError(f"{path.name}: the file name and .PKGINFO disagree ({values})")

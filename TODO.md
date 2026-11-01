@@ -41,6 +41,6 @@ useful saving there.
 
 ## Packaging
 
-- [ ] Build and test the Arch package split in `packaging/arch/`.
+- [ ] Run the Gnoblin packages from the `pkgsmith/` definitions through a graphical login on each target.
 - [ ] Publish Fedora packages only after the clean-host login and rollback
       checks pass.

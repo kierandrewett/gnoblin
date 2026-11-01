@@ -33,7 +33,7 @@
       "architecture": "x86_64",
       "image": "fedora:43",
       "lifecycle": "upstream-current",
-      "adapter": "rpm-fedora",
+      "adapter": "pkgsmith",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -54,7 +54,7 @@
       "architecture": "x86_64",
       "image": "fedora:44",
       "lifecycle": "upstream-current",
-      "adapter": "rpm-fedora",
+      "adapter": "pkgsmith",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -75,10 +75,13 @@
       "architecture": "x86_64",
       "image": "fedora:45",
       "lifecycle": "upstream-pre-release",
-      "adapter": "rpm-fedora",
+      "adapter": "pkgsmith",
       "status": "existing-path",
       "support": "candidate",
-      "ci": [".github/workflows/copr.yml", ".github/workflows/fedora-rpm.yml", ".github/workflows/verify.yml"],
+      "ci": [
+        ".github/workflows/packages.yml",
+        ".github/workflows/release.yml"
+      ],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
@@ -106,7 +109,9 @@
       "adapter": "rpm-el",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/rpm-target-probes.yml"],
+      "ci": [
+        ".github/workflows/rpm-target-probes.yml"
+      ],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -127,7 +132,9 @@
       "adapter": "rpm-el",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/rpm-target-probes.yml"],
+      "ci": [
+        ".github/workflows/rpm-target-probes.yml"
+      ],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -148,7 +155,9 @@
       "adapter": "rpm-el",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/rpm-target-probes.yml"],
+      "ci": [
+        ".github/workflows/rpm-target-probes.yml"
+      ],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -166,7 +175,7 @@
       "architecture": "x86_64",
       "image": "debian:11",
       "lifecycle": "upstream-lts-ended",
-      "adapter": "deb",
+      "adapter": "pkgsmith",
       "status": "probe-needed",
       "support": "unsupported",
       "ci": [],
@@ -187,7 +196,7 @@
       "architecture": "x86_64",
       "image": "debian:12",
       "lifecycle": "upstream-lts",
-      "adapter": "deb",
+      "adapter": "pkgsmith",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -208,7 +217,7 @@
       "architecture": "x86_64",
       "image": "debian:13",
       "lifecycle": "upstream-full",
-      "adapter": "deb",
+      "adapter": "pkgsmith",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -229,7 +238,7 @@
       "architecture": "x86_64",
       "image": "ubuntu:22.04",
       "lifecycle": "upstream-standard",
-      "adapter": "deb",
+      "adapter": "pkgsmith",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -250,7 +259,7 @@
       "architecture": "x86_64",
       "image": "ubuntu:24.04",
       "lifecycle": "upstream-standard",
-      "adapter": "deb",
+      "adapter": "pkgsmith",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -271,7 +280,7 @@
       "architecture": "x86_64",
       "image": "ubuntu:26.04",
       "lifecycle": "upstream-standard",
-      "adapter": "deb",
+      "adapter": "pkgsmith",
       "status": "planned",
       "support": "unsupported",
       "ci": [],
@@ -292,10 +301,13 @@
       "architecture": "x86_64",
       "image": "archlinux:base",
       "lifecycle": "rolling",
-      "adapter": "pkgbuild",
+      "adapter": "pkgsmith",
       "status": "existing-path",
       "support": "candidate",
-      "ci": [".github/workflows/arch-package.yml", ".github/workflows/release.yml", ".github/workflows/verify.yml"],
+      "ci": [
+        ".github/workflows/packages.yml",
+        ".github/workflows/release.yml"
+      ],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
@@ -325,7 +337,7 @@
       "architecture": "x86_64",
       "image": "registry.opensuse.org/opensuse/leap:15.5",
       "lifecycle": "upstream-eol",
-      "adapter": "rpm-opensuse",
+      "adapter": "pkgsmith",
       "status": "probe-needed",
       "support": "unsupported",
       "ci": [],
@@ -346,10 +358,12 @@
       "architecture": "x86_64",
       "image": "registry.opensuse.org/opensuse/leap:15.6",
       "lifecycle": "upstream-eol",
-      "adapter": "rpm-opensuse",
+      "adapter": "pkgsmith",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/rpm-target-probes.yml"],
+      "ci": [
+        ".github/workflows/rpm-target-probes.yml"
+      ],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -367,10 +381,12 @@
       "architecture": "x86_64",
       "image": "registry.opensuse.org/opensuse/leap:16.0",
       "lifecycle": "upstream-current",
-      "adapter": "rpm-opensuse",
+      "adapter": "pkgsmith",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/rpm-target-probes.yml"],
+      "ci": [
+        ".github/workflows/rpm-target-probes.yml"
+      ],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -388,10 +404,13 @@
       "architecture": "x86_64",
       "image": "registry.opensuse.org/opensuse/tumbleweed:latest",
       "lifecycle": "rolling",
-      "adapter": "rpm-opensuse",
+      "adapter": "pkgsmith",
       "status": "existing-path",
       "support": "candidate",
-      "ci": [".github/workflows/opensuse-rpm.yml", ".github/workflows/rpm-target-probes.yml"],
+      "ci": [
+        ".github/workflows/packages.yml",
+        ".github/workflows/rpm-target-probes.yml"
+      ],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
@@ -420,7 +439,9 @@
       "adapter": "nix",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/nix.yml"],
+      "ci": [
+        ".github/workflows/nix.yml"
+      ],
       "gates": {
         "dependency-probe": true,
         "package-build": false,
@@ -442,7 +463,9 @@
       "adapter": "nix",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/nix.yml"],
+      "ci": [
+        ".github/workflows/nix.yml"
+      ],
       "gates": {
         "dependency-probe": true,
         "package-build": false,
@@ -464,7 +487,9 @@
       "adapter": "nix",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/nix.yml"],
+      "ci": [
+        ".github/workflows/nix.yml"
+      ],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
@@ -486,7 +511,9 @@
       "adapter": "nix",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [".github/workflows/nix.yml"],
+      "ci": [
+        ".github/workflows/nix.yml"
+      ],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
