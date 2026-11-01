@@ -41,16 +41,16 @@ session helpers.
 
 ## Distribution packages
 
-| System              | Test path                                                         |
-| ------------------- | ----------------------------------------------------------------- |
-| Fedora 45           | [Repository or RPMs](install-fedora.md)                           |
-| Arch / CachyOS      | [Repository or packages](install-arch.md)                         |
-| openSUSE Tumbleweed | [Repository or RPMs](install-opensuse.md)                         |
-| Debian testing      | [Repository or packages](install-debian.md)                       |
-| NixOS               | [Experimental package and module](install-nixos.md)               |
-| Other releases      | [Build from source](install-source.md)                            |
+| System              | Test path                                           |
+| ------------------- | --------------------------------------------------- |
+| Fedora 45           | [Repository or RPMs](install-fedora.md)             |
+| Arch / CachyOS      | [Repository or packages](install-arch.md)           |
+| openSUSE Tumbleweed | [Repository or RPMs](install-opensuse.md)           |
+| Debian testing      | [Repository or packages](install-debian.md)         |
+| NixOS               | [Experimental package and module](install-nixos.md) |
+| Other releases      | [Build from source](install-source.md)              |
 
-Fedora, openSUSE Tumbleweed, Debian testing and Arch have signed
+Fedora, openSUSE Tumbleweed, Debian testing, Arch and Alpine edge have signed
 [package repositories](package-repositories.md) with a `stable` channel for
 releases and a `nightly` channel for the newest build of the main branch. Add a
 repository and your package manager installs and updates Gnoblin. Each release
@@ -58,8 +58,8 @@ also carries the packages as files, and a `.tar.xz` package for other glibc syst
 
 Packages exist for amd64 and arm64. Other Debian releases and Ubuntu have libraries that are too
 old for the packages. Build from [source](install-source.md) there when the installed development
-libraries meet the pinned GNOME requirements. Alpine edge has `.apk` release assets, which
-you install with `apk add --allow-untrusted`; there is no Alpine repository.
+libraries meet the pinned GNOME requirements. Alpine edge also has `.apk` release assets, which
+you install with `apk add --allow-untrusted`.
 
 Keep an existing GNOME or other session available while testing these package
 paths.

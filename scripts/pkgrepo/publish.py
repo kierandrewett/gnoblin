@@ -3,7 +3,7 @@
 Every back end uploads in the same order, so a client never sees metadata that names a file that is not there yet:
 
   1. package files that are new or changed (a package file never changes in place, so most runs upload a few),
-  2. metadata and pages (repodata/, dists/, the pacman databases, manifest.json, index pages, the key),
+  2. metadata and pages (repodata/, dists/, the pacman databases, APKINDEX.tar.gz, manifest.json, index pages, the keys),
   3. removal of files the new tree no longer has.
 
 The default is a dry run that prints the plan. --apply is the only way anything leaves the machine.
@@ -22,8 +22,8 @@ from typing import Callable
 
 from .runner import CommandError, quote, require, run
 
-PACKAGE_SUFFIXES = (".rpm", ".deb")
-PACKAGE_GLOBS = ("*.rpm", "*.deb", "*.pkg.tar.*")
+PACKAGE_SUFFIXES = (".rpm", ".deb", ".apk")
+PACKAGE_GLOBS = ("*.rpm", "*.deb", "*.apk", "*.pkg.tar.*")
 
 
 def is_package_file(relative: str) -> bool:
@@ -75,7 +75,9 @@ def tree_files(root: Path, scope: str) -> list[str]:
 
 
 def site_files(root: Path) -> list[str]:
-    return sorted(name for name in ("gpg.key", "index.html") if (root / name).is_file())
+    """The files at the root of the site: the keys and the front page. The Alpine key is named after the project."""
+    names = ["gpg.key", "index.html", *(path.name for path in root.glob("*.rsa.pub"))]
+    return sorted(name for name in names if (root / name).is_file())
 
 
 def changed_packages(root: Path, scope: str, previous: dict[str, str] | None) -> list[str]:

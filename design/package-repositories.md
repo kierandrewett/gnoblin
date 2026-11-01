@@ -1,8 +1,8 @@
 # Package repositories
 
-This is internal release engineering material. It describes the signed RPM, APT
-and pacman repositories that serve both Gnoblin and Bingux, the channels they
-have, and how the CI builds and publishes them. Users read
+This is internal release engineering material. It describes the signed RPM, APT,
+pacman and Alpine repositories that serve Gnoblin and Bingux (Bingux has no
+Alpine packages), the channels they have, and how the CI builds and publishes them. Users read
 [`docs/package-repositories.md`](../docs/package-repositories.md). The tool is
 `scripts/pkgrepo` (see its [README](../scripts/pkgrepo/README.md)).
 
@@ -14,25 +14,26 @@ the `REPO_*` variables are still missing; "What is left to do" lists them.
 
 ## Decisions
 
-| Question           | Decision                                                                                     |
-| ------------------ | -------------------------------------------------------------------------------------------- |
-| Layout             | `https://repo.gnoblin.org/{gnoblin,bingux}/{stable,nightly}/…` and one `gpg.key` at the root |
-| Choosing a channel | The user adds the stable repository, the nightly repository, or both                         |
-| Package names      | The same in both channels, so a package moves between them as a normal upgrade               |
-| Nightly version    | A pre-release of the next stable version: `0.1.13~nightly.<date>.<count>.g<commit>`          |
-| Signing            | One key signs the RPMs, the pacman packages and the metadata of all three formats            |
-| APT suites         | One suite per distribution release (`trixie`, `noble`), one component (`main`)               |
-| APT indexing       | `apt-ftparchive`, which keeps no state                                                       |
-| Retention          | Stable keeps everything. Nightly keeps the newest 14 versions of each package.               |
-| Architectures      | `x86_64` (`amd64` for APT). Nothing builds for `aarch64` today.                              |
-| Tool location      | `scripts/pkgrepo` in the Gnoblin repository, used by Bingux through a pinned commit          |
-| Hosting            | A tree of static files. Back ends `rsync`, `s3` and `pages`; the default is a dry run.       |
+| Question           | Decision                                                                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Layout             | `https://repo.gnoblin.org/{gnoblin,bingux}/{stable,nightly}/…`, one `gpg.key` and `<project>.rsa.pub` at the root                    |
+| Choosing a channel | The user adds the stable repository, the nightly repository, or both                                                                 |
+| Package names      | The same in both channels, so a package moves between them as a normal upgrade                                                       |
+| Nightly version    | A pre-release of the next stable version: `0.1.13~nightly.<date>.<count>.g<commit>`                                                  |
+| Signing            | One GnuPG key signs the RPMs, the pacman packages and the metadata of those three formats. A second, RSA key signs the Alpine index. |
+| APT suites         | One suite per distribution release (`trixie`, `noble`), one component (`main`)                                                       |
+| APT indexing       | `apt-ftparchive`, which keeps no state                                                                                               |
+| Retention          | Stable keeps everything. Nightly keeps the newest 14 versions of each package.                                                       |
+| Architectures      | `x86_64` (`amd64` for APT) and `aarch64` (`arm64` for APT).                                                                          |
+| Tool location      | `scripts/pkgrepo` in the Gnoblin repository, used by Bingux through a pinned commit                                                  |
+| Hosting            | A tree of static files. Back ends `rsync`, `s3` and `pages`; the default is a dry run.                                               |
 
 ## Layout
 
 ```text
 repo.gnoblin.org/
   gpg.key                                      the public key, ASCII-armoured
+  gnoblin.rsa.pub                              the public key of the Alpine index, when the project has apk packages
   index.html
   <project>/                                   gnoblin or bingux
     <channel>/                                 stable or nightly
@@ -52,6 +53,9 @@ repo.gnoblin.org/
       arch/
         gnoblin.conf                           the pacman.conf section
         <arch>/                                packages, .sig files, gnoblin.db, gnoblin.files (+ .sig)
+      alpine/
+        <branch>/gnoblin-stable.list           the line for /etc/apk/repositories
+        <branch>/<arch>/                       edge/x86_64/: .apk files and APKINDEX.tar.gz
 ```
 
 Details that matter:
@@ -68,6 +72,19 @@ Details that matter:
   `[gnoblin-nightly]` and its database `gnoblin-nightly.db`. Without distinct
   names a client could not have both. The database files are copies, not the
   symlinks `repo-add` makes, because static hosts have no symlinks.
+- Alpine's `apk` adds `/<arch>/APKINDEX.tar.gz` to the repository line, so the
+  line names the branch (`…/alpine/edge`) and the architecture directories hold
+  the files. The branch is in the path because a package built on edge links
+  libraries of edge; a release branch would be another directory.
+- pkgsmith gives the `.apk` files of every architecture the same names
+  (`name-version-rN.apk`), so the input of `pkgrepo build` has one directory per
+  architecture (`alpine/edge/x86_64/`), and CI takes the architecture from the
+  artifact the file came from. `pkgrepo` reads the architecture from the package.
+- An architecture-independent package is copied into every architecture
+  directory, and its index entry carries the architecture of that directory, not
+  `noarch`. apk downloads a package from the directory named by the entry, so a
+  `noarch` entry is looked for in `…/noarch/`. abuild does the same with
+  `apk index --rewrite-arch`.
 - `manifest.json` is the machine-readable record. `pkgrepo pull` reads it to
   fetch the published packages, `pkgrepo needs-build` reads its commit, and
   `pkgrepo publish` reads its checksums to upload only changed files.
@@ -107,11 +124,13 @@ toggle. The same package name lives in both.
 | dnf, zypper     | The highest version of any enabled repository wins: the nightly build.                    | Fedora 43               |
 | apt             | The highest candidate wins: the nightly build.                                            | Debian 13, Ubuntu 24.04 |
 | pacman          | The first repository in `pacman.conf` that has the package wins, not the highest version. | Arch                    |
+| apk             | The highest version of any repository wins: the nightly build.                            | Alpine edge (apk 3.0.7) |
 
-So with both channels on, dnf and apt follow nightly. pacman follows whichever
+So with both channels on, dnf, apt and apk follow nightly. pacman follows whichever
 section is listed first. To go back to stable, remove the nightly repository:
 `dnf distro-sync` and `apt-get install pkg=VERSION` downgrade, and
-`pacman -S pkg` downgrades by name.
+`pacman -S pkg` downgrades by name. `apk upgrade` never downgrades, but
+`apk add pkg=VERSION` does.
 
 ## Versions
 
@@ -128,11 +147,12 @@ The base of a nightly is the next stable version.
 - When the tree already carries a higher version (a release is being prepared),
   that version is the base.
 
-| Format | Stable          | Nightly                                       | Why it sorts correctly                                             |
-| ------ | --------------- | --------------------------------------------- | ------------------------------------------------------------------ |
-| RPM    | `0.1.13-1.fc45` | `0.1.13~nightly.20261031.142.gabc1234-1.fc45` | `~` sorts before everything, including the end of the string.      |
-| deb    | `0.1.13-1`      | `0.1.13~nightly.20261031.142.gabc1234-1`      | The same rule in dpkg.                                             |
-| pacman | `0.1.13-1`      | `0.1.13nightly20261031.142-1`                 | A trailing letter segment sorts below the same version without it. |
+| Format | Stable          | Nightly                                       | Why it sorts correctly                                                   |
+| ------ | --------------- | --------------------------------------------- | ------------------------------------------------------------------------ |
+| RPM    | `0.1.13-1.fc45` | `0.1.13~nightly.20261031.142.gabc1234-1.fc45` | `~` sorts before everything, including the end of the string.            |
+| deb    | `0.1.13-1`      | `0.1.13~nightly.20261031.142.gabc1234-1`      | The same rule in dpkg.                                                   |
+| pacman | `0.1.13-1`      | `0.1.13nightly20261031.142-1`                 | A trailing letter segment sorts below the same version without it.       |
+| apk    | `0.1.13-r1`     | `0.1.13_pre20261031142-r1`                    | The suffix `_pre` sorts below the release, and one number orders builds. |
 
 The nightly string is `<base>~nightly.<UTC commit date>.<commits since the last
 stable tag>.g<short commit>`. Within one day the commit count increases along
@@ -145,9 +165,15 @@ after a dot (`0.1.13.nightly…`) as newer. So the Arch spelling has no dot befo
 `nightly` and no commit hash. `tests/pkgrepo.test.py` has a test that fails when
 someone adds the dot.
 
-`scripts/pkgrepo/versions.py` implements the three orderings and the spellings.
-`tests/pkgrepo/compare-versions.py` compares them with `rpm`, `dpkg` and pacman's
-`vercmp` on thousands of random pairs plus the nightly strings.
+apk has no tilde and no dot rule either. Its suffix `_pre` sorts before the release
+(`0.1.13_pre1` is older than `0.1.13`), and a number after it is compared as a number.
+pkgsmith joins the digits of the date and of the commit count into that one number
+(`0.1.13_pre20261031142`). Both only grow, so the number does too: a commit count that gains
+a digit makes the number longer, which apk reads as larger.
+
+`scripts/pkgrepo/versions.py` implements the four orderings and the spellings.
+`tests/pkgrepo/compare-versions.py` compares them with `rpm`, `dpkg`, pacman's
+`vercmp` and `apk version -t` on thousands of random pairs plus the nightly strings.
 
 ### Where the version is applied
 
@@ -175,14 +201,16 @@ spec, the PKGBUILD or the Debian changelog.
 
 What is signed:
 
-| Part                        | Signature                                                                       | Checked by                          |
-| --------------------------- | ------------------------------------------------------------------------------- | ----------------------------------- |
-| Each RPM                    | An embedded OpenPGP signature (`rpmsign --addsign`)                             | `dnf` with `gpgcheck=1`             |
-| `repodata/repomd.xml`       | `repomd.xml.asc`, detached                                                      | `dnf` with `repo_gpgcheck=1`        |
-| `dists/<suite>/Release`     | `InRelease` (clearsigned) and `Release.gpg` (detached)                          | `apt`                               |
-| Each `.deb`                 | None of its own. `Packages` lists its SHA-256 and `Release` lists `Packages`'s. | `apt`, through the signed chain     |
-| Each pacman package         | `<package>.sig`, detached and binary                                            | `pacman` with `SigLevel = Required` |
-| `<name>.db`, `<name>.files` | `.sig`, detached and binary                                                     | `pacman` with `DatabaseRequired`    |
+| Part                        | Signature                                                                                                                          | Checked by                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
+| Each RPM                    | An embedded OpenPGP signature (`rpmsign --addsign`)                                                                                | `dnf` with `gpgcheck=1`                |
+| `repodata/repomd.xml`       | `repomd.xml.asc`, detached                                                                                                         | `dnf` with `repo_gpgcheck=1`           |
+| `dists/<suite>/Release`     | `InRelease` (clearsigned) and `Release.gpg` (detached)                                                                             | `apt`                                  |
+| Each `.deb`                 | None of its own. `Packages` lists its SHA-256 and `Release` lists `Packages`'s.                                                    | `apt`, through the signed chain        |
+| Each pacman package         | `<package>.sig`, detached and binary                                                                                               | `pacman` with `SigLevel = Required`    |
+| `<name>.db`, `<name>.files` | `.sig`, detached and binary                                                                                                        | `pacman` with `DatabaseRequired`       |
+| `APKINDEX.tar.gz`           | An RSA signature (SHA-256) in its first gzip stream, `.SIGN.RSA256.<project>.rsa.pub`                                              | `apk`, with the key in `/etc/apk/keys` |
+| Each `.apk`                 | None of its own. The index entry holds the SHA-1 of the package's control part, and `.PKGINFO` holds the SHA-256 of its data part. | `apk`, through the signed index        |
 
 APT does not verify signatures embedded in `.deb` files (`debsigs`, `dpkg-sig`);
 it verifies the hash chain from the signed `Release` file. A per-package `debsigs`
@@ -190,7 +218,28 @@ signature would be unchecked, so none is written.
 
 The generated `.repo`, `.sources` and `pacman.conf` files turn all checks on.
 `pkgrepo build` verifies its own output after signing: every checksum, and every
-signature with a key ring that holds only `gpg.key`.
+signature with a key ring that holds only `gpg.key`. Each `APKINDEX.tar.gz` is
+checked against `<project>.rsa.pub`, and against the packages next to it.
+
+### The Alpine key
+
+`apk` does not read OpenPGP signatures. It reads an RSA signature of the index and finds the
+public key by file name in `/etc/apk/keys`, so the key is a second, separate key. The signature
+member of the index names the key file (`gnoblin.rsa.pub`), and the tool publishes that file at
+the root of the site next to `gpg.key`. The name is the same for the life of the key: a rotation
+that keeps the name replaces the file, and one that changes it needs users to add the new name.
+
+Create it offline, once, like the GnuPG key. An encrypted key is not supported, because `apk`
+signing here uses `openssl` non-interactively.
+
+```sh
+openssl genrsa -out apk-private.pem 4096                    # store in a password manager and as the CI secret REPO_APK_PRIVATE_KEY
+openssl rsa -in apk-private.pem -pubout -out gnoblin.rsa.pub   # what the site publishes; the tool derives it, so this copy is only for checking
+```
+
+The secret is the contents of `apk-private.pem`. Without it, a run that publishes leaves the Alpine
+packages out, and a run that publishes nothing signs them with a throw-away key, so the code path
+is still checked. A repository that has published Alpine packages cannot be built without the key.
 
 ### The key
 
@@ -250,8 +299,8 @@ uploads in the same order, so a client never reads metadata that names a missing
 file:
 
 1. package files that are new or changed (the previous manifest says which),
-2. metadata and pages (`repodata/`, `dists/`, the pacman databases,
-   `manifest.json`, the index pages, `gpg.key`),
+2. metadata and pages (`repodata/`, `dists/`, the pacman databases, `APKINDEX.tar.gz`,
+   `manifest.json`, the index pages, `gpg.key`, `<project>.rsa.pub`),
 3. removal of files the new tree no longer has.
 
 `--dry-run` is the default: the tool prints the plan, and only `--apply` uploads.
@@ -304,7 +353,7 @@ signing. Both projects use it, so a fix lands once.
 | A pip package                                           | Rejected. The tool needs system programs anyway, and a package index is one more thing to publish.                                                                  |
 
 The programs it starts (`createrepo_c`, `rpmsign`, `apt-ftparchive`, `repo-add`,
-`gpg`) come from one Debian 13 image, `scripts/pkgrepo/container`. CI jobs run
+`gpg`, `openssl`) come from one Debian 13 image, `scripts/pkgrepo/container`. CI jobs run
 in `debian:trixie` and call the same `install-tools.sh`.
 
 ## CI
@@ -324,7 +373,7 @@ Gnoblin (`.github/workflows`):
   release, and publishes the nightly channel.
 - `package-repository.yml` is the reusable stage. It takes one concurrency group
   per channel, so two publications never interleave. It sorts the packages into `fedora/45`,
-  `opensuse/tumbleweed`, `deb/forky` and `arch`.
+  `opensuse/tumbleweed`, `deb/forky`, `arch` and `alpine/edge/<arch>`.
 
 Bingux has its own workflows with the same stages and its own pkgsmith definitions.
 
@@ -333,6 +382,7 @@ Jobs are gated so that a fork builds and verifies only. Publication needs all of
 | Name                                          | Kind     | Purpose                                               |
 | --------------------------------------------- | -------- | ----------------------------------------------------- |
 | `REPO_GPG_PRIVATE_KEY`, `REPO_GPG_PASSPHRASE` | secret   | Signing                                               |
+| `REPO_APK_PRIVATE_KEY`                        | secret   | Signs the Alpine index; optional (see above)          |
 | `REPO_BACKEND`, `REPO_DESTINATION`            | variable | `rsync`, `s3` or `pages`, and where to                |
 | `REPO_URL`                                    | variable | Public base URL; default `https://repo.gnoblin.org`   |
 | `REPO_RSYNC_KEY`, `REPO_RSYNC_KNOWN_HOSTS`    | secret   | The `rsync` back end                                  |
@@ -341,12 +391,12 @@ Jobs are gated so that a fork builds and verifies only. Publication needs all of
 
 ## What each project builds today
 
-| Project | Format | Targets built by CI                           | Not built                                      |
-| ------- | ------ | --------------------------------------------- | ---------------------------------------------- |
-| Gnoblin | RPM    | Fedora 45 and openSUSE Tumbleweed, both archs | Fedora 43 and 44, Enterprise Linux, Leap       |
-| Gnoblin | pacman | Arch Linux, both archs                        |                                                |
-| Gnoblin | deb    | Debian testing (`forky`), both archs          | Debian 13 and Ubuntu: the libraries are older  |
-| Gnoblin | apk    | Alpine edge, both archs, release assets only  | The repository tool has no apk back end        |
+| Project | Format | Targets built by CI                           | Not built                                        |
+| ------- | ------ | --------------------------------------------- | ------------------------------------------------ |
+| Gnoblin | RPM    | Fedora 45 and openSUSE Tumbleweed, both archs | Fedora 43 and 44, Enterprise Linux, Leap         |
+| Gnoblin | pacman | Arch Linux, both archs                        |                                                  |
+| Gnoblin | deb    | Debian testing (`forky`), both archs          | Debian 13 and Ubuntu: the libraries are older    |
+| Gnoblin | apk    | Alpine edge, both archs                       | Alpine release branches: the libraries are older |
 
 Both architectures are built, installed in containers and published by the same jobs.
 The arm64 packages have been written and checked here only from an amd64 prefix (names, metadata);
@@ -376,17 +426,19 @@ no expiry, stored in the owner's Bitwarden) and the signing secrets in both repo
 
 1. Done: the key is created and its fingerprint is in the user documentation.
 2. Done: `repo.gnoblin.org` points at the bucket. Upload `gpg.key` to its root.
-3. Add the upload secrets and the variables in the table above to the Gnoblin and
+3. Create the Alpine key as described above and add `REPO_APK_PRIVATE_KEY` to the Gnoblin
+   repository. Until it exists the repository carries no Alpine packages.
+4. Add the upload secrets and the variables in the table above to the Gnoblin and
    Bingux repositories: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL`,
    `REPO_BACKEND` (`s3`) and `REPO_DESTINATION` (`s3://gnoblin-repo`). Only the signing
    secrets exist so far.
-4. Run the tool once by hand with `--apply` for each project and channel
+5. Run the tool once by hand with `--apply` for each project and channel
    (`scripts/pkgrepo/README.md`), and install from the result on a clean machine.
-5. Merge the branch. Cut a release to publish the first stable channel, or run
+6. Merge the branch. Cut a release to publish the first stable channel, or run
    `nightly.yml` with `force`.
-6. Bingux: after the Gnoblin branch is merged, set `packaging/pkgrepo.ref` of
+7. Bingux: after the Gnoblin branch is merged, set `packaging/pkgrepo.ref` of
    Bingux to the merged commit if it is not the one it names.
-7. `infra.yml` still copies an APT archive from the `gh-pages` branch into
+8. `infra.yml` still copies an APT archive from the `gh-pages` branch into
    `gnoblin.org/apt` and `scripts/prepare-apt-pages.py` still exists, although
    the builder of that archive was removed in `1f53b8c6`. Decide whether to
    delete the old archive.

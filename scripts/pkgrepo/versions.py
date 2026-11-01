@@ -1,7 +1,8 @@
-"""Version numbers: the nightly naming rule and the three version orderings the package managers use.
+"""Version numbers: the nightly naming rule and the four version orderings the package managers use.
 
-The orderings are ports of rpmvercmp (RPM), verrevcmp (dpkg) and rpmvercmp from libalpm (pacman). They decide which
-packages retention keeps. tests/pkgrepo-containers.sh compares them with `rpm`, `dpkg` and `vercmp` on real inputs.
+The orderings are ports of rpmvercmp (RPM), verrevcmp (dpkg), rpmvercmp from libalpm (pacman) and apk-tools' version
+rules (Alpine). They decide which packages retention keeps. tests/pkgrepo/containers.sh compares them with `rpm`,
+`dpkg`, `vercmp` and `apk version -t` on real inputs.
 """
 
 from __future__ import annotations
@@ -63,6 +64,12 @@ class NightlyVersion:
         return f"{self.base}nightly{self.date}.{self.count}"
 
     @property
+    def apk(self) -> str:
+        # apk has no tilde either. Its suffix _pre sorts below the release (0.1.13_pre1 < 0.1.13), and one number
+        # after it carries the date and the commit count, which only grow, so the number grows too.
+        return f"{self.base}_pre{self.date}{self.count}"
+
+    @property
     def semver(self) -> str:
         return f"{self.base}-nightly.{self.date}.{self.count}.g{self.commit}"
 
@@ -104,6 +111,20 @@ def semver_to_arch(semver: str) -> str:
     for previous, token in zip(tokens, tokens[1:]):
         text += token if previous.isalpha() and token.isdigit() else "." + token
     return match[1] + text
+
+
+def semver_to_apk(semver: str) -> str:
+    """0.1.13-nightly.20261031.142.gabc1234 -> 0.1.13_pre20261031142, the spelling pkgsmith gives an apk package.
+
+    The commit identifier is dropped and the digits of the other pre-release identifiers are joined, as for Arch.
+    """
+    match = _SEMVER_PRERELEASE.match(semver)
+    if not match:
+        raise ValueError(f"{semver!r} is not MAJOR.MINOR.PATCH[-prerelease]")
+    if match[2] is None:
+        return semver
+    tokens = [t for t in re.split(r"[.-]", match[2]) if not re.fullmatch(r"g[0-9a-f]{7,40}", t)]
+    return f"{match[1]}_pre{''.join(c for c in ''.join(tokens) if c.isdigit())}"
 
 
 # --- RPM -------------------------------------------------------------------------------------------------------------
@@ -328,6 +349,58 @@ def pacman_compare(a: str, b: str) -> int:
     return result
 
 
+# --- Alpine ----------------------------------------------------------------------------------------------------------
+
+_APK_VERSION = re.compile(
+    r"^(?P<numbers>[0-9]+(?:\.[0-9]+)*)(?P<letter>[a-z])?(?P<suffixes>(?:_(?:alpha|beta|pre|rc|cvs|svn|git|hg|p)[0-9]*)*)"
+    r"(?:~(?P<hash>[0-9a-f]+))?(?:-r(?P<release>[0-9]+))?$"
+)
+# A suffix before the release sorts below it, a suffix after the release above it.
+_APK_SUFFIX_ORDER = {"alpha": -4, "beta": -3, "pre": -2, "rc": -1, "cvs": 1, "svn": 2, "git": 3, "hg": 4, "p": 5}
+
+
+def _apk_parts(version: str) -> tuple[list[str], str, list[tuple[int, int]], int | None]:
+    match = _APK_VERSION.match(version)
+    if not match:
+        raise ValueError(f"{version!r} is not an Alpine version")
+    suffixes = [
+        (_APK_SUFFIX_ORDER[name], int(number or 0))
+        for name, number in re.findall(r"_([a-z]+)([0-9]*)", match["suffixes"])
+    ]
+    release = None if match["release"] is None else int(match["release"])
+    return match["numbers"].split("."), match["letter"] or "", suffixes, release
+
+
+def apk_compare(a: str, b: str) -> int:
+    """Compare `version[-rN]` the way apk-tools does: numbers, a letter, suffixes (_alpha ... _rc < none < _p), release.
+
+    A number with a leading zero after the first component compares as text ("1.02" is older than "1.1").
+    """
+    numbers_a, letter_a, suffixes_a, release_a = _apk_parts(a)
+    numbers_b, letter_b, suffixes_b, release_b = _apk_parts(b)
+    for index, (part_a, part_b) in enumerate(zip(numbers_a, numbers_b)):
+        if index > 0 and (part_a.startswith("0") or part_b.startswith("0")):
+            if part_a != part_b:
+                return -1 if part_a < part_b else 1
+        elif int(part_a) != int(part_b):
+            return -1 if int(part_a) < int(part_b) else 1
+    if len(numbers_a) != len(numbers_b):
+        return -1 if len(numbers_a) < len(numbers_b) else 1
+    if letter_a != letter_b:
+        return -1 if letter_a < letter_b else 1
+    for index in range(max(len(suffixes_a), len(suffixes_b))):
+        suffix_a = suffixes_a[index] if index < len(suffixes_a) else (0, 0)
+        suffix_b = suffixes_b[index] if index < len(suffixes_b) else (0, 0)
+        if suffix_a != suffix_b:
+            return -1 if suffix_a < suffix_b else 1
+    if release_a != release_b:
+        # No release is older than any release: 1.0 < 1.0-r0.
+        if release_a is None or release_b is None:
+            return -1 if release_a is None else 1
+        return -1 if release_a < release_b else 1
+    return 0
+
+
 # --- ordering helpers ------------------------------------------------------------------------------------------------
 
 Comparator = Callable[[str, str], int]
@@ -340,6 +413,8 @@ def comparator(package_format: str) -> Comparator:
         return dpkg_compare
     if package_format == "arch":
         return pacman_compare
+    if package_format == "apk":
+        return apk_compare
     raise ValueError(f"unknown package format {package_format!r}")
 
 

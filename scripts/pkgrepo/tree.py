@@ -3,11 +3,13 @@
 Layout, for one project and channel (design/package-repositories.md has the reasoning):
 
     <root>/gpg.key
+    <root>/<project>.rsa.pub                                  the key apk checks the index with, when there are apk packages
     <root>/<project>/<channel>/manifest.json
     <root>/<project>/<channel>/fedora/<release>/<arch>/    RPMs and repodata/
     <root>/<project>/<channel>/opensuse/<release>/<arch>/  RPMs and repodata/
     <root>/<project>/<channel>/deb/                         dists/<suite>/main/binary-<arch>/ and pool/<suite>/
     <root>/<project>/<channel>/arch/<arch>/                 packages, signatures and <name>.db
+    <root>/<project>/<channel>/alpine/<branch>/<arch>/      .apk files and the signed APKINDEX.tar.gz
 """
 
 from __future__ import annotations
@@ -21,9 +23,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import SCHEMA, download, formats, index
+from . import SCHEMA, alpine, download, formats, index
 from .packages import Package, scan, sha256_of
-from .signing import Signer
+from .signing import ApkSigner, Signer
 from .versions import CHANNELS, NIGHTLY, STABLE, comparator
 
 DEBIAN_ARCH = {"x86_64": "amd64", "aarch64": "arm64"}
@@ -66,6 +68,11 @@ def pacman_repo_name(project: str, channel: str) -> str:
     return project if channel == STABLE else f"{project}-{channel}"
 
 
+def apk_key_name(project: str) -> str:
+    """The file name of the Alpine public key. apk looks for the key by the name in the index signature."""
+    return f"{project}.rsa.pub"
+
+
 def read_manifest(path: Path) -> dict:
     data = json.loads(path.read_text())
     if data.get("schema") != SCHEMA:
@@ -97,9 +104,12 @@ def load_existing(existing: Path | None, project: str, channel: str) -> list[Ent
 
 def merge(existing: list[Entry], fresh: list[Entry], channel: str, replace_stable: bool) -> list[Entry]:
     merged = {(e.package.group, e.package.version): e for e in existing}
+    published = set(merged)
     for entry in fresh:
         key = (entry.package.group, entry.package.version)
-        if key in merged and channel == STABLE and not replace_stable:
+        # An architecture-independent Alpine package is built once per architecture under one file name, so the same
+        # package can come twice in one batch. Only a package that was published before counts as a replacement.
+        if key in published and channel == STABLE and not replace_stable:
             package = entry.package
             raise TreeError(
                 f"{package.name} {package.version} ({package.family} {package.release or package.arch}) is already published in "
@@ -160,7 +170,7 @@ def canonical_path(package: Package, arch_dirs: dict[tuple[str, str], list[str]]
     return f"{package.family}/{package.release}/{arch}/{package.filename}"
 
 
-def build(settings: Settings, signer: Signer) -> dict:
+def build(settings: Settings, signer: Signer, apk_signer: ApkSigner | None = None) -> dict:
     if settings.channel not in CHANNELS:
         raise TreeError(f"the channel must be one of {', '.join(CHANNELS)}")
     scanned = [Entry(package, path, new=True) for package, path in scan(settings.input_dir)]
@@ -172,6 +182,10 @@ def build(settings: Settings, signer: Signer) -> dict:
     for entry in dropped:
         print(f"retention: dropping {entry.package.name} {entry.package.version}", flush=True)
 
+    if apk_signer is None and any(e.package.format == "apk" for e in entries):
+        raise TreeError(
+            "the channel has Alpine packages and no key to sign their index with: set REPO_APK_PRIVATE_KEY or pass --apk-key"
+        )
     root = channel_root(settings.output, settings.project, settings.channel)
     if root.exists():
         shutil.rmtree(root)
@@ -203,6 +217,13 @@ def build(settings: Settings, signer: Signer) -> dict:
                 pacman_repo_name(settings.project, settings.channel),
                 signer,
                 sorted({e.package.filename for e in members}),
+            )
+        elif family == "alpine":
+            alpine.build_index(
+                directory,
+                apk_signer,
+                sorted({e.package.filename for e in members}),
+                f"{settings.project.capitalize()} {settings.channel}",
             )
     for suite, members in _suites(entries).items():
         architectures = sorted(
@@ -241,12 +262,15 @@ def build(settings: Settings, signer: Signer) -> dict:
         "key": {"fingerprint": signer.fingerprint, "url": f"{settings.base_url}/gpg.key"},
         "packages": records,
     }
+    if apk_signer is not None and any(e.package.format == "apk" for e in entries):
+        manifest["apk_key"] = {"name": apk_signer.name, "url": f"{settings.base_url}/{apk_signer.name}"}
+        apk_signer.write_public(settings.output / apk_signer.name)
     (root / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
     # 4. Pages and client configuration files, then the files at the root of the whole site.
     index.write_channel(settings, root, manifest, arch_dirs)
     signer.export_public(settings.output / "gpg.key")
-    index.write_root(settings, manifest["key"]["fingerprint"])
+    index.write_root(settings, manifest["key"]["fingerprint"], manifest.get("apk_key", {}).get("name"))
     return manifest
 
 

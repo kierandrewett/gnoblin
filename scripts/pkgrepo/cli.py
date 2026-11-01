@@ -57,6 +57,7 @@ def cmd_version(args: argparse.Namespace) -> int:
         "rpm": value.rpm,
         "deb": value.deb,
         "arch": value.arch,
+        "apk": value.apk,
         "semver": value.semver,
         "date": value.date,
         "count": str(value.count),
@@ -121,6 +122,16 @@ def _signer(args: argparse.Namespace) -> signing.Signer:
     return signing.Signer.from_environment(home, args.key_id, args.passphrase_env)
 
 
+def _apk_signer(args: argparse.Namespace) -> signing.ApkSigner | None:
+    """The key of the Alpine index, when one is given; a channel without apk packages needs none."""
+    name = tree.apk_key_name(args.project)
+    if args.apk_key:
+        return signing.ApkSigner.from_file(Path(args.apk_key), name)
+    if os.environ.get(args.apk_key_env):
+        return signing.ApkSigner.from_environment(name, args.apk_key_env)
+    return None
+
+
 def cmd_build(args: argparse.Namespace) -> int:
     settings = tree.Settings(
         project=args.project,
@@ -135,8 +146,13 @@ def cmd_build(args: argparse.Namespace) -> int:
         base_url=args.base_url.rstrip("/"),
         default_arch=args.default_arch,
     )
-    with _signer(args) as signer:
-        manifest = tree.build(settings, signer)
+    apk_signer = _apk_signer(args)
+    try:
+        with _signer(args) as signer:
+            manifest = tree.build(settings, signer, apk_signer)
+    finally:
+        if apk_signer is not None:
+            apk_signer.close()
     print(
         f"built {args.project}/{args.channel}: {len(manifest['packages'])} packages, key {manifest['key']['fingerprint']}"
     )
@@ -218,7 +234,9 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--count", type=int)
     p.add_argument("--commit")
     p.add_argument("--date", help="YYYYMMDD; default the commit date")
-    p.add_argument("--format", default="lines", choices=("lines", "json", "base", "rpm", "deb", "arch", "semver"))
+    p.add_argument(
+        "--format", default="lines", choices=("lines", "json", "base", "rpm", "deb", "arch", "apk", "semver")
+    )
     p.set_defaults(run=cmd_version)
 
     p = sub.add_parser("key-import", help="import the private key from an environment variable into a GNUPGHOME")
@@ -253,7 +271,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--packages",
         required=True,
-        help="directory of built packages: fedora/<release>/, opensuse/<release>/, deb/<suite>/, arch/",
+        help="directory of built packages: fedora/<release>/, opensuse/<release>/, deb/<suite>/, arch/, alpine/<branch>/<arch>/",
     )
     p.add_argument("--output", required=True, help="directory that receives the tree")
     p.add_argument("--existing", help="a pulled copy of the published channel to merge with (pkgrepo pull --output)")
@@ -277,6 +295,11 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--key-id", help="fingerprint of the signing key; default: the only secret key")
     p.add_argument("--key-env", default=signing.PRIVATE_KEY_ENV)
     p.add_argument("--passphrase-env", default=signing.PASSPHRASE_ENV)
+    p.add_argument(
+        "--apk-key",
+        help="PEM file with the RSA key that signs the Alpine index; default: the key in the variable of --apk-key-env",
+    )
+    p.add_argument("--apk-key-env", default=signing.APK_PRIVATE_KEY_ENV)
     p.set_defaults(run=cmd_build)
 
     p = sub.add_parser("verify", help="check checksums and signatures of a built tree like a client would")

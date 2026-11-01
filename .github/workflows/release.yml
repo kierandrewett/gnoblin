@@ -297,6 +297,7 @@ jobs:
     secrets:
       REPO_GPG_PRIVATE_KEY: ${{ secrets.REPO_GPG_PRIVATE_KEY }}
       REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
+      REPO_APK_PRIVATE_KEY: ${{ secrets.REPO_APK_PRIVATE_KEY }}
       REPO_RSYNC_KEY: ${{ secrets.REPO_RSYNC_KEY }}
       REPO_RSYNC_KNOWN_HOSTS: ${{ secrets.REPO_RSYNC_KNOWN_HOSTS }}
       REPO_PAGES_TOKEN: ${{ secrets.REPO_PAGES_TOKEN }}
