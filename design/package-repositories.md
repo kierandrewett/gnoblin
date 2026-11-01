@@ -361,14 +361,14 @@ Gnoblin (`.github/workflows`):
 
 - `release.yml` builds the source bundle, calls `packages.yml`, publishes the GitHub release for a
   tag, and then calls `package-repository.yml`. `packages.yml` builds the bundle into a prefix on
-  each Fedora release of `design/package-targets.json` (amd64 and arm64), writes the Fedora rpm of
+  each Fedora release of `scripts/package-targets.json` (amd64 and arm64), writes the Fedora rpm of
   each release from the prefix of that release, writes the openSUSE rpm, deb, Arch and tar packages
   from one of them, and installs them on clean Fedora (each release), openSUSE, Arch and Debian
   testing systems. A release that is not out yet is a pre-release: its jobs may fail without
   failing the run, and nothing else waits on them.
 - `release-matrix.yml` runs weekly. It lists the Fedora releases that are out and the pre-release,
   checks the build floors of each in its image, and opens or updates one issue with what changed.
-  It never pushes. A person promotes a candidate by editing `design/package-targets.json`.
+  It never pushes. A person promotes a candidate by editing `scripts/package-targets.json`.
 - A release tag builds the stable channel and publishes it. A push to `main`, a pull request or a
   manual dry run builds and verifies the tree with a throw-away key and publishes nothing.
 - `nightly.yml` runs at 02:17 UTC and on demand, and only where `REPO_DESTINATION` is set. It compares the

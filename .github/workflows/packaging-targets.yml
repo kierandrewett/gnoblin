@@ -4,12 +4,12 @@ on:
   push:
     branches: [main]
     paths:
-      - "design/package-targets.json"
+      - "scripts/package-targets.json"
       - "scripts/check-packaging-targets.py"
       - ".github/workflows/packaging-targets.yml"
   pull_request:
     paths:
-      - "design/package-targets.json"
+      - "scripts/package-targets.json"
       - "scripts/check-packaging-targets.py"
       - ".github/workflows/packaging-targets.yml"
   workflow_dispatch:

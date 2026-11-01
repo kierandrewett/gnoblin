@@ -81,7 +81,7 @@ what its prefix needs.
 ### One prefix for each Fedora release
 
 `.github/workflows/packages.yml` builds a prefix on every Fedora release that
-`design/package-targets.json` lists with status `existing-path` (`scripts/fedora-releases.py`
+`scripts/package-targets.json` lists with status `existing-path` (`scripts/fedora-releases.py`
 reads the list), and writes the Fedora rpm of that release from its prefix with
 `scripts/build-packages.sh --lanes fedora --fedora <N>`. The rpm of Fedora 43 therefore asks for
 the glibc and the library sonames of Fedora 43. A library that only an older Fedora release has
@@ -106,7 +106,7 @@ that are out and the pre-release, each with whether it meets the build floors. A
 the three sources disagree goes to `needs_review` with its three observations and is never a
 candidate. `.github/workflows/release-matrix.yml` runs it weekly, checks the floors in each
 image, and opens one issue with the diff. It never pushes. To build a candidate, add or edit its
-entry in `design/package-targets.json` and set `status` to `existing-path`. Its `support` stays
+entry in `scripts/package-targets.json` and set `status` to `existing-path`. Its `support` stays
 `unsupported` or `candidate` until its gates pass, as `scripts/check-packaging-targets.py`
 enforces, and that script warns about a candidate without an entry and an entry past its end of
 life.

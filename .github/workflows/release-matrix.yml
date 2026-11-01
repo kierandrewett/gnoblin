@@ -3,9 +3,9 @@ name: Release matrix
 # Proposes the Fedora releases that Gnoblin could build for, once a week. It reads endoflife.date, Fedora's own release data
 # and the Fedora container images (scripts/update-release-matrix.py), checks the build floors of every release inside its
 # image, and writes scripts/release-candidates.json with a diff of what changed. It never pushes and never edits
-# design/package-targets.json: the run uploads the new candidate file as an artifact and opens or updates one issue with the
+# scripts/package-targets.json: the run uploads the new candidate file as an artifact and opens or updates one issue with the
 # diff and the warnings of scripts/check-packaging-targets.py. A person copies the file, reads the diff and promotes a
-# candidate by adding or editing its entry in design/package-targets.json, which is what packages.yml builds.
+# candidate by adding or editing its entry in scripts/package-targets.json, which is what packages.yml builds.
 
 on:
   schedule:
@@ -138,7 +138,7 @@ jobs:
           {
             echo "The weekly release matrix run found something to review. Nothing was changed in the repository."
             echo
-            echo "To act on it, download the \`release-candidates\` artifact of [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID), copy \`scripts/release-candidates.json\` into the repository, and add, change or remove entries in \`design/package-targets.json\`. Only entries with status \`existing-path\` are built."
+            echo "To act on it, download the \`release-candidates\` artifact of [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID), copy \`scripts/release-candidates.json\` into the repository, and add, change or remove entries in \`scripts/package-targets.json\`. Only entries with status \`existing-path\` are built."
             echo
             echo "## What changed in the candidates"
             echo

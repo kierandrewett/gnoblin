@@ -9,7 +9,7 @@
   now writes the rpm, deb, Arch and tar packages: `scripts/build-prefix.sh` builds Gnoblin
   into a prefix and pkgsmith writes the packages from it with the definitions in `pkgsmith/`.
   See [packaging and releases](docs/distribution.md).
-- Fedora packages for every release in `design/package-targets.json`: each release is built on its own
+- Fedora packages for every release in `scripts/package-targets.json`: each release is built on its own
   image, so its rpm asks for the glibc and libraries of that release, and the signed repository has one
   tree per release. A release that is not out yet is built as a pre-release that cannot fail the run.
   `scripts/update-release-matrix.py` and a weekly workflow propose releases for review. See
@@ -43,7 +43,7 @@
 - Packages accept a pre-release version. The source bundle keeps the SemVer
   spelling (`0.1.13-nightly.…`) and pkgsmith spells the package version for the
   package manager (`0.1.13~nightly.…` for RPM). Release versions are unchanged.
-- `design/package-targets.json` (formerly `packaging/targets.json`) and the platform support page list Arch, Fedora 45
+- `scripts/package-targets.json` (formerly `packaging/targets.json`) and the platform support page list Arch, Fedora 45
   and openSUSE Tumbleweed as candidates. Release run 39855522942 passed their
   package build, install, stock GNOME coexistence and removal gates. Graphical
   session support is not claimed.

@@ -5,7 +5,7 @@ name: Release
 #   2. packages    builds a checkout of the same ref into a prefix on each Fedora release and on Alpine, writes the rpm,
 #                  deb, Arch, apk and tar packages from the prefixes with pkgsmith, and installs them on clean Fedora,
 #                  openSUSE, Arch, Debian and Alpine systems (packages.yml). The Fedora releases are the fedora targets
-#                  of design/package-targets.json; one that is not out yet may fail without failing the run
+#                  of scripts/package-targets.json; one that is not out yet may fail without failing the run
 #   3. publish     attaches every asset to one release, checksums and attests them, and makes the release public
 #   4. repository  builds the signed RPM, APT and pacman repository from the packages of stage 2 and uploads it
 #
@@ -22,7 +22,7 @@ on:
       - ".github/workflows/packages.yml"
       - ".github/workflows/package-repository.yml"
       - ".github/actions/**"
-      - "design/package-targets.json"
+      - "scripts/package-targets.json"
       - "pkgsmith/**"
       - "scripts/apply-nightly-version.py"
       - "scripts/build-packages.sh"
@@ -52,7 +52,7 @@ on:
       - ".github/workflows/packages.yml"
       - ".github/workflows/package-repository.yml"
       - ".github/actions/**"
-      - "design/package-targets.json"
+      - "scripts/package-targets.json"
       - "pkgsmith/**"
       - "scripts/apply-nightly-version.py"
       - "scripts/build-packages.sh"

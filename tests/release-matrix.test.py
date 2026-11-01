@@ -155,7 +155,7 @@ def target(release, status="existing-path", lifecycle="upstream-current", **extr
 
 class BuildMatrix(unittest.TestCase):
     def test_the_shipped_inventory_gives_a_well_formed_matrix(self):
-        description = releases.describe(json.loads((ROOT / "design/package-targets.json").read_text()))
+        description = releases.describe(json.loads((ROOT / "scripts/package-targets.json").read_text()))
         numbers = [item["release"] for item in description["releases"]]
         self.assertEqual(numbers, sorted(numbers, key=int))
         self.assertIn(description["source"], numbers)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""List the Fedora releases that the package workflows build, from design/package-targets.json.
+"""List the Fedora releases that the package workflows build, from scripts/package-targets.json.
 
 usage: scripts/fedora-releases.py [--github-output FILE] [--names released|prerelease]
 
@@ -32,7 +32,7 @@ from pathlib import Path
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
-INVENTORY = ROOT / "design/package-targets.json"
+INVENTORY = ROOT / "scripts/package-targets.json"
 PRE_RELEASE = "upstream-pre-release"
 
 

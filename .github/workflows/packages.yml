@@ -14,7 +14,7 @@ name: Packages
 #                Arch, Debian and Alpine system, installs stock GNOME beside them and removes Gnoblin
 #                (scripts/check-package-install.sh)
 #
-# The Fedora releases are the fedora targets of design/package-targets.json (scripts/fedora-releases.py), which the caller
+# The Fedora releases are the fedora targets of scripts/package-targets.json (scripts/fedora-releases.py), which the caller
 # reads and passes in. A release that is not out yet (lifecycle upstream-pre-release) is a job that may fail without failing
 # the run: its jobs have continue-on-error, and nothing else depends on what they make.
 #

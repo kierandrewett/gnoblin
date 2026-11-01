@@ -4,7 +4,7 @@
 usage: scripts/update-release-matrix.py [--floors-dir DIR] [--output FILE] [--diff FILE] [--github-output FILE]
                                         [--today YYYY-MM-DD]
 
-This script only proposes. It writes scripts/release-candidates.json and never touches design/package-targets.json: a
+This script only proposes. It writes scripts/release-candidates.json and never touches scripts/package-targets.json: a
 person reads the diff and promotes a candidate by adding or editing its inventory entry. The workflows build what the
 inventory lists (scripts/fedora-releases.py), and scripts/check-packaging-targets.py warns when the two disagree.
 
@@ -253,7 +253,7 @@ def diff(previous, current):
         lines.append(f"- New candidate: Fedora {release} ({kind}, eol {item['eol']}). Floors: {item['evidence']}")
     for release in sorted(before.keys() - after.keys(), key=int):
         lines.append(
-            f"- No longer a candidate: Fedora {release}. Review its inventory entry in design/package-targets.json."
+            f"- No longer a candidate: Fedora {release}. Review its inventory entry in scripts/package-targets.json."
         )
     for release in sorted(after.keys() & before.keys(), key=int):
         for field in FIELDS:

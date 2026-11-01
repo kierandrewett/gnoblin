@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate the canonical Gnoblin package target inventory.
 
-Run this after changing design/package-targets.json. The inventory records desired
+Run this after changing scripts/package-targets.json. The inventory records desired
 targets and the evidence that exists today; an image or a CI path never by
 itself marks a target as supported. It also prints warnings, which do not fail the check, when the inventory and
 scripts/release-candidates.json disagree: a candidate without an entry, or an entry past its end of life.
@@ -16,7 +16,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parent.parent
-INVENTORY = ROOT / "design/package-targets.json"
+INVENTORY = ROOT / "scripts/package-targets.json"
 CANDIDATES = ROOT / "scripts/release-candidates.json"
 FAMILIES = {"fedora", "el", "debian", "ubuntu", "arch", "opensuse-leap", "opensuse-tumbleweed", "nixos"}
 STATUSES = {"existing-path", "probe-needed", "planned"}
