@@ -1,6 +1,6 @@
 # Layer surfaces
 
-`gnoblin.layers.list(filter?)` returns read-only records from the latest native
+`gnoblin.layers.list(filter?)` returns read-only records from the native
 layer-surface snapshot. Each record includes its state revision. Layer records
 have no mutating methods; shell clients continue to own their surfaces.
 
@@ -26,7 +26,7 @@ Layer records expose these fields:
 | `mapped`                           | Boolean.                                                                       |
 | `revision`                         | Integer state revision.                                                        |
 
-Mutter currently omits `app_id` because layer-shell does not provide one.
+Mutter omits `app_id` because layer-shell does not provide one.
 
 The `layer` field controls stacking order:
 
