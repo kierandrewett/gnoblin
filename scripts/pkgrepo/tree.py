@@ -3,6 +3,7 @@
 Layout, for one project and channel (design/package-repositories.md has the reasoning):
 
     <root>/gpg.key
+    <root>/setup.sh                                           the quick setup script, with the key fingerprint filled in
     <root>/<project>.rsa.pub                                  the key apk checks the index with, when there are apk packages
     <root>/<project>/<channel>/manifest.json
     <root>/<project>/<channel>/fedora/<release>/<arch>/    RPMs and repodata/
@@ -270,7 +271,26 @@ def build(settings: Settings, signer: Signer, apk_signer: ApkSigner | None = Non
     # 4. Client configuration files, then the key at the root of the whole site.
     index.write_channel(settings, root, manifest, arch_dirs)
     signer.export_public(settings.output / "gpg.key")
+    write_setup_script(settings.output, signer.fingerprint)
     return manifest
+
+
+SETUP_SCRIPT = Path(__file__).with_name("setup.sh")
+FINGERPRINT_PLACEHOLDER = "@KEY_FINGERPRINT@"
+
+
+def write_setup_script(output: Path, fingerprint: str) -> None:
+    """Write the quick setup script to the site root with the fingerprint of the signing key filled in.
+
+    The script stops when the key it downloads does not have this fingerprint. Every project publishes the same file,
+    because the key is shared.
+    """
+    text = SETUP_SCRIPT.read_text()
+    if FINGERPRINT_PLACEHOLDER not in text:
+        raise TreeError(f"{SETUP_SCRIPT} has no {FINGERPRINT_PLACEHOLDER} to fill in")
+    target = output / "setup.sh"
+    target.write_text(text.replace(FINGERPRINT_PLACEHOLDER, fingerprint))
+    target.chmod(0o755)
 
 
 def _destinations(package: Package, arch_dirs: dict[tuple[str, str], list[str]]) -> list[str]:
