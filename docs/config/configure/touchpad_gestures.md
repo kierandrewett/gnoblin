@@ -103,7 +103,7 @@ while the screen is locked.
 
 Shells can subscribe to the raw `mutter.touchpad.gesture` signal or the stable
 `gnoblin.input.gesture` event and decide how to respond. These events report
-gesture phases and movement; they do not provide GNOME Shell overview,
-emoji-picker, or lock-screen progress animations. Shells that need animated UI
+gesture phases and movement; they do not provide overview, emoji-picker, or
+lock-screen progress animations. Shells that need animated UI
 can implement that behavior themselves. See [Lua events](/events/)
 for event payloads and a listener example.
