@@ -19,7 +19,7 @@ requests are informational and do not include this capability. See the
 [menu action details](/bridge/#api-130-wm-menu-actions).
 
 Use the supplied `window_id` for other window operations; do not target the
-currently focused window after the menu opens. Read the live window record to
+focused window after the menu opens. Read the live window record to
 check which actions are available, then send the corresponding typed
 operation through the bridge. Gnoblin rechecks the window and session state
 when it applies the operation.

@@ -214,7 +214,7 @@ changes or a config reload. Transient and modal windows remain with their
 parent.
 
 Gnoblin leaves the window where it opened and logs a warning if its declared
-workspace ID is not currently present. It does the same when a numeric target
+workspace ID is not present. It does the same when a numeric target
 position is unavailable when the window opens.
 
 ## Rule order

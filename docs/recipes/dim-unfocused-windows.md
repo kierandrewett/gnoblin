@@ -9,7 +9,7 @@ gnoblin.window_rule {
 }
 ```
 
-`focused = false` matches windows that do not currently have focus. `opacity`
+`focused = false` matches windows that do not have focus. `opacity`
 is a number from `0` (transparent) to `1` (opaque); the example uses `0.95`.
 The rule applies to windows, not layer surfaces.
 
