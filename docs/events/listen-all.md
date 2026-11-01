@@ -6,7 +6,7 @@ The event set depends on the running Mutter build and supported Gnoblin API vers
 
 ## Listen to every forwarded event
 
-Pass `"*"` to receive every event source currently forwarded by Gnoblin:
+Pass `"*"` to receive every event source Gnoblin forwards:
 
 ```lua
 gnoblin.on("*", function(event)
@@ -15,8 +15,7 @@ end)
 ```
 
 Registering a name does not create an event source; Mutter or Gnoblin must
-dispatch it. Signal availability follows the Mutter version used to build
-Gnoblin.
+dispatch it. Signal availability depends on the Mutter build Gnoblin uses.
 
 `gnoblin.listeners` maps each registered event name to its callback list.
 Inspect it to see which handlers earlier config files have added. The list is

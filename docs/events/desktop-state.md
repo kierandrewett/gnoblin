@@ -86,7 +86,7 @@ dispatches `unfocused` before `focused` within that state revision.
 
 A closed event's `last` field contains the final available window record.
 
-Layer lifecycle events follow the latest native layer snapshot. Each carries
+Layer lifecycle events follow the native layer snapshot. Each carries
 the shared state `revision`, `sequence`, and monotonic `time`. The stable ID is
 in `layer.id` on `created`; `changed` and `removed` also carry `layer_id`.
 
