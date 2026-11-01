@@ -11,13 +11,13 @@ gnoblin.configure {
 ```
 
 Programs such as `pkexec` ask polkit for administrator rights. Polkit then asks
-the session's authentication agent for a password. In a GNOME session GNOME
-Shell is that agent. When `auth.polkit_agent` is `true`, Gnoblin takes that role
-and publishes each request as an event. Your config or shell shows the prompt
-and returns the answer. See [Answer authentication prompts](/shell-api/authentication).
+the session's authentication agent for a password. When `auth.polkit_agent` is
+`true`, Gnoblin takes that role and publishes each request as an event. Your
+config or shell shows the prompt and returns the answer. See
+[Answer authentication prompts](/shell-api/authentication).
 
-| Field          | Type and accepted values | Default | Effect                                                                 |
-| -------------- | ------------------------ | ------- | ---------------------------------------------------------------------- |
+| Field          | Type and accepted values | Default | Effect                                                                           |
+| -------------- | ------------------------ | ------- | -------------------------------------------------------------------------------- |
 | `polkit_agent` | Boolean                  | `false` | `true` registers Gnoblin as the polkit agent. `false` leaves the role to others. |
 
 No other field is accepted. Gnoblin rejects an `auth` value that is not a
