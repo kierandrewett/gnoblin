@@ -11,12 +11,12 @@ as supported until its graphical-session gate has passed.
 
 Gnoblin installs as its own session and can coexist with GNOME. Four packages come from one build:
 
-| Package                       | Contents                                                              | Optional |
-| ----------------------------- | --------------------------------------------------------------------- | -------- |
+| Package                       | Contents                                                               | Optional |
+| ----------------------------- | ---------------------------------------------------------------------- | -------- |
 | `gnoblin`                     | Compositor, Lua runtime, session services, private Mutter, login entry | No       |
-| `xdg-desktop-portal-gnoblin`  | Gnoblin's GTK-based portal backend                                    | Yes      |
-| `gnoblin-geoclue-integration` | The GeoClue agent authorization file                                  | Yes      |
-| `gnoblin-ananicy-rules`       | The `ananicy-cpp` rules for the Gnoblin processes                     | Yes      |
+| `xdg-desktop-portal-gnoblin`  | Gnoblin's GTK-based portal backend                                     | Yes      |
+| `gnoblin-geoclue-integration` | The GeoClue agent authorization file                                   | Yes      |
+| `gnoblin-ananicy-rules`       | The `ananicy-cpp` rules for the Gnoblin processes                      | Yes      |
 
 - The private runtime is `/usr/lib/gnoblin`. Public files are the login entry, `gnoblin` and
   `gnoblinctl` links, service units and named policy files.
@@ -65,14 +65,14 @@ These files make up the definitions:
 The build stops when a program needs a library that is not listed. Run
 `python3 tests/pkgsmith-packages.test.py` after you change these files.
 
-| Format      | File                                    | Systems                                  |
-| ----------- | --------------------------------------- | ---------------------------------------- |
-| `rpm`       | `gnoblin-<v>-1.fc45.x86_64.rpm`         | Fedora 45                                |
-| `rpm`       | `gnoblin-<v>-1.tumbleweed.x86_64.rpm`   | openSUSE Tumbleweed                      |
-| `deb`       | `gnoblin_<v>-1_amd64.deb`               | Debian testing (`forky`)                 |
-| `archlinux` | `gnoblin-1:<v>-1-x86_64.pkg.tar.zst`    | Arch Linux                               |
-| `apk`       | `gnoblin-<v>-r1.apk`                    | Alpine edge                              |
-| `tar`       | `gnoblin-<v>-amd64.tar.xz`              | Other glibc systems, extract below `/`   |
+| Format      | File                                  | Systems                                |
+| ----------- | ------------------------------------- | -------------------------------------- |
+| `rpm`       | `gnoblin-<v>-1.fc45.x86_64.rpm`       | Fedora 45                              |
+| `rpm`       | `gnoblin-<v>-1.tumbleweed.x86_64.rpm` | openSUSE Tumbleweed                    |
+| `deb`       | `gnoblin_<v>-1_amd64.deb`             | Debian testing (`forky`)               |
+| `archlinux` | `gnoblin-1:<v>-1-x86_64.pkg.tar.zst`  | Arch Linux                             |
+| `apk`       | `gnoblin-<v>-r1.apk`                  | Alpine edge                            |
+| `tar`       | `gnoblin-<v>-amd64.tar.xz`            | Other glibc systems, extract below `/` |
 
 CI builds amd64 and arm64. The two rpm files differ only in dependency names. Every format needs
 glibc 2.43 or newer, which the build reads from the programs.
@@ -121,9 +121,9 @@ an Arch recipe, and checksums into `dist/release`.
 A release tag starts the release workflow. It runs these stages:
 
 1. **Source.** It builds the source bundle once and uploads it as a workflow artifact.
-2. **Packages.** From that bundle, for amd64 and arm64, it builds the prefix, writes the packages
-   with pkgsmith, installs them on clean Fedora, openSUSE, Arch and Debian systems, installs stock
-   GNOME beside them and removes Gnoblin.
+2. **Packages.** From a checkout of the same ref, for amd64 and arm64, it builds a prefix on
+   Fedora and another on Alpine, writes the packages with pkgsmith, installs them on clean Fedora,
+   openSUSE, Arch, Debian and Alpine systems, installs stock GNOME beside them and removes Gnoblin.
 3. **Publish.** It checksums every asset, records build provenance, attaches everything to one
    release and makes the release public.
 4. **Repository.** It builds the signed repository from the packages and uploads it. See
@@ -174,17 +174,17 @@ that tarball, after checking its SHA-256 sums.
 
 Each release page lists these files for each architecture. `SHA256SUMS` covers every other file.
 
-| Asset name                                                | What it is                                   |
-| --------------------------------------------------------- | -------------------------------------------- |
-| `gnoblin-<version>-gnome-<gnome>-source.tar.xz`           | Complete source tarball, built with `make`   |
-| `mutter-<gnome>.tar.xz`                                   | Patched Mutter source archive                |
-| `xdg-desktop-portal-gnome-<gnome>.tar.xz`                 | Patched portal backend source archive        |
-| `<package>-<version>-1.fc<N>.<arch>.rpm`                  | Fedora RPM                                   |
-| `<package>-<version>-1.tumbleweed.<arch>.rpm`             | openSUSE Tumbleweed RPM                      |
-| `<package>_<version>-1_<arch>.deb`                        | Debian package                               |
-| `<package>-1.<version>-1-<arch>.pkg.tar.zst`              | Arch package, with the epoch written as `1.` |
-| `<package>-<version>-<arch>.tar.xz`                       | Files of the package, for any glibc system   |
-| `SHA256SUMS`                                              | SHA-256 checksums of all other assets        |
+| Asset name                                      | What it is                                   |
+| ----------------------------------------------- | -------------------------------------------- |
+| `gnoblin-<version>-gnome-<gnome>-source.tar.xz` | Complete source tarball, built with `make`   |
+| `mutter-<gnome>.tar.xz`                         | Patched Mutter source archive                |
+| `xdg-desktop-portal-gnome-<gnome>.tar.xz`       | Patched portal backend source archive        |
+| `<package>-<version>-1.fc<N>.<arch>.rpm`        | Fedora RPM                                   |
+| `<package>-<version>-1.tumbleweed.<arch>.rpm`   | openSUSE Tumbleweed RPM                      |
+| `<package>_<version>-1_<arch>.deb`              | Debian package                               |
+| `<package>-1.<version>-1-<arch>.pkg.tar.zst`    | Arch package, with the epoch written as `1.` |
+| `<package>-<version>-<arch>.tar.xz`             | Files of the package, for any glibc system   |
+| `SHA256SUMS`                                    | SHA-256 checksums of all other assets        |
 
 `<package>` is one of the four package names. `<gnome>` is the pinned GNOME version, for example
 `51.0`. GitHub does not keep the colon of an Arch file name that has an epoch, so the release writes it as a dot.
@@ -222,12 +222,12 @@ Gnoblin. Stock GNOME must be unchanged afterwards, and no Gnoblin path may remai
 The signed repositories need these repository secrets and variables. `package-repository.yml`
 lists them, and `design/package-repositories.md` explains each one.
 
-| Name                                          | Kind     | Purpose                                       |
-| --------------------------------------------- | -------- | --------------------------------------------- |
-| `REPO_GPG_PRIVATE_KEY`, `REPO_GPG_PASSPHRASE` | secret   | Sign the packages and the metadata            |
-| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`  | secret   | Upload to the R2 bucket                       |
-| `REPO_BACKEND`, `REPO_DESTINATION`            | variable | `s3` and `s3://gnoblin-repo`                  |
-| `AWS_ENDPOINT_URL`                            | variable | The R2 S3 endpoint                            |
+| Name                                          | Kind     | Purpose                            |
+| --------------------------------------------- | -------- | ---------------------------------- |
+| `REPO_GPG_PRIVATE_KEY`, `REPO_GPG_PASSPHRASE` | secret   | Sign the packages and the metadata |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`  | secret   | Upload to the R2 bucket            |
+| `REPO_BACKEND`, `REPO_DESTINATION`            | variable | `s3` and `s3://gnoblin-repo`       |
+| `AWS_ENDPOINT_URL`                            | variable | The R2 S3 endpoint                 |
 
 Check the completed release workflow before telling users a package candidate
 is available. Do not claim graphical-session support until the target's login

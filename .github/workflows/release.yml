@@ -2,8 +2,9 @@ name: Release
 
 # Stages (design/release-pipeline.md has the reasoning):
 #   1. source      builds the source bundle once and uploads it as an artifact
-#   2. packages    builds the bundle into a prefix on Fedora, writes the rpm, deb, Arch and tar packages from it with
-#                  pkgsmith, and installs them on clean Fedora, openSUSE, Arch and Debian systems (packages.yml)
+#   2. packages    builds a checkout of the same ref into a prefix on Fedora and on Alpine, writes the rpm, deb, Arch,
+#                  apk and tar packages from the prefixes with pkgsmith, and installs them on clean Fedora, openSUSE,
+#                  Arch, Debian and Alpine systems (packages.yml)
 #   3. publish     attaches every asset to one release, checksums and attests them, and makes the release public
 #   4. repository  builds the signed RPM, APT and pacman repository from the packages of stage 2 and uploads it
 #
@@ -106,6 +107,7 @@ jobs:
       is_release: ${{ steps.meta.outputs.is_release }}
       ref: ${{ steps.meta.outputs.ref }}
       commit: ${{ steps.meta.outputs.commit }}
+      nightly_version: ${{ steps.nightly.outputs.version }}
     runs-on: ubuntu-latest
     container: fedora:45
     timeout-minutes: 30
@@ -209,6 +211,8 @@ jobs:
     with:
       ref: ${{ needs.source.outputs.ref }}
       release_tag: ${{ needs.source.outputs.release_tag }}
+      # The prefix jobs build their own checkout, so a nightly version reaches them as an input.
+      version: ${{ needs.source.outputs.nightly_version }}
 
   publish:
     # Runs only for a release tag, and only when every package job and install gate passed. A failed gate leaves no

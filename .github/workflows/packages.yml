@@ -3,8 +3,9 @@ name: Packages
 # Builds Gnoblin into a prefix, writes the packages from that prefix with pkgsmith, and installs them on clean systems.
 # The release workflow calls this after it builds the source bundle. It never publishes anything.
 #
-#   1. prefix    builds the source bundle into a prefix with scripts/build-prefix.sh, once per architecture: on Fedora 45
-#                for the glibc packages, and on Alpine edge for the apk packages
+#   1. prefix    builds a Git checkout of ref into a prefix with scripts/build-prefix.sh, once per architecture: on
+#                Fedora 45 for the glibc packages, and on Alpine edge for the apk packages. ./build.sh needs a checkout
+#                with its submodules, so the source bundle cannot be the input
 #   2. packages  runs pkgsmith on each prefix: rpm, deb, Arch and tar packages for gnoblin, xdg-desktop-portal-gnoblin,
 #                gnoblin-geoclue-integration and gnoblin-ananicy-rules
 #   3. install   installs the packages on a clean Fedora, openSUSE, Arch, Debian and Alpine system, installs stock GNOME
@@ -17,13 +18,17 @@ on:
   workflow_call:
     inputs:
       ref:
-        description: Branch, tag or commit that holds pkgsmith/ and the helper scripts
+        description: Branch, tag or commit to build, and that holds pkgsmith/ and the helper scripts
         type: string
         required: true
       release_tag:
         description: Release tag, or commit-<sha> for a dry run. Names the source bundle and the package artifacts.
         type: string
         required: true
+      version:
+        description: Nightly version to give the checkout (scripts/apply-nightly-version.py). Empty builds the version in the tree.
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -44,31 +49,33 @@ jobs:
     runs-on: ${{ matrix.runner }}
     container: fedora:45
     timeout-minutes: 150
+    env:
+      # ./build.sh applies the Mutter patch series as commits, which needs a committer.
+      GIT_COMMITTER_NAME: Gnoblin release automation
+      GIT_COMMITTER_EMAIL: release@gnoblin.local
     steps:
       - name: Install tools
         run: dnf -y install git-core tar xz zstd
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          name: gnoblin-${{ inputs.release_tag }}
-          path: release-assets
-      - name: Unpack the source bundle
-        # The prefix builds from the released source bundle, as a user's source build does. It needs no Git checkout and
-        # no access to GNOME GitLab, and it proves the bundle builds.
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - name: Set checkout ownership
         run: |
-          cd release-assets
-          sha256sum -c SHA256SUMS
-          bundles=(gnoblin-*-source.tar.xz)
-          test "${#bundles[@]}" -eq 1
-          tar -xf "${bundles[0]}" -C "$RUNNER_TEMP"
-          mapfile -t trees < <(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d -name 'gnoblin-*')
-          test "${#trees[@]}" -eq 1
-          echo "GNOBLIN_TREE=${trees[0]}" >> "$GITHUB_ENV"
+          chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Fetch pinned sources, retrying GNOME GitLab errors
+        run: ./scripts/checkout-submodules-with-retry.sh
+      - name: Give the checkout the nightly version
+        # scripts/build-prefix.sh fetches the upstream tags of the Mutter and portal checkouts itself.
+        if: inputs.version != ''
+        env:
+          NIGHTLY_VERSION: ${{ inputs.version }}
+        run: python3 scripts/apply-nightly-version.py "$NIGHTLY_VERSION"
       - name: Install the build requirements
-        run: cd "$GNOBLIN_TREE" && ./scripts/install-fedora-build-deps.sh
+        run: ./scripts/install-fedora-build-deps.sh
       - name: Build the prefix
-        run: |
-          cd "$GNOBLIN_TREE"
-          ./scripts/build-prefix.sh --prefix "$RUNNER_TEMP/prefix"
+        run: ./scripts/build-prefix.sh --prefix "$RUNNER_TEMP/prefix"
       - name: Archive the prefix
         # An artifact does not keep symbolic links or modes, and the prefix has both.
         run: tar --zstd -cf "$RUNNER_TEMP/prefix.tar.zst" -C "$RUNNER_TEMP/prefix" .
@@ -87,43 +94,46 @@ jobs:
         include:
           - { arch: amd64, runner: ubuntu-latest }
           - { arch: arm64, runner: ubuntu-24.04-arm }
+    # The job runs on the host, because JavaScript actions do not run in an Alpine container on an arm64 runner. Only
+    # the build runs in an alpine:edge container, started with docker.
     runs-on: ${{ matrix.runner }}
-    container: alpine:edge
     timeout-minutes: 150
+    env:
+      GIT_COMMITTER_NAME: Gnoblin release automation
+      GIT_COMMITTER_EMAIL: release@gnoblin.local
     steps:
-      - name: Install tools
-        shell: sh
-        run: apk add --no-cache bash git tar xz zstd
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
         with:
-          name: gnoblin-${{ inputs.release_tag }}
-          path: release-assets
-      - name: Unpack the source bundle
-        shell: bash
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+      - name: Fetch pinned sources, retrying GNOME GitLab errors
+        run: ./scripts/checkout-submodules-with-retry.sh
+      - name: Give the checkout the nightly version
+        if: inputs.version != ''
+        env:
+          NIGHTLY_VERSION: ${{ inputs.version }}
+        run: python3 scripts/apply-nightly-version.py "$NIGHTLY_VERSION"
+      - name: Build the prefix on Alpine
+        # The container runs as root, so it hands every file it wrote back to the runner user before it exits. The
+        # runner cleans up the workspace and uploads the archive as that user.
         run: |
-          cd release-assets
-          sha256sum -c SHA256SUMS
-          bundles=(gnoblin-*-source.tar.xz)
-          test "${#bundles[@]}" -eq 1
-          tar -xf "${bundles[0]}" -C "$RUNNER_TEMP"
-          mapfile -t trees < <(find "$RUNNER_TEMP" -mindepth 1 -maxdepth 1 -type d -name 'gnoblin-*')
-          test "${#trees[@]}" -eq 1
-          echo "GNOBLIN_TREE=${trees[0]}" >> "$GITHUB_ENV"
-      - name: Install the build requirements
-        shell: bash
-        run: cd "$GNOBLIN_TREE" && ./scripts/install-alpine-build-deps.sh
-      - name: Build the prefix
-        shell: bash
-        run: |
-          cd "$GNOBLIN_TREE"
-          ./scripts/build-prefix.sh --prefix "$RUNNER_TEMP/prefix"
-      - name: Archive the prefix
-        shell: bash
-        run: tar --zstd -cf "$RUNNER_TEMP/prefix.tar.zst" -C "$RUNNER_TEMP/prefix" .
+          mkdir "$RUNNER_TEMP/out"
+          docker run --rm -i \
+            --volume "$GITHUB_WORKSPACE:/work" --volume "$RUNNER_TEMP/out:/out" --workdir /work \
+            --env "HOST_OWNER=$(id -u):$(id -g)" --env GIT_COMMITTER_NAME --env GIT_COMMITTER_EMAIL \
+            alpine:edge sh -eu <<'SCRIPT'
+          trap 'chown -R "$HOST_OWNER" /work /out' EXIT
+          apk add --no-cache bash git tar xz zstd
+          git config --global --add safe.directory '*'
+          ./scripts/install-alpine-build-deps.sh
+          ./scripts/build-prefix.sh --prefix /out/prefix
+          # An artifact does not keep symbolic links or modes, and the prefix has both.
+          tar --zstd -cf /out/prefix.tar.zst -C /out/prefix .
+          SCRIPT
       - uses: actions/upload-artifact@v4
         with:
           name: prefix-musl-${{ inputs.release_tag }}-${{ matrix.arch }}
-          path: ${{ runner.temp }}/prefix.tar.zst
+          path: ${{ runner.temp }}/out/prefix.tar.zst
           if-no-files-found: error
           retention-days: 7
 
@@ -211,20 +221,11 @@ jobs:
           - { system: alpine, image: "alpine:edge" }
           - { arch: amd64, runner: ubuntu-latest }
           - { arch: arm64, runner: ubuntu-24.04-arm }
+    # The job runs on the host, because JavaScript actions do not run in an Alpine container on an arm64 runner. Only the
+    # check runs in the image of the system, started with docker.
     runs-on: ${{ matrix.runner }}
-    container: ${{ matrix.image }}
     timeout-minutes: 45
     steps:
-      - name: Install checkout tools
-        shell: sh
-        run: |
-          case "${{ matrix.system }}" in
-            fedora) dnf -y install git-core ;;
-            opensuse) zypper -n install git-core tar gzip ;;
-            arch) pacman -Syu --noconfirm --needed git ;;
-            debian) apt-get update -qq && apt-get install -y -qq --no-install-recommends ca-certificates git ;;
-            alpine) apk add --no-cache bash git ;;
-          esac
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
@@ -233,5 +234,12 @@ jobs:
           name: packages-${{ inputs.release_tag }}-${{ matrix.arch }}
           path: packages
       - name: Install, coexist with stock GNOME and remove
-        shell: bash
-        run: ./scripts/check-package-install.sh packages
+        env:
+          IMAGE: ${{ matrix.image }}
+          SYSTEM: ${{ matrix.system }}
+        run: |
+          # The check needs bash. Alpine does not ship it.
+          prepare=true
+          if [ "$SYSTEM" = alpine ]; then prepare='apk add --no-cache bash'; fi
+          docker run --rm --volume "$GITHUB_WORKSPACE:/work" --workdir /work --env PREPARE="$prepare" "$IMAGE" \
+            sh -euc 'eval "$PREPARE" && exec bash ./scripts/check-package-install.sh packages'

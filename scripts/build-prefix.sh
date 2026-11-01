@@ -11,7 +11,7 @@
 # The build is ./build.sh --layout system. It needs a Fedora system with the packages of
 # scripts/install-fedora-build-deps.sh, checked-out submodules, and git author settings that allow commits (the
 # build applies the patch series as commits in subprojects/mutter). Run it on the oldest glibc you want the packages to
-# run on. CI runs it in the fedora:45 image, on amd64 and on arm64.
+# run on. CI runs it from a Git checkout of the ref, in the fedora:45 image and in alpine:edge, on amd64 and on arm64.
 #
 # One prefix serves every package format, so the build avoids what differs between distributions:
 #   - Lua is linked statically. Fedora, openSUSE, Arch and Debian name the Lua library differently (liblua-5.5.so,
