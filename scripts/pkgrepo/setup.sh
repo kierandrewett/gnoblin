@@ -3,8 +3,8 @@
 #
 #   curl -fsSL https://repo.gnoblin.org/setup.sh | sh
 #
-# It shows a short list of what to set up. Gnoblin is selected; press Space to select Bingux or the nightly channel too,
-# then Enter. It then detects your system, adds the signing key and the repositories for the package manager it finds,
+# It shows a short list of what to set up. Gnoblin and the stable channel are selected; press Space to select Bingux or
+# the nightly channel too, then Enter. It then detects your system, adds the signing key and the repositories for the package manager it finds,
 # and prints the command that installs the packages. It installs no packages itself.
 #
 # Keys in the list: Up and Down (or k and j) move, Space selects, Enter confirms, q quits.
@@ -118,46 +118,52 @@ done
 title "Gnoblin package setup"
 info "System:  ${PRETTY_NAME:-$ID} ($arch)"
 
-# One row of the list: the pointer, the box, the name and what it is.
+# One row of the list. Repositories are checkboxes. The channel is a choice of one, so its rows are radio buttons.
 draw_row() {
-    if [ "$3" = 1 ]; then box="[x]"; else box="[ ]"; fi
     if [ "$cursor" = "$1" ]; then pointer="${bold}>${reset}"; else pointer=" "; fi
-    printf '\033[2K\r  %s %s %s%s%s\n' "$pointer" "$box" "$2" "$dim" "  $4$reset" >/dev/tty
+    printf '\033[2K\r  %s %s %s%s%s\n' "$pointer" "$3" "$2" "$dim" "  $4$reset" >/dev/tty
 }
+
+box() { if [ "$1" = 1 ]; then printf '[x]'; else printf '[ ]'; fi; }
+radio() { if [ "$1" = "$2" ]; then printf '(*)'; else printf '( )'; fi; }
 
 # Show the list of what to set up. The script usually runs as "curl ... | sh", so the keys come from the terminal and
 # not from standard input. Without a terminal, the answer is Gnoblin only, in the stable channel.
 choose_projects() {
-    if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+    # /dev/tty can exist and still not open, for example in a container or a CI job, so try to open it.
+    if ! (: </dev/tty >/dev/tty) 2>/dev/null; then
         projects=gnoblin
         info "No terminal, so only Gnoblin is set up. Use --bingux for Bingux and --nightly for the nightly channel."
         return 0
     fi
     pick_gnoblin=1
     pick_bingux=0
-    pick_nightly=0
+    pick_channel="$channel"
     cursor=0
     saved_tty="$(stty -g </dev/tty)"
     trap 'stty "$saved_tty" </dev/tty; printf "\n" >/dev/tty; exit 130' INT TERM
     stty -icanon -echo min 1 time 0 </dev/tty
-    printf '\n%sWhat do you want to set up?%s\n' "$bold" "$reset" >/dev/tty
     first=1
     while :; do
-        [ "$first" = 1 ] || printf '\033[4A' >/dev/tty
+        [ "$first" = 1 ] || printf '\033[8A' >/dev/tty
         first=0
-        draw_row 0 gnoblin "$pick_gnoblin" "Window manager and session"
-        draw_row 1 bingux "$pick_bingux" "Desktop shell and apps. Needs Gnoblin, so it adds both"
-        draw_row 2 nightly "$pick_nightly" "Builds of the main branch instead of releases"
+        printf '\033[2K\r\n%sRepositories%s\n' "$bold" "$reset" >/dev/tty
+        draw_row 0 gnoblin "$(box "$pick_gnoblin")" "Window manager and session"
+        draw_row 1 bingux "$(box "$pick_bingux")" "Desktop shell and apps. Needs Gnoblin, so it adds both"
+        printf '\033[2K\r%sChannel%s\n' "$bold" "$reset" >/dev/tty
+        draw_row 2 stable "$(radio stable "$pick_channel")" "Releases"
+        draw_row 3 nightly "$(radio nightly "$pick_channel")" "Builds of the main branch"
         printf '\033[2K\r  %sUp/Down move   Space selects   Enter confirms   q quits%s\n' "$dim" "$reset" >/dev/tty
         key="$(dd bs=8 count=1 2>/dev/null </dev/tty)"
         case "$key" in
-            "$(printf '\033[A')" | k) cursor=$(((cursor + 2) % 3)) ;;
-            "$(printf '\033[B')" | j) cursor=$(((cursor + 1) % 3)) ;;
+            "$(printf '\033[A')" | k) cursor=$(((cursor + 3) % 4)) ;;
+            "$(printf '\033[B')" | j) cursor=$(((cursor + 1) % 4)) ;;
             " ")
                 case "$cursor" in
                     0) pick_gnoblin=$((1 - pick_gnoblin)) ;;
                     1) pick_bingux=$((1 - pick_bingux)) ;;
-                    2) pick_nightly=$((1 - pick_nightly)) ;;
+                    2) pick_channel=stable ;;
+                    3) pick_channel=nightly ;;
                 esac
                 ;;
             q | Q)
@@ -175,7 +181,7 @@ choose_projects() {
     [ "$pick_gnoblin" = 0 ] || projects="gnoblin"
     # Bingux runs on Gnoblin, so selecting Bingux always sets up both.
     [ "$pick_bingux" = 0 ] || projects="gnoblin bingux"
-    [ "$pick_nightly" = 0 ] || channel=nightly
+    channel="$pick_channel"
     [ -n "$projects" ] || die "nothing was selected. Nothing was changed"
 }
 
