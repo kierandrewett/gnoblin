@@ -178,13 +178,18 @@ jobs:
           REPO_GPG_PASSPHRASE: ${{ secrets.REPO_GPG_PASSPHRASE }}
           REPO_APK_PRIVATE_KEY: ${{ secrets.REPO_APK_PRIVATE_KEY }}
           SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PUBLISH: ${{ inputs.publish }}
         run: |
           # The key of the Alpine index is in the secret, or in a file when the run uses a throw-away key.
           apk_key=()
           if [ -n "${REPO_APK_KEY_FILE:-}" ]; then apk_key=(--apk-key "$REPO_APK_KEY_FILE"); fi
+          # A dry run uploads nothing, so a release that is already published must not stop it. Only a run that
+          # publishes keeps the rule that stable files are never replaced.
+          replace=()
+          if [ "$PUBLISH" != true ]; then replace=(--replace-stable); fi
           python3 scripts/pkgrepo build --project "$PROJECT" --channel "$CHANNEL" --packages packages \
             --output tree --existing existing --gnupg-home "$GNUPGHOME" --base-url "$REPO_URL" \
-            --source-commit "$SOURCE_COMMIT" --source-ref "$GITHUB_REF_NAME" "${apk_key[@]}"
+            --source-commit "$SOURCE_COMMIT" --source-ref "$GITHUB_REF_NAME" "${apk_key[@]}" "${replace[@]}"
       - uses: actions/upload-artifact@v4
         with:
           name: repository-${{ env.PROJECT }}-${{ inputs.channel }}-${{ inputs.release_tag }}
