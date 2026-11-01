@@ -1,4 +1,4 @@
-"""Package records, and reading the metadata of RPM, Debian and Arch package files."""
+"""Package records, and reading the metadata of RPM, Debian, Arch and Alpine package files."""
 
 from __future__ import annotations
 
@@ -7,22 +7,23 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from . import alpine
 from .runner import run
 
-ARCH_INDEPENDENT = {"rpm": "noarch", "deb": "all", "arch": "any"}
-FAMILIES = {"fedora": "rpm", "opensuse": "rpm", "deb": "deb", "arch": "arch"}
+ARCH_INDEPENDENT = {"rpm": "noarch", "deb": "all", "arch": "any", "apk": "noarch"}
+FAMILIES = {"fedora": "rpm", "opensuse": "rpm", "deb": "deb", "arch": "arch", "alpine": "apk"}
 
 
 @dataclass(frozen=True)
 class Package:
     """One package file and the place it has in the repository tree."""
 
-    format: str  # rpm, deb or arch
-    family: str  # fedora, opensuse, deb or arch
-    release: str  # Fedora release, openSUSE name, Debian suite; empty for Arch
+    format: str  # rpm, deb, arch or apk
+    family: str  # fedora, opensuse, deb, arch or alpine
+    release: str  # Fedora release, openSUSE name, Debian suite, Alpine branch; empty for Arch
     name: str
     version: str  # the full version in the format's own notation: [epoch:]version-release
-    arch: str  # the package's own architecture word: x86_64, noarch, amd64, all, any
+    arch: str  # the package's own architecture word: x86_64, aarch64, noarch, amd64, all, any
     filename: str
     size: int
     sha256: str
@@ -98,12 +99,15 @@ def read_arch(path: Path) -> tuple[str, str, str]:
     return match["name"], values["pkgver"], values["arch"]
 
 
-READERS = {"rpm": read_rpm, "deb": read_deb, "arch": read_arch}
-SUFFIXES = {"rpm": ".rpm", "deb": ".deb", "arch": ".pkg.tar.zst"}
+READERS = {"rpm": read_rpm, "deb": read_deb, "arch": read_arch, "apk": alpine.read_package}
+SUFFIXES = {"rpm": ".rpm", "deb": ".deb", "arch": ".pkg.tar.zst", "apk": ".apk"}
 
 
 def scan(input_root: Path) -> list[tuple[Package, Path]]:
     """Read every package under input_root/<family>/<release>/. Arch packages live under input_root/arch/.
+
+    Alpine packages of different architectures carry the same file name, so they sit in a directory each:
+    input_root/alpine/<branch>/<arch>/. The architecture is read from the package, not from the directory.
 
     Debug packages and source packages are not part of a repository and are skipped, with a note.
     """
