@@ -14,15 +14,16 @@ session available for recovery.
 | Distribution        | Releases            | Status      | Available path                                                               |
 | ------------------- | ------------------- | ----------- | ---------------------------------------------------------------------------- |
 | Fedora              | 43, 44              | Unsupported | No release package claim                                                     |
-| Fedora              | 45                  | Candidate   | [COPR build](install-fedora.md)                                              |
+| Fedora              | 45                  | Candidate   | [Repository or RPMs](install-fedora.md)                                      |
 | Enterprise Linux    | 8, 9, 10            | Unsupported | No release package claim                                                     |
 | Debian              | 11, 12              | Unsupported | No release package claim                                                     |
 | Debian              | 13                  | Unsupported | [Source build](install-source.md) if library versions meet requirements      |
+| Debian              | Testing (forky)     | Unsupported | [Packages](install-debian.md), install checks pass, no session login yet     |
 | Ubuntu              | 22.04               | Unsupported | No release package claim                                                     |
 | Ubuntu              | 24.04, 26.04        | Unsupported | [Source build](install-source.md) if library versions meet requirements      |
-| Arch                | Current             | Candidate   | [Release packages and pacman repository](install-arch.md)                    |
+| Arch                | Current             | Candidate   | [Repository or packages](install-arch.md)                                    |
 | openSUSE Leap       | 15.5, 15.6, 16.0    | Unsupported | No release package claim                                                     |
-| openSUSE Tumbleweed | Current             | Candidate   | [Release RPMs](install-opensuse.md)                                          |
+| openSUSE Tumbleweed | Current             | Candidate   | [Repository or RPMs](install-opensuse.md)                                    |
 | NixOS               | 25.05, 25.11, 26.05 | Unsupported | [Channel requirements](install-nixos.md)                                     |
 | NixOS               | unstable            | Unsupported | [Experimental flake package](install-nixos.md), pending session verification |
 
@@ -30,8 +31,7 @@ The status comes from the release target matrix in the source tree. It changes
 only when the target's required gates pass. A successful build or package
 installation does not establish graphical-session support.
 
-The Arch package has a further result from another project. Bingux builds the
-release PKGBUILD, installs it into a live ISO and boots the Gnoblin session in
+Bingux reports a further Arch result. It builds an Arch package of Gnoblin, installs it into a live ISO and boots the Gnoblin session in
 QEMU with UEFI and BIOS. Its boots cover the greeter, user session, lock and
 unlock, logout, and an install to disk. This is not a Gnoblin CI gate, so Arch
 stays a candidate.

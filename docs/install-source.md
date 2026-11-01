@@ -362,9 +362,7 @@ to use the new compositor. It does not remove files that the new build no longer
 Log into another session. Remove only the files created by `make install`.
 
 The `org.gnoblin.Shell*` and `gnome-session@gnoblin` paths below clean up
-registrations from older Gnoblin builds. `scripts/install-system.sh` removes the
-exact managed GNOME session drop-in after a successful DNF transaction. It stops
-if that file was edited.
+registrations from older Gnoblin builds.
 
 ```sh
 sudo rm -f /usr/lib/systemd/user/gnoblin-session.target

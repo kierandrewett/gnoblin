@@ -219,16 +219,21 @@ RealtimeKit corrects only the thread that asks. This can delay desktop frames
 and input under CPU load. The daemon's GNOME rule gives `gnome-shell` a
 separate low-latency class; check your installed rules for its actual priority.
 
-Install the `gnoblin-ananicy-rules` package from the
-[latest `gnoblin-ananicy-v*` release](https://github.com/kierandrewett/gnoblin/releases?q=gnoblin-ananicy):
+Install the `gnoblin-ananicy-rules` package from
+[Gnoblin's package repository](package-repositories.md) or the
+[latest release](https://github.com/kierandrewett/gnoblin/releases). It has the same
+version as `gnoblin`:
 
 ```sh
-sudo dnf install ./gnoblin-ananicy-rules-*.noarch.rpm        # Fedora
-sudo pacman -U gnoblin-ananicy-rules-*-any.pkg.tar.zst       # Arch Linux
+sudo dnf install gnoblin-ananicy-rules        # Fedora
+sudo zypper install gnoblin-ananicy-rules     # openSUSE Tumbleweed
+sudo apt install gnoblin-ananicy-rules        # Debian testing
+sudo pacman -S gnoblin-ananicy-rules          # Arch Linux
 ```
 
 On another distribution, copy `99-gnoblin.types` and `99-gnoblin.rules` from the
-release tarball to `/etc/ananicy.d/` and run `sudo systemctl restart ananicy-cpp`.
+`gnoblin-ananicy-rules` tar package, or from `src/data/ananicy/` in the source, to `/etc/ananicy.d/`
+and run `sudo systemctl restart ananicy-cpp`.
 
 The rules give `gnoblin`, `quickshell` and `bingux-frame` normal scheduling
 with nice -5. Log out and back in, then confirm with:

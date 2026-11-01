@@ -1,7 +1,7 @@
 # Package repositories
 
-Gnoblin publishes signed package repositories for Fedora, openSUSE Tumbleweed
-and Arch Linux. Add one repository and your package manager installs and updates
+Gnoblin publishes signed package repositories for Fedora, openSUSE Tumbleweed,
+Debian testing and Arch Linux, for amd64 and arm64. Add one repository and your package manager installs and updates
 Gnoblin like any other package.
 
 Each repository has two channels. Add the one you want.
@@ -25,8 +25,8 @@ published at `https://repo.gnoblin.org/gpg.key`. Its fingerprint is:
 Compare the fingerprint your package manager shows with this one before you
 accept the key.
 
-Debian and Ubuntu have no repository because there is no Gnoblin APT package.
-Build from [source](install-source.md) there.
+Debian 13 and Ubuntu are not in the repositories, because their libraries are too old for the
+packages. Build from [source](install-source.md) there.
 
 ## Fedora
 
@@ -50,7 +50,7 @@ repository.
 
 ## openSUSE Tumbleweed
 
-The stable channel has Tumbleweed packages. The nightly channel does not.
+Both channels have Tumbleweed packages.
 
 ```sh
 sudo zypper addrepo --refresh \
@@ -60,6 +60,23 @@ sudo zypper install gnoblin
 ```
 
 `zypper` shows the key and asks you to trust it. Compare the fingerprint first.
+
+## Debian testing
+
+Install the key and the sources file of the channel you want, then install:
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+sudo curl -fsSL -o /etc/apt/keyrings/gnoblin.asc https://repo.gnoblin.org/gpg.key
+sudo curl -fsSL -o /etc/apt/sources.list.d/gnoblin-stable.sources \
+  https://repo.gnoblin.org/gnoblin/stable/deb/gnoblin-stable-forky.sources
+sudo apt update
+sudo apt install gnoblin
+```
+
+For the nightly channel, use `nightly` in the file names and the address. Check the key
+fingerprint with `gpg --show-keys /etc/apt/keyrings/gnoblin.asc` before you run `apt update`.
+See [Debian](install-debian.md).
 
 ## Arch Linux
 
@@ -133,6 +150,13 @@ rpm -qa 'gpg-pubkey*' --queryformat '%{NAME}  %{SUMMARY}\n'
 ```
 
 Remove the key as on Fedora.
+
+### Debian
+
+```sh
+sudo rm /etc/apt/sources.list.d/gnoblin-stable.sources /etc/apt/sources.list.d/gnoblin-nightly.sources /etc/apt/keyrings/gnoblin.asc
+sudo apt update
+```
 
 ### Arch Linux
 

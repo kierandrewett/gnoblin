@@ -138,10 +138,17 @@ The `apply-patches` step (`cmake/source-step.cmake`) checks every patch header b
 
 ## Packaging
 
-Fedora packages use the specs in `packaging/rpm/`. The COPR project is
-`kierandrewett/gnoblin`; publish only after the local release gate and a clean
-install test pass. The Arch recipe uses the same CMake/Ninja source build;
-its package still needs clean installation and removal verification.
+Packages are not built by distribution recipes. `scripts/build-prefix.sh` builds Gnoblin into a
+prefix, and [pkgsmith](https://github.com/kierandrewett/pkgsmith) writes the rpm, deb, Arch and
+tar packages from that prefix with the definitions in `pkgsmith/`. `scripts/build-packages.sh`
+runs it, and `scripts/check-package-install.sh` installs the result on a clean system. The
+commands, the package list and the release stages are in
+[Packaging and releases](docs/distribution.md).
+
+When you add a file to the build, check which package ships it: `pkgsmith/runtime.star` names
+the portal backend's files, and everything else in the prefix belongs to `gnoblin`. When you add
+a library to the build, add its Debian and Arch package to `pkgsmith/dependencies.star`.
+`python3 tests/pkgsmith-packages.test.py` checks both with `pkgsmith` on `PATH`.
 
 Use small conventional commits. Keep unrelated working-tree changes out of a
 commit, and explain the user-visible result in the commit body.
