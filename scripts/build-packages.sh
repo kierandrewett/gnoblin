@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Write the Gnoblin packages from a prefix with pkgsmith.
 #
-# usage: scripts/build-packages.sh [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N]
+# usage: scripts/build-packages.sh [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N] [--list]
 #
 # DIR is the prefix that scripts/build-prefix.sh made. The script runs pkgsmith once for each script in pkgsmith/ and
 # writes every package into the output folder (default: dist):
@@ -13,6 +13,9 @@
 # version of a nightly build once scripts/apply-nightly-version.py has written it. --formats limits the formats, for
 # example rpm,deb. The architecture and the C library are read from the compositor in the prefix, so a prefix built
 # on arm64 gets arm64 packages on any machine that runs this script, and a prefix built on Alpine (musl) gets apk packages.
+#
+# --list writes no package and prints the files that each package would hold, for a review of what the prefix gives
+# each package.
 #
 # pkgsmith must be on PATH. scripts/install-pkgsmith.sh builds the pinned one.
 set -euo pipefail
@@ -26,6 +29,7 @@ version=""
 formats=""
 release=1
 fedora=45
+list=false
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --prefix)
@@ -52,8 +56,12 @@ while [ "$#" -gt 0 ]; do
             fedora="${2:?--fedora needs a release number}"
             shift 2
             ;;
+        --list)
+            list=true
+            shift
+            ;;
         *)
-            echo "usage: $0 [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N]" >&2
+            echo "usage: $0 [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N] [--list]" >&2
             exit 2
             ;;
     esac
@@ -133,12 +141,21 @@ format_args=()
 if [ -n "$formats" ]; then
     format_args=(-F "$formats")
 fi
-mkdir -p "$output"
 for script in runtime integrations; do
-    pkgsmith build . -f "pkgsmith/$script.star" --prefix "$prefix" -o "$output" --progress plain \
-        --build-arg "VERSION=$version" --build-arg "ARCH=$arch" --build-arg "LIBC=$libc" \
-        --build-arg "RELEASE=$release" --build-arg "FEDORA=$fedora" --build-arg "GLIBC=$glibc" \
-        --build-arg "PORTAL_VERSION=$portal_version" --build-arg "NEEDED_GNOBLIN=$needed_gnoblin" \
-        --build-arg "NEEDED_PORTAL=$needed_portal" "${format_args[@]}"
+    script_args=(
+        -f "pkgsmith/$script.star" --prefix "$prefix"
+        --build-arg "VERSION=$version" --build-arg "ARCH=$arch" --build-arg "LIBC=$libc"
+        --build-arg "RELEASE=$release" --build-arg "FEDORA=$fedora" --build-arg "GLIBC=$glibc"
+        --build-arg "PORTAL_VERSION=$portal_version" --build-arg "NEEDED_GNOBLIN=$needed_gnoblin"
+        --build-arg "NEEDED_PORTAL=$needed_portal"
+    )
+    if "$list"; then
+        pkgsmith files . "${script_args[@]}"
+    else
+        mkdir -p "$output"
+        pkgsmith build . "${script_args[@]}" -o "$output" --progress plain "${format_args[@]}"
+    fi
 done
-ls -l "$output"
+if ! "$list"; then
+    ls -l "$output"
+fi

@@ -194,10 +194,8 @@ jobs:
           python3 scripts/check-rpm-isolation.py dist/*.rpm
       - name: List the files of every package
         run: |
-          for script in runtime integrations; do
-            pkgsmith files . -f "pkgsmith/$script.star" --prefix prefix \
-              --build-arg "VERSION=$PACKAGE_VERSION" --build-arg "ARCH=${{ matrix.arch }}" --build-arg LIBC=glibc | tail -n 400
-          done
+          scripts/build-packages.sh --prefix prefix --list --version "$PACKAGE_VERSION" | tail -n 400
+          scripts/build-packages.sh --prefix prefix-musl --list --version "$PACKAGE_VERSION" | tail -n 400
       - uses: actions/upload-artifact@v4
         with:
           name: packages-${{ inputs.release_tag }}-${{ matrix.arch }}
