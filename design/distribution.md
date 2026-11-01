@@ -46,12 +46,12 @@ Nothing is built by a distribution recipe. One build serves every package format
 3. `scripts/check-package-install.sh` installs the packages on a clean system, installs stock GNOME
    beside them and removes Gnoblin.
 
-To try it on a Fedora 45 system with Rust installed:
+To try it on a Fedora system with Rust installed, where `43` is that system's Fedora release:
 
 ```sh
 ./scripts/install-fedora-build-deps.sh
 ./scripts/build-prefix.sh --prefix prefix
-PATH="$(./scripts/install-pkgsmith.sh):$PATH" ./scripts/build-packages.sh --prefix prefix --output dist
+PATH="$(./scripts/install-pkgsmith.sh):$PATH" ./scripts/build-packages.sh --prefix prefix --output dist --fedora 43
 ```
 
 These files make up the definitions:
@@ -67,15 +67,49 @@ The build stops when a program needs a library that is not listed. Run
 
 | Format      | File                                  | Systems                                |
 | ----------- | ------------------------------------- | -------------------------------------- |
-| `rpm`       | `gnoblin-<v>-1.fc45.x86_64.rpm`       | Fedora 45                              |
+| `rpm`       | `gnoblin-<v>-1.fc<N>.x86_64.rpm`      | Fedora release `<N>`, one file each    |
 | `rpm`       | `gnoblin-<v>-1.tumbleweed.x86_64.rpm` | openSUSE Tumbleweed                    |
 | `deb`       | `gnoblin_<v>-1_amd64.deb`             | Debian testing (`forky`)               |
 | `archlinux` | `gnoblin-1:<v>-1-x86_64.pkg.tar.zst`  | Arch Linux                             |
 | `apk`       | `gnoblin-<v>-r1.apk`                  | Alpine edge                            |
 | `tar`       | `gnoblin-<v>-amd64.tar.xz`            | Other glibc systems, extract below `/` |
 
-CI builds amd64 and arm64. The two rpm files differ only in dependency names. Every format needs
-glibc 2.43 or newer, which the build reads from the programs.
+CI builds amd64 and arm64. The Fedora and openSUSE rpm files differ only in dependency names. The
+glibc floor and the library names come from the programs of the prefix, so each format asks for
+what its prefix needs.
+
+### One prefix for each Fedora release
+
+`.github/workflows/packages.yml` builds a prefix on every Fedora release that
+`design/package-targets.json` lists with status `existing-path` (`scripts/fedora-releases.py`
+reads the list), and writes the Fedora rpm of that release from its prefix with
+`scripts/build-packages.sh --lanes fedora --fedora <N>`. The rpm of Fedora 43 therefore asks for
+the glibc and the library sonames of Fedora 43. A library that only an older Fedora release has
+under that soname, such as `libdisplay-info.so.2` on Fedora 43, is allowed in the Fedora rpm
+alone (`FEDORA_ONLY` in `pkgsmith/dependencies.star`).
+
+The openSUSE rpm, the deb, Arch and tar packages run on systems that are newer than Fedora, so
+they come from one prefix whose library sonames those systems have: the release marked
+`"shared_prefix": true` in the inventory (`--lanes other`). Fedora 43 links `libdisplay-info.so.2`,
+which Debian, Arch and Tumbleweed do not ship, so it cannot be that release. The shared prefix is
+never a pre-release, so those packages do not wait on one.
+
+A release that is not out yet has lifecycle `upstream-pre-release` in the inventory. Its jobs have
+`continue-on-error`, so a failure there is visible and does not fail the run.
+
+### Choosing the releases
+
+`scripts/update-release-matrix.py` proposes the releases; a person decides. It compares
+endoflife.date, Fedora's own release data (Bodhi and the published release directory) and the
+`fedora:<N>` image tag, and writes `scripts/release-candidates.json`: the newest four releases
+that are out and the pre-release, each with whether it meets the build floors. A release on which
+the three sources disagree goes to `needs_review` with its three observations and is never a
+candidate. `.github/workflows/release-matrix.yml` runs it weekly, checks the floors in each
+image, and opens one issue with the diff. It never pushes. To build a candidate, add or edit its
+entry in `design/package-targets.json` and set `status` to `existing-path`. Its `support` stays
+`unsupported` or `candidate` until its gates pass, as `scripts/check-packaging-targets.py`
+enforces, and that script warns about a candidate without an entry and an entry past its end of
+life.
 
 ### The apk packages
 

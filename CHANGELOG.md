@@ -9,6 +9,11 @@
   now writes the rpm, deb, Arch and tar packages: `scripts/build-prefix.sh` builds Gnoblin
   into a prefix and pkgsmith writes the packages from it with the definitions in `pkgsmith/`.
   See [packaging and releases](docs/distribution.md).
+- Fedora packages for every release in `design/package-targets.json`: each release is built on its own
+  image, so its rpm asks for the glibc and libraries of that release, and the signed repository has one
+  tree per release. A release that is not out yet is built as a pre-release that cannot fail the run.
+  `scripts/update-release-matrix.py` and a weekly workflow propose releases for review. See
+  [platform support](docs/platform-support.md).
 - Signed package repositories for Fedora, openSUSE Tumbleweed, Debian testing and Arch, each with
   a `stable` and a `nightly` channel. A release tag publishes the stable channel.
   A daily build of the main branch publishes the nightly channel when main has

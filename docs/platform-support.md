@@ -8,12 +8,14 @@ This page lists the releases that have Gnoblin packages and how far each has bee
 | Candidate   | Passes everything except graphical-session login. Use it for testing                 |
 | Unsupported | No claim. Use [Build from source](install-source.md) if the libraries are new enough |
 
+A pre-release is a release its distribution has not published. Its packages are built when the build passes and carry no release claim.
+
 ## Status by release
 
 | Distribution        | Releases            | Status      | Available path                                                               |
 | ------------------- | ------------------- | ----------- | ---------------------------------------------------------------------------- |
-| Fedora              | 43, 44              | Unsupported | No release package claim                                                     |
-| Fedora              | 45                  | Candidate   | [Repository or RPMs](install-fedora.md)                                      |
+| Fedora              | 43, 44              | Unsupported | CI builds and install-checks the packages, no release package claim          |
+| Fedora              | 45 (pre-release)    | Candidate   | [Repository or RPMs](install-fedora.md)                                      |
 | Enterprise Linux    | 8, 9, 10            | Unsupported | No release package claim                                                     |
 | Debian              | 11, 12              | Unsupported | No release package claim                                                     |
 | Debian              | 13                  | Unsupported | [Source build](install-source.md) if library versions meet requirements      |

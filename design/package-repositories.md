@@ -39,7 +39,7 @@ repo.gnoblin.org/
       manifest.json                            every package, its sha256, the commit it was built from
       fedora/
         gnoblin-stable.repo                    ready-made dnf repository file ($releasever, $basearch)
-        <release>/<arch>/                      45/x86_64/: RPMs, repodata/, repodata/repomd.xml.asc
+        <release>/<arch>/                      43/x86_64/: RPMs, repodata/, repodata/repomd.xml.asc
       opensuse/
         <release>/gnoblin-stable.repo
         <release>/<arch>/                      tumbleweed/x86_64/
@@ -59,7 +59,7 @@ repo.gnoblin.org/
 Details that matter:
 
 - `<release>` of RPM trees is what the package manager substitutes: Fedora's
-  `$releasever` is `45`, so `fedora/$releasever/$basearch` resolves. openSUSE
+  `$releasever` is `43`, `44` or `45`, so `fedora/$releasever/$basearch` resolves; each release has its own tree. openSUSE
   Tumbleweed has no number, so its `.repo` file names `tumbleweed`.
 - Architecture-independent packages (`noarch`, `all`, `any`) are copied into
   every architecture directory of their release, so a client never needs a
@@ -361,8 +361,14 @@ Gnoblin (`.github/workflows`):
 
 - `release.yml` builds the source bundle, calls `packages.yml`, publishes the GitHub release for a
   tag, and then calls `package-repository.yml`. `packages.yml` builds the bundle into a prefix on
-  Fedora 45 (amd64 and arm64), writes the rpm, deb, Arch and tar packages with pkgsmith, and
-  installs them on clean Fedora, openSUSE, Arch and Debian testing systems.
+  each Fedora release of `design/package-targets.json` (amd64 and arm64), writes the Fedora rpm of
+  each release from the prefix of that release, writes the openSUSE rpm, deb, Arch and tar packages
+  from one of them, and installs them on clean Fedora (each release), openSUSE, Arch and Debian
+  testing systems. A release that is not out yet is a pre-release: its jobs may fail without
+  failing the run, and nothing else waits on them.
+- `release-matrix.yml` runs weekly. It lists the Fedora releases that are out and the pre-release,
+  checks the build floors of each in its image, and opens or updates one issue with what changed.
+  It never pushes. A person promotes a candidate by editing `design/package-targets.json`.
 - A release tag builds the stable channel and publishes it. A push to `main`, a pull request or a
   manual dry run builds and verifies the tree with a throw-away key and publishes nothing.
 - `nightly.yml` runs at 02:17 UTC and on demand, and only where `REPO_DESTINATION` is set. It compares the
@@ -371,7 +377,7 @@ Gnoblin (`.github/workflows`):
   nightly version, skips the GitHub release, runs the same build and clean-install checks as a
   release, and publishes the nightly channel.
 - `package-repository.yml` is the reusable stage. It takes one concurrency group
-  per channel, so two publications never interleave. It sorts the packages into `fedora/45`,
+  per channel, so two publications never interleave. It sorts the packages into one `fedora/<release>` tree per Fedora release,
   `opensuse/tumbleweed`, `deb/forky`, `arch` and `alpine/edge/<arch>`.
 
 Bingux has its own workflows with the same stages and its own pkgsmith definitions.
@@ -390,12 +396,12 @@ Jobs are gated so that a fork builds and verifies only. Publication needs all of
 
 ## What each project builds today
 
-| Project | Format | Targets built by CI                           | Not built                                        |
-| ------- | ------ | --------------------------------------------- | ------------------------------------------------ |
-| Gnoblin | RPM    | Fedora 45 and openSUSE Tumbleweed, both archs | Fedora 43 and 44, Enterprise Linux, Leap         |
-| Gnoblin | pacman | Arch Linux, both archs                        |                                                  |
-| Gnoblin | deb    | Debian testing (`forky`), both archs          | Debian 13 and Ubuntu: the libraries are older    |
-| Gnoblin | apk    | Alpine edge, both archs                       | Alpine release branches: the libraries are older |
+| Project | Format | Targets built by CI                                       | Not built                                        |
+| ------- | ------ | --------------------------------------------------------- | ------------------------------------------------ |
+| Gnoblin | RPM    | Fedora 43, 44 and 45, and openSUSE Tumbleweed, both archs | Enterprise Linux, Leap                           |
+| Gnoblin | pacman | Arch Linux, both archs                                    |                                                  |
+| Gnoblin | deb    | Debian testing (`forky`), both archs                      | Debian 13 and Ubuntu: the libraries are older    |
+| Gnoblin | apk    | Alpine edge, both archs                                   | Alpine release branches: the libraries are older |
 
 Both architectures are built, installed in containers and published by the same jobs.
 The arm64 packages have been written and checked here only from an amd64 prefix (names, metadata);
@@ -403,7 +409,7 @@ the first arm64 CI run is the first real arm64 build.
 
 ## Rejected alternatives
 
-- One repository tree per distribution release (`repo.gnoblin.org/fedora-45/…`).
+- One repository tree per distribution release (`repo.gnoblin.org/fedora-44/…`).
   The layout the owner asked for groups by project and channel, which is also
   how a user thinks about it.
 - A single channel that users pin by version. Nightly users would have to edit a
