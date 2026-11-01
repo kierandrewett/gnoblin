@@ -118,5 +118,26 @@ jobs:
       # A push applies only when the repository variable INFRA_AUTO_APPLY is "true". A manual run applies only when asked.
       - name: Apply
         if: ${{ (github.event_name == 'push' && vars.INFRA_AUTO_APPLY == 'true') || (github.event_name == 'workflow_dispatch' && inputs.apply) }}
-        run: terraform apply -input=false -no-color tfplan
+        # Cloudflare measures startup_time_ms of a Worker when it deploys it, and the value flips between 1 and 2. The
+        # provider plans the old value, so an apply that changes a Worker can end with "inconsistent result after apply"
+        # although the change reached Cloudflare. Terraform saves the new value, so a second plan shows what is left.
+        # Only that error is retried. Any other error fails the step.
+        shell: bash -o pipefail {0}
+        run: |
+          if terraform apply -input=false -no-color tfplan 2>&1 | tee apply.log; then
+            exit 0
+          fi
+          grep -q "Provider produced inconsistent result after apply" apply.log || exit 1
+          for attempt in 1 2 3; do
+            echo "Retry $attempt: planning what is left after the provider error."
+            status=0
+            terraform plan -input=false -no-color -detailed-exitcode -out=tfplan || status=$?
+            case "$status" in
+              0) echo "Nothing is left to apply."; exit 0 ;;
+              2) if terraform apply -input=false -no-color tfplan 2>&1 | tee apply.log; then exit 0; fi
+                 grep -q "Provider produced inconsistent result after apply" apply.log || exit 1 ;;
+              *) exit 1 ;;
+            esac
+          done
+          exit 1
         working-directory: infra/terraform
