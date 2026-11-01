@@ -1,7 +1,7 @@
 # Launch feedback
 
 Use `gnoblin.launches` to read launch feedback and track a launch request.
-`list()` returns the latest cached native snapshot as immutable `Launch`
+`list()` returns the cached native snapshot as immutable `Launch`
 records. `snapshot()` returns those records together with the collection
 revision, including when the collection is empty.
 
@@ -18,11 +18,11 @@ native startup completes. `gnoblinctl lua` also exposes both reads.
 
 `gnoblin.launches.begin(options)` accepts these fields:
 
-| Field         | Type and accepted value                              | Default | Meaning                             |
-| ------------- | ---------------------------------------------------- | ------- | ----------------------------------- |
-| `token`       | Non-empty string, at most 128 characters             | None    | Identifies this launch attempt.     |
-| `application` | Non-empty string, at most 512 characters             | None    | Application hint used for matching. |
-| `timeout_ms`  | Integer from 100 to 10000                             | `3000`  | Deadline before state becomes timed out. |
+| Field         | Type and accepted value                  | Default | Meaning                                  |
+| ------------- | ---------------------------------------- | ------- | ---------------------------------------- |
+| `token`       | Non-empty string, at most 128 characters | None    | Identifies this launch attempt.          |
+| `application` | Non-empty string, at most 512 characters | None    | Application hint used for matching.      |
+| `timeout_ms`  | Integer from 100 to 10000                | `3000`  | Deadline before state becomes timed out. |
 
 Call `finish(token)` with the same token when the launch is cancelled or the
 application has started. The bracket form `gnoblin.launches["end"](token)`
@@ -34,16 +34,15 @@ The operation-based `launch.status()`, `launch.begin(args)`, and
 `launch.end(args)` names are low-level aliases. Prefer `gnoblin.launches` for
 Lua code.
 
-| Method                    | Arguments                                       | Successful result                                |
-| ------------------------- | ----------------------------------------------- | ------------------------------------------------ |
-| `launch.status()`         | None                                            | `{launches, revision}`                           |
-| `launch.begin(args)`      | `token`, `application`; optional `milliseconds` | `Launch` record                                  |
-| `launch.end(args)`        | `token`                                         | `{ok, token}`                                    |
+| Method               | Arguments                                       | Successful result      |
+| -------------------- | ----------------------------------------------- | ---------------------- |
+| `launch.status()`    | None                                            | `{launches, revision}` |
+| `launch.begin(args)` | `token`, `application`; optional `milliseconds` | `Launch` record        |
+| `launch.end(args)`   | `token`                                         | `{ok, token}`          |
 
 The low-level `launch.begin(args)` alias accepts the same token and application
 limits. It names the deadline field `milliseconds` and uses the same default
 and accepted range.
-
 
 The native runtime retains at most 64 records. It evicts the oldest completed
 record when needed and rejects a new launch if all retained records are pending.
