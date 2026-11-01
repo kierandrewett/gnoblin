@@ -32,7 +32,7 @@ gnoblin.window_rule {
 Each declared workspace remains available when empty. The declaration order
 sets the initial positions, but rules target workspaces by stable ID. IDs must
 be unique and match `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`; names must be
-nonempty and no longer than 80 characters. Runtime-created workspaces are
+nonempty and at most 80 characters. Runtime-created workspaces are
 temporary and are not part of this list.
 
 | Option         | Values and default                                | Effect                                                 |
