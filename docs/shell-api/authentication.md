@@ -2,7 +2,7 @@
 
 When a program needs administrator rights, polkit asks the session's
 authentication agent for a password. Examples include `pkexec` and system
-settings changes. GNOME Shell is that agent in a GNOME session.
+settings changes.
 
 Gnoblin can take that role when you set
 `gnoblin.configure { auth = { polkit_agent = true } }`. It registers as the
@@ -74,7 +74,7 @@ Each method takes a table and returns an operation. The operation succeeds with
 | Method                 | Fields                              | Effect                                                      |
 | ---------------------- | ----------------------------------- | ----------------------------------------------------------- |
 | `gnoblin.auth.begin`   | `request_id`, `identity` (optional) | Start the check for one identity. `identity` counts from 1. |
-| `gnoblin.auth.respond` | `request_id`, `response`            | Answer the latest prompt. Up to 4096 bytes of UTF-8.        |
+| `gnoblin.auth.respond` | `request_id`, `response`            | Answer the pending prompt. Up to 4096 bytes of UTF-8.       |
 | `gnoblin.auth.cancel`  | `request_id`                        | End the request. The program that asked reports a refusal.  |
 
 `identity` defaults to `1`. Pick another entry from `identities` when the user
