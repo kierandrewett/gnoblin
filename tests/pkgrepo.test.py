@@ -8,18 +8,26 @@ version naming and ordering, merge and retention, layout, publish plans and the 
 
 from __future__ import annotations
 
+import argparse
+import base64
+import gzip
+import hashlib
+import importlib.util
+import io
 import json
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
+import zlib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from pkgrepo import index, publish, tree, versions  # noqa: E402
+from pkgrepo import alpine, check, index, publish, signing, tree, versions  # noqa: E402
 from pkgrepo import package as packager  # noqa: E402
 from pkgrepo.runner import CommandError  # noqa: E402
 from pkgrepo.packages import Package, read_arch  # noqa: E402
@@ -55,6 +63,12 @@ class NightlyNaming(unittest.TestCase):
         self.assertEqual(value.deb, value.rpm)
         self.assertEqual(value.arch, "0.1.13nightly20261031.142")
         self.assertEqual(value.semver, "0.1.13-nightly.20261031.142.gabc1234")
+
+    def test_the_alpine_spelling_is_the_one_pkgsmith_writes(self):
+        value = versions.nightly("0.1.12", "0.1.12", "20261031", 142, "abc1234")
+        self.assertEqual(value.apk, "0.1.13_pre20261031142")
+        self.assertEqual(versions.semver_to_apk(value.semver), value.apk)
+        self.assertEqual(versions.semver_to_apk("0.1.13"), "0.1.13")
 
     def test_input_validation(self):
         with self.assertRaises(ValueError):
@@ -92,6 +106,17 @@ class Ordering(unittest.TestCase):
         self.assertEqual(c(self.old.arch + "-1", self.new.arch + "-1"), -1)
         self.assertEqual(c(self.same_day.arch + "-1", self.old.arch + "-1"), 1)
 
+    def test_apk(self):
+        c = versions.apk_compare
+        self.assertEqual(c(self.old.apk + "-r1", "0.1.13-r1"), -1)
+        self.assertEqual(c(self.old.apk + "-r1", "0.1.12-r1"), 1)
+        self.assertEqual(c(self.old.apk + "-r1", self.new.apk + "-r1"), -1)
+        self.assertEqual(c(self.same_day.apk + "-r1", self.old.apk + "-r1"), 1)
+        # The commit count grows a digit: the later build must still be the newer.
+        before = versions.nightly("0.1.12", None, "20261031", 99, "abc1234")
+        after = versions.nightly("0.1.12", None, "20261101", 100, "abc1234")
+        self.assertEqual(c(before.apk, after.apk), -1)
+
     def test_pacman_separator_would_be_wrong(self):
         # pacman has no tilde. A dot before the letters makes the nightly newer than the stable, which is why Arch
         # nightlies have no separator before "nightly".
@@ -106,6 +131,12 @@ class Ordering(unittest.TestCase):
         self.assertEqual(versions.dpkg_compare("1:0.1-1", "2.0-1"), 1)
         self.assertEqual(versions.pacman_compare("1.0a-1", "1.0-1"), -1)
         self.assertEqual(versions.pacman_compare("1:0.1-1", "2.0-1"), 1)
+        self.assertEqual(versions.apk_compare("1.0_rc1", "1.0"), -1)
+        self.assertEqual(versions.apk_compare("1.0_p1", "1.0"), 1)
+        self.assertEqual(versions.apk_compare("1.0a", "1.0"), 1)
+        self.assertEqual(versions.apk_compare("1.02", "1.1"), -1)
+        self.assertEqual(versions.apk_compare("1.10", "1.9"), 1)
+        self.assertEqual(versions.apk_compare("1.0-r2", "1.0-r10"), -1)
 
 
 @unittest.skipUnless(shutil.which("git"), "git is not installed")
@@ -312,6 +343,9 @@ class PublishPlans(unittest.TestCase):
         self.assertTrue(publish.is_package_file("arch/x86_64/c-1-1-x86_64.pkg.tar.zst.sig"))
         self.assertFalse(publish.is_package_file("arch/x86_64/bingux-nightly.db.tar.zst"))
         self.assertTrue(publish.is_package_file("deb/pool/trixie/a_1_amd64.deb"))
+        # The index is uploaded after the packages it lists, so it is metadata, not a package.
+        self.assertTrue(publish.is_package_file("alpine/edge/x86_64/a-1-r1.apk"))
+        self.assertFalse(publish.is_package_file("alpine/edge/x86_64/APKINDEX.tar.gz"))
 
     def test_everything_is_new_when_nothing_is_published(self):
         changed = publish.changed_packages(self.directory / "tree", "bingux/nightly", None)
@@ -760,6 +794,222 @@ class ArchFileNames(unittest.TestCase):
             path = self.write_package(Path(directory), "gnoblin-1.0.1.14-1-x86_64.pkg.tar.zst")
             with self.assertRaises(ValueError):
                 read_arch(path)
+
+
+def dummy_apk(directory: Path, name: str, version: str, release: str = "1", arch: str = "x86_64") -> Path:
+    """An unsigned .apk written like pkgsmith writes one (tests/pkgrepo/make-dummy-package.py)."""
+    spec = importlib.util.spec_from_file_location("make_dummy_package", ROOT / "tests/pkgrepo/make-dummy-package.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.make_apk(argparse.Namespace(name=name, version=version, release=release, out=str(directory), arch=arch))
+    return directory / f"{name}-{version}-r{release}.apk"
+
+
+class AlpineVersions(unittest.TestCase):
+    def test_a_package_with_the_same_name_and_version_is_one_package_in_every_architecture_directory(self):
+        # pkgsmith writes an architecture-independent package once per architecture, under the same file name.
+        noarch = package(name="docs", version="0.1.12-r1", family="alpine", release="edge", arch="noarch", fmt="apk")
+        fresh = [tree.Entry(noarch, Path("/dev/null"), new=True) for _ in range(2)]
+        self.assertEqual(len(tree.merge([], fresh, "stable", False)), 1)
+        with self.assertRaisesRegex(tree.TreeError, "never replaced"):
+            tree.merge([tree.Entry(noarch, Path("/dev/null"), new=False)], fresh[:1], "stable", False)
+
+    def test_nightly_retention_follows_alpine_ordering(self):
+        def make(count):
+            version = versions.nightly("0.1.12", None, "20261031", count, "abc1234").apk + "-r1"
+            made = package(name="gnoblin", version=version, family="alpine", release="edge", fmt="apk")
+            return tree.Entry(made, Path("/dev/null"), new=False)
+
+        kept, dropped = tree.apply_retention([make(n) for n in (99, 100, 101, 8)], "nightly", 2)
+        self.assertEqual(
+            sorted(e.package.version for e in kept),
+            ["0.1.13_pre20261031100-r1", "0.1.13_pre20261031101-r1"],
+        )
+        self.assertEqual(len(dropped), 2)
+
+
+@unittest.skipUnless(shutil.which("openssl") and shutil.which("gpg"), "openssl and gpg are needed")
+class AlpineRepository(unittest.TestCase):
+    """The signed APKINDEX.tar.gz, read the way apk reads it: one tar over the gzip streams, a signature over the second."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.keys = Path(tempfile.mkdtemp(prefix="pkgrepo-keys-"))
+        cls.keys.chmod(0o700)
+        subprocess.run(
+            [
+                "gpg",
+                "--homedir",
+                str(cls.keys),
+                "--batch",
+                "--pinentry-mode",
+                "loopback",
+                "--passphrase",
+                "",
+                "--quick-generate-key",
+                "test <test@example.invalid>",
+                "rsa2048",
+                "sign",
+                "1d",
+            ],
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["openssl", "genrsa", "-out", str(cls.keys / "apk.pem"), "2048"], check=True, capture_output=True
+        )
+        subprocess.run(
+            ["openssl", "genrsa", "-out", str(cls.keys / "other.pem"), "2048"], check=True, capture_output=True
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.keys, ignore_errors=True)
+
+    def setUp(self):
+        self.work = Path(tempfile.mkdtemp(prefix="pkgrepo-apk-"))
+        self.addCleanup(shutil.rmtree, self.work, True)
+        self.packages = self.work / "packages"
+        # Two architectures and one architecture-independent package that both builds carry.
+        for arch, directory in (("x86_64", "x86_64"), ("aarch64", "aarch64")):
+            dummy_apk(self.packages / "alpine" / "edge" / directory, "gnoblin", "0.1.13_pre2026110148", arch=arch)
+            dummy_apk(
+                self.packages / "alpine" / "edge" / directory, "gnoblin-rules", "0.1.13_pre2026110148", arch="noarch"
+            )
+
+    def build(self, key: str = "apk.pem", packages: Path | None = None, channel: str = "nightly") -> Path:
+        settings = tree.Settings(
+            project="gnoblin",
+            channel=channel,
+            input_dir=packages or self.packages,
+            output=self.work / "tree",
+            base_url="https://repo.example",
+        )
+        with (
+            signing.Signer(self.keys) as signer,
+            signing.ApkSigner.from_file(self.keys / key, "gnoblin.rsa.pub") as apk,
+        ):
+            tree.build(settings, signer, apk)
+        return settings.output
+
+    def verify_signature(self, public_key: Path, index: alpine.Index) -> bool:
+        signature = self.work / "index.sig"
+        signature.write_bytes(index.signature)
+        result = subprocess.run(
+            ["openssl", "dgst", f"-{index.digest}", "-verify", str(public_key), "-signature", str(signature)],
+            input=index.signed,
+            capture_output=True,
+        )
+        return result.returncode == 0
+
+    def test_the_index_is_one_tar_over_two_gzip_streams_with_a_signature_of_the_second(self):
+        output = self.build()
+        file = output / "gnoblin/nightly/alpine/edge/x86_64/APKINDEX.tar.gz"
+        # apk reads the streams as one tar: the signature first, then the index. A stray end marker would stop it.
+        with tarfile.open(fileobj=io.BytesIO(gzip.decompress(file.read_bytes()))) as archive:
+            self.assertEqual(archive.getnames(), [".SIGN.RSA256.gnoblin.rsa.pub", "DESCRIPTION", "APKINDEX"])
+        index = alpine.read_index(file)
+        self.assertEqual(index.description, "Gnoblin nightly")
+        self.assertTrue(self.verify_signature(output / "gnoblin.rsa.pub", index))
+
+    def test_a_changed_index_or_another_key_does_not_verify(self):
+        output = self.build()
+        file = output / "gnoblin/nightly/alpine/edge/x86_64/APKINDEX.tar.gz"
+        index = alpine.read_index(file)
+        changed = alpine.Index(**{**index.__dict__, "signed": index.signed[:-1] + bytes([index.signed[-1] ^ 1])})
+        self.assertFalse(self.verify_signature(output / "gnoblin.rsa.pub", changed))
+        other = self.work / "other.pub"
+        subprocess.run(
+            ["openssl", "rsa", "-in", str(self.keys / "other.pem"), "-pubout", "-out", str(other)],
+            check=True,
+            capture_output=True,
+        )
+        self.assertFalse(self.verify_signature(other, index))
+
+    def test_an_entry_names_the_package_the_way_apk_checks_it(self):
+        output = self.build()
+        directory = output / "gnoblin/nightly/alpine/edge/x86_64"
+        entries = {e["P"]: e for e in alpine.read_index(directory / "APKINDEX.tar.gz").entries}
+        self.assertEqual(sorted(entries), ["gnoblin", "gnoblin-rules"])
+        file = directory / "gnoblin-0.1.13_pre2026110148-r1.apk"
+        # The checksum is of the control stream, which is the first gzip stream of an unsigned package.
+        decoder = zlib.decompressobj(wbits=31)
+        decoder.decompress(file.read_bytes())
+        control = file.read_bytes()[: len(file.read_bytes()) - len(decoder.unused_data)]
+        self.assertEqual(entries["gnoblin"]["C"], "Q1" + base64.b64encode(hashlib.sha1(control).digest()).decode())
+        self.assertEqual(entries["gnoblin"]["S"], str(file.stat().st_size))
+        self.assertEqual((entries["gnoblin"]["V"], entries["gnoblin"]["A"]), ("0.1.13_pre2026110148-r1", "x86_64"))
+
+    def test_an_architecture_independent_package_is_listed_for_the_architecture_of_the_repository(self):
+        output = self.build()
+        for arch in ("x86_64", "aarch64"):
+            directory = output / "gnoblin/nightly/alpine/edge" / arch
+            entries = {e["P"]: e for e in alpine.read_index(directory / "APKINDEX.tar.gz").entries}
+            # apk downloads a package from the directory of the architecture it is listed with.
+            self.assertEqual(entries["gnoblin-rules"]["A"], arch)
+            self.assertTrue((directory / "gnoblin-rules-0.1.13_pre2026110148-r1.apk").is_file())
+        self.assertEqual(check.verify(output, "gnoblin", "nightly"), [])
+
+    def test_the_stable_channel_takes_the_package_both_builds_carry(self):
+        output = self.build(channel="stable")
+        manifest = json.loads((output / "gnoblin/stable/manifest.json").read_text())
+        self.assertEqual(sorted(p["name"] for p in manifest["packages"]), ["gnoblin", "gnoblin", "gnoblin-rules"])
+        self.assertEqual(manifest["apk_key"]["name"], "gnoblin.rsa.pub")
+
+    def test_the_client_files_name_the_branch_and_the_key(self):
+        output = self.build()
+        line = (output / "gnoblin/nightly/alpine/edge/gnoblin-nightly.list").read_text()
+        self.assertEqual(line, "https://repo.example/gnoblin/nightly/alpine/edge\n")
+        self.assertIn('href="../../gnoblin.rsa.pub"', (output / "gnoblin/nightly/index.html").read_text())
+        self.assertIn("-----BEGIN PUBLIC KEY-----", (output / "gnoblin.rsa.pub").read_text())
+        self.assertIn("gnoblin.rsa.pub", publish.site_files(output))
+
+    def test_verify_finds_what_a_client_would_refuse(self):
+        output = self.build()
+        directory = output / "gnoblin/nightly/alpine/edge/x86_64"
+        self.assertEqual(check.verify(output, "gnoblin", "nightly"), [])
+        original = (directory / "APKINDEX.tar.gz").read_bytes()
+        # An index re-signed with another key is not the key of the repository.
+        with signing.ApkSigner.from_file(self.keys / "other.pem", "gnoblin.rsa.pub") as signer:
+            resigned = self.work / "x86_64"
+            shutil.copytree(directory, resigned)
+            alpine.build_index(resigned, signer, sorted(p.name for p in resigned.glob("*.apk")), "Gnoblin nightly")
+        (directory / "APKINDEX.tar.gz").write_bytes((resigned / "APKINDEX.tar.gz").read_bytes())
+        self.assertTrue(any("does not verify" in problem for problem in check.verify(output, "gnoblin", "nightly")))
+        (directory / "APKINDEX.tar.gz").write_bytes(original)
+        # A package that is not the one the index lists.
+        package_file = directory / "gnoblin-0.1.13_pre2026110148-r1.apk"
+        dummy_apk(self.work / "evil", "gnoblin", "0.1.13_pre2026110148", arch="noarch")
+        shutil.copyfile(self.work / "evil/gnoblin-0.1.13_pre2026110148-r1.apk", package_file)
+        problems = check.verify(output, "gnoblin", "nightly")
+        self.assertTrue(
+            any("checksum of gnoblin-0.1.13_pre2026110148-r1.apk" in problem for problem in problems), problems
+        )
+
+    def test_a_channel_with_apk_packages_needs_the_key(self):
+        settings = tree.Settings(
+            project="gnoblin", channel="nightly", input_dir=self.packages, output=self.work / "tree"
+        )
+        with signing.Signer(self.keys) as signer:
+            with self.assertRaisesRegex(tree.TreeError, "REPO_APK_PRIVATE_KEY"):
+                tree.build(settings, signer)
+
+    def test_the_key_must_be_an_unencrypted_rsa_key(self):
+        marker = "PRIVATE" + " KEY"
+        elliptic = self.work / "ec.pem"
+        subprocess.run(
+            ["openssl", "ecparam", "-genkey", "-name", "prime256v1", "-noout", "-out", str(elliptic)],
+            check=True,
+            capture_output=True,
+        )
+        with self.assertRaisesRegex(CommandError, "RSA"):
+            signing.ApkSigner(elliptic.read_text(), "x.rsa.pub")
+        with self.assertRaisesRegex(CommandError, "not a PEM"):
+            signing.ApkSigner("not a key", "x.rsa.pub")
+        with self.assertRaisesRegex(CommandError, "passphrase"):
+            signing.ApkSigner(
+                f"-----BEGIN ENCRYPTED {marker}-----\nAAAA\n-----END ENCRYPTED {marker}-----\n", "x.rsa.pub"
+            )
 
 
 if __name__ == "__main__":

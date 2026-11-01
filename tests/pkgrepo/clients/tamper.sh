@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs inside a clean container of the distribution named by FAMILY (fedora, debian or arch). The server at $URL has
+# Runs inside a clean container of the distribution named by FAMILY (fedora, debian, arch or alpine). The server at $URL has
 # been tampered with; installing PACKAGE must fail, and the failure must be about the content, not about the network.
 set -uo pipefail
 out=/tmp/tamper.out
@@ -27,6 +27,11 @@ case "$FAMILY" in
         curl -fsS "$URL/$PROJECT/stable/arch/$PROJECT.conf" >>/etc/pacman.conf || exit 3
         pacman -Sy --noconfirm $PACKAGE >$out 2>&1
         ;;
+    alpine)
+        wget -q -O "/etc/apk/keys/$PROJECT.rsa.pub" "$URL/$PROJECT.rsa.pub" || exit 3
+        wget -q -O - "$URL/$PROJECT/stable/alpine/edge/$PROJECT-stable.list" >>/etc/apk/repositories || exit 3
+        { apk update && apk add $PACKAGE; } >$out 2>&1
+        ;;
 esac
 status=$?
 if [ $status -eq 0 ]; then
@@ -34,11 +39,11 @@ if [ $status -eq 0 ]; then
     tail -5 $out
     exit 1
 fi
-if grep -qiE "could not connect|curl error \(7\)|failed to connect|Connection refused" $out; then
+if grep -qiE "could not connect|curl error \(7\)|failed to connect|Connection refused|temporary error" $out; then
     echo "$FAMILY: failed for a network reason, so the test proves nothing"
     tail -5 $out
     exit 2
 fi
 echo "$FAMILY: refused (exit status $status). The errors:"
-grep -iE "error|fail|checksum|signature|mismatch|corrupt|invalid|^E:|NO_PUBKEY|BAD" $out | grep -v debconf | cut -c1-200 | sort -u | head -6
+grep -iE "error|fail|checksum|signature|mismatch|corrupt|invalid|^E:|NO_PUBKEY|BAD|untrusted" $out | grep -v debconf | cut -c1-200 | sort -u | head -6
 exit 0

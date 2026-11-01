@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
 """Make a throw-away package that only prints its own version: a test fixture for the repository tool.
 
-usage: make-dummy-package.py rpm|deb|arch NAME VERSION RELEASE OUTPUT-DIR [--dist .fc43] [--arch x86_64|amd64]
+usage: make-dummy-package.py rpm|deb|arch|apk NAME VERSION RELEASE OUTPUT-DIR [--dist .fc43] [--arch x86_64|amd64]
 
 rpm needs rpmbuild, deb needs dpkg-deb and arch needs makepkg (so run it as an unprivileged user in an Arch container).
+apk needs nothing: the .apk is written here, unsigned, the way pkgsmith writes it.
 The package installs /usr/bin/NAME, a shell script that prints "NAME VERSION-RELEASE".
 """
 
 from __future__ import annotations
 
 import argparse
+import gzip
+import hashlib
+import io
 import os
 import shutil
 import subprocess
+import tarfile
 import tempfile
+import time
 from pathlib import Path
 
 
@@ -96,9 +102,37 @@ package() {{
     shutil.rmtree(top)
 
 
+def make_apk(a: argparse.Namespace) -> None:
+    """An Alpine package: a gzip stream with .PKGINFO, then one with the files. The tar of the first has no end marker."""
+    body = script(a.name, f"{a.version}-r{a.release}").encode()
+    data = io.BytesIO()
+    with tarfile.open(fileobj=data, mode="w", format=tarfile.PAX_FORMAT) as archive:
+        for directory in ("usr", "usr/bin"):
+            info = tarfile.TarInfo(directory)
+            info.type, info.mode = tarfile.DIRTYPE, 0o755
+            archive.addfile(info)
+        info = tarfile.TarInfo(f"usr/bin/{a.name}")
+        info.size, info.mode = len(body), 0o755
+        info.pax_headers = {"APK-TOOLS.checksum.SHA1": hashlib.sha1(body).hexdigest()}
+        archive.addfile(info, io.BytesIO(body))
+    data_stream = gzip.compress(data.getvalue(), mtime=0)
+    pkginfo = (
+        f"pkgname = {a.name}\npkgver = {a.version}-r{a.release}\npkgdesc = Throw-away test package\n"
+        f"url = https://example.invalid/\nbuilddate = {int(time.time())}\npackager = Test <test@example.invalid>\n"
+        f"size = {len(body)}\narch = {a.arch}\norigin = {a.name}\nlicense = MIT\n"
+        f"datahash = {hashlib.sha256(data_stream).hexdigest()}\n"
+    ).encode()
+    info = tarfile.TarInfo(".PKGINFO")
+    info.size, info.mode = len(pkginfo), 0o644
+    control = info.tobuf(tarfile.USTAR_FORMAT) + pkginfo + b"\0" * (-len(pkginfo) % 512)
+    out = Path(a.out)
+    out.mkdir(parents=True, exist_ok=True)
+    (out / f"{a.name}-{a.version}-r{a.release}.apk").write_bytes(gzip.compress(control, mtime=0) + data_stream)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("format", choices=("rpm", "deb", "arch"))
+    parser.add_argument("format", choices=("rpm", "deb", "arch", "apk"))
     parser.add_argument("name")
     parser.add_argument("version")
     parser.add_argument("release")
@@ -106,8 +140,8 @@ def main() -> None:
     parser.add_argument("--dist", default="")
     parser.add_argument("--arch", default=None)
     a = parser.parse_args()
-    a.arch = a.arch or {"rpm": "x86_64", "deb": "amd64", "arch": "x86_64"}[a.format]
-    {"rpm": make_rpm, "deb": make_deb, "arch": make_arch}[a.format](a)
+    a.arch = a.arch or {"rpm": "x86_64", "deb": "amd64", "arch": "x86_64", "apk": "x86_64"}[a.format]
+    {"rpm": make_rpm, "deb": make_deb, "arch": make_arch, "apk": make_apk}[a.format](a)
 
 
 if __name__ == "__main__":

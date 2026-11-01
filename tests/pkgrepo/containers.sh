@@ -2,14 +2,14 @@
 # End-to-end test of scripts/pkgrepo with the real tools, in containers, with throw-away packages and a throw-away key.
 #
 # What it does:
-#   1. builds dummy RPM, deb and Arch packages (stable 0.1.12, stable 0.1.13, two nightlies)
+#   1. builds dummy RPM, deb, Arch and Alpine packages (stable 0.1.12, stable 0.1.13, two nightlies)
 #   2. builds the signed repositories with the tool and publishes them with the rsync back end into two site
 #      directories: state 1 (stable 0.1.12, nightly of 0.1.13) and state 2 (adds stable 0.1.13 and a nightly of 0.1.14,
 #      built by pulling state 1 over HTTP and merging)
-#   3. serves both states and, in clean Fedora, Debian, Ubuntu and Arch containers, adds the repositories the way the
+#   3. serves both states and, in clean Fedora, Debian, Ubuntu, Arch and Alpine containers, adds the repositories the way the
 #      documentation says, installs, upgrades between channels and downgrades
 #   4. checks that a tampered package and a tampered signature are refused
-#   5. compares the version orderings of the tool with rpm, dpkg and pacman's vercmp
+#   5. compares the version orderings of the tool with rpm, dpkg, pacman's vercmp and apk
 #
 # usage: tests/pkgrepo/containers.sh [step ...]      steps: packages repos clients tamper versions (default: all)
 #
@@ -63,16 +63,21 @@ if wanted packages; then
     v1="$(tool version --last-stable 0.1.12 --tree-version 0.1.12 --count 142 --commit abc1234 --date 20261031 --format json)"
     v2="$(tool version --last-stable 0.1.13 --tree-version 0.1.13 --count 20 --commit def5678 --date 20261105 --format json)"
     field() { python3 -c 'import json,sys; print(json.loads(sys.argv[1])[sys.argv[2]])' "$1" "$2"; }
-    echo "nightly 1: rpm/deb $(field "$v1" rpm), arch $(field "$v1" arch)"
-    echo "nightly 2: rpm/deb $(field "$v2" rpm), arch $(field "$v2" arch)"
+    echo "nightly 1: rpm/deb $(field "$v1" rpm), arch $(field "$v1" arch), apk $(field "$v1" apk)"
+    echo "nightly 2: rpm/deb $(field "$v2" rpm), arch $(field "$v2" arch), apk $(field "$v2" apk)"
+
+    say "throw-away Alpine index key"
+    [[ -f "$work/apk.pem" ]] || builder localhost/pkgrepo-builder openssl genrsa -out /work/apk.pem 3072 2>&1 | tail -1
 
     $engine unshare rm -rf "$work/pkgs"
     mkdir -p "$work/pkgs"
     cat >"$work/make-rpm-deb.sh" <<EOF
 set -euo pipefail
 cd /src/tests/pkgrepo
-mk() { # label rpm-version deb-version release
+mk() { # label rpm-version deb-version release apk-version
     local out=/work/pkgs/\$1
+    ./make-dummy-package.py apk $package \$5 \$4 \$out/alpine/edge/x86_64
+    ./make-dummy-package.py apk $package-data \$5 \$4 \$out/alpine/edge/x86_64 --arch noarch
     ./make-dummy-package.py rpm $package \$2 \$4 \$out/fedora/43 --dist .fc43 2>/dev/null
     ./make-dummy-package.py rpm $package-data \$2 \$4 \$out/fedora/43 --dist .fc43 --arch noarch 2>/dev/null
     for suite in trixie noble; do
@@ -80,10 +85,10 @@ mk() { # label rpm-version deb-version release
         ./make-dummy-package.py deb $package-data \$3 \$4 \$out/deb/\$suite --arch all
     done
 }
-mk stable-1 0.1.12 0.1.12 1
-mk stable-2 0.1.13 0.1.13 1
-mk nightly-1 $(field "$v1" rpm) $(field "$v1" deb) 1
-mk nightly-2 $(field "$v2" rpm) $(field "$v2" deb) 1
+mk stable-1 0.1.12 0.1.12 1 0.1.12
+mk stable-2 0.1.13 0.1.13 1 0.1.13
+mk nightly-1 $(field "$v1" rpm) $(field "$v1" deb) 1 $(field "$v1" apk)
+mk nightly-2 $(field "$v2" rpm) $(field "$v2" deb) 1 $(field "$v2" apk)
 EOF
     builder localhost/pkgrepo-builder bash /work/make-rpm-deb.sh
     cat >"$work/make-arch.sh" <<EOF
@@ -114,7 +119,7 @@ build_channel() { # state channel label [extra args]
     shift 3
     tool build --project $project --channel "$channel" --packages "/work/pkgs/$label" --output "/work/trees/$state-$channel" \
         --existing "/work/existing/$state-$channel" --gnupg-home /work/gnupg --base-url "http://127.0.0.1:$PORT" \
-        --source-commit "$label" "$@"
+        --apk-key /work/apk.pem --source-commit "$label" "$@"
 }
 
 serve() { # directory port
@@ -182,11 +187,12 @@ fi
 
 # --- 3. clients --------------------------------------------------------------------------------------------------------
 client() { # name image script [extra env]
-    local name=$1 image=$2 script=$3
+    local name=$1 image=$2 script=$3 shell=bash
     shift 3
+    [[ $script == alpine.sh ]] && shell="sh" # an Alpine image has no bash
     say "client: $name"
     $engine run --rm --network=host -v "$here/clients:/clients:ro,Z" -e PROJECT=$project -e PACKAGE=$package \
-        -e "URL1=http://127.0.0.1:$port1" -e "URL2=http://127.0.0.1:$port2" "$@" "$image" bash "/clients/$script" \
+        -e "URL1=http://127.0.0.1:$port1" -e "URL2=http://127.0.0.1:$port2" "$@" "$image" $shell "/clients/$script" \
         2>&1 | tee "$work/logs/client-$name.log" | sed 's/^/  /'
     grep -q "CLIENT-OK" "$work/logs/client-$name.log"
 }
@@ -198,6 +204,7 @@ if wanted clients; then
     client debian-trixie docker.io/library/debian:trixie debian.sh -e SUITE=trixie
     client ubuntu-noble docker.io/library/ubuntu:24.04 debian.sh -e SUITE=noble
     client archlinux docker.io/library/archlinux:latest arch.sh
+    client alpine-edge docker.io/library/alpine:edge alpine.sh
     stop_servers
     server_pids=()
 fi
@@ -205,13 +212,14 @@ fi
 # --- 4. tampering ------------------------------------------------------------------------------------------------------
 tamper_case() { # name port
     local name=$1 url="http://127.0.0.1:$2" family
-    for family in fedora debian arch; do
-        local image=docker.io/library/$family
+    for family in fedora debian arch alpine; do
+        local image=docker.io/library/$family shell=bash
+        [[ $family == alpine ]] && image=docker.io/library/alpine:edge shell="sh"
         [[ $family == arch ]] && image=docker.io/library/archlinux:latest
         [[ $family == debian ]] && image=docker.io/library/debian:trixie
         [[ $family == fedora ]] && image=docker.io/library/fedora:43
         $engine run --rm --network=host -v "$here/clients:/clients:ro,Z" -e FAMILY=$family -e URL="$url" -e PROJECT=$project \
-            -e PACKAGE=$package "$image" bash /clients/tamper.sh 2>&1 | sed "s/^/  [$name] /" | tee -a "$work/logs/tamper.log"
+            -e PACKAGE=$package "$image" $shell /clients/tamper.sh 2>&1 | sed "s/^/  [$name] /" | tee -a "$work/logs/tamper.log"
         [[ ${PIPESTATUS[0]} -eq 0 ]] || {
             echo "tamper case $name failed for $family" >&2
             return 1
@@ -226,16 +234,17 @@ if wanted tamper; then
     cp -r "$work/site2" "$work/site3"
     cp -r "$work/site2" "$work/site4"
     # The client files name the port of state 2; the copies are served on other ports.
-    find "$work/site3" \( -name '*.repo' -o -name '*.sources' -o -name '*.conf' \) -exec sed -i "s/:$port2/:$port3/" {} +
-    find "$work/site4" \( -name '*.repo' -o -name '*.sources' -o -name '*.conf' \) -exec sed -i "s/:$port2/:$((port3 + 1))/" {} +
-    find "$work/site3" \( -name '*.rpm' -o -name '*.deb' -o -name '*.pkg.tar.zst' \) -exec sh -c 'printf X >> "$1"' _ {} \;
+    find "$work/site3" \( -name '*.repo' -o -name '*.sources' -o -name '*.conf' -o -name '*.list' \) -exec sed -i "s/:$port2/:$port3/" {} +
+    find "$work/site4" \( -name '*.repo' -o -name '*.sources' -o -name '*.conf' -o -name '*.list' \) -exec sed -i "s/:$port2/:$((port3 + 1))/" {} +
+    find "$work/site3" \( -name '*.rpm' -o -name '*.deb' -o -name '*.pkg.tar.zst' -o -name '*.apk' \) -exec sh -c 'printf X >> "$1"' _ {} \;
     serve "$work/site3" "$port3"
     tamper_case packages "$port3"
-    say "tampered metadata: a changed line in repomd.xml and Release, a flipped byte in the pacman database (port $((port3 + 1)))"
+    say "tampered metadata: a changed line in repomd.xml and Release, a flipped byte in the pacman database, a changed entry in APKINDEX (port $((port3 + 1)))"
     find "$work/site4" -name repomd.xml -exec sh -c 'echo "<!-- tampered -->" >> "$1"' _ {} \;
     find "$work/site4" -name Release -exec sh -c 'echo "X-Tampered: yes" >> "$1"' _ {} \;
     find "$work/site4" -name InRelease -exec sh -c 'sed -i "s/^Origin: .*/Origin: Evil/" "$1"' _ {} \;
     find "$work/site4" \( -name '*.db' -o -name '*.db.tar.zst' \) -exec sh -c 'printf X >> "$1"' _ {} \;
+    find "$work/site4" -name APKINDEX.tar.gz -exec python3 "$here/tamper-apkindex.py" {} \;
     serve "$work/site4" "$((port3 + 1))"
     tamper_case metadata "$((port3 + 1))"
     stop_servers
@@ -244,12 +253,15 @@ fi
 
 # --- 5. version orderings --------------------------------------------------------------------------------------------
 if wanted versions; then
-    say "version orderings against rpm, dpkg and vercmp"
+    say "version orderings against rpm, dpkg, vercmp and apk"
     $engine run --rm -v "$src:/src:ro,Z" -e PYTHONDONTWRITEBYTECODE=1 localhost/pkgrepo-builder python3 /src/tests/pkgrepo/compare-versions.py rpm dpkg \
         2>&1 | tee "$work/logs/versions-rpm-dpkg.log"
     $engine run --rm -v "$src:/src:ro,Z" -e PYTHONDONTWRITEBYTECODE=1 docker.io/library/archlinux:latest bash -c \
         'pacman -Sy --noconfirm --needed python >/dev/null 2>&1; python3 /src/tests/pkgrepo/compare-versions.py pacman' \
         2>&1 | tee "$work/logs/versions-pacman.log"
+    $engine run --rm -v "$src:/src:ro,Z" -e PYTHONDONTWRITEBYTECODE=1 docker.io/library/alpine:edge sh -c \
+        'apk add -q python3 >/dev/null && python3 /src/tests/pkgrepo/compare-versions.py apk' \
+        2>&1 | tee "$work/logs/versions-apk.log"
 fi
 
 say "all selected steps passed"

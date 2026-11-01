@@ -1,5 +1,5 @@
 #!/bin/bash
-# Runs inside a clean container of the distribution named by FAMILY (fedora, debian or arch): adds the repository at
+# Runs inside a clean container of the distribution named by FAMILY (fedora, debian, arch or alpine): adds the repository at
 # $URL (channel $CHANNEL of project $PROJECT), installs the packages named in $PACKAGES, and verifies their files.
 set -euo pipefail
 say() { printf '\n### %s\n' "$*"; }
@@ -44,6 +44,25 @@ case "$FAMILY" in
         say "verify"
         pacman -Q $PACKAGES
         pacman -Qkq $PACKAGES && echo "pacman -Qk: all files match"
+        ;;
+    alpine)
+        say "trust the key, add the repository, install"
+        wget -q -O "/etc/apk/keys/$PROJECT.rsa.pub" "$URL/$PROJECT.rsa.pub"
+        wget -q -O - "$URL/$PROJECT/$CHANNEL/alpine/edge/$PROJECT-$CHANNEL.list" | tee -a /etc/apk/repositories
+        apk update
+        apk add $PACKAGES 2>&1 | tail -20
+        say "verify"
+        apk list -I $PACKAGES
+        for name in $PACKAGES; do
+            apk info -L "$name" | tail -n +2 | while read -r file; do
+                [ -n "$file" ] || continue
+                test -f "/$file" || {
+                    echo "missing /$file"
+                    exit 1
+                }
+            done
+        done
+        echo "every file the packages list is installed"
         ;;
 esac
 echo REAL-CLIENT-OK

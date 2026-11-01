@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Compare scripts/pkgrepo/versions.py with the programs that define the orderings: rpm, dpkg and pacman's vercmp.
+"""Compare scripts/pkgrepo/versions.py with the programs that define the orderings: rpm, dpkg, pacman's vercmp and apk.
 
-usage: compare-versions.py rpm|dpkg|pacman ...   (each needs its program: `rpm`, `dpkg`, `vercmp`)
+usage: compare-versions.py rpm|dpkg|pacman|apk ...   (each needs its program: `rpm`, `dpkg`, `vercmp`, `apk`)
 
 Random version strings plus the nightly spellings are compared in pairs. Any difference is a bug in versions.py.
 """
@@ -92,7 +92,46 @@ def check_pacman() -> list[str]:
     return mismatches
 
 
-CHECKS = {"rpm": check_rpm, "dpkg": check_dpkg, "pacman": check_pacman}
+def apk_strings(count: int) -> list[str]:
+    """Versions in apk's grammar: numbers, a letter, suffixes and a release, with and without leading zeros."""
+    out = []
+    for _ in range(count):
+        text = ".".join(rng.choice(["0", "1", "2", "10", "01", "007", "3"]) for _ in range(rng.randint(1, 4)))
+        if rng.random() < 0.25:
+            text += rng.choice("abcz")
+        for _ in range(rng.choice([0, 0, 1, 1, 2])):
+            text += (
+                "_"
+                + rng.choice(["alpha", "beta", "pre", "rc", "cvs", "svn", "git", "hg", "p"])
+                + rng.choice(["", "", "1", "2", "10"])
+            )
+        if rng.random() < 0.6:
+            text += f"-r{rng.choice([0, 1, 2, 10])}"
+        out.append(text)
+    return out
+
+
+def check_apk() -> list[str]:
+    items = [
+        n.apk
+        for n in (
+            versions.nightly(b, b, d, c, "abc1234")
+            for b in ("0.1.12", "0.1.13", "1.0.0")
+            for d, c in (("20261031", 142), ("20261101", 7), ("20261031", 143), ("20261105", 1000))
+        )
+    ]
+    items += ["0.1.12", "0.1.13", "0.1.13-r1", "0.1.13_pre1-r1", "51.0.0-r1013"]
+    items += apk_strings(300)
+    mismatches = []
+    for a, b in pairs(items, 1500):
+        output = subprocess.run(["apk", "version", "-t", a, b], capture_output=True, text=True).stdout.strip()
+        real = {"<": -1, "=": 0, ">": 1}[output]
+        if versions.apk_compare(a, b) != real:
+            mismatches.append(f"apk {a!r} {b!r}: tool {versions.apk_compare(a, b)} apk {real}")
+    return mismatches
+
+
+CHECKS = {"rpm": check_rpm, "dpkg": check_dpkg, "pacman": check_pacman, "apk": check_apk}
 
 failed = False
 for name in sys.argv[1:]:
