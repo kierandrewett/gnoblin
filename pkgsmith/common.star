@@ -18,8 +18,19 @@ LIBC = arg("LIBC", "glibc")
 # The revision of one version, for a packaging fix that does not change the version. It starts at 1 for each version.
 RELEASE = arg("RELEASE", "1")
 
-# The Fedora release that the prefix was built on, which is the one the Fedora packages are for.
-FEDORA = arg("FEDORA", "45")
+# The Fedora release that the prefix was built on, which is the one the Fedora packages are for. The libraries and the
+# glibc symbol versions in the programs come from that release, so the rpm asks for what that release has. It is empty
+# for a run that writes no Fedora package.
+FEDORA = arg("FEDORA", "")
+
+# Which packages this run writes: "fedora" is the rpm for FEDORA only, "other" is everything except the Fedora rpm, and
+# "all" is both. scripts/build-packages.sh runs the Fedora lane once for each Fedora prefix and the other lane once, from
+# the prefix that the deb, Arch, tar and openSUSE packages come from.
+LANES = arg("LANES", "all")
+if LANES not in ["all", "fedora", "other"]:
+    fail("LANES is " + LANES + ", which is not all, fedora or other.")
+if LANES != "other" and not FEDORA.isdigit():
+    fail("FEDORA is missing. Pass --build-arg FEDORA=43, or run scripts/build-packages.sh, which takes --fedora.")
 
 # Every package of this repository carries epoch 1 in the formats that have one, as the Fedora packages always did.
 # A higher epoch makes the packages of the new build system upgrade the ones that the old recipes made, whatever
@@ -32,6 +43,21 @@ FORMATS = {
     "glibc": ["rpm", "deb", "archlinux", "tar"],
     "musl": ["apk"],
 }[LIBC]
+
+def lanes():
+    """The (format, distro) pairs that this run writes. Fedora and openSUSE are two rpm lanes, the other formats have one."""
+    result = []
+    for fmt in FORMATS:
+        if fmt == "rpm":
+            if LANES != "other":
+                result.append(("rpm", "fedora"))
+            if LANES != "fedora":
+                result.append(("rpm", "opensuse"))
+        elif LANES != "fedora":
+            result.append((fmt, None))
+    if not result:
+        fail("LANES=" + LANES + " writes nothing for a " + LIBC + " prefix.")
+    return result
 
 def _is_commit(text):
     # A short or long Git hash, written with a leading g: gabc1234.

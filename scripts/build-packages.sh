@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Write the Gnoblin packages from a prefix with pkgsmith.
 #
-# usage: scripts/build-packages.sh [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N] [--list]
+# usage: scripts/build-packages.sh [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N] [--lanes LANES] [--list]
 #
 # DIR is the prefix that scripts/build-prefix.sh made. The script runs pkgsmith once for each script in pkgsmith/ and
 # writes every package into the output folder (default: dist):
@@ -13,6 +13,11 @@
 # version of a nightly build once scripts/apply-nightly-version.py has written it. --formats limits the formats, for
 # example rpm,deb. The architecture and the C library are read from the compositor in the prefix, so a prefix built
 # on arm64 gets arm64 packages on any machine that runs this script, and a prefix built on Alpine (musl) gets apk packages.
+#
+# --fedora is the Fedora release of the host that built the prefix. It names the rpm (.fc43) and, with the glibc symbol
+# versions of the programs, makes the rpm ask for what that release has. --lanes chooses what is written: fedora is
+# the Fedora rpm only, other is every package except the Fedora rpm, and all (the default) is both. CI writes the Fedora
+# rpm from the prefix of each Fedora release, and everything else from one of them.
 #
 # --list writes no package and prints the files that each package would hold, for a review of what the prefix gives
 # each package.
@@ -28,7 +33,8 @@ output="$root/dist"
 version=""
 formats=""
 release=1
-fedora=45
+fedora=
+lanes=all
 list=false
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -56,16 +62,31 @@ while [ "$#" -gt 0 ]; do
             fedora="${2:?--fedora needs a release number}"
             shift 2
             ;;
+        --lanes)
+            lanes="${2:?--lanes needs all, fedora or other}"
+            shift 2
+            ;;
         --list)
             list=true
             shift
             ;;
         *)
-            echo "usage: $0 [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N] [--list]" >&2
+            echo "usage: $0 [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N] [--lanes LANES] [--list]" >&2
             exit 2
             ;;
     esac
 done
+case "$lanes" in
+    all | fedora | other) ;;
+    *)
+        echo "[packages] --lanes is $lanes, which is not all, fedora or other" >&2
+        exit 2
+        ;;
+esac
+if [ "$lanes" != other ] && [ -z "$fedora" ]; then
+    echo "[packages] --fedora N is missing: the Fedora release of the prefix, such as 43" >&2
+    exit 2
+fi
 prefix="$(realpath -- "$prefix")"
 output="$(realpath -m -- "$output")"
 version="${version:-$(python3 scripts/gnoblin-version.py get version)}"
@@ -147,7 +168,7 @@ for script in runtime integrations; do
     script_args=(
         -f "pkgsmith/$script.star" --prefix "$prefix"
         --build-arg "VERSION=$version" --build-arg "ARCH=$arch" --build-arg "LIBC=$libc"
-        --build-arg "RELEASE=$release" --build-arg "FEDORA=$fedora" --build-arg "GLIBC=$glibc"
+        --build-arg "RELEASE=$release" --build-arg "FEDORA=$fedora" --build-arg "LANES=$lanes" --build-arg "GLIBC=$glibc"
         --build-arg "PORTAL_VERSION=$portal_version" --build-arg "NEEDED_GNOBLIN=$needed_gnoblin"
         --build-arg "NEEDED_PORTAL=$needed_portal"
     )

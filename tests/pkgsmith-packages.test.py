@@ -47,6 +47,8 @@ ARGUMENTS = {
     "NEEDED_GNOBLIN": "libc.so.6,libglib-2.0.so.0,libgtk-4.so.1,libinput.so.10,libwayland-server.so.0",
     "NEEDED_PORTAL": "libc.so.6,libgtk-4.so.1,libadwaita-1.so.0",
     "GLIBC": "2.43",
+    "FEDORA": "45",
+    "LANES": "all",
 }
 
 
@@ -111,6 +113,50 @@ class PackageDefinitions(unittest.TestCase):
             sorted(row["file"] for row in rows),
             ["gnoblin-0.1.13-1.fc45.x86_64.rpm", "gnoblin-0.1.13-1.tumbleweed.x86_64.rpm"],
         )
+
+    def test_the_fedora_rpm_is_named_for_the_release_that_built_the_prefix(self):
+        for release in ("43", "44", "45"):
+            with self.subTest(release=release):
+                files = {row["file"] for row in self.plan("runtime", FEDORA=release, LANES="fedora")}
+                self.assertEqual(
+                    files,
+                    {
+                        f"gnoblin-0.1.13-1.fc{release}.x86_64.rpm",
+                        f"xdg-desktop-portal-gnoblin-51.0.0-1013.fc{release}.x86_64.rpm",
+                    },
+                )
+        geoclue = [row for row in self.plan("integrations", FEDORA="43", LANES="fedora") if row["format"] == "rpm"]
+        self.assertEqual(
+            {row["file"] for row in geoclue},
+            {
+                "gnoblin-geoclue-integration-0.1.13-1.fc43.noarch.rpm",
+                "gnoblin-ananicy-rules-0.1.13-1.fc43.noarch.rpm",
+            },
+        )
+
+    def test_the_other_lane_writes_no_fedora_rpm_and_needs_no_fedora_release(self):
+        rows = self.plan("runtime", FEDORA="", LANES="other")
+        self.assertNotIn("fedora", {row["distro"] for row in rows})
+        self.assertEqual({row["format"] for row in rows}, {"rpm", "deb", "archlinux", "tar"})
+        self.assertEqual(
+            [row["file"] for row in rows if row["format"] == "rpm" and row["values"]["name"] == "gnoblin"],
+            ["gnoblin-0.1.13-1.tumbleweed.x86_64.rpm"],
+        )
+
+    def test_the_fedora_lane_needs_a_release(self):
+        for lanes in ("all", "fedora"):
+            with self.subTest(lanes=lanes):
+                result = self.run_pkgsmith("plan", "runtime", FEDORA="", LANES=lanes)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("FEDORA", result.stderr + result.stdout)
+
+    def test_an_older_fedora_soname_is_for_the_fedora_rpm_only(self):
+        needed = "libc.so.6,libdisplay-info.so.2"
+        fedora = self.run_pkgsmith("plan", "runtime", NEEDED_GNOBLIN=needed, FEDORA="43", LANES="fedora")
+        self.assertEqual(fedora.returncode, 0, fedora.stderr)
+        result = self.run_pkgsmith("plan", "runtime", "-F", "deb", NEEDED_GNOBLIN=needed, LANES="other")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("libdisplay-info.so.2", result.stderr + result.stdout)
 
     def test_versions_are_spelled_for_each_format(self):
         files = {

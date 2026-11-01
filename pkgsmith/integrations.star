@@ -5,17 +5,7 @@
 # architecture, except that the GeoClue package names the exact gnoblin build it was made for.
 # Run it with scripts/build-packages.sh.
 
-load("common.star", "EPOCH", "FEDORA", "FORMATS", "HOMEPAGE", "MAINTAINER", "RELEASE", "VERSION", "spell")
-
-def lanes():
-    result = []
-    for fmt in FORMATS:
-        if fmt == "rpm":
-            result.append(("rpm", "fedora"))
-            result.append(("rpm", "opensuse"))
-        else:
-            result.append((fmt, None))
-    return result
+load("common.star", "EPOCH", "FEDORA", "HOMEPAGE", "MAINTAINER", "RELEASE", "VERSION", "lanes", "spell")
 
 def release_for(distro):
     if distro == "fedora":

@@ -10,7 +10,7 @@
 # The package names, the epoch, the Provides and Obsoletes are those of the Fedora and Arch packages that this script
 # replaces, so a system that has them upgrades.
 
-load("common.star", "ARCH", "EPOCH", "FEDORA", "FORMATS", "HOMEPAGE", "MAINTAINER", "RELEASE", "VERSION", "numeric_release", "spell")
+load("common.star", "ARCH", "EPOCH", "FEDORA", "HOMEPAGE", "MAINTAINER", "RELEASE", "VERSION", "lanes", "numeric_release", "spell")
 load("dependencies.star", "library_depends", "split_list")
 
 PRIVATE = "/usr/lib/gnoblin"
@@ -123,17 +123,6 @@ PORTAL = {
     "apk": ["xdg-desktop-portal", "cmd:glib-compile-schemas", "libsecret"],
 }
 
-def lanes():
-    """Each package is written once for every lane: Fedora and openSUSE are two rpm lanes, the others have one."""
-    result = []
-    for fmt in FORMATS:
-        if fmt == "rpm":
-            result.append(("rpm", "fedora"))
-            result.append(("rpm", "opensuse"))
-        else:
-            result.append((fmt, None))
-    return result
-
 def table_key(fmt, distro):
     return distro if distro else fmt
 
@@ -157,12 +146,12 @@ def scripts_for(fmt, install, remove):
 def core_depends(fmt, distro):
     if fmt == "tar":
         return []
-    return library_depends(fmt, NEEDED_GNOBLIN, GLIBC) + CORE[table_key(fmt, distro)]
+    return library_depends(fmt, NEEDED_GNOBLIN, GLIBC, distro) + CORE[table_key(fmt, distro)]
 
 def portal_depends(fmt, distro):
     if fmt == "tar":
         return []
-    libraries = library_depends(fmt, NEEDED_PORTAL, GLIBC)
+    libraries = library_depends(fmt, NEEDED_PORTAL, GLIBC, distro)
     if fmt == "deb":
         libraries = [name for name in libraries if not name.startswith("libgtk-4-1")]
     if fmt == "archlinux":

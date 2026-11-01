@@ -80,20 +80,27 @@ FLOORS = [
     ("libpipewire-0.3.so.0()(64bit)", "libpipewire-0.3-0t64", "libpipewire", "1.4.11"),
 ]
 
+# Libraries that only an older Fedora release ships under this soname. An rpm names the library itself, so it needs no
+# table row, but deb and Arch have no package for it: a prefix that links one is for the Fedora rpm of that release and
+# makes no other package. Fedora 43 has libdisplay-info 0.2 (.so.2); Debian, Arch, openSUSE and newer Fedora have 0.3.
+FEDORA_ONLY = ["libdisplay-info.so.2"]
+
 def split_list(text):
     """A build argument that holds a comma separated list."""
     return [item for item in (text or "").split(",") if item]
 
-def library_depends(fmt, sonames, glibc):
+def library_depends(fmt, sonames, glibc, distro = None):
     """The library requirements of one package in one format.
 
     sonames are the NEEDED entries of its programs. glibc is the newest glibc symbol version the programs use, such as 2.43,
-    which becomes the floor on the C library.
+    which becomes the floor on the C library. distro is "fedora" or "opensuse" for an rpm, and None for the other formats.
     """
     if fmt == "apk":
         # apk resolves a library by its soname, so no table is needed.
         return ["so:" + soname for soname in sonames]
     for soname in sonames:
+        if soname in FEDORA_ONLY and fmt == "rpm" and distro == "fedora":
+            continue
         if soname not in LIBRARIES:
             fail("no package is known for " + soname + ". Add it to LIBRARIES in pkgsmith/dependencies.star, with the Debian and Arch package that ship it.")
     if fmt == "rpm":
