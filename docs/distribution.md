@@ -86,8 +86,9 @@ therefore come from a second prefix that `packages.yml` builds in `alpine:edge` 
 - Alpine edge is the only target, because it is the only Alpine release with GNOME 51 libraries.
 - Dependencies name each library as `so:<soname>`, which `apk` resolves itself.
 - apk has no epoch, so an apk is ordered by version and release only.
-- The repository tool has no apk back end. The apk packages are release assets and are not in the
-  signed repositories.
+- The apk packages are release assets and are in the signed repositories. `pkgrepo` writes one
+  `APKINDEX.tar.gz` for each architecture, signed with `REPO_APK_PRIVATE_KEY`, under
+  `alpine/edge/<arch>/` of the channel.
 
 A glibc prefix makes no apk, and a musl prefix makes only apk packages.
 
@@ -225,6 +226,7 @@ lists them, and `design/package-repositories.md` explains each one.
 | Name                                          | Kind     | Purpose                            |
 | --------------------------------------------- | -------- | ---------------------------------- |
 | `REPO_GPG_PRIVATE_KEY`, `REPO_GPG_PASSPHRASE` | secret   | Sign the packages and the metadata |
+| `REPO_APK_PRIVATE_KEY`                        | secret   | Sign the Alpine package index      |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`  | secret   | Upload to the R2 bucket            |
 | `REPO_BACKEND`, `REPO_DESTINATION`            | variable | `s3` and `s3://gnoblin-repo`       |
 | `AWS_ENDPOINT_URL`                            | variable | The R2 S3 endpoint                 |

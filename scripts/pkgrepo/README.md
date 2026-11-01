@@ -1,14 +1,13 @@
 # pkgrepo
 
-Builds, signs and uploads the package repositories of Gnoblin and Bingux. One
+Builds, signs and uploads the package repositories (RPM, APT, pacman and Alpine) of Gnoblin and Bingux. One
 tool serves both projects. The repository layout, the channels, the version
 rules and the key handling are in
 [design/package-repositories.md](../../design/package-repositories.md). Users
 install from the repositories as described in
 [docs/package-repositories.md](../../docs/package-repositories.md).
 
-The tool starts `createrepo_c`, `rpmsign`, `apt-ftparchive`, `repo-add` and
-`gpg`. `container/install-tools.sh` installs all of them on Debian 13, and
+The tool starts `createrepo_c`, `rpmsign`, `apt-ftparchive`, `repo-add`, `gpg` and `openssl`. `container/install-tools.sh` installs all of them on Debian 13, and
 `container/Containerfile` is the image that CI and a laptop both use:
 
 ```sh
@@ -31,8 +30,23 @@ alias pkgrepo='podman run --rm --network=host -v "$PWD:/work:Z" -v "$PWD/scripts
 | `package`     | Build rpm, deb and Arch packages from the `nfpm.yaml` files beside the code (see below)               |
 
 `build` expects the new packages as `PACKAGES/fedora/<release>/*.rpm`,
-`PACKAGES/opensuse/<release>/*.rpm`, `PACKAGES/deb/<suite>/*.deb` and
-`PACKAGES/arch/*.pkg.tar.zst`. Debug packages and source packages are skipped.
+`PACKAGES/opensuse/<release>/*.rpm`, `PACKAGES/deb/<suite>/*.deb`,
+`PACKAGES/arch/*.pkg.tar.zst` and `PACKAGES/alpine/<branch>/<arch>/*.apk`. Debug packages and source
+packages are skipped. The `.apk` files of every architecture have the same file names, so each
+architecture needs a directory of its own (`alpine/edge/x86_64/`, `alpine/edge/aarch64/`).
+
+The Alpine index is signed with an RSA key, not with the GnuPG key. `build` takes it from the file of
+`--apk-key`, or from the PEM text in `REPO_APK_PRIVATE_KEY` (`--apk-key-env` names another variable),
+and writes its public half to `<project>.rsa.pub` at the root of the tree. It stops when there are
+`.apk` files and no key. A throw-away key serves a local rehearsal: `openssl genrsa -out apk.pem 3072`.
+
+An Alpine client trusts the repository with that file and one line:
+
+```sh
+wget -O /etc/apk/keys/gnoblin.rsa.pub https://repo.gnoblin.org/gnoblin.rsa.pub
+echo https://repo.gnoblin.org/gnoblin/nightly/alpine/edge >> /etc/apk/repositories
+apk update && apk add gnoblin
+```
 
 A local rehearsal with a throw-away key and the rsync back end writing to a
 directory:
@@ -40,7 +54,8 @@ directory:
 ```sh
 export GNUPGHOME=/work/.gnupg
 gpg --batch --passphrase '' --quick-generate-key 'test key <test@example.invalid>' rsa3072 sign never
-pkgrepo build --project gnoblin --channel nightly --packages packages --output tree --gnupg-home "$GNUPGHOME"
+openssl genrsa -out apk.pem 3072                                      # only when there are .apk files
+pkgrepo build --project gnoblin --channel nightly --packages packages --output tree --gnupg-home "$GNUPGHOME" --apk-key apk.pem
 pkgrepo publish --project gnoblin --channel nightly --tree tree --backend rsync --destination site       # prints the plan
 pkgrepo publish --project gnoblin --channel nightly --tree tree --backend rsync --destination site --apply
 ```
@@ -83,11 +98,12 @@ Libraries loaded with `dlopen` are not visible to `@scan`. List them with `@name
 ## Tests
 
 ```sh
-python3 tests/pkgrepo.test.py            # rules, plans, rsync and Git back ends; no repository tools needed
+python3 tests/pkgrepo.test.py            # rules, plans, rsync and Git back ends, the Alpine index; needs gpg and openssl for those
 tests/pkgrepo/containers.sh              # real tools in containers: builds, installs, upgrades, tampering, version orderings
+tests/pkgrepo/real-packages.sh           # a repository of real packages, installed in a clean container (see the script)
 ```
 
-`containers.sh` builds throw-away packages and a throw-away key, serves the
+`containers.sh` builds throw-away packages and throw-away keys, serves the
 repositories on `127.0.0.1` and installs from them in clean Fedora, Debian,
-Ubuntu and Arch containers. `PKGREPO_ENGINE` selects the container command (for
+Ubuntu, Arch and Alpine containers. `PKGREPO_ENGINE` selects the container command (for
 example `podman --root /var/tmp/containers --runroot /var/tmp/run`).
