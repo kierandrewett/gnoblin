@@ -54,7 +54,7 @@ Scroll events include `dx`, `dy`, and `direction`: `"up"`, `"down"`, `"left"`,
 
 Gesture events include `dx`, `dy`, and `fingers`; pinch events also include
 `scale` and `angle_delta`. Tablet-pad events include `number`, `mode`, and
-`value`; `kind` is `"button"`, `"ring"`, `"strip"`, or `"dial"`. Tablet tools currently arrive as pointer events, not tablet-pad events.
+`value`; `kind` is `"button"`, `"ring"`, `"strip"`, or `"dial"`. Tablet tools arrive as pointer events, not tablet-pad events.
 
 Touch events include the integer `slot` identifying their current contact.
 
