@@ -14,6 +14,7 @@
 #   GNOBLIN_STAGE_ROOT       a root, like DESTDIR, under which both prefixes are written (default: none)
 #   GNOBLIN_SYSCONFDIR       the configuration directory on the target system (default /etc)
 #   GNOBLIN_LAYOUT_GEOCLUE   set to 1 to add the GeoClue agent authorisation, for a package that ships it separately
+#   GNOBLIN_LAYOUT_ANANICY   set to 1 to add the ananicy-cpp rules, for a package that ships them separately
 include("${CMAKE_CURRENT_LIST_DIR}/public-entries.cmake")
 
 if(NOT GNOBLIN_SYSTEM_PREFIX)
@@ -89,7 +90,13 @@ endif()
 # The optional GeoClue agent authorisation. Only a recipe with a separate package for it asks for the file, because a
 # package that does not list it would fail as having unpackaged files.
 if("$ENV{GNOBLIN_LAYOUT_GEOCLUE}" STREQUAL "1")
-    publish("${root}/packaging/geoclue/50-gnoblin.conf" "${stage}${sysconfdir}/geoclue/conf.d")
+    publish("${root}/src/data/geoclue/50-gnoblin.conf" "${stage}${sysconfdir}/geoclue/conf.d")
+endif()
+
+# The optional ananicy-cpp rules, which rank the session above the background class that gdm gives its children.
+if("$ENV{GNOBLIN_LAYOUT_ANANICY}" STREQUAL "1")
+    publish("${root}/src/data/ananicy/99-gnoblin.types" "${stage}${sysconfdir}/ananicy.d")
+    publish("${root}/src/data/ananicy/99-gnoblin.rules" "${stage}${sysconfdir}/ananicy.d")
 endif()
 
 # The schema cache is generated on the target, after the package is installed, so the package must not carry one.
