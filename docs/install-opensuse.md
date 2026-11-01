@@ -1,6 +1,6 @@
-# openSUSE Tumbleweed
+# openSUSE
 
-Gnoblin is built for openSUSE Tumbleweed, on amd64 and arm64.
+Install Gnoblin on openSUSE from the Gnoblin package repository. See [platform support](platform-support.md) for the supported releases and architectures.
 
 ## Install
 
@@ -12,8 +12,7 @@ sudo zypper refresh
 sudo zypper install gnoblin
 ```
 
-`zypper` shows the signing key and asks you to trust it. Check that its fingerprint matches the one in
-[package repositories](package-repositories.md#signing-key).
+`zypper` shows the signing key and asks you to trust it. Check that its fingerprint matches the one in [package repositories](package-repositories.md#signing-key), then accept it.
 
 To follow the newest build instead of releases, use `nightly` in place of `stable` and `gnoblin-nightly.repo`.
 

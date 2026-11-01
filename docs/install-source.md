@@ -11,13 +11,13 @@ to `/usr/local/lib/gnoblin`. After that, you can delete the source directory.
 Install these with your package manager:
 
 - A C/C++ compiler and GNU Make
-- Python 3.11 or newer, CMake, Meson and Ninja
+- Python 3, CMake, Meson and Ninja
 - `tar` and `xz`
 - Git, if you build from a Git checkout
-- The development libraries for GNOME 51: GLib, GTK4 4.20 or newer, libadwaita, PipeWire 1.4.11 or newer
-  (`libpipewire-0.3`), Glycin, `gdk-pixbuf-2.0`, `xdg-desktop-portal` 1.20 or newer, and the
-  `gsettings-desktop-schemas` development package
+- The development libraries that Gnoblin's GNOME sources need, including GLib, GTK4, libadwaita, PipeWire,
+  `xdg-desktop-portal` and `gsettings-desktop-schemas`
 
+The versions are listed in [`src/gnome-versions.json`](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-versions.json).
 You do not need `gnome-shell` or `mutter`. To check your libraries before you build, run
 `python3 scripts/check-build-deps.py` in the source directory.
 
@@ -35,7 +35,7 @@ cd gnoblin-[0-9]*/
 make
 ```
 
-To build the current development code instead, use Git:
+To build the development code instead, use Git:
 
 ```sh
 git clone https://github.com/kierandrewett/gnoblin.git

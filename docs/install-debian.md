@@ -1,7 +1,7 @@
 # Debian
 
-Gnoblin is built for Debian testing (`forky`), on amd64 and arm64. Debian 13 and Ubuntu are not supported.
-Use [Build from source](install-source.md) there.
+Install Gnoblin on Debian from the Gnoblin package repository. See [platform support](platform-support.md) for the supported releases and architectures. Where there is no package, use
+[Build from source](install-source.md).
 
 ## Install
 

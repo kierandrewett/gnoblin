@@ -1,28 +1,28 @@
 # Package repositories
 
-Gnoblin has package repositories for Fedora, openSUSE Tumbleweed, Debian testing, Arch Linux and Alpine edge. Add one
-and your package manager installs and updates Gnoblin. The steps are in the guide for your system:
-[Fedora](install-fedora.md), [openSUSE](install-opensuse.md), [Debian](install-debian.md),
-[Arch Linux](install-arch.md) and [Alpine](install-alpine.md).
+Gnoblin publishes signed package repositories. Add one and your package manager installs and updates Gnoblin.
+The steps are in the install guide for your system. Start at [Install Gnoblin](installation.md).
 
 ## Channels
 
 Each repository has two channels.
 
-| Channel   | What it carries                                 |
-| --------- | ----------------------------------------------- |
-| `stable`  | Released versions, such as 0.1.13               |
-| `nightly` | The newest build of the main branch, once a day |
+| Channel   | What it carries                     |
+| --------- | ----------------------------------- |
+| `stable`  | Released versions                   |
+| `nightly` | The newest build of the main branch |
 
 ## Signing key
 
-Every package and repository is signed. The key is at `https://repo.gnoblin.org/gpg.key`. Its fingerprint is:
+Every package and repository is signed. The key is at `https://repo.gnoblin.org/gpg.key`. Your package manager
+shows the key and asks you to accept it the first time you use the repository. Check that the fingerprint it
+shows matches this one:
 
 ```text
 91BA A379 0941 B9B3 BBA6  3BC4 F1B8 D899 DF3D 786E
 ```
 
-Check that the fingerprint your package manager shows matches this one before you accept the key.
+If the fingerprints differ, do not accept the key.
 
 ## Switch channels
 
@@ -44,7 +44,7 @@ sudo dnf --refresh distro-sync gnoblin
 
 On Arch Linux, delete the `[gnoblin-nightly]` section, then run `sudo pacman -Sy` and `sudo pacman -S gnoblin`.
 On Alpine, delete the nightly line, run `apk update`, then install the release version, for example
-`apk add gnoblin=0.1.13-r1`.
+`apk add gnoblin=VERSION`. Run `apk policy gnoblin` to see the versions.
 
 ## Remove a repository
 
@@ -56,7 +56,7 @@ Removing a repository does not remove Gnoblin. Remove the packages as the guide 
 sudo rm /etc/yum.repos.d/gnoblin-stable.repo /etc/yum.repos.d/gnoblin-nightly.repo
 ```
 
-### openSUSE Tumbleweed
+### openSUSE
 
 ```sh
 sudo zypper removerepo gnoblin-stable
@@ -71,10 +71,10 @@ sudo apt update
 
 ### Arch Linux
 
-Delete the `[gnoblin]` and `[gnoblin-nightly]` sections from `/etc/pacman.conf`, then run:
+Delete the `[gnoblin]` and `[gnoblin-nightly]` sections from `/etc/pacman.conf`, then find the Gnoblin key with `pacman-key --list-keys` and run this with its fingerprint:
 
 ```sh
-sudo pacman-key --delete 91BAA3790941B9B3BBA63BC4F1B8D899DF3D786E
+sudo pacman-key --delete FINGERPRINT
 sudo pacman -Sy
 ```
 

@@ -1,6 +1,6 @@
 # Fedora
 
-Gnoblin is built for Fedora 45, on amd64 and arm64.
+Install Gnoblin on Fedora from the Gnoblin package repository. See [platform support](platform-support.md) for the supported releases and architectures.
 
 ## Install
 
@@ -11,8 +11,7 @@ sudo dnf config-manager addrepo --from-repofile=https://repo.gnoblin.org/gnoblin
 sudo dnf install gnoblin
 ```
 
-`dnf` shows the signing key the first time. Check that its fingerprint matches the one in
-[package repositories](package-repositories.md#signing-key), then accept it.
+`dnf` shows the signing key the first time. Check that its fingerprint matches the one in [package repositories](package-repositories.md#signing-key), then accept it.
 
 To follow the newest build instead of releases, use `nightly` in place of `stable` and `gnoblin-nightly.repo`
 in the first command.

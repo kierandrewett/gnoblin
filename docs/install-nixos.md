@@ -1,7 +1,6 @@
 # NixOS
 
-Gnoblin is available as a flake for NixOS on x86_64. It is experimental and needs NixOS unstable. Stable channels are
-not supported yet.
+Install Gnoblin on NixOS with its flake. See [platform support](platform-support.md) for the supported releases and architectures.
 
 ## Install
 
@@ -11,7 +10,7 @@ not supported yet.
     inputs.gnoblin.url = "github:kierandrewett/gnoblin";
     ```
 
-    To stay on one release, use a release tag instead, for example `github:kierandrewett/gnoblin/gnoblin-v0.1.13`.
+    To stay on one release, add a release tag from the [Gnoblin releases](https://github.com/kierandrewett/gnoblin/releases) to the address.
 
 2. Add the module to your host's `nixosSystem` definition, where `inputs` is the set of flake inputs:
 

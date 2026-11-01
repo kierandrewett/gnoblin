@@ -1,6 +1,6 @@
 # Alpine
 
-Gnoblin is built for Alpine edge, on x86_64 and aarch64. Alpine release branches are not supported.
+Install Gnoblin on Alpine from the Gnoblin package repository. See [platform support](platform-support.md) for the supported releases and architectures.
 
 ## Install
 

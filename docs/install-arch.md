@@ -1,20 +1,30 @@
 # Arch Linux
 
-Gnoblin is built for Arch Linux and CachyOS, on x86_64 and aarch64.
+Install Gnoblin on Arch Linux or CachyOS from the Gnoblin package repository. See [platform support](platform-support.md) for the supported releases and architectures.
 
 ## Install
 
-Trust the Gnoblin signing key, add the repository to `/etc/pacman.conf`, then install Gnoblin:
+1. Download the signing key and check its fingerprint. It must match the one in
+   [package repositories](package-repositories.md#signing-key):
 
-```sh
-curl -fsSL -o gnoblin.key https://repo.gnoblin.org/gpg.key
-sudo pacman-key --add gnoblin.key
-sudo pacman-key --lsign-key 91BAA3790941B9B3BBA63BC4F1B8D899DF3D786E
-curl -fsSL https://repo.gnoblin.org/gnoblin/stable/arch/gnoblin.conf | sudo tee -a /etc/pacman.conf
-sudo pacman -Syu gnoblin
-```
+    ```sh
+    curl -fsSL -o gnoblin.key https://repo.gnoblin.org/gpg.key
+    gpg --show-keys gnoblin.key
+    ```
 
-The key fingerprint in the third command is the one in [package repositories](package-repositories.md#signing-key).
+2. Trust the key:
+
+    ```sh
+    sudo pacman-key --add gnoblin.key
+    sudo pacman-key --lsign-key "$(gpg --show-keys --with-colons gnoblin.key | awk -F: '/^fpr/ {print $10; exit}')"
+    ```
+
+3. Add the repository to `/etc/pacman.conf`, then install Gnoblin:
+
+    ```sh
+    curl -fsSL https://repo.gnoblin.org/gnoblin/stable/arch/gnoblin.conf | sudo tee -a /etc/pacman.conf
+    sudo pacman -Syu gnoblin
+    ```
 
 To follow the newest build instead of releases, use `nightly` in the address and `gnoblin-nightly.conf` as the file name.
 

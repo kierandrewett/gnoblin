@@ -7,16 +7,16 @@ Gnoblin installs next to GNOME, so your current session stays available.
 
 | System              | Guide                                  |
 | ------------------- | -------------------------------------- |
-| Fedora 45           | [Fedora](install-fedora.md)            |
-| openSUSE Tumbleweed | [openSUSE](install-opensuse.md)        |
-| Debian testing      | [Debian](install-debian.md)            |
+| Fedora              | [Fedora](install-fedora.md)            |
+| openSUSE            | [openSUSE](install-opensuse.md)        |
+| Debian              | [Debian](install-debian.md)            |
 | Arch Linux, CachyOS | [Arch Linux](install-arch.md)          |
-| Alpine edge         | [Alpine](install-alpine.md)            |
+| Alpine              | [Alpine](install-alpine.md)            |
 | NixOS               | [NixOS](install-nixos.md)              |
 | Anything else       | [Build from source](install-source.md) |
 
 Each guide adds the Gnoblin package repository, installs Gnoblin and shows how to update and remove it.
-Packages are available for amd64 and arm64.
+For the supported releases and architectures, see [platform support](platform-support.md).
 
 ## After installing
 
