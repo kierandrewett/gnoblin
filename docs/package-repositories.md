@@ -7,10 +7,10 @@ The steps are in the install guide for your system. Start at [Install Gnoblin](i
 
 Each repository has two channels.
 
-| Channel   | What it carries                     |
-| --------- | ----------------------------------- |
-| `stable`  | Released versions                   |
-| `nightly` | The newest build of the main branch |
+| Channel   | What it carries           |
+| --------- | ------------------------- |
+| `stable`  | Released versions         |
+| `nightly` | Builds of the main branch |
 
 ## Signing key
 
@@ -29,11 +29,11 @@ If the fingerprints differ, do not accept the key.
 To move from `stable` to `nightly`, add the nightly repository and update. To move back, remove the nightly
 repository and install the release again.
 
-- **Fedora and openSUSE:** you follow the newest version of every repository you have enabled. With both channels
-  enabled, you follow the nightly build.
+- **Fedora and openSUSE:** you get the highest version from any repository you have enabled. With both channels
+  enabled, that is the nightly build.
 - **Arch Linux:** pacman uses the first repository in `/etc/pacman.conf` that has the package. Put
   `[gnoblin-nightly]` above `[gnoblin]` to follow the nightly build, or below it to stay on releases.
-- **Alpine:** you follow the newest version of every repository in `/etc/apk/repositories`.
+- **Alpine:** you get the highest version from any repository in `/etc/apk/repositories`.
 
 To go back to the release on Fedora:
 

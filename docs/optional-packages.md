@@ -10,11 +10,16 @@ Install these only if you need them. Use your system's package manager, for exam
 | `gnoblin-geoclue-integration` | Location permission prompts through Gnoblin. Restart GeoClue after you install it. |
 | `gnoblin-ananicy-rules`       | Scheduling rules for Gnoblin, for systems that run `ananicy-cpp`                   |
 
-Without `xdg-desktop-portal-gnoblin`, Gnoblin uses another portal backend that is installed. GNOME sessions
-keep their own portal setup.
+Without `xdg-desktop-portal-gnoblin`, Gnoblin uses another portal backend that is installed.
 
 ## Other software your shell may need
 
-- **GNOME apps:** install the [shared desktop services](gnome-apps.md) first.
 - **Input methods:** install `ibus` and an engine such as `ibus-m17n`. See
   [Type with an input method](/config/configure/input_sources#type-with-an-input-method).
+
+::: details GNOME applications
+
+Apps from the GNOME project work in Gnoblin. On a minimal system, install a few shared services first: `gvfs`,
+`gnome-keyring` and `xdg-user-dirs`. [Use GNOME applications](gnome-apps.md) has the commands.
+
+:::

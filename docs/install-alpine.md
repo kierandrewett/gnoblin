@@ -13,7 +13,7 @@ apk update
 apk add gnoblin
 ```
 
-To follow the newest build instead of releases, use `nightly` in place of `stable` in the address.
+To follow the main branch instead of releases, use `nightly` in place of `stable` in the address.
 
 ## Next steps
 
@@ -36,6 +36,10 @@ Log in to another session first, then run:
 apk del gnoblin
 ```
 
-Your shell and your configuration stay. Remove the shell separately if you no longer want it.
+Your shell and your configuration stay. Remove the shell separately if you do not want it.
 
 See [troubleshooting](troubleshooting.md) if the session does not start.
+
+## More information
+
+- [Alpine Wiki: Alpine Package Keeper](https://wiki.alpinelinux.org/wiki/Alpine_Package_Keeper)

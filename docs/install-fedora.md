@@ -13,7 +13,7 @@ sudo dnf install gnoblin
 
 `dnf` shows the signing key the first time. Check that its fingerprint matches the one in [package repositories](package-repositories.md#signing-key), then accept it.
 
-To follow the newest build instead of releases, use `nightly` in place of `stable` and `gnoblin-nightly.repo`
+To follow the main branch instead of releases, use `nightly` in place of `stable` and `gnoblin-nightly.repo`
 in the first command.
 
 ## Next steps
@@ -30,12 +30,17 @@ Log out and back in to use the new version.
 
 ## Remove
 
-Log in to GNOME or another session first, then run:
+Log in to another session first, then run:
 
 ```sh
 sudo dnf remove gnoblin
 ```
 
-Your shell and your configuration stay. Remove the shell separately if you no longer want it.
+Your shell and your configuration stay. Remove the shell separately if you do not want it.
 
 See [troubleshooting](troubleshooting.md) if the session does not start.
+
+## More information
+
+- [Fedora: adding and removing software repositories](https://docs.fedoraproject.org/en-US/quick-docs/adding-or-removing-software-repositories-in-fedora/)
+- [DNF documentation](https://dnf5.readthedocs.io/en/latest/)

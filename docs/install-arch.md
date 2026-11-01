@@ -26,7 +26,7 @@ Install Gnoblin on Arch Linux or CachyOS from the Gnoblin package repository. Se
     sudo pacman -Syu gnoblin
     ```
 
-To follow the newest build instead of releases, use `nightly` in the address and `gnoblin-nightly.conf` as the file name.
+To follow the main branch instead of releases, use `nightly` in the address and `gnoblin-nightly.conf` as the file name.
 
 ## Next steps
 
@@ -48,6 +48,11 @@ Log in to another session first, then run:
 sudo pacman -Rns gnoblin
 ```
 
-Your shell and your configuration stay. Remove the shell separately if you no longer want it.
+Your shell and your configuration stay. Remove the shell separately if you do not want it.
 
 See [troubleshooting](troubleshooting.md) if the session does not start.
+
+## More information
+
+- [Arch Wiki: pacman package signing](https://wiki.archlinux.org/title/Pacman/Package_signing)
+- [Arch Wiki: unofficial user repositories](https://wiki.archlinux.org/title/Unofficial_user_repositories)

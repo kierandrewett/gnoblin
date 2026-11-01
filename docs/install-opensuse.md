@@ -14,7 +14,7 @@ sudo zypper install gnoblin
 
 `zypper` shows the signing key and asks you to trust it. Check that its fingerprint matches the one in [package repositories](package-repositories.md#signing-key), then accept it.
 
-To follow the newest build instead of releases, use `nightly` in place of `stable` and `gnoblin-nightly.repo`.
+To follow the main branch instead of releases, use `nightly` in place of `stable` and `gnoblin-nightly.repo`.
 
 ## Next steps
 
@@ -37,6 +37,6 @@ Log in to another session first, then run:
 sudo zypper remove gnoblin
 ```
 
-Your shell and your configuration stay. Remove the shell separately if you no longer want it.
+Your shell and your configuration stay. Remove the shell separately if you do not want it.
 
 See [troubleshooting](troubleshooting.md) if the session does not start.

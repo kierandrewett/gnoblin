@@ -133,11 +133,13 @@ Markdown validator checks the rules in this section that a pattern can find, and
 - **Do not compare Gnoblin with GNOME or describe how they coexist.** Do not write that Gnoblin installs next to GNOME,
   that a GNOME session stays available, or that the reader should keep another session. Every page leaves out this
   topic. Information about GNOME applications and libraries goes in a collapsed `::: details` block, because most
-  readers do not need it. Names the reader must type, such as `org.gnome.desktop.session`, are fine.
+  readers do not need it. Names the reader must type or install, such as `org.gnome.desktop.session` or a library in a prerequisite list, are fine.
 - **Write nothing that can go out of date.** Treat every fact as likely to change. Do not write version numbers,
-  release or codename lists, dates, architecture lists, channel contents, counts, or words such as "currently", "not
-  yet", "newest" and "no longer". Do not list the systems or releases Gnoblin supports. Link to the page or file that
-  holds the fact: [platform support](/platform-support), the releases page, or the file in the source tree.
+  release or codename lists, dates, architecture lists, counts, or words such as "currently", "not yet", "newest" and
+  "no longer". Do not list the systems or releases Gnoblin supports. Link to the page or file that holds the fact:
+  [platform support](/platform-support), the releases page, or the file in the source tree. Platform support is the
+  one page that lists releases and architectures. Distribution names, commands, file paths, package names and the
+  signing key fingerprint are fine.
 - **Do not add failure sections to install pages.** No "If installation fails" or "Package not found" notes. Troubleshooting has
   its own page.
 - **Follow the normal process.** Install pages use the steps that the distribution documents for its package manager.

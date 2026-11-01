@@ -10,16 +10,17 @@ to `/usr/local/lib/gnoblin`. After that, you can delete the source directory.
 
 Install these with your package manager:
 
-- A C/C++ compiler and GNU Make
-- Python 3, CMake, Meson and Ninja
+- A C/C++ compiler and [GNU Make](https://www.gnu.org/software/make/manual/)
+- Python 3, [CMake](https://cmake.org/), [Meson](https://mesonbuild.com/) and [Ninja](https://ninja-build.org/)
 - `tar` and `xz`
 - Git, if you build from a Git checkout
-- The development libraries that Gnoblin's GNOME sources need, including GLib, GTK4, libadwaita, PipeWire,
-  `xdg-desktop-portal` and `gsettings-desktop-schemas`
+- The development libraries that Gnoblin needs, including [GLib](https://docs.gtk.org/glib/),
+  [GTK4](https://www.gtk.org/), [libadwaita](https://gnome.pages.gitlab.gnome.org/libadwaita/),
+  [PipeWire](https://pipewire.org/), [xdg-desktop-portal](https://flatpak.github.io/xdg-desktop-portal/docs/),
+  [Glycin](https://gitlab.gnome.org/GNOME/glycin) and `gsettings-desktop-schemas`
 
-The versions are listed in [`src/gnome-versions.json`](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-versions.json).
-You do not need `gnome-shell` or `mutter`. To check your libraries before you build, run
-`python3 scripts/check-build-deps.py` in the source directory.
+`python3 scripts/check-build-deps.py` checks the library versions. The versions Gnoblin builds against are listed in the
+[pinned versions file](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-versions.json).
 
 To build without Gnoblin's portal backend, run `./build.sh --without-portal` instead of `make`. You then need no
 GTK4, libadwaita or Glycin.
@@ -76,12 +77,10 @@ make install
 - The `gnoblin` and `gnoblinctl` commands, in `/usr/local/bin`
 - The **Gnoblin** login entry and the manual pages
 
-GNOME stays as another choice at the login screen.
-
 [Install a desktop shell and log in](installation.md#after-installing). Run `gnoblin --version` to check the
 installed version.
 
-Gnoblin does not start the GNOME Settings Daemon. It uses the GNOME desktop settings for idle and lock timing:
+Gnoblin reads these desktop settings for idle and lock timing:
 
 | Setting                                      | What it does                                           |
 | -------------------------------------------- | ------------------------------------------------------ |
@@ -103,15 +102,8 @@ Add these settings after the command, for example `make JOBS=4`:
 
 `make clean` deletes the `build` directory. An installed copy stays.
 
-To change what is built, run `./build.sh` with these flags instead of `make`:
-
-| Flag                    | What it does                                                              |
-| ----------------------- | ------------------------------------------------------------------------- |
-| `--without-portal`      | Leave out Gnoblin's portal backend                                        |
-| `--without-xwayland`    | Leave out X11 application support                                         |
-| `--with-vector-cursors` | Add the Adwaita vector cursor theme (needs librsvg and `hyprcursor-util`) |
-| `--jobs N`              | Use N parallel compilation jobs                                           |
-| `--dry-run`             | Show what the build would do                                              |
+To leave out the portal backend or X11 application support, or to see what a build would do, run `./build.sh --help`
+for the flags.
 
 ## Update
 

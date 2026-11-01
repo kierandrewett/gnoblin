@@ -45,7 +45,7 @@ _Firefox is an ordinary client window; Waybar is a separate desktop client._
 
 ![GNOME Files open beneath Waybar](images/gnoblin-waybar-files.png)
 
-_A stock GNOME app running with Waybar and Mako as separate clients._
+_An app running with Waybar and Mako as separate clients._
 
 ## Quickshell
 
@@ -72,45 +72,12 @@ _The panel is a separate Quickshell process using Gnoblin's layer-shell support.
 
 ## Bingux
 
-Bingux provides the desktop controls, notifications,
-search and window switcher.
-
-![Firefox running in a Bingux session with Files, Firefox and Foot in the dock](images/gnoblin-bingux-firefox.png)
-
-_Bingux is one separate shell project that uses Gnoblin. Files, Firefox and Foot are pinned in its dock._
-
-![GNOME Files open in a Bingux session with its dock visible](images/gnoblin-bingux-files.png)
-
-_Files is a stock GNOME app; Bingux supplies the shell and dock._
-
-Install the dependencies in the
-[Bingux installation guide](https://github.com/kierandrewett/bingux/blob/main/docs/standalone.md),
-then build and install it for your user:
-
-```sh
-git clone https://github.com/kierandrewett/bingux.git
-cd bingux
-make install-user
-```
-
-The installer builds the shell, enables its search and status helper services,
-and adds the Gnoblin configuration include. Gnoblin Lua autostart launches the
-shell and its layer-shell clients. Keep the configuration include when editing
-`init.lua`.
-
-If you installed a Bingux package instead, load its Gnoblin Lua module as
-described in the Bingux installation guide. The package enables helper
-services for Gnoblin sessions.
-
-````sh
-Do not add Bingux to Gnoblin's autostart list yourself; the package module
-already defines startup for the shell and layer-shell clients.
+Bingux is an integrated desktop with a bar, dock, search and notifications. See [Bingux](bingux.md) to install it.
 
 ## What Gnoblin still provides
 
 Gnoblin provides window management, locking, desktop services, and a small
-recovery panel for shell setup. GNOME extensions, the Overview, and native
-screenshot/OSD popups are not available in this session.
+recovery panel for shell setup.
 
 Native notifications and the keyboard-layout popup are optional.
 See [session settings](/guides/session_settings#native-features).
@@ -148,7 +115,7 @@ For Bingux helper services, inspect the optional target:
 ```sh
 systemctl --user status bingux.target
 journalctl --user -b -u bingux-searchd.service -u bingux-statusd.service
-````
+```
 
 See [troubleshooting](troubleshooting.md#no-bar-dock-or-launcher).
 To write your own shell, start with the [compositor bridge](bridge/index.md).

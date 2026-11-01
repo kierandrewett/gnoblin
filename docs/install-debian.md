@@ -19,7 +19,7 @@ sudo apt install gnoblin
 Before you run `apt update`, check the key fingerprint with `gpg --show-keys /etc/apt/keyrings/gnoblin.asc`.
 It must match the one in [package repositories](package-repositories.md#signing-key).
 
-To follow the newest build instead of releases, use `nightly` in place of `stable` in the file name and the address.
+To follow the main branch instead of releases, use `nightly` in place of `stable` in the file name and the address.
 
 ## Next steps
 
@@ -42,6 +42,10 @@ Log in to another session first, then run:
 sudo apt purge gnoblin
 ```
 
-Your shell and your configuration stay. Remove the shell separately if you no longer want it.
+Your shell and your configuration stay. Remove the shell separately if you do not want it.
 
 See [troubleshooting](troubleshooting.md) if the session does not start.
+
+## More information
+
+- [Debian Wiki: using third-party repositories](https://wiki.debian.org/DebianRepository/UseThirdParty)

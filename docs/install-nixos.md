@@ -55,3 +55,7 @@ Remove the Gnoblin module and the `programs.gnoblin.enable` line, then rebuild. 
 stay.
 
 See [troubleshooting](troubleshooting.md) if the session does not start.
+
+## More information
+
+- [NixOS Wiki: flakes](https://wiki.nixos.org/wiki/Flakes)
