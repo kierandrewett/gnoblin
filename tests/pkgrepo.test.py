@@ -294,9 +294,6 @@ class ClientFiles(unittest.TestCase):
         self.assertIn("SigLevel = Required DatabaseRequired", text)
         self.assertIn("Server = https://repo.example/bingux/stable/arch/$arch", text)
 
-    def test_fingerprint_groups(self):
-        self.assertEqual(index.fingerprint_text("ABCD" * 3), "ABCD ABCD ABCD")
-
 
 def build_tree(directory: Path, project="bingux", channel="nightly", packages=None):
     """A channel tree with just a manifest and package files, which is all publish reads."""
@@ -317,11 +314,9 @@ def build_tree(directory: Path, project="bingux", channel="nightly", packages=No
             }
         )
     (scope / "manifest.json").write_text(json.dumps({"schema": 1, "packages": records}))
-    (scope / "index.html").write_text("<html></html>")
     (scope / "fedora").mkdir(exist_ok=True)
     (scope / "fedora" / "repo.repo").write_text("[x]\n")
     (directory / "gpg.key").write_text("key")
-    (directory / "index.html").write_text("<html>root</html>")
     return scope
 
 
@@ -432,6 +427,8 @@ class PublishPlans(unittest.TestCase):
             order.index("upload package files the bucket lacks"),
             order.index("upload metadata and pages"),
         )
+        removals = [s.command for s in plan.steps if s.command and s.command[:3] == ["aws", "s3", "rm"]]
+        self.assertEqual(removals, [["aws", "s3", "rm", "--only-show-errors", "s3://bucket/prefix/index.html"]])
         with self.assertRaises(ValueError):
             publish.plan_s3(self.directory / "tree", "bingux/nightly", "bucket/prefix", [], env={})
 
@@ -960,7 +957,6 @@ class AlpineRepository(unittest.TestCase):
         output = self.build()
         line = (output / "gnoblin/nightly/alpine/edge/gnoblin-nightly.list").read_text()
         self.assertEqual(line, "https://repo.example/gnoblin/nightly/alpine/edge\n")
-        self.assertIn('href="../../gnoblin.rsa.pub"', (output / "gnoblin/nightly/index.html").read_text())
         self.assertIn("-----BEGIN PUBLIC KEY-----", (output / "gnoblin.rsa.pub").read_text())
         self.assertIn("gnoblin.rsa.pub", publish.site_files(output))
 

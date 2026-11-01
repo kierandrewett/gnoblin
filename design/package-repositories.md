@@ -34,11 +34,9 @@ the `REPO_*` variables are still missing; "What is left to do" lists them.
 repo.gnoblin.org/
   gpg.key                                      the public key, ASCII-armoured
   gnoblin.rsa.pub                              the public key of the Alpine index, when the project has apk packages
-  index.html
   <project>/                                   gnoblin or bingux
     <channel>/                                 stable or nightly
       manifest.json                            every package, its sha256, the commit it was built from
-      index.html
       fedora/
         gnoblin-stable.repo                    ready-made dnf repository file ($releasever, $basearch)
         <release>/<arch>/                      45/x86_64/: RPMs, repodata/, repodata/repomd.xml.asc
@@ -299,9 +297,10 @@ uploads in the same order, so a client never reads metadata that names a missing
 file:
 
 1. package files that are new or changed (the previous manifest says which),
-2. metadata and pages (`repodata/`, `dists/`, the pacman databases, `APKINDEX.tar.gz`,
-   `manifest.json`, the index pages, `gpg.key`, `<project>.rsa.pub`),
-3. removal of files the new tree no longer has.
+2. metadata (`repodata/`, `dists/`, the pacman databases, `APKINDEX.tar.gz`,
+   `manifest.json`, `gpg.key`, `<project>.rsa.pub`),
+3. removal of files the new tree no longer has, and of the retired `index.html` at the site root (an earlier version
+   of the tool wrote index pages; none are written now).
 
 `--dry-run` is the default: the tool prints the plan, and only `--apply` uploads.
 

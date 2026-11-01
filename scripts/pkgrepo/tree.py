@@ -267,10 +267,9 @@ def build(settings: Settings, signer: Signer, apk_signer: ApkSigner | None = Non
         apk_signer.write_public(settings.output / apk_signer.name)
     (root / "manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
-    # 4. Pages and client configuration files, then the files at the root of the whole site.
+    # 4. Client configuration files, then the key at the root of the whole site.
     index.write_channel(settings, root, manifest, arch_dirs)
     signer.export_public(settings.output / "gpg.key")
-    index.write_root(settings, manifest["key"]["fingerprint"], manifest.get("apk_key", {}).get("name"))
     return manifest
 
 

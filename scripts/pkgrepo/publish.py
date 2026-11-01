@@ -24,6 +24,9 @@ from .runner import CommandError, quote, require, run
 
 PACKAGE_SUFFIXES = (".rpm", ".deb", ".apk")
 PACKAGE_GLOBS = ("*.rpm", "*.deb", "*.apk", "*.pkg.tar.*")
+# Files at the root of the site that earlier versions of this tool wrote and that nothing writes now. The s3 plan deletes
+# them, because the root is shared by both projects and no channel sync reaches it.
+RETIRED_SITE_FILES = ("index.html",)
 
 
 def is_package_file(relative: str) -> bool:
@@ -75,8 +78,8 @@ def tree_files(root: Path, scope: str) -> list[str]:
 
 
 def site_files(root: Path) -> list[str]:
-    """The files at the root of the site: the keys and the front page. The Alpine key is named after the project."""
-    names = ["gpg.key", "index.html", *(path.name for path in root.glob("*.rsa.pub"))]
+    """The files at the root of the site: the keys. The Alpine key is named after the project."""
+    names = ["gpg.key", *(path.name for path in root.glob("*.rsa.pub"))]
     return sorted(name for name in names if (root / name).is_file())
 
 
@@ -261,6 +264,13 @@ def plan_s3(
     for name in site_files(root):
         plan.steps.append(
             Step(f"upload {name}", ["aws", "s3", "cp", "--only-show-errors", str(root / name), f"{base}/{name}"])
+        )
+    for name in RETIRED_SITE_FILES:
+        plan.steps.append(
+            Step(
+                f"remove {name}, which is no longer written",
+                ["aws", "s3", "rm", "--only-show-errors", f"{base}/{name}"],
+            )
         )
     plan.steps.append(
         Step(
