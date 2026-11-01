@@ -24,11 +24,11 @@ PYTHONPYCACHEPREFIX="$cache" python3 -m py_compile scripts/*.py tests/*.py
 
 run ./tests/test-log-diagnostics.sh
 run ./tests/test-secure-state.sh
-run ./tests/test-rpm-sources.sh
 run ./tests/config-seed.test.sh
 run python3 tests/frame-renderer-policy.test.py
 run python3 tests/session-environment.test.py
 run python3 tests/package-isolation.test.py
+run python3 tests/pkgsmith-packages.test.py
 run python3 tests/pkgrepo.test.py
 run python3 tests/check-build-deps.test.py
 run python3 tests/test_generate_mutter_keybinding_catalog.py

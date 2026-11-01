@@ -6,7 +6,7 @@ on:
       - "docs/**"
       - "scripts/docs-vitepress-postbuild.mjs"
       - "scripts/prepare-apt-pages.py"
-      - "packaging/targets.json"
+      - "design/package-targets.json"
       - ".github/workflows/infra.yml"
   push:
     branches: [main]
@@ -15,7 +15,7 @@ on:
       - "docs/**"
       - "scripts/docs-vitepress-postbuild.mjs"
       - "scripts/prepare-apt-pages.py"
-      - "packaging/targets.json"
+      - "design/package-targets.json"
       - ".github/workflows/infra.yml"
   workflow_dispatch:
     inputs:

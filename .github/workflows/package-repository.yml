@@ -75,6 +75,10 @@ jobs:
     env:
       PROJECT: gnoblin
       CHANNEL: ${{ inputs.channel }}
+      # The Debian suite the deb packages are for. The prefix needs glibc 2.43, glib 2.86, GTK 4.20 and the other
+      # libraries of design/package-repositories.md, which Debian testing has. scripts/check-package-install.sh
+      # installs them there.
+      DEB_SUITE: forky
       REPO_URL: ${{ vars.REPO_URL || 'https://repo.gnoblin.org' }}
     steps:
       - name: Install Git for the checkout
@@ -86,34 +90,23 @@ jobs:
         run: ./scripts/pkgrepo/container/install-tools.sh
       - uses: actions/download-artifact@v4
         with:
-          name: fedora-rpms-${{ inputs.release_tag }}
-          path: raw/fedora
-      - uses: actions/download-artifact@v4
-        if: inputs.channel == 'stable'
-        with:
-          name: opensuse-tumbleweed-rpms
-          path: raw/opensuse
+          pattern: packages-${{ inputs.release_tag }}-*
+          path: raw
           merge-multiple: true
-      - uses: actions/download-artifact@v4
-        with:
-          name: arch-package-${{ inputs.release_tag }}
-          path: raw/arch
       - name: Arrange the packages by distribution
         run: |
-          mkdir -p packages/arch
-          # The release the RPMs were built for is in their release tag (.fc45), so it is not written down twice.
-          mapfile -t fedora < <(find raw/fedora -type f -name '*.rpm' ! -name '*.src.rpm')
+          mkdir -p packages/arch packages/opensuse/tumbleweed "packages/deb/$DEB_SUITE"
+          # One build of each package serves two RPM trees. The Fedora files carry the release in their release tag
+          # (.fc45), so the release is not written down twice. openSUSE Tumbleweed has no number.
+          mapfile -t fedora < <(find raw -type f -name '*.fc[0-9]*.rpm' ! -name '*.src.rpm')
           test "${#fedora[@]}" -gt 0
           fedora_release="$(rpm -qp --nosignature --queryformat '%{RELEASE}\n' "${fedora[0]}" | sed -n 's/.*\.fc\([0-9][0-9]*\)$/\1/p')"
           test -n "$fedora_release"
           mkdir -p "packages/fedora/$fedora_release"
           cp -- "${fedora[@]}" "packages/fedora/$fedora_release/"
-          if [ -d raw/opensuse ]; then
-            mkdir -p packages/opensuse/tumbleweed
-            find raw/opensuse -type f -name '*.rpm' ! -name '*.src.rpm' ! -name '*-debuginfo-*' ! -name '*-debugsource-*' \
-              -exec cp -t packages/opensuse/tumbleweed {} +
-          fi
-          find raw/arch -type f -name '*.pkg.tar.zst' -exec cp -t packages/arch {} +
+          find raw -type f -name '*.tumbleweed.*.rpm' -exec cp -t packages/opensuse/tumbleweed {} +
+          find raw -type f -name '*.deb' -exec cp -t "packages/deb/$DEB_SUITE" {} +
+          find raw -type f -name '*.pkg.tar.zst' -exec cp -t packages/arch {} +
           find packages -type f | sort
       - name: Signing key
         id: key

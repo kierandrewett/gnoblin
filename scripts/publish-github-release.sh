@@ -40,16 +40,23 @@ repo="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY is required}"
 # skipped or uploaded nothing, which must stop the release rather than publish less than the page promises.
 required_patterns=(
     'gnoblin-*-source.tar.xz'
-    'gnoblin-[0-9]*.PKGBUILD'
-    'gnoblin-[0-9]*-x86_64.pkg.tar.zst'
-    'xdg-desktop-portal-gnoblin-[0-9]*-x86_64.pkg.tar.zst'
-    'gnoblin.db'
-    'gnoblin-[0-9]*.src.rpm'
-    'xdg-desktop-portal-gnoblin-[0-9]*.src.rpm'
     'gnoblin-[0-9]*.fc[0-9]*.x86_64.rpm'
+    'gnoblin-[0-9]*.fc[0-9]*.aarch64.rpm'
     'xdg-desktop-portal-gnoblin-[0-9]*.fc[0-9]*.x86_64.rpm'
     'gnoblin-[0-9]*.tumbleweed.x86_64.rpm'
+    'gnoblin-[0-9]*.tumbleweed.aarch64.rpm'
     'xdg-desktop-portal-gnoblin-[0-9]*.tumbleweed.x86_64.rpm'
+    'gnoblin_[0-9]*_amd64.deb'
+    'gnoblin_[0-9]*_arm64.deb'
+    'xdg-desktop-portal-gnoblin_[0-9]*_amd64.deb'
+    'gnoblin-[0-9]*-x86_64.pkg.tar.zst'
+    'gnoblin-[0-9]*-aarch64.pkg.tar.zst'
+    'xdg-desktop-portal-gnoblin-[0-9]*-x86_64.pkg.tar.zst'
+    'gnoblin-[0-9]*-amd64.tar.xz'
+    'gnoblin-[0-9]*-arm64.tar.xz'
+    'gnoblin-[0-9]*-r[0-9]*.apk'
+    'xdg-desktop-portal-gnoblin-[0-9]*-r[0-9]*.apk'
+    'gnoblin-ananicy-rules*'
 )
 shopt -s nullglob
 for pattern in "${required_patterns[@]}"; do

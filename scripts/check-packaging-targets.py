@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate the canonical Gnoblin package target inventory.
 
-Run this after changing packaging/targets.json. The inventory records desired
+Run this after changing design/package-targets.json. The inventory records desired
 targets and the evidence that exists today; an image or a CI path never by
 itself marks a target as supported.
 """
@@ -12,7 +12,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parent.parent
-INVENTORY = ROOT / "packaging/targets.json"
+INVENTORY = ROOT / "design/package-targets.json"
 FAMILIES = {"fedora", "el", "debian", "ubuntu", "arch", "opensuse-leap", "opensuse-tumbleweed", "nixos"}
 STATUSES = {"existing-path", "probe-needed", "planned"}
 SUPPORT = {"unsupported", "candidate", "supported"}

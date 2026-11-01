@@ -424,18 +424,13 @@ class PublishPlans(unittest.TestCase):
             )
 
 
-class GnoblinNightlyRecipes(unittest.TestCase):
-    """A nightly version reaches the Fedora spec and the Arch recipe in the spelling of each package manager."""
+class GnoblinNightlyVersion(unittest.TestCase):
+    """A nightly version reaches the file that the source bundle and the packages read it from."""
 
     def setUp(self):
         self.copy = Path(tempfile.mkdtemp(prefix="pkgrepo-gnoblin-"))
         self.addCleanup(shutil.rmtree, self.copy, True)
-        for name in ("scripts", "packaging"):
-            shutil.copytree(
-                ROOT / name,
-                self.copy / name,
-                ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
-            )
+        shutil.copytree(ROOT / "scripts", self.copy / "scripts", ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
         (self.copy / "src").mkdir()
         for name in ("gnoblin-version.json", "gnome-versions.json"):
             shutil.copy(ROOT / "src" / name, self.copy / "src" / name)
@@ -447,32 +442,12 @@ class GnoblinNightlyRecipes(unittest.TestCase):
             text=True,
         )
 
-    def test_release_recipes_are_unchanged_by_the_source_version_split(self):
-        result = self.run_script("sync-package-manifest.py", "check")
-        self.assertEqual(result.returncode, 0, result.stderr)
-
-    def test_nightly_version_in_the_recipes(self):
+    def test_nightly_version_in_the_version_file(self):
         semver = "0.1.13-nightly.20261031.142.gabc1234"
         result = self.run_script("apply-nightly-version.py", semver)
         self.assertEqual(result.returncode, 0, result.stderr)
-        spec = (self.copy / "packaging/rpm/gnoblin.spec").read_text()
-        self.assertIn("Version:        0.1.13~nightly.20261031.142.gabc1234\n", spec)
-        self.assertIn(f"%global source_version {semver}\n", spec)
-        self.assertIn("Source0:        gnoblin-%{source_version}-source.tar.xz", spec)
-        self.assertIn("Epoch:          1\n", spec)
-        arch = (self.copy / "packaging/arch/PKGBUILD").read_text()
-        self.assertIn("pkgver=0.1.13nightly20261031.142\n", arch)
-        self.assertIn(f"_srcver={semver}\n", arch)
-        portal = (self.copy / "packaging/arch/portal/PKGBUILD").read_text()
-        original = (ROOT / "packaging/arch/portal/PKGBUILD").read_text()
-        version_line = lambda text: next(line for line in text.splitlines() if line.startswith("pkgver="))  # noqa: E731
-        self.assertEqual(
-            version_line(portal),
-            version_line(original),
-            "the portal keeps its own GNOME version",
-        )
-        # The same copy still passes the consistency check.
-        self.assertEqual(self.run_script("sync-package-manifest.py", "check").returncode, 0)
+        self.assertEqual(json.loads((self.copy / "src/gnoblin-version.json").read_text())["version"], semver)
+        self.assertEqual(self.run_script("gnoblin-version.py", "get", "version").stdout.strip(), semver)
 
     def test_only_nightly_versions_are_accepted(self):
         self.assertEqual(self.run_script("apply-nightly-version.py", "0.1.13").returncode, 2)

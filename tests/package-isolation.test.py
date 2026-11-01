@@ -2,7 +2,6 @@
 """Regression checks for installation alongside an existing GNOME session."""
 
 import importlib.util
-import json
 import os
 from pathlib import Path
 import shutil
@@ -275,36 +274,6 @@ exit 0
             with self.subTest(name=name, page=page), self.assertRaises(ValueError):
                 isolation.validate(name, f"/usr/share/man/man1/{page}", "", "", "")
 
-    def test_manifest_has_one_gnoblin_runtime_package(self):
-        manifest = json.loads((ROOT / "packaging/native-packages.json").read_text())
-        packages = manifest["packages"]
-        self.assertNotIn("gnoblin-session", packages)
-        self.assertIn("lua", packages["gnoblin"]["requires"])
-        self.assertEqual(manifest["requirements"]["lua"]["minVersion"], "5.4")
-        self.assertIn("gtk4", packages["xdg-desktop-portal-gnoblin"]["requires"])
-        self.assertEqual(manifest["requirements"]["gtk4"]["minVersion"], "4.20.0")
-        self.assertNotIn("xdg-desktop-portal-gnoblin", packages["gnoblin"].get("requiresSameMajor", []))
-        self.assertEqual(manifest["requirements"]["gsettings-desktop-schemas"]["minVersion"], "49.1")
-        arch = (ROOT / "packaging/arch/PKGBUILD").read_text()
-        makedepends = next(line for line in arch.splitlines() if line.startswith("makedepends="))
-        depends = next(line for line in arch.splitlines() if line.startswith("depends="))
-        self.assertIn("'lua>=5.4'", arch)
-        for build_dependency in (
-            "'libxkbcommon'",
-            "'wayland-protocols>=1.48'",
-        ):
-            self.assertIn(build_dependency, makedepends)
-        for runtime_dependency in ("'cairo'", "'pango'", "'wayland'", "'libxkbcommon'"):
-            self.assertNotIn(runtime_dependency, depends)
-        self.assertIn("'gsettings-desktop-schemas>=49.1'", arch)
-        self.assertNotIn("'gtk4>=4.20.0'", arch)
-        self.assertNotIn("'xdg-desktop-portal>=1.20.0'", arch)
-        portal_arch = (ROOT / "packaging/arch/portal/PKGBUILD").read_text()
-        self.assertIn("'gtk4>=4.20.0'", portal_arch)
-        self.assertIn("'xdg-desktop-portal>=1.20.0'", portal_arch)
-        self.assertIn("systemd-libs", packages["gnoblin"]["requires"])
-        self.assertNotIn("systemd", packages["gnoblin"]["requires"])
-
     def test_source_install_rejects_shared_prefixes_and_symlinks(self):
         with tempfile.TemporaryDirectory() as directory:
             alias = Path(directory) / "system"
@@ -335,72 +304,6 @@ exit 0
             )
             self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_rpm_build_paths_and_metadata(self):
-        for project in ("xdg-desktop-portal-gnoblin", "gnoblin"):
-            expanded = subprocess.check_output(
-                ["rpmspec", "-P", str(ROOT / f"packaging/rpm/{project}.spec")], text=True
-            )
-            if project == "xdg-desktop-portal-gnoblin":
-                self.assertIn("--prefix=/usr/lib/gnoblin", expanded)
-                self.assertIn("--libdir=/usr/lib/gnoblin/lib64", expanded)
-            elif project == "gnoblin":
-                self.assertIn("./build.sh --layout system", expanded)
-                self.assertIn("--prefix /usr/lib/gnoblin", expanded)
-                self.assertIn("GNOBLIN_LIBDIR=lib64", expanded)
-            if project != "gnoblin":
-                self.assertNotRegex(expanded, r"(?m)^(?:Conflicts|Obsoletes):")
-            self.assertNotRegex(expanded, r"(?m)^Name:\s+(?:mutter|gnome-shell)$")
-            self.assertNotRegex(expanded, r"(?m)^Provides:\s+lib(?:mutter|shell-|st-)")
-            self.assertNotIn("-Degl_device", expanded)
-            if project == "gnoblin":
-                version = subprocess.check_output(
-                    [str(ROOT / "scripts/gnoblin-version.py"), "get", "version"], text=True
-                ).strip()
-                gnome_major = json.loads((ROOT / "packaging/native-packages.json").read_text())["release"]["gnomeMajor"]
-                self.assertIn(f"Provides:       gnoblin-session = {version}", expanded)
-                self.assertIn(f"Obsoletes:      gnoblin-session < {gnome_major}", expanded)
-                self.assertIn(f"Obsoletes:      gnoblin-shell < {gnome_major}", expanded)
-                self.assertNotIn("BuildRequires:  gnoblin-mutter-devel", expanded)
-                # The old separate Mutter package may exist on upgraded hosts, so the
-                # spec obsoletes it, but nothing may require it or build against it.
-                self.assertIn(f"Obsoletes:      gnoblin-mutter < {gnome_major + 1}", expanded)
-                self.assertNotRegex(expanded, r"(?m)^(Build)?Requires:\s+gnoblin-mutter")
-                self.assertNotIn("Requires:       gnoblin-session", expanded)
-                self.assertNotIn("Requires:       gnoblin-shell", expanded)
-                self.assertNotIn("Requires:       gjs", expanded)
-                self.assertNotIn("GNOBLIN_INSTALL_GNOME_COMPAT", expanded)
-                for build_requirement in ("BuildRequires:  pkgconfig(xkbcommon)",):
-                    self.assertIn(build_requirement, expanded)
-                self.assertNotIn("gnoblin-recovery", expanded)
-                # The session file's Exec line comes from the build's system layout step, which the layout test checks.
-                arch = (ROOT / "packaging/arch/PKGBUILD").read_text()
-                self.assertNotIn("gnoblin-recovery", arch)
-
-    def test_portal_rpm_requires_gtk_422_for_build_and_runtime(self):
-        expanded = subprocess.check_output(
-            ["rpmspec", "-P", str(ROOT / "packaging/rpm/xdg-desktop-portal-gnoblin.spec")], text=True
-        )
-        self.assertIn("BuildRequires:  pkgconfig(gtk4) >= 4.20.0", expanded)
-        self.assertIn("Requires:       gtk4 >= 4.20.0", expanded)
-
-    def test_geoclue_agent_authorization_is_an_optional_rpm_package(self):
-        expanded = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin.spec")], text=True)
-        base_package, integration = expanded.split("%package -n gnoblin-geoclue-integration", 1)
-        self.assertNotRegex(base_package, r"(?m)^Requires:\s+geoclue2(?:\s|$)")
-        self.assertIn("Requires:       geoclue2 >= 2.7.2", integration)
-        self.assertIn("/etc/geoclue/conf.d/50-gnoblin.conf", integration)
-        whitelist = (ROOT / "packaging/geoclue/50-gnoblin.conf").read_text()
-        for agent_id in (
-            "geoclue-demo-agent",
-            "gnome-shell",
-            "io.elementary.desktop.agent-geoclue2",
-            "sm.puri.Phosh",
-            "lipstick",
-            "gnoblin",
-        ):
-            with self.subTest(agent_id=agent_id):
-                self.assertIn(agent_id, whitelist)
-
     def test_nix_package_has_no_gnome_shell_runtime_path(self):
         package = (ROOT / "packaging/nix/package.nix").read_text()
         flake = (ROOT / "flake.nix").read_text()
@@ -412,135 +315,38 @@ exit 0
         self.assertNotIn('"gnome-shell-src"', lock)
         self.assertNotIn("pkgs.gnome-shell", flake)
 
-    def test_system_schemas_are_required_before_the_compositor(self):
-        publisher = (ROOT / "scripts/publish-copr.sh").read_text()
-        gnoblin = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin.spec")], text=True)
-        self.assertIn("BuildRequires: gsettings-desktop-schemas-devel >= 49.1", gnoblin)
-        self.assertIn("BuildRequires:  pkgconfig(lua)", gnoblin)
-        self.assertIn("Requires:       gsettings-desktop-schemas >= 49.1", gnoblin)
+    def test_configuration_packages_may_ship_only_their_own_files(self):
+        isolation.validate("gnoblin-geoclue-integration", "/etc/geoclue/conf.d/50-gnoblin.conf", "", "", "")
+        isolation.validate(
+            "gnoblin-ananicy-rules", "/etc/ananicy.d/99-gnoblin.rules\n/etc/ananicy.d/99-gnoblin.types", "", "", ""
+        )
+        for name, path in (
+            ("gnoblin-geoclue-integration", "/etc/ananicy.d/99-gnoblin.rules"),
+            ("gnoblin-ananicy-rules", "/etc/geoclue/conf.d/50-gnoblin.conf"),
+            ("gnoblin-ananicy-rules", "/etc/passwd"),
+            ("gnoblin", "/etc/geoclue/conf.d/50-gnoblin.conf"),
+        ):
+            with self.subTest(name=name, path=path), self.assertRaises(ValueError):
+                isolation.validate(name, path, "", "", "")
+
+    def test_geoclue_agent_authorization_keeps_the_stock_agents(self):
+        whitelist = (ROOT / "src/data/geoclue/50-gnoblin.conf").read_text()
+        for agent_id in (
+            "geoclue-demo-agent",
+            "gnome-shell",
+            "io.elementary.desktop.agent-geoclue2",
+            "sm.puri.Phosh",
+            "lipstick",
+            "gnoblin",
+        ):
+            with self.subTest(agent_id=agent_id):
+                self.assertIn(agent_id, whitelist)
+
+    def test_system_schemas_are_found_through_the_installed_gir_path(self):
         component_build = (ROOT / "cmake/component-build.cmake").read_text()
         self.assertIn('component_env_prepend(GI_GIR_PATH "${installed_prefix}/share/gir-1.0")', component_build)
         runtime_env = (ROOT / "src/tools/gnoblin-env.sh").read_text()
         self.assertNotIn("GI_TYPELIB_PATH", runtime_env)
-        build_order = [
-            publisher.index(f'build_in_supported_fedora_chroots "${name}"') for name in ("portal_srpm", "meta_srpm")
-        ]
-        self.assertEqual(build_order, sorted(build_order))
-
-    def test_lua_build_dependency_belongs_to_the_gnoblin_runtime(self):
-        gnoblin = subprocess.check_output(["rpmspec", "-P", str(ROOT / "packaging/rpm/gnoblin.spec")], text=True)
-        self.assertIn("BuildRequires:  pkgconfig(lua)", gnoblin)
-
-    def test_system_install_defaults_to_official_copr(self):
-        installer = (ROOT / "scripts/install-system.sh").read_text()
-        makefile = (ROOT / "Makefile").read_text()
-        self.assertIn("SOURCE=copr", installer)
-        self.assertIn('dnf copr enable -y "$copr"', installer)
-        self.assertIn('dnf "$VERB" "${DNF_OPTIONS[@]}" --refresh "${copr_packages[@]}"', installer)
-        self.assertIn('packages=("gnoblin:$META_VERSION"', installer)
-        self.assertIn("gnoblin) project=gnoblin", installer)
-        # No task passes a local RPM option to the COPR installer.
-        self.assertNotIn("--local-rpms", makefile)
-        self.assertIn("scripts/legacy/gnome-session@gnoblin.target.d.conf", installer)
-
-    def test_system_installer_removes_only_the_exact_legacy_gnome_dropin(self):
-        installer = (ROOT / "scripts/install-system.sh").read_text()
-        session_installer = (ROOT / "cmake/install-session.cmake").read_text()
-
-        self.assertNotIn("gnoblin-recovery.service", installer)
-        self.assertIn('cmp -s "$LEGACY_GNOME_SESSION_DROPIN"', installer)
-        self.assertIn('rm -- "$LEGACY_GNOME_SESSION_DROPIN_PATH"', installer)
-        self.assertNotIn("gnome-session@gnoblin.target.d.conf", session_installer)
-
-    def test_system_installer_removes_exact_legacy_dropin_after_dnf_success(self):
-        with tempfile.TemporaryDirectory() as directory:
-            base = Path(directory)
-            fake_bin = base / "bin"
-            fake_bin.mkdir()
-            dnf_log = base / "dnf.log"
-            (fake_bin / "dnf").write_text(
-                "#!/bin/sh\n"
-                'printf "%s\\n" "$*" >> "$GNOBLIN_FAKE_DNF_LOG"\n'
-                'if [ "$1" = repoquery ]; then printf "gnoblin-45-1.noarch\\n"; fi\n'
-                "exit 0\n"
-            )
-            (fake_bin / "rpm").write_text(
-                "#!/bin/sh\n"
-                'if [ "$1" = -E ]; then\n'
-                '  case "$2" in\n'
-                '    %fedora) printf "45\\n" ;;\n'
-                '    %_arch) printf "x86_64\\n" ;;\n'
-                "  esac\n"
-                "fi\n"
-                "exit 0\n"
-            )
-            (fake_bin / "sudo").write_text('#!/bin/sh\nexec "$@"\n')
-            (fake_bin / "systemctl").write_text("#!/bin/sh\nexit 0\n")
-            for command in fake_bin.iterdir():
-                command.chmod(0o755)
-
-            legacy = ROOT / "scripts/legacy/gnome-session@gnoblin.target.d.conf"
-            config_home = base / "config"
-            dropin = config_home / "systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
-            dropin.parent.mkdir(parents=True)
-            dropin.write_bytes(legacy.read_bytes())
-            environment = os.environ | {
-                "HOME": str(base / "home"),
-                "XDG_CONFIG_HOME": str(config_home),
-                "PATH": f"{fake_bin}:{os.environ['PATH']}",
-                "GNOBLIN_FAKE_DNF_LOG": str(dnf_log),
-            }
-            (base / "home").mkdir()
-
-            result = subprocess.run(
-                ["bash", str(ROOT / "scripts/install-system.sh")],
-                cwd=ROOT,
-                env=environment,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertFalse(dropin.exists())
-            self.assertIn("Removed the obsolete managed GNOME session drop-in.", result.stdout)
-            self.assertIn("install --refresh", dnf_log.read_text())
-
-    def test_system_installer_preserves_custom_legacy_dropin_and_aborts(self):
-        with tempfile.TemporaryDirectory() as directory:
-            base = Path(directory)
-            fake_bin = base / "bin"
-            fake_bin.mkdir()
-            dnf_log = base / "dnf.log"
-            (fake_bin / "dnf").write_text('#!/bin/sh\necho called >> "$GNOBLIN_FAKE_DNF_LOG"\n')
-            for command in fake_bin.iterdir():
-                command.chmod(0o755)
-            config_home = base / "config"
-            dropin = config_home / "systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf"
-            dropin.parent.mkdir(parents=True)
-            dropin.write_text("[Unit]\nWants=custom.service\n")
-            home = base / "home"
-            home.mkdir()
-            environment = os.environ | {
-                "HOME": str(home),
-                "XDG_CONFIG_HOME": str(config_home),
-                "PATH": f"{fake_bin}:{os.environ['PATH']}",
-                "GNOBLIN_FAKE_DNF_LOG": str(dnf_log),
-            }
-
-            result = subprocess.run(
-                ["bash", str(ROOT / "scripts/install-system.sh")],
-                cwd=ROOT,
-                env=environment,
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn("Move the custom Gnoblin override aside first:", result.stderr)
-            self.assertEqual(dropin.read_text(), "[Unit]\nWants=custom.service\n")
-            self.assertFalse(dnf_log.exists())
 
 
 if __name__ == "__main__":

@@ -58,10 +58,10 @@ jobs:
 
       - name: Prepare the Fedora build environment
         run: |
-          # Build requirements come from the specs below. Only the test tools that no spec requires are named here.
-          dnf -y install dnf-plugins-core gsettings-desktop-schemas \
-            weston dbus-daemon dbus-tools ibus flatpak grim util-linux-user
-          dnf -y builddep --allowerasing packaging/rpm/gnoblin.spec packaging/rpm/xdg-desktop-portal-gnoblin.spec
+          # Build requirements come from scripts/install-fedora-build-deps.sh. Only the test tools that it does not
+          # install are named here.
+          dnf -y install gsettings-desktop-schemas weston dbus-daemon dbus-tools ibus flatpak grim util-linux-user
+          ./scripts/install-fedora-build-deps.sh --with-test-tools --allowerasing
           useradd --create-home builder
           builder_uid="$(id -u builder)"
           install -d -o builder -g builder -m 700 "/run/user/$builder_uid"

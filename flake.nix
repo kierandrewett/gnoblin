@@ -59,7 +59,6 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
       versions = builtins.fromJSON (builtins.readFile ./src/gnome-versions.json);
       gnoblinRelease = builtins.fromJSON (builtins.readFile ./src/gnoblin-version.json);
-      nativePackages = builtins.fromJSON (builtins.readFile ./packaging/native-packages.json);
       nixpkgsChannels = {
         nixos_25_05 = {
           release = "25.05";
@@ -264,7 +263,7 @@
       );
 
       lib = {
-        inherit nativePackages nixChannelEvaluations nixChannelPackages;
+        inherit nixChannelEvaluations nixChannelPackages;
       };
 
       nixosModules.default = import ./packaging/nix/module.nix { inherit self; };

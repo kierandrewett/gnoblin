@@ -1,5 +1,0 @@
-# The description names programs (gdm, quickshell, bingux, ananicy-cpp) that no dictionary has.
-addFilter("spelling-error")
-
-# The package is two data files; the README is in the repository.
-addFilter("no-documentation")

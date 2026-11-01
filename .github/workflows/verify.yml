@@ -12,7 +12,7 @@ on:
       - "subprojects/**"
       - "scripts/**"
       - "tests/**"
-      - "packaging/**"
+      - "pkgsmith/**"
       - "flake.nix"
       - ".github/workflows/verify.yml"
   pull_request:
@@ -25,7 +25,7 @@ on:
       - "subprojects/**"
       - "scripts/**"
       - "tests/**"
-      - "packaging/**"
+      - "pkgsmith/**"
       - "flake.nix"
       - ".github/workflows/verify.yml"
   workflow_dispatch:
@@ -56,9 +56,8 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Fetch compositor and portal source trees
         run: ./scripts/checkout-submodules-with-retry.sh subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
-      - name: Check native package definitions
+      - name: Check the patch series and the contract tests
         run: |
-          python3 scripts/sync-package-manifest.py check
           python3 scripts/manage-patches.py check
           python3 tests/native-socket-text-snap-api.test.py
           python3 tests/hyprcursor-session-predicate.test.py
@@ -71,9 +70,9 @@ jobs:
           GIT_COMMITTER_NAME: Gnoblin CI
           GIT_COMMITTER_EMAIL: ci@gnoblin.local
         run: |
-          # Build requirements come from the specs below. Only tools that no spec requires are named here.
-          dnf -y install dnf-plugins-core rpm-build util-linux-user
-          dnf -y builddep packaging/rpm/gnoblin.spec packaging/rpm/xdg-desktop-portal-gnoblin.spec
+          # Build requirements come from scripts/install-fedora-build-deps.sh, the list that the package build uses. The
+          # tarball build below uses the system Lua, as a user's build does.
+          ./scripts/install-fedora-build-deps.sh --with-test-tools
           git -C subprojects/mutter fetch --force --tags origin
           git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin
           source_dir="$RUNNER_TEMP/gnoblin-source-assets"
@@ -113,9 +112,8 @@ jobs:
         run: |
           test -x "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin"
           ! readelf -d "$GNOBLIN_TARBALL_TREE/install/libexec/xdg-desktop-portal-gnoblin" | grep -Eq 'libgnome-(bg|desktop)'
-      - name: Verify installer and package isolation
+      - name: Verify the source install and package isolation
         run: |
-          bash -n scripts/install-system.sh
           python3 tests/package-isolation.test.py
           mapfile -t changed_files < <(git diff --name-only)
           unexpected_files=()
@@ -125,122 +123,3 @@ jobs:
           if ((${#unexpected_files[@]})); then
             git diff --exit-code -- "${unexpected_files[@]}"
           fi
-  copr-install:
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    container: fedora:45
-    timeout-minutes: 20
-    steps:
-      - name: Install checkout tools
-        run: dnf -y install git python3
-      - uses: actions/checkout@v4
-      - name: Install the latest COPR build, coexist with stock GNOME and remove
-        run: ./scripts/check-fedora-install.sh --copr kierandrewett/gnoblin
-  arch-package:
-    runs-on: ubuntu-latest
-    container: archlinux:base
-    timeout-minutes: 180
-    steps:
-      - name: Install stock GNOME, which the install gate must leave alone
-        run: |
-          pacman -Syu --noconfirm --needed base-devel git gnome-shell xdg-desktop-portal-gnome
-          pacman -Q gnome-shell mutter > /tmp/stock-gnome-packages
-          pacman -Qo /usr/bin/gnome-shell > /tmp/stock-gnome-shell-owner
-          pacman -Qo /usr/bin/mutter > /tmp/stock-mutter-owner
-      - name: Checkout with submodules
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: false
-      - name: Set container checkout ownership
-        run: |
-          chown -R "$(id -u):$(id -g)" "$GITHUB_WORKSPACE"
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-      - name: Fetch compositor and portal source trees
-        run: ./scripts/checkout-submodules-with-retry.sh subprojects/mutter subprojects/xdg-desktop-portal-gnome subprojects/imgui
-      - name: Install the packages the recipes declare
-        run: ./scripts/install-arch-build-deps.sh packaging/arch/PKGBUILD packaging/arch/portal/PKGBUILD
-      - name: Build a source bundle from this checked-out revision
-        env:
-          GIT_COMMITTER_NAME: Gnoblin Package Builder
-          GIT_COMMITTER_EMAIL: package-builder@gnoblin.local
-        run: |
-          git -C subprojects/mutter fetch --force --tags origin
-          git -C subprojects/xdg-desktop-portal-gnome fetch --force --tags origin
-          source_dir="$RUNNER_TEMP/gnoblin-arch-source"
-          package_dir="$RUNNER_TEMP/gnoblin-arch-package"
-          portal_package_dir="$RUNNER_TEMP/gnoblin-arch-portal-package"
-          mkdir -p "$source_dir" "$package_dir" "$portal_package_dir"
-          ./scripts/make-tarball.sh mutter "$source_dir"
-          ./scripts/make-tarball.sh xdg-desktop-portal-gnome "$source_dir"
-          ./scripts/make-gsettings-desktop-schemas-tarball.sh "$source_dir"
-          version="$(./scripts/gnoblin-version.py get version)"
-          gnome_version="$(./scripts/gnoblin-version.py get gnomeVersion)"
-          schemas_version="$(./scripts/gnome-versions.py get gsettings-desktop-schemas version)"
-          source_bundle="$package_dir/gnoblin-$version-gnome-$gnome_version-source.tar.xz"
-          ./scripts/build-source-bundle.sh \
-            "$source_bundle" "$version" \
-            "$source_dir/mutter-$gnome_version.tar.xz" \
-            "$source_dir/xdg-desktop-portal-gnome-$gnome_version.tar.xz" \
-            "$source_dir/gsettings-desktop-schemas-$schemas_version.tar.xz"
-          source_sha256="$(sha256sum "$source_bundle" | awk '{print $1}')"
-          python3 scripts/sync-package-manifest.py arch-release \
-            --output "$package_dir/PKGBUILD" \
-            --source-sha256 "$source_sha256"
-          # The generated recipe normally downloads a release asset. In this
-          # verification job, change only that URL fragment to use the bundle
-          # created from the checked-out revision. Its name and SHA-256 remain
-          # exactly those generated above.
-          sed -i -E 's#::https://github.com/kierandrewett/gnoblin/releases/download/gnoblin-v\$pkgver/[^\"]+##' "$package_dir/PKGBUILD"
-          portal_source="$source_dir/xdg-desktop-portal-gnome-$gnome_version.tar.xz"
-          portal_sha256="$(sha256sum "$portal_source" | awk '{print $1}')"
-          python3 scripts/sync-package-manifest.py arch-portal-release \
-            --output "$portal_package_dir/PKGBUILD" \
-            --source-sha256 "$portal_sha256"
-          cp "$portal_source" "$portal_package_dir/"
-          sed -i -E 's#::https://github.com/kierandrewett/gnoblin/releases/download/[^/]+/[^\"]+##' "$portal_package_dir/PKGBUILD"
-      - name: Build the checked-out Arch package
-        run: |
-          package_dir="$RUNNER_TEMP/gnoblin-arch-package"
-          useradd -m builder
-          chown -R builder:builder "$package_dir"
-          runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$package_dir"
-          portal_package_dir="$RUNNER_TEMP/gnoblin-arch-portal-package"
-          chown -R builder:builder "$portal_package_dir"
-          runuser -u builder -- bash -lc 'cd "$1" && makepkg --noconfirm --cleanbuild' bash "$portal_package_dir"
-      - name: Install beside stock GNOME, then remove Gnoblin
-        run: |
-          package="$(find "$RUNNER_TEMP/gnoblin-arch-package" -maxdepth 1 -name 'gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
-          test -n "$package"
-          pacman -U --noconfirm "$package"
-          pacman -Q gnoblin
-          ! pacman -Q xdg-desktop-portal-gnoblin >/dev/null 2>&1
-          test -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          grep -Fxq 'default=gnoblin;*;' /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
-          portal_package="$(find "$RUNNER_TEMP/gnoblin-arch-portal-package" -maxdepth 1 -name 'xdg-desktop-portal-gnoblin-[0-9]*.pkg.tar.zst' -print -quit)"
-          test -n "$portal_package"
-          pacman -U --noconfirm "$portal_package"
-          pacman -Q xdg-desktop-portal-gnoblin
-          test -x /usr/lib/gnoblin/bin/gnoblin
-          test -x /usr/bin/gnoblinctl
-          test -f /usr/share/wayland-sessions/gnoblin.desktop
-          grep -q '^Exec=/usr/lib/gnoblin/bin/gnoblin$' /usr/share/wayland-sessions/gnoblin.desktop
-          test -f /usr/lib/systemd/user/gnoblin-session.target
-          test -f /usr/lib/systemd/user/gnoblin-idle.service
-          test "$(pacman -Qqo /usr/share/xdg-desktop-portal/gnoblin-portals.conf)" = gnoblin
-          test -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-          cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
-          cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
-          cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
-          pacman -R --noconfirm xdg-desktop-portal-gnoblin gnoblin
-          ! pacman -Q gnoblin
-          ! test -e /usr/share/xdg-desktop-portal/gnoblin-portals.conf
-          ! test -e /usr/lib/systemd/user/gnoblin-session.target
-          ! test -e /usr/lib/systemd/user/gnoblin-idle.service
-          cmp /tmp/stock-gnome-packages <(pacman -Q gnome-shell mutter)
-          cmp /tmp/stock-gnome-shell-owner <(pacman -Qo /usr/bin/gnome-shell)
-          cmp /tmp/stock-mutter-owner <(pacman -Qo /usr/bin/mutter)
-      - name: Remove package cache
-        if: always()
-        run: pacman -Scc --noconfirm
