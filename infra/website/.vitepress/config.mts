@@ -1,8 +1,13 @@
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitepress";
 
 // The pages sit outside this folder, so bare imports they compile to (vue) would not find node_modules.
 const modules = (name: string) => fileURLToPath(new URL(`../node_modules/${name}`, import.meta.url));
+
+// The commit and time of this build, shown at the bottom of every page. CI sets GITHUB_SHA. A local build asks Git.
+const buildSha = process.env.GITHUB_SHA ?? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+const builtAt = new Date().toISOString();
 
 export default defineConfig({
     title: "Gnoblin",
@@ -11,6 +16,7 @@ export default defineConfig({
     // The pages live in the repository's docs/ folder; this folder holds only the site build.
     srcDir: "../../docs",
     vite: {
+        define: { __BUILD_SHA__: JSON.stringify(buildSha), __BUILT_AT__: JSON.stringify(builtAt) },
         server: { fs: { allow: ["../.."] } },
         resolve: {
             alias: [
@@ -52,15 +58,23 @@ export default defineConfig({
                             { text: "NixOS", link: "/install-nixos" },
                             { text: "openSUSE", link: "/install-opensuse" },
                             { text: "Alpine", link: "/install-alpine" },
+                            { text: "Alpine", link: "/install-alpine" },
                             { text: "Build from Source", link: "/install-source" },
+                            { text: "Optional Packages", link: "/optional-packages" },
                             { text: "Optional Packages", link: "/optional-packages" },
                         ],
                     },
-                    { text: "Choose a Shell", link: "/bring-your-own-shell" },
-                    { text: "Build a Desktop", link: "/build-a-desktop" },
-                    { text: "GNOME Applications", link: "/gnome-apps" },
                     { text: "Platform Support", link: "/platform-support" },
                     { text: "Troubleshooting", link: "/troubleshooting" },
+                ],
+            },
+            {
+                text: "Shell & Userspace",
+                items: [
+                    { text: "Choose a Shell", link: "/bring-your-own-shell" },
+                    { text: "Bingux", link: "/bingux" },
+                    { text: "Build a Desktop", link: "/build-a-desktop" },
+                    { text: "GNOME Applications", link: "/gnome-apps" },
                 ],
             },
             {
