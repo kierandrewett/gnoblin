@@ -3,6 +3,9 @@
 The private key never touches the repository tree. A CI job imports it into a throw-away GNUPGHOME from the secret
 REPO_GPG_PRIVATE_KEY, and the passphrase comes from REPO_GPG_PASSPHRASE (both names are options). Nothing here
 generates a key: creating the real key is a one-time offline step described in design/package-repositories.md.
+
+Alpine's apk does not use GnuPG: it checks an RSA signature of APKINDEX.tar.gz against a public key in /etc/apk/keys.
+ApkSigner holds that second key, from REPO_APK_PRIVATE_KEY (an unencrypted PEM file), and uses the openssl program.
 """
 
 from __future__ import annotations
@@ -10,6 +13,7 @@ from __future__ import annotations
 import os
 import shutil
 import stat
+import subprocess
 import tempfile
 from pathlib import Path
 
@@ -17,6 +21,7 @@ from .runner import CommandError, run
 
 PRIVATE_KEY_ENV = "REPO_GPG_PRIVATE_KEY"
 PASSPHRASE_ENV = "REPO_GPG_PASSPHRASE"
+APK_PRIVATE_KEY_ENV = "REPO_APK_PRIVATE_KEY"
 
 
 def gpg_home(path: Path | None = None) -> Path:
@@ -152,3 +157,60 @@ class Signer:
             capture=True,
             quiet=True,
         )
+
+
+class ApkSigner:
+    """Signs APKINDEX.tar.gz with an RSA key. `name` is the file name of the public key that apk looks for."""
+
+    def __init__(self, pem: str, name: str) -> None:
+        if "PRIVATE KEY" not in pem:
+            raise CommandError("the Alpine signing key is not a PEM private key")
+        if "ENCRYPTED" in pem:
+            raise CommandError("the Alpine signing key must not have a passphrase")
+        self.name = name
+        self._directory = Path(tempfile.mkdtemp(prefix="pkgrepo-apk-"))
+        self._directory.chmod(0o700)
+        self._key = self._directory / "key.pem"
+        self._key.write_text(pem if pem.endswith("\n") else pem + "\n")
+        self._key.chmod(stat.S_IRUSR | stat.S_IWUSR)
+        try:
+            # `rsa` refuses a key that is not an RSA key, which apk cannot use.
+            self.public_pem = self._openssl(["rsa", "-in", self._key, "-pubout"]).decode()
+        except CommandError:
+            self.close()
+            raise CommandError("the Alpine signing key is not a valid unencrypted RSA private key") from None
+
+    @classmethod
+    def from_environment(cls, name: str, variable: str = APK_PRIVATE_KEY_ENV) -> "ApkSigner":
+        pem = os.environ.get(variable)
+        if not pem:
+            raise CommandError(f"the environment variable {variable} is empty or not set")
+        return cls(pem, name)
+
+    @classmethod
+    def from_file(cls, path: Path, name: str) -> "ApkSigner":
+        return cls(path.read_text(), name)
+
+    def close(self) -> None:
+        shutil.rmtree(self._directory, ignore_errors=True)
+
+    def __enter__(self) -> "ApkSigner":
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    def _openssl(self, arguments: list[object], data: bytes | None = None) -> bytes:
+        try:
+            result = subprocess.run(["openssl", *map(str, arguments)], input=data, capture_output=True, check=False)
+        except FileNotFoundError as error:
+            raise CommandError(f"openssl is not installed ({error})") from error
+        if result.returncode != 0:
+            raise CommandError(f"openssl {arguments[0]} failed: {result.stderr.decode().strip()}")
+        return result.stdout
+
+    def sign(self, data: bytes) -> bytes:
+        return self._openssl(["dgst", "-sha256", "-sign", self._key], data)
+
+    def write_public(self, output: Path) -> None:
+        output.write_text(self.public_pem)

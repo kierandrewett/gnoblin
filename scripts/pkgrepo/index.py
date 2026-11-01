@@ -54,6 +54,11 @@ def pacman_snippet(base_url: str, project: str, channel: str, name: str) -> str:
     return f"[{name}]\nSigLevel = Required DatabaseRequired\nServer = {base_url}/{project}/{channel}/arch/$arch\n"
 
 
+def apk_repositories_line(base_url: str, project: str, channel: str, branch: str) -> str:
+    """The line for /etc/apk/repositories. apk adds /<arch>/APKINDEX.tar.gz to it."""
+    return f"{base_url}/{project}/{channel}/alpine/{branch}\n"
+
+
 def write_channel(settings, root: Path, manifest: dict, arch_dirs: dict) -> None:
     from .tree import pacman_repo_name
 
@@ -76,6 +81,10 @@ def write_channel(settings, root: Path, manifest: dict, arch_dirs: dict) -> None
         elif family == "arch":
             name = pacman_repo_name(project, channel)
             (root / "arch" / f"{name}.conf").write_text(pacman_snippet(base, project, channel, name))
+        elif family == "alpine":
+            (root / "alpine" / release / f"{project}-{channel}.list").write_text(
+                apk_repositories_line(base, project, channel, release)
+            )
 
     rows = "".join(
         "<tr><td>{family} {release}</td><td>{name}</td><td>{version}</td><td>{arch}</td>"
@@ -92,13 +101,21 @@ def write_channel(settings, root: Path, manifest: dict, arch_dirs: dict) -> None
         for p in manifest["packages"]
     )
     source = manifest["source"]["commit"]
+    apk_key = manifest.get("apk_key")
+    apk_note = (
+        f'<p>Alpine signing key: <a href="../../{escape(apk_key["name"])}">{escape(apk_key["name"])}</a>. '
+        f"Install it as <code>/etc/apk/keys/{escape(apk_key['name'])}</code>.</p>\n"
+        if apk_key
+        else ""
+    )
     body = (
         f"<h1>{escape(project.capitalize())} {escape(channel)}</h1>\n"
         f"<p>Signing key fingerprint: <code>{escape(fingerprint_text(fingerprint))}</code>"
         f' (<a href="../../gpg.key">gpg.key</a>). Generated {escape(manifest["generated"])}'
         + (f" from commit <code>{escape(source[:12])}</code>" if source else "")
-        + f'. <a href="manifest.json">manifest.json</a></p>\n'
-        "<p>Add this repository with the instructions in the "
+        + '. <a href="manifest.json">manifest.json</a></p>\n'
+        + apk_note
+        + "<p>Add this repository with the instructions in the "
         f'<a href="https://github.com/kierandrewett/{escape(project)}">{escape(project.capitalize())} documentation</a>.</p>\n'
         "<table><tr><th>For</th><th>Package</th><th>Version</th><th>Architecture</th><th>File</th><th>SHA-256</th></tr>\n"
         f"{rows}</table>"
@@ -106,7 +123,7 @@ def write_channel(settings, root: Path, manifest: dict, arch_dirs: dict) -> None
     (root / "index.html").write_text(_page(f"{project.capitalize()} {channel} packages", body))
 
 
-def write_root(settings, fingerprint: str) -> None:
+def write_root(settings, fingerprint: str, apk_key: str | None = None) -> None:
     items = "".join(
         f'<li><a href="{project}/{channel}/">{project.capitalize()} {channel}</a></li>\n'
         for project in PROJECTS
@@ -114,7 +131,9 @@ def write_root(settings, fingerprint: str) -> None:
     )
     body = (
         "<h1>Gnoblin and Bingux package repositories</h1>\n"
-        f'<p>Signing key: <a href="gpg.key">gpg.key</a>, fingerprint <code>{escape(fingerprint_text(fingerprint))}</code>.</p>\n'
+        f'<p>Signing key: <a href="gpg.key">gpg.key</a>, fingerprint <code>{escape(fingerprint_text(fingerprint))}</code>.'
+        + (f' Alpine signing key: <a href="{escape(apk_key)}">{escape(apk_key)}</a>.' if apk_key else "")
+        + "</p>\n"
         "<p>Add one channel of a project to a machine. <em>stable</em> carries released versions, "
         "<em>nightly</em> the newest build of the main branch.</p>\n"
         f"<ul>\n{items}</ul>"
