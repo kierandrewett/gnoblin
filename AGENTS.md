@@ -79,6 +79,14 @@ rules; put detailed procedures in `CONTRIBUTING.md` or beside the relevant code.
   into an image to explain what the image shows. Do not add decorative copy to
   repeat visible content or to stand in for clear instructions. Keep
   comparisons with other projects factual and respectful.
+- Docs are for people who use Gnoblin. `design/markdown-style.md` has the full rules under "Write for the person who
+  uses Gnoblin", and `scripts/markdown-style.py lint` checks the ones a pattern can find. In short:
+    - Never mention GNOME Shell or GJS, and never compare Gnoblin with GNOME or describe how they coexist. GNOME
+      userspace notes go in a collapsed `::: details` block.
+    - Write nothing that goes out of date: no versions, release names, dates, architecture lists, "currently" or
+      "not yet". Link to the page that holds the fact.
+    - Install pages have no failure sections and follow each package manager's normal process.
+    - Send readers to the maintained documentation of the tools they use.
 - Before finishing documentation changes, check links, navigation, names, and
   examples against the current source and intended audience. Use the
   documentation build when verification is requested or needed for the change.

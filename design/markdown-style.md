@@ -121,6 +121,32 @@ accepted values`, `Default`, and `Meaning or example`. Add an inline example
 - Keep existing useful screenshots when editing docs. Replace them only when
   the new image is accurate, clearer, and shows the real feature.
 
+## Write for the person who uses Gnoblin
+
+Documentation pages are for people who install, configure and use Gnoblin. Everything else stays out of them. The
+Markdown validator checks the rules in this section that a pattern can find, and the review checks the rest.
+
+- **Say only what the reader must do or know.** Remove build internals, CI and signing detail, maintainer notes, test
+  results and notes on how a page came to be. Put maintainer material in `design/` or in a source comment.
+- **Never mention GNOME Shell, GJS or GNOME extensions.** Gnoblin is not based on GNOME Shell. Do not say what Gnoblin
+  does not ship, replace or require from it.
+- **Do not compare Gnoblin with GNOME or describe how they coexist.** Do not write that Gnoblin installs next to GNOME,
+  that a GNOME session stays available, or that the reader should keep another session. Every page leaves out this
+  topic. Information about GNOME applications and libraries goes in a collapsed `::: details` block, because most
+  readers do not need it. Names the reader must type, such as `org.gnome.desktop.session`, are fine.
+- **Write nothing that can go out of date.** Treat every fact as likely to change. Do not write version numbers,
+  release or codename lists, dates, architecture lists, channel contents, counts, or words such as "currently", "not
+  yet", "newest" and "no longer". Do not list the systems or releases Gnoblin supports. Link to the page or file that
+  holds the fact: [platform support](/platform-support), the releases page, or the file in the source tree.
+- **Do not add failure sections to install pages.** No "If installation fails" or "Package not found" notes. Troubleshooting has
+  its own page.
+- **Follow the normal process.** Install pages use the steps that the distribution documents for its package manager.
+  Do not invent a different way. Read release names and architectures from the system with `$(...)` instead of
+  writing them.
+- **Send readers to the maintained source.** For a tool, library or package manager, link to its own documentation
+  in a short "More information" list. Prefer an exact page over a project homepage.
+- **Keep one source of truth.** If a fact is already on another page, link to that page. Do not copy it.
+
 ## Keep prose direct and accurate
 
 - Lead with the action or answer the reader needs. Prefer short, specific

@@ -55,6 +55,107 @@ def word_count(text: str) -> int:
     return len(re.findall(r"\b[\w'-]+\b", text))
 
 
+# Wording that documentation pages must not use. design/markdown-style.md explains each rule. Each entry is
+# (pattern, message, files the rule does not apply to). Text in code fences, inline code and link addresses is not
+# checked, and neither is a GNOME rule inside a "::: details" block.
+SUPPORT_PAGES = {"platform-support.md"}
+BANNED_WORDING: list[tuple[re.Pattern[str], str, set[str], bool]] = [
+    (
+        re.compile(r"\bGNOME[ -]?Shell\b|\bGJS\b|\bGNOME extensions?\b", re.IGNORECASE),
+        "do not mention GNOME Shell, GJS or GNOME extensions: Gnoblin is not based on them",
+        set(),
+        False,
+    ),
+    (
+        re.compile(
+            r"\bstock GNOME\b|\bGNOME session\b|\b(next to|alongside|beside|instead of|coexist\w*|co-exist\w*)\b[^.\n]{0,40}\bGNOME\b"
+            r"|\bGNOME\b[^.\n]{0,30}\b(stays|remains|is still)\b"
+            r"|\b(installs?|runs?|sits?) (next to|alongside|beside|with)\b[^.\n]{0,40}\b(desktop|session)\b"
+            r"|\b(current|existing|previous|other) (session|desktop)\b[^.\n]{0,30}\b(stays?|remains?|is still)\b"
+            r"|\bchoose your previous session\b",
+            re.IGNORECASE,
+        ),
+        "do not compare Gnoblin with other desktops or describe how they coexist; put GNOME userspace notes in a '::: details' block",
+        set(),
+        True,
+    ),
+    (
+        re.compile(
+            r"\bkeep\b[^.\n]{0,40}\b(another|other|existing|previous)\b[^.\n]{0,30}\b(session|desktop)\b", re.IGNORECASE
+        ),
+        "do not tell readers to keep another session; the platform support page covers risk",
+        SUPPORT_PAGES,
+        False,
+    ),
+    (
+        re.compile(
+            r"\b(currently|at the moment|at present|for now|as of|recently|not yet|soon|upcoming|these days|nowadays"
+            r"|in the future|latest|newest|no longer|used to|formerly)\b",
+            re.IGNORECASE,
+        ),
+        "this wording goes out of date; state the fact without a time, or link to the page that holds it",
+        SUPPORT_PAGES,
+        False,
+    ),
+    (
+        re.compile(
+            r"\b(Fedora|Debian|Ubuntu|RHEL|CentOS|openSUSE Leap|Alpine|NixOS)\s+v?\d+(\.\d+)*\b"
+            r"|\b(forky|trixie|bookworm|bullseye|plucky|noble|jammy)\b"
+            r"|\bDebian testing\b|\bAlpine edge\b",
+            re.IGNORECASE,
+        ),
+        "this release name or number goes out of date; link to platform support instead",
+        SUPPORT_PAGES,
+        False,
+    ),
+]
+FAILURE_HEADING = re.compile(
+    r"^#{1,6}\s+.*\b(if .*\b(fails?|does not work|doesn't work)|package not found|fails? to)\b", re.IGNORECASE
+)
+
+
+def prose_lines(lines: list[str]) -> list[tuple[int, str, bool]]:
+    """Prose of a page as (line number, text, inside a details block), without code, inline code and link addresses."""
+    result = []
+    in_fence = False
+    in_details = False
+    for number, line in enumerate(lines, 1):
+        if re.match(r"^\s*(```|~~~)", line):
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if re.match(r"^:::\s*details\b", line):
+            in_details = True
+            continue
+        if line.strip() == ":::":
+            in_details = False
+            continue
+        text = re.sub(r"`[^`\n]*`", "", line)
+        text = re.sub(r"\]\([^)]*\)", "]", text)
+        text = re.sub(r"https?://\S+", "", text)
+        result.append((number, text, in_details))
+    return result
+
+
+def wording_issues(path: Path) -> list[tuple[int, str]]:
+    """Find wording that the documentation rules ban: GNOME comparisons, wording that goes out of date, failure notes."""
+    if "docs" not in path.resolve().parts:
+        return []
+    lines = path.read_text(encoding="utf-8").splitlines()
+    issues: list[tuple[int, str]] = []
+    for number, text, in_details in prose_lines(lines):
+        for pattern, message, exempt_files, details_allowed in BANNED_WORDING:
+            if path.name in exempt_files or (in_details and details_allowed):
+                continue
+            match = pattern.search(text)
+            if match:
+                issues.append((number, f"{message} ('{match.group(0)}')"))
+        if path.name.startswith("install") and FAILURE_HEADING.match(text):
+            issues.append((number, "install pages have no failure sections; troubleshooting has its own page"))
+    return issues
+
+
 def structural_issues(path: Path) -> list[tuple[int, str]]:
     """Catch cramped Markdown structures before the editorial review."""
     lines = path.read_text(encoding="utf-8").splitlines()
@@ -163,6 +264,7 @@ def structural_issues(path: Path) -> list[tuple[int, str]]:
                 )
                 break
 
+    issues.extend(wording_issues(path))
     return sorted(set(issues))
 
 
