@@ -196,6 +196,15 @@ jobs:
         run: |
           scripts/build-packages.sh --prefix prefix --list --version "$PACKAGE_VERSION" | tail -n 400
           scripts/build-packages.sh --prefix prefix-musl --list --version "$PACKAGE_VERSION" | tail -n 400
+      - name: Give the Arch packages names that an artifact keeps
+        # The epoch makes an Arch file name hold a colon (gnoblin-1:0.1.13-1-x86_64.pkg.tar.zst). An artifact refuses a
+        # colon and a GitHub release turns it into a dot, which would no longer match SHA256SUMS. pacman reads the name
+        # from the package, and scripts/pkgrepo reads the version from it.
+        run: |
+          for file in dist/*:*; do
+            [ -e "$file" ] || continue
+            mv -- "$file" "$(dirname -- "$file")/$(basename -- "$file" | tr : .)"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: packages-${{ inputs.release_tag }}-${{ matrix.arch }}

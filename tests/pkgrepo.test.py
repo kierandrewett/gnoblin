@@ -22,7 +22,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from pkgrepo import index, publish, tree, versions  # noqa: E402
 from pkgrepo import package as packager  # noqa: E402
 from pkgrepo.runner import CommandError  # noqa: E402
-from pkgrepo.packages import Package  # noqa: E402
+from pkgrepo.packages import Package, read_arch  # noqa: E402
 
 
 def package(
@@ -737,6 +737,29 @@ class PackageManifests(unittest.TestCase):
         self.assertEqual(packager.format_version(semver, "archlinux"), versions.semver_to_arch(semver))
         self.assertEqual(packager.format_version(semver, "rpm"), "0.1.13~nightly.20261031.142.gabc1234")
         self.assertEqual(packager.format_version(semver, "deb"), "0.1.13~nightly.20261031.142.gabc1234")
+
+
+class ArchFileNames(unittest.TestCase):
+    """An artifact cannot hold the colon of an epoch, so the file name may carry a dot where the version has a colon."""
+
+    def write_package(self, directory: Path, file_name: str) -> Path:
+        info = directory / ".PKGINFO"
+        info.write_text("pkgname = gnoblin\npkgver = 1:0.1.13-1\narch = x86_64\n")
+        path = directory / file_name
+        subprocess.run(["tar", "-cf", path, "-C", directory, ".PKGINFO"], check=True)
+        return path
+
+    def test_the_file_name_may_spell_the_epoch_colon_as_a_dot(self):
+        with tempfile.TemporaryDirectory() as directory:
+            for name in ("gnoblin-1:0.1.13-1-x86_64.pkg.tar.zst", "gnoblin-1.0.1.13-1-x86_64.pkg.tar.zst"):
+                path = self.write_package(Path(directory), name)
+                self.assertEqual(read_arch(path), ("gnoblin", "1:0.1.13-1", "x86_64"))
+
+    def test_another_version_is_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.write_package(Path(directory), "gnoblin-1.0.1.14-1-x86_64.pkg.tar.zst")
+            with self.assertRaises(ValueError):
+                read_arch(path)
 
 
 if __name__ == "__main__":

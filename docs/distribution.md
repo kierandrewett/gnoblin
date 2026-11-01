@@ -187,7 +187,7 @@ Each release page lists these files for each architecture. `SHA256SUMS` covers e
 | `SHA256SUMS`                                    | SHA-256 checksums of all other assets        |
 
 `<package>` is one of the four package names. `<gnome>` is the pinned GNOME version, for example
-`51.0`. GitHub does not keep the colon of an Arch file name that has an epoch, so the release writes it as a dot.
+`51.0`. GitHub does not keep the colon of an Arch file name that has an epoch, so the workflow writes it as a dot.
 The Arch epoch belongs to the package, which pacman reads from the file, not from its name.
 
 A release tag creates a versioned release. A manual run with a tag publishes that tag, or repairs a

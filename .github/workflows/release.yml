@@ -240,15 +240,6 @@ jobs:
           pattern: packages-${{ needs.source.outputs.release_tag }}-*
           path: release-assets
           merge-multiple: true
-      - name: Give the Arch packages names that GitHub keeps
-        # The epoch makes an Arch file name hold a colon (gnoblin-1:0.1.13-1-x86_64.pkg.tar.zst). GitHub turns it into a
-        # dot when it stores an asset, which would no longer match SHA256SUMS. pacman reads the name from the package.
-        run: |
-          cd release-assets
-          for file in *:*; do
-            [ -e "$file" ] || continue
-            mv -- "$file" "${file//:/.}"
-          done
       - name: Checksum every release asset
         run: |
           cd release-assets
