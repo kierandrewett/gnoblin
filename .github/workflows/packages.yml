@@ -226,6 +226,8 @@ jobs:
           - { system: arch, image: "archlinux:base" }
           - { system: debian, image: "debian:testing" }
           - { system: alpine, image: "alpine:edge" }
+          # archlinux:base has no arm64 image. Arch Linux ARM is the arm64 port.
+          - { arch: arm64, system: arch, image: "menci/archlinuxarm:base" }
           - { arch: amd64, runner: ubuntu-latest }
           - { arch: arm64, runner: ubuntu-24.04-arm }
     # The job runs on the host, because JavaScript actions do not run in an Alpine container on an arm64 runner. Only the
