@@ -152,7 +152,7 @@ def wording_issues(path: Path) -> list[tuple[int, str]]:
             if match:
                 issues.append((number, f"{message} ('{match.group(0)}')"))
         if path.name.startswith("install") and FAILURE_HEADING.match(text):
-            issues.append((number, "install pages have no failure sections; troubleshooting has its own page"))
+            issues.append((number, "install pages have no troubleshooting sections; link to the troubleshooting page"))
     return issues
 
 

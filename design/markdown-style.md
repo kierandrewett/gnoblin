@@ -141,8 +141,8 @@ Markdown validator checks the rules in this section that a pattern can find, and
   one page that lists releases and architectures. Distribution names, commands, file paths, package names and the
   signing key fingerprint are fine. API reference pages may mark the API version that added a feature, such as
   "API 1.29+", because integrators need it to check compatibility.
-- **Do not add failure sections to install pages.** No "If installation fails" or "Package not found" notes. Troubleshooting has
-  its own page.
+- **Keep install pages to the steps.** An install page has the steps to install, update and remove, and a link to
+  troubleshooting. It has no troubleshooting sections of its own.
 - **Follow the normal process.** Install pages use the steps that the distribution documents for its package manager.
   Do not invent a different way. Read release names and architectures from the system with `$(...)` instead of
   writing them.

@@ -11,7 +11,7 @@ An external shell owns the bar, dock, launcher and desktop popups.
 - Window-management menu
 - Notifications, unless GNOME's service is explicitly enabled
 
-See [choose a shell](bring-your-own-shell.md) and [native feature settings](/guides/session_settings#native-features).
+See [choose a shell](../docs/bring-your-own-shell.md) and [native feature settings](/guides/session_settings#native-features).
 
 ## Kept in Gnoblin
 
@@ -25,4 +25,4 @@ GNOME's Overview, dash, app grid, extension loader and extension management UI
 are unavailable. User scripts remain supported.
 
 Stock GNOME retains its normal behavior. Test both modes when changing shared
-code; see [testing](testing.md).
+code; see [testing](../docs/testing.md).

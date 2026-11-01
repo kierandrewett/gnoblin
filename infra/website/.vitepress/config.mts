@@ -19,9 +19,7 @@ export default defineConfig({
         define: { __BUILD_SHA__: JSON.stringify(buildSha), __BUILT_AT__: JSON.stringify(builtAt) },
         server: { fs: { allow: ["../.."] } },
         resolve: {
-            alias: [
-                { find: /^vue(\/.*)?$/, replacement: `${modules("vue")}$1` },
-            ],
+            alias: [{ find: /^vue(\/.*)?$/, replacement: `${modules("vue")}$1` }],
         },
     },
     sitemap: { hostname: "https://gnoblin.org" },
@@ -180,7 +178,6 @@ export default defineConfig({
                 items: [
                     { text: "Integration Guide", link: "/shell-integration" },
                     { text: "Lua Event Handlers", link: "/user-scripts" },
-                    { text: "Migrate from Bingux", link: "/migrate-bingux" },
                     {
                         text: "Lua Runtime API",
                         link: "/shell-api/",
@@ -263,7 +260,6 @@ export default defineConfig({
                     { text: "Frame Renderer Architecture", link: "/window-frame-renderers" },
                     { text: "Frame Renderer API", link: "/frame-renderer-api" },
                     { text: "Session Locking", link: "/session-lock" },
-                    { text: "Native and External UI", link: "/native-ui-removal" },
                 ],
             },
             {
@@ -275,8 +271,6 @@ export default defineConfig({
                     { text: "Testing", link: "/testing" },
                     { text: "Desktop Verification", link: "/real-hardware-verification" },
                     { text: "Formatting", link: "/code-quality" },
-                    { text: "CLI Development", link: "/cli-development" },
-                    { text: "Packaging", link: "/distribution" },
                     { text: "Documentation", link: "/documentation-site" },
                 ],
             },

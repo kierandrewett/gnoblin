@@ -1,9 +1,9 @@
 # Packaging and releases
 
-For user installation, see [Install Gnoblin](installation.md).
+For user installation, see [Install Gnoblin](../docs/installation.md).
 This page is for release maintainers.
 
-The public [platform support](platform-support.md) page distinguishes package
+The public [platform support](../docs/platform-support.md) page distinguishes package
 candidates from fully supported session installations. Do not describe a target
 as supported until its graphical-session gate has passed.
 
@@ -100,7 +100,7 @@ them.
 
 Fedora packages came from COPR before. The COPR project `kierandrewett/gnoblin` keeps its old
 builds, but releases no longer go there: COPR builds from a source RPM, and pkgsmith writes
-binary packages only. Switch to the [package repositories](package-repositories.md) or the
+binary packages only. Switch to the [package repositories](../docs/package-repositories.md) or the
 release assets.
 
 ## Prepare the source tarball
@@ -128,7 +128,7 @@ A release tag starts the release workflow. It runs these stages:
 3. **Publish.** It checksums every asset, records build provenance, attaches everything to one
    release and makes the release public.
 4. **Repository.** It builds the signed repository from the packages and uploads it. See
-   [package repositories](package-repositories.md).
+   [package repositories](../docs/package-repositories.md).
 
 Nothing is public until every package job and install check has passed. A failed check leaves no
 release behind, and the run keeps the built assets for 30 days.

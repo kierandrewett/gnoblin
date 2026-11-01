@@ -108,7 +108,7 @@ versions used by this migration are:
 - tablet-pad help requests: 1.73 (`gnoblin.input.pad-help-requested`).
 
 `workspace.list` and `window.list` are Lua-backed from API 1.52 and 1.53. The
-[compositor bridge reference](bridge/index.md) lists every version,
+[compositor bridge reference](../docs/bridge/index.md) lists every version,
 argument, response, event, and capability.
 
 For one-off reads and actions, prefer `gnoblinctl`; it handles API negotiation
@@ -130,7 +130,7 @@ The compatibility bridge also exposes `ui-state` and `ui-command` callbacks.
 The `ui-sessions` socket capability carries those messages between Bingux
 processes. Each process keeps its presentation and reactions in QML. Check the
 capability in the socket greeting before sending `ui-session` messages; see the
-[compositor bridge reference](bridge/session-and-windows#api-version-175-shell-ui-sessions)
+[compositor bridge reference](../docs/bridge/session-and-windows#api-version-175-shell-ui-sessions)
 for state ownership, message shapes, and limits.
 
 Bingux can use the [launch feedback API](/shell-api/launch-feedback) to show the busy cursor while an app starts. The retired `org.gnoblin.LaunchFeedback` D-Bus service is not provided by the standalone session.
@@ -173,6 +173,6 @@ changes, snapping, text insertion, launch feedback, OSD, and portal capture.
 
 If Bingux still supports GNOME sessions, confirm that path separately.
 
-The [shell integration guide](shell-integration.md) and
-[bridge examples](bridge-examples.md) describe the public integration
+The [shell integration guide](../docs/shell-integration.md) and
+[bridge examples](../docs/bridge-examples.md) describe the public integration
 interfaces.

@@ -1,6 +1,6 @@
 # CLI development
 
-The user reference is [gnoblinctl](cli/index.md).
+The user reference is [gnoblinctl](../docs/cli/index.md).
 
 ## Command design
 

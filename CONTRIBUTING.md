@@ -40,7 +40,7 @@ A pull request that changes `release.yml`, the package recipes or the release sc
 release pipeline as a dry run. It builds and tests every package and publishes nothing. To run the
 same check on a branch without a pull request, use
 `gh workflow run release.yml --ref BRANCH -f dry_run=true`. To cut a release, see
-[Packaging and releases](docs/distribution.md).
+[Packaging and releases](design/distribution.md).
 
 Strict scheduled and manually dispatched app E2E failures create or update a
 Beads/GitHub compatibility issue with the failed outcomes and workflow
@@ -143,7 +143,7 @@ prefix, and [pkgsmith](https://github.com/kierandrewett/pkgsmith) writes the rpm
 tar packages from that prefix with the definitions in `pkgsmith/`. `scripts/build-packages.sh`
 runs it, and `scripts/check-package-install.sh` installs the result on a clean system. The
 commands, the package list and the release stages are in
-[Packaging and releases](docs/distribution.md).
+[Packaging and releases](design/distribution.md).
 
 When you add a file to the build, check which package ships it: `pkgsmith/runtime.star` names
 the portal backend's files, and everything else in the prefix belongs to `gnoblin`. When you add
