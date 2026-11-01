@@ -2,7 +2,7 @@
 
 ## Immediate window snapshots
 
-The native Mutter runtime exposes the latest window state directly:
+The native Mutter runtime exposes the window state directly:
 
 | Lua call                        | Arguments                                                                   | Result                             |
 | ------------------------------- | --------------------------------------------------------------------------- | ---------------------------------- |
@@ -22,7 +22,7 @@ use a cached native snapshot and return immediately; they do not create an
 to get newer state.
 
 Gnoblin refreshes both collections in one coalesced main-loop publication. A
-read made before that publication completes returns the most recently published
+read made before that publication completes returns the last published
 state. Lifecycle callbacks run after the corresponding snapshots are refreshed,
 so handlers can read the new state.
 
