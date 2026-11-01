@@ -146,25 +146,29 @@ struct _GnoblinPluginUi {
     GnoblinImGuiOverlay* overlay;
     MetaDisplay* display;
     guint recovery_poll_id;
+    guint notice_timer_id = 0;
+    /* Pointer buttons held on a passive panel, the recovery panel or a notice. */
     guint recovery_buttons = 0;
     bool session_locked = false;
     std::string terminal;
     std::shared_ptr<ConsoleHistoryStore> console_history;
     std::set<std::uint64_t> requests;
     std::unique_ptr<GnoblinRecoveryPanel, decltype(&gnoblin_recovery_panel_free)> recovery;
+    std::unique_ptr<GnoblinNoticeStack, decltype(&gnoblin_notice_stack_free)> notices;
     std::unique_ptr<GnoblinConsolePanel> console;
     std::unique_ptr<GnoblinDebugPanel, decltype(&gnoblin_debug_panel_free)> debug;
 
     _GnoblinPluginUi()
         : overlay(nullptr), display(nullptr), recovery_poll_id(0),
-          recovery(nullptr, gnoblin_recovery_panel_free), debug(nullptr, gnoblin_debug_panel_free) {
-    }
+          recovery(nullptr, gnoblin_recovery_panel_free),
+          notices(nullptr, gnoblin_notice_stack_free), debug(nullptr, gnoblin_debug_panel_free) {}
 };
 
 static void update_visibility(GnoblinPluginUi* ui) {
     const gboolean visible =
         !ui->session_locked &&
-        (gnoblin_recovery_panel_should_draw(ui->recovery.get()) || ui->console->visible() ||
+        (gnoblin_recovery_panel_should_draw(ui->recovery.get()) ||
+         gnoblin_notice_stack_should_draw(ui->notices.get()) || ui->console->visible() ||
          gnoblin_debug_panel_enabled(ui->debug.get()));
     gnoblin_imgui_overlay_set_visible(ui->overlay, visible);
     if (visible)
@@ -178,8 +182,10 @@ static void draw_panels(GnoblinImGuiOverlay* overlay, void* user_data) {
      * the notice show through the console. The notice returns when it closes. */
     if (ui->console->visible())
         ui->console->draw_frame(overlay);
-    else
+    else {
         gnoblin_recovery_panel_draw(overlay, ui->recovery.get());
+        gnoblin_notice_stack_draw(overlay, ui->notices.get(), ui->recovery.get());
+    }
 }
 
 static void console_visibility_changed(GnoblinPluginUi* ui) {
@@ -230,7 +236,8 @@ static gboolean refresh_recovery_marker(gpointer user_data) {
      * overlay makes otherwise idle backdrops repaint, including panel blur.
      * Keep console refreshes and hide the actor after a notice is dismissed. */
     if (load_recovery_marker(ui) || ui->console->visible() ||
-        !gnoblin_recovery_panel_should_draw(ui->recovery.get()))
+        !(gnoblin_recovery_panel_should_draw(ui->recovery.get()) ||
+          gnoblin_notice_stack_should_draw(ui->notices.get())))
         update_visibility(ui);
     return G_SOURCE_CONTINUE;
 }
@@ -559,6 +566,52 @@ static void open_terminal(void* user_data) {
         ui->console->append_log(error ? error->message : "Could not open terminal", true);
 }
 
+static gboolean notice_timer_fired(gpointer user_data);
+
+/* One timer, set for the nearest removal. Posting a notice or removing one
+ * sets it again. */
+static void schedule_notice_timer(GnoblinPluginUi* ui) {
+    if (ui->notice_timer_id) {
+        g_source_remove(ui->notice_timer_id);
+        ui->notice_timer_id = 0;
+    }
+    const std::int64_t next = gnoblin_notice_stack_next_expiry(ui->notices.get());
+    if (next == 0)
+        return;
+    const std::int64_t wait_us = std::max<std::int64_t>(next - g_get_monotonic_time(), 0);
+    ui->notice_timer_id =
+        g_timeout_add(static_cast<guint>(wait_us / 1000) + 1, notice_timer_fired, ui);
+}
+
+static gboolean notice_timer_fired(gpointer user_data) {
+    auto* ui = static_cast<GnoblinPluginUi*>(user_data);
+    ui->notice_timer_id = 0;
+    gnoblin_notice_stack_expire(ui->notices.get(), g_get_monotonic_time());
+    schedule_notice_timer(ui);
+    update_visibility(ui);
+    return G_SOURCE_REMOVE;
+}
+
+void gnoblin_plugin_ui_post_notice(GnoblinPluginUi* ui, GnoblinNativeNoticeKind kind,
+                                   const char* message) {
+    if (ui == nullptr)
+        return;
+    GnoblinNoticeKind notice_kind = GnoblinNoticeKind::CommandFailed;
+    switch (kind) {
+    case GNOBLIN_NATIVE_NOTICE_CONFIG_RELOADED:
+        notice_kind = GnoblinNoticeKind::ConfigReloaded;
+        break;
+    case GNOBLIN_NATIVE_NOTICE_CONFIG_FAILED:
+        notice_kind = GnoblinNoticeKind::ConfigFailed;
+        break;
+    case GNOBLIN_NATIVE_NOTICE_COMMAND_FAILED:
+        break;
+    }
+    gnoblin_notice_stack_post(ui->notices.get(), notice_kind, message, g_get_monotonic_time());
+    schedule_notice_timer(ui);
+    update_visibility(ui);
+}
+
 static void reload_config(void* user_data) {
     auto* ui = static_cast<GnoblinPluginUi*>(user_data);
     control_lua(ui, GnoblinConsoleControl::ReloadConfiguration, [ui](GnoblinConsoleResult result) {
@@ -577,6 +630,7 @@ GnoblinPluginUi* gnoblin_plugin_ui_new(ClutterActor* parent, MetaDisplay* displa
      * bounds. The full-stage actor must not intercept other client input. */
     clutter_actor_set_reactive(gnoblin_imgui_overlay_get_actor(ui->overlay), FALSE);
     ui->recovery = {gnoblin_recovery_panel_new(), gnoblin_recovery_panel_free};
+    ui->notices = {gnoblin_notice_stack_new(), gnoblin_notice_stack_free};
     ui->console_history = console_history_store_new();
     ui->debug.reset(gnoblin_debug_panel_new());
 
@@ -633,6 +687,8 @@ void gnoblin_plugin_ui_free(GnoblinPluginUi* ui) {
         return;
     if (ui->recovery_poll_id)
         g_source_remove(ui->recovery_poll_id);
+    if (ui->notice_timer_id)
+        g_source_remove(ui->notice_timer_id);
     for (const std::uint64_t id : ui->requests)
         gnoblin_native_control_cancel_runtime_request(ui->display, id);
     ui->requests.clear();
@@ -641,6 +697,7 @@ void gnoblin_plugin_ui_free(GnoblinPluginUi* ui) {
         g_cancellable_cancel(ui->console_history->cancellable);
     ui->console_history.reset();
     ui->recovery.reset();
+    ui->notices.reset();
     gnoblin_debug_panel_set_enabled(ui->debug.get(), nullptr, FALSE);
     ui->debug.reset();
     gnoblin_imgui_overlay_free(ui->overlay);
@@ -732,7 +789,8 @@ gboolean gnoblin_plugin_ui_handle_event(GnoblinPluginUi* ui, const ClutterEvent*
             return FALSE;
         float x = 0.0f, y = 0.0f;
         clutter_event_get_coords(event, &x, &y);
-        const bool inside = gnoblin_recovery_panel_contains(ui->recovery.get(), x, y);
+        const bool inside = gnoblin_recovery_panel_contains(ui->recovery.get(), x, y) ||
+                            gnoblin_notice_stack_contains(ui->notices.get(), x, y);
         if (type == CLUTTER_BUTTON_PRESS) {
             const guint button = clutter_event_get_button(event);
             if (!inside || button > 3 || button == 0)

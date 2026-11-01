@@ -270,6 +270,12 @@ static void gnoblin_plugin_debug_bridge(gboolean enabled, gpointer user_data) {
     gnoblin_plugin_ui_set_debug(plugin->diagnostics_ui, enabled);
 }
 
+static void gnoblin_plugin_notice_bridge(GnoblinNativeNoticeKind kind, const char* message,
+                                         gpointer user_data) {
+    MetaGnoblinPlugin* plugin = user_data;
+    gnoblin_plugin_ui_post_notice(plugin->diagnostics_ui, kind, message);
+}
+
 static void gnoblin_plugin_start(MetaPlugin* plugin) {
     MetaGnoblinPlugin* self = META_GNOBLIN_PLUGIN(plugin);
     MetaDisplay* display = meta_plugin_get_display(plugin);
@@ -308,6 +314,7 @@ static void gnoblin_plugin_start(MetaPlugin* plugin) {
     gnoblin_native_control_set_console_toggle_handler(display, gnoblin_plugin_toggle_console_bridge,
                                                       self);
     gnoblin_native_control_set_debug_handler(display, gnoblin_plugin_debug_bridge, self);
+    gnoblin_native_control_set_notice_handler(gnoblin_plugin_notice_bridge, self);
     gnoblin_plugin_clipboard_init(display);
     clutter_actor_show(meta_backend_get_stage(backend));
 }
@@ -317,6 +324,7 @@ static void meta_gnoblin_plugin_dispose(GObject* object) {
     MetaDisplay* display = meta_plugin_get_display(META_PLUGIN(self));
     gnoblin_native_control_set_console_toggle_handler(display, NULL, NULL);
     gnoblin_native_control_set_debug_handler(display, NULL, NULL);
+    gnoblin_native_control_set_notice_handler(NULL, NULL);
 
     gnoblin_plugin_input_detach(G_OBJECT(display), &self->input);
     if (self->wayland_compositor && self->session_lock_callback_id != 0) {

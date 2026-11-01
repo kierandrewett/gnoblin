@@ -1032,6 +1032,11 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
                 }
                 if (!ok && !message)
                     g_variant_lookup(packet.payload, "error", "&s", &message);
+                if (pending->config_reload)
+                    gnoblin_control_post_notice(
+                        ok ? GNOBLIN_NATIVE_NOTICE_CONFIG_RELOADED
+                           : GNOBLIN_NATIVE_NOTICE_CONFIG_FAILED,
+                        ok ? NULL : (message ? message : "runtime API request failed"));
                 if (pending->callback) {
                     /* The packet and result are owned by the runtime reader.
                      * The callback is synchronous on the compositor main

@@ -759,3 +759,18 @@ void gnoblin_native_control_set_debug_handler(MetaDisplay* display, GnoblinNativ
     if (handler && control && control->developer_debug_known)
         handler(control->developer_debug_published, user_data);
 }
+
+/* One compositor plugin draws notices, so the bridge is process wide. */
+static GnoblinNativeNoticeFunc notice_handler;
+static gpointer notice_handler_data;
+
+void gnoblin_native_control_set_notice_handler(GnoblinNativeNoticeFunc handler,
+                                               gpointer user_data) {
+    notice_handler = handler;
+    notice_handler_data = user_data;
+}
+
+void gnoblin_control_post_notice(GnoblinNativeNoticeKind kind, const char* message) {
+    if (notice_handler)
+        notice_handler(kind, message, notice_handler_data);
+}

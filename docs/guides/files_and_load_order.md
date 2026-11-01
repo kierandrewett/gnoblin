@@ -162,7 +162,7 @@ Wayland clients; the runtime API controls compositor state.
 | Window-management preferences      | On reload                                      | Gnoblin default applies                   |
 | Compositor interaction preferences | On reload                                      | Gnoblin default applies                   |
 | Input preferences                  | On reload                                      | GNOME/Mutter settings apply               |
-| Input sources                      | On reload                                      | GNOME session sources apply               |
+| Input sources                      | On reload                                      | Session input sources apply               |
 | Orientation lock                   | On reload                                      | GNOME orientation setting applies         |
 | Cursor theme and size              | On reload                                      | Adwaita at 24 logical pixels              |
 | Notifications and layout popup     | On reload                                      | Saved GSettings value stays               |
@@ -180,3 +180,23 @@ will replace that change on the next config reload.
 `gnoblinctl config reload` replaces the active Lua configuration and its event
 callbacks. It does not replace native libraries or restart separate desktop
 clients.
+
+## Reload and error notices
+
+Gnoblin draws a small notice at the top centre of the screen when a reload
+finishes and when a shortcut or command you configured does not start.
+Notices never take keyboard focus. A click on a notice dismisses it; a click
+anywhere else goes to the window underneath.
+
+| Event                                 | Notice                                                 | Removed                                                       |
+| ------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------- |
+| A reload applied                      | `Config reloaded`                                      | After about 2 seconds. Another reload restarts the time.      |
+| A reload was rejected                 | `Config reload failed` and the first line of the error | When you click it, or when a later reload succeeds.           |
+| A shortcut or command could not start | `<name> could not start: <reason>`                     | After about 8 seconds. Repeats of the same message show once. |
+
+For example, `media-next could not start: No such file or directory` means the
+command behind the `media-next` shortcut is not installed. A rejected reload
+leaves the active configuration unchanged. Run
+`gnoblinctl config reload` to see the whole error. Up to four notices stack
+under each other; the oldest goes first. Starting the session shows no
+reload notice.

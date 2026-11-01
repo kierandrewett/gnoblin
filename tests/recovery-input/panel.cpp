@@ -23,6 +23,7 @@ struct GnoblinPluginUi {
     bool session_locked = false;
     guint recovery_buttons = 0;
     std::unique_ptr<GnoblinRecoveryPanel, decltype(&gnoblin_recovery_panel_free)> recovery;
+    std::unique_ptr<GnoblinNoticeStack, decltype(&gnoblin_notice_stack_free)> notices;
     std::unique_ptr<Console> console;
 };
 static GnoblinPluginUi* ui;
@@ -45,6 +46,7 @@ void panel_new(void) {
                              false,
                              0,
                              {gnoblin_recovery_panel_new(), gnoblin_recovery_panel_free},
+                             {gnoblin_notice_stack_new(), gnoblin_notice_stack_free},
                              std::make_unique<Console>()};
     gnoblin_recovery_panel_set_state(ui->recovery.get(), "bingux exited 255",
                                      GnoblinRecoveryFallbackSource::None, false);
@@ -62,6 +64,7 @@ void panel_free(void) {
 void panel_frame(void) {
     ImGui::NewFrame();
     gnoblin_recovery_panel_draw(ui->overlay, ui->recovery.get());
+    gnoblin_notice_stack_draw(ui->overlay, ui->notices.get(), ui->recovery.get());
     ImGui::Render();
 }
 void panel_dismiss_coords(float* x, float* y) {
@@ -79,4 +82,51 @@ gboolean panel_visible(void) {
 gboolean panel_handle(const ClutterEvent* event) {
     // Baseline signature is mutable; the production handler only reads events.
     return gnoblin_plugin_ui_handle_event(ui, const_cast<ClutterEvent*>(event));
+}
+
+/* Transient notices share the fixture: same ImGui context, same production
+ * event handler. The recovery notice is hidden so it cannot overlap them. */
+void notice_reset(void) {
+    gnoblin_recovery_panel_dismiss(ui->recovery.get());
+}
+void notice_post(int kind, const char* message, gint64 now_us) {
+    gnoblin_notice_stack_post(ui->notices.get(), static_cast<GnoblinNoticeKind>(kind), message,
+                              now_us);
+}
+gboolean notice_expire(gint64 now_us) {
+    return gnoblin_notice_stack_expire(ui->notices.get(), now_us);
+}
+gsize notice_count(void) {
+    return gnoblin_notice_stack_count(ui->notices.get());
+}
+gint64 notice_next_expiry(void) {
+    return gnoblin_notice_stack_next_expiry(ui->notices.get());
+}
+const char* notice_detail(gsize index) {
+    return gnoblin_notice_stack_detail(ui->notices.get(), index);
+}
+/* A point inside the first painted notice, found by probing the painted bounds. */
+gboolean notice_point(float* x, float* y) {
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    for (float probe = 0.0f; probe < display.y; probe += 1.0f) {
+        if (gnoblin_notice_stack_contains(ui->notices.get(), display.x / 2, probe)) {
+            *x = display.x / 2;
+            *y = probe + 8.0f; /* clear of the border */
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+/* True when notices are painted and no pixel belongs to both them and the recovery notice. */
+gboolean notice_clear_of_recovery(void) {
+    const ImVec2 display = ImGui::GetIO().DisplaySize;
+    const float x = 400.0f;
+    bool seen = false;
+    for (float y = 0.0f; y < display.y; y += 1.0f) {
+        const bool notice = gnoblin_notice_stack_contains(ui->notices.get(), x, y);
+        if (notice && gnoblin_recovery_panel_contains(ui->recovery.get(), x, y))
+            return FALSE;
+        seen = seen || notice;
+    }
+    return seen;
 }

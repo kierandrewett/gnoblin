@@ -5,6 +5,7 @@
 #include <glib.h>
 #include <clutter/clutter.h>
 #include "meta/display.h"
+#include "core/gnoblin-native-control.h"
 
 G_BEGIN_DECLS
 
@@ -30,8 +31,13 @@ void gnoblin_plugin_ui_set_session_locked(GnoblinPluginUi* ui, gboolean locked);
  * never takes input, so callers only toggle visibility here. */
 void gnoblin_plugin_ui_set_debug(GnoblinPluginUi* ui, gboolean enabled);
 gboolean gnoblin_plugin_ui_console_visible(GnoblinPluginUi* ui);
+/* Show a short transient notice drawn above windows. Passive: it takes no keys, and a pointer
+ * click only counts inside the notice, where it dismisses it. */
+void gnoblin_plugin_ui_post_notice(GnoblinPluginUi* ui, GnoblinNativeNoticeKind kind,
+                                   const char* message);
 
-/* Console is modal; passive recovery captures pointer events inside its panel. */
+/* Console is modal; passive recovery panels and notices capture pointer events inside their
+ * bounds. */
 gboolean gnoblin_plugin_ui_handle_event(GnoblinPluginUi* ui, const ClutterEvent* event);
 
 /* Key events, offered before keybindings and shortcuts. While the console is open it takes every

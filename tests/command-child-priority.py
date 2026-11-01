@@ -33,6 +33,12 @@ const char *gnoblin_control_operation_error_code(const GError *);
 void gnoblin_control_dispatch_operation_completion_full(
     GnoblinNativeControl *, gint64, const char *, gboolean, JsonNode *,
     const char *, const char *, gboolean);
+typedef enum {
+    GNOBLIN_NATIVE_NOTICE_CONFIG_RELOADED,
+    GNOBLIN_NATIVE_NOTICE_CONFIG_FAILED,
+    GNOBLIN_NATIVE_NOTICE_COMMAND_FAILED,
+} GnoblinNativeNoticeKind;
+void gnoblin_control_post_notice(GnoblinNativeNoticeKind, const char *);
 """
 
 HARNESS = r"""
@@ -50,6 +56,15 @@ static int shared_nice;
 
 const char *gnoblin_control_operation_error_code(const GError *error) {
     return error ? "error" : NULL;
+}
+
+static char *posted_notice;
+static int posted_kind = -1;
+
+void gnoblin_control_post_notice(GnoblinNativeNoticeKind kind, const char *message) {
+    posted_kind = kind;
+    g_free(posted_notice);
+    posted_notice = g_strdup(message);
 }
 
 void gnoblin_control_dispatch_operation_completion_full(
@@ -147,6 +162,16 @@ int main(int argc, char **argv) {
         g_assert_cmpint(getpriority(PRIO_PROCESS, 0), ==, parent_nice);
         g_assert_cmpint(sched_getscheduler(0), ==, parent_policy);
     }
+    /* A shortcut whose command is gone reports its name and the reason, not the path. */
+    char *missing_argv[] = {"/nonexistent/gnoblin-missing-command", NULL};
+    gnoblin_control_launch_command("shortcut", "media-next", missing_argv);
+    gint64 notice_deadline = g_get_monotonic_time() + 5 * G_USEC_PER_SEC;
+    while (!posted_notice && g_get_monotonic_time() < notice_deadline) {
+        while (g_main_context_iteration(NULL, FALSE)) {}
+        g_usleep(1000);
+    }
+    g_assert_cmpint(posted_kind, ==, GNOBLIN_NATIVE_NOTICE_COMMAND_FAILED);
+    g_assert_cmpstr(posted_notice, ==, "media-next could not start: No such file or directory");
     g_assert_cmpint(sample_shared_worker(), ==, shared_before);
     gnoblin_control_capture_clear(&control);
     g_hash_table_unref(control.pending_captures);

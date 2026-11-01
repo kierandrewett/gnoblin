@@ -21,6 +21,16 @@ typedef gboolean (*GnoblinNativeConsoleToggleFunc)(MetaDisplay* display, gpointe
 /* Notified when the compositor.debug configuration boolean changes. */
 typedef void (*GnoblinNativeDebugFunc)(gboolean enabled, gpointer user_data);
 
+/* What the compositor wants the user to see as a short transient notice. The message is plain
+ * text, or NULL for CONFIG_RELOADED. */
+typedef enum {
+    GNOBLIN_NATIVE_NOTICE_CONFIG_RELOADED,
+    GNOBLIN_NATIVE_NOTICE_CONFIG_FAILED,
+    GNOBLIN_NATIVE_NOTICE_COMMAND_FAILED,
+} GnoblinNativeNoticeKind;
+typedef void (*GnoblinNativeNoticeFunc)(GnoblinNativeNoticeKind kind, const char* message,
+                                        gpointer user_data);
+
 /* A compositor-owned caller can use this private bridge to ask the supervised
  * Lua runtime to evaluate console input or perform a validated runtime
  * control request. `result` is borrowed and is only valid for the duration
@@ -77,6 +87,11 @@ void gnoblin_native_control_set_console_toggle_handler(MetaDisplay* display,
 META_EXPORT
 void gnoblin_native_control_set_debug_handler(MetaDisplay* display, GnoblinNativeDebugFunc handler,
                                               gpointer user_data);
+/* Registers the compositor plugin bridge that draws transient notices: a configuration reload
+ * that finished, and a configured shortcut or command that could not start. Pass NULL to
+ * unregister before the receiver is freed. Notices are posted on the main loop. */
+META_EXPORT
+void gnoblin_native_control_set_notice_handler(GnoblinNativeNoticeFunc handler, gpointer user_data);
 META_EXPORT
 gboolean gnoblin_native_control_toggle_console(MetaDisplay* display, GError** error);
 META_EXPORT

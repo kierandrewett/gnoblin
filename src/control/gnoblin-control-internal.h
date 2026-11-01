@@ -148,6 +148,8 @@ typedef struct {
     gpointer callback_data;
     GDestroyNotify callback_destroy;
     gboolean discard_response;
+    /* A configuration reload: its outcome is also shown as a notice. */
+    gboolean config_reload;
 } PendingRuntimeRequest;
 
 struct _NativeDynamicShortcut {
@@ -489,6 +491,10 @@ G_GNUC_INTERNAL gboolean gnoblin_control_queue_command(const char* category, con
 G_GNUC_INTERNAL void gnoblin_control_launch_command(const char* category, const char* name,
                                                     char** argv);
 G_GNUC_INTERNAL char** gnoblin_control_command_run_argv(GVariant* arguments, GError** error);
+
+/* gnoblin-control-publish.c: transient notices drawn by the compositor plugin. A no-op while no
+ * plugin has registered a handler. */
+G_GNUC_INTERNAL void gnoblin_control_post_notice(GnoblinNativeNoticeKind kind, const char* message);
 
 /* Helpers in gnoblin-native-control.c that the workspace and monitor domain calls. */
 G_GNUC_INTERNAL gboolean gnoblin_control_monitor_property_changed(JsonObject* previous,

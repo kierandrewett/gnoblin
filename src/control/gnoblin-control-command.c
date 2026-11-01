@@ -82,6 +82,14 @@ static gboolean native_command_started(gpointer user_data) {
     if (!start->pid) {
         g_warning("gnoblin-%s: could not start %s: %s", start->category, start->name,
                   start->error_message);
+        /* The log keeps the full error. The notice names the command and the
+         * system's reason: the text after the last ": ", without the path. */
+        const char* error_text = start->error_message ? start->error_message : "unknown error";
+        const char* reason = strrchr(error_text, ':');
+        reason = reason && reason[1] == ' ' ? reason + 2 : error_text;
+        g_autofree char* name = g_path_get_basename(start->name);
+        g_autofree char* message = g_strdup_printf("%s could not start: %s", name, reason);
+        gnoblin_control_post_notice(GNOBLIN_NATIVE_NOTICE_COMMAND_FAILED, message);
         return G_SOURCE_REMOVE;
     }
 

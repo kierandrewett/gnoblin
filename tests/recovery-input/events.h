@@ -88,4 +88,12 @@ void panel_frame(void);
 void panel_dismiss_coords(float* x, float* y);
 gboolean panel_visible(void);
 gboolean panel_handle(const ClutterEvent* event);
+void notice_reset(void);
+void notice_post(int kind, const char* message, gint64 now_us);
+gboolean notice_expire(gint64 now_us);
+gsize notice_count(void);
+gint64 notice_next_expiry(void);
+const char* notice_detail(gsize index);
+gboolean notice_point(float* x, float* y);
+gboolean notice_clear_of_recovery(void);
 G_END_DECLS

@@ -15,6 +15,11 @@
   moved. `scripts/pkgrepo` builds, signs and uploads the repositories, and
   `design/package-repositories.md` describes the layout. See
   [package repositories](docs/package-repositories.md).
+- A small notice at the top centre of the screen when a config reload finishes (`Config reloaded`,
+  gone after about 2 seconds), when a reload is rejected (the first line of the error, until it is
+  clicked or a reload succeeds), and when a shortcut or command does not start
+  (`<name> could not start: <reason>`). See
+  [reload and error notices](docs/guides/files_and_load_order.md#reload-and-error-notices).
 
 ### Changed
 

@@ -52,6 +52,11 @@ not initialize Clutter's actor graph. Console transport is stubbed and is not
 covered. This fixture does not prove libinput, painting, native focus, or an
 installed runtime. Native VM testing remains a separate integration step.
 
+The same fixture covers the transient notices (`/notices/*`): the reload and
+command-failure lifecycle, coalescing, the stack limit, message bounds, click
+dismissal through the production handler, clicks outside a notice, and notices
+staying clear of the recovery notice.
+
 ## Candidate
 
 `0125-route-diagnostic-input-before-wayland.patch` adds a private callback to

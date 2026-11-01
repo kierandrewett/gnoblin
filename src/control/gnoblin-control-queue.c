@@ -47,6 +47,7 @@ char* queue_runtime_api_request_internal(Client* client, const char* request_id,
     pending->request_id = g_strdup(request_id);
     pending->legacy_window_action = g_strdup(legacy_window_action);
     pending->legacy_window_id = g_strdup(legacy_window_id);
+    pending->config_reload = g_str_equal(kind, "reload");
     g_hash_table_insert(control->pending_runtime_requests, key, pending);
     client->pending_deferred_requests++;
 
@@ -113,6 +114,7 @@ static guint64 queue_native_runtime_request(GnoblinNativeControl* control, const
     *key = request_id;
     PendingRuntimeRequest* pending = g_new0(PendingRuntimeRequest, 1);
     pending->callback = callback;
+    pending->config_reload = g_str_equal(kind, "reload");
     pending->callback_data = user_data;
     pending->callback_destroy = destroy;
     g_hash_table_insert(control->pending_runtime_requests, key, pending);

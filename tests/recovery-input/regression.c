@@ -457,6 +457,150 @@ static void test_detached(void) {
     cleanup();
 }
 
+/* Transient notices. Times are microseconds on a clock the test owns. */
+enum { NOTICE_RELOADED, NOTICE_FAILED, NOTICE_COMMAND };
+#define SEC G_USEC_PER_SEC
+
+static void test_notice_reload_lifetime(void) {
+    setup();
+    notice_reset();
+    notice_post(NOTICE_RELOADED, NULL, 10 * SEC);
+    g_assert_cmpuint(notice_count(), ==, 1);
+    g_assert_cmpstr(notice_detail(0), ==, "Config reloaded");
+    g_assert_cmpint(notice_next_expiry(), ==, 12 * SEC);
+    /* Another reload while it shows restarts the two seconds; it adds no notice. */
+    notice_post(NOTICE_RELOADED, NULL, 11 * SEC);
+    g_assert_cmpuint(notice_count(), ==, 1);
+    g_assert_cmpint(notice_next_expiry(), ==, 13 * SEC);
+    g_assert_false(notice_expire(12 * SEC));
+    g_assert_cmpuint(notice_count(), ==, 1);
+    g_assert_true(notice_expire(13 * SEC));
+    g_assert_cmpuint(notice_count(), ==, 0);
+    g_assert_cmpint(notice_next_expiry(), ==, 0);
+    cleanup();
+}
+
+static void test_notice_reload_outcomes(void) {
+    setup();
+    notice_reset();
+    notice_post(NOTICE_FAILED, "init.lua:4: unexpected symbol\nstack traceback:\n\t[C]: in ?", 0);
+    g_assert_cmpuint(notice_count(), ==, 1);
+    g_assert_cmpstr(notice_detail(0), ==, "init.lua:4: unexpected symbol");
+    /* A failure stays until it is dismissed or a reload succeeds. */
+    g_assert_cmpint(notice_next_expiry(), ==, 0);
+    g_assert_false(notice_expire(1000 * SEC));
+    g_assert_cmpuint(notice_count(), ==, 1);
+    notice_post(NOTICE_FAILED, "init.lua:9: other", 1 * SEC);
+    g_assert_cmpuint(notice_count(), ==, 1);
+    g_assert_cmpstr(notice_detail(0), ==, "init.lua:9: other");
+    notice_post(NOTICE_RELOADED, NULL, 2 * SEC);
+    g_assert_cmpuint(notice_count(), ==, 1);
+    g_assert_cmpstr(notice_detail(0), ==, "Config reloaded");
+    notice_post(NOTICE_FAILED, "bad", 3 * SEC);
+    g_assert_cmpuint(notice_count(), ==, 1);
+    g_assert_cmpstr(notice_detail(0), ==, "bad");
+    cleanup();
+}
+
+static void test_notice_command_coalesce(void) {
+    setup();
+    notice_reset();
+    const char* message = "media-next could not start: No such file or directory";
+    /* Key repeat: twenty failures in two seconds make one notice. */
+    for (int i = 0; i < 20; i++)
+        notice_post(NOTICE_COMMAND, message, i * SEC / 10);
+    g_assert_cmpuint(notice_count(), ==, 1);
+    g_assert_cmpstr(notice_detail(0), ==, message);
+    g_assert_cmpint(notice_next_expiry(), ==, 19 * SEC / 10 + 8 * SEC);
+    notice_post(NOTICE_COMMAND, "volume-up could not start: Permission denied", 2 * SEC);
+    g_assert_cmpuint(notice_count(), ==, 2);
+    /* A reload outcome does not remove command failures. */
+    notice_post(NOTICE_RELOADED, NULL, 3 * SEC);
+    g_assert_cmpuint(notice_count(), ==, 3);
+    notice_post(NOTICE_FAILED, "bad", 4 * SEC);
+    g_assert_cmpuint(notice_count(), ==, 3);
+    g_assert_cmpstr(notice_detail(2), ==, "bad");
+    g_assert_true(notice_expire(100 * SEC));
+    g_assert_cmpuint(notice_count(), ==, 1);
+    cleanup();
+}
+
+static void test_notice_stack_limit(void) {
+    setup();
+    notice_reset();
+    for (int i = 0; i < 6; i++) {
+        char* message = g_strdup_printf("command-%d could not start: gone", i);
+        notice_post(NOTICE_COMMAND, message, i * SEC);
+        g_free(message);
+    }
+    /* The oldest are dropped first. */
+    g_assert_cmpuint(notice_count(), ==, 4);
+    g_assert_cmpstr(notice_detail(0), ==, "command-2 could not start: gone");
+    g_assert_cmpstr(notice_detail(3), ==, "command-5 could not start: gone");
+    cleanup();
+}
+
+static void test_notice_message_bounds(void) {
+    setup();
+    notice_reset();
+    GString* long_line = g_string_new("  ");
+    for (int i = 0; i < 200; i++)
+        g_string_append(long_line, "\xc3\xa9");
+    notice_post(NOTICE_FAILED, long_line->str, 0);
+    const char* shown = notice_detail(0);
+    g_assert_cmpuint(strlen(shown), <=, 160);
+    g_assert_true(g_utf8_validate(shown, -1, NULL));
+    g_assert_true(g_str_has_suffix(shown, "..."));
+    g_assert_false(g_str_has_prefix(shown, " "));
+    g_string_free(long_line, TRUE);
+    notice_post(NOTICE_COMMAND, "", 0);
+    g_assert_cmpstr(notice_detail(1), !=, "");
+    cleanup();
+}
+
+static void test_notice_click_dismisses(void) {
+    setup();
+    notice_reset();
+    notice_post(NOTICE_COMMAND, "media-next could not start: No such file or directory", 0);
+    panel_frame();
+    panel_frame();
+    float x, y;
+    g_assert_true(notice_point(&x, &y));
+    send_event(CLUTTER_MOTION, x, y);
+    send_event(CLUTTER_BUTTON_PRESS, x, y);
+    send_event(CLUTTER_BUTTON_RELEASE, x, y);
+    g_assert_cmpuint(notice_count(), ==, 0);
+    g_assert_cmpuint(client_buttons, ==, 0);
+    g_assert_cmpuint(window_presses, ==, 0);
+    cleanup();
+}
+
+static void test_notice_clears_recovery_panel(void) {
+    setup();
+    /* The recovery notice stays up and is wide enough to reach under a centred notice. */
+    notice_post(NOTICE_FAILED, "init.lua:4: syntax error", 0);
+    panel_frame();
+    panel_frame();
+    g_assert_true(panel_visible());
+    g_assert_true(notice_clear_of_recovery());
+    cleanup();
+}
+
+static void test_notice_outside_passes_through(void) {
+    setup();
+    notice_reset();
+    notice_post(NOTICE_COMMAND, "media-next could not start: No such file or directory", 0);
+    panel_frame();
+    panel_frame();
+    send_event(CLUTTER_MOTION, 40, 700);
+    send_event(CLUTTER_BUTTON_PRESS, 40, 700);
+    send_event(CLUTTER_BUTTON_RELEASE, 40, 700);
+    g_assert_cmpuint(notice_count(), ==, 1);
+    g_assert_cmpuint(client_buttons, ==, 2);
+    g_assert_cmpuint(window_presses, ==, 1);
+    cleanup();
+}
+
 int main(int argc, char** argv) {
     g_test_init(&argc, &argv, NULL);
     g_test_add_func("/recovery/dismiss-through-native-route", test_dismiss);
@@ -469,5 +613,13 @@ int main(int argc, char** argv) {
     g_test_add_func("/recovery/replay-allowed", test_replay_allowed);
     g_test_add_func("/recovery/console-modal-pointer", test_console_modal);
     g_test_add_func("/recovery/detached", test_detached);
+    g_test_add_func("/notices/reload-lifetime", test_notice_reload_lifetime);
+    g_test_add_func("/notices/reload-outcomes", test_notice_reload_outcomes);
+    g_test_add_func("/notices/command-coalesce", test_notice_command_coalesce);
+    g_test_add_func("/notices/stack-limit", test_notice_stack_limit);
+    g_test_add_func("/notices/message-bounds", test_notice_message_bounds);
+    g_test_add_func("/notices/click-dismisses", test_notice_click_dismisses);
+    g_test_add_func("/notices/clears-recovery-panel", test_notice_clears_recovery_panel);
+    g_test_add_func("/notices/outside-passes-through", test_notice_outside_passes_through);
     return g_test_run();
 }
