@@ -172,7 +172,7 @@ The lock state is `unlocked`, `covering`, `locked`, or `failsafe`. Only
 [compositor bridge](/bridge/#api-version-121-session-locking)
 for socket subscription and request details.
 
-`gnoblin.session.activity()` returns the latest native idle-monitor sample.
+`gnoblin.session.activity()` returns the native idle-monitor sample.
 Its fields are `available`, `idle`, `threshold_ms`, `idle_for_ms`, and
 `revision`. Gnoblin uses a fixed threshold of 120 seconds. Idle inhibitors and
 desktop idle-timeout preferences do not change it.

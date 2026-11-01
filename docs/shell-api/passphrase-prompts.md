@@ -1,8 +1,7 @@
 # Answer keyring and GPG prompts
 
 `gnome-keyring` and `pinentry-gnome3` ask a prompter service on the session bus
-for passphrases and confirmations. In a GNOME session `gcr-prompter` shows
-those prompts. Gnoblin can serve them instead and publish each one as an event.
+for passphrases and confirmations. Gnoblin can serve them and publish each one as an event.
 Your config or shell shows the prompt and returns the answer.
 
 This is off by default. Turn it on with

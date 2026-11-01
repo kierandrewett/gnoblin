@@ -20,7 +20,7 @@ The event contains:
   `switch_buttons`;
 - `features`: zero-based rings, strips, and dials with optional labels for
   clockwise, counterclockwise, up, or down actions;
-- `edition_mode`: whether the request is for editing; button help currently
+- `edition_mode`: whether the request is for editing; button help
   sends `false`.
 
 The event provides labels when available, but no image or popup. Draw and

@@ -22,7 +22,7 @@ Rectangles use integer logical coordinates and `{x, y, width, height}` fields.
 Both must fit in the current work area. Modifier arrays accept only `control`,
 which cannot be both required and forbidden.
 
-On release, Mutter checks the latest accepted offer against the actual pointer
+On release, Mutter checks the last accepted offer against the actual pointer
 and modifiers. A match applies its frame; otherwise Mutter completes the
 normal move or tile-preview behavior. The shell owns snap guides and other
 presentation.
