@@ -263,3 +263,33 @@ Patch rebasing and runtime compatibility still require review.
 3. Publish packages and check dependency resolution.
 4. Test login, desktop-shell integration, portal access and removal on a clean host.
 5. Update installation commands and version notes to match published packages.
+
+## Build a package tree
+
+A distribution package uses the same build. It adds `--layout system` and a staging directory.
+
+`--layout` takes two values:
+
+- `private` is the default. Every file goes below `--prefix`. Use it for a
+  development build, `--preview` and `--register-session`.
+- `system` also writes the files a package ships outside the private prefix, below
+  `--system-prefix` (default `/usr`). `cmake/system-layout.cmake` makes them:
+    - links to `gnoblin` and `gnoblinctl` in `bin`
+    - the session file, the systemd user units and the portal files
+    - the polkit action
+
+`--destdir DIR` installs below `DIR`, as a package build root. Nothing outside `DIR`
+changes.
+
+```sh
+./build.sh --layout system --prefix /usr/lib/gnoblin --destdir "$PWD/stage"
+```
+
+The runtime is now in `stage/usr/lib/gnoblin/`, and `stage/usr/bin/gnoblin` links to
+it. Copy `stage/` into the package root. Add `--without-portal` for a package that
+ships the portal backend separately. To check the result against the RPM file lists,
+run `tests/system-layout.test.sh --stage stage`.
+
+`--system-prefix` needs `--layout system`. `--preview` and `--register-session` use
+the private layout. Set `GNOBLIN_BUILD_DIR` to build in a directory other than
+`build/ninja`, so a package build can sit next to a development build.

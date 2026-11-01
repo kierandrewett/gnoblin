@@ -1,103 +1,41 @@
 # Build from source
 
-Use the release source tarball or a Git checkout. This route does not make
-Gnoblin supported on your distribution. For distribution package status, see
-[platform support](platform-support.md).
+Use this on a system that has no package for Gnoblin. You build Gnoblin from a release tarball or a Git checkout,
+try it in a window, then add a login session.
 
-The build uses your installed development libraries. `make` builds Gnoblin for
-the install prefix `/usr/local/lib/gnoblin` and writes the files to `build/stage`
-inside the source tree. `make install` copies them to the prefix. After that, you
-can delete the source directory.
+`make` builds into `build/stage` inside the source directory and installs nothing. `make install` copies the build
+to `/usr/local/lib/gnoblin`. After that, you can delete the source directory.
 
 ## Prerequisites
 
-### Build tools and libraries
+Install these with your package manager:
 
-For a native build, install these through your distribution:
+- A C/C++ compiler and GNU Make
+- Python 3.11 or newer, CMake, Meson and Ninja
+- `tar` and `xz`
+- Git, if you build from a Git checkout
+- The development libraries for GNOME 51: GLib, GTK4 4.20 or newer, libadwaita, PipeWire 1.4.11 or newer
+  (`libpipewire-0.3`), Glycin, `gdk-pixbuf-2.0`, `xdg-desktop-portal` 1.20 or newer, and the
+  `gsettings-desktop-schemas` development package
 
-- A C/C++ toolchain and GNU Make.
-- Python 3.11 or newer. Python runs only while building. The installed control command is a native GLib/GIO program.
-- CMake, Meson and Ninja.
-- `tar` and `xz`.
-- The development libraries that the pinned GNOME sources require.
-- Git, for a Git checkout only.
+You do not need `gnome-shell` or `mutter`. The build stops with a message that names any missing library and the
+version it needs. To check before you build, run `python3 scripts/check-build-deps.py` in the source directory.
 
-The build reports missing libraries and minimum versions.
-
-The compositor is built from the public [Gnoblin Mutter fork](https://github.com/kierandrewett/gnoblin-mutter),
-based on the Mutter release pinned in `src/gnome-versions.json`. Git checkouts and
-source tarballs pin its source revision.
-
-The installed `gsettings-desktop-schemas` development package must be at least
-the version pinned in `src/gnome-versions.json`.
-
-The Gnoblin Mutter fork includes the remote-desktop compatibility changes used
-by the build:
-
-- `libpipewire-0.3` version 1.4.11 or newer is required.
-- PipeWire 1.5.84 and 1.6 add optional color-capability and device-ID negotiation.
-
-The schemas package supplies the settings Mutter uses for keyboard, pointer and
-accessibility behavior, and the enum headers used while building Mutter. It does
-not install or start GNOME Shell.
-
-You do not need the distribution's `gnome-shell` or `mutter` packages to build
-or run Gnoblin.
-
-Mutter reads monitor vendor names from the system's udev hardware database, so
-the build does not need the gnome-desktop development package.
-
-### Portal backend
-
-The default build includes Gnoblin's portal backend. Applications continue to
-call the standard portal frontend. You can choose an installed backend for Gnoblin with
-[`gnoblin.configure.portals`](/config/configure/portals).
-
-Gnoblin's backend needs these development libraries:
-
-- GTK4 4.20 or newer and libadwaita, for dialogs.
-- Glycin, for wallpaper previews.
-- `libpipewire-0.3` and `gdk-pixbuf-2.0`, for screenshot capture and PNG encoding.
-- `xdg-desktop-portal` 1.20 or newer.
-
-The build bundles the backend interface definitions that its pinned source needs.
-To build without the backend, run `./build.sh --without-portal`. Use that option
-when you prefer another backend.
-
-### Optional features
-
-`make` builds Mutter's development viewer, which `make preview` needs. Use `make DEVKIT=0` to skip it.
-`./build.sh` builds the viewer only for `--preview`.
-
-The default build uses an installed Xcursor theme. Install a cursor theme if
-your system does not have one. To include Gnoblin's optional Adwaita vector
-theme, install librsvg, hyprcursor-util and the Adwaita cursor theme, then run
-`./build.sh --with-vector-cursors`. Inkscape is not required.
-
-Portal screen sharing uses the compositor's PipeWire support and connects to
-the PipeWire service installed on your system.
+To build without Gnoblin's portal backend, run `./build.sh --without-portal` instead of `make`. You then need no
+GTK4, libadwaita or Glycin.
 
 ## 1. Get the source
 
-Download one `gnoblin-*-source.tar.xz` from the
-[Gnoblin releases](https://github.com/kierandrewett/gnoblin/releases) into
-`~/Downloads`. From that directory:
+Download `gnoblin-*-source.tar.xz` from the [Gnoblin releases](https://github.com/kierandrewett/gnoblin/releases),
+then build it:
 
 ```sh
-cd ~/Downloads
 tar -xf gnoblin-*-source.tar.xz
 cd gnoblin-[0-9]*/
 make
 ```
 
-The tarball includes Gnoblin and the pinned, patched Mutter and portal sources.
-Neither `make` nor `./build.sh` needs Git.
-
-`make` unpacks and builds Mutter and Gnoblin's portal backend. It installs
-nothing. Keep the extracted directory until you run `make install` in
-[step 3](#login-session).
-
-For current development code, install Git and clone the repository instead:
+To build the current development code instead, use Git:
 
 ```sh
 git clone https://github.com/kierandrewett/gnoblin.git
@@ -105,237 +43,75 @@ cd gnoblin
 make
 ```
 
-`make` runs `./build.sh`, which uses CMake and Ninja and checks the installed
-library versions against the pinned source requirements. It never calls your
-system package manager. Run it as your normal user.
-
-The default build includes the session, Mutter and Gnoblin's portal backend.
-`make install` installs the portal route. Without Gnoblin's backend, the route
-selects another installed backend.
+Run `make` as your normal user.
 
 ## 2. Try it in a window
 
-From an existing Wayland desktop, after `make`:
+From a Wayland desktop, after `make`:
 
 ```sh
 make preview
 ```
 
-The preview opens a nested compositor view and a terminal on your host desktop.
-It runs the build in `build/stage`. It needs no root access and does not change
-the host.
-
-During the preview, the directory above the install prefix (`/usr/local/lib` by
-default) shows only the staged build.
-
-If Waybar is installed, the preview starts a sample panel with the time, CPU use,
-and memory use. Without Waybar, start a shell or layer-shell client from the
-terminal.
-
-Close the terminal to end the preview. See [Devkit](devkit.md) for help.
+A nested Gnoblin window opens with a terminal. It needs no root access and changes nothing on your system. Close
+the terminal to end the preview. See [Devkit](devkit.md) if it does not open.
 
 ## 3. Add a login session {#login-session}
 
-### Choose a session
+Install these with your package manager first:
 
-After the build and nested test succeed, install the session runtime packages
-from your distribution: `xdg-desktop-portal` and WirePlumber. Install dconf or
-another persistent GSettings backend so desktop
-settings survive logout. The source build does not install host packages.
-GNOME Settings is optional.
+- `xdg-desktop-portal` and WirePlumber
+- `dconf`, so your settings survive logout
+- `dbus-tools` on Fedora, or `dbus` on Arch Linux
 
-The example configuration binds media keys to `wpctl` and `playerctl`. To add
-brightness shortcuts, bind the keys to a command such as `brightnessctl`.
-Install the commands used by your configuration.
-
-Install Gnoblin and add the standalone login:
+Then run:
 
 ```sh
 make install
 ```
 
-`make install` copies the build from `build/stage` to the install prefix, owned
-by root. It does not build anything, so run `make` first. Use the same `PREFIX`
-for `make` and `make install`, because the binaries have it compiled in.
+`make install` asks for `sudo` and installs:
 
-`make install` prints each file or link it creates, one per row. A link row shows
-`path -> target`.
+- Gnoblin, in `/usr/local/lib/gnoblin`
+- The `gnoblin` and `gnoblinctl` commands, in `/usr/local/bin`
+- The **Gnoblin** login entry and the manual pages
 
-If an installed package such as the Fedora `gnoblin` package already ships one of the files, `make install`
-changes nothing. It names the package and the command that removes it. Remove the package, then run
-`make install` again.
+GNOME stays as another choice at the login screen.
 
-After `make install`, the install does not need the source directory. Run
-`make install` again after each rebuild to update it. The standalone Gnoblin login
-is a separate login-screen choice, so you can switch back to GNOME at any time.
+[Install a desktop shell and log in](installation.md#after-installing). Run `gnoblin --version` to check the
+installed version.
 
-The lean launcher needs `dbus-update-activation-environment` to update the
-shared user bus. Install `dbus-tools` on Fedora or `dbus` on Arch before
-registering the login.
+Gnoblin does not start the GNOME Settings Daemon. It uses the GNOME desktop settings for idle and lock timing:
 
-### Lean session behavior
+| Setting                                      | What it does                                           |
+| -------------------------------------------- | ------------------------------------------------------ |
+| `org.gnome.desktop.session idle-delay`       | Seconds before the session goes idle. `0` turns it off |
+| `org.gnome.desktop.screensaver lock-enabled` | `true` locks the screen when the session goes idle     |
+| `org.gnome.desktop.screensaver lock-delay`   | Seconds to wait before it locks                        |
 
-The lean login launches Gnoblin directly. After the compositor is ready, it gives
-user services the Wayland display address and logind session class, then starts
-its session target and XDG autostart.
-
-The session target starts Gnoblin's idle service. It uses these installed
-desktop settings:
-
-- `org.gnome.desktop.session idle-delay`: seconds before idle activation;
-  `0` disables it.
-- `org.gnome.desktop.screensaver lock-enabled`: `true` locks the screen after
-  activation; `false` leaves it unlocked.
-- `org.gnome.desktop.screensaver lock-delay`: requested seconds before locking;
-  the compositor applies the delay after idle activation.
-
-Run `gsettings get org.gnome.desktop.session idle-delay` to see the current
-timeout.
-
-Applications can prevent idle activation through the ScreenSaver `Inhibit`
-method or the desktop portal:
-
-- Direct ScreenSaver inhibition ends at `UnInhibit` or when the caller disconnects.
-- Portal inhibition ends when the request closes or its caller disconnects.
-- Portal apps can also prevent suspension.
-
-The ScreenSaver `Lock` method asks your shell to lock the session; see
-[lock requests](session-lock.md#request-a-lock).
-
-The lean login behaves like this:
-
-- It reports logout and user-switch inhibition as unsupported.
-- It uses `Gnoblin` as its desktop identity, so GNOME-only autostart entries stay out of the session.
-- It clears display addresses left by a previous login before the compositor starts.
-- Without Xwayland it starts without X11 application support. Install Xwayland through your distribution if you need X11 applications.
-- It does not start GNOME Settings Daemon services. Select the separate GNOME login when you need them.
-- It needs a fresh Wayland login managed by logind. The login manager must set `XDG_SESSION_TYPE=wayland`.
-
-Logout ends the compositor and returns to the login manager. Save your work first.
-
-`make install` asks for sudo. It installs these files:
-
-- The runtime, in the prefix (`/usr/local/lib/gnoblin` by default).
-- Links to `gnoblin` and `gnoblinctl` in `/usr/local/bin`.
-- The login entry, in `/usr/share/wayland-sessions`.
-- Gnoblin's desktop-specific portal route in `/usr/share/xdg-desktop-portal`.
-  When the build includes Gnoblin's optional backend, it also installs the
-  backend descriptor and D-Bus service.
-- The systemd user units, in `/usr/lib/systemd/user`. The compositor login entry
-  does not depend on them.
-- The manual pages `gnoblin(1)` and `gnoblinctl(1)`, in `/usr/share/man/man1`.
-
-It also removes links from an earlier install in your home directory: user units
-in `~/.config/systemd/user`, `gnoblinctl` in `~/.local/bin` and manual pages in
-`~/.local/share/man/man1`. It removes a link only when it points into a Gnoblin
-prefix. A link to anything else stays.
-
-[Install a shell](bring-your-own-shell.md), log out, and select **Gnoblin**.
-
-Run `gnoblin --version` to check the installed command.
+For X11 applications, install Xwayland with your package manager.
 
 ## Build options
 
-`make`, `make preview` and `make install` cover the usual path. For anything else, run
-`./build.sh` with these flags:
+Add these settings after the command, for example `make JOBS=4`:
 
-| Command                            | Behaviour                                 |
-| ---------------------------------- | ----------------------------------------- |
-| `./build.sh`                       | Build Gnoblin and its session data        |
-| `./build.sh --jobs N`              | Use N parallel compilation jobs           |
-| `./build.sh --prefix DIR`          | Build into DIR (default `./install`)      |
-| `./build.sh --without-xwayland`    | Omit X11 application support              |
-| `./build.sh --without-portal`      | Omit Gnoblin's GTK portal backend         |
-| `./build.sh --with-vector-cursors` | Include the optional vector cursor theme  |
-| `./build.sh --dry-run`             | Show the steps and what they change       |
-| `./build.sh --verbose`             | Show all build output as it runs          |
-| `./build.sh --preview`             | Try the build in a nested Wayland session |
-| `./build.sh --register-session`    | Add the login entry for a built prefix    |
-| `./build.sh --layout system`       | Also write a package's public files       |
-| `./build.sh --destdir DIR`         | Install below DIR, as a package root      |
+| Setting  | Default                  | What it does                                                                        |
+| -------- | ------------------------ | ----------------------------------------------------------------------------------- |
+| `PREFIX` | `/usr/local/lib/gnoblin` | Where `make install` puts Gnoblin. Use the same value for `make` and `make install` |
+| `JOBS`   | number of processors     | Number of parallel compilation jobs                                                 |
+| `DEVKIT` | `1`                      | `0` skips the nested viewer that `make preview` needs                               |
 
-### Use make
+`make clean` deletes the `build` directory. An installed copy stays.
 
-`make` runs `./build.sh` with the settings below. The default `./build.sh`
-writes a private build to `./install`.
+To change what is built, run `./build.sh` with these flags instead of `make`:
 
-To register a prefix that already holds the runtime, without a copy, run
-`./build.sh --register-session`. Use it for a prefix other than the one `make`
-uses.
-
-| Command        | What it does                                                                       |
-| -------------- | ---------------------------------------------------------------------------------- |
-| `make`         | Build for `PREFIX` into `build/stage`, with the nested viewer. Installs nothing    |
-| `make preview` | Run the staged build in a nested window, without root access                       |
-| `make install` | After `make`: copy the build to `PREFIX` and add the login entry (asks for `sudo`) |
-| `make clean`   | Delete `build/`, including `build/stage`. An installed copy stays                  |
-
-These settings go after the command, for example `make JOBS=4 DEVKIT=0`:
-
-| Setting  | Default                  | Meaning                                                                                 |
-| -------- | ------------------------ | --------------------------------------------------------------------------------------- |
-| `PREFIX` | `/usr/local/lib/gnoblin` | Where `make install` puts the runtime. Use the same value for `make` and `make install` |
-| `JOBS`   | number of processors     | Number of parallel compilation jobs                                                     |
-| `DEVKIT` | `1`                      | `1` builds the nested viewer that `make preview` needs. `0` skips it                    |
-
-`make` writes its build files to `build/make`. To see what a build will change
-first, run `./build.sh --dry-run`.
-
-## Build a package tree
-
-A distribution package uses the same build. It adds `--layout system` and a staging directory.
-
-`--layout` takes two values:
-
-- `private` is the default. Every file goes below `--prefix`. Use it for a
-  development build, `--preview` and `--register-session`.
-- `system` also writes the files a package ships outside the private prefix, below
-  `--system-prefix` (default `/usr`). `cmake/system-layout.cmake` makes them:
-    - links to `gnoblin` and `gnoblinctl` in `bin`
-    - the session file, the systemd user units and the portal files
-    - the polkit action
-
-`--destdir DIR` installs below `DIR`, as a package build root. Nothing outside `DIR`
-changes.
-
-```sh
-./build.sh --layout system --prefix /usr/lib/gnoblin --destdir "$PWD/stage"
-```
-
-The runtime is now in `stage/usr/lib/gnoblin/`, and `stage/usr/bin/gnoblin` links to
-it. Copy `stage/` into the package root. Add `--without-portal` for a package that
-ships the portal backend separately. To check the result against the RPM file lists,
-run `tests/system-layout.test.sh --stage stage`.
-
-`--system-prefix` needs `--layout system`. `--preview` and `--register-session` use
-the private layout. Set `GNOBLIN_BUILD_DIR` to build in a directory other than
-`build/ninja`, so a package build can sit next to a development build.
-
-Use `./build.sh --preview --terminal kitty` to choose a terminal.
-Use `--without-xwayland` only if you run Wayland-native applications; X11-only
-applications cannot open in that build. Rebuild without the option to restore
-XWayland support.
-
-The session and compositor run from one `gnoblin` executable.
-
-The build shows outer Ninja entries and nested build progress at roughly 10%
-intervals, plus up to 14 recent lines of other output per entry. It saves every
-line under `build/logs/` and points to that log on failure. Use `--verbose` to
-watch every command and diagnostic as it runs.
-
-Stage and result colors appear in a terminal. Set `NO_COLOR=1` to disable them;
-redirected output and log files contain plain text.
-
-Compiler temporary files use `build/tmp` so a separate `/tmp` quota does not
-interrupt a build with space available in the checkout.
-
-## How GNOME stays separate
-
-Gnoblin installs beside the distribution's GNOME session:
-
-- Gnoblin's patched Mutter stays in the private build prefix. The build does not add library paths to your shell profile or the system loader configuration.
-- The login entry is separate. Select the GNOME entry at login to return to the normal GNOME desktop.
-- The host still provides the kernel, graphics drivers, system services and base libraries. The installed PipeWire client connects to the existing audio service, and the build registers no other PipeWire service.
+| Flag                    | What it does                                                              |
+| ----------------------- | ------------------------------------------------------------------------- |
+| `--without-portal`      | Leave out Gnoblin's portal backend                                        |
+| `--without-xwayland`    | Leave out X11 application support                                         |
+| `--with-vector-cursors` | Add the Adwaita vector cursor theme (needs librsvg and `hyprcursor-util`) |
+| `--jobs N`              | Use N parallel compilation jobs                                           |
+| `--dry-run`             | Show what the build would do                                              |
 
 ## Update
 
@@ -347,84 +123,31 @@ make
 make install
 ```
 
-Preserve local changes if Git refuses the update. Log out and back in after
-`make install`; configuration reload cannot replace compositor libraries.
+For a release tarball, download the newer tarball, extract it into a new directory, and run `make` and
+`make install` there. Log out and back in to use the new version.
 
-For a release tarball, download the newer source tarball, extract it into a
-new directory, and run `make` there. Then run `make install` to update the
-installed copy.
+## Remove
 
-`make install` replaces the installed files with the new build. Log out and back in
-to use the new compositor. It does not remove files that the new build no longer ships.
-
-## Remove the local session
-
-Log into another session. Remove only the files created by `make install`.
-
-The `org.gnoblin.Shell*` and `gnome-session@gnoblin` paths below clean up
-registrations from older Gnoblin builds.
+Log in to another session first. Then remove the files that `make install` created:
 
 ```sh
-sudo rm -f /usr/lib/systemd/user/gnoblin-session.target
-sudo rm -f /usr/lib/systemd/user/gnoblin-idle.service
-sudo rm -f /usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service
-sudo rm -f /usr/lib/systemd/user/gnoblin-recovery.service
-rm -f ~/.config/systemd/user/gnoblin-session.target
-rm -f ~/.config/systemd/user/gnoblin-idle.service
-rm -f ~/.config/systemd/user/org.gnoblin.Shell.target
-rm -f ~/.config/systemd/user/org.gnoblin.Shell@wayland.service
-rm -f ~/.config/systemd/user/xdg-desktop-portal-gnoblin.service
-rm -f ~/.config/systemd/user/gnome-session@gnoblin.target.d/gnoblin.conf
-systemctl --user daemon-reload
 sudo rm -f /usr/local/bin/gnoblin /usr/local/bin/gnoblinctl
 sudo rm -f /usr/share/man/man1/gnoblin.1 /usr/share/man/man1/gnoblinctl.1
 sudo rm -f /usr/share/wayland-sessions/gnoblin.desktop
-sudo rm -f /usr/share/gnome-session/sessions/gnoblin.session
-sudo rm -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal
-sudo rm -f /usr/share/xdg-desktop-portal/gnoblin-portals.conf
+sudo rm -f /usr/share/xdg-desktop-portal/portals/gnoblin.portal /usr/share/xdg-desktop-portal/gnoblin-portals.conf
 sudo rm -f /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.gnoblin.service
+sudo rm -f /usr/lib/systemd/user/gnoblin-session.target /usr/lib/systemd/user/gnoblin-idle.service
+sudo rm -f /usr/lib/systemd/user/xdg-desktop-portal-gnoblin.service
 sudo rm -rf /usr/local/lib/gnoblin
 ```
 
-The install prints every path it creates. If you used another `PREFIX`, remove
-that directory instead of `/usr/local/lib/gnoblin`. Man pages may have another
-extension, such as `.1.gz`, on your system.
+If you set another `PREFIX`, remove that directory instead of `/usr/local/lib/gnoblin`. Your shell and your
+configuration stay.
 
-You can then remove the checkout's `build` directory, and its `install`
-directory if you made a private build.
-For a packaged install, use the package manager instead.
+## If the build fails
 
-## Missing or outdated dependencies
+- **Missing or old library:** the build names it. Install or update it with your package manager and run `make`
+  again. Keep the error and the log path it prints when you report a problem.
+- **Disk quota exceeded:** build on a filesystem with more space. Run `df -h .` to check.
 
-The build stops at a missing dependency instead of changing host packages.
-To check the versioned libraries before building, run:
-
-```sh
-python3 scripts/check-build-deps.py
-```
-
-This check reads the pinned GNOME source requirements for the default build.
-Add these flags when they match your build. You can combine them:
-
-- `--without-xwayland`, if building without X11 application support.
-- `--with-vector-cursors`, if enabling the optional vector cursor theme.
-
-Meson checks other build requirements as it configures each component. Keep the
-error and the Meson log path when reporting a build problem.
-
-The pinned GNOME versions are in [src/gnome-versions.json](https://github.com/kierandrewett/gnoblin/blob/main/src/gnome-versions.json).
-See [source development](source-development.md) for component rebuilds.
-
-## Build reports disk quota exceeded
-
-Check space and your user quota on the filesystem containing the extracted
-source:
-
-```sh
-df -h .
-quota -s
-```
-
-Move the extracted source directory to a filesystem with enough quota, then
-run `make` there. The build keeps compiler temporary files under
-`build/tmp` inside that directory.
+See [source development](source-development.md) to rebuild one component.
