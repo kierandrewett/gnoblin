@@ -1,22 +1,30 @@
 # Errors and Results
 
-This page explains the result conventions used by Gnoblin's Lua runtime API.
-
-The Lua runtime exposes API version `1.81` in the current source. A shell using the compositor bridge should negotiate the methods and events advertised by that connection's greeting.
+Gnoblin's Lua runtime API reports the outcome of an asynchronous operation through a result object.
 
 ## Operation results
 
-An asynchronous Lua operation exposes an identifier, method, status, value, error, and completion callback. The callback is registered with `on_complete(callback)`.
+An asynchronous Lua operation has these parts:
 
-Status values are `pending`, `succeeded`, and `failed`. On success, `value` contains the result and `error` is `nil`; on failure, `error` contains a stable code and message. Completion callbacks receive `(value, error)`.
+| Part          | What it holds                                                                           |
+| ------------- | --------------------------------------------------------------------------------------- |
+| `id`          | An identifier for the operation                                                         |
+| `method`      | The name of the operation                                                               |
+| `status`      | `pending`, `succeeded` or `failed`                                                      |
+| `value`       | The result when the status is `succeeded`; `nil` otherwise                              |
+| `error`       | A table with a stable `code` and a `message` when `status` is `failed`; `nil` otherwise |
+| `on_complete` | Registers a callback that receives `(value, error)`                                     |
 
-Invalid arguments and calls outside an allowed runtime event fail before queueing. A queued operation can fail later when applied by Mutter or the session service.
+Invalid arguments and calls outside an allowed runtime event fail before the operation is queued. A queued operation
+can fail later, when Mutter or the session service applies it.
+
+## Error codes
 
 | Error code         | Meaning                                                          |
 | ------------------ | ---------------------------------------------------------------- |
 | `invalid_argument` | An operation argument or event-produced config value is invalid. |
-| `not_found`        | The requested object or resource no longer exists.               |
-| `unsupported`      | The current compositor or session cannot perform the operation.  |
+| `not_found`        | The requested object or resource does not exist.                 |
+| `unsupported`      | The compositor or session cannot perform the operation.          |
 | `denied`           | Session policy or security state rejects the operation.          |
 | `busy`             | An exclusive input operation is already active.                  |
 | `cancelled`        | The user cancelled the operation.                                |
@@ -24,8 +32,11 @@ Invalid arguments and calls outside an allowed runtime event fail before queuein
 | `unavailable`      | The compositor or session service is not ready.                  |
 | `internal`         | An unexpected implementation error occurred.                     |
 
+## Example
+
+Put this in a supervised runtime event callback. It prints the name of the activated workspace, or the error:
+
 ```lua
--- Put this in a supervised runtime event callback.
 local operation = gnoblin.workspaces.next()
 operation:on_complete(function(workspace, err)
     if err then
@@ -36,6 +47,10 @@ operation:on_complete(function(workspace, err)
 end)
 ```
 
-The callback prints the activated workspace name or the operation error.
+## See also
 
-Related: [runtime API overview](/shell-api/), [events](/events/), and [compositor bridge errors](/bridge/connection).
+- [Runtime API overview](/shell-api/)
+- [Events](/events/)
+- [Compositor bridge errors](/bridge/connection)
+- A shell that uses the compositor bridge negotiates the methods and events that the connection's greeting advertises.
+  `gnoblin.version()` returns the API version.
