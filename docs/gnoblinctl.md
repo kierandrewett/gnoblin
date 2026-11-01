@@ -55,7 +55,7 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl session hibernate`                 | Hibernate the machine                                        |
 | `gnoblinctl session reboot`                    | Restart the machine                                          |
 | `gnoblinctl session poweroff`                  | Shut the machine down                                        |
-| `gnoblinctl session activity`                  | Read the latest idle-monitor sample                          |
+| `gnoblinctl session activity`                  | Read the idle-monitor sample                                 |
 | `gnoblinctl session lock`                      | Ask a subscribed external shell client to lock the session   |
 | `gnoblinctl window list`                       | Find open windows and their IDs                              |
 | `gnoblinctl window match`                      | Show the values a window rule can match                      |
@@ -74,7 +74,7 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl shortcut actions [GROUP]`          | List built-in shortcut actions, optionally by group          |
 | `gnoblinctl shortcut capture`                  | Capture a key combination as a shortcut binding              |
 | `gnoblinctl capabilities`                      | List compositor and protocol capabilities                    |
-| `gnoblinctl focus history`                     | List recently focused windows                                |
+| `gnoblinctl focus history`                     | List focused windows, most recent first                      |
 | `gnoblinctl focus policy`                      | Show the committed focus policy                              |
 | `gnoblinctl config show`                       | Show the committed settings snapshot                         |
 | `gnoblinctl lua`                               | Open a local Lua console for the session API                 |
@@ -136,8 +136,8 @@ The same context authorizes keyboard snapping. Inside the event callback, call
 
 In `gnoblinctl lua`, both calls wait for their results on the event connection.
 
-`gnoblin.focus.history(filter?)` returns the same read-only `Window` records in
-most-recently-focused order. Its optional filter accepts `workspace_id`,
+`gnoblin.focus.history(filter?)` returns the same read-only `Window` records,
+with the most recent focus first. Its optional filter accepts `workspace_id`,
 `monitor_id`, and `limit` (1–256):
 
 ```lua
@@ -237,7 +237,7 @@ if status.lock_available then
 end
 ```
 
-`gnoblin.session.activity()` returns the latest idle-monitor sample as a
+`gnoblin.session.activity()` returns the idle-monitor sample as a
 read-only `SessionActivity` record:
 
 ```lua
@@ -560,11 +560,13 @@ an explicit ID.
 returns the window to its normal size.
 
 `gnoblinctl window focus` is rejected because the command cannot create the
-one-use trusted context required to focus a window. A Lua script can act on a
-trusted shortcut event by subscribing to `gnoblin.shortcut.activated` and
-passing `event.focus_context` to the typed `Window` methods. The compositor
-still validates and consumes the context. Interactive move or resize requires
-pointer interaction or a trusted shortcut context.
+one-use trusted context that focusing a window requires.
+
+A Lua script can act on a trusted shortcut event. Subscribe to
+`gnoblin.shortcut.activated` and pass `event.focus_context` to the typed
+`Window` methods. The compositor still validates and consumes the context.
+Interactive move or resize requires pointer interaction or a trusted shortcut
+context.
 
 To see the exact identity and title used by `gnoblin.window_rule`, run:
 
@@ -733,7 +735,7 @@ Workspace and shadow animations run on internal compositor actors or effects,
 so the current CLI cannot preview them against a window or layer surface.
 
 See the [animation guide](/guides/animations) for custom curves, events and
-GNOME-style presets.
+built-in presets.
 
 ## Move and resize
 
@@ -907,7 +909,7 @@ clicked window with an XDG Activation token through the
 | ----------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
 | `status`                                                          | Read live session state and lock availability (API 1.29+)                                |
 | `logout`                                                          | End the session and return to the login manager (API 1.32+)                              |
-| `session activity`                                                | Read the latest idle-monitor sample (API 1.24+)                                          |
+| `session activity`                                                | Read the idle-monitor sample (API 1.24+)                                                 |
 | `session lock`                                                    | Ask a subscribed shell client to lock the session (API 1.21+)                            |
 | `ping`                                                            | Check whether the compositor control socket responds                                     |
 | `version`                                                         | Read the running compositor build identity                                               |
@@ -925,7 +927,7 @@ clicked window with an XDG Activation token through the
 | `launch begin TOKEN APP [MILLISECONDS]`, `launch end TOKEN`       | Start or end busy-cursor feedback; duration defaults to 3000 ms, clamped to 100–10000 ms |
 | `shortcut capture`                                                | Briefly grab the keyboard and print a GTK accelerator or `Super` binding                 |
 
-`session activity` reports the latest native idle-monitor sample. If the
+`session activity` reports the native idle-monitor sample. If the
 session has no idle monitor, the response reports that activity data is
 unavailable. `session lock` requests a lock from a subscribed external shell
 client. A successful request means the client received it; use the session
@@ -936,13 +938,11 @@ The privacy stop commands ask Mutter to stop matching tracked sessions. Their
 that the sessions have closed.
 
 In a standalone native session, `gnoblinctl config reload` validates and
-applies the complete configuration while the session is running. Native
-settings, policies, autostart entries, and Lua callbacks are updated as one
-reload transaction. If loading or applying the candidate fails, Gnoblin keeps
-the previous configuration active. The native open-animation matcher uses
-updated rules for windows mapped after reload.
-
-Reload does not replay open animations for windows already mapped.
+applies the complete configuration while the session runs. Native settings,
+policies, autostart entries and Lua callbacks update as one reload transaction.
+If loading or applying the candidate fails, Gnoblin keeps the previous
+configuration active. Windows mapped after a reload use the updated
+open-animation rules; windows already mapped do not replay their open animations.
 
 For example, to inspect a portal decision and change keyboard source:
 
@@ -1099,12 +1099,12 @@ source, but not to run `gnoblinctl`.
 The socket defaults to `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.
 Override it with `--socket PATH` or `GNOBLIN_COMPOSITOR_SOCKET`.
 
-The bridge is built into current Gnoblin source builds. External shell
+The bridge is built into Gnoblin. External shell
 integrations run as separate processes and use the bridge directly. Check
 `gnoblinctl ping`, the running Gnoblin version, and the session log. `ping`
 checks only whether the compositor control socket responds; it does not check
-external shell clients. See [CLI development](cli-development.md) for the
-transport contract.
+external shell clients. The socket transport is described in the
+[bridge connection guide](/bridge/connection).
 
 ## Outputs
 
