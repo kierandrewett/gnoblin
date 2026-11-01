@@ -117,7 +117,7 @@ For per-output records and the compositor renderer, see [Outputs](/shell-api/out
 snapshot. It contains:
 
 - `requested_enabled`: the effective requested state;
-- `source`: which setting currently supplies that value;
+- `source`: which setting supplies that value;
 - `revision`: the snapshot revision;
 - `monitors`: active outputs, each with an `id` and `available` flag. Supported
   outputs also include `enabled` and `locked`; unsupported outputs omit them.
