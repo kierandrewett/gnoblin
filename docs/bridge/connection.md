@@ -17,9 +17,9 @@ After the connection opens, the server sends one greeting line with `"event": "h
 
 | Field                               | Type             | Meaning                                                                                      |
 | ----------------------------------- | ---------------- | -------------------------------------------------------------------------------------------- |
-| `version`, `api_major`              | integer          | Major API version. Both fields hold the same value, currently `1`.                           |
-| `api_minor`                         | integer          | Highest minor version this server accepts, currently `86`.                                   |
-| `state_revision`                    | integer          | Latest revision for the state named in `revision_scope`.                                     |
+| `version`, `api_major`              | integer          | Major API version. Both fields hold the same value.                                          |
+| `api_minor`                         | integer          | Highest minor version this server accepts.                                                   |
+| `state_revision`                    | integer          | Revision of the state named in `revision_scope`.                                             |
 | `revision_scope`                    | string           | The exact string `window-workspace-monitor-layer-input-device-source-capability-state`.      |
 | `revision_semantics`                | string           | `monotonic-per-session`. The revision only increases for the life of the compositor session. |
 | `methods`, `events`, `capabilities` | array of strings | Names this server supports. Read them from the greeting; they change with the API version.   |
@@ -41,7 +41,7 @@ Send one UTF-8 JSON object per line, followed by a newline. Keep the connection 
 The version rules:
 
 - `major` must equal the server's major version, `1`.
-- `minor` must be from `0` through the server's `api_minor`, currently `86`.
+- `minor` must be from `0` through the server's `api_minor`.
 - If you omit the version, the connection uses API 1.0 compatibility behavior.
 - A malformed or unsupported version gets an error reply, and the server then closes the connection.
 

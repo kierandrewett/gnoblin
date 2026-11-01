@@ -147,7 +147,7 @@ Call `window.restore_or_minimize` with a stable window ID:
 Mutter unmaximizes a maximized window, restores its saved pre-snap frame when
 available, or minimizes it. The response includes `id` and `action`, whose
 value is `unmaximize`, `restore`, or `minimize`. The operation fails while the
-session is locked or if the target window is no longer available. Every
+session is locked or if the target window has closed. Every
 supported socket client uses the shared Lua operation, which requires the Lua
 supervisor.
 
@@ -178,7 +178,7 @@ logical-coordinate `hit` and `frame` rectangles. Both rectangles must fit in
 the current work area.
 
 Targets may also set `maximize`, `required_modifiers`, or
-`forbidden_modifiers`. Modifier filters currently accept only `control`.
+`forbidden_modifiers`. Modifier filters accept only `control`.
 
 The token is bound to the connection, live drag, and runtime generation. The
 first accepted Lua or socket offer owns the drag; only its owner can replace
