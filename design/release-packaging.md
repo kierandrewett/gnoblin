@@ -279,7 +279,7 @@
   private Gnoblin package and exports a separate
   `nixosModules.nixos_26_05`. A full local build first failed because Shell's
   pkg-config lookup found host Wayland 1.25 through private Mutter's `.pc`
-  dependency. `packaging/nix/package.nix` now adds the private Wayland dev output to
+  dependency. `nix/package.nix` now adds the private Wayland dev output to
   Shell's pkg-config path when that adapter is selected. The full package
   output and `nix flake check --no-build` pass, and CI now builds both Mutter
   and the complete package. Nix workflow run `36159534134` on `861df019`

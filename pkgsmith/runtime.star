@@ -40,7 +40,11 @@ PORTAL_PATHS = [
     "/usr/share/xdg-desktop-portal/portals/gnoblin.portal",
 ]
 # Configuration of the optional packages in pkgsmith/integrations.star.
-INTEGRATION_PATHS = ["/etc/geoclue", "/etc/ananicy.d"]
+INTEGRATION_PATHS = ["/etc/geoclue/**", "/etc/ananicy.d/**"]
+
+# Only the private runtime is a folder of these packages. The public folders (/usr/share/dbus-1, /usr/lib/systemd/user and so
+# on) belong to the system packages that every desktop has.
+OWN_DIRS = [PRIVATE, PRIVATE + "/**"]
 
 # The schema cache is generated on the system, because the two packages share one schema directory. The rpm owns the
 # file without carrying it, so rpm removes it with the package. The other formats remove it in the script.
@@ -225,6 +229,7 @@ for lane in lanes():
         license = "GPL-2.0-or-later",
         depends = core_depends(fmt, distro),
         scripts = scripts_for(fmt, POST_INSTALL, POST_REMOVE),
+        own_dirs = OWN_DIRS,
         contents = contents,
         **dict(fields.items() + core_relations(fmt).items())
     )
@@ -249,5 +254,6 @@ for lane in lanes():
         license = "LGPL-2.1-or-later",
         depends = portal_depends(fmt, distro),
         scripts = scripts_for(fmt, POST_INSTALL, POST_REMOVE),
+        own_dirs = OWN_DIRS,
         **fields
     )

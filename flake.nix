@@ -79,7 +79,7 @@
       };
       mkGnoblin =
         pkgs: overrides:
-        pkgs.callPackage ./packaging/nix/package.nix (
+        pkgs.callPackage ./nix/package.nix (
           {
             gnoblinSrc = self.outPath;
             gnoblinRevision =
@@ -266,6 +266,6 @@
         inherit nixChannelEvaluations nixChannelPackages;
       };
 
-      nixosModules.default = import ./packaging/nix/module.nix { inherit self; };
+      nixosModules.default = import ./nix/module.nix { inherit self; };
     };
 }

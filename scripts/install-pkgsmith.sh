@@ -53,7 +53,8 @@ git -C "$source_dir" checkout --quiet FETCH_HEAD
 (cd "$source_dir" && cargo build --release --workspace --locked 1>&2)
 install -m 0755 "$source_dir/target/release/pkgsmith" "$bin/pkgsmith"
 for plugin in "$source_dir"/target/release/libpkgsmith_plugin_*.so; do
-    install -m 0755 "$plugin" "$bin/"
+    name="${plugin##*/libpkgsmith_plugin_}"
+    install -m 0755 "$plugin" "$bin/pkgsmith-plugin-$name"
 done
 rm -rf -- "$source_dir"
 echo "$bin"

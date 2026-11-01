@@ -78,6 +78,7 @@ for lane in lanes():
         license = "GPL-2.0-or-later",
         depends = geoclue_depends(fmt, distro),
         config_files = ["/etc/**"],
+        own_dirs = ["/etc/geoclue", "/etc/geoclue/**"],
         **fields
     )
 
@@ -101,6 +102,7 @@ for lane in lanes():
         homepage = HOMEPAGE,
         license = "GPL-2.0-or-later",
         config_files = ["/etc/**"],
+        own_dirs = ["/etc/ananicy.d"],
         scripts = scripts,
         **dict(fields.items() + ananicy_relations(fmt).items())
     )

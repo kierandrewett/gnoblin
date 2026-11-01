@@ -29,6 +29,7 @@
   installed from COPR, is removed. The `gnoblin-ananicy-v*` releases are replaced by the
   package of the same name in every Gnoblin release.
 - `scripts/prepare-release.sh` sets the version in `src/gnoblin-version.json` only.
+- The Nix package and module moved from `packaging/nix/` to `nix/`. The flake's outputs are unchanged.
 - Packages accept a pre-release version. The source bundle keeps the SemVer
   spelling (`0.1.13-nightly.…`) and pkgsmith spells the package version for the
   package manager (`0.1.13~nightly.…` for RPM). Release versions are unchanged.
