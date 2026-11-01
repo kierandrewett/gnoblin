@@ -3,8 +3,6 @@
 These APIs are for shell authors. The
 [compositor bridge](/bridge/) provides live compositor state and
 operations. Desktop configuration starts with [the configuration guide](/config).
-For the Bingux-specific transition from the compatibility bridge, see the
-[standalone migration guide](/migrate-bingux).
 
 ## Dock animation targets
 
@@ -28,7 +26,7 @@ Give each grouped window the same icon rectangle before minimising it.
 A zero-size rectangle clears the hint. The hint also clears when its surface
 or window handle disappears.
 
-![GNOME Files beneath the Bingux dock in a Gnoblin session](images/gnoblin-bingux-files.png)
+![A file manager beneath the Bingux dock in a Gnoblin session](images/gnoblin-bingux-files.png)
 
 _Bingux is one separate shell project using Gnoblin; its dock can provide icon targets._
 
@@ -89,10 +87,11 @@ handle (`o`) from the `BindShortcuts` call that created the session. Return the
 updated list in the same format. The shell owns the approval UI and any stored
 selection; the portal owns the portal session and activation signals.
 
-When the user changes saved bindings, call `RebindShortcuts` on
-`org.freedesktop.impl.portal.desktop.gnoblin`, at
-`/org/gnoblin/Shell/GlobalShortcuts`, using
-`org.gnoblin.Shell.GlobalShortcutsRebind`. Pass the application ID, the updated
-`a(sa{sv})` list, and the request handle (`o`) from the `BindShortcuts` call
-that created the session. The portal replaces the active bindings and emits
-`ShortcutsChanged` to portal clients.
+When the user changes saved bindings, call `RebindShortcuts` on the
+`org.freedesktop.impl.portal.desktop.gnoblin` service at the
+`/org/gnoblin/Shell/GlobalShortcuts` path, using the
+`org.gnoblin.Shell.GlobalShortcutsRebind` method.
+
+Pass the application ID, the updated `a(sa{sv})` list, and the request handle
+(`o`) from the `BindShortcuts` call that created the session. The portal
+replaces the active bindings and emits `ShortcutsChanged` to portal clients.

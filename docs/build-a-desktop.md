@@ -43,9 +43,9 @@ gnoblin.configure {
 }
 ```
 
-![GNOME Settings open under Waybar](images/gnoblin-waybar-settings.png)
+![Settings app open under Waybar](images/gnoblin-waybar-settings.png)
 
-_A stock GNOME app beneath Waybar._
+_A settings app beneath Waybar._
 
 The cursor uses your system's default theme. See the [cursor guide](/guides/cursors)
 to choose another installed theme.

@@ -53,8 +53,7 @@ gnoblin.configure {
 }
 ```
 
-Log out and back in. This setting gates the global in Gnoblin mode; stock GNOME
-keeps its upstream behavior.
+Log out and back in. This setting controls the global in the Gnoblin session.
 
 ## Rendering
 

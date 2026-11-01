@@ -21,8 +21,7 @@ gnoblin.configure {
 Lua underscores become hyphens in the native setting name. Apply changes with
 `gnoblinctl config reload`; this adds or removes the global for new clients.
 Clients that already bound an interface keep their existing connection until
-they disconnect. GNOME's separate login session does not advertise Gnoblin-
-owned globals.
+they disconnect.
 
 Gnoblin rejects a reload that disables `ext_session_lock` while the session is
 locked. Unlock first, then reload the configuration.
@@ -64,7 +63,7 @@ namespace.
 
 _Quickshell positions the panel with the layer-shell protocol._
 
-![GNOME Files beneath the same Quickshell panel](images/gnoblin-quickshell-files.png)
+![A file manager beneath the same Quickshell panel](images/gnoblin-quickshell-files.png)
 
 _Layer-shell panels remain separate from ordinary application windows._
 
@@ -72,11 +71,11 @@ Screen capture through `wlr_screencopy` is separate from the desktop portal.
 The portal path depends on the selected backend. Disabling this global does not
 block screen sharing.
 
-## Interfaces not yet available
+## Interfaces without a global
 
 [`zwlr_output_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/output-management/wlr-output-management-unstable-v1.xml)
 has an XML definition but is not registered as a Gnoblin global. Do not make a
-shell depend on it yet.
+shell depend on it.
 
 ## Inspect a running session
 
