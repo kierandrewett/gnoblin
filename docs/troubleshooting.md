@@ -5,7 +5,7 @@ when reporting a problem.
 
 ## Gnoblin is missing from the login screen
 
-For Fedora, check the session package:
+Check that the `gnoblin` package is installed. On Fedora, run:
 
 ```sh
 rpm -q gnoblin
@@ -16,7 +16,7 @@ It asks for sudo to copy the build to its prefix and add the login entry. See [s
 
 ## The source build returns to the login screen
 
-Log into another session or a text console and read the latest startup records:
+Log into another session or a text console and read the startup records:
 
 ```sh
 cat "${XDG_STATE_HOME:-$HOME/.local/state}/gnoblin/session-last.log"
@@ -35,23 +35,21 @@ journalctl -b --no-pager -g gnoblin
 ```
 
 If it reports a missing Gnoblin or Mutter library, run `make` and then
-`make install` to install the current build. The binaries have the install
-prefix compiled in. Copying an executable directly from `build/` can leave
-build-directory library paths that fail under the login manager. The `PREFIX`
-for `make` and `make install` must be the same.
+`make install` to install the build. The `PREFIX` for `make` and `make install`
+must be the same.
 
-`make install` checks that the executable can load its libraries without a
-developer's `LD_LIBRARY_PATH`. Run it again after a rebuild or if the login
-entry changed.
+Do not copy an executable out of `build/` by hand. Its library paths point at the
+build directory and can fail under the login manager. Run `make install` instead.
+It checks that the installed executable loads its libraries without
+`LD_LIBRARY_PATH` set. Run it again after a rebuild or if the login entry changed.
 
-The install does not need the source directory. If you installed with an older
-version of the build, run `make install` again. It removes the old links in your
-home directory that point into the source directory.
+The installed session does not need the source directory. If an earlier install
+left links in your home directory that point into it, run `make install` again to
+remove them.
 
 GDM logs “Session never registered” when a session ends before it registers.
 Gnoblin's login entry sets `X-GDM-SessionRegisters=false`, so GDM's session
-wrapper registers the session itself about 10 seconds after it starts (GDM
-49.4, `daemon/gdm-wayland-session.c`).
+wrapper registers the session itself about 10 seconds after it starts.
 
 Check which case applies:
 
@@ -98,29 +96,12 @@ If the panel does not appear, switch to another session or a text console and
 inspect Gnoblin's session logs for config-owned shell clients:
 
 ```sh
-journalctl -b --no-pager | rg -i 'gnoblin|bingux'
+journalctl -b --no-pager | rg -i 'gnoblin'
 ```
-
-Bingux's search and status helpers use user services. Check those separately:
-
-```sh
-systemctl --user status bingux-searchd.service bingux-statusd.service
-journalctl --user -b -u bingux-searchd.service -u bingux-statusd.service
-```
-
-A Qt/Quickshell version mismatch requires rebuilding or installing a matching
-Quickshell package. Restarting repeatedly will not fix that mismatch.
 
 ## A network needs a browser sign-in
 
-Open the network's sign-in page in a browser. Gnoblin does not install GNOME
-Shell's captive-network helper. Its NetworkManager secret agent still handles
-Wi-Fi and VPN credential prompts.
-
-## Calendar events are not in the shell
-
-Gnoblin has no GNOME Shell date menu or calendar event server. Open a
-calendar application to view events.
+Open the network's sign-in page in a browser. The NetworkManager secret agent handles Wi-Fi and VPN credential prompts.
 
 ## A config edit does nothing
 
@@ -187,68 +168,32 @@ does not prove that the client draws a titlebar.
 
 ## Gnoblin is slow or stutters after login
 
-Check the scheduling class of the compositor:
+Check the scheduling policy of the compositor:
 
 ```sh
 chrt -p "$(pgrep -x gnoblin | head -n 1)"
 ```
 
-The expected policy is `SCHED_OTHER`. If a display manager or a process
-tuner such as Ananicy starts Gnoblin as background work, the policy is
-`SCHED_IDLE` and the session misses its frame and input deadlines.
-
-At startup Gnoblin resets an idle or batch policy, a positive nice value and
-the idle I/O class. When a normal reset is not allowed, it asks RealtimeKit
-for a higher priority. Both the session guardian and the compositor log the
-result to the system journal:
-
-```sh
-journalctl -b --no-pager | rg 'scheduling policy'
-```
-
-A line such as `gnoblin-guardian: scheduling policy 5->0, nice 16->-11`
-shows that Gnoblin corrected the inherited priority. If the policy is still
-`SCHED_IDLE`, check that `rtkit-daemon` is running.
+The policy should be `SCHED_OTHER`. A process tuner such as Ananicy can start Gnoblin as background work. The policy
+is then `SCHED_IDLE`, and the session misses its frame and input deadlines.
 
 ### Ananicy-cpp rules {#ananicy-cpp-rules}
 
-Ananicy-cpp's default rules rank `gdm`, `gdm-wayland-session` and
-`gdm-session-worker` as background work (nice 16, idle I/O, `SCHED_IDLE`).
-Without a matching rule, child processes can inherit that class.
-RealtimeKit corrects only the thread that asks. This can delay desktop frames
-and input under CPU load. The daemon's GNOME rule gives `gnome-shell` a
-separate low-latency class; check your installed rules for its actual priority.
-
-Install the `gnoblin-ananicy-rules` package from
-[Gnoblin's package repository](package-repositories.md) or the
-[latest release](https://github.com/kierandrewett/gnoblin/releases). It has the same
-version as `gnoblin`:
+Install the `gnoblin-ananicy-rules` package from [Gnoblin's package repository](package-repositories.md). It gives
+Gnoblin normal scheduling:
 
 ```sh
 sudo dnf install gnoblin-ananicy-rules        # Fedora
-sudo zypper install gnoblin-ananicy-rules     # openSUSE Tumbleweed
-sudo apt install gnoblin-ananicy-rules        # Debian testing
+sudo zypper install gnoblin-ananicy-rules     # openSUSE
+sudo apt install gnoblin-ananicy-rules        # Debian
 sudo pacman -S gnoblin-ananicy-rules          # Arch Linux
 ```
 
-On another distribution, copy `99-gnoblin.types` and `99-gnoblin.rules` from the
-`gnoblin-ananicy-rules` tar package, or from `src/data/ananicy/` in the source, to `/etc/ananicy.d/`
-and run `sudo systemctl restart ananicy-cpp`.
+On another system, copy `99-gnoblin.types` and `99-gnoblin.rules` from the `src/data/ananicy/` folder of the source
+to `/etc/ananicy.d/`. Then run `sudo systemctl restart ananicy-cpp`.
 
-The rules give `gnoblin`, `quickshell` and `bingux-frame` normal scheduling
-with nice -5. Log out and back in, then confirm with:
-
-```sh
-chrt -p "$(pgrep -ox gnoblin)"
-```
-
-The policy should be `SCHED_OTHER`. Remove the two files from
-`/etc/ananicy.d/`, or the package, to return to the daemon's defaults.
-
-Ordinary commands launched through `gnoblin.commands.run` or
-`gnoblin.commands.capture` drop an inherited negative nice value to `0`.
-External process rules can change it afterward. Helpers launched directly by
-a shell use that shell's launch path and can inherit its priority.
+Log out and back in, then check the policy again. To go back to the daemon's defaults, remove the two files or the
+package.
 
 ## The session ended and returned to the login screen
 
@@ -292,8 +237,7 @@ Show the unit with its overrides and note the path in `ExecStart`:
 systemctl --user cat xdg-desktop-portal-gnome.service
 ```
 
-A drop-in under `~/.config/systemd/user/xdg-desktop-portal-gnome.service.d/`
-left over from an old local build is the usual cause. Move it away and reload:
+A drop-in from a local build is the usual cause. Move it away and reload:
 
 ```sh
 mv ~/.config/systemd/user/xdg-desktop-portal-gnome.service.d ~/xdg-desktop-portal-gnome.service.d.bak
@@ -322,7 +266,7 @@ tail -n 40 ~/.local/state/gnoblin/compositor-last.log
 ## X11 apps look too large on a fractional-scale display
 
 With a fractional display scale such as 1.25, Mutter rounds the X11 scale up to
-the next whole number. Stock GNOME Shell does the same. X11 apps then:
+the next whole number. X11 apps then:
 
 - report `Xft.dpi: 192` instead of 96
 - draw larger than Wayland apps at the same font size
@@ -354,8 +298,8 @@ A window from an app that is not the focused app can open behind the focused
 window.
 
 With `focus_new_windows = "prevent"` set, the focused window stays in front
-and Mutter sets an attention flag on the new window. GNOME Shell turns that flag into a
-notification. Gnoblin has no shell, so nothing shows it.
+and Mutter sets an attention flag on the new window. The flag does not produce
+a notification by itself.
 
 The starter config raises modal dialogs, such as a portal prompt, with a
 `gnoblin.window.created` handler in `config/10-windows.lua`. If you replaced
@@ -391,7 +335,7 @@ See [focus options](/config/configure/window_management#focus-and-raising).
 
 ### `wl-copy` does not return
 
-With `focus_new_windows = "prevent"`, `wl-copy` from `wl-clipboard` 2.2.1 can
+With `focus_new_windows = "prevent"`, `wl-copy` from `wl-clipboard` can
 block until you stop it. It opens a small window and waits for keyboard focus
 before it sets the clipboard, and `prevent` does not give that window focus. With
 `allow` it exits at once.
@@ -413,10 +357,8 @@ running:
 systemctl --user status pipewire xdg-desktop-portal-gnoblin
 ```
 
-A log mentioning `org.gnome.Shell.Screenshot` means an older portal backend is
-still running. After updating Gnoblin, log out and back in to use the new
-backend. Gnoblin does not provide the GNOME Shell screenshot service, so
-`gnome-screenshot` still cannot use it.
+A log that mentions `org.gnome.Shell.Screenshot` means another portal backend is
+still running. Log out and back in to start the Gnoblin backend.
 
 For a separate screenshot tool, use your shell's capture action or run:
 
