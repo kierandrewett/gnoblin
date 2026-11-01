@@ -20,9 +20,6 @@ installed, run its command (for example, `hyprlock`) in your Gnoblin session.
 Your shell or idle daemon decides when to run that command; Gnoblin does not
 set a timeout or launch a locker for you.
 
-The regular GNOME session is separate. It does not advertise this protocol and
-continues to use GNOME ScreenShield.
-
 The protocol is enabled by default in Gnoblin. To hide its global, set
 `ext_session_lock = false` under `gnoblin.configure.protocols`, then log out and
 back in; protocol globals are registered at compositor startup. See the
@@ -71,10 +68,6 @@ the individual state transitions.
 If the compositor connection is interrupted, Gnoblin sends no unlock signal.
 It reconnects and reports a changed boolean from the current state. After the
 idle service restarts, read `GetActive` again for its initial value.
-
-If GNOME Shell owns `org.gnome.ScreenSaver` in the same session, the
-`ScreenSaver` methods go to GNOME Shell instead, its active-state changes are
-relayed, and it handles the logind signal.
 
 To lock with a key of your choice, bind a key in the Lua configuration:
 
@@ -134,7 +127,7 @@ After requesting the lock, create one `wl_surface` per output and pass each to
 only one lock surface for this lock. For every `configure(serial, width,
 height)`, acknowledge its serial before committing a non-null buffer with those
 exact surface-local dimensions. If multiple configures arrive before a commit,
-acknowledging the latest one is sufficient.
+acknowledging the last one is sufficient.
 
 | Interface                     | Request or event                    | Contract                                                                                                         |
 | ----------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------- |

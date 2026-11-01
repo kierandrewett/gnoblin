@@ -124,9 +124,9 @@ manager.on("frame", (frame) => {
 });
 ```
 
-The buffer must match the latest configure's width and height. Keep it alive
-until `wl_buffer.release`. Acknowledge the latest serial before committing its
-buffer. Gnoblin presents only buffers for the current configuration; it ignores
+The buffer must match the width and height of the last configure. Keep it alive
+until `wl_buffer.release`. Acknowledge the serial of that configure before
+committing the buffer. Gnoblin presents only buffers for the current configuration; it ignores
 stale generations.
 
 ### State flags {#state-flags}
