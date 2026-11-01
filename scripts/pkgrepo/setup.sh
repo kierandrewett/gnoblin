@@ -3,11 +3,11 @@
 #
 #   curl -fsSL https://repo.gnoblin.org/setup.sh | sh
 #
-# It asks which repositories you want. Gnoblin is selected; press Space to select Bingux too, then Enter. It then
-# detects your system, adds the signing key and the repositories for the package manager it finds, and prints the
-# command that installs the packages. It installs no packages itself.
+# It shows a short list of what to set up. Gnoblin is selected; press Space to select Bingux or the nightly channel too,
+# then Enter. It then detects your system, adds the signing key and the repositories for the package manager it finds,
+# and prints the command that installs the packages. It installs no packages itself.
 #
-# Keys in the list: Up and Down (or k and j) move, Space selects, Enter confirms.
+# Keys in the list: Up and Down (or k and j) move, Space selects, Enter confirms, q quits.
 #
 # Options, for scripts and for running without a terminal:
 #   --gnoblin      set up the Gnoblin repository without asking
@@ -55,9 +55,24 @@ while [ "$#" -gt 0 ]; do
     shift
 done
 
-say() { printf 'setup: %s\n' "$*"; }
+# Colour and bold only when output goes to a terminal and NO_COLOR is not set.
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != dumb ]; then
+    bold="$(printf '\033[1m')"
+    dim="$(printf '\033[2m')"
+    red="$(printf '\033[31m')"
+    green="$(printf '\033[32m')"
+    yellow="$(printf '\033[33m')"
+    reset="$(printf '\033[0m')"
+else
+    bold="" dim="" red="" green="" yellow="" reset=""
+fi
+
+title() { printf '\n%s%s%s\n' "$bold" "$*" "$reset"; }
+info() { printf '  %s\n' "$*"; }
+ok() { printf '  %s[ok]%s %s\n' "$green" "$reset" "$*"; }
+skip() { printf '  %s[--]%s %s\n' "$yellow" "$reset" "$*"; }
 die() {
-    printf 'setup: %s\n' "$*" >&2
+    printf '\n%serror:%s %s\n' "$red" "$reset" "$*" >&2
     exit 1
 }
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -65,7 +80,7 @@ have() { command -v "$1" >/dev/null 2>&1; }
 # Run a command as root. With --dry-run, print it instead.
 as_root() {
     if [ "$dry_run" = 1 ]; then
-        printf '+ %s\n' "$*"
+        printf '  %s+ %s%s\n' "$dim" "$*" "$reset"
     elif [ "$(id -u)" = 0 ]; then
         "$@"
     elif have sudo; then
@@ -81,59 +96,10 @@ as_root() {
 # system.
 exists() { curl -fsI -o /dev/null "$1" 2>/dev/null; }
 
-# One row of the list: the pointer, the box and the name.
-draw_row() {
-    if [ "$3" = 1 ]; then box="[x]"; else box="[ ]"; fi
-    if [ "$cursor" = "$1" ]; then pointer=">"; else pointer=" "; fi
-    printf '\033[2K\r %s %s %s\n' "$pointer" "$box" "$2" >/dev/tty
-}
-
-# Ask which repositories to set up. The script usually runs as "curl ... | sh", so the keys come from the terminal and
-# not from standard input. Without a terminal, the answer is Gnoblin only.
-choose_projects() {
-    if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
-        projects=gnoblin
-        return 0
-    fi
-    pick_gnoblin=1
-    pick_bingux=0
-    cursor=0
-    saved_tty="$(stty -g </dev/tty)"
-    trap 'stty "$saved_tty" </dev/tty; printf "\n" >/dev/tty; exit 130' INT TERM
-    stty -icanon -echo min 1 time 0 </dev/tty
-    first=1
-    while :; do
-        [ "$first" = 1 ] || printf '\033[3A' >/dev/tty
-        first=0
-        printf '\033[2K\rWhich repositories do you want? Up/Down move, Space selects, Enter confirms.\n' >/dev/tty
-        draw_row 0 gnoblin "$pick_gnoblin"
-        draw_row 1 bingux "$pick_bingux"
-        key="$(dd bs=8 count=1 2>/dev/null </dev/tty)"
-        case "$key" in
-            "$(printf '\033[A')" | k) cursor=$(((cursor + 1) % 2)) ;;
-            "$(printf '\033[B')" | j) cursor=$(((cursor + 1) % 2)) ;;
-            " ")
-                if [ "$cursor" = 0 ]; then pick_gnoblin=$((1 - pick_gnoblin)); else pick_bingux=$((1 - pick_bingux)); fi
-                ;;
-            "") break ;;
-        esac
-    done
-    stty "$saved_tty" </dev/tty
-    trap - INT TERM
-    projects=""
-    [ "$pick_gnoblin" = 0 ] || projects="gnoblin"
-    # Bingux runs on Gnoblin, so selecting Bingux always sets up both.
-    [ "$pick_bingux" = 0 ] || projects="gnoblin bingux"
-    [ -n "$projects" ] || die "no repository selected"
-}
-
 have curl || die "curl is needed"
 [ -r /etc/os-release ] || die "cannot read /etc/os-release"
 # shellcheck disable=SC1091
 . /etc/os-release
-
-[ "$ask" = 0 ] || choose_projects
-[ -n "$projects" ] || projects=gnoblin
 
 arch="$(uname -m)"
 family=""
@@ -149,6 +115,73 @@ for id in ${ID:-} ${ID_LIKE:-}; do
 done
 [ -n "$family" ] || die "this system (${PRETTY_NAME:-unknown}) is not one the repositories cover. See https://gnoblin.org/install-source to build from source"
 
+title "Gnoblin package setup"
+info "System:  ${PRETTY_NAME:-$ID} ($arch)"
+
+# One row of the list: the pointer, the box, the name and what it is.
+draw_row() {
+    if [ "$3" = 1 ]; then box="[x]"; else box="[ ]"; fi
+    if [ "$cursor" = "$1" ]; then pointer="${bold}>${reset}"; else pointer=" "; fi
+    printf '\033[2K\r  %s %s %s%s%s\n' "$pointer" "$box" "$2" "$dim" "  $4$reset" >/dev/tty
+}
+
+# Show the list of what to set up. The script usually runs as "curl ... | sh", so the keys come from the terminal and
+# not from standard input. Without a terminal, the answer is Gnoblin only, in the stable channel.
+choose_projects() {
+    if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+        projects=gnoblin
+        info "No terminal, so only Gnoblin is set up. Use --bingux for Bingux and --nightly for the nightly channel."
+        return 0
+    fi
+    pick_gnoblin=1
+    pick_bingux=0
+    pick_nightly=0
+    cursor=0
+    saved_tty="$(stty -g </dev/tty)"
+    trap 'stty "$saved_tty" </dev/tty; printf "\n" >/dev/tty; exit 130' INT TERM
+    stty -icanon -echo min 1 time 0 </dev/tty
+    printf '\n%sWhat do you want to set up?%s\n' "$bold" "$reset" >/dev/tty
+    first=1
+    while :; do
+        [ "$first" = 1 ] || printf '\033[4A' >/dev/tty
+        first=0
+        draw_row 0 gnoblin "$pick_gnoblin" "Window manager and session"
+        draw_row 1 bingux "$pick_bingux" "Desktop shell and apps. Needs Gnoblin, so it adds both"
+        draw_row 2 nightly "$pick_nightly" "Builds of the main branch instead of releases"
+        printf '\033[2K\r  %sUp/Down move   Space selects   Enter confirms   q quits%s\n' "$dim" "$reset" >/dev/tty
+        key="$(dd bs=8 count=1 2>/dev/null </dev/tty)"
+        case "$key" in
+            "$(printf '\033[A')" | k) cursor=$(((cursor + 2) % 3)) ;;
+            "$(printf '\033[B')" | j) cursor=$(((cursor + 1) % 3)) ;;
+            " ")
+                case "$cursor" in
+                    0) pick_gnoblin=$((1 - pick_gnoblin)) ;;
+                    1) pick_bingux=$((1 - pick_bingux)) ;;
+                    2) pick_nightly=$((1 - pick_nightly)) ;;
+                esac
+                ;;
+            q | Q)
+                stty "$saved_tty" </dev/tty
+                printf '\n' >/dev/tty
+                echo "Nothing was changed."
+                exit 0
+                ;;
+            "") break ;;
+        esac
+    done
+    stty "$saved_tty" </dev/tty
+    trap - INT TERM
+    projects=""
+    [ "$pick_gnoblin" = 0 ] || projects="gnoblin"
+    # Bingux runs on Gnoblin, so selecting Bingux always sets up both.
+    [ "$pick_bingux" = 0 ] || projects="gnoblin bingux"
+    [ "$pick_nightly" = 0 ] || channel=nightly
+    [ -n "$projects" ] || die "nothing was selected. Nothing was changed"
+}
+
+[ "$ask" = 0 ] || choose_projects
+[ -n "$projects" ] || projects=gnoblin
+
 configured=""
 key_done=0
 
@@ -158,7 +191,6 @@ fetch_key() {
     curl -fsSL -o "$key_file" "$base/gpg.key" || die "could not download the signing key"
     if have gpg; then
         fingerprint="$(gpg --show-keys --with-colons "$key_file" 2>/dev/null | awk -F: '/^fpr/ {print $10; exit}')"
-        [ -z "$fingerprint" ] || say "signing key fingerprint: $fingerprint"
     fi
 }
 
@@ -171,6 +203,7 @@ check_key() {
     esac
     [ -n "${fingerprint:-}" ] || die "gpg is needed to check the signing key"
     [ "$fingerprint" = "$expected_fingerprint" ] || die "the signing key does not match the expected fingerprint. Nothing was changed"
+    ok "signing key $fingerprint"
 }
 
 setup_fedora() {
@@ -183,7 +216,7 @@ setup_opensuse() {
     project="$1"
     exists "$base/$project/$channel/opensuse/tumbleweed/$arch/repodata/repomd.xml" || return 1
     if [ -e "/etc/zypp/repos.d/$project-$channel.repo" ]; then
-        say "the $project-$channel repository is already set up"
+        info "$project-$channel is already set up"
     else
         as_root zypper --non-interactive addrepo --refresh \
             "$base/$project/$channel/opensuse/tumbleweed/$project-$channel.repo"
@@ -212,9 +245,9 @@ setup_arch() {
         key_done=1
     fi
     if grep -q "^\[$section\]" /etc/pacman.conf 2>/dev/null; then
-        say "the [$section] repository is already in /etc/pacman.conf"
+        info "[$section] is already in /etc/pacman.conf"
     elif [ "$dry_run" = 1 ]; then
-        printf '+ curl -fsSL %s | tee -a /etc/pacman.conf\n' "$base/$project/$channel/arch/$section.conf"
+        printf '  %s+ curl -fsSL %s | tee -a /etc/pacman.conf%s\n' "$dim" "$base/$project/$channel/arch/$section.conf" "$reset"
     else
         curl -fsSL "$base/$project/$channel/arch/$section.conf" | as_root tee -a /etc/pacman.conf >/dev/null
     fi
@@ -227,13 +260,16 @@ setup_alpine() {
     exists "$line/$apk_arch/APKINDEX.tar.gz" || return 1
     as_root curl -fsSL -o "/etc/apk/keys/$project.rsa.pub" "$base/$project.rsa.pub"
     if grep -qxF "$line" /etc/apk/repositories 2>/dev/null; then
-        say "the $project repository is already in /etc/apk/repositories"
+        info "$project is already in /etc/apk/repositories"
     elif [ "$dry_run" = 1 ]; then
-        printf '+ echo %s >> /etc/apk/repositories\n' "$line"
+        printf '  %s+ echo %s >> /etc/apk/repositories%s\n' "$dim" "$line" "$reset"
     else
         printf '%s\n' "$line" | as_root tee -a /etc/apk/repositories >/dev/null
     fi
 }
+
+title "Setting up the $channel channel"
+[ "$(id -u)" = 0 ] || [ "$dry_run" = 1 ] || info "${dim}You may be asked for your password to change the system.${reset}"
 
 if [ "$family" = deb ] || [ "$family" = arch ]; then
     fetch_key
@@ -242,15 +278,15 @@ fi
 
 for project in $projects; do
     if "setup_$family" "$project"; then
-        say "set up the $project $channel repository"
+        ok "$project repository added"
         configured="$configured $project"
     else
-        say "no $project packages for ${PRETTY_NAME:-this system} on $arch in the $channel channel, skipped"
-        [ "$channel" != stable ] || say "to look in the nightly channel, run the script again with --nightly"
+        skip "no $project packages for ${PRETTY_NAME:-this system} ($arch) in the $channel channel"
+        [ "$channel" != stable ] || info "    Run the script again and select nightly to look in the nightly channel."
     fi
 done
 
-[ -n "$configured" ] || die "no repository was set up"
+[ -n "$configured" ] || die "no repository was set up. Nothing was changed"
 
 case "$family" in
     deb) as_root apt-get update ;;
@@ -268,6 +304,10 @@ esac
 
 last=""
 for project in $configured; do last="$project"; done
-say "done. Install with: $install $last"
-[ "$family" = fedora ] || [ "$family" = opensuse ] && say "your package manager asks you to accept the signing key the first time"
+title "Done"
+info "Install with:"
+printf '\n      %s%s %s%s\n\n' "$bold" "$install" "$last" "$reset"
+if [ "$family" = fedora ] || [ "$family" = opensuse ]; then
+    info "${dim}Your package manager asks you to accept the signing key the first time.${reset}"
+fi
 [ -z "${key_file:-}" ] || rm -f "$key_file"
