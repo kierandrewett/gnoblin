@@ -14,8 +14,8 @@ Gnoblin is a window manager. A desktop shell provides the bar, dock and launcher
 | NixOS               | [NixOS](install-nixos.md)              |
 | Anything else       | [Build from source](install-source.md) |
 
-Each guide adds the Gnoblin package repository, installs Gnoblin and shows how to update and remove it.
-For the supported releases and architectures, see [platform support](platform-support.md).
+Each guide shows how to install, update and remove Gnoblin on that system. For the supported releases and
+architectures, see [platform support](platform-support.md).
 
 ## Quick setup
 
