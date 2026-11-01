@@ -1,11 +1,31 @@
 // Browsable index for the package repository bucket.
-// Paths ending in "/" list that folder. Every other path is passed to the bucket's custom domain unchanged, so dnf,
-// apt and pacman fetch exactly what they fetched before.
+// Paths ending in "/" list that folder. /gpg.key and /setup.sh are fetched from the Gnoblin repository on GitHub, so a
+// change to them goes live with a commit and not with a repository publish. Every other path is passed to the bucket's
+// custom domain unchanged, so dnf, apt and pacman fetch exactly what they fetched before.
 // The page follows the plain listing at https://archive.mozilla.org/pub/. It has no stylesheet. The color-scheme meta
 // tag makes the browser use its own light or dark defaults.
 import type { FC } from "hono/jsx";
 
 type Entry = { type: "Dir" | "File"; name: string; href: string; size?: number; uploaded?: Date };
+
+// Files of the site root that come from the repository. The root listing shows them with the bucket's files.
+const SITE_FILES: Record<string, { type: string }> = {
+    "gpg.key": { type: "application/pgp-keys" },
+    "setup.sh": { type: "text/x-shellscript; charset=utf-8" },
+};
+const SITE_SOURCE = "https://raw.githubusercontent.com/kierandrewett/gnoblin/main/infra/repo-index/site/";
+
+const siteFile = async (request: Request, name: string): Promise<Response> => {
+    const upstream = await fetch(`${SITE_SOURCE}${name}`, { cf: { cacheTtl: 300, cacheEverything: true } });
+    if (!upstream.ok) return new Response(`Could not fetch ${name} from the repository.\n`, { status: 502 });
+    return new Response(request.method === "HEAD" ? null : upstream.body, {
+        headers: {
+            "content-type": SITE_FILES[name].type,
+            "cache-control": "public, max-age=300",
+            "x-content-type-options": "nosniff",
+        },
+    });
+};
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
@@ -93,6 +113,10 @@ const notFound = (request: Request): Response =>
 export default {
     async fetch(request: Request, env: { REPO: R2Bucket }): Promise<Response> {
         const url = new URL(request.url);
+        const siteName = url.pathname.slice(1);
+        if ((request.method === "GET" || request.method === "HEAD") && Object.hasOwn(SITE_FILES, siteName)) {
+            return siteFile(request, siteName);
+        }
         if ((request.method !== "GET" && request.method !== "HEAD") || !url.pathname.endsWith("/")) {
             const upstream = await fetch(request);
             return upstream.status === 404 && (request.method === "GET" || request.method === "HEAD")
@@ -113,6 +137,10 @@ export default {
 
         if (prefix !== "" && folders.length === 0 && files.length === 0) return notFound(request);
 
+        const siteEntries: Entry[] =
+            prefix === ""
+                ? Object.keys(SITE_FILES).map((name) => ({ type: "File" as const, name, href: `/${name}` }))
+                : [];
         const entries: Entry[] = [
             ...folders.map((folder) => ({
                 type: "Dir" as const,
@@ -126,6 +154,7 @@ export default {
                 size: object.size,
                 uploaded: object.uploaded,
             })),
+            ...siteEntries,
         ];
 
         return htmlResponse(

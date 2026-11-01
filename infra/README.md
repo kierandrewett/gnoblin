@@ -21,6 +21,8 @@ Everything is on one Cloudflare account, zone `gnoblin.org`.
 
 R2 serves exact object names only, so a folder URL has no listing. The Worker in `infra/repo-index/` answers paths that end in `/` with an HTML list of that folder. All other paths go straight to the bucket, so `dnf`, `apt` and `pacman` are not affected.
 
+The Worker also serves `/gpg.key` and `/setup.sh` from `infra/repo-index/site/` in this repository, through `raw.githubusercontent.com`, and lists them in the root listing. A change to either file goes live after the next push to `main` and the cache time of five minutes, with no repository publish. `setup.sh` holds the fingerprint of the signing key, and the publish step stops when the key that signs the tree is not the one named there, so a key rotation needs a new `gpg.key` and a new fingerprint in one commit.
+
 Terraform deploys it (see Terraform below). To build the bundle locally:
 
 ```sh

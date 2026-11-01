@@ -32,7 +32,8 @@ the `REPO_*` variables are still missing; "What is left to do" lists them.
 
 ```text
 repo.gnoblin.org/
-  gpg.key                                      the public key, ASCII-armoured
+  gpg.key                                      the public key, ASCII-armoured; served from infra/repo-index/site/ by the index Worker
+  setup.sh                                     the quick setup script; served from infra/repo-index/site/ by the index Worker
   gnoblin.rsa.pub                              the public key of the Alpine index, when the project has apk packages
   <project>/                                   gnoblin or bingux
     <channel>/                                 stable or nightly

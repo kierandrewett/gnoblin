@@ -517,7 +517,7 @@ class RsyncApply(unittest.TestCase):
         )
         self.assertTrue((destination / "bingux/nightly/fedora/43/x86_64/a-1.rpm").exists())
         self.assertTrue((destination / "bingux/nightly/manifest.json").exists())
-        self.assertTrue((destination / "gpg.key").exists())
+        self.assertFalse((destination / "gpg.key").exists(), "the key is served from the repository")
         self.assertFalse(stale.exists(), "a file the new tree lacks is removed")
         self.assertTrue(other_project.exists(), "another project is untouched")
 
@@ -960,16 +960,33 @@ class AlpineRepository(unittest.TestCase):
         self.assertIn("-----BEGIN PUBLIC KEY-----", (output / "gnoblin.rsa.pub").read_text())
         self.assertIn("gnoblin.rsa.pub", publish.site_files(output))
 
-    def test_the_setup_script_is_published_with_the_key_fingerprint_it_checks(self):
+    def test_the_site_serves_the_key_and_the_setup_script_from_the_repository(self):
         output = self.build()
-        script = (output / "setup.sh").read_text()
-        self.assertNotIn("@KEY_FINGERPRINT@", script)
+        self.assertEqual(publish.site_files(output), ["gnoblin.rsa.pub"], "the bucket holds only the Alpine key")
+
+    def test_the_committed_script_names_the_fingerprint_of_the_committed_key(self):
+        site = Path(__file__).resolve().parent.parent / "infra/repo-index/site"
         exported = subprocess.run(
-            ["gpg", "--show-keys", "--with-colons", str(output / "gpg.key")], capture_output=True, text=True, check=True
+            ["gpg", "--show-keys", "--with-colons", str(site / "gpg.key")], capture_output=True, text=True, check=True
         ).stdout
         fingerprint = next(line.split(":")[9] for line in exported.splitlines() if line.startswith("fpr"))
-        self.assertIn(f'GNOBLIN_KEY_FINGERPRINT:-{fingerprint}}}"', script)
-        self.assertIn("setup.sh", publish.site_files(output))
+        self.assertIn(f'GNOBLIN_KEY_FINGERPRINT:-{fingerprint}}}"', (site / "setup.sh").read_text())
+
+    def test_a_tree_signed_with_another_key_is_refused_when_the_key_is_committed(self):
+        site = Path(__file__).resolve().parent.parent / "infra/repo-index/site"
+        settings = tree.Settings(
+            project="gnoblin",
+            channel="nightly",
+            input_dir=self.packages,
+            output=self.work / "tree",
+            committed_key=site / "gpg.key",
+        )
+        with (
+            signing.Signer(self.keys) as signer,
+            signing.ApkSigner.from_file(self.keys / "apk.pem", "gnoblin.rsa.pub") as apk,
+        ):
+            with self.assertRaisesRegex(tree.TreeError, "Commit the public key and the fingerprint together"):
+                tree.build(settings, signer, apk)
 
     def test_verify_finds_what_a_client_would_refuse(self):
         output = self.build()
