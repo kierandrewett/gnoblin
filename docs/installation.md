@@ -1,94 +1,35 @@
 # Install Gnoblin
 
-Gnoblin manages your windows. A separate desktop shell provides the bar, dock
-and launcher. Install both before your first login.
+Gnoblin is a window manager. A desktop shell provides the bar, dock and launcher, so you install both.
+Gnoblin installs next to GNOME, so your current session stays available.
 
-No distribution has completed the full graphical-session support gate. Read
-[platform support](platform-support.md) before choosing a package path.
-The new package paths require build, installation, GNOME coexistence, and
-removal checks before they can be called package candidates.
+## Choose your system
 
-## Build from the source tarball
+| System              | Guide                                  |
+| ------------------- | -------------------------------------- |
+| Fedora 45           | [Fedora](install-fedora.md)            |
+| openSUSE Tumbleweed | [openSUSE](install-opensuse.md)        |
+| Debian testing      | [Debian](install-debian.md)            |
+| Arch Linux, CachyOS | [Arch Linux](install-arch.md)          |
+| Alpine edge         | [Alpine](install-alpine.md)            |
+| NixOS               | [NixOS](install-nixos.md)              |
+| Anything else       | [Build from source](install-source.md) |
 
-Download the `gnoblin-*-source.tar.xz` asset from a
-[Gnoblin release](https://github.com/kierandrewett/gnoblin/releases), extract
-it, and run `make` inside the extracted directory. This is the primary
-installation path. It needs development libraries at the versions required by
-the pinned sources, but does not need Git or an installed GNOME Shell package.
-See [source build prerequisites and login setup](install-source.md).
-
-After building, `make install` copies the build to `/usr/local/lib/gnoblin` and
-adds the lean login entry. The install does not need the source directory.
-GNOME Session and Settings Daemon are optional for this source install.
-
-Run `gnoblin --version` to see the installed Gnoblin version,
-source Git remote and commit, and when the build ran. Distribution
-packages also expose this command as `gnoblin --version`.
-Add `--json` after `--version` for a machine-readable build identity.
-
-Gnoblin has two manual pages, `gnoblin(1)` and `gnoblinctl(1)`:
-
-- A package installs them, so `man gnoblin` works after you install it.
-- `make install` copies them to `/usr/share/man/man1`, so `man gnoblin` and
-  `man gnoblinctl` work after it.
-- Before `make install`, read one with
-  `man -M build/stage/usr/local/lib/gnoblin/share/man gnoblinctl`.
-
-`gnoblin` is both the login command and the package to install. Its
-Gnoblin runs as the login session and does not require a systemd user manager.
-When one is available, the optional `gnoblin-session` target starts additional
-session helpers.
-
-## Distribution packages
-
-| System              | Test path                                           |
-| ------------------- | --------------------------------------------------- |
-| Fedora 45           | [Repository or RPMs](install-fedora.md)             |
-| Arch / CachyOS      | [Repository or packages](install-arch.md)           |
-| openSUSE Tumbleweed | [Repository or RPMs](install-opensuse.md)           |
-| Debian testing      | [Repository or packages](install-debian.md)         |
-| NixOS               | [Experimental package and module](install-nixos.md) |
-| Other releases      | [Build from source](install-source.md)              |
-
-Fedora, openSUSE Tumbleweed, Debian testing, Arch and Alpine edge have signed
-[package repositories](package-repositories.md) with a `stable` channel for
-releases and a `nightly` channel for the newest build of the main branch. Add a
-repository and your package manager installs and updates Gnoblin. Each release
-also carries the packages as files, and a `.tar.xz` package for other glibc systems.
-
-Packages exist for amd64 and arm64. Other Debian releases and Ubuntu have libraries that are too
-old for the packages. Build from [source](install-source.md) there when the installed development
-libraries meet the pinned GNOME requirements. Alpine edge also has `.apk` release assets, which
-you install with `apk add --allow-untrusted`.
-
-Keep an existing GNOME or other session available while testing these package
-paths.
-
-Gnoblin uses the portal backend selected by its XDG portal configuration. The
-core session package installs a Gnoblin-specific default that prefers Gnoblin's
-backend and falls back to another installed backend. The optional
-`xdg-desktop-portal-gnoblin` package supplies Gnoblin's backend.
-
-You can route interfaces to another backend in the Lua config. The default
-applies only to a Gnoblin session, so an existing GNOME session keeps its own
-portal selection. Distribution packages use the same lean session launcher as
-the source tarball; GNOME Session and Settings Daemon are not required for
-Gnoblin's login entry.
-
-On a minimal install, add [GNOME application services](gnome-apps.md) only if
-you need them. GNOME apps install their own library dependencies; the optional
-package adds shared desktop services such as GVfs and GNOME Keyring.
+Each guide adds the Gnoblin package repository, installs Gnoblin and shows how to update and remove it.
+Packages are available for amd64 and arm64.
 
 ## After installing
 
 1. [Install a desktop shell](bring-your-own-shell.md).
-2. Log out. At the login screen, choose your user, open the session selector,
-   and choose **Gnoblin**.
+2. Log out. At the login screen, choose your user, open the session menu and choose **Gnoblin**.
 3. Log in and [configure Gnoblin](/config).
 
-If the shell does not appear after login, use another session or a text console
-to inspect its service and logs. See
-[shell troubleshooting](troubleshooting.md#no-bar-dock-or-launcher).
+If you do not get a working desktop, log out and choose your previous session. See
+[troubleshooting](troubleshooting.md).
 
-For development builds, see [source installation](install-source.md).
-Release maintainers should use the [packaging guide](distribution.md).
+Run `gnoblin --version` to see which version you have installed.
+
+## Optional packages
+
+Gnoblin has optional packages for a portal backend, location prompts and scheduling rules. See
+[optional packages](optional-packages.md).

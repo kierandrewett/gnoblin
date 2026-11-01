@@ -1,57 +1,43 @@
 # openSUSE Tumbleweed
 
-Gnoblin publishes RPMs for openSUSE Tumbleweed. They need the library versions of the pinned GNOME
-sources, which current Tumbleweed has. Check [source build prerequisites](install-source.md) if
-installation reports a missing version.
-
-The `gnoblin` RPM contains the compositor and session. The
-`xdg-desktop-portal-gnoblin` RPM is optional.
-Gnoblin runs as a standalone Lua session and does not install GNOME Shell or
-GJS. Keep a working session available while installing. See
-[platform support](platform-support.md).
+Gnoblin is built for openSUSE Tumbleweed, on amd64 and arm64.
 
 ## Install
 
-Install from Gnoblin's signed repository, which has a `stable` and a `nightly` channel: see
-[package repositories](package-repositories.md). To install the release RPMs yourself, download the
-`tumbleweed` files from the [latest Gnoblin release](https://github.com/kierandrewett/gnoblin/releases).
-With GitHub CLI:
+Add the Gnoblin repository, then install Gnoblin:
 
 ```sh
-mkdir -p gnoblin-rpms
-gh release download --repo kierandrewett/gnoblin --pattern 'gnoblin-*.tumbleweed.x86_64.rpm' --dir gnoblin-rpms
-sudo zypper install --allow-unsigned-rpm \
-  ./gnoblin-rpms/gnoblin-[0-9]*.rpm
+sudo zypper addrepo --refresh https://repo.gnoblin.org/gnoblin/stable/opensuse/tumbleweed/gnoblin-stable.repo
+sudo zypper refresh
+sudo zypper install gnoblin
 ```
 
-To use Gnoblin's GTK-based portal backend, install its RPM too:
+`zypper` shows the signing key and asks you to trust it. Check that its fingerprint matches the one in
+[package repositories](package-repositories.md#signing-key).
+
+To follow the newest build instead of releases, use `nightly` in place of `stable` and `gnoblin-nightly.repo`.
+
+## Next steps
+
+[Install a desktop shell and log in](installation.md#after-installing).
+
+## Update
 
 ```sh
-sudo zypper install --allow-unsigned-rpm ./gnoblin-rpms/xdg-desktop-portal-gnoblin-[0-9]*.rpm
+sudo zypper refresh
+sudo zypper update gnoblin
 ```
 
-The core `gnoblin` package installs the default route for Gnoblin sessions.
-It prefers Gnoblin's backend when installed and falls back to another installed
-backend. The optional package only adds the GTK backend. You can route
-interfaces to a different backend in the Lua config. GNOME keeps its own
-portal selection.
-
-Install a desktop shell such as [Bingux](bring-your-own-shell.md), log out, and
-select **Gnoblin** at the login screen. If the session does not start, return
-to your existing session.
-
-For GNOME apps on a minimal install, install the
-[shared desktop services](gnome-apps.md) first.
+Log out and back in to use the new version.
 
 ## Remove
 
-Log into another session first. Then remove the Gnoblin packages you installed:
+Log in to another session first, then run:
 
 ```sh
-sudo zypper remove \
-  gnoblin xdg-desktop-portal-gnoblin
+sudo zypper remove gnoblin
 ```
 
-Your existing GNOME packages remain installed.
-Gnoblin and GNOME use the backend selected for each session. Install
-`xdg-desktop-portal-gnoblin` only if you want Gnoblin's GTK-based backend.
+Your shell and your configuration stay. Remove the shell separately if you no longer want it.
+
+See [troubleshooting](troubleshooting.md) if the session does not start.

@@ -23,6 +23,7 @@ session available for recovery.
 | Ubuntu              | 24.04, 26.04        | Unsupported | [Source build](install-source.md) if library versions meet requirements      |
 | Arch                | Current             | Candidate   | [Repository or packages](install-arch.md)                                    |
 | openSUSE Leap       | 15.5, 15.6, 16.0    | Unsupported | No release package claim                                                     |
+| Alpine              | Edge                | Unsupported | [Packages](install-alpine.md), install checks pass, no session login yet     |
 | openSUSE Tumbleweed | Current             | Candidate   | [Repository or RPMs](install-opensuse.md)                                    |
 | NixOS               | 25.05, 25.11, 26.05 | Unsupported | [Channel requirements](install-nixos.md)                                     |
 | NixOS               | unstable            | Unsupported | [Experimental flake package](install-nixos.md), pending session verification |
