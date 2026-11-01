@@ -2,6 +2,18 @@
 
 Gnoblin is a window manager. A desktop shell provides the bar, dock and launcher, so you install both.
 
+## Quick setup
+
+One script adds the Gnoblin repository and signing key for your system. It installs no packages. Read it at
+[repo.gnoblin.org/setup.sh](https://repo.gnoblin.org/setup.sh), then run it:
+
+```sh
+curl -fsSL https://repo.gnoblin.org/setup.sh | sh
+```
+
+The script asks which repositories you want. Gnoblin is selected. Press Space to select Bingux too, then press Enter.
+The guide for your system has the same steps by hand.
+
 ## Choose your system
 
 | System              | Guide                                  |
@@ -16,17 +28,6 @@ Gnoblin is a window manager. A desktop shell provides the bar, dock and launcher
 
 Each guide shows how to install, update and remove Gnoblin on that system. For the supported releases and
 architectures, see [platform support](platform-support.md).
-
-## Quick setup
-
-One script adds the Gnoblin repository and signing key for your system. It installs no packages. Read it first at [repo.gnoblin.org/setup.sh](https://repo.gnoblin.org/setup.sh), then run it:
-
-```sh
-curl -fsSL https://repo.gnoblin.org/setup.sh | sh
-```
-
-Add `-s -- --nightly` after `sh` to use the nightly channel, or `-s -- --bingux` to add the Bingux repository too.
-`-s -- --help` lists every option. The guide for your system has the same steps by hand.
 
 ## After installing
 

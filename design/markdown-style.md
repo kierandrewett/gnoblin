@@ -139,7 +139,8 @@ Markdown validator checks the rules in this section that a pattern can find, and
   "no longer". Do not list the systems or releases Gnoblin supports. Link to the page or file that holds the fact:
   [platform support](/platform-support), the releases page, or the file in the source tree. Platform support is the
   one page that lists releases and architectures. Distribution names, commands, file paths, package names and the
-  signing key fingerprint are fine.
+  signing key fingerprint are fine. API reference pages may mark the API version that added a feature, such as
+  "API 1.29+", because integrators need it to check compatibility.
 - **Do not add failure sections to install pages.** No "If installation fails" or "Package not found" notes. Troubleshooting has
   its own page.
 - **Follow the normal process.** Install pages use the steps that the distribution documents for its package manager.

@@ -9,10 +9,10 @@ a sidebar for notes, a terminal and system information.
 
 ## Install
 
-1. Add the Gnoblin and Bingux package repositories:
+1. Add the package repositories. When the script asks, press Space to select Bingux, then press Enter:
 
     ```sh
-    curl -fsSL https://repo.gnoblin.org/setup.sh | sh -s -- --bingux
+    curl -fsSL https://repo.gnoblin.org/setup.sh | sh
     ```
 
     [Install Gnoblin](installation.md) explains the script and the steps it replaces.

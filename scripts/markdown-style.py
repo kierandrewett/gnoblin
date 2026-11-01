@@ -140,7 +140,7 @@ def prose_lines(lines: list[str]) -> list[tuple[int, str, bool]]:
 
 def wording_issues(path: Path) -> list[tuple[int, str]]:
     """Find wording that the documentation rules ban: GNOME comparisons, wording that goes out of date, failure notes."""
-    if "docs" not in path.resolve().parts:
+    if "docs" not in path.resolve().parts and path.name != "README.md":
         return []
     lines = path.read_text(encoding="utf-8").splitlines()
     issues: list[tuple[int, str]] = []

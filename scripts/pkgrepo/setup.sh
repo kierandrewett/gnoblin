@@ -2,14 +2,17 @@
 # Set up the Gnoblin and Bingux package repositories on this system.
 #
 #   curl -fsSL https://repo.gnoblin.org/setup.sh | sh
-#   curl -fsSL https://repo.gnoblin.org/setup.sh | sh -s -- --bingux --nightly
 #
-# It detects your system, adds the signing key and the repository for the package manager it finds, and prints the
+# It asks which repositories you want. Gnoblin is selected; press Space to select Bingux too, then Enter. It then
+# detects your system, adds the signing key and the repositories for the package manager it finds, and prints the
 # command that installs the packages. It installs no packages itself.
 #
-# Options:
-#   --bingux       also set up the Bingux repository. Bingux needs Gnoblin, so both are set up.
-#   --nightly      use the nightly channel (the newest build of the main branch) instead of stable
+# Keys in the list: Up and Down (or k and j) move, Space selects, Enter confirms.
+#
+# Options, for scripts and for running without a terminal:
+#   --gnoblin      set up the Gnoblin repository without asking
+#   --bingux       set up the Bingux repository without asking. Bingux needs Gnoblin, so both are set up.
+#   --nightly      use the nightly channel (builds of the main branch) instead of stable
 #   --dry-run      print what the script would do and change nothing
 #   --help         print this text
 #
@@ -18,7 +21,8 @@ set -eu
 
 base="${GNOBLIN_REPO_URL:-https://repo.gnoblin.org}"
 channel=stable
-projects=gnoblin
+projects=""
+ask=1
 dry_run=0
 # The publisher writes the fingerprint of the signing key here. The script stops if the key it downloads differs.
 expected_fingerprint="${GNOBLIN_KEY_FINGERPRINT:-@KEY_FINGERPRINT@}"
@@ -29,7 +33,14 @@ usage() {
 
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --bingux) projects="gnoblin bingux" ;;
+        --gnoblin)
+            projects="gnoblin $projects"
+            ask=0
+            ;;
+        --bingux)
+            projects="gnoblin bingux"
+            ask=0
+            ;;
         --nightly) channel=nightly ;;
         --dry-run) dry_run=1 ;;
         -h | --help)
@@ -70,10 +81,59 @@ as_root() {
 # system.
 exists() { curl -fsI -o /dev/null "$1" 2>/dev/null; }
 
+# One row of the list: the pointer, the box and the name.
+draw_row() {
+    if [ "$3" = 1 ]; then box="[x]"; else box="[ ]"; fi
+    if [ "$cursor" = "$1" ]; then pointer=">"; else pointer=" "; fi
+    printf '\033[2K\r %s %s %s\n' "$pointer" "$box" "$2" >/dev/tty
+}
+
+# Ask which repositories to set up. The script usually runs as "curl ... | sh", so the keys come from the terminal and
+# not from standard input. Without a terminal, the answer is Gnoblin only.
+choose_projects() {
+    if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+        projects=gnoblin
+        return 0
+    fi
+    pick_gnoblin=1
+    pick_bingux=0
+    cursor=0
+    saved_tty="$(stty -g </dev/tty)"
+    trap 'stty "$saved_tty" </dev/tty; printf "\n" >/dev/tty; exit 130' INT TERM
+    stty -icanon -echo min 1 time 0 </dev/tty
+    first=1
+    while :; do
+        [ "$first" = 1 ] || printf '\033[3A' >/dev/tty
+        first=0
+        printf '\033[2K\rWhich repositories do you want? Up/Down move, Space selects, Enter confirms.\n' >/dev/tty
+        draw_row 0 gnoblin "$pick_gnoblin"
+        draw_row 1 bingux "$pick_bingux"
+        key="$(dd bs=8 count=1 2>/dev/null </dev/tty)"
+        case "$key" in
+            "$(printf '\033[A')" | k) cursor=$(((cursor + 1) % 2)) ;;
+            "$(printf '\033[B')" | j) cursor=$(((cursor + 1) % 2)) ;;
+            " ")
+                if [ "$cursor" = 0 ]; then pick_gnoblin=$((1 - pick_gnoblin)); else pick_bingux=$((1 - pick_bingux)); fi
+                ;;
+            "") break ;;
+        esac
+    done
+    stty "$saved_tty" </dev/tty
+    trap - INT TERM
+    projects=""
+    [ "$pick_gnoblin" = 0 ] || projects="gnoblin"
+    # Bingux runs on Gnoblin, so selecting Bingux always sets up both.
+    [ "$pick_bingux" = 0 ] || projects="gnoblin bingux"
+    [ -n "$projects" ] || die "no repository selected"
+}
+
 have curl || die "curl is needed"
 [ -r /etc/os-release ] || die "cannot read /etc/os-release"
 # shellcheck disable=SC1091
 . /etc/os-release
+
+[ "$ask" = 0 ] || choose_projects
+[ -n "$projects" ] || projects=gnoblin
 
 arch="$(uname -m)"
 family=""
