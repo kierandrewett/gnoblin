@@ -186,7 +186,8 @@ OpenRouter. Reviews use five concurrent requests by default; set
 
 The script includes the full Markdown guide in Jev's state and asks it to
 classify each guide section. Jev returns a probability for each rule;
-`--threshold` (default `0.7`) controls which results are marked for review.
+`--threshold` (default `0.9`) controls which results are marked for review. The score moves a few points between runs, so a lower
+threshold flags pages for reasons that change from one run to the next.
 `--fail-on-flags` exits nonzero if any rule is flagged. The report includes the
 exact rule text and requires each flag to be fixed before completing the change.
 

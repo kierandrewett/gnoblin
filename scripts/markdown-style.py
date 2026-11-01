@@ -551,8 +551,8 @@ def main() -> int:
     review.add_argument(
         "--threshold",
         type=probability_arg,
-        default=0.7,
-        help="probability at which to flag a rule for human review (default: 0.7)",
+        default=0.9,
+        help="probability at which to flag a rule for human review (default: 0.9)",
     )
     review.set_defaults(func=cmd_review)
     lint = sub.add_parser("lint", help="check Markdown structure for cramped prose and tables")
