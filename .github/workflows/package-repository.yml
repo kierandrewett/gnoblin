@@ -165,6 +165,11 @@ jobs:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           AWS_ENDPOINT_URL: ${{ vars.AWS_ENDPOINT_URL }}
+          # The first nightly publish uploaded the large Arch package and then failed on its small .sig with
+          # SignatureDoesNotMatch, on aws-cli 2.23.6. Since 2.23 the CLI adds a CRC32 trailer checksum to uploads, which
+          # S3-compatible stores such as R2 are known to reject. "when_required" turns that off.
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
         run: |
           python3 scripts/pkgrepo publish --project "$PROJECT" --channel "$CHANNEL" --tree tree --backend "$BACKEND" \
             --destination "$DESTINATION" --previous existing --apply
