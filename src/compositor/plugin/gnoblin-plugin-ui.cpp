@@ -20,7 +20,7 @@
 #include "gnoblin-debug-panel.hpp"
 #include "gnoblin-imgui-overlay.hpp"
 #include "gnoblin-recovery-panel.hpp"
-#include "gnoblin-native-control.h"
+#include "core/gnoblin-native-control.h"
 
 struct RuntimeRequest {
     GnoblinPluginUi* ui;
