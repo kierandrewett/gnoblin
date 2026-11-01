@@ -116,8 +116,10 @@ done < <(find "$prefix/usr" -type f -perm /111 -print0)
     echo "[packages] found no programs in $prefix/usr" >&2
     exit 1
 }
+# On arm64 the dynamic loader (ld-linux-aarch64.so.1) is a NEEDED entry too. It comes with glibc, like libc.so.6, which
+# already stands for the C library, so it is not a library of its own.
 needed() {
-    readelf -d -- "$@" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort -u |
+    readelf -d -- "$@" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sed '/^ld-linux/d' | sort -u |
         grep -v -x -F -f <(printf '%s\n' "${provided[@]}") | paste -sd, -
 }
 needed_gnoblin="$(needed "${core_programs[@]}")"
