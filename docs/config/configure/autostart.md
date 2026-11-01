@@ -8,7 +8,7 @@ session after Mutter publishes its Wayland display. Put these settings in
 | --------- | --------------------------------- | ---------------------------------------------------- |
 | Name      | 1–80 letters, numbers, `_` or `-` | Identifies the entry when another config merges it.  |
 | `command` | Nonempty array of strings         | Required. Runs directly, without shell expansion.    |
-| `when`    | `"on_login"`                      | `"on_login"`; currently the only supported trigger.  |
+| `when`    | `"on_login"`                      | `"on_login"`, the only supported trigger.            |
 | `enable`  | Boolean                           | `true`; set to `false` to disable an imported entry. |
 
 Use the same name to override an imported command. Omitted fields keep their
