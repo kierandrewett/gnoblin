@@ -3,6 +3,7 @@
 Layout, for one project and channel (design/package-repositories.md has the reasoning):
 
     <root>/gpg.key
+    <root>/setup.sh                                           the quick setup script, with the key fingerprint filled in
     <root>/<project>.rsa.pub                                  the key apk checks the index with, when there are apk packages
     <root>/<project>/<channel>/manifest.json
     <root>/<project>/<channel>/fedora/<release>/<arch>/    RPMs and repodata/
@@ -55,7 +56,6 @@ class Settings:
     source_commit: str = ""
     source_ref: str = ""
     base_url: str = "https://repo.gnoblin.org"
-    committed_key: Path | None = None
     default_arch: str = "x86_64"
     now: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -271,27 +271,26 @@ def build(settings: Settings, signer: Signer, apk_signer: ApkSigner | None = Non
     # 4. Client configuration files, then the key at the root of the whole site.
     index.write_channel(settings, root, manifest, arch_dirs)
     signer.export_public(settings.output / "gpg.key")
-    check_committed_key(settings, signer.fingerprint)
+    write_setup_script(settings.output, signer.fingerprint)
     return manifest
 
 
-def check_committed_key(settings: Settings, fingerprint: str) -> None:
-    """Stop when the key that signs the tree is not the key committed to the repository.
+SETUP_SCRIPT = Path(__file__).with_name("setup.sh")
+FINGERPRINT_PLACEHOLDER = "@KEY_FINGERPRINT@"
 
-    The site serves gpg.key and setup.sh from the repository, not from the bucket, and setup.sh checks the key against
-    a fingerprint written in it. A tree signed with another key would be one that the setup script refuses.
+
+def write_setup_script(output: Path, fingerprint: str) -> None:
+    """Write the quick setup script to the site root with the fingerprint of the signing key filled in.
+
+    The script stops when the key it downloads does not have this fingerprint. Every project publishes the same file,
+    because the key is shared.
     """
-    if settings.committed_key is None:
-        return
-    committed = settings.committed_key.read_text()
-    script = settings.committed_key.with_name("setup.sh").read_text()
-    if fingerprint not in script:
-        raise TreeError(
-            f"the signing key has fingerprint {fingerprint}, which is not in {settings.committed_key.with_name('setup.sh')}. "
-            "Commit the public key and the fingerprint together when the key changes"
-        )
-    if "BEGIN PGP PUBLIC KEY BLOCK" not in committed:
-        raise TreeError(f"{settings.committed_key} does not hold a public key")
+    text = SETUP_SCRIPT.read_text()
+    if FINGERPRINT_PLACEHOLDER not in text:
+        raise TreeError(f"{SETUP_SCRIPT} has no {FINGERPRINT_PLACEHOLDER} to fill in")
+    target = output / "setup.sh"
+    target.write_text(text.replace(FINGERPRINT_PLACEHOLDER, fingerprint))
+    target.chmod(0o755)
 
 
 def _destinations(package: Package, arch_dirs: dict[tuple[str, str], list[str]]) -> list[str]:

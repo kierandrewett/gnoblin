@@ -145,7 +145,6 @@ def cmd_build(args: argparse.Namespace) -> int:
         source_ref=args.source_ref,
         base_url=args.base_url.rstrip("/"),
         default_arch=args.default_arch,
-        committed_key=Path(args.committed_key) if args.committed_key else None,
     )
     apk_signer = _apk_signer(args)
     try:
@@ -281,10 +280,6 @@ def parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--replace-stable", action="store_true", help="allow a stable package that is already published to be replaced"
-    )
-    p.add_argument(
-        "--committed-key",
-        help="gpg.key of the repository; with setup.sh beside it, the signing key must have the fingerprint in setup.sh",
     )
     p.add_argument(
         "--source-commit", default="", help="the commit the packages were built from; recorded in the manifest"

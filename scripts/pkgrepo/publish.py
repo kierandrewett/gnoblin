@@ -78,9 +78,8 @@ def tree_files(root: Path, scope: str) -> list[str]:
 
 
 def site_files(root: Path) -> list[str]:
-    """The files at the root of the site that the bucket holds: the Alpine key, named after the project. gpg.key and
-    setup.sh come from the repository through the index Worker."""
-    names = [path.name for path in root.glob("*.rsa.pub")]
+    """The files at the root of the site: the keys and the setup script. The Alpine key is named after the project."""
+    names = ["gpg.key", "setup.sh", *(path.name for path in root.glob("*.rsa.pub"))]
     return sorted(name for name in names if (root / name).is_file())
 
 

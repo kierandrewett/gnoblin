@@ -24,9 +24,8 @@ channel=stable
 projects=""
 ask=1
 dry_run=0
-# The fingerprint of the signing key. The script stops if the key it downloads differs. The publisher checks that this
-# value matches the key it signs with, so a changed key needs a change here in the same commit.
-expected_fingerprint="${GNOBLIN_KEY_FINGERPRINT:-91BAA3790941B9B3BBA63BC4F1B8D899DF3D786E}"
+# The publisher writes the fingerprint of the signing key here. The script stops if the key it downloads differs.
+expected_fingerprint="${GNOBLIN_KEY_FINGERPRINT:-@KEY_FINGERPRINT@}"
 
 usage() {
     sed -n '2,/^set -eu/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
@@ -167,6 +166,9 @@ fetch_key() {
 # asking, so this check is the only one.
 check_key() {
     [ "$dry_run" = 1 ] && return 0
+    case "$expected_fingerprint" in
+        *@*) die "this is the template of the script. Use the copy at $base/setup.sh" ;;
+    esac
     [ -n "${fingerprint:-}" ] || die "gpg is needed to check the signing key"
     [ "$fingerprint" = "$expected_fingerprint" ] || die "the signing key does not match the expected fingerprint. Nothing was changed"
 }
