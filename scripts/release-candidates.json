@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "generated": "2026-11-01",
+  "sources": {
+    "endoflife_date": "https://endoflife.date/api/fedora.json",
+    "official": [
+      "https://bodhi.fedoraproject.org/releases/?rows_per_page=100&exclude_archived=true",
+      "https://dl.fedoraproject.org/pub/fedora/linux/releases/{release}/"
+    ],
+    "image": "https://hub.docker.com/v2/repositories/library/fedora/tags/{release}"
+  },
+  "candidates": [
+    {
+      "family": "fedora",
+      "release": "43",
+      "image": "fedora:43",
+      "released": "2025-10-28",
+      "eol": "2026-12-02",
+      "prerelease": false,
+      "floors_met": true,
+      "evidence": "all 70 pkg-config floors met (libinput >= 1.30.0 found 1.30.3, glib-2.0 >= 2.81.1 found 2.86.5, gtk4 >= 4.20.0 found 4.20.4)",
+      "eligible": true,
+      "observations": {
+        "endoflife_date": "listed, released 2025-10-28, eol 2026-12-09",
+        "official": "Bodhi: state current, released_on absent, eol 2026-12-02; releases/43/ published",
+        "image": "fedora:43 exists"
+      }
+    },
+    {
+      "family": "fedora",
+      "release": "44",
+      "image": "fedora:44",
+      "released": "2026-04-28",
+      "eol": "2027-06-02",
+      "prerelease": false,
+      "floors_met": true,
+      "evidence": "all 70 pkg-config floors met (libinput >= 1.30.0 found 1.31.3, glib-2.0 >= 2.81.1 found 2.88.4, gtk4 >= 4.20.0 found 4.22.5)",
+      "eligible": true,
+      "observations": {
+        "endoflife_date": "listed, released 2026-04-28, eol 2027-06-02",
+        "official": "Bodhi: state current, released_on 2026-04-28, eol 2027-06-02; releases/44/ published",
+        "image": "fedora:44 exists"
+      }
+    },
+    {
+      "family": "fedora",
+      "release": "45",
+      "image": "fedora:45",
+      "released": "2026-11-03",
+      "eol": "2027-12-08",
+      "prerelease": true,
+      "floors_met": true,
+      "evidence": "all 70 pkg-config floors met (libinput >= 1.30.0 found 1.32.0, glib-2.0 >= 2.81.1 found 2.90.1, gtk4 >= 4.20.0 found 4.24.1)",
+      "eligible": true,
+      "observations": {
+        "endoflife_date": "absent",
+        "official": "Bodhi: state current, released_on 2026-11-03, eol 2027-12-08; releases/45/ not published",
+        "image": "fedora:45 exists"
+      }
+    }
+  ],
+  "needs_review": []
+}

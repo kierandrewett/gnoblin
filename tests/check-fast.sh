@@ -30,6 +30,8 @@ run python3 tests/session-environment.test.py
 run python3 tests/package-isolation.test.py
 run python3 tests/pkgsmith-packages.test.py
 run python3 tests/pkgrepo.test.py
+run python3 tests/release-matrix.test.py
+run python3 scripts/check-packaging-targets.py
 run python3 tests/check-build-deps.test.py
 run python3 tests/test_generate_mutter_keybinding_catalog.py
 run ./tests/test-config.sh

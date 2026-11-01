@@ -82,25 +82,27 @@ cmake -DACTION=apply-patches -DPROJECT=mutter -P cmake/source-step.cmake
 
 Run by the workflows and by `./build.sh package`.
 
-| Script                                      | What it does                                                            | Run by                                   |
-| ------------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------- |
-| `build-release-assets.sh`                   | Write the source bundle, the component archives and checksums           | `build.sh package`                       |
-| `make-tarball.sh`                           | Write the patched Mutter or portal source archive                       | `build-release-assets.sh`                |
-| `list-tarball-sources.sh`                   | List the files a source archive needs                                   | `make-tarball.sh`                        |
-| `make-gsettings-desktop-schemas-tarball.sh` | Write the pinned GSettings schema archive                               | `build-release-assets.sh`                |
-| `build-source-bundle.sh`                    | Join the archives into the source bundle                                | `build-release-assets.sh`                |
-| `install-fedora-build-deps.sh`              | Install the Fedora packages that `build.sh` needs                       | `packages.yml`, the test workflows       |
-| `build-prefix.sh`                           | Build everything Gnoblin ships into a prefix for pkgsmith               | `packages.yml`, by hand                  |
-| `install-pkgsmith.sh`                       | Build the pkgsmith commit pinned in `pkgsmith.ref`                      | `packages.yml`, by hand                  |
-| `build-packages.sh`                         | Write the packages from a prefix with pkgsmith                          | `packages.yml`, by hand                  |
-| `check-package-install.sh`                  | Install, run, coexist with GNOME and remove the packages on one system  | `packages.yml`                           |
-| `check-release-tag.sh`                      | Check a release tag against the version in the tree                     | `release.yml`                            |
-| `check-rpm-isolation.py`                    | Reject an RPM that could replace GNOME files                            | `packages.yml`                           |
-| `check-packaging-targets.py`                | Validate the package target list                                        | a workflow                               |
-| `probe-rpm-target.py`                       | Record the library floor of a distribution image                        | a workflow                               |
-| `prepare-apt-pages.py`                      | Add the already-published APT archive to the docs site                  | `infra.yml`                              |
-| `pkgrepo/`                                  | Build, sign and upload the RPM, APT and pacman repositories             | `package-repository.yml`, `nightly.yml`  |
-| `apply-nightly-version.py`                  | Give a CI checkout a nightly version                                    | `release.yml`                            |
+| Script                                      | What it does                                                           | Run by                                  |
+| ------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------- |
+| `build-release-assets.sh`                   | Write the source bundle, the component archives and checksums          | `build.sh package`                      |
+| `make-tarball.sh`                           | Write the patched Mutter or portal source archive                      | `build-release-assets.sh`               |
+| `list-tarball-sources.sh`                   | List the files a source archive needs                                  | `make-tarball.sh`                       |
+| `make-gsettings-desktop-schemas-tarball.sh` | Write the pinned GSettings schema archive                              | `build-release-assets.sh`               |
+| `build-source-bundle.sh`                    | Join the archives into the source bundle                               | `build-release-assets.sh`               |
+| `install-fedora-build-deps.sh`              | Install the Fedora packages that `build.sh` needs                      | `packages.yml`, the test workflows      |
+| `build-prefix.sh`                           | Build everything Gnoblin ships into a prefix for pkgsmith              | `packages.yml`, by hand                 |
+| `install-pkgsmith.sh`                       | Build the pkgsmith commit pinned in `pkgsmith.ref`                     | `packages.yml`, by hand                 |
+| `build-packages.sh`                         | Write the packages from a prefix with pkgsmith                         | `packages.yml`, by hand                 |
+| `check-package-install.sh`                  | Install, run, coexist with GNOME and remove the packages on one system | `packages.yml`                          |
+| `check-release-tag.sh`                      | Check a release tag against the version in the tree                    | `release.yml`                           |
+| `check-rpm-isolation.py`                    | Reject an RPM that could replace GNOME files                           | `packages.yml`                          |
+| `check-packaging-targets.py`                | Validate the package target list                                       | a workflow                              |
+| `fedora-releases.py`                        | List the Fedora releases to build from the package target list         | `release.yml`                           |
+| `update-release-matrix.py`                  | Propose the Fedora releases (`release-candidates.json`) and diff them  | `release-matrix.yml`                    |
+| `probe-rpm-target.py`                       | Record the library floor of a distribution image                       | a workflow                              |
+| `prepare-apt-pages.py`                      | Add the already-published APT archive to the docs site                 | `infra.yml`                             |
+| `pkgrepo/`                                  | Build, sign and upload the RPM, APT and pacman repositories            | `package-repository.yml`, `nightly.yml` |
+| `apply-nightly-version.py`                  | Give a CI checkout a nightly version                                   | `release.yml`                           |
 
 ## Patches
 

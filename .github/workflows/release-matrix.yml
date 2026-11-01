@@ -1,0 +1,157 @@
+name: Release matrix
+
+# Proposes the Fedora releases that Gnoblin could build for, once a week. It reads endoflife.date, Fedora's own release data
+# and the Fedora container images (scripts/update-release-matrix.py), checks the build floors of every release inside its
+# image, and writes scripts/release-candidates.json with a diff of what changed. It never pushes and never edits
+# design/package-targets.json: the run uploads the new candidate file as an artifact and opens or updates one issue with the
+# diff and the warnings of scripts/check-packaging-targets.py. A person copies the file, reads the diff and promotes a
+# candidate by adding or editing its entry in design/package-targets.json, which is what packages.yml builds.
+
+on:
+  schedule:
+    # Mondays at 05:41 UTC, off the hour so it does not queue with every other scheduled job on GitHub.
+    - cron: "41 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  releases:
+    # Which releases to check the floors of: every candidate, from the sources alone.
+    runs-on: ubuntu-latest
+    outputs:
+      releases: ${{ steps.list.outputs.releases }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: List the candidate releases
+        id: list
+        run: |
+          python3 scripts/update-release-matrix.py --output "$RUNNER_TEMP/candidates.json"
+          python3 - <<'PYTHON' >> "$GITHUB_OUTPUT"
+          import json, os
+          candidates = json.load(open(os.environ["RUNNER_TEMP"] + "/candidates.json"))["candidates"]
+          print("releases=" + json.dumps([{"release": c["release"], "image": c["image"]} for c in candidates], separators=(",", ":")))
+          PYTHON
+
+  floors:
+    name: floors (fedora ${{ matrix.fedora.release }})
+    needs: releases
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: ${{ fromJSON(needs.releases.outputs.releases) }}
+    runs-on: ubuntu-latest
+    container: ${{ matrix.fedora.image }}
+    timeout-minutes: 30
+    steps:
+      - name: Install Git
+        run: dnf -y install git-core
+      - uses: actions/checkout@v4
+      - name: Set checkout ownership
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Fetch pinned sources, retrying GNOME GitLab errors
+        run: ./scripts/checkout-submodules-with-retry.sh subprojects/mutter subprojects/xdg-desktop-portal-gnome
+      - name: Check the build floors
+        # The floors are in scripts/install-fedora-build-deps.sh, which asks for versions, and in the pinned Meson files,
+        # which scripts/check-build-deps.py reads. A release that meets both can build Gnoblin.
+        env:
+          FEDORA_RELEASE: ${{ matrix.fedora.release }}
+        run: |
+          mkdir floors
+          set +e
+          ./scripts/install-fedora-build-deps.sh > install.log 2>&1
+          installed=$?
+          if [ "$installed" -eq 0 ]; then
+            python3 scripts/check-build-deps.py > check.log 2>&1
+            checked=$?
+          else
+            checked=skipped
+          fi
+          set -e
+          python3 - "$installed" "$checked" <<'PYTHON'
+          import json, os, re, sys
+          installed, checked = sys.argv[1:3]
+          release = os.environ["FEDORA_RELEASE"]
+          if installed != "0":
+              lines = open("install.log").read().splitlines()
+              reason = next((line.strip() for line in lines if re.search(r"nothing provides|No match|Problem|cannot install", line)), "dnf failed")
+              result = {"floors_met": False, "evidence": f"install-fedora-build-deps.sh failed: {reason}"}
+          elif checked != "0":
+              lines = open("check.log").read().splitlines()
+              result = {"floors_met": False, "evidence": "check-build-deps.py failed: " + "; ".join(line.strip() for line in lines[1:4])}
+          else:
+              result = {"floors_met": True, "evidence": "install-fedora-build-deps.sh installed the build requirements and check-build-deps.py passed"}
+          json.dump(result, open(f"floors/fedora-{release}.json", "w"))
+          print(result)
+          PYTHON
+      - uses: actions/upload-artifact@v4
+        with:
+          name: floors-fedora-${{ matrix.fedora.release }}
+          path: floors/*
+          if-no-files-found: error
+          retention-days: 7
+
+  update:
+    needs: [releases, floors]
+    if: ${{ !cancelled() && needs.releases.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: floors-*
+          path: floors
+          merge-multiple: true
+      - name: Write the candidate list and the diff
+        id: update
+        run: |
+          mkdir -p floors
+          python3 scripts/update-release-matrix.py --floors-dir floors --diff "$RUNNER_TEMP/diff.md" --github-output "$GITHUB_OUTPUT"
+      - name: Compare the candidates with the inventory
+        id: warnings
+        run: |
+          python3 scripts/check-packaging-targets.py 2> "$RUNNER_TEMP/warnings.txt" || true
+          sed 's/^::warning:://; s/^warning: //' "$RUNNER_TEMP/warnings.txt" > "$RUNNER_TEMP/warnings.md"
+          if [ -s "$RUNNER_TEMP/warnings.md" ]; then echo "found=true" >> "$GITHUB_OUTPUT"; else echo "found=false" >> "$GITHUB_OUTPUT"; fi
+      - name: Gather the files to review
+        run: |
+          mkdir review
+          cp scripts/release-candidates.json "$RUNNER_TEMP/diff.md" "$RUNNER_TEMP/warnings.md" review/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidates
+          path: review/*
+          retention-days: 30
+      - name: Open or update the review issue
+        if: steps.update.outputs.changed == 'true' || steps.warnings.outputs.found == 'true'
+        run: |
+          {
+            echo "The weekly release matrix run found something to review. Nothing was changed in the repository."
+            echo
+            echo "To act on it, download the \`release-candidates\` artifact of [this run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID), copy \`scripts/release-candidates.json\` into the repository, and add, change or remove entries in \`design/package-targets.json\`. Only entries with status \`existing-path\` are built."
+            echo
+            echo "## What changed in the candidates"
+            echo
+            cat "$RUNNER_TEMP/diff.md"
+            echo
+            echo "## Inventory warnings"
+            echo
+            sed 's/^/- /' "$RUNNER_TEMP/warnings.md"
+          } > "$RUNNER_TEMP/issue.md"
+          title="Fedora release candidates need review"
+          number="$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            gh issue edit "$number" --repo "$GITHUB_REPOSITORY" --body-file "$RUNNER_TEMP/issue.md"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "$title" --body-file "$RUNNER_TEMP/issue.md"
+          fi
