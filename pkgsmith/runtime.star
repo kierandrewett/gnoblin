@@ -65,67 +65,54 @@ CORE = {
     "fedora": [
         "bash",
         "python3",
-        "adwaita-cursor-theme",
         "dbus-tools",
         "dconf",
         "glib2 >= 2.86.0",
         "gsettings-desktop-schemas >= 49.1",
         "libwayland-client >= 1.25",
-        "pipewire >= 1.4.11",
+        "pipewire-libs >= 1.4.11",
         "polkit",
-        "wireplumber",
     ],
     "opensuse": [
         "bash",
         "python3",
-        "adwaita-icon-theme",
         "dbus-1",
         "dconf",
         "glib2 >= 2.86",
         "glib2-tools >= 2.86",
         "gsettings-desktop-schemas >= 49.1",
         "libwayland-client0 >= 1.25",
-        "pipewire >= 1.4.11",
+        "libpipewire-0_3-0 >= 1.4.11",
         "polkit",
         "systemd",
-        "wireplumber",
     ],
     "deb": [
         "bash",
         "python3",
-        "adwaita-icon-theme",
         "dbus-bin",
         "dconf-gsettings-backend",
         "dconf-service",
         "libglib2.0-bin (>= 2.86.0)",
         "gsettings-desktop-schemas (>= 49.1)",
-        "pipewire (>= 1.4.11)",
         "polkitd",
-        "wireplumber",
     ],
     "apk": [
         "bash",
         "python3",
-        "adwaita-icon-theme",
         "dbus",
         "dconf",
         "cmd:glib-compile-schemas",
         "gsettings-desktop-schemas",
-        "pipewire",
         "polkit",
-        "wireplumber",
     ],
     "archlinux": [
         "bash",
         "python",
-        "adwaita-cursors",
         "dbus",
         "dconf",
         "glib2>=2.86.0",
         "gsettings-desktop-schemas>=49.1",
-        "pipewire>=1.4.11",
         "polkit",
-        "wireplumber",
     ],
 }
 PORTAL = {
@@ -200,8 +187,7 @@ def core_relations(fmt):
 
 CORE_DESCRIPTION = """Standalone Gnoblin desktop session
 Installs the Lua-supervised Gnoblin session, the private runtime tools, the login entry and the patched
-Mutter runtime in one package. It does not require GNOME Shell or GJS. The GTK-based Gnoblin portal backend is
-optional. It replaces the earlier gnoblin-session, gnoblin-mutter and gnoblin-mutter-devel packages on upgrade."""
+Mutter runtime in one package. The GTK-based Gnoblin portal backend is optional. It replaces the earlier gnoblin-session, gnoblin-mutter and gnoblin-mutter-devel packages on upgrade."""
 
 PORTAL_DESCRIPTION = """Gnoblin desktop portal backend
 Provides a separate portal backend for Gnoblin sessions. An existing GNOME portal service remains available for GNOME
