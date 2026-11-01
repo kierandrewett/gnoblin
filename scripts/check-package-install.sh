@@ -4,11 +4,11 @@
 # usage: check-package-install.sh PACKAGE_DIR
 #
 # Run as root, with bash, in a clean container of the system to check: Fedora, openSUSE, Arch Linux, Debian, Ubuntu or
-# Alpine. PACKAGE_DIR
-# holds the packages that pkgsmith wrote for that system's format (.rpm, .deb, .pkg.tar.zst or .apk): gnoblin,
-# xdg-desktop-portal-gnoblin, gnoblin-geoclue-integration and gnoblin-ananicy-rules. Other formats in the directory are
-# ignored, and so are the rpm files of the other distribution (.fc45 on Fedora, .tumbleweed on openSUSE). The script installs from the files, so a package that is not published yet is checked the way a user
-# installs it.
+# Alpine. PACKAGE_DIR holds the packages that pkgsmith wrote for that system's format (.rpm, .deb, .pkg.tar.zst or
+# .apk): gnoblin, xdg-desktop-portal-gnoblin, gnoblin-geoclue-integration and gnoblin-ananicy-rules. Other formats in the
+# directory are ignored, and so are the rpm files of the other distributions: on Fedora only the files of the release
+# that the container runs are used (.fc43 on Fedora 43), and on openSUSE only .tumbleweed. The script installs from the
+# files, so a package that is not published yet is checked the way a user installs it.
 #
 # What it checks, in order:
 #   1. gnoblin installs without the portal backend, stock GNOME or a second Mutter.
@@ -32,7 +32,7 @@ separator=-
 case "$ID" in
     fedora)
         kind=rpm
-        suffix=".fc*.rpm"
+        suffix=".fc${VERSION_ID}.*.rpm"
         stock=(gnome-shell mutter gnome-session gnome-settings-daemon gdm)
         ;;
     opensuse-tumbleweed | opensuse-leap | opensuse)

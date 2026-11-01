@@ -102,14 +102,17 @@ jobs:
           mkdir -p packages/arch packages/opensuse/tumbleweed "packages/deb/$DEB_SUITE"
           # Each architecture is an artifact of its own (raw/packages-<tag>-amd64/), and the files that do not depend on
           # the architecture are in both. They are copied one at a time, because one cp with the same name twice stops.
-          # One build of each package serves two RPM trees. The Fedora files carry the release in their release tag
-          # (.fc45), so the release is not written down twice. openSUSE Tumbleweed has no number.
+          # The Fedora files carry the release in their release tag (.fc43), so each goes to the tree of its own release and
+          # the release is not written down twice. A Fedora release has one build of each package for each architecture.
+          # openSUSE Tumbleweed has no number.
           mapfile -t fedora < <(find raw -type f -name '*.fc[0-9]*.rpm' ! -name '*.src.rpm')
           test "${#fedora[@]}" -gt 0
-          fedora_release="$(rpm -qp --nosignature --queryformat '%{RELEASE}\n' "${fedora[0]}" | sed -n 's/.*\.fc\([0-9][0-9]*\)$/\1/p')"
-          test -n "$fedora_release"
-          mkdir -p "packages/fedora/$fedora_release"
-          for file in "${fedora[@]}"; do cp -f -- "$file" "packages/fedora/$fedora_release/"; done
+          for file in "${fedora[@]}"; do
+            fedora_release="$(rpm -qp --nosignature --queryformat '%{RELEASE}\n' "$file" | sed -n 's/.*\.fc\([0-9][0-9]*\)$/\1/p')"
+            test -n "$fedora_release"
+            mkdir -p "packages/fedora/$fedora_release"
+            cp -f -- "$file" "packages/fedora/$fedora_release/"
+          done
           find raw -type f -name '*.tumbleweed.*.rpm' -exec cp -f -t packages/opensuse/tumbleweed {} \;
           find raw -type f -name '*.deb' -exec cp -f -t "packages/deb/$DEB_SUITE" {} \;
           find raw -type f -name '*.pkg.tar.zst' -exec cp -f -t packages/arch {} \;

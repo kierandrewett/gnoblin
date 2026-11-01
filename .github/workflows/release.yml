@@ -1,10 +1,11 @@
 name: Release
 
 # Stages (design/release-pipeline.md has the reasoning):
-#   1. source      builds the source bundle once and uploads it as an artifact
-#   2. packages    builds a checkout of the same ref into a prefix on Fedora and on Alpine, writes the rpm, deb, Arch,
-#                  apk and tar packages from the prefixes with pkgsmith, and installs them on clean Fedora, openSUSE,
-#                  Arch, Debian and Alpine systems (packages.yml)
+#   1. source      builds the source bundle once and uploads it as an artifact, on the Fedora release of the shared prefix
+#   2. packages    builds a checkout of the same ref into a prefix on each Fedora release and on Alpine, writes the rpm,
+#                  deb, Arch, apk and tar packages from the prefixes with pkgsmith, and installs them on clean Fedora,
+#                  openSUSE, Arch, Debian and Alpine systems (packages.yml). The Fedora releases are the fedora targets
+#                  of design/package-targets.json; one that is not out yet may fail without failing the run
 #   3. publish     attaches every asset to one release, checksums and attests them, and makes the release public
 #   4. repository  builds the signed RPM, APT and pacman repository from the packages of stage 2 and uploads it
 #
@@ -21,6 +22,7 @@ on:
       - ".github/workflows/packages.yml"
       - ".github/workflows/package-repository.yml"
       - ".github/actions/**"
+      - "design/package-targets.json"
       - "pkgsmith/**"
       - "scripts/apply-nightly-version.py"
       - "scripts/build-packages.sh"
@@ -28,6 +30,7 @@ on:
       - "scripts/build-release-assets.sh"
       - "scripts/check-package-install.sh"
       - "scripts/check-release-tag.sh"
+      - "scripts/fedora-releases.py"
       - "scripts/install-fedora-build-deps.sh"
       - "scripts/install-pkgsmith.sh"
       - "scripts/make-tarball.sh"
@@ -49,6 +52,7 @@ on:
       - ".github/workflows/packages.yml"
       - ".github/workflows/package-repository.yml"
       - ".github/actions/**"
+      - "design/package-targets.json"
       - "pkgsmith/**"
       - "scripts/apply-nightly-version.py"
       - "scripts/build-packages.sh"
@@ -56,6 +60,7 @@ on:
       - "scripts/build-release-assets.sh"
       - "scripts/check-package-install.sh"
       - "scripts/check-release-tag.sh"
+      - "scripts/fedora-releases.py"
       - "scripts/install-fedora-build-deps.sh"
       - "scripts/install-pkgsmith.sh"
       - "scripts/make-tarball.sh"
@@ -101,7 +106,23 @@ defaults:
     shell: bash
 
 jobs:
+  fedora:
+    # The Fedora releases to build, from the inventory in the checked-out ref.
+    runs-on: ubuntu-latest
+    outputs:
+      releases: ${{ steps.releases.outputs.releases }}
+      source: ${{ steps.releases.outputs.source }}
+      source_image: ${{ steps.releases.outputs.source_image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: List the Fedora releases
+        id: releases
+        run: python3 scripts/fedora-releases.py --github-output "$GITHUB_OUTPUT"
+
   source:
+    needs: fedora
     outputs:
       release_tag: ${{ steps.meta.outputs.release_tag }}
       is_release: ${{ steps.meta.outputs.is_release }}
@@ -109,7 +130,8 @@ jobs:
       commit: ${{ steps.meta.outputs.commit }}
       nightly_version: ${{ steps.nightly.outputs.version }}
     runs-on: ubuntu-latest
-    container: fedora:45
+    # The release of the shared prefix, which is never a pre-release, so the source job never waits on one.
+    container: ${{ needs.fedora.outputs.source_image }}
     timeout-minutes: 30
     env:
       GIT_COMMITTER_NAME: Gnoblin release automation
@@ -206,9 +228,11 @@ jobs:
           retention-days: 30
 
   packages:
-    needs: source
+    needs: [source, fedora]
     uses: ./.github/workflows/packages.yml
     with:
+      fedora_releases: ${{ needs.fedora.outputs.releases }}
+      fedora_source: ${{ needs.fedora.outputs.source }}
       ref: ${{ needs.source.outputs.ref }}
       release_tag: ${{ needs.source.outputs.release_tag }}
       # The prefix jobs build their own checkout, so a nightly version reaches them as an input.
@@ -253,12 +277,20 @@ jobs:
       - name: Write the release notes header
         run: |
           version="${RELEASE_TAG#gnoblin-v}"
+          # The Fedora releases come from the inventory. A release that is not out yet is named as a pre-release.
+          fedora_out="$(python3 scripts/fedora-releases.py --names released)"
+          fedora_pre="$(python3 scripts/fedora-releases.py --names prerelease)"
+          fedora_pre_note=""
+          if [ -n "$fedora_pre" ]; then
+            fedora_pre_note="- Fedora $fedora_pre is a pre-release. Its RPMs are included when its build passes. They are not a release claim."
+          fi
           cat > "$RUNNER_TEMP/release-notes.md" <<EOF
           Gnoblin $version targets GNOME $(python3 scripts/gnoblin-version.py get gnomeVersion).
 
           ## Install
 
-          - Fedora 45: use the signed repository (docs/package-repositories.md), or download the \`fc45\` RPMs and run \`dnf install ./gnoblin-*.fc45.*.rpm\`.
+          - Fedora $fedora_out: use the signed repository (docs/package-repositories.md), or download the RPMs that end in \`.fcNN.\` for your release NN and run \`dnf install ./gnoblin-*.fcNN.*.rpm\`.
+          $fedora_pre_note
           - openSUSE Tumbleweed: use the signed repository, or install the \`tumbleweed\` RPMs with \`zypper install\`.
           - Arch Linux: use the signed repository, or download the packages and run \`pacman -U\`.
           - Debian testing: use the signed repository, or download the \`.deb\` files and run \`apt install ./gnoblin_*.deb\`.

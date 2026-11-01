@@ -34,9 +34,9 @@
       "image": "fedora:43",
       "lifecycle": "upstream-current",
       "adapter": "pkgsmith",
-      "status": "planned",
+      "status": "existing-path",
       "support": "unsupported",
-      "ci": [],
+      "ci": [".github/workflows/packages.yml", ".github/workflows/release.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -53,11 +53,12 @@
       "kind": "fixed",
       "architecture": "x86_64",
       "image": "fedora:44",
+      "shared_prefix": true,
       "lifecycle": "upstream-current",
       "adapter": "pkgsmith",
-      "status": "planned",
+      "status": "existing-path",
       "support": "unsupported",
-      "ci": [],
+      "ci": [".github/workflows/packages.yml", ".github/workflows/release.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -78,10 +79,7 @@
       "adapter": "pkgsmith",
       "status": "existing-path",
       "support": "candidate",
-      "ci": [
-        ".github/workflows/packages.yml",
-        ".github/workflows/release.yml"
-      ],
+      "ci": [".github/workflows/packages.yml", ".github/workflows/release.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
@@ -109,9 +107,7 @@
       "adapter": "rpm-el",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -132,9 +128,7 @@
       "adapter": "rpm-el",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -155,9 +149,7 @@
       "adapter": "rpm-el",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -304,10 +296,7 @@
       "adapter": "pkgsmith",
       "status": "existing-path",
       "support": "candidate",
-      "ci": [
-        ".github/workflows/packages.yml",
-        ".github/workflows/release.yml"
-      ],
+      "ci": [".github/workflows/packages.yml", ".github/workflows/release.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
@@ -361,9 +350,7 @@
       "adapter": "pkgsmith",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -384,9 +371,7 @@
       "adapter": "pkgsmith",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": false,
         "package-build": false,
@@ -407,10 +392,7 @@
       "adapter": "pkgsmith",
       "status": "existing-path",
       "support": "candidate",
-      "ci": [
-        ".github/workflows/packages.yml",
-        ".github/workflows/rpm-target-probes.yml"
-      ],
+      "ci": [".github/workflows/packages.yml", ".github/workflows/rpm-target-probes.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
@@ -439,9 +421,7 @@
       "adapter": "nix",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/nix.yml"
-      ],
+      "ci": [".github/workflows/nix.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": false,
@@ -463,9 +443,7 @@
       "adapter": "nix",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/nix.yml"
-      ],
+      "ci": [".github/workflows/nix.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": false,
@@ -487,9 +465,7 @@
       "adapter": "nix",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/nix.yml"
-      ],
+      "ci": [".github/workflows/nix.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": true,
@@ -511,9 +487,7 @@
       "adapter": "nix",
       "status": "existing-path",
       "support": "unsupported",
-      "ci": [
-        ".github/workflows/nix.yml"
-      ],
+      "ci": [".github/workflows/nix.yml"],
       "gates": {
         "dependency-probe": true,
         "package-build": true,

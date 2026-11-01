@@ -3,16 +3,23 @@ name: Packages
 # Builds Gnoblin into a prefix, writes the packages from that prefix with pkgsmith, and installs them on clean systems.
 # The release workflow calls this after it builds the source bundle. It never publishes anything.
 #
-#   1. prefix    builds a Git checkout of ref into a prefix with scripts/build-prefix.sh, once per architecture: on
-#                Fedora 45 for the glibc packages, and on Alpine edge for the apk packages. ./build.sh needs a checkout
-#                with its submodules, so the source bundle cannot be the input
-#   2. packages  runs pkgsmith on each prefix: rpm, deb, Arch and tar packages for gnoblin, xdg-desktop-portal-gnoblin,
-#                gnoblin-geoclue-integration and gnoblin-ananicy-rules
-#   3. install   installs the packages on a clean Fedora, openSUSE, Arch, Debian and Alpine system, installs stock GNOME
-#                beside them and removes Gnoblin (scripts/check-package-install.sh)
+#   1. prefix    builds a Git checkout of ref into a prefix with scripts/build-prefix.sh, once per architecture and per
+#                Fedora release on that release's image, and once per architecture on Alpine edge for the apk packages.
+#                ./build.sh needs a checkout with its submodules, so the source bundle cannot be the input
+#   2. packages  runs pkgsmith on the prefixes. The Fedora rpm of each release comes from the prefix of that release, so
+#                it asks for the libraries and the glibc of that release. The openSUSE rpm, deb, Arch and tar packages
+#                come from the prefix of the release marked "shared_prefix" in the inventory: they run on systems newer
+#                than Fedora, so that prefix must link the libraries those systems have, and it is never a pre-release
+#   3. install   installs the Fedora rpm of each release on that release, and the other packages on a clean openSUSE,
+#                Arch, Debian and Alpine system, installs stock GNOME beside them and removes Gnoblin
+#                (scripts/check-package-install.sh)
 #
-# One glibc prefix serves the rpm, deb, Arch and tar formats, so Lua is linked statically and the libraries are in lib. A
-# glibc prefix does not run on Alpine, so the apk packages come from a second prefix built on Alpine.
+# The Fedora releases are the fedora targets of design/package-targets.json (scripts/fedora-releases.py), which the caller
+# reads and passes in. A release that is not out yet (lifecycle upstream-pre-release) is a job that may fail without failing
+# the run: its jobs have continue-on-error, and nothing else depends on what they make.
+#
+# One glibc prefix serves the openSUSE rpm, deb, Arch and tar formats, so Lua is linked statically and the libraries are in
+# lib. A glibc prefix does not run on Alpine, so the apk packages come from another prefix built on Alpine.
 
 on:
   workflow_call:
@@ -29,6 +36,14 @@ on:
         description: Nightly version to give the checkout (scripts/apply-nightly-version.py). Empty builds the version in the tree.
         type: string
         default: ""
+      fedora_releases:
+        description: The Fedora releases to build, as the JSON list that scripts/fedora-releases.py writes
+        type: string
+        required: true
+      fedora_source:
+        description: The Fedora release whose prefix also makes the openSUSE rpm, deb, Arch and tar packages
+        type: string
+        required: true
 
 permissions:
   contents: read
@@ -39,15 +54,19 @@ defaults:
 
 jobs:
   prefix:
-    name: prefix (${{ matrix.arch }})
+    name: prefix (fc${{ matrix.fedora.release }}, ${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
+        fedora: ${{ fromJSON(inputs.fedora_releases) }}
+        arch: [amd64, arm64]
         include:
           - { arch: amd64, runner: ubuntu-latest }
           - { arch: arm64, runner: ubuntu-24.04-arm }
     runs-on: ${{ matrix.runner }}
-    container: fedora:45
+    container: ${{ matrix.fedora.image }}
+    # A release that is not out yet may fail without failing the run.
+    continue-on-error: ${{ matrix.fedora.prerelease }}
     timeout-minutes: 150
     env:
       # ./build.sh applies the Mutter patch series as commits, which needs a committer.
@@ -81,7 +100,7 @@ jobs:
         run: tar --zstd -cf "$RUNNER_TEMP/prefix.tar.zst" -C "$RUNNER_TEMP/prefix" .
       - uses: actions/upload-artifact@v4
         with:
-          name: prefix-${{ inputs.release_tag }}-${{ matrix.arch }}
+          name: prefix-${{ inputs.release_tag }}-fc${{ matrix.fedora.release }}-${{ matrix.arch }}
           path: ${{ runner.temp }}/prefix.tar.zst
           if-no-files-found: error
           retention-days: 7
@@ -157,7 +176,7 @@ jobs:
           path: release-assets
       - uses: actions/download-artifact@v4
         with:
-          name: prefix-${{ inputs.release_tag }}-${{ matrix.arch }}
+          name: prefix-${{ inputs.release_tag }}-fc${{ inputs.fedora_source }}-${{ matrix.arch }}
           path: prefix-archive
       - name: Restore the pkgsmith build
         id: cache
@@ -183,10 +202,11 @@ jobs:
           version="$(tar -xOf "$bundle" --wildcards 'gnoblin-*/src/gnoblin-version.json' | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
           echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
       - name: Plan and write the packages
+        # The Fedora rpm is the job below. Everything else comes from the prefix of the shared_prefix release.
         run: |
           pkgsmith plugins
-          scripts/build-packages.sh --prefix prefix --output dist --version "$PACKAGE_VERSION"
-          scripts/build-packages.sh --prefix prefix-musl --output dist --version "$PACKAGE_VERSION"
+          scripts/build-packages.sh --prefix prefix --output dist --lanes other --version "$PACKAGE_VERSION"
+          scripts/build-packages.sh --prefix prefix-musl --output dist --lanes other --version "$PACKAGE_VERSION"
       - name: Check the package definitions and that the rpms stay out of GNOME's way
         run: |
           sudo apt-get install -y -qq rpm
@@ -194,8 +214,8 @@ jobs:
           python3 scripts/check-rpm-isolation.py dist/*.rpm
       - name: List the files of every package
         run: |
-          scripts/build-packages.sh --prefix prefix --list --version "$PACKAGE_VERSION" | tail -n 400
-          scripts/build-packages.sh --prefix prefix-musl --list --version "$PACKAGE_VERSION" | tail -n 400
+          scripts/build-packages.sh --prefix prefix --lanes other --list --version "$PACKAGE_VERSION" | tail -n 400
+          scripts/build-packages.sh --prefix prefix-musl --lanes other --list --version "$PACKAGE_VERSION" | tail -n 400
       - name: Give the Arch packages names that an artifact keeps
         # The epoch makes an Arch file name hold a colon (gnoblin-1:0.1.13-1-x86_64.pkg.tar.zst). An artifact refuses a
         # colon and a GitHub release turns it into a dot, which would no longer match SHA256SUMS. pacman reads the name
@@ -212,6 +232,64 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+  packages-fedora:
+    name: packages (fc${{ matrix.fedora.release }}, ${{ matrix.arch }})
+    needs: prefix
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: ${{ fromJSON(inputs.fedora_releases) }}
+        arch: [amd64, arm64]
+    runs-on: ubuntu-latest
+    continue-on-error: ${{ matrix.fedora.prerelease }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: gnoblin-${{ inputs.release_tag }}
+          path: release-assets
+      - uses: actions/download-artifact@v4
+        with:
+          name: prefix-${{ inputs.release_tag }}-fc${{ matrix.fedora.release }}-${{ matrix.arch }}
+          path: prefix-archive
+      - name: Restore the pkgsmith build
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/gnoblin/pkgsmith
+          key: pkgsmith-${{ runner.os }}-${{ hashFiles('scripts/pkgsmith.ref') }}
+      - name: Build pkgsmith
+        run: echo "$(scripts/install-pkgsmith.sh)" >> "$GITHUB_PATH"
+      - name: Unpack the prefix
+        run: |
+          mkdir prefix
+          tar --zstd -xf prefix-archive/prefix.tar.zst -C prefix
+      - name: Read the version the source bundle was built with
+        run: |
+          bundle="$(find release-assets -maxdepth 1 -name 'gnoblin-*-source.tar.xz' -print -quit)"
+          version="$(tar -xOf "$bundle" --wildcards 'gnoblin-*/src/gnoblin-version.json' | python3 -c 'import json, sys; print(json.load(sys.stdin)["version"])')"
+          echo "PACKAGE_VERSION=$version" >> "$GITHUB_ENV"
+      - name: Write the Fedora rpms
+        # The prefix was built on this release, so the rpms ask for the glibc and the libraries that it has.
+        env:
+          FEDORA_RELEASE: ${{ matrix.fedora.release }}
+        run: |
+          pkgsmith plugins
+          scripts/build-packages.sh --prefix prefix --output dist --lanes fedora --fedora "$FEDORA_RELEASE" --version "$PACKAGE_VERSION"
+      - name: Check that the rpms stay out of GNOME's way
+        run: |
+          sudo apt-get install -y -qq rpm
+          python3 scripts/check-rpm-isolation.py dist/*.rpm
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ inputs.release_tag }}-fc${{ matrix.fedora.release }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
   install:
     name: install (${{ matrix.system }}, ${{ matrix.arch }})
     needs: packages
@@ -219,9 +297,8 @@ jobs:
       fail-fast: false
       matrix:
         arch: [amd64, arm64]
-        system: [fedora, opensuse, arch, debian, alpine]
+        system: [opensuse, arch, debian, alpine]
         include:
-          - { system: fedora, image: "fedora:45" }
           - { system: opensuse, image: "registry.opensuse.org/opensuse/tumbleweed:latest" }
           - { system: arch, image: "archlinux:base" }
           - { system: debian, image: "debian:testing" }
@@ -252,3 +329,32 @@ jobs:
           if [ "$SYSTEM" = alpine ]; then prepare='apk add --no-cache bash'; fi
           docker run --rm --volume "$GITHUB_WORKSPACE:/work" --workdir /work --env PREPARE="$prepare" "$IMAGE" \
             sh -euc 'eval "$PREPARE" && exec bash ./scripts/check-package-install.sh packages'
+
+  install-fedora:
+    name: install (fc${{ matrix.fedora.release }}, ${{ matrix.arch }})
+    needs: packages-fedora
+    strategy:
+      fail-fast: false
+      matrix:
+        fedora: ${{ fromJSON(inputs.fedora_releases) }}
+        arch: [amd64, arm64]
+        include:
+          - { arch: amd64, runner: ubuntu-latest }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    continue-on-error: ${{ matrix.fedora.prerelease }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: packages-${{ inputs.release_tag }}-fc${{ matrix.fedora.release }}-${{ matrix.arch }}
+          path: packages
+      - name: Install, coexist with stock GNOME and remove
+        env:
+          IMAGE: ${{ matrix.fedora.image }}
+        run: |
+          docker run --rm --volume "$GITHUB_WORKSPACE:/work" --workdir /work "$IMAGE" \
+            bash ./scripts/check-package-install.sh packages
