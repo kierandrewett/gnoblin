@@ -50,7 +50,7 @@ The same context authorizes keyboard snapping. Inside the event callback, call
 In `gnoblinctl lua`, both calls wait for their results on the event connection.
 
 `gnoblin.focus.history(filter?)` returns read-only `Window` records in
-most-recently-focused order. The optional filter accepts string workspace and
+order of last focus. The optional filter accepts string workspace and
 monitor IDs plus an integer `limit` from 1 to 256 (default 50):
 
 ```lua
@@ -158,7 +158,7 @@ if status.lock_available then
 end
 ```
 
-`gnoblin.session.activity()` returns the latest idle-monitor sample as a
+`gnoblin.session.activity()` returns an idle-monitor sample as a
 read-only `SessionActivity` record:
 
 ```lua

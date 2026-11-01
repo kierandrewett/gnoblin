@@ -11,7 +11,7 @@ host session services.
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | `status`                                                          | Read live session state and lock availability (API 1.29+)                |
 | `logout`                                                          | End the session and return to the login manager (API 1.32+)              |
-| `session activity`                                                | Read the latest idle-monitor sample (API 1.24+)                          |
+| `session activity`                                                | Read the idle-monitor sample (API 1.24+)                                 |
 | `session lock`                                                    | Ask a subscribed shell client to lock the session (API 1.21+)            |
 | `ping`                                                            | Check whether the compositor control socket responds                     |
 | `version`                                                         | Read the running compositor build identity                               |
@@ -50,7 +50,7 @@ monitor, as printed by the matching list command.
 
 ## Session state
 
-`session activity` reports the latest native idle-monitor sample. If the
+`session activity` reports the native idle-monitor sample. If the
 session has no idle monitor, the response reports that activity data is
 unavailable.
 
