@@ -46,7 +46,7 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl session hibernate`                 | Hibernate the machine                                        |
 | `gnoblinctl session reboot`                    | Restart the machine                                          |
 | `gnoblinctl session poweroff`                  | Shut the machine down                                        |
-| `gnoblinctl session activity`                  | Read the latest idle-monitor sample                          |
+| `gnoblinctl session activity`                  | Read the idle-monitor sample                                 |
 | `gnoblinctl session lock`                      | Ask a subscribed external shell client to lock the session   |
 | `gnoblinctl window list`                       | Find open windows and their IDs                              |
 | `gnoblinctl window match`                      | Show the values a window rule can match                      |
@@ -64,7 +64,7 @@ Run commands from a terminal inside Gnoblin:
 | `gnoblinctl shortcut actions [GROUP]`          | List built-in shortcut actions, optionally by group          |
 | `gnoblinctl shortcut capture`                  | Capture a key combination as a shortcut binding              |
 | `gnoblinctl capabilities`                      | List compositor and protocol capabilities                    |
-| `gnoblinctl focus history`                     | List recently focused windows                                |
+| `gnoblinctl focus history`                     | List windows in focus order                                  |
 | `gnoblinctl focus policy`                      | Show the committed focus policy                              |
 | `gnoblinctl config show`                       | Show the committed settings snapshot                         |
 | `gnoblinctl lua`                               | Open a local Lua console for the session API                 |

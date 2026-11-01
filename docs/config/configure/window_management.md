@@ -89,7 +89,7 @@ Set any of them in your own config to change it.
 - `"click"` focuses a window when you click it. Moving the pointer does not
   change focus.
 - `"hover"` focuses a window when the pointer enters it. If the pointer
-  leaves all windows, focus returns to the most recently used eligible window.
+  leaves all windows, focus returns to the last window you used that can take focus.
 - `"hover-strict"` also focuses on pointer entry, but clears focus when the pointer
   leaves all windows.
 
@@ -147,8 +147,8 @@ preference cache while Gnoblin is running. This does not override GTK settings
 in external renderers or client applications.
 
 `focus_new_windows` controls when app activation requests can focus a window.
-Mutter's standard policy has two choices. The [GNOME Shell team's
-focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/)
+Mutter's standard policy has two choices. The
+[focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/)
 explains why the modes differ.
 
 - `"prevent"` enables Mutter's focus-stealing prevention. It is the compositor's value when the
@@ -178,8 +178,8 @@ Declare named workspaces in the top-level `workspaces` field of
 The legacy `workspace_ids`, `workspace_names`, and `num_workspaces` fields are
 rejected; put IDs and names in top-level `workspaces` entries.
 
-Each entry has a required `id` and `name`. Names must be nonempty and no longer
-than 80 characters. IDs must be unique and match
+Each entry has a required `id` and `name`. Names must be nonempty and at most
+80 characters. IDs must be unique and match
 `^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`.
 
 Declare at least one workspace. List order sets their initial positions.

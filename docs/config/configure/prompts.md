@@ -11,13 +11,13 @@ gnoblin.configure {
 ```
 
 Programs such as `gnome-keyring` and `pinentry-gnome3` ask a prompter service
-on the session bus for a passphrase. In a GNOME session `gcr-prompter` is that
-service. When `prompts.enabled` is `true`, Gnoblin takes its place and
-publishes each prompt as an event. Your config or shell shows the prompt and
-returns the answer. See [Answer keyring and GPG prompts](/shell-api/passphrase-prompts).
+on the session bus for a passphrase. When `prompts.enabled` is `true`, Gnoblin
+takes that role and publishes each prompt as an event. Your config or shell
+shows the prompt and returns the answer. See
+[Answer keyring and GPG prompts](/shell-api/passphrase-prompts).
 
-| Field     | Type and accepted values | Default | Effect                                                              |
-| --------- | ------------------------ | ------- | ------------------------------------------------------------------- |
+| Field     | Type and accepted values | Default | Effect                                                                |
+| --------- | ------------------------ | ------- | --------------------------------------------------------------------- |
 | `enabled` | Boolean                  | `false` | `true` serves keyring and GPG prompts. `false` leaves them to others. |
 
 No other field is accepted. Gnoblin rejects a `prompts` value that is not a

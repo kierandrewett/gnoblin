@@ -1,6 +1,6 @@
 # Input and interaction
 
-`gnoblin.input.devices()` returns read-only records from the latest native
+`gnoblin.input.devices()` returns read-only records from the native
 input-device snapshot. It takes no arguments and is available in runtime event
 callbacks after startup. The read raises a Lua error if its snapshot is
 unavailable.
@@ -151,7 +151,7 @@ Scroll events include `dx`, `dy`, and `direction`: `"up"`, `"down"`, `"left"`,
 
 Gesture events include `dx`, `dy`, and `fingers`; pinch events also include
 `scale` and `angle_delta`. Tablet-pad events include `number`, `mode`, and
-`value`; `kind` is `"button"`, `"ring"`, `"strip"`, or `"dial"`. Tablet tools currently arrive as pointer events, not tablet-pad events.
+`value`; `kind` is `"button"`, `"ring"`, `"strip"`, or `"dial"`. Tablet tools arrive as pointer events, not tablet-pad events.
 
 Touch events include the integer `slot` identifying their current contact.
 
@@ -306,7 +306,7 @@ Rectangles use integer logical coordinates and `{x, y, width, height}` fields.
 Both must fit in the current work area. Modifier arrays accept only `control`,
 which cannot be both required and forbidden.
 
-On release, Mutter checks the latest accepted offer against the actual pointer
+On release, Mutter checks the last accepted offer against the actual pointer
 and modifiers. A match applies its frame; otherwise Mutter completes the
 normal move or tile-preview behavior. The shell owns snap guides and other
 presentation.
@@ -349,7 +349,7 @@ The event contains:
   `switch_buttons`;
 - `features`: zero-based rings, strips, and dials with optional labels for
   clockwise, counterclockwise, up, or down actions;
-- `edition_mode`: whether the request is for editing; button help currently
+- `edition_mode`: whether the request is for editing; button help
   sends `false`.
 
 The event provides labels when available, but no image or popup. Draw and

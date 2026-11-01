@@ -198,8 +198,8 @@ their geometry-aware behavior.
 ## Built-in animations
 
 Preset names select definitions in Gnoblin's shared animation registry.
-Profiles named `gnome-*` follow GNOME Shell timing and motion where equivalent
-transitions exist.
+Profiles named `gnome-*` use the same timing and motion as the matching
+built-in transitions where they exist.
 
 Gnoblin also uses that naming family for its layer-shell and shadow events.
 Those profiles belong to Gnoblin.
@@ -318,5 +318,5 @@ the original visual state. The CLI lists which animations are previewable
 against window or layer targets.
 
 Workspace and shadow transitions animate internal actors or effects and
-cannot currently be previewed against those targets. See
+cannot be previewed against those targets. See
 [gnoblinctl animation commands](/cli/#animations).
