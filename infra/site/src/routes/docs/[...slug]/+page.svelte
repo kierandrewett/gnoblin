@@ -65,11 +65,12 @@
         align-items: start;
     }
 
-    /* Both side columns stretch to the article's height so their sticky children have room to stick. */
+    /* Both side columns stretch to the article's height so their sticky children have room to stick. They start
+       32 px under the header, the same as their sticky top, so nothing moves when the reader starts to scroll. */
     .nav-col,
     .toc-col {
         align-self: stretch;
-        padding-top: var(--s-8);
+        padding-top: var(--s-6);
     }
 
     .nav-col {

@@ -1,7 +1,8 @@
 // Quality gate for the built site: opens key pages in headless Chrome, in light and dark, on a desktop and a phone
 // viewport, and fails on console errors, failed requests, horizontal overflow or images that do not load. It also
-// checks that search finds a page and that the docs outline sticks under the header. Run `yarn build`, then
-// `yarn test:pages` (it starts its own server on build/).
+// checks search, that the docs navigation and outline sit 32 px under the header from the first pixel of scroll,
+// and that the header is laid out the same on every page. Run `yarn build`, then `yarn test:pages` (it starts its
+// own server on build/).
 //
 // Options: --base URL (use a running server instead), --shots DIR (save full-page screenshots there).
 // CHROME points at the browser (default: google-chrome, google-chrome-stable or chromium on PATH).
@@ -206,27 +207,88 @@ for (const [vpName, viewport] of [
     }
 }
 
-// The docs outline sticks 32 px under the header: scroll a long page and expect its top to stay put.
+// The docs navigation and outline sit 32 px under the header from scroll 0, so nothing moves when the reader
+// starts to scroll, and stay there on a long page.
 {
     const page = await browser.newPage({ viewport: VIEWPORTS.desktop });
     await page.goto(`${base}/docs/bridge/connection`, { waitUntil: "networkidle" });
     const tops = [];
-    for (const y of [0, 1500, 3000]) {
+    for (const y of [0, 80, 1500, 3000]) {
         const at = await page.evaluate((y) => {
             window.scrollTo(0, y);
-            const header = document.querySelector("header.topbar").getBoundingClientRect().height;
-            const toc = document.querySelector("aside.toc").getBoundingClientRect().top;
-            return { y: window.scrollY, header, toc };
+            const top = (sel) => document.querySelector(sel).getBoundingClientRect().top;
+            return {
+                y: window.scrollY,
+                header: top("header.topbar") + document.querySelector("header.topbar").offsetHeight,
+                nav: top(".nav-sticky"),
+                toc: top("aside.toc"),
+            };
         }, y);
-        tops.push(`${at.y}px: ${at.toc}px`);
-        if (y === 0) continue;
-        if (at.y !== y) failures.push(`outline: page too short to scroll to ${y}px`);
-        else if (Math.abs(at.toc - (at.header + 32)) > 0.5) {
-            failures.push(`outline: top is ${at.toc}px at ${y}px of scroll, expected ${at.header + 32}px`);
+        tops.push(`${at.y}px: nav ${at.nav}px, outline ${at.toc}px`);
+        const expected = at.header + 32;
+        if (at.y !== y) failures.push(`sticky: page too short to scroll to ${y}px`);
+        for (const [name, value] of [
+            ["navigation", at.nav],
+            ["outline", at.toc],
+        ]) {
+            if (Math.abs(value - expected) > 0.5) {
+                failures.push(`sticky: ${name} top is ${value}px at ${y}px of scroll, expected ${expected}px`);
+            }
         }
     }
-    console.log(`Outline top by scroll position: ${tops.join(", ")}`);
+    console.log(`Navigation and outline top by scroll position: ${tops.join("; ")}`);
     await page.close();
+}
+
+// One header: at each width, its height and the x of the mark, the site links, search and the right-hand controls
+// are the same on every page.
+{
+    const routes = [
+        "/",
+        "/install",
+        "/bingux",
+        "/docs",
+        "/docs/bridge/connection",
+        "/credits",
+        "/this-page-does-not-exist",
+    ];
+    for (const width of [1440, 1100, 900, 390]) {
+        const page = await browser.newPage({ viewport: { width, height: 900 } });
+        let reference = null;
+        for (const url of routes) {
+            await page.goto(base + url, { waitUntil: "networkidle" });
+            const geometry = await page.evaluate(() => {
+                const header = document.querySelector("header.topbar");
+                const xs = (sel) =>
+                    [...header.querySelectorAll(sel)]
+                        .map((el) => el.getBoundingClientRect())
+                        .filter((r) => r.width > 0)
+                        .map((r) => Math.round(r.x * 10) / 10);
+                return {
+                    height: header.getBoundingClientRect().height,
+                    logo: xs(".brand"),
+                    nav: xs(".site a"),
+                    search: xs(".search-field"),
+                    right: xs(".proj a, .compact > *"),
+                };
+            });
+            if (shots) {
+                await page.screenshot({
+                    path: path.join(shots, `header-${width}-${url.replace(/^\/$/, "home").replace(/\//g, "_")}.png`),
+                    clip: { x: 0, y: 0, width, height: 64 },
+                });
+            }
+            if (!reference) {
+                reference = geometry;
+                console.log(`Header at ${width}px: ${JSON.stringify(geometry)}`);
+            } else if (JSON.stringify(geometry) !== JSON.stringify(reference)) {
+                failures.push(
+                    `header: ${url} at ${width}px is ${JSON.stringify(geometry)}, / is ${JSON.stringify(reference)}`,
+                );
+            }
+        }
+        await page.close();
+    }
 }
 
 await browser.close();

@@ -39,11 +39,7 @@
 </svelte:head>
 
 <a class="skip-link" href="#main">Skip to content</a>
-<TopBar
-    {area}
-    variant={docsPage ? "docs" : route === "/bingux" ? "clear" : "page"}
-    docsSlug={docsPage ? docsPage.slug : null}
-/>
+<TopBar {area} docsSlug={docsPage ? docsPage.slug : null} />
 <main id="main" tabindex="-1">
     {@render children()}
 </main>

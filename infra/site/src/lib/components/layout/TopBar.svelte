@@ -1,7 +1,9 @@
 <script lang="ts">
-    // The site header: mark and name, the main nav, search, Source, Issues and Releases, and the appearance toggle.
-    // It is the page colour until the page scrolls, then gains a rule and a blur (CSS scroll-driven, skipped with
-    // reduced motion). Below 1024 px it shows the mark, search and a menu button that opens MenuSheet.
+    // The site header, the same on every page: mark and name, the main nav, search, Source, Issues and Releases,
+    // and the appearance toggle. From 1280 px it sits on the docs page grid (the mark over the navigation, the site
+    // links and search over the centred 720 px column, the project links over the outline). It is the page colour
+    // until the page scrolls, then gains a rule and a blur (CSS scroll-driven; with reduced motion the rule is
+    // always there). Below 1024 px it shows the mark, search and a menu button that opens MenuSheet.
     import { PROJECT_LINKS, SITE_NAV, type SiteArea } from "#lib/site.ts";
     import { search } from "#lib/state.svelte.ts";
     import SearchField from "../search/SearchField.svelte";
@@ -11,26 +13,19 @@
     import ThemeToggle from "../ui/ThemeToggle.svelte";
     import MenuSheet from "./MenuSheet.svelte";
 
-    let {
-        area = null,
-        variant = "page",
-        docsSlug = null,
-    }: {
-        area?: SiteArea | null;
-        /** page: centred and flush; docs: on the docs page grid, ruled once scrolled; clear: no fill until scrolled (Bingux). */
-        variant?: "page" | "docs" | "clear";
-        docsSlug?: string | null;
-    } = $props();
+    let { area = null, docsSlug = null }: { area?: SiteArea | null; docsSlug?: string | null } = $props();
 
     let menuOpen = $state(false);
 </script>
 
-<header class={["topbar", variant]}>
-    <div class={["inner", variant !== "docs" && "wrap"]}>
+<header class="topbar">
+    <div class="inner">
         <a class="brand" href="/"><Mark height={26} /><span>Gnoblin</span></a>
         <nav class="site" aria-label="Main">
             {#each SITE_NAV as item (item.href)}
-                <a href={item.href} aria-current={item.area === area ? "page" : undefined}>{item.label}</a>
+                <a href={item.href} data-label={item.label} aria-current={item.area === area ? "page" : undefined}
+                    >{item.label}</a
+                >
             {/each}
         </nav>
         <div class="tools">
@@ -62,6 +57,7 @@
 <MenuSheet bind:open={menuOpen} {docsSlug} {area} />
 
 <style>
+    /* The rule is an inset shadow, so it never changes the height. */
     .topbar {
         position: sticky;
         top: 0;
@@ -69,28 +65,13 @@
         height: var(--topbar-h);
         background: var(--bg);
         color: var(--ink);
-    }
-
-    /* Docs pages: a rule from the start only when the scroll-driven rule below cannot run. */
-    .topbar.docs {
         box-shadow: inset 0 -1px 0 var(--line);
     }
 
     @media (prefers-reduced-motion: no-preference) {
         @supports (animation-timeline: scroll()) {
-            .topbar.docs {
-                box-shadow: none;
-            }
-        }
-    }
-
-    .topbar.clear {
-        background: transparent;
-    }
-
-    @media (prefers-reduced-motion: no-preference) {
-        @supports (animation-timeline: scroll()) {
             .topbar {
+                box-shadow: none;
                 animation: scrolled linear both;
                 animation-timeline: scroll(root);
                 animation-range: 0 8px;
@@ -110,55 +91,12 @@
         height: 100%;
         display: flex;
         align-items: center;
-        gap: var(--s-6);
+        gap: var(--s-5);
+        padding: 0 var(--s-5);
     }
 
     .end {
         display: contents;
-    }
-
-    /* Docs pages from 1280 px: the page's three columns. The mark sits over the navigation, the site links and
-       search over the article, and the project links and appearance over the outline. */
-    @media (min-width: 1280px) {
-        .topbar.docs .inner {
-            padding: 0;
-            display: grid;
-            grid-template-columns:
-                minmax(0, 1fr) min(var(--measure), 100% - 2 * var(--page-pad))
-                minmax(0, 1fr);
-            column-gap: var(--s-8);
-        }
-
-        .docs .brand {
-            grid-column: 1;
-            justify-self: end;
-            width: var(--nav-w);
-        }
-
-        .docs .site {
-            grid-area: 1 / 2;
-            justify-self: start;
-        }
-
-        .docs .tools {
-            display: contents;
-        }
-
-        .docs .tools > :global(.search-field) {
-            grid-area: 1 / 2;
-            justify-self: end;
-        }
-
-        .docs .end {
-            grid-column: 3;
-            display: flex;
-            align-items: center;
-            gap: var(--s-4);
-        }
-    }
-
-    .docs .inner {
-        padding: 0 var(--s-5);
     }
 
     .brand {
@@ -172,13 +110,24 @@
 
     .site {
         display: flex;
-        gap: var(--s-6);
+        gap: var(--s-5);
     }
 
     .site a {
+        display: inline-flex;
+        flex-direction: column;
         font-size: 13px;
         color: var(--ink-2);
         transition: color var(--dur-1) var(--ease);
+    }
+
+    /* Each link reserves the width of its bold form, so marking the current area moves nothing. */
+    .site a::after {
+        content: attr(data-label);
+        height: 0;
+        overflow: hidden;
+        visibility: hidden;
+        font-weight: 600;
     }
 
     .site a:hover,
@@ -200,7 +149,7 @@
     .proj {
         display: flex;
         align-items: center;
-        gap: var(--s-5);
+        gap: var(--s-4);
         font-size: 13px;
         color: var(--ink-2);
     }
@@ -229,13 +178,41 @@
         gap: var(--s-1);
     }
 
-    @media (max-width: 1199px) {
-        .inner,
-        .site {
-            gap: var(--s-5);
+    /* From 1280 px: the docs page's three columns. */
+    @media (min-width: 1280px) {
+        .inner {
+            display: grid;
+            grid-template-columns:
+                minmax(0, 1fr) min(var(--measure), 100% - 2 * var(--page-pad))
+                minmax(0, 1fr);
+            column-gap: var(--s-8);
+            padding: 0;
         }
 
-        .proj {
+        .brand {
+            grid-column: 1;
+            justify-self: end;
+            width: var(--nav-w);
+        }
+
+        .site {
+            grid-area: 1 / 2;
+            justify-self: start;
+        }
+
+        .tools {
+            display: contents;
+        }
+
+        .tools > :global(.search-field) {
+            grid-area: 1 / 2;
+            justify-self: end;
+        }
+
+        .end {
+            grid-column: 3;
+            display: flex;
+            align-items: center;
             gap: var(--s-4);
         }
     }
@@ -250,12 +227,8 @@
             display: flex;
         }
 
-        .docs .inner {
+        .inner {
             padding: 0 var(--s-2) 0 var(--page-pad);
-        }
-
-        .inner.wrap {
-            padding-right: var(--s-2);
         }
     }
 </style>
