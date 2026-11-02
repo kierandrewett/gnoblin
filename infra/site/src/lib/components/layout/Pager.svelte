@@ -21,21 +21,20 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: var(--s-4);
-        margin-top: var(--s-5);
+        margin-top: var(--s-6);
     }
 
+    /* Plain links, no cards: a quiet label above the teal title. */
     a {
         display: flex;
         flex-direction: column;
         gap: 2px;
-        padding: var(--s-4) var(--s-5);
-        border-radius: var(--r-md);
-        background: var(--bg-alt);
-        transition: background var(--dur-1) var(--ease);
+        padding: var(--s-2) 0;
     }
 
-    a:hover {
-        background: var(--line);
+    a:hover .ttl {
+        text-decoration: underline;
+        text-underline-offset: 3px;
     }
 
     .dir {
@@ -44,7 +43,7 @@
     }
 
     .ttl {
-        font-size: 17px;
+        font-size: 16px;
         font-weight: 600;
         color: var(--accent);
     }

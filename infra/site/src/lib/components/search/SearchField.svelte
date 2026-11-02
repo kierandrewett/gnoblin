@@ -2,6 +2,7 @@
     // The search field in the header, the menu sheet and the 404 page. It opens the search dialog.
     import Icon from "../ui/Icon.svelte";
     import { search } from "#lib/state.svelte.ts";
+    import { warm } from "./pagefind.ts";
 
     let { size = "md", keys = true }: { size?: "md" | "lg" | "block"; keys?: boolean } = $props();
 </script>
@@ -11,6 +12,8 @@
     class={["search-field", size]}
     aria-keyshortcuts="Control+K Meta+K /"
     onclick={() => (search.open = true)}
+    onpointerenter={() => void warm()}
+    onfocus={() => void warm()}
 >
     <Icon name="search" size={size === "lg" ? 20 : 16} />
     <span>Search the docs</span>

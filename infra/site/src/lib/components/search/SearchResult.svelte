@@ -1,36 +1,24 @@
 <script lang="ts">
+    // One option in the results: a page (title, section path, excerpt) or a heading inside a page.
     import Icon from "../ui/Icon.svelte";
-    import type { Hit } from "./hit.ts";
+    import { highlight, type Row } from "./hit.ts";
 
     let {
-        hit,
+        row,
         query,
         id,
         selected,
         onselect,
         onhover,
-    }: { hit: Hit; query: string; id: string; selected: boolean; onselect: () => void; onhover: () => void } = $props();
+    }: { row: Row; query: string; id: string; selected: boolean; onselect: () => void; onhover: () => void } = $props();
 
-    // The words of the query, marked where they appear in the title.
-    const parts = $derived.by(() => {
-        const words = query
-            .trim()
-            .split(/\s+/)
-            .filter(Boolean)
-            .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-        if (!words.length) return [{ text: hit.title, mark: false }];
-        const re = new RegExp(`(${words.join("|")})`, "gi");
-        // split() with a capturing group puts the matches at the odd indexes.
-        return hit.title
-            .split(re)
-            .map((text, i) => ({ text, mark: i % 2 === 1 }))
-            .filter((p) => p.text);
-    });
+    const title = $derived(highlight(row.title, query));
+    const trail = $derived(row.kind === "page" ? highlight(row.trail, query) : []);
 </script>
 
 <div
     {id}
-    class="result"
+    class={["result", row.kind]}
     role="option"
     aria-selected={selected}
     tabindex="-1"
@@ -38,12 +26,23 @@
     onkeydown={(event) => event.key === "Enter" && onselect()}
     onmousemove={onhover}
 >
-    <span class="ri"><Icon name={hit.kind === "page" ? "page" : "hash"} size={17} /></span>
+    <span class="ri"><Icon name={row.kind === "page" ? "page" : "hash"} size={row.kind === "page" ? 17 : 15} /></span>
     <span class="text">
-        <span class="rt"
-            >{#each parts as p, i (i)}{#if p.mark}<mark>{p.text}</mark>{:else}{p.text}{/if}{/each}</span
-        >
-        {#if hit.path}<span class="rp">{hit.path}</span>{/if}
+        <span class="head">
+            <span class="rt"
+                >{#each title as p, i (i)}{#if p.mark}<mark>{p.text}</mark>{:else}{p.text}{/if}{/each}</span
+            >
+            {#if trail.length}
+                <span class="rp"
+                    >{#each trail as p, i (i)}{#if p.mark}<mark>{p.text}</mark>{:else}{p.text}{/if}{/each}</span
+                >
+            {/if}
+        </span>
+        {#if row.excerpt.length}
+            <span class="ex"
+                >{#each row.excerpt as p, i (i)}{#if p.mark}<mark>{p.text}</mark>{:else}{p.text}{/if}{/each}</span
+            >
+        {/if}
     </span>
     <span class="enter"><Icon name="enter" size={18} /></span>
 </div>
@@ -52,11 +51,17 @@
     .result {
         display: grid;
         grid-template-columns: 32px 1fr auto;
-        align-items: center;
+        align-items: start;
         gap: var(--s-3);
         padding: 10px var(--s-3);
         border-radius: var(--r-sm);
         cursor: pointer;
+    }
+
+    .heading {
+        grid-template-columns: 24px 1fr auto;
+        margin-left: var(--s-6);
+        padding-block: 6px;
     }
 
     .ri {
@@ -69,10 +74,23 @@
         color: var(--ink-3);
     }
 
+    .heading .ri {
+        width: 24px;
+        height: 24px;
+        background: none;
+    }
+
     .text {
         display: flex;
         flex-direction: column;
         min-width: 0;
+    }
+
+    .head {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        column-gap: var(--s-3);
     }
 
     .rt {
@@ -82,10 +100,27 @@
         overflow-wrap: anywhere;
     }
 
+    .heading .rt {
+        font-size: 14px;
+        line-height: 20px;
+    }
+
     .rp {
         font-size: 13px;
         line-height: 20px;
         color: var(--ink-3);
+    }
+
+    .ex {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        font-size: 13px;
+        line-height: 20px;
+        color: var(--ink-2);
     }
 
     mark {
@@ -96,6 +131,7 @@
 
     .enter {
         opacity: 0;
+        align-self: center;
     }
 
     .result[aria-selected="true"] {
@@ -104,8 +140,14 @@
     }
 
     .result[aria-selected="true"] .rp,
+    .result[aria-selected="true"] .ex,
     .result[aria-selected="true"] mark {
         color: var(--on-accent);
+    }
+
+    .result[aria-selected="true"] mark {
+        text-decoration: underline;
+        text-underline-offset: 2px;
     }
 
     .result[aria-selected="true"] .ri {
@@ -115,5 +157,11 @@
 
     .result[aria-selected="true"] .enter {
         opacity: 1;
+    }
+
+    @media (max-width: 733px) {
+        .heading {
+            margin-left: var(--s-4);
+        }
     }
 </style>

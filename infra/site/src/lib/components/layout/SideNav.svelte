@@ -52,13 +52,13 @@
                                 aria-label="{expanded ? 'Hide' : 'Show'} pages in {item.label}"
                                 onclick={() => toggle(key)}
                             >
-                                <Icon name={expanded ? "chevron-down" : "chevron-right"} size={14} />
+                                <Icon name={expanded ? "chevron-down" : "chevron-right"} size={12} />
                             </button>
                         {:else}
                             <button type="button" class="group" aria-expanded={expanded} onclick={() => toggle(key)}>
                                 {item.label}
                                 <span class="chev-icon"
-                                    ><Icon name={expanded ? "chevron-down" : "chevron-right"} size={14} /></span
+                                    ><Icon name={expanded ? "chevron-down" : "chevron-right"} size={12} /></span
                                 >
                             </button>
                         {/if}
@@ -80,7 +80,7 @@
         <div class="sec">
             <button type="button" class="sec-h" aria-expanded={expanded} onclick={() => toggle(section.id)}>
                 {section.label}
-                <Icon name={expanded ? "chevron-down" : "chevron-right"} size={14} />
+                <Icon name={expanded ? "chevron-down" : "chevron-right"} size={12} />
             </button>
             {#if expanded}{@render items(section.items, section.id)}{/if}
         </div>
@@ -89,7 +89,7 @@
 
 <style>
     .sidenav {
-        padding: var(--s-6) var(--s-4) var(--s-8) var(--s-5);
+        padding: 0 0 var(--s-8);
     }
 
     .sidenav.sheet {
@@ -106,9 +106,8 @@
         justify-content: space-between;
         width: 100%;
         min-height: 32px;
-        padding: 0 10px;
+        padding: 0;
         margin-bottom: 4px;
-        border-radius: var(--r-sm);
         font-size: 13px;
         font-weight: 600;
         color: var(--ink);
@@ -121,15 +120,19 @@
         color: var(--ink-3);
     }
 
-    .sec-h:hover,
+    /* No hover or current-page boxes: colour alone shows them. */
     a:hover,
     .group:hover,
-    .chev:hover {
-        background: var(--sunken);
+    .chev:hover,
+    .sec-h:hover :global(svg) {
+        color: var(--ink);
     }
 
+    /* Child pages hang off a 1 px grey line. */
     ul ul {
-        margin: 2px 0 4px 14px;
+        margin: 0 0 var(--s-2) 1px;
+        padding-left: var(--s-4);
+        box-shadow: inset 1px 0 0 var(--line);
     }
 
     a,
@@ -138,13 +141,13 @@
         align-items: center;
         gap: var(--s-2);
         width: 100%;
-        min-height: 32px;
-        padding: 5px 10px;
-        border-radius: var(--r-sm);
+        min-height: 30px;
+        padding: 5px 0;
         font-size: 14px;
         line-height: 20px;
         color: var(--ink-2);
         text-align: left;
+        transition: color var(--dur-1) var(--ease);
     }
 
     .group {
@@ -173,12 +176,12 @@
         height: 28px;
         display: grid;
         place-items: center;
+        margin-right: -8px;
         border-radius: var(--r-sm);
     }
 
     a[aria-current="page"] {
-        background: var(--sunken);
-        color: var(--ink);
+        color: var(--accent);
         font-weight: 600;
     }
 

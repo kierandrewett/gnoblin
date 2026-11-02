@@ -1,6 +1,7 @@
 // Quality gate for the built site: opens key pages in headless Chrome, in light and dark, on a desktop and a phone
 // viewport, and fails on console errors, failed requests, horizontal overflow or images that do not load. It also
-// checks that search finds a page. Run `yarn build`, then `yarn test:pages` (it starts its own server on build/).
+// checks that search finds a page and that the docs outline sticks under the header. Run `yarn build`, then
+// `yarn test:pages` (it starts its own server on build/).
 //
 // Options: --base URL (use a running server instead), --shots DIR (save full-page screenshots there).
 // CHROME points at the browser (default: google-chrome, google-chrome-stable or chromium on PATH).
@@ -27,6 +28,8 @@ const PAGES = [
     "/docs/installation",
     "/docs/optional-packages",
     "/docs/bridge/examples",
+    "/docs/bridge/connection",
+    "/docs/install-arch",
     "/this-page-does-not-exist",
 ];
 const VIEWPORTS = {
@@ -116,20 +119,113 @@ for (const [vpName, viewport] of Object.entries(VIEWPORTS)) {
     }
 }
 
-// Search: open with Ctrl+K on a docs page, type, and expect a result that opens a page.
+// Search. From the home page and from a docs page, at desktop and phone sizes, light and dark: open the dialog, type,
+// and expect results that show a page title, its section trail, a count and a matching heading; open a heading and
+// land on that heading; check the empty state, the suggestions, Esc and where focus goes after the dialog closes.
+const SUGGESTIONS = ["install fedora", "keyboard shortcuts", "window rules", "mouse", "animations"];
+for (const [vpName, viewport] of [
+    ["desktop", VIEWPORTS.desktop],
+    ["phone", VIEWPORTS.phone],
+]) {
+    for (const scheme of ["light", "dark"]) {
+        const context = await browser.newContext({ viewport, colorScheme: scheme, reducedMotion: "reduce" });
+        const page = await context.newPage();
+        const fail = (message) => failures.push(`search [${vpName}, ${scheme}]: ${message}`);
+        const problems = [];
+        page.on("console", (msg) => msg.type() === "error" && problems.push(`console: ${msg.text()}`));
+        page.on("requestfailed", (req) => problems.push(`request failed: ${req.url()}`));
+        try {
+            const box = page.getByRole("combobox", { name: "Search the docs" });
+            const options = page.locator('#search-results [role="option"]');
+
+            // The search button opens the dialog; Esc closes it and focus goes back to the button.
+            await page.goto(`${base}/`, { waitUntil: "networkidle" });
+            if (vpName === "desktop") {
+                const button = page.getByRole("button", { name: "Search the docs" }).first();
+                await button.click();
+                await box.waitFor({ timeout: 5000 });
+                if (!(await box.evaluate((el) => el === document.activeElement))) fail("input is not focused on open");
+                await page.keyboard.press("Escape");
+                await page.locator("dialog.search[open]").waitFor({ state: "detached", timeout: 5000 });
+                if (!(await button.evaluate((el) => el === document.activeElement)))
+                    fail("focus did not return to the button");
+            }
+
+            // Results: title, trail, excerpt, count.
+            await page.goto(`${base}/docs`, { waitUntil: "networkidle" });
+            await page.keyboard.press("Control+k");
+            await box.fill("mouse");
+            await options.first().waitFor({ timeout: 10000 });
+            const first = options.first();
+            if (!(await first.locator(".rt").innerText()).trim()) fail("first result has no title");
+            const trails = await page.locator("#search-results .page .rp").allInnerTexts();
+            if (!trails.some((t) => t.includes(" › ")))
+                fail(`no result shows a section trail (${JSON.stringify(trails)})`);
+            if (!(await page.locator("#search-results .ex mark").count())) fail("no excerpt has a highlighted match");
+            const summary = (await page.locator(".summary").innerText()).trim();
+            if (!/^\d+ results?/.test(summary)) fail(`result count is "${summary}"`);
+            if (!(await page.locator("#search-results .heading").count())) fail("no result lists a matching heading");
+            if (shots) await page.screenshot({ path: path.join(shots, `search-${vpName}-${scheme}.png`) });
+
+            // A heading result opens the page at that heading.
+            const href = await page.evaluate(() => {
+                const row = document.querySelector("#search-results .heading");
+                return row?.id ?? null;
+            });
+            if (href) {
+                const index = Number(href.replace("search-hit-", ""));
+                for (let i = 0; i < index; i++) await page.keyboard.press("ArrowDown");
+                await page.keyboard.press("Enter");
+                await page.waitForURL((u) => u.hash !== "" && u.pathname !== "/docs", { timeout: 10000 });
+                const hash = decodeURIComponent(new URL(page.url()).hash.slice(1));
+                const target = await page.evaluate((id) => !!document.getElementById(id), hash);
+                if (!target) fail(`heading link ${page.url()} has no element with id "${hash}"`);
+            }
+
+            // Empty state and suggestions.
+            await page.keyboard.press("Control+k");
+            await box.fill("zzzqqq");
+            await page.getByText("No results for").waitFor({ timeout: 10000 });
+            for (const text of SUGGESTIONS) {
+                await box.fill(text);
+                try {
+                    await options.first().waitFor({ timeout: 10000 });
+                } catch {
+                    fail(`suggestion "${text}" finds nothing`);
+                }
+            }
+            await box.fill("");
+            await page.getByRole("button", { name: SUGGESTIONS[0] }).click();
+            await options.first().waitFor({ timeout: 10000 });
+            await page.keyboard.press("Escape");
+        } catch (error) {
+            fail(error.message.split("\n")[0]);
+        }
+        for (const p of problems) fail(p);
+        await context.close();
+    }
+}
+
+// The docs outline sticks 32 px under the header: scroll a long page and expect its top to stay put.
 {
     const page = await browser.newPage({ viewport: VIEWPORTS.desktop });
-    await page.goto(`${base}/docs`, { waitUntil: "networkidle" });
-    await page.keyboard.press("Control+k");
-    await page.getByRole("combobox", { name: "Search the docs" }).fill("mouse");
-    try {
-        await page.getByRole("option").first().waitFor({ timeout: 10000 });
-        if (shots) await page.screenshot({ path: path.join(shots, "search-desktop-light.png") });
-        await page.keyboard.press("Enter");
-        await page.waitForURL((u) => u.pathname !== "/docs", { timeout: 10000 });
-    } catch (error) {
-        failures.push(`search: ${error.message.split("\n")[0]}`);
+    await page.goto(`${base}/docs/bridge/connection`, { waitUntil: "networkidle" });
+    const tops = [];
+    for (const y of [0, 1500, 3000]) {
+        const at = await page.evaluate((y) => {
+            window.scrollTo(0, y);
+            const header = document.querySelector("header.topbar").getBoundingClientRect().height;
+            const toc = document.querySelector("aside.toc").getBoundingClientRect().top;
+            return { y: window.scrollY, header, toc };
+        }, y);
+        tops.push(`${at.y}px: ${at.toc}px`);
+        if (y === 0) continue;
+        if (at.y !== y) failures.push(`outline: page too short to scroll to ${y}px`);
+        else if (Math.abs(at.toc - (at.header + 32)) > 0.5) {
+            failures.push(`outline: top is ${at.toc}px at ${y}px of scroll, expected ${at.header + 32}px`);
+        }
     }
+    console.log(`Outline top by scroll position: ${tops.join(", ")}`);
     await page.close();
 }
 

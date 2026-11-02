@@ -5,7 +5,7 @@
 // 2. Writes small redirect pages for the old URLs. The VitePress site served docs pages at the root (/config,
 //    /install-fedora); they now live under /docs/. Older moved pages keep pointing at their new place too.
 // 3. Builds the Pagefind search index into build/pagefind/ from the docs pages (data-pagefind-body).
-import { copyFileSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as pagefind from "pagefind";
@@ -114,19 +114,41 @@ const MOVED = {
     "config/window_state_shortcuts": "guides/window_state_shortcuts",
     "config/window_snapping": "guides/window_snapping",
 };
+// Reference pages that were folded into other pages. Their root URLs and their /docs/ URLs both keep working.
+const FOLDED = {
+    "blur-fades": "background-effects",
+    "bridge-examples": "bridge/examples",
+    "compositor-bridge": "bridge",
+    "config/lua-events": "events",
+    "config/runtime-api": "shell-api",
+    "focus-transfer": "shell-api/focus-activation",
+    "launch-feedback": "shell-api/launch-feedback",
+    "shell-dbus-api": "dbus",
+};
+for (const [from, to] of Object.entries(FOLDED)) {
+    MOVED[from] = to;
+    MOVED[`docs/${from}`] = to;
+}
 for (const [from, to] of Object.entries(MOVED)) {
     if (!pages.has(to)) throw new Error(`Redirect target docs/${to}.md does not exist (from /${from})`);
     if (writeRedirect(from, docsUrl(to))) redirects++;
 }
 
 // 3. Search index.
-const { index, errors } = await pagefind.createIndex({});
+// Only the docs pages carry data-pagefind-body, so only they are read: docs.html and docs/**. The copy button's label
+// in each code block is not page text. The pages are written in British English and the site never serves another
+// language, so one language is forced. Pagefind also writes its own search UI, which the site does not use (it has
+// its own dialog, src/lib/components/search/); those files are removed so they are not deployed.
+const { index, errors } = await pagefind.createIndex({ forceLanguage: "en-gb", excludeSelectors: [".code-head"] });
 if (!index) throw new Error(`Pagefind: ${errors.join(", ")}`);
-const added = await index.addDirectory({ path: out });
+const added = await index.addDirectory({ path: out, glob: "{docs.html,docs/**/*.html}" });
 if (added.errors.length) throw new Error(`Pagefind: ${added.errors.join(", ")}`);
 const written = await index.writeFiles({ outputPath: path.join(out, "pagefind") });
 if (written.errors.length) throw new Error(`Pagefind: ${written.errors.join(", ")}`);
 await pagefind.close();
+for (const file of readdirSync(path.join(out, "pagefind"))) {
+    if (/^pagefind-(component-ui|modular-ui|ui|highlight)\./.test(file)) rmSync(path.join(out, "pagefind", file));
+}
 
 console.log(
     `postbuild: copied ${copied} files from docs/, wrote ${redirects} redirects, indexed ${added.page_count} pages`,

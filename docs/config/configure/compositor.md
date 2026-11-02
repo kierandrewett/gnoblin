@@ -6,8 +6,7 @@ Put these fields inside `gnoblin.configure {compositor = {...}}`. Changes apply
 on configuration reload. Omitted values keep the defaults shown below.
 
 Animations run only when selected through animation declarations or window
-rules. There is no global animation switch. See the
-[animation guide](/guides/animations).
+rules. See the [animation guide](/guides/animations).
 
 | Key                  | Values                                  | Default              | Effect                                                            |
 | -------------------- | --------------------------------------- | -------------------- | ----------------------------------------------------------------- |

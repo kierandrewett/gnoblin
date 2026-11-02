@@ -23,7 +23,7 @@
         contrib: "docs",
     };
 
-    // The home page has no header bar and its own one-line footer; docs pages use the full-width ruled header.
+    // The home page and the docs pages share the header bar and the centred one-line footer.
     const route = $derived(page.route.id ?? "");
     const docsPage = $derived<DocsPage | undefined>(route.startsWith("/docs") ? page.data.page : undefined);
     const area = $derived.by((): SiteArea | null => {
@@ -39,16 +39,14 @@
 </svelte:head>
 
 <a class="skip-link" href="#main">Skip to content</a>
-{#if route !== "/"}
-    <TopBar
-        {area}
-        variant={docsPage ? "docs" : route === "/bingux" ? "clear" : "page"}
-        docsSlug={docsPage ? docsPage.slug : null}
-    />
-{/if}
+<TopBar
+    {area}
+    variant={docsPage ? "docs" : route === "/bingux" ? "clear" : "page"}
+    docsSlug={docsPage ? docsPage.slug : null}
+/>
 <main id="main" tabindex="-1">
     {@render children()}
 </main>
-<Footer variant={route === "/" ? "home" : "site"} />
+<Footer variant={route === "/" || docsPage ? "home" : "site"} />
 <SearchDialog />
 <div class="visually-hidden" aria-live="polite">{announcer.message}</div>

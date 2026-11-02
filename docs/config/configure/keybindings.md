@@ -101,10 +101,6 @@ and resolve conflicts between shortcuts.
 
 ## Pointer bindings
 
-Pointer bindings replace `window_management.mouse_button_modifier` and
-`window_management.resize_with_right_button`. Remove those fields when
-migrating an older config.
-
 The embedded config declares pointer callbacks in `config/50-pointer.lua`.
 Each named binding supplies a button accelerator and a Lua callback:
 

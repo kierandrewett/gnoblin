@@ -114,7 +114,7 @@ it was first focused.
 Gnoblin remembers the active source per window. It does not assign layouts by
 app ID or give each window a different source list.
 
-Use [Lua events](/config/lua-events) when a rule should follow the pointer
+Use [Lua events](/events/) when a rule should follow the pointer
 window or depend on its app ID. For example, the pointer-window event can
 change touchpad scroll speed for Chromium and restore the usual speed elsewhere.
 That is a separate rule from `per_window`, which remembers the layout selected
@@ -150,34 +150,34 @@ engine, every key goes to the app unchanged.
 1. Install `ibus` and an engine. On Fedora, for the Russian transliteration
    engine used here:
 
-   ```sh
-   sudo dnf install ibus ibus-m17n
-   ```
+    ```sh
+    sudo dnf install ibus ibus-m17n
+    ```
 
 2. Start the daemon in your session. This autostart entry starts it at login and
    stops it when you remove the entry or log out. Leave out the `-d` flag, which
    makes the daemon detach from the process group that Gnoblin stops:
 
-   ```lua
-   gnoblin.configure {
-       autostart = {
-           ibus = {command = {"ibus-daemon", "-r", "-x"}},
-       },
-   }
-   ```
+    ```lua
+    gnoblin.configure {
+        autostart = {
+            ibus = {command = {"ibus-daemon", "-r", "-x"}},
+        },
+    }
+    ```
 
 3. Configure the source with the engine ID from `ibus list-engine --name-only`:
 
-   ```lua
-   gnoblin.configure {
-       input_sources = {
-           sources = {
-               {type = "xkb", id = "us"},
-               {type = "ibus", id = "m17n:ru:translit"},
-           },
-       },
-   }
-   ```
+    ```lua
+    gnoblin.configure {
+        input_sources = {
+            sources = {
+                {type = "xkb", id = "us"},
+                {type = "ibus", id = "m17n:ru:translit"},
+            },
+        },
+    }
+    ```
 
 4. Select the IBus source and type `privet` into a GTK4 text field. The text
    becomes `привет`.

@@ -84,7 +84,7 @@ conflicts.
 A dock can use the foreign toplevel protocols for basic window handles or the
 bridge for records, previews, activation and shortcut sessions. Keep window IDs
 only for the lifetime of their windows. Refresh snapshots after windows close
-or workspaces change. [Bridge examples](bridge-examples.md) show clients in
+or workspaces change. [Bridge examples](bridge/examples.md) show clients in
 several languages.
 
 ## Choose the right interface

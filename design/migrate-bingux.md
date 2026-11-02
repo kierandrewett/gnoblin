@@ -172,5 +172,5 @@ changes, snapping, text insertion, launch feedback, OSD, and portal capture.
 If Bingux still supports GNOME sessions, confirm that path separately.
 
 The [shell integration guide](../docs/shell-integration.md) and
-[bridge examples](../docs/bridge-examples.md) describe the public integration
+[bridge examples](../docs/bridge/examples.md) describe the public integration
 interfaces.

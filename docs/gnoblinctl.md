@@ -409,7 +409,7 @@ stop a script that continues listening.
 For worker health, read `gnoblin.runtime.status()` after subscribing to
 `gnoblin.runtime.status-changed`. The event reports recovery and accepted
 configuration-generation changes while the compositor socket is connected; see
-the [runtime API guide](/config/runtime-api) for its fields and reconnect
+the [runtime health reference](/shell-api/session-runtime#runtime-health-and-reload) for its fields and reconnect
 behavior.
 
 To handle a location request, subscribe to
@@ -438,7 +438,7 @@ and queued the answer. System settings can still limit approved accuracy.
 `gnoblinctl lua` can register, remove, and manage shortcut sessions. Bindings
 created by the console belong to its compositor connection, so the process
 stays open while one of its bindings remains registered. Unbind the shortcut or
-exit the process to release it. See the [shortcut API reference](./config/runtime-api.md#shortcut-state-and-capture)
+exit the process to release it. See the [shortcut API reference](./shell-api/keyboard-shortcuts.md#capture-a-shortcut)
 for the accepted binding options.
 
 For example, save this as `shortcut.lua` and run `gnoblinctl lua ./shortcut.lua`:
@@ -901,7 +901,7 @@ The CLI uses typed native methods for actions with a typed equivalent, including
 when `active` is resolved to a stable ID. Menu and interactive actions remain
 separate because they need compositor input context. Shell clients can focus a
 clicked window with an XDG Activation token through the
-[compositor bridge](/compositor-bridge#api-version-132-xdg-activation-focus-and-session-logout).
+[compositor bridge](/bridge/input-and-focus#api-version-132-xdg-activation-focus-and-session-logout).
 
 ## Session and policy commands
 
@@ -951,7 +951,7 @@ gnoblinctl input list --json
 gnoblinctl input select xkb us
 ```
 
-Use a source from `input list`. See [launch feedback](launch-feedback.md).
+Use a source from `input list`. See [launch feedback](shell-api/launch-feedback.md).
 Launch feedback does not start an application.
 
 Run `gnoblinctl privacy` to see activity and availability for each source.
@@ -1020,7 +1020,7 @@ record. Optional fields are omitted when Mutter does not provide them. Use
 
 The snapshot includes window identity, focus and state, workspace and monitor
 location, geometry, and operation capabilities. See the [runtime API
-reference](/config/runtime-api#immediate-window-snapshots) for the fields and
+reference](/shell-api/windows#immediate-window-snapshots) for the fields and
 their availability.
 
 In the standalone session, `app_id` comes from the GTK app ID or WM class.
@@ -1093,7 +1093,7 @@ gnoblinctl completion fish > ~/.config/fish/completions/gnoblinctl.fish
 ## Connection problems
 
 The installed CLI uses GLib, GIO and JSON-GLib. It sends commands through the
-[compositor bridge](compositor-bridge.md). Python is needed to build from
+[compositor bridge](bridge/index.md). Python is needed to build from
 source, but not to run `gnoblinctl`.
 
 The socket defaults to `$XDG_RUNTIME_DIR/gnoblin/compositor-v1.sock`.

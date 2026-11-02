@@ -59,12 +59,13 @@
 </aside>
 
 <style>
+    /* Sticks 32 px under the header; the page's .toc-col stretches to the article's height to give it room. */
     .toc {
         position: sticky;
-        top: var(--topbar-h);
-        max-height: calc(100vh - var(--topbar-h));
+        top: calc(var(--topbar-h) + var(--s-6));
+        max-height: calc(100vh - var(--topbar-h) - var(--s-6));
         overflow-y: auto;
-        padding: var(--s-7) var(--s-5) var(--s-6) 0;
+        padding: 0 0 var(--s-6);
     }
 
     h2 {
@@ -98,14 +99,12 @@
     }
 
     li a[aria-current] {
-        color: var(--ink);
+        color: var(--accent);
         font-weight: 600;
     }
 
     .acts {
         margin-top: var(--s-5);
-        padding-top: var(--s-4);
-        border-top: 1px solid var(--line);
         display: flex;
         flex-direction: column;
         gap: var(--s-2);
@@ -116,11 +115,11 @@
         align-items: center;
         gap: 6px;
         font-size: 13px;
-        color: var(--accent);
+        color: var(--ink-3);
+        transition: color var(--dur-1) var(--ease);
     }
 
     .acts a:hover {
-        text-decoration: underline;
-        text-underline-offset: 3px;
+        color: var(--accent);
     }
 </style>

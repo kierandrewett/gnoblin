@@ -1,125 +1,167 @@
 <script lang="ts">
     // Search the docs: Ctrl+K, Cmd+K or "/" opens it, Esc closes it and returns focus. Arrow keys move through the
-    // results, Enter opens one. Results come from the Pagefind index that `yarn build` writes to /pagefind/.
+    // results, Enter opens one. Results come from the Pagefind index that `yarn build` writes to /pagefind/, which
+    // is loaded when the browser is idle after the page loads, or earlier when the search button is touched.
     import { goto } from "$app/navigation";
+    import { onMount } from "svelte";
     import { search } from "#lib/state.svelte.ts";
     import Icon from "../ui/Icon.svelte";
-    import type { Hit } from "./hit.ts";
+    import { SUGGESTIONS, type Group } from "./hit.ts";
+    import { find, warm, type Found } from "./pagefind.ts";
     import SearchResult from "./SearchResult.svelte";
 
-    interface PagefindSub {
-        title: string;
-        url: string;
-        excerpt: string;
-    }
-    interface PagefindData {
-        url: string;
-        meta: { title?: string; trail?: string };
-        sub_results: PagefindSub[];
-    }
-    interface Pagefind {
-        options(opts: Record<string, unknown>): Promise<void>;
-        debouncedSearch(
-            query: string,
-            opts?: unknown,
-            ms?: number,
-        ): Promise<{ results: { data(): Promise<PagefindData> }[] } | null>;
-    }
-
-    const PAGES = 5;
-    const SECTIONS = 5;
+    /** Pages whose data is fetched for the first screen, and for each "Show more". */
+    const PAGE = 6;
+    /** Typing pause before a query runs. The first query after an empty box runs at once. */
+    const DEBOUNCE_MS = 40;
 
     let dialog: HTMLDialogElement;
     let input = $state<HTMLInputElement>();
     let query = $state("");
-    let pages = $state<Hit[]>([]);
-    let sections = $state<Hit[]>([]);
+    // The query the shown results are for. It trails `query` while a search runs.
+    let shown = $state("");
+    let groups = $state.raw<Group[]>([]);
+    let total = $state(0);
     let selected = $state(0);
     let status = $state<"idle" | "searching" | "done" | "unavailable">("idle");
-    const hits = $derived([...pages, ...sections]);
 
-    let pagefind: Promise<Pagefind | null> | undefined;
-    function loadPagefind(): Promise<Pagefind | null> {
-        pagefind ??= import(/* @vite-ignore */ `${location.origin}/pagefind/pagefind.js`)
-            .then(async (module: Pagefind) => {
-                await module.options({ excerptLength: 12 });
-                return module;
-            })
-            .catch(() => null);
-        return pagefind;
-    }
+    const rows = $derived(groups.flatMap((group) => group.rows));
+    // Each group with the index of its first row in the list of options.
+    const entries = $derived.by(() => {
+        let start = 0;
+        return groups.map((group) => {
+            const entry = { group, start };
+            start += group.rows.length;
+            return entry;
+        });
+    });
+    const hasMore = $derived(groups.length < total);
+    const options = $derived(rows.length + (hasMore ? 1 : 0));
+    const summary = $derived(
+        total === 0
+            ? ""
+            : `${total} ${total === 1 ? "result" : "results"}${hasMore ? `, showing ${groups.length}` : ""}`,
+    );
 
-    // Pagefind indexes the built .html files; the site serves them without the extension.
-    const clean = (url: string) => url.replace(/(\/index)?\.html(?=$|#)/, "").replace(/^$/, "/") || "/";
+    let found: Found | null = null;
+    let token = 0;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // Enter pressed before the results for the typed query arrived: open the first one when they do.
+    let openFirst = false;
+
+    onMount(() => {
+        // The built site has the index; `yarn dev` does not. Skip the preload when the reader saves data.
+        const connection = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection;
+        if (import.meta.env.DEV || connection?.saveData) return;
+        const preload = () => void warm();
+        if ("requestIdleCallback" in window) {
+            const handle = requestIdleCallback(preload, { timeout: 2000 });
+            return () => cancelIdleCallback(handle);
+        }
+        const handle = setTimeout(preload, 1500);
+        return () => clearTimeout(handle);
+    });
 
     $effect(() => {
         if (search.open && !dialog.open) {
             dialog.showModal();
             input?.select();
-            void loadPagefind();
+            void warm();
         } else if (!search.open && dialog.open) {
             dialog.close();
         }
     });
 
-    let token = 0;
-    async function run(q: string) {
-        const mine = ++token;
-        if (!q.trim()) {
-            pages = [];
-            sections = [];
+    function onInput() {
+        clearTimeout(timer);
+        const q = query.trim();
+        if (!q) {
+            token++;
+            openFirst = false;
+            found = null;
+            groups = [];
+            total = 0;
+            shown = "";
             status = "idle";
             return;
         }
+        timer = setTimeout(
+            () => {
+                timer = undefined;
+                void run(q);
+            },
+            rows.length ? DEBOUNCE_MS : 0,
+        );
+    }
+
+    async function run(q: string) {
+        const mine = ++token;
         status = "searching";
-        const api = await loadPagefind();
-        if (!api) {
+        const next = await find(q);
+        if (mine !== token) return;
+        if (!next) {
+            openFirst = false;
             status = "unavailable";
             return;
         }
-        const res = await api.debouncedSearch(q, {}, 120);
-        if (res === null || mine !== token) return;
-        const data = await Promise.all(res.results.slice(0, 12).map((r) => r.data()));
+        const first = await next.more(PAGE);
+        // A later query started while this one was fetching its pages: drop this answer.
         if (mine !== token) return;
-        pages = data.slice(0, PAGES).map((d) => ({
-            kind: "page",
-            title: d.meta.title ?? clean(d.url),
-            path: d.meta.trail ?? "",
-            url: clean(d.url),
-        }));
-        sections = data
-            .flatMap((d) =>
-                d.sub_results
-                    .filter((s) => s.url.includes("#") && s.title !== d.meta.title)
-                    .slice(0, 2)
-                    .map((s) => ({
-                        kind: "section" as const,
-                        title: s.title,
-                        path: d.meta.title ?? "",
-                        url: clean(s.url),
-                    })),
-            )
-            .slice(0, SECTIONS);
+        found = next;
+        groups = first;
+        total = next.total;
+        shown = q;
         selected = 0;
         status = "done";
+        if (openFirst) {
+            openFirst = false;
+            pick(0);
+        }
     }
 
-    function open(hit: Hit | undefined) {
-        if (!hit) return;
+    async function showMore() {
+        const mine = token;
+        const next = await found?.more(PAGE);
+        if (!next?.length || mine !== token) return;
+        selected = rows.length;
+        groups = [...groups, ...next];
+    }
+
+    function pick(index: number) {
+        const row = rows[index];
+        if (!row) {
+            if (hasMore && index === rows.length) void showMore();
+            return;
+        }
         search.open = false;
-        void goto(hit.url);
+        void goto(row.url);
+    }
+
+    function suggest(text: string) {
+        query = text;
+        input?.focus();
+        onInput();
     }
 
     function onKey(event: KeyboardEvent) {
         if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
-            if (!hits.length) return;
+            if (!options) return;
             const step = event.key === "ArrowDown" ? 1 : -1;
-            selected = (selected + step + hits.length) % hits.length;
+            selected = (selected + step + options) % options;
             document.getElementById(`search-hit-${selected}`)?.scrollIntoView({ block: "nearest" });
         } else if (event.key === "Enter") {
             event.preventDefault();
-            open(hits[selected]);
+            const q = query.trim();
+            if (q === shown) pick(selected);
+            else if (q) {
+                openFirst = true;
+                if (timer !== undefined) {
+                    clearTimeout(timer);
+                    timer = undefined;
+                    void run(q);
+                }
+            }
         }
     }
 
@@ -155,15 +197,15 @@
             <input
                 bind:this={input}
                 bind:value={query}
-                oninput={() => run(query)}
+                oninput={onInput}
                 onkeydown={onKey}
                 type="search"
                 placeholder="Search the docs"
                 aria-label="Search the docs"
                 role="combobox"
-                aria-expanded={hits.length > 0}
+                aria-expanded={options > 0}
                 aria-controls="search-results"
-                aria-activedescendant={hits.length ? `search-hit-${selected}` : undefined}
+                aria-activedescendant={options ? `search-hit-${selected}` : undefined}
                 aria-autocomplete="list"
                 autocomplete="off"
                 spellcheck="false"
@@ -171,50 +213,63 @@
             <kbd class="kbd esc">Esc</kbd>
             <button type="button" class="cancel" onclick={() => (search.open = false)}>Cancel</button>
         </div>
-        <div class="results" id="search-results" role="listbox" aria-label="Results">
-            {#if pages.length}
-                <div role="group" aria-labelledby="search-pages">
-                    <h2 id="search-pages">Pages</h2>
-                    {#each pages as hit, i (hit.url)}
-                        <SearchResult
-                            {hit}
-                            {query}
-                            id="search-hit-{i}"
-                            selected={i === selected}
-                            onselect={() => open(hit)}
-                            onhover={() => (selected = i)}
-                        />
-                    {/each}
-                </div>
-            {/if}
-            {#if sections.length}
-                <div role="group" aria-labelledby="search-sections">
-                    <h2 id="search-sections">Sections</h2>
-                    {#each sections as hit, i (hit.url)}
-                        <SearchResult
-                            {hit}
-                            {query}
-                            id="search-hit-{pages.length + i}"
-                            selected={pages.length + i === selected}
-                            onselect={() => open(hit)}
-                            onhover={() => (selected = pages.length + i)}
-                        />
-                    {/each}
+        <div class="scroll">
+            <p class="summary" aria-live="polite">
+                {#if status === "done"}{summary}{/if}
+            </p>
+            <div
+                class="results"
+                id="search-results"
+                role="listbox"
+                aria-label="Results"
+                aria-busy={status === "searching"}
+                data-query={shown}
+            >
+                {#each entries as { group, start } (group.url)}
+                    <div class="group" role="group" aria-label={group.title}>
+                        {#each group.rows as row, ri (row.url)}
+                            <SearchResult
+                                {row}
+                                query={shown}
+                                id="search-hit-{start + ri}"
+                                selected={start + ri === selected}
+                                onselect={() => pick(start + ri)}
+                                onhover={() => (selected = start + ri)}
+                            />
+                        {/each}
+                    </div>
+                {/each}
+                {#if hasMore}
+                    <div
+                        id="search-hit-{rows.length}"
+                        class="more"
+                        role="option"
+                        aria-selected={selected === rows.length}
+                        tabindex="-1"
+                        onclick={showMore}
+                        onkeydown={(event) => event.key === "Enter" && void showMore()}
+                        onmousemove={() => (selected = rows.length)}
+                    >
+                        Show {Math.min(PAGE, total - groups.length)} more
+                    </div>
+                {/if}
+            </div>
+            {#if status === "unavailable"}
+                <p class="note">Search works in the built site. Run yarn build, then yarn preview.</p>
+            {:else if status === "idle" || (status === "done" && !total)}
+                <div class="note">
+                    {#if status === "done"}
+                        <p>No results for “{shown}”. Check the spelling or use fewer words.</p>
+                    {/if}
+                    <p class="try">
+                        <span>Try</span>
+                        {#each SUGGESTIONS as text (text)}
+                            <button type="button" class="chip" onclick={() => suggest(text)}>{text}</button>
+                        {/each}
+                    </p>
                 </div>
             {/if}
         </div>
-        <p
-            class={["status", (status === "unavailable" || (status === "done" && !hits.length)) && "shown"]}
-            aria-live="polite"
-        >
-            {#if status === "unavailable"}
-                Search works in the built site. Run yarn build, then yarn preview.
-            {:else if status === "done" && !hits.length}
-                No results for "{query}".
-            {:else if status === "done"}
-                <span class="visually-hidden">{hits.length} results</span>
-            {/if}
-        </p>
         <div class="foot" aria-hidden="true">
             <span
                 ><kbd class="kbd"><Icon name="arrow-up" size={12} /></kbd><kbd class="kbd"
@@ -230,7 +285,7 @@
 <style>
     .search {
         margin: 88px auto auto;
-        width: min(640px, calc(100vw - 32px));
+        width: min(680px, calc(100vw - 32px));
         max-height: calc(100dvh - 120px);
         border: 0;
         padding: 0;
@@ -310,30 +365,76 @@
         font-weight: 500;
     }
 
-    .results {
+    .scroll {
         overflow-y: auto;
-        padding: 0 var(--s-2);
+        overscroll-behavior: contain;
+        padding: 0 var(--s-2) var(--s-2);
     }
 
-    .results > div {
-        padding: var(--s-2) 0;
-    }
-
-    h2 {
+    .summary {
+        padding: var(--s-3) var(--s-3) var(--s-1);
         font-size: 12px;
         line-height: 16px;
         font-weight: 600;
         color: var(--ink-3);
-        padding: var(--s-2) var(--s-3);
     }
 
-    .status {
+    .summary:empty {
+        display: none;
+    }
+
+    .group {
+        padding: var(--s-1) 0;
+    }
+
+    .group + .group {
+        border-top: 1px solid var(--line);
+    }
+
+    .more {
+        margin-top: var(--s-1);
+        padding: 10px var(--s-3) 10px calc(32px + var(--s-3) * 2);
+        border-radius: var(--r-sm);
         font-size: 14px;
+        font-weight: 500;
+        color: var(--accent);
+        cursor: pointer;
+    }
+
+    .more[aria-selected="true"] {
+        background: var(--accent);
+        color: var(--on-accent);
+    }
+
+    .note {
+        padding: var(--s-4) var(--s-3);
+        font-size: 14px;
+        line-height: 22px;
         color: var(--ink-3);
     }
 
-    .status.shown {
-        padding: var(--s-4) var(--s-5);
+    .try {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--s-2);
+    }
+
+    .note p + .try {
+        margin-top: var(--s-3);
+    }
+
+    .chip {
+        height: 30px;
+        padding: 0 var(--s-3);
+        border-radius: var(--r-pill);
+        background: var(--sunken);
+        color: var(--ink);
+        font-size: 14px;
+    }
+
+    .chip:hover {
+        box-shadow: inset 0 0 0 1px var(--line-strong);
     }
 
     .foot {
@@ -372,7 +473,7 @@
             align-items: center;
         }
 
-        .results {
+        .scroll {
             flex: 1;
         }
     }

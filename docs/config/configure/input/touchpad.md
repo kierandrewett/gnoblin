@@ -26,7 +26,7 @@ gnoblin.configure {
 | `scroll_speed`   | Number from `0` to `2`                             | Scales two-finger and touchpad scrolling. `1` is the default speed, `0.5` is half speed, and `2` is twice the speed. |
 | `accel_profile`  | `"default"`, `"flat"`, `"adaptive"`, or `"custom"` | Selects the system curve or a custom profile.                                                                        |
 | `accel_curve`    | `{step = number, points = number[]}`               | Defines custom pointer acceleration. Requires `accel_profile = "custom"`; it affects pointer motion, not scrolling.  |
-| `left_handed`    | `"right"`, `"left"`, or `"follow-mouse"`           | Selects the touchpad button order; `"follow-mouse"` uses the mouse setting. `"mouse"` still loads as the old name.   |
+| `left_handed`    | `"right"`, `"left"`, or `"follow-mouse"`           | Selects the touchpad button order; `"follow-mouse"` uses the mouse setting.                                          |
 | `natural_scroll` | Boolean                                            | Reverses the scroll direction.                                                                                       |
 
 ## Gestures

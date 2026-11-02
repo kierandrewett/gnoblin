@@ -7,7 +7,7 @@ These operations require the minimum API versions stated below and a live, unloc
 ### API 1.27: shell presentation requests
 
 Subscribe to `gnoblin.window.menu-requested` and `gnoblin.osd.requested` to
-handle requests that previously depended on shell-owned UI. Gnoblin reports
+handle requests for shell-owned UI. Gnoblin reports
 requests; the external shell owns their presentation.
 
 The window-menu event contains:

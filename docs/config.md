@@ -4,7 +4,7 @@ Use [`gnoblin.configure`](/config/configure) for settings, named shortcuts and a
 
 ## Functions
 
-- [`gnoblin.configure`](/config/configure) — set compositor, shell, input and window-management options.
+- [`gnoblin.configure`](/config/configure) — set compositor, input and window-management options.
 - [`gnoblin.window_rule`](/config/window_rule) — add a window or layer-surface rule.
 - [`gnoblin.animation`](/config/animation) — register a named animation.
 - [`gnoblin.config`](/config/config) — inspect or edit the config assembled during loading.

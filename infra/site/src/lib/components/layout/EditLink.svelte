@@ -23,6 +23,7 @@
         align-items: center;
         gap: 6px;
         color: var(--accent);
+        font-weight: 600;
     }
 
     a:hover {

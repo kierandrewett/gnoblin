@@ -90,7 +90,6 @@ export const NAV: NavSection[] = [
                     { label: "Frame renderers", slug: "config/configure/frame_renderers" },
                     { label: "Layer shell", slug: "config/configure/layer_shell" },
                     { label: "Protocols", slug: "config/configure/protocols" },
-                    { label: "Shell", slug: "config/configure/shell" },
                     { label: "XWayland", slug: "config/configure/xwayland" },
                 ],
             },
@@ -251,15 +250,6 @@ export const NAV: NavSection[] = [
 
 /** Pages that exist in docs/ on purpose without a sidebar entry. They are built and linked from other pages. */
 export const UNLISTED: string[] = [
-    // Short pages that point to where a reference moved; old links still reach them.
-    "blur-fades",
-    "bridge-examples",
-    "compositor-bridge",
-    "config/lua-events",
-    "config/runtime-api",
-    "focus-transfer",
-    "launch-feedback",
-    "shell-dbus-api",
     // Reference pages reached from other pages rather than the sidebar.
     "config/configure/config-files",
     "gnoblinctl",

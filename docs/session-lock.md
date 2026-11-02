@@ -6,8 +6,8 @@ output, stops normal input, replaces desktop capture with its lock scene, and
 stays locked if a locker exits. The locker owns its appearance and
 authentication. See the [protocol XML](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/session-lock/ext-session-lock-v1.xml).
 
-Gnoblin does not provide a default lock screen. Bingux is one separate shell
-project with its own lock client.
+The lock screen is a separate client. Bingux is one shell project with its own
+lock client.
 
 Third-party lockers such as hyprlock, swaylock, gtklock and waylock can connect
 directly to the same standard protocol. Any client with access to this user's

@@ -1,6 +1,6 @@
 <script lang="ts">
-    // One line: licence and project links, then the time and commit of this build. The home page has a centred
-    // sentence instead, in the plain style of the rest of that page.
+    // One line: licence and project links, then the time and commit of this build. The home and docs pages have a
+    // centred sentence instead, in the plain style of the home page.
     import { BUILD, LICENCE, PROJECT_LINKS } from "#lib/site.ts";
 
     let { variant = "site" }: { variant?: "site" | "home" } = $props();

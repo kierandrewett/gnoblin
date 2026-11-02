@@ -74,7 +74,7 @@ _The panel is a separate Quickshell process using Gnoblin's layer-shell support.
 
 Bingux is an integrated desktop with a bar, dock, search and notifications. See [Bingux](bingux.md) to install it.
 
-## What Gnoblin still provides
+## What Gnoblin provides
 
 Gnoblin provides window management, locking, desktop services, and a small
 recovery panel for shell setup.

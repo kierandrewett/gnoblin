@@ -6,16 +6,6 @@ Configure how layer-shell surfaces affect focus, how windows respond to
 pointer input, and which Wayland interfaces are available. Add the examples to
 `~/.config/gnoblin/init.lua`.
 
-## Shell UI
-
-Panels, notifications, launchers, and keyboard-layout popups belong to the
-desktop shell you install. Configure them there. Gnoblin's Lua configuration
-controls compositor and session behavior; it does not provide shell
-features.
-
-See [choose a shell](/bring-your-own-shell) for shell options and
-[shortcuts](/guides/shortcuts#avoid-conflicts) to resolve keybinding conflicts.
-
 ## Layer-shell keyboard focus
 
 ```lua
@@ -100,4 +90,4 @@ This does not block all screen sharing. Portal backends decide what apps may do;
 see [portal routing](/config/configure/portals).
 Disabling protocols your shell uses can prevent its features from working.
 See the [protocol catalog](/wayland-protocols) for the advertised interface
-names, related guides and interfaces that Gnoblin does not support.
+names and related guides.

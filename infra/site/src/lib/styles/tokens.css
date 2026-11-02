@@ -90,9 +90,9 @@
 
     --page-max: 1080px;
     --page-pad: 22px;
-    --measure: 700px;
-    --nav-w: 268px;
-    --toc-w: 220px;
+    --measure: 720px;
+    --nav-w: 232px;
+    --toc-w: 232px;
     --topbar-h: 52px;
 
     --e-3: 0 20px 60px -12px rgba(var(--shadow-rgb), 0.35), 0 4px 12px rgba(var(--shadow-rgb), 0.08);

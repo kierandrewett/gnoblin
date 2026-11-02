@@ -1,12 +1,10 @@
 <script lang="ts">
-    // Home: one centred 720 px document column in the restrained style of mutter.gnome.org. No header bar, cards,
-    // boxes, bands or tables; links in the accent colour; a one-line footer (the layout's home footer).
-    import Command from "#lib/components/content/Command.svelte";
+    // Home: one centred 720 px document column in the restrained style of mutter.gnome.org. Links in the accent
+    // colour; the layout's header bar and one-line home footer frame it.
     import Screenshot from "#lib/components/content/Screenshot.svelte";
-    import DistroLinks from "#lib/components/install/DistroLinks.svelte";
     import Mark from "#lib/components/ui/Mark.svelte";
     import { docsHref } from "#lib/nav.ts";
-    import { PROJECT_LINKS, SETUP_COMMAND } from "#lib/site.ts";
+    import { PROJECT_LINKS } from "#lib/site.ts";
 
     const REFERENCE = [
         {
@@ -72,11 +70,10 @@
         You set Gnoblin up in one file, <code class="inline">~/.config/gnoblin/init.lua</code>, and changes apply
         without logging out.
     </p>
-
-    <h2>Install</h2>
-    <p>This adds the Gnoblin package repository for your system. Then install the package and a shell.</p>
-    <Command command={SETUP_COMMAND} />
-    <div class="distros"><DistroLinks /></div>
+    <p class="cta">
+        <a class="btn primary" href="/install">Install</a>
+        <a class="btn secondary" href={docsHref("")}>Read the docs</a>
+    </p>
 
     <h2>Documentation</h2>
     <ul>
@@ -89,7 +86,7 @@
     <h2>Configuration reference</h2>
     <div class="pairs">
         {#each REFERENCE as item (item.href)}
-            <div>
+            <div class="card">
                 <h3><a href={item.href}>{item.title}</a></h3>
                 <p>{item.text}</p>
             </div>
@@ -172,20 +169,94 @@
         gap: 2px;
     }
 
-    .distros {
-        margin-top: var(--s-4);
+    .cta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--s-3);
+        margin: var(--s-5) 0 0;
+    }
+
+    .doc a.btn {
+        display: inline-flex;
+        align-items: center;
+        height: 44px;
+        padding: 0 var(--s-5);
+        border-radius: var(--r-pill);
+        border: 1px solid var(--accent);
+        font-weight: 600;
+        text-decoration: none;
+        transition:
+            background-color var(--dur-1) var(--ease),
+            border-color var(--dur-1) var(--ease);
+    }
+
+    .doc a.btn.primary {
+        background: var(--accent);
+        color: var(--on-accent);
+    }
+
+    .doc a.btn.primary:hover {
+        background: var(--accent-strong);
+        border-color: var(--accent-strong);
+        text-decoration: none;
+    }
+
+    .doc a.btn.secondary {
+        color: var(--accent);
+    }
+
+    .doc a.btn.secondary:hover {
+        background: var(--accent-soft);
+        text-decoration: none;
     }
 
     .pairs {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: var(--s-6) var(--s-8);
-        padding: var(--s-2) var(--s-4) 0;
+        gap: var(--s-4);
     }
 
-    .pairs p {
+    .card {
+        position: relative;
+        padding: var(--s-4);
+        border: 1px solid var(--line);
+        border-radius: var(--r-md);
+        background: var(--surface);
+        transition:
+            transform 140ms var(--ease),
+            border-color 140ms var(--ease),
+            box-shadow 140ms var(--ease);
+    }
+
+    .card:hover,
+    .card:focus-within {
+        transform: translateY(-2px);
+        border-color: var(--accent);
+        box-shadow: 0 8px 24px -8px rgba(var(--shadow-rgb), 0.25);
+    }
+
+    .card h3 a::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: var(--r-md);
+    }
+
+    .card p {
         margin: 0;
         color: var(--ink-2);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .card,
+        .doc a.btn {
+            transition: none;
+        }
+
+        .card:hover,
+        .card:focus-within {
+            transform: none;
+        }
     }
 
     @media (max-width: 733px) {
@@ -195,7 +266,6 @@
 
         .pairs {
             grid-template-columns: 1fr;
-            padding: 0;
         }
     }
 </style>

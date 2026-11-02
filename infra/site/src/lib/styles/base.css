@@ -22,7 +22,9 @@ body {
     line-height: var(--t-body-lh);
     font-weight: 400;
     letter-spacing: 0;
-    overflow-x: hidden;
+    /* clip, not hidden: hidden would make body a scroll container once html gets an overflow, and every sticky
+       element would stop sticking. */
+    overflow-x: clip;
 }
 
 img,

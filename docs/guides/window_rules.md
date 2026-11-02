@@ -83,10 +83,10 @@ gnoblin.window_rule {
 }
 ```
 
-Get the exact namespace with `gnoblinctl layer list`. Gnoblin does not ship a
-wallpaper client. If your shell already manages wallpaper, do not also start a
-separate wallpaper client through Gnoblin's autostart. See the
-[wallpaper guide](/guides/wallpapers) for the available setup options.
+Get the exact namespace with `gnoblinctl layer list`. If your shell already
+manages wallpaper, do not also start a separate wallpaper client through
+Gnoblin's autostart. See the [wallpaper guide](/guides/wallpapers) for the
+available setup options.
 
 ## Write a matcher
 

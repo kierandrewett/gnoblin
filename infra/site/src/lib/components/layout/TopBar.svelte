@@ -17,7 +17,7 @@
         docsSlug = null,
     }: {
         area?: SiteArea | null;
-        /** page: centred and flush; docs: full width with a rule; clear: no fill until scrolled (Bingux). */
+        /** page: centred and flush; docs: on the docs page grid, ruled once scrolled; clear: no fill until scrolled (Bingux). */
         variant?: "page" | "docs" | "clear";
         docsSlug?: string | null;
     } = $props();
@@ -35,15 +35,17 @@
         </nav>
         <div class="tools">
             <SearchField />
-            <nav class="proj" aria-label="Project">
-                {#each PROJECT_LINKS as link (link.label)}
-                    <a href={link.href}
-                        >{#if link.icon}<Icon name={link.icon} size={15} />{/if}{link.label}</a
-                    >
-                {/each}
-            </nav>
-            <span class="sep" aria-hidden="true"></span>
-            <ThemeToggle />
+            <div class="end">
+                <nav class="proj" aria-label="Project">
+                    {#each PROJECT_LINKS as link (link.label)}
+                        <a href={link.href}
+                            >{#if link.icon}<Icon name={link.icon} size={15} />{/if}{link.label}</a
+                        >
+                    {/each}
+                </nav>
+                <span class="sep" aria-hidden="true"></span>
+                <ThemeToggle />
+            </div>
         </div>
         <div class="compact">
             <IconButton icon="search" label="Search the docs" onclick={() => (search.open = true)} />
@@ -69,8 +71,17 @@
         color: var(--ink);
     }
 
+    /* Docs pages: a rule from the start only when the scroll-driven rule below cannot run. */
     .topbar.docs {
         box-shadow: inset 0 -1px 0 var(--line);
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+        @supports (animation-timeline: scroll()) {
+            .topbar.docs {
+                box-shadow: none;
+            }
+        }
     }
 
     .topbar.clear {
@@ -100,6 +111,50 @@
         display: flex;
         align-items: center;
         gap: var(--s-6);
+    }
+
+    .end {
+        display: contents;
+    }
+
+    /* Docs pages from 1280 px: the page's three columns. The mark sits over the navigation, the site links and
+       search over the article, and the project links and appearance over the outline. */
+    @media (min-width: 1280px) {
+        .topbar.docs .inner {
+            padding: 0;
+            display: grid;
+            grid-template-columns:
+                minmax(0, 1fr) min(var(--measure), 100% - 2 * var(--page-pad))
+                minmax(0, 1fr);
+            column-gap: var(--s-8);
+        }
+
+        .docs .brand {
+            grid-column: 1;
+            justify-self: end;
+            width: var(--nav-w);
+        }
+
+        .docs .site {
+            grid-area: 1 / 2;
+            justify-self: start;
+        }
+
+        .docs .tools {
+            display: contents;
+        }
+
+        .docs .tools > :global(.search-field) {
+            grid-area: 1 / 2;
+            justify-self: end;
+        }
+
+        .docs .end {
+            grid-column: 3;
+            display: flex;
+            align-items: center;
+            gap: var(--s-4);
+        }
     }
 
     .docs .inner {

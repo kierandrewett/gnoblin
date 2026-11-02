@@ -1,7 +1,7 @@
 <script lang="ts">
-    // A docs page: navigation, the article (breadcrumbs, title, lede, content, edit link, previous and next) and
-    // the outline. Three columns from 1280 px; the outline moves into the article below that, and the navigation
-    // into the menu sheet below 1024 px.
+    // A docs page: the article (breadcrumbs, title, lede, content, edit link, previous and next) in the home
+    // page's centred 720 px column, with the navigation and the sticky outline in the side margins. The outline
+    // moves into the article below 1280 px, and the navigation into the menu sheet below 1024 px.
     import { codeBlocks } from "#lib/actions/code-blocks.ts";
     import Details from "#lib/components/content/Details.svelte";
     import Breadcrumbs from "#lib/components/layout/Breadcrumbs.svelte";
@@ -30,28 +30,26 @@
         <div class="nav-sticky"><SideNav current={doc.slug} /></div>
     </div>
     <article class="article" data-pagefind-body data-pagefind-meta="trail:{trail}">
-        <div class="measure">
-            <div data-pagefind-ignore><Breadcrumbs trail={doc.trail} title={doc.title} /></div>
-            <div class="prose" use:codeBlocks={doc.body}>
-                <h1 class:ident data-pagefind-meta="title">{doc.title}</h1>
-                {#if doc.lede}<p class="lede">{@html doc.lede}</p>{/if}
-                {#if doc.headings.length}
-                    <div class="m-toc" data-pagefind-ignore>
-                        <Details summary="On this page">
-                            <ul role="list">
-                                {#each doc.headings as h (h.id)}
-                                    <li class:sub={h.depth === 3}><a href="#{h.id}">{h.text}</a></li>
-                                {/each}
-                            </ul>
-                        </Details>
-                    </div>
-                {/if}
-                {@html doc.body}
-            </div>
-            <div data-pagefind-ignore>
-                <EditLink file={doc.file} />
-                <Pager prev={doc.prev} next={doc.next} />
-            </div>
+        <div data-pagefind-ignore><Breadcrumbs trail={doc.trail} title={doc.title} /></div>
+        <div class="prose" use:codeBlocks={doc.body}>
+            <h1 class:ident data-pagefind-meta="title">{doc.title}</h1>
+            {#if doc.lede}<p class="lede">{@html doc.lede}</p>{/if}
+            {#if doc.headings.length}
+                <div class="m-toc" data-pagefind-ignore>
+                    <Details summary="On this page">
+                        <ul role="list">
+                            {#each doc.headings as h (h.id)}
+                                <li class:sub={h.depth === 3}><a href="#{h.id}">{h.text}</a></li>
+                            {/each}
+                        </ul>
+                    </Details>
+                </div>
+            {/if}
+            {@html doc.body}
+        </div>
+        <div data-pagefind-ignore>
+            <EditLink file={doc.file} />
+            <Pager prev={doc.prev} next={doc.next} />
         </div>
     </article>
     <div class="toc-col" data-pagefind-ignore>
@@ -62,31 +60,39 @@
 <style>
     .docs {
         display: grid;
-        grid-template-columns: var(--nav-w) minmax(0, 1fr) var(--toc-w);
+        grid-template-columns: minmax(0, 1fr) min(var(--measure), 100% - 2 * var(--page-pad)) minmax(0, 1fr);
+        column-gap: var(--s-8);
         align-items: start;
     }
 
-    .nav-col {
+    /* Both side columns stretch to the article's height so their sticky children have room to stick. */
+    .nav-col,
+    .toc-col {
         align-self: stretch;
-        border-right: 1px solid var(--line);
+        padding-top: var(--s-8);
+    }
+
+    .nav-col {
+        justify-self: end;
+        width: var(--nav-w);
+    }
+
+    .toc-col {
+        justify-self: start;
+        width: var(--toc-w);
     }
 
     .nav-sticky {
         position: sticky;
-        top: var(--topbar-h);
-        max-height: calc(100vh - var(--topbar-h));
+        top: calc(var(--topbar-h) + var(--s-6));
+        max-height: calc(100vh - var(--topbar-h) - var(--s-6));
         overflow-y: auto;
         overscroll-behavior: contain;
     }
 
     .article {
-        padding: var(--s-7) var(--s-8) var(--s-9);
+        padding: var(--s-8) 0 var(--s-8);
         min-width: 0;
-    }
-
-    .measure {
-        max-width: var(--measure);
-        margin: 0 auto;
     }
 
     .m-toc {
@@ -112,7 +118,13 @@
 
     @media (max-width: 1279px) {
         .docs {
-            grid-template-columns: var(--nav-w) minmax(0, 1fr);
+            grid-template-columns: var(--nav-w) minmax(0, var(--measure));
+            justify-content: center;
+            padding: 0 var(--page-pad);
+        }
+
+        .nav-col {
+            justify-self: stretch;
         }
 
         .toc-col {
@@ -126,7 +138,7 @@
 
     @media (max-width: 1023px) {
         .docs {
-            grid-template-columns: minmax(0, 1fr);
+            grid-template-columns: minmax(0, var(--measure));
         }
 
         .nav-col {
@@ -136,7 +148,7 @@
 
     @media (max-width: 733px) {
         .article {
-            padding: var(--s-5) var(--page-pad) var(--s-8);
+            padding: var(--s-5) 0 var(--s-8);
         }
     }
 </style>

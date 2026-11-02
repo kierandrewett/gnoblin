@@ -55,21 +55,18 @@ The values are:
 - `"cascade"`: the window always steps diagonally from the top-left, past the
   last placed window, without looking for a free area.
 
-The old boolean `center_new_windows` was removed. A config that still sets it
-fails validation and names `new_window_placement` and its three values.
-
 The table shows the compositor default when a key is missing. The starter
 config that Gnoblin loads first sets these values instead, so they are what you
 get unless your own config changes them:
 
-| Key                            | Starter config value | Why                                                                           |
-| ------------------------------ | -------------------- | ----------------------------------------------------------------------------- |
-| `attach_modal_dialogs`         | `true`               | A modal dialog opens centered over its parent and moves with it, as in GNOME. |
-| `new_window_placement`         | `"center"`           | New windows open centered on the work area.                                   |
-| `edge_tiling`                  | `true`               | Dragging a window to a screen edge tiles it, as in GNOME.                     |
-| `focus_new_windows`            | `"allow"`            | A window started from a launcher takes focus. `"prevent"` leaves it behind.   |
-| `workspaces_only_on_primary`   | `true`               | A window on another monitor follows the active workspace, as in GNOME.        |
-| `action_middle_click_titlebar` | `"none"`             | A stray middle click does not lower a window.                                 |
+| Key                            | Starter config value | Why                                                                         |
+| ------------------------------ | -------------------- | --------------------------------------------------------------------------- |
+| `attach_modal_dialogs`         | `true`               | A modal dialog opens centered over its parent and moves with it.            |
+| `new_window_placement`         | `"center"`           | New windows open centered on the work area.                                 |
+| `edge_tiling`                  | `true`               | Dragging a window to a screen edge tiles it.                                |
+| `focus_new_windows`            | `"allow"`            | A window started from a launcher takes focus. `"prevent"` leaves it behind. |
+| `workspaces_only_on_primary`   | `true`               | A window on another monitor follows the active workspace.                   |
+| `action_middle_click_titlebar` | `"none"`             | A stray middle click does not lower a window.                               |
 
 Set any of them in your own config to change it.
 
@@ -95,10 +92,6 @@ Set any of them in your own config to change it.
 
 Set `focus_change_on_pointer_rest = true` to change focus only after the
 pointer rests briefly.
-
-`"sloppy"` and `"mouse"` still load as the old names for `"hover"` and
-`"hover-strict"`. Gnoblin reports the new names. The old names will be removed in
-a later release.
 
 ## Pointer bindings
 
@@ -147,9 +140,7 @@ preference cache while Gnoblin is running. This does not override GTK settings
 in external renderers or client applications.
 
 `focus_new_windows` controls when app activation requests can focus a window.
-Mutter's standard policy has two choices. The
-[focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/)
-explains why the modes differ.
+Mutter's standard policy has two choices.
 
 - `"prevent"` enables Mutter's focus-stealing prevention. It is the compositor's value when the
   key is missing. Activation requests need recent launch or user activity. A
@@ -161,22 +152,15 @@ explains why the modes differ.
   their windows after you have interacted with another window since they opened
   them.
 
-`"smart"` and `"strict"` still load as the old names for `"allow"` and
-`"prevent"`. The old names will be removed in a later release.
-
 In a Gnoblin session, `"prevent"` makes Mutter use its focus-stealing checks.
 See [Gnoblin's Mutter patch](https://github.com/kierandrewett/gnoblin/blob/main/patches/mutter/52-focus-transfer/0001-honour-app-activation.patch)
-for this session-specific behavior, or read
-[Mutter's focus-stealing overview](https://blogs.gnome.org/shell-dev/2024/09/20/understanding-gnome-shells-focus-stealing-prevention/).
+for this session-specific behavior.
 See the [focus prevention guide](/shell-api/focus-activation) for a ready-to-use config
 example.
 
 Declare named workspaces in the top-level `workspaces` field of
 `gnoblin.configure`; workspace declarations do not belong in
 `window_management`. Declared workspaces remain available even when empty.
-
-The legacy `workspace_ids`, `workspace_names`, and `num_workspaces` fields are
-rejected; put IDs and names in top-level `workspaces` entries.
 
 Each entry has a required `id` and `name`. Names must be nonempty and at most
 80 characters. IDs must be unique and match
@@ -226,7 +210,7 @@ These settings control what a click on a titlebar does, including a titlebar
 drawn by Gnoblin's native frame. Applications that draw their own client-side
 titlebars handle those clicks themselves.
 
-GTK applications usually draw their own titlebars and read GNOME's window
+GTK applications usually draw their own titlebars and read the desktop's window
 manager settings directly. This Lua section does not change those apps' CSD
 behavior. A custom SSD renderer implements its own titlebar click behavior.
 

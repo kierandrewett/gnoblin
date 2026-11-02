@@ -25,11 +25,3 @@ preferences do not change the fixed threshold.
 
 The service also implements `org.freedesktop.ScreenSaver` for inhibition and
 lock requests. See the [screen saver interface reference](/dbus/screensaver).
-
-## Interfaces not provided
-
-`org.gnoblin.LaunchFeedback` is not implemented. Use the
-supported [launch feedback APIs](/shell-api/launch-feedback).
-
-`org.gnoblin.Shell` is not provided by the Gnoblin session. Shell clients
-should use the [compositor bridge](/bridge/).

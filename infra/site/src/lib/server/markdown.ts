@@ -250,6 +250,7 @@ function rehypeGnoblin(ctx: RenderContext) {
             // Inline code (code outside pre).
             if (node.tagName === "code" && parent.type === "element" && parent.tagName !== "pre") {
                 node.properties.className = ["inline"];
+                node.properties.translate = "no";
                 return;
             }
 
@@ -273,15 +274,25 @@ function rehypeGnoblin(ctx: RenderContext) {
                         el("span", {}, [text("Copy")]),
                     ]),
                 ]);
-                const preOut = el("pre", { tabIndex: 0 }, pre.children);
+                const preOut = el("pre", { tabIndex: 0, translate: "no" }, pre.children);
                 parent.children[index] = el("div", { className: ["code"] }, [head, preOut]);
                 return "skip";
             }
 
             if (node.tagName === "table") {
                 node.properties.className = ["tbl"];
-                // Wrapped in place; the visit still goes on into the table's cells (links, code).
-                parent.children[index] = el("div", { className: ["tbl-wrap"] }, [node]);
+                // Wrapped in place; the visit still goes on into the table's cells (links, code). The wrapper
+                // scrolls, so it takes focus for keyboard scrolling and is named by the column headings.
+                const heads: string[] = [];
+                visit(node, "element", (cell) => {
+                    if (cell.tagName === "th") heads.push(hastToString(cell).trim());
+                });
+                const label = heads.length ? `Table: ${heads.join(", ")}` : "Table";
+                parent.children[index] = el(
+                    "div",
+                    { className: ["tbl-wrap"], tabIndex: 0, role: "region", ariaLabel: label },
+                    [node],
+                );
                 return;
             }
 

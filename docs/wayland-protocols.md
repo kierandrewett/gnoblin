@@ -71,12 +71,6 @@ Screen capture through `wlr_screencopy` is separate from the desktop portal.
 The portal path depends on the selected backend. Disabling this global does not
 block screen sharing.
 
-## Interfaces without a global
-
-[`zwlr_output_manager_v1`](https://github.com/kierandrewett/gnoblin/blob/main/src/protocols/output-management/wlr-output-management-unstable-v1.xml)
-has an XML definition but is not registered as a Gnoblin global. Do not make a
-shell depend on it.
-
 ## Inspect a running session
 
 Inspect the running compositor when you package or debug a client. Use a
