@@ -112,11 +112,15 @@ def cmd_pull(args: argparse.Namespace) -> int:
 
 
 def cmd_verify_published(args: argparse.Namespace) -> int:
-    problems = tree.verify_published(args.url, args.project, args.channel)
+    problems, stale = tree.verify_published(args.url, args.project, args.channel)
     for problem in problems:
         print(f"verify-published: {problem}", file=sys.stderr)
+    for line in stale:
+        print(f"verify-published: stale in the host's cache: {line}", file=sys.stderr)
     print("every published file is there" if not problems else f"{len(problems)} problems")
-    return 1 if problems else 0
+    if stale:
+        print(f"{len(stale)} files are served from an older copy until the host's cache expires")
+    return 1 if problems or (stale and args.fail_on_stale) else 0
 
 
 def _signer(args: argparse.Namespace) -> signing.Signer:
@@ -320,6 +324,11 @@ def parser() -> argparse.ArgumentParser:
     )
     channel_arguments(p)
     p.add_argument("--url", required=True, help="the public base URL, https://repo.gnoblin.org")
+    p.add_argument(
+        "--fail-on-stale",
+        action="store_true",
+        help="also fail when the host's cache serves an older file than the stored one",
+    )
     p.set_defaults(run=cmd_verify_published)
 
     p = sub.add_parser("publish", help="upload a built tree (a dry run unless --apply)")

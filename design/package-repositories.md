@@ -323,9 +323,14 @@ without them would remove them on upload. Two checks guard against it:
 - `pkgrepo verify-published` runs after the upload. It does not use the pull.
   It asks the public host for every file of the manifest at every place the
   file is published, including the copy of an architecture-independent package
-  in each architecture directory, and for each signature. It compares the size
-  the host reports with the manifest's. A missing file or a wrong size fails
-  the run.
+  in each architecture directory, and for each signature. It asks twice. A
+  request with a query string that nothing used before reaches the stored file:
+  a missing file or a size that differs from the manifest fails the run. A plain
+  request, as a client sends it, shows whether the host's cache still holds an
+  earlier file of the same name. The host caches package files for four hours,
+  and a nightly replaces a package of the same version, so a client can get the
+  old file and fail the checksum in the new metadata. The command lists those
+  files and fails on them only with `--fail-on-stale`.
 
 | Back end | Destination                           | Credentials (secrets)                                                                     |
 | -------- | ------------------------------------- | ----------------------------------------------------------------------------------------- |

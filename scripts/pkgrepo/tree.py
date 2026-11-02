@@ -19,6 +19,7 @@ import hashlib
 import json
 import shutil
 import sys
+import time
 import urllib.error
 import urllib.parse
 from dataclasses import dataclass, field
@@ -388,37 +389,62 @@ def pull(
     return len(manifest["packages"])
 
 
-def verify_published(url: str, project: str, channel: str) -> list[str]:
-    """Ask the public host for every file a published channel should have, and return what is wrong.
+def _head(url: str, *, fresh: bool) -> tuple[int, int | None]:
+    """The status and Content-Length that the host answers to HEAD. `fresh` adds a query string that no earlier
+    request used, so the answer comes from the stored object and not from the host's cache."""
+    headers = {"User-Agent": download.USER_AGENT}
+    if fresh:
+        url = f"{url}?verify={time.time_ns()}"
+        headers["Cache-Control"] = "no-cache"
+    try:
+        with urllib.request.urlopen(
+            urllib.request.Request(url, method="HEAD", headers=headers), timeout=60
+        ) as response:
+            length = response.headers.get("Content-Length")
+            return response.status, int(length) if length is not None else None
+    except urllib.error.HTTPError as error:
+        return error.code, None
+
+
+def verify_published(url: str, project: str, channel: str) -> tuple[list[str], list[str]]:
+    """Ask the public host for every file a published channel should have. Returns (problems, stale).
 
     This does not use `pull`, which restores one kind of missing copy. It requests the manifest, then every package
     file at every place it is published (an architecture-independent package has a copy in each architecture
-    directory) and every signature, and compares the size that the host reports with the manifest's. A copy in a
-    non-canonical directory has the canonical file's size.
+    directory) and every signature. Each file is requested twice:
+      - with a query string that no earlier request used, which reaches the stored object. A missing file or a size
+        that differs from the manifest is a problem.
+      - as a client asks for it. A size that differs from the manifest means the host's cache still holds an earlier
+        file of the same name, and a client that downloads it fails the checksum in the new metadata. That is `stale`.
     """
     base = f"{url.rstrip('/')}/{project}/{channel}"
     manifest_bytes = _fetch(f"{base}/manifest.json")
     if manifest_bytes is None:
-        return [f"{base}/manifest.json does not exist"]
+        return [f"{base}/manifest.json does not exist"], []
     manifest = json.loads(manifest_bytes)
     packages = [Package(**{key: item[key] for key in Package.__dataclass_fields__}) for item in manifest["packages"]]
     arch_dirs = _arch_dirs([Entry(package, Path(), new=False) for package in packages], "x86_64")
-    problems = []
+    problems: list[str] = []
+    stale: list[str] = []
     for item, package in zip(manifest["packages"], packages):
         paths = _destinations(package, arch_dirs)
         if item["path"] not in paths:
             paths.append(item["path"])
         for path in paths:
             for relative in (path, path + ".sig") if item.get("signature") else (path,):
-                request = urllib.request.Request(
-                    f"{base}/{urllib.parse.quote(relative)}", method="HEAD", headers={"User-Agent": download.USER_AGENT}
-                )
-                try:
-                    with urllib.request.urlopen(request, timeout=60) as response:
-                        length = response.headers.get("Content-Length")
-                except urllib.error.HTTPError as error:
-                    problems.append(f"{base}/{relative}: HTTP {error.code}")
+                target = f"{base}/{urllib.parse.quote(relative)}"
+                status, length = _head(target, fresh=True)
+                if status != 200:
+                    problems.append(f"{base}/{relative}: HTTP {status}")
                     continue
-                if relative == path and length is not None and int(length) != item["size"]:
+                if relative != path:
+                    continue
+                if length is not None and length != item["size"]:
                     problems.append(f"{base}/{relative}: {length} bytes, the manifest says {item['size']}")
-    return problems
+                    continue
+                status, length = _head(target, fresh=False)
+                if status == 200 and length is not None and length != item["size"]:
+                    stale.append(
+                        f"{base}/{relative}: the cache serves {length} bytes, the stored file has {item['size']}"
+                    )
+    return problems, stale
