@@ -106,7 +106,8 @@ to make the order predictable.
 - Hidden names need an explicit dot in the pattern.
 - An unmatched glob is allowed; a missing exact filename is an error.
 
-Files and searched directories are watched, including newly added matches.
+Gnoblin reads these files at login and on reload. It does not watch them. After you
+add, remove or change a file, run `gnoblinctl config reload`.
 
 ## Override or append?
 
