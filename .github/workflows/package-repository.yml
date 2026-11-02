@@ -215,6 +215,11 @@ jobs:
         run: |
           python3 scripts/pkgrepo publish --project "$PROJECT" --channel "$CHANNEL" --tree tree --backend "$BACKEND" \
             --destination "$DESTINATION" --previous existing --apply
+      - name: Check that every published file is there
+        # Asks the public host for each file in the manifest, at every place it is published. It does not use the pull
+        # step, which restores one kind of missing copy and would hide the gap. A file that the upload lost fails the run.
+        if: inputs.publish && steps.key.outputs.real == 'true' && vars.REPO_BACKEND != '' && vars.REPO_DESTINATION != ''
+        run: python3 scripts/pkgrepo verify-published --project "$PROJECT" --channel "$CHANNEL" --url "$REPO_URL"
       - name: Say why nothing was published
         if: inputs.publish && !(steps.key.outputs.real == 'true' && vars.REPO_BACKEND != '' && vars.REPO_DESTINATION != '')
         run: echo "::notice::Not published. Set REPO_GPG_PRIVATE_KEY, REPO_BACKEND and REPO_DESTINATION (see the header of this workflow)."

@@ -111,6 +111,14 @@ def cmd_pull(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_verify_published(args: argparse.Namespace) -> int:
+    problems = tree.verify_published(args.url, args.project, args.channel)
+    for problem in problems:
+        print(f"verify-published: {problem}", file=sys.stderr)
+    print("every published file is there" if not problems else f"{len(problems)} problems")
+    return 1 if problems else 0
+
+
 def _signer(args: argparse.Namespace) -> signing.Signer:
     if args.gnupg_home:
         home = signing.gpg_home(Path(args.gnupg_home))
@@ -306,6 +314,13 @@ def parser() -> argparse.ArgumentParser:
     channel_arguments(p)
     p.add_argument("--tree", required=True)
     p.set_defaults(run=cmd_verify)
+
+    p = sub.add_parser(
+        "verify-published", help="request every file of the published channel from the public host, with no recovery"
+    )
+    channel_arguments(p)
+    p.add_argument("--url", required=True, help="the public base URL, https://repo.gnoblin.org")
+    p.set_defaults(run=cmd_verify_published)
 
     p = sub.add_parser("publish", help="upload a built tree (a dry run unless --apply)")
     channel_arguments(p)

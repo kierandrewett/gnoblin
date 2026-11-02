@@ -386,3 +386,39 @@ def pull(
         if sha256_of(root / item["path"]) != item["sha256"]:
             raise TreeError(f"{item['path']} does not match the sha256 in the published manifest")
     return len(manifest["packages"])
+
+
+def verify_published(url: str, project: str, channel: str) -> list[str]:
+    """Ask the public host for every file a published channel should have, and return what is wrong.
+
+    This does not use `pull`, which restores one kind of missing copy. It requests the manifest, then every package
+    file at every place it is published (an architecture-independent package has a copy in each architecture
+    directory) and every signature, and compares the size that the host reports with the manifest's. A copy in a
+    non-canonical directory has the canonical file's size.
+    """
+    base = f"{url.rstrip('/')}/{project}/{channel}"
+    manifest_bytes = _fetch(f"{base}/manifest.json")
+    if manifest_bytes is None:
+        return [f"{base}/manifest.json does not exist"]
+    manifest = json.loads(manifest_bytes)
+    packages = [Package(**{key: item[key] for key in Package.__dataclass_fields__}) for item in manifest["packages"]]
+    arch_dirs = _arch_dirs([Entry(package, Path(), new=False) for package in packages], "x86_64")
+    problems = []
+    for item, package in zip(manifest["packages"], packages):
+        paths = _destinations(package, arch_dirs)
+        if item["path"] not in paths:
+            paths.append(item["path"])
+        for path in paths:
+            for relative in (path, path + ".sig") if item.get("signature") else (path,):
+                request = urllib.request.Request(
+                    f"{base}/{urllib.parse.quote(relative)}", method="HEAD", headers={"User-Agent": download.USER_AGENT}
+                )
+                try:
+                    with urllib.request.urlopen(request, timeout=60) as response:
+                        length = response.headers.get("Content-Length")
+                except urllib.error.HTTPError as error:
+                    problems.append(f"{base}/{relative}: HTTP {error.code}")
+                    continue
+                if relative == path and length is not None and int(length) != item["size"]:
+                    problems.append(f"{base}/{relative}: {length} bytes, the manifest says {item['size']}")
+    return problems

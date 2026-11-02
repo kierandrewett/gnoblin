@@ -1022,8 +1022,8 @@ class AlpineRepository(unittest.TestCase):
             )
 
 
-class PullRecovery(unittest.TestCase):
-    """`pkgrepo pull` run as a command against a real HTTP server.
+class PublishedChannel(unittest.TestCase):
+    """`pkgrepo pull` and `pkgrepo verify-published` run as commands against a real HTTP server.
 
     A package for no architecture is listed once, at its first architecture, and published as an identical copy in
     every other architecture directory. Ways a pull can go wrong:
@@ -1081,7 +1081,7 @@ class PullRecovery(unittest.TestCase):
         files = {}
         for pkg, directory, data in listed:
             path = directory + pkg.filename
-            item = {**pkg.as_dict(), "path": path, "sha256": hashlib.sha256(data).hexdigest()}
+            item = {**pkg.as_dict(), "path": path, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
             if signatures:
                 item["signature"] = path + ".sig"
                 files[path + ".sig"] = b"signature"
@@ -1092,27 +1092,60 @@ class PullRecovery(unittest.TestCase):
             files[f"arch/aarch64/{self.independent.filename}"] = independent
         if copy is not None:
             files[f"arch/x86_64/{self.independent.filename}"] = copy
+            if signatures:
+                files[f"arch/x86_64/{self.independent.filename}.sig"] = b"signature"
         files["manifest.json"] = json.dumps({"schema": 1, "packages": items}).encode()
         self.publish_files(files)
 
-    def pull(self):
+    def run_command(self, *arguments: str):
         return subprocess.run(
             [
                 sys.executable,
                 str(ROOT / "scripts" / "pkgrepo"),
-                "pull",
+                *arguments,
                 "--project",
                 "gnoblin",
                 "--channel",
                 "nightly",
                 "--url",
                 self.url,
-                "--output",
-                str(self.output),
             ],
             capture_output=True,
             text=True,
         )
+
+    def pull(self):
+        return self.run_command("pull", "--output", str(self.output))
+
+    def verify(self):
+        return self.run_command("verify-published")
+
+    def test_verify_published_accepts_a_complete_channel_with_every_copy(self):
+        self.publish(signatures=True, copy=self.PAYLOAD)
+        done = self.verify()
+        self.assertEqual(done.returncode, 0, done.stderr)
+
+    def test_verify_published_does_not_restore_a_missing_listed_copy(self):
+        self.publish(independent=None, copy=self.PAYLOAD)
+        done = self.verify()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(f"arch/aarch64/{self.independent.filename}: HTTP 404", done.stderr)
+
+    def test_verify_published_finds_a_missing_copy_in_another_architecture(self):
+        self.publish()
+        done = self.verify()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(f"arch/x86_64/{self.independent.filename}: HTTP 404", done.stderr)
+
+    def test_verify_published_finds_a_missing_signature_and_a_wrong_size(self):
+        self.publish(signatures=True, copy=self.PAYLOAD)
+        nightly = self.site / "gnoblin" / "nightly" / "arch"
+        (nightly / "aarch64" / (self.native.filename + ".sig")).unlink()
+        (nightly / "aarch64" / self.native.filename).write_bytes(b"truncated")
+        done = self.verify()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(self.native.filename + ".sig: HTTP 404", done.stderr)
+        self.assertIn("the manifest says 6", done.stderr)
 
     def test_a_missing_listed_copy_is_restored_from_an_identical_copy(self):
         self.publish(independent=None, copy=self.PAYLOAD)

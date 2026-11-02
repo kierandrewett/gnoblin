@@ -320,6 +320,12 @@ without them would remove them on upload. Two checks guard against it:
 - `pkgrepo publish` refuses a first publication when the destination already
   has a `manifest.json` for the channel. That is the sign that `REPO_URL` and
   `REPO_DESTINATION` name different places, or that the pull saw nothing.
+- `pkgrepo verify-published` runs after the upload. It does not use the pull.
+  It asks the public host for every file of the manifest at every place the
+  file is published, including the copy of an architecture-independent package
+  in each architecture directory, and for each signature. It compares the size
+  the host reports with the manifest's. A missing file or a wrong size fails
+  the run.
 
 | Back end | Destination                           | Credentials (secrets)                                                                     |
 | -------- | ------------------------------------- | ----------------------------------------------------------------------------------------- |
