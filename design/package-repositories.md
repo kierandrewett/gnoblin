@@ -310,6 +310,13 @@ without them would remove them on upload. Two checks guard against it:
 - `pkgrepo pull` fails when the published host cannot be reached. A run that
   publishes nothing (no key, no destination, a pull request) may pass
   `--allow-unreachable` and build without them.
+- `pkgrepo pull` fails when a file that the manifest lists does not exist. One
+  case is repaired: a package for no architecture is listed once, at its first
+  architecture, and published as a copy in every other architecture directory.
+  If the listed copy is missing, the pull uses one of those copies when its
+  sha256 equals the manifest's, and says so on stderr. The next publication
+  uploads the file again. Every other missing file, and a copy with other bytes,
+  stays an error.
 - `pkgrepo publish` refuses a first publication when the destination already
   has a `manifest.json` for the channel. That is the sign that `REPO_URL` and
   `REPO_DESTINATION` name different places, or that the pull saw nothing.

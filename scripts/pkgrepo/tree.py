@@ -15,6 +15,7 @@ Layout, for one project and channel (design/package-repositories.md has the reas
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import sys
@@ -358,10 +359,29 @@ def pull(
         raise TreeError(f"{base}/manifest.json: unsupported schema {manifest.get('schema')!r}")
     root.mkdir(parents=True, exist_ok=True)
     (root / "manifest.json").write_bytes(manifest_bytes)
-    for item in manifest["packages"]:
+    # An architecture-independent package is listed once, at its first architecture, and published as an identical
+    # copy in every other architecture directory of its release. If the listed copy is missing but one of those
+    # copies exists, the copy is used when its sha256 equals the manifest's. Any other missing file is an error,
+    # because building without it would drop the package from the rebuilt metadata.
+    packages = [Package(**{key: item[key] for key in Package.__dataclass_fields__}) for item in manifest["packages"]]
+    arch_dirs = _arch_dirs([Entry(package, root, new=False) for package in packages], "x86_64")
+    for item, package in zip(manifest["packages"], packages):
         for relative in filter(None, (item["path"], item.get("signature"))):
-            destination = root / relative
-            if _fetch(f"{base}/{urllib.parse.quote(relative)}", destination) is None:
+            if _fetch(f"{base}/{urllib.parse.quote(relative)}", root / relative) is not None:
+                continue
+            copies = [path for path in _destinations(package, arch_dirs) if path != item["path"]]
+            if relative != item["path"] or not package.independent:
+                copies = []
+            for copy in copies:
+                data = _fetch(f"{base}/{urllib.parse.quote(copy)}")
+                if data is not None and hashlib.sha256(data).hexdigest() == item["sha256"]:
+                    print(
+                        f"pkgrepo: {base}/{relative} is listed but missing; using the copy at {copy}", file=sys.stderr
+                    )
+                    (root / relative).parent.mkdir(parents=True, exist_ok=True)
+                    (root / relative).write_bytes(data)
+                    break
+            else:
                 raise TreeError(f"{base}/{relative} is listed in the manifest but does not exist")
         if sha256_of(root / item["path"]) != item["sha256"]:
             raise TreeError(f"{item['path']} does not match the sha256 in the published manifest")

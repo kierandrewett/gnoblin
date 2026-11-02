@@ -20,8 +20,11 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import unittest
 import zlib
+from functools import partial
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -1017,6 +1020,138 @@ class AlpineRepository(unittest.TestCase):
             signing.ApkSigner(
                 f"-----BEGIN ENCRYPTED {marker}-----\nAAAA\n-----END ENCRYPTED {marker}-----\n", "x.rsa.pub"
             )
+
+
+class PullRecovery(unittest.TestCase):
+    """`pkgrepo pull` run as a command against a real HTTP server.
+
+    A package for no architecture is listed once, at its first architecture, and published as an identical copy in
+    every other architecture directory. Ways a pull can go wrong:
+      - the listed copy is missing and an identical copy exists (restored, checked against the manifest sha256),
+      - the listed copy is missing and the other copy has different bytes (error),
+      - the listed copy is missing and there is no other copy (error),
+      - a file of a package that has an architecture is missing (error, nothing to restore it from),
+      - the signature of a package is missing (error),
+      - the listed copy is present but does not match the manifest sha256 (error).
+    """
+
+    PAYLOAD = b"architecture independent package"
+    MISSING = "listed in the manifest but does not exist"
+
+    def setUp(self):
+        self.site = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.site, True)
+        self.output = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.output, True)
+
+        class Quiet(SimpleHTTPRequestHandler):
+            def log_message(self, *args):
+                pass
+
+        self.server = HTTPServer(("127.0.0.1", 0), partial(Quiet, directory=str(self.site)))
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.addCleanup(self.server.server_close)
+        self.addCleanup(self.server.shutdown)
+        self.url = f"http://127.0.0.1:{self.server.server_port}"
+        self.independent = package(name="docs", version="1-1", family="arch", release="", arch="any", fmt="arch")
+        self.native = package(name="core", version="1-1", family="arch", release="", arch="aarch64", fmt="arch")
+        self.other = package(name="core", version="1-1", family="arch", release="", arch="x86_64", fmt="arch")
+
+    def publish_files(self, files: dict[str, bytes]):
+        for relative, data in files.items():
+            target = self.site / "gnoblin" / "nightly" / relative
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(data)
+
+    def publish(
+        self,
+        *,
+        signatures: bool = False,
+        independent: bytes | None = PAYLOAD,
+        copy: bytes | None = None,
+        native: bool = True,
+    ):
+        """Publish a manifest of three packages, and the files that the arguments leave in place."""
+        listed = [
+            (self.independent, "arch/aarch64/", self.PAYLOAD),
+            (self.native, "arch/aarch64/", b"native"),
+            (self.other, "arch/x86_64/", b"other native"),
+        ]
+        items = []
+        files = {}
+        for pkg, directory, data in listed:
+            path = directory + pkg.filename
+            item = {**pkg.as_dict(), "path": path, "sha256": hashlib.sha256(data).hexdigest()}
+            if signatures:
+                item["signature"] = path + ".sig"
+                files[path + ".sig"] = b"signature"
+            items.append(item)
+            if pkg is not self.independent and (native or pkg is not self.native):
+                files[path] = data
+        if independent is not None:
+            files[f"arch/aarch64/{self.independent.filename}"] = independent
+        if copy is not None:
+            files[f"arch/x86_64/{self.independent.filename}"] = copy
+        files["manifest.json"] = json.dumps({"schema": 1, "packages": items}).encode()
+        self.publish_files(files)
+
+    def pull(self):
+        return subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "pkgrepo"),
+                "pull",
+                "--project",
+                "gnoblin",
+                "--channel",
+                "nightly",
+                "--url",
+                self.url,
+                "--output",
+                str(self.output),
+            ],
+            capture_output=True,
+            text=True,
+        )
+
+    def test_a_missing_listed_copy_is_restored_from_an_identical_copy(self):
+        self.publish(independent=None, copy=self.PAYLOAD)
+        done = self.pull()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("using the copy at arch/x86_64/", done.stderr)
+        restored = self.output / "gnoblin" / "nightly" / "arch" / "aarch64" / self.independent.filename
+        self.assertEqual(restored.read_bytes(), self.PAYLOAD)
+
+    def test_a_copy_with_other_bytes_is_not_used(self):
+        self.publish(independent=None, copy=b"other")
+        done = self.pull()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(self.MISSING, done.stderr)
+
+    def test_a_missing_file_with_no_copy_is_an_error(self):
+        self.publish(independent=None)
+        done = self.pull()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(self.MISSING, done.stderr)
+
+    def test_a_missing_file_of_a_package_with_an_architecture_is_an_error(self):
+        self.publish(native=False, copy=self.PAYLOAD)
+        done = self.pull()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(self.MISSING, done.stderr)
+
+    def test_a_missing_signature_is_an_error(self):
+        self.publish(signatures=True, copy=self.PAYLOAD)
+        (self.site / "gnoblin" / "nightly" / "arch" / "aarch64" / (self.independent.filename + ".sig")).unlink()
+        done = self.pull()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(".sig is " + self.MISSING, done.stderr)
+
+    def test_a_present_file_with_the_wrong_hash_is_an_error(self):
+        self.publish(independent=b"tampered")
+        done = self.pull()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn("does not match the sha256", done.stderr)
 
 
 if __name__ == "__main__":
