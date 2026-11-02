@@ -1,31 +1,36 @@
 # Documentation site
 
-Edit the Markdown in `docs/`. VitePress builds the
-[public site](https://gnoblin.org/) from those files.
+Edit the Markdown in `docs/`. The [public site](https://gnoblin.org/) is built from those files.
 
 ## Preview
 
-From the `infra/website/` directory. It holds the VitePress project and reads the pages from `docs/`:
+The site is in `infra/site/`. It reads the pages from `docs/`, so you edit only the Markdown. Use Node 22.17 or
+later and Yarn through Corepack:
 
 ```sh
-npm ci
-npm run docs:dev
+corepack enable
+cd infra/site
+yarn install --immutable
+yarn dev
 ```
 
-Open the printed localhost address. To check links and build static HTML:
+Open the printed localhost address. Search needs a build.
+
+To build the static site and serve it the way the production Worker does:
 
 ```sh
-npm run docs:build
+yarn build
+yarn preview
 ```
 
-The preview command serves the site on localhost. The production build goes to
-`infra/website/.vitepress/dist/`. The build checks local page links and writes redirects
-from the previous MkDocs URLs. Links to files outside `docs/` should point
-directly to their source on GitHub.
+The build fails when a link in `docs/` points to a page or heading that does not exist, or when a page is in neither
+the sidebar nor the unlisted list. Links to files outside `docs/` should point directly to their source on GitHub.
+
+To check the built pages in headless Chrome, run `yarn test:pages` after `yarn build`.
 
 ## Publish
 
-The Infrastructure workflow builds the site on pull requests, which catches broken pages.
+The Infrastructure workflow builds and checks the site on pull requests, which catches broken pages.
 On `main` it plans the deployment. It uploads the build only in these cases:
 
 - The repository variable `INFRA_AUTO_APPLY` is `true`.

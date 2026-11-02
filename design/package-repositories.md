@@ -455,7 +455,6 @@ no expiry, stored in the owner's Bitwarden) and the signing secrets in both repo
    `nightly.yml` with `force`.
 7. Bingux: after the Gnoblin branch is merged, set `packaging/pkgrepo.ref` of
    Bingux to the merged commit if it is not the one it names.
-8. `infra.yml` still copies an APT archive from the `gh-pages` branch into
-   `gnoblin.org/apt` and `scripts/prepare-apt-pages.py` still exists, although
-   the builder of that archive was removed in `1f53b8c6`. Decide whether to
-   delete the old archive.
+8. Done: `infra.yml` no longer copies an APT archive from the `gh-pages` branch into
+   `gnoblin.org/apt`, and `scripts/prepare-apt-pages.py` is gone. Apt sources that name
+   `gnoblin.org/apt` stop working. Users move to `repo.gnoblin.org`.

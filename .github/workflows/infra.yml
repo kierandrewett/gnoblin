@@ -4,18 +4,12 @@ on:
     paths:
       - "infra/**"
       - "docs/**"
-      - "scripts/docs-vitepress-postbuild.mjs"
-      - "scripts/prepare-apt-pages.py"
-      - "design/package-targets.json"
       - ".github/workflows/infra.yml"
   push:
     branches: [main]
     paths:
       - "infra/**"
       - "docs/**"
-      - "scripts/docs-vitepress-postbuild.mjs"
-      - "scripts/prepare-apt-pages.py"
-      - "design/package-targets.json"
       - ".github/workflows/infra.yml"
   workflow_dispatch:
     inputs:
@@ -36,7 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -47,25 +40,28 @@ jobs:
           yarn install --immutable
           yarn typecheck
           yarn build
+      - name: Install the website packages
+        working-directory: infra/site
+        run: yarn install --immutable
+      - name: Check the website code
+        working-directory: infra/site
+        run: |
+          yarn check
+          yarn lint
       - name: Build the website
-        working-directory: infra/website
-        run: |
-          npm ci
-          npm run docs:build
-      - name: Include the published APT archive
-        run: |
-          git fetch origin gh-pages
-          git archive origin/gh-pages apt | tar -x -C infra/website/.vitepress/dist
-          test -s infra/website/.vitepress/dist/apt/gnoblin-archive-keyring.asc
-          python3 scripts/prepare-apt-pages.py \
-            --archive infra/website/.vitepress/dist/apt \
-            --output infra/website/.vitepress/dist/_redirects
+        # Fails on a broken link in docs/, a page that is not in the sidebar and a heading link that does not exist.
+        working-directory: infra/site
+        run: yarn build
+      - name: Check the built pages
+        # Headless Chrome over the key pages in light and dark, at three sizes, and a search query.
+        working-directory: infra/site
+        run: yarn test:pages
       - uses: actions/upload-artifact@v4
         with:
           name: bundles
           path: |
             infra/repo-index/dist
-            infra/website/.vitepress/dist
+            infra/site/build
           include-hidden-files: true
           if-no-files-found: error
 

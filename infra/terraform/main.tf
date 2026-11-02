@@ -67,8 +67,8 @@ resource "cloudflare_workers_route" "repo_index" {
   script  = cloudflare_workers_script.repo_index.script_name
 }
 
-# Website Worker. It serves the VitePress build as static assets. CI builds infra/website/.vitepress/dist, adds the
-# APT archive and writes _redirects before Terraform runs.
+# Website Worker. It serves the SvelteKit build as static assets. CI builds infra/site/build before Terraform runs.
+# Old URLs redirect through pages that the build writes, so the Worker needs no _redirects file.
 resource "cloudflare_workers_script" "website" {
   account_id         = var.account_id
   script_name        = "gnoblin-website"
@@ -77,11 +77,10 @@ resource "cloudflare_workers_script" "website" {
   compatibility_date = "2026-10-01"
 
   assets = {
-    directory = "${path.module}/../website/.vitepress/dist"
+    directory = "${path.module}/../site/build"
     config = {
       html_handling      = "auto-trailing-slash"
       not_found_handling = "404-page"
-      redirects          = file("${path.module}/../website/.vitepress/dist/_redirects")
     }
   }
 

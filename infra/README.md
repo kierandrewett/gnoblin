@@ -6,7 +6,7 @@ Everything is on one Cloudflare account, zone `gnoblin.org`.
 
 | Part                     | What it is                                                                      | Defined in                                                                                     |
 | ------------------------ | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| Website and docs         | Worker `gnoblin-website` (static assets) on `gnoblin.org` and `www.gnoblin.org` | `infra/terraform/`, `infra/website/`, `.github/workflows/infra.yml`                            |
+| Website and docs         | Worker `gnoblin-website` (static assets) on `gnoblin.org` and `www.gnoblin.org` | `infra/terraform/`, `infra/site/`, `.github/workflows/infra.yml`                               |
 | Package repositories     | R2 bucket `gnoblin-repo`, served at `repo.gnoblin.org`                          | `scripts/pkgrepo`, `.github/workflows/package-repository.yml`, `.github/workflows/nightly.yml` |
 | Repository index (pages) | Worker `repo-index` on `repo.gnoblin.org/*`                                     | `infra/terraform/`, `infra/repo-index/`                                                        |
 

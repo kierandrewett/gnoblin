@@ -36,7 +36,8 @@ __pycache__/
 # Local dependency, Beads state, and generated documentation output.
 node_modules
 .beads/
-infra/website/.vitepress/dist/
+infra/site/build/
+infra/site/.svelte-kit/
 # Tool caches and local agent state
 .ruff_cache/
 .omp/
