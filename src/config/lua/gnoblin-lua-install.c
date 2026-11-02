@@ -571,6 +571,107 @@ gboolean evaluate_embedded_path(lua_State* state, LuaConfig* config, const char*
     return ok;
 }
 
+/* Directories searched for system drop-ins, lowest priority first. XDG_DATA_DIRS lists the
+ * highest priority first, so it is walked backwards; /etc/gnoblin/conf.d comes last. */
+static GPtrArray* system_dropin_directories(void) {
+    GPtrArray* directories = g_ptr_array_new_with_free_func(g_free);
+    const char* value = g_getenv("XDG_DATA_DIRS");
+    g_auto(GStrv) data_dirs =
+        g_strsplit(value && *value ? value : "/usr/local/share:/usr/share", ":", -1);
+    for (guint i = g_strv_length(data_dirs); i-- > 0;) {
+        if (!g_path_is_absolute(data_dirs[i]))
+            continue;
+        char* directory = g_build_filename(data_dirs[i], "gnoblin", "conf.d", NULL);
+        /* A repeated entry counts at its first, highest-priority position. */
+        for (guint j = 0; j < directories->len; j++) {
+            if (g_str_equal(g_ptr_array_index(directories, j), directory)) {
+                g_ptr_array_remove_index(directories, j);
+                break;
+            }
+        }
+        g_ptr_array_add(directories, directory);
+    }
+    g_ptr_array_add(directories, g_strdup("/etc/gnoblin/conf.d"));
+    return directories;
+}
+
+static gint compare_names(gconstpointer a, gconstpointer b) {
+    return strcmp(*(const char* const*)a, *(const char* const*)b);
+}
+
+/* The visible regular *.lua files of one drop-in directory in byte order. A missing directory is
+ * not an error; any other failure to read it is returned in `error`. */
+static GPtrArray* dropin_files(const char* directory, GError** error) {
+    g_autoptr(GPtrArray) files = g_ptr_array_new_with_free_func(g_free);
+    g_autoptr(GError) local = NULL;
+    g_autoptr(GDir) dir = g_dir_open(directory, 0, &local);
+    if (!dir) {
+        if (g_error_matches(local, G_FILE_ERROR, G_FILE_ERROR_NOENT) ||
+            g_error_matches(local, G_FILE_ERROR, G_FILE_ERROR_NOTDIR))
+            return g_steal_pointer(&files);
+        g_propagate_prefixed_error(error, g_steal_pointer(&local), "%s: ", directory);
+        return NULL;
+    }
+    const char* name;
+    while ((name = g_dir_read_name(dir))) {
+        if (name[0] == '.' || !g_str_has_suffix(name, ".lua"))
+            continue;
+        g_autofree char* path = g_build_filename(directory, name, NULL);
+        if (g_file_test(path, G_FILE_TEST_IS_REGULAR))
+            g_ptr_array_add(files, g_steal_pointer(&path));
+    }
+    g_ptr_array_sort(files, compare_names);
+    return g_steal_pointer(&files);
+}
+
+gboolean gnoblin_config_has_system_dropins(void) {
+    g_autoptr(GPtrArray) directories = system_dropin_directories();
+    for (guint i = 0; i < directories->len; i++) {
+        g_autoptr(GPtrArray) files = dropin_files(g_ptr_array_index(directories, i), NULL);
+        if (files && files->len > 0)
+            return TRUE;
+    }
+    return FALSE;
+}
+
+static void skip_dropin(LuaConfig* config, GError** error) {
+    if (!config->skipped_files)
+        config->skipped_files = g_ptr_array_new_with_free_func(g_free);
+    g_ptr_array_add(config->skipped_files, g_strdup_printf("ignored file %s", (*error)->message));
+    g_clear_error(error);
+}
+
+/* Run the packaged and site drop-ins, each in its own protected call so that a broken file
+ * is reported but stops neither the other drop-ins nor the config that follows. Directories are
+ * recorded even when absent, so a package installed later is noticed. */
+static void load_system_dropins(lua_State* state, LuaConfig* config) {
+    /* A drop-in is an ordinary file on disk, never part of the embedded tree. */
+    gboolean embedded = config->embedded_defaults;
+    config->embedded_defaults = FALSE;
+    g_autoptr(GPtrArray) directories = system_dropin_directories();
+    for (guint i = 0; i < directories->len; i++) {
+        const char* directory = g_ptr_array_index(directories, i);
+        if (config->directories) {
+            gboolean known = FALSE;
+            for (guint j = 0; j < config->directories->len && !known; j++)
+                known = g_str_equal(g_ptr_array_index(config->directories, j), directory);
+            if (!known)
+                g_ptr_array_add(config->directories, g_strdup(directory));
+        }
+        g_autoptr(GError) error = NULL;
+        g_autoptr(GPtrArray) files = dropin_files(directory, &error);
+        if (!files) {
+            skip_dropin(config, &error);
+            continue;
+        }
+        for (guint j = 0; j < files->len; j++) {
+            if (!evaluate_path(state, config, g_ptr_array_index(files, j), FALSE, &error))
+                skip_dropin(config, &error);
+        }
+    }
+    config->embedded_defaults = embedded;
+}
+
 int protected_eval(lua_State* state) {
     EvalRun* run = lua_touserdata(state, lua_upvalueindex(1));
 
@@ -587,8 +688,13 @@ int protected_eval(lua_State* state) {
     } else if (run->config->embedded_defaults) {
         if (!evaluate_embedded_path(state, run->config, "init.lua", &run->error))
             return 0;
-    } else if (!evaluate_path(state, run->config, run->path, TRUE, &run->error)) {
-        return 0;
+        if (run->system_dropins)
+            load_system_dropins(state, run->config);
+    } else {
+        if (run->system_dropins)
+            load_system_dropins(state, run->config);
+        if (!evaluate_path(state, run->config, run->path, TRUE, &run->error))
+            return 0;
     }
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "config");

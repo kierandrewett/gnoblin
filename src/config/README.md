@@ -68,6 +68,14 @@ Use `gnoblin.load('conf.d/**/*.lua')` to load sorted fragments in the same
 state. `require()` evaluates each module once per reload and returns the cached
 result on later calls.
 
+Before the user's root runs, the runtime loads the system drop-ins: every
+`gnoblin/conf.d/*.lua` under `XDG_DATA_DIRS` (last entry first) and then
+`/etc/gnoblin/conf.d/*.lua`, in filename order. With no user root, the built-in
+`init.lua` runs first and the drop-ins follow it. A drop-in that fails is
+skipped and reported with the ignored items; it does not stop the others or the
+user root. `gnoblin_config_load_runtime_defaults` stays free of drop-ins because
+bootstrap and recovery use it.
+
 The reader records loaded files and glob directories. A missing root produces
 an empty document. A missing file named by `gnoblin.load()` is an error.
 

@@ -48,6 +48,18 @@ GVariant* gnoblin_config_evaluate_file(const char* path, GPtrArray* paths, GPtrA
 /* Persistent Lua runtime owned by the supervisor for config and runtime events. */
 GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrArray** directories,
                                       GError** error);
+/* Load order of gnoblin_config_load_runtime and the variants that follow: the system drop-ins are
+ * `gnoblin/conf.d/*.lua` under each XDG_DATA_DIRS entry (last entry first), then
+ * /etc/gnoblin/conf.d/*.lua. Without a user config the built-in init.lua runs and the drop-ins
+ * follow it; with one, the drop-ins run first and the user config last. A drop-in that fails is
+ * skipped, never fatal. */
+/* Like gnoblin_config_load_runtime, but `ignored` receives one line for every drop-in that
+ * failed, so a rejected or accepted reload can show it. */
+GVariant* gnoblin_config_load_runtime_reporting(const char* path, GPtrArray** paths,
+                                                GPtrArray** directories, GPtrArray** ignored,
+                                                GError** error);
+/* True when at least one system drop-in file exists. */
+gboolean gnoblin_config_has_system_dropins(void);
 /* Start an empty Lua callback state with a previously validated document. */
 /* Like gnoblin_config_load_runtime, but a document that fails validation is repaired with
  * gnoblin_config_salvage_document instead of rejected. `ignored` is filled as there. */

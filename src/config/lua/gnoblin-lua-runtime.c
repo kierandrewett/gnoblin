@@ -688,20 +688,36 @@ static LuaRuntime* lua_runtime_new(const char* path, GError** error) {
     return runtime;
 }
 
+static GVariant* load_defaults_impl(GPtrArray** paths, GPtrArray** directories,
+                                    gboolean system_dropins, GPtrArray** ignored, GError** error);
+
+/* Drop-ins that failed are not fatal: report them with the other ignored items. They come first
+ * because they were dropped before any setting was checked. */
+static void report_skipped_files(LuaRuntime* runtime, GPtrArray** ignored) {
+    if (!ignored || !runtime->config.skipped_files)
+        return;
+    if (!*ignored)
+        *ignored = g_ptr_array_new_with_free_func(g_free);
+    for (guint i = 0; i < runtime->config.skipped_files->len; i++)
+        g_ptr_array_insert(*ignored, (gint)i,
+                           g_strdup(g_ptr_array_index(runtime->config.skipped_files, i)));
+}
+
 static GVariant* load_runtime_impl(const char* path, GPtrArray** paths, GPtrArray** directories,
                                    gboolean salvage, GPtrArray** ignored, GError** error) {
     if (ignored)
         *ignored = NULL;
     GStatBuf config_stat;
+    /* No user config: the built-in init.lua runs first, then the system drop-ins. */
     if (g_lstat(path, &config_stat) != 0 && errno == ENOENT)
-        return gnoblin_config_load_runtime_defaults(paths, directories, error);
+        return load_defaults_impl(paths, directories, TRUE, ignored, error);
     /* A dangling symlink or inaccessible path is a load error, not an absent
      * configuration. Let evaluation produce the diagnostic for recovery. */
     LuaRuntime* runtime = lua_runtime_new(path, error);
     if (!runtime)
         return NULL;
     runtime->config.skip_failed_files = salvage;
-    EvalRun run = {.config = &runtime->config, .path = path};
+    EvalRun run = {.config = &runtime->config, .path = path, .system_dropins = TRUE};
     lua_pushlightuserdata(runtime->state, &run);
     lua_pushcclosure(runtime->state, protected_eval, 1);
     if (lua_pcall(runtime->state, 0, 0, 0) != LUA_OK) {
@@ -740,14 +756,7 @@ static GVariant* load_runtime_impl(const char* path, GPtrArray** paths, GPtrArra
         lua_runtime_free(runtime);
         return NULL;
     }
-    if (salvage && ignored && runtime->config.skipped_files) {
-        /* Skipped files come first: they were dropped before any setting was checked. */
-        if (!*ignored)
-            *ignored = g_ptr_array_new_with_free_func(g_free);
-        for (guint i = 0; i < runtime->config.skipped_files->len; i++)
-            g_ptr_array_insert(*ignored, (gint)i,
-                               g_strdup(g_ptr_array_index(runtime->config.skipped_files, i)));
-    }
+    report_skipped_files(runtime, ignored);
     lua_runtime_free(pending_runtime);
     pending_runtime = runtime;
     if (paths)
@@ -762,21 +771,29 @@ GVariant* gnoblin_config_load_runtime(const char* path, GPtrArray** paths, GPtrA
     return load_runtime_impl(path, paths, directories, FALSE, NULL, error);
 }
 
+GVariant* gnoblin_config_load_runtime_reporting(const char* path, GPtrArray** paths,
+                                                GPtrArray** directories, GPtrArray** ignored,
+                                                GError** error) {
+    return load_runtime_impl(path, paths, directories, FALSE, ignored, error);
+}
+
 GVariant* gnoblin_config_load_runtime_salvaged(const char* path, GPtrArray** paths,
                                                GPtrArray** directories, GPtrArray** ignored,
                                                GError** error) {
     return load_runtime_impl(path, paths, directories, TRUE, ignored, error);
 }
 
-GVariant* gnoblin_config_load_runtime_defaults(GPtrArray** paths, GPtrArray** directories,
-                                               GError** error) {
+static GVariant* load_defaults_impl(GPtrArray** paths, GPtrArray** directories,
+                                    gboolean system_dropins, GPtrArray** ignored, GError** error) {
     LuaRuntime* runtime = lua_runtime_new("/gnoblin-builtin/init.lua", error);
     if (!runtime)
         return NULL;
     runtime->config.embedded_defaults = TRUE;
     g_free(runtime->config.current_path);
     runtime->config.current_path = g_strdup("/gnoblin-builtin/init.lua");
-    EvalRun run = {.config = &runtime->config, .path = runtime->config.current_path};
+    EvalRun run = {.config = &runtime->config,
+                   .path = runtime->config.current_path,
+                   .system_dropins = system_dropins};
     lua_pushlightuserdata(runtime->state, &run);
     lua_pushcclosure(runtime->state, protected_eval, 1);
     if (lua_pcall(runtime->state, 0, 0, 0) != LUA_OK) {
@@ -790,6 +807,7 @@ GVariant* gnoblin_config_load_runtime_defaults(GPtrArray** paths, GPtrArray** di
         lua_runtime_free(runtime);
         return NULL;
     }
+    report_skipped_files(runtime, ignored);
     lua_runtime_free(pending_runtime);
     pending_runtime = runtime;
     if (paths)
@@ -797,6 +815,13 @@ GVariant* gnoblin_config_load_runtime_defaults(GPtrArray** paths, GPtrArray** di
     if (directories)
         *directories = g_ptr_array_ref(runtime->config.directories);
     return g_variant_ref(runtime->document);
+}
+
+/* The built-in configuration alone. Bootstrap and recovery use it, so no file on disk can
+ * keep it from loading. */
+GVariant* gnoblin_config_load_runtime_defaults(GPtrArray** paths, GPtrArray** directories,
+                                               GError** error) {
+    return load_defaults_impl(paths, directories, FALSE, NULL, error);
 }
 
 GVariant* gnoblin_config_load_runtime_fallback(const char* path, GVariant* document,

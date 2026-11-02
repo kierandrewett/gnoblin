@@ -132,7 +132,7 @@ if(GNOBLIN_LUA_FOUND)
     PkgConfig::GNOBLIN_GIO PkgConfig::GNOBLIN_CONTROL PkgConfig::GNOBLIN_XKBCOMMON
     PkgConfig::GNOBLIN_LUA m)
 
-  foreach(test_name IN ITEMS lua-config lua-config-validation lua-api glob-config)
+  foreach(test_name IN ITEMS lua-config lua-config-validation lua-dropins lua-api glob-config)
     add_executable(${test_name}-test tests/${test_name}-test.c)
     target_link_libraries(${test_name}-test PRIVATE gnoblin-config-core)
     add_test(NAME ${test_name} COMMAND ${test_name}-test)
@@ -147,9 +147,11 @@ if(GNOBLIN_LUA_FOUND)
   target_link_libraries(config-reload-warnings-test PRIVATE gnoblin-config-core)
   add_test(NAME config-reload-warnings COMMAND config-reload-warnings-test)
   set_tests_properties(config-reload-warnings PROPERTIES TIMEOUT 20)
-set_tests_properties(lua-config lua-config-validation PROPERTIES
+# XDG_DATA_DIRS names the test prefix only, so drop-ins installed on the build machine
+# (share/gnoblin/conf.d) cannot change what these tests load.
+set_tests_properties(lua-config lua-config-validation lua-dropins lua-api PROPERTIES
   ENVIRONMENT
-    "GNOBLIN_TEST_SOURCE_ROOT=${PROJECT_SOURCE_DIR};GNOBLIN_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/gnoblin-config-test-prefix")
+    "GNOBLIN_TEST_SOURCE_ROOT=${PROJECT_SOURCE_DIR};GNOBLIN_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/gnoblin-config-test-prefix;XDG_DATA_DIRS=${CMAKE_CURRENT_BINARY_DIR}/gnoblin-config-test-prefix/share")
 set(GNOBLIN_CONFIG_TEST_CATALOG_DIR
   "${CMAKE_CURRENT_BINARY_DIR}/gnoblin-config-test-prefix/share/gnoblin")
 file(MAKE_DIRECTORY "${GNOBLIN_CONFIG_TEST_CATALOG_DIR}")

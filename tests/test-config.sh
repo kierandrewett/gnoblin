@@ -12,8 +12,8 @@ cmake -S "$ROOT" -B "$build" -G Ninja \
     -DGNOBLIN_PREFIX="$build/install" \
     -DGNOBLIN_BUILD_TYPE=debugoptimized
 cmake --build "$build" \
-    --target lua-config-test lua-config-validation-test config-reload-warnings-test \
-    lua-api-test glob-config-test \
+    --target lua-config-test lua-config-validation-test lua-dropins-test \
+    config-reload-warnings-test lua-api-test glob-config-test \
     --parallel "$jobs"
 ctest --test-dir "$build" --output-on-failure \
-    -R '^(lua-config|lua-config-validation|config-reload-warnings|lua-api|glob-config)$'
+    -R '^(lua-config|lua-config-validation|lua-dropins|config-reload-warnings|lua-api|glob-config)$'

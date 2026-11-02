@@ -165,6 +165,7 @@ typedef struct {
     const char* path;
     const char* source;
     gsize source_length;
+    gboolean system_dropins;
     GVariant* result;
     GError* error;
 } EvalRun;

@@ -233,7 +233,9 @@ int runtime_worker_main(int argc, char** argv) {
     guint64 revision = gnoblin_config_settings_revision();
 
     GStatBuf user_config_stat;
-    gboolean user_config_present = g_lstat(config_path, &user_config_stat) == 0 || errno != ENOENT;
+    /* System drop-ins are applied after the safe bootstrap, like the user config. */
+    gboolean user_config_present = g_lstat(config_path, &user_config_stat) == 0 ||
+                                   errno != ENOENT || gnoblin_config_has_system_dropins();
     Runtime runtime = {
         .channel_fd = RUNTIME_FD,
         .session_log_fd = -1,

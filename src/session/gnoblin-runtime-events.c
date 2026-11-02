@@ -528,7 +528,8 @@ gboolean handle_api_request(Runtime* runtime, guint64 request_id, GVariant* payl
                 candidate = gnoblin_config_load_runtime_salvaged(path, NULL, NULL,
                                                                  &ignored_settings, &api_error);
             } else {
-                candidate = gnoblin_config_load_runtime(path, NULL, NULL, &api_error);
+                candidate = gnoblin_config_load_runtime_reporting(path, NULL, NULL,
+                                                                  &ignored_settings, &api_error);
             }
             if (candidate) {
                 if (!gnoblin_config_defer_load_commit()) {
