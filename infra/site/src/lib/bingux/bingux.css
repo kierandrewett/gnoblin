@@ -1,0 +1,288 @@
+/*
+ * The Bingux design system for the /bingux page, scoped to [data-theme="bingux"] so it never reaches the Gnoblin
+ * header and footer (which sit outside that element) or any other page.
+ *
+ * Values come unchanged from the Bingux design source (gnoblin-doop lib/bingux/, a copy of bingux-doop lib, which
+ * replicates crates/ui in the Bingux repository): the app palettes for light and dark with the blue accent, the
+ * contrast-fitted values from ds-derive, radii, sizes, type, and the button, field, group and row components. Only
+ * the page layout (widths, spacing, heading sizes) is this site's, from lib/bingux-page.mjs.
+ */
+[data-theme="bingux"] {
+    --accent: light-dark(#3584e4, #619fea);
+    --accent-base: #3584e4;
+    --elevated: rgba(64, 64, 69, 0.28);
+    --hover: rgba(107, 107, 112, 0.34);
+    --pressed: rgba(133, 133, 138, 0.46);
+    --outline: rgba(80, 80, 80, 0.75);
+    --gap: 8px;
+    --pad: 12px;
+    --pad-pop: 16px;
+    --r: 12px;
+    --r-card: 20px;
+    --fs-sm: 12px;
+    --fs: 14px;
+    --fs-head: 16px;
+    --row-h: 56px;
+    --row-h-sub: 72px;
+    --col-max: 720px;
+    --head-gap: 12px;
+    --win-r: 12px;
+    --a-content: light-dark(#fafafb, #222226);
+    --a-recess: light-dark(#ebebed, #18181b);
+    --a-card: light-dark(#ffffff, #343438);
+    --a-control: light-dark(#f1f1f3, #424246);
+    --a-raised: light-dark(#ffffff, #5a5a5f);
+    --a-separator: light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.08));
+    --a-hover: light-dark(rgba(0, 0, 0, 0.05), rgba(255, 255, 255, 0.06));
+    --a-pressed: light-dark(rgba(0, 0, 0, 0.08), rgba(255, 255, 255, 0.1));
+    --a-outline: light-dark(rgb(135, 135, 140), rgb(140, 141, 147));
+    --a-text: light-dark(#2e2e32, rgba(250, 250, 250, 0.98));
+    --a-muted: light-dark(rgb(95, 95, 100), rgba(255, 255, 255, 0.878));
+    --a-on-accent: light-dark(rgb(0, 11, 38), rgb(0, 14, 40));
+    --a-focus-ring: light-dark(rgb(53, 132, 228), rgb(112, 175, 251));
+    --a-window-shadow: light-dark(rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0.6));
+    /* Adwaita Sans where installed, then the reader's system face (nothing is downloaded). */
+    --font:
+        "Adwaita Sans", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Cantarell", "Noto Sans", Arial,
+        sans-serif;
+    --mono: "Adwaita Mono", "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", "DejaVu Sans Mono", monospace;
+
+    font-family: var(--font);
+    font-size: var(--fs);
+    line-height: 1.3;
+    color: var(--a-text);
+}
+
+/* The page uses the recess colour; the Gnoblin header is transparent over it. */
+:root:has([data-theme="bingux"]) body {
+    background: light-dark(#ebebed, #18181b);
+}
+
+[data-theme="bingux"] :focus-visible {
+    outline-color: var(--a-focus-ring);
+}
+
+/* Components (crates/ui): icon, action button, field, boxed list and rows. */
+[data-theme="bingux"] .ic {
+    width: 16px;
+    height: 16px;
+    flex: none;
+    fill: currentColor;
+}
+
+[data-theme="bingux"] .fill {
+    flex: 1;
+    min-width: 0;
+}
+
+[data-theme="bingux"] .trunc {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+[data-theme="bingux"] .abtn {
+    height: 36px;
+    min-width: 36px;
+    padding: 0 var(--pad);
+    border-radius: 8px;
+    background: var(--elevated);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--gap);
+    white-space: nowrap;
+    color: inherit;
+    font: 500 var(--fs) / 1 var(--font);
+}
+
+[data-theme="bingux"] .abtn:hover {
+    background: var(--hover);
+}
+
+[data-theme="bingux"] .abtn:active {
+    background: var(--pressed);
+}
+
+[data-theme="bingux"] .abtn.done {
+    color: var(--accent);
+}
+
+[data-theme="bingux"] .field {
+    min-height: 36px;
+    border-radius: var(--r);
+    border: 1px solid var(--outline);
+    background: rgba(0, 0, 0, 0.18);
+    padding: 0 0 0 var(--pad);
+    display: flex;
+    align-items: center;
+    gap: var(--gap);
+    min-width: 0;
+}
+
+[data-theme="bingux"] .bhead {
+    font-weight: 700;
+    font-size: var(--fs-head);
+    margin-bottom: var(--head-gap);
+}
+
+[data-theme="bingux"] .bgroup {
+    background: var(--a-card);
+    border-radius: 16px;
+    overflow: hidden;
+    border: 1px solid var(--a-separator);
+}
+
+[data-theme="bingux"] .brow {
+    min-height: var(--row-h);
+    padding: 0 var(--pad-pop);
+    display: flex;
+    align-items: center;
+    gap: var(--pad);
+    position: relative;
+    color: inherit;
+}
+
+[data-theme="bingux"] .brow.sub {
+    min-height: var(--row-h-sub);
+}
+
+[data-theme="bingux"] .brow + .brow::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: var(--pad-pop);
+    right: var(--pad-pop);
+    height: 1px;
+    background: var(--a-separator);
+}
+
+[data-theme="bingux"] a.brow:hover {
+    background: var(--a-hover);
+}
+
+[data-theme="bingux"] a.brow:focus-visible {
+    outline: 2px solid var(--a-focus-ring);
+    outline-offset: -2px;
+    border-radius: 0;
+}
+
+[data-theme="bingux"] .brow .t {
+    font-size: var(--fs);
+}
+
+[data-theme="bingux"] .brow .s {
+    color: var(--a-muted);
+    font-size: var(--fs-sm);
+    margin-top: 1px;
+}
+
+[data-theme="bingux"] .brow .chev {
+    color: var(--a-muted);
+    width: 16px;
+    height: 16px;
+}
+
+/* Screenshots in Bingux's window style. */
+[data-theme="bingux"] .shot {
+    border-radius: var(--win-r);
+    box-shadow:
+        0 0 0 1px var(--a-separator),
+        0 24px 60px -20px var(--a-window-shadow);
+}
+
+[data-theme="bingux"] .shot-caption {
+    font-size: var(--fs-sm);
+    line-height: 18px;
+    color: var(--a-muted);
+    margin-top: 10px;
+}
+
+/* Page layout (gnoblin-doop lib/bingux-page.mjs). */
+[data-theme="bingux"] .bxw {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 0 24px;
+}
+
+[data-theme="bingux"] .bxw-hero {
+    padding: 96px 0 104px;
+}
+
+[data-theme="bingux"] .bxw-hero .text {
+    max-width: 720px;
+}
+
+[data-theme="bingux"] h1 {
+    font-size: 52px;
+    line-height: 60px;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+}
+
+[data-theme="bingux"] h2 {
+    font-size: 30px;
+    line-height: 38px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+}
+
+[data-theme="bingux"] .lede {
+    font-size: 18px;
+    line-height: 28px;
+    color: var(--a-muted);
+    margin-top: 16px;
+    max-width: 46ch;
+}
+
+[data-theme="bingux"] .bxw-band {
+    padding: 88px 0;
+    border-top: 1px solid var(--a-separator);
+}
+
+[data-theme="bingux"] .bxw-band.tint {
+    background: var(--a-content);
+}
+
+[data-theme="bingux"] .bxw-band .intro {
+    color: var(--a-muted);
+    font-size: 16px;
+    line-height: 24px;
+    margin: 10px 0 32px;
+    max-width: 60ch;
+}
+
+[data-theme="bingux"] .bxw-col {
+    max-width: var(--col-max);
+}
+
+[data-theme="bingux"] .bxw-two {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+    margin-top: 24px;
+}
+
+@media (max-width: 733px) {
+    [data-theme="bingux"] .bxw {
+        padding: 0 20px;
+    }
+
+    [data-theme="bingux"] .bxw-hero {
+        padding: 48px 0 64px;
+    }
+
+    [data-theme="bingux"] h1 {
+        font-size: 40px;
+        line-height: 48px;
+    }
+
+    [data-theme="bingux"] .bxw-band {
+        padding: 56px 0;
+    }
+
+    [data-theme="bingux"] .bxw-two {
+        grid-template-columns: 1fr;
+    }
+}
