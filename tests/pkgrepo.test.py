@@ -1044,9 +1044,21 @@ class PublishedChannel(unittest.TestCase):
         self.output = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.output, True)
 
+        self.stale: set[str] = set()
+        stale = self.stale
+
         class Quiet(SimpleHTTPRequestHandler):
             def log_message(self, *args):
                 pass
+
+            def do_HEAD(self):
+                # A cache that holds an older file answers a plain request and passes a request with a query string on.
+                if "?" not in self.path and self.path in stale:
+                    self.send_response(200)
+                    self.send_header("Content-Length", "3")
+                    self.end_headers()
+                    return
+                super().do_HEAD()
 
         self.server = HTTPServer(("127.0.0.1", 0), partial(Quiet, directory=str(self.site)))
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
@@ -1146,6 +1158,26 @@ class PublishedChannel(unittest.TestCase):
         self.assertNotEqual(done.returncode, 0)
         self.assertIn(self.native.filename + ".sig: HTTP 404", done.stderr)
         self.assertIn("the manifest says 6", done.stderr)
+
+    def test_verify_published_reports_a_file_the_cache_holds_in_an_older_version(self):
+        self.publish(signatures=True, copy=self.PAYLOAD)
+        self.stale.add(f"/gnoblin/nightly/arch/aarch64/{self.native.filename}")
+        done = self.verify()
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn(
+            f"stale in the host's cache: {self.url}/gnoblin/nightly/arch/aarch64/{self.native.filename}", done.stderr
+        )
+        self.assertIn("the cache serves 3 bytes, the stored file has 6", done.stderr)
+        strict = self.run_command("verify-published", "--fail-on-stale")
+        self.assertNotEqual(strict.returncode, 0)
+
+    def test_verify_published_fails_when_the_stored_file_is_missing_even_if_the_cache_answers(self):
+        self.publish(signatures=True, copy=self.PAYLOAD)
+        (self.site / "gnoblin" / "nightly" / "arch" / "aarch64" / self.native.filename).unlink()
+        self.stale.add(f"/gnoblin/nightly/arch/aarch64/{self.native.filename}")
+        done = self.verify()
+        self.assertNotEqual(done.returncode, 0)
+        self.assertIn(f"{self.native.filename}: HTTP 404", done.stderr)
 
     def test_a_missing_listed_copy_is_restored_from_an_identical_copy(self):
         self.publish(independent=None, copy=self.PAYLOAD)
