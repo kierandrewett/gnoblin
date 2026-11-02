@@ -1,0 +1,160 @@
+/* Global base: reset, type defaults, focus ring and the few layout helpers every page shares. Component styles live
+   in their components; the docs article styles in prose.css. */
+*,
+*::before,
+*::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    -webkit-font-smoothing: antialiased;
+    text-size-adjust: 100%;
+    scroll-padding-top: calc(var(--topbar-h) + var(--s-4));
+}
+
+body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-text);
+    font-size: var(--t-body-size);
+    line-height: var(--t-body-lh);
+    font-weight: 400;
+    letter-spacing: 0;
+    overflow-x: hidden;
+}
+
+img,
+svg,
+picture {
+    display: block;
+    max-width: 100%;
+}
+
+img {
+    height: auto;
+}
+
+a {
+    color: inherit;
+    text-decoration: none;
+}
+
+button,
+input {
+    font: inherit;
+    color: inherit;
+}
+
+button {
+    background: none;
+    border: 0;
+    cursor: pointer;
+}
+
+ul[role="list"],
+ol[role="list"] {
+    list-style: none;
+}
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: var(--r-sm);
+}
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.skip-link {
+    position: absolute;
+    left: var(--s-4);
+    top: -100px;
+    z-index: 100;
+    padding: var(--s-2) var(--s-4);
+    border-radius: var(--r-sm);
+    background: var(--accent);
+    color: var(--on-accent);
+    font-weight: 500;
+}
+
+.skip-link:focus {
+    top: var(--s-2);
+}
+
+.wrap {
+    width: 100%;
+    max-width: calc(var(--page-max) + 2 * var(--page-pad));
+    padding: 0 var(--page-pad);
+    margin: 0 auto;
+}
+
+.label {
+    font-family: var(--font-mono);
+    font-size: var(--t-label-size);
+    line-height: var(--t-label-lh);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+}
+
+.link {
+    color: var(--accent);
+}
+
+.link:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+}
+
+/* Icons from the sprite (static/icons.svg). */
+svg.icon {
+    flex: none;
+    fill: currentColor;
+}
+
+/* Inline code in pages and docs. */
+code.inline {
+    font-family: var(--font-mono);
+    font-size: 0.84em;
+    padding: 0.1em 0.38em;
+    border-radius: 6px;
+    background: var(--sunken);
+    color: var(--ink);
+    overflow-wrap: anywhere;
+}
+
+/* Screenshots follow the scheme: both captures are in the page, one is shown. */
+:root[data-scheme="dark"] .for-light,
+:root:not([data-scheme="dark"]) .for-dark {
+    display: none;
+}
+
+/* Bands fade up 12 px over the first 40% of their entry, where scroll-driven animations exist. */
+@media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+        .band-motion {
+            animation: band-in linear both;
+            animation-timeline: view();
+            animation-range: entry 0% entry 40%;
+        }
+    }
+}
+
+@keyframes band-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px);
+    }
+    to {
+        opacity: 1;
+        transform: none;
+    }
+}

@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en-GB">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <meta name="color-scheme" content="light dark" />
+        <script>
+            // Apply the stored appearance before the first paint so the page never flashes the other scheme.
+            // Without a stored choice the page follows the system setting, and keeps following it.
+            (function () {
+                var root = document.documentElement;
+                var query = window.matchMedia("(prefers-color-scheme: dark)");
+                function stored() {
+                    try {
+                        var value = localStorage.getItem("gnoblin-scheme");
+                        return value === "light" || value === "dark" ? value : null;
+                    } catch (error) {
+                        return null;
+                    }
+                }
+                function apply() {
+                    root.dataset.scheme = stored() || (query.matches ? "dark" : "light");
+                }
+                apply();
+                query.addEventListener("change", apply);
+            })();
+        </script>
+        %sveltekit.head%
+    </head>
+    <body data-sveltekit-preload-data="hover">
+        <div style="display: contents">%sveltekit.body%</div>
+    </body>
+</html>

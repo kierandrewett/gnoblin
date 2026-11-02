@@ -1,0 +1,102 @@
+{
+  "gnoblin-bingux-desktop-light": [
+    {
+      "width": 720,
+      "height": 405
+    },
+    {
+      "width": 1440,
+      "height": 810
+    }
+  ],
+  "gnoblin-bingux-desktop-dark": [
+    {
+      "width": 720,
+      "height": 405
+    },
+    {
+      "width": 1440,
+      "height": 810
+    }
+  ],
+  "gnoblin-bingux-search-light": [
+    {
+      "width": 720,
+      "height": 405
+    },
+    {
+      "width": 1440,
+      "height": 810
+    }
+  ],
+  "gnoblin-bingux-search-dark": [
+    {
+      "width": 720,
+      "height": 405
+    },
+    {
+      "width": 1440,
+      "height": 810
+    }
+  ],
+  "gnoblin-bingux-notification-light": [
+    {
+      "width": 720,
+      "height": 405
+    },
+    {
+      "width": 1440,
+      "height": 810
+    }
+  ],
+  "gnoblin-bingux-notification-dark": [
+    {
+      "width": 720,
+      "height": 405
+    },
+    {
+      "width": 1440,
+      "height": 810
+    }
+  ],
+  "bingux-files-light": [
+    {
+      "width": 550,
+      "height": 360
+    },
+    {
+      "width": 1100,
+      "height": 720
+    }
+  ],
+  "bingux-files-dark": [
+    {
+      "width": 550,
+      "height": 360
+    },
+    {
+      "width": 1100,
+      "height": 720
+    }
+  ],
+  "bingux-settings-light": [
+    {
+      "width": 500,
+      "height": 410
+    },
+    {
+      "width": 1000,
+      "height": 820
+    }
+  ],
+  "bingux-settings-dark": [
+    {
+      "width": 500,
+      "height": 410
+    },
+    {
+      "width": 1000,
+      "height": 820
+    }
+  ]
+}

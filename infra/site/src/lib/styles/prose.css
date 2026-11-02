@@ -1,0 +1,163 @@
+/* The docs article: Markdown rendered by src/lib/server/markdown.ts. */
+.prose {
+    color: var(--ink-2);
+    overflow-wrap: break-word;
+}
+
+.prose h1 {
+    font-size: var(--t-h1-size);
+    line-height: var(--t-h1-lh);
+    font-weight: 700;
+    color: var(--ink);
+    margin-bottom: var(--s-4);
+}
+
+/* API reference titles such as gnoblin.configure.input.mouse. */
+.prose h1.ident {
+    font-family: var(--font-mono);
+    font-size: 34px;
+    line-height: 42px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+}
+
+.prose .lede {
+    font-size: var(--t-lead-size);
+    line-height: var(--t-lead-lh);
+    color: var(--ink-3);
+    margin-bottom: var(--s-6);
+}
+
+.prose h2,
+.prose h3,
+.prose h4 {
+    position: relative;
+    color: var(--ink);
+    font-weight: 600;
+    scroll-margin-top: calc(var(--topbar-h) + var(--s-4));
+}
+
+.prose h2 {
+    font-size: 28px;
+    line-height: 34px;
+    margin: var(--s-8) 0 var(--s-4);
+}
+
+.prose h3 {
+    font-size: var(--t-h3-size);
+    line-height: var(--t-h3-lh);
+    margin: var(--s-6) 0 var(--s-3);
+}
+
+.prose h4 {
+    font-size: 17px;
+    line-height: 26px;
+    margin: var(--s-5) 0 var(--s-2);
+}
+
+.prose .anchor {
+    position: absolute;
+    left: -30px;
+    top: 50%;
+    translate: 0 -50%;
+    padding: 2px;
+    color: var(--ink-soft);
+    opacity: 0;
+    transition: opacity var(--dur-1) var(--ease);
+}
+
+.prose h2:hover .anchor,
+.prose h3:hover .anchor,
+.prose .anchor:focus-visible {
+    opacity: 1;
+}
+
+.prose p,
+.prose ul,
+.prose ol,
+.prose blockquote {
+    margin-bottom: var(--s-4);
+}
+
+.prose ul,
+.prose ol {
+    padding-left: 22px;
+}
+
+.prose li + li {
+    margin-top: 6px;
+}
+
+.prose li > ul,
+.prose li > ol {
+    margin: 6px 0 0;
+}
+
+.prose li > p {
+    margin-bottom: var(--s-2);
+}
+
+.prose strong {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.prose a:not(.anchor) {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+    text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
+.prose a:not(.anchor):hover {
+    text-decoration-color: currentColor;
+}
+
+.prose blockquote {
+    padding-left: var(--s-4);
+    border-left: 3px solid var(--line);
+    color: var(--ink-3);
+}
+
+.prose hr {
+    border: 0;
+    border-top: 1px solid var(--line);
+    margin: var(--s-7) 0;
+}
+
+.prose img {
+    border-radius: var(--r-sm);
+    box-shadow: 0 0 0 1px var(--line);
+    margin: var(--s-2) 0;
+}
+
+.prose .code,
+.prose .callout,
+.prose .tbl-wrap,
+.prose .tabs,
+.prose .details,
+.prose .cmd {
+    margin: var(--s-5) 0;
+}
+
+.prose > :first-child {
+    margin-top: 0;
+}
+
+@media (max-width: 733px) {
+    .prose h1.ident {
+        font-size: 22px;
+        line-height: 30px;
+    }
+
+    .prose h2 {
+        font-size: var(--t-h2-size);
+        line-height: var(--t-h2-lh);
+        margin-top: var(--s-7);
+    }
+
+    .prose .anchor {
+        display: none;
+    }
+}

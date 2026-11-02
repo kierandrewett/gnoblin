@@ -1,0 +1,410 @@
+/* Content components shared by the Svelte components in src/lib/components/content and the docs HTML rendered from
+   Markdown (src/lib/server/markdown.ts writes the same markup), so both look the same. Values from the design
+   source's lib/css.mjs. */
+
+/* Code panel: header with language and Copy, then the code. Long lines scroll sideways with a 64 px fade. */
+.code {
+    position: relative;
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: var(--r-md);
+    overflow: hidden;
+    box-shadow: inset 0 0 0 1px var(--code-line);
+}
+
+.code-head {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    gap: var(--s-2);
+    padding: 0 var(--s-2) 0 var(--s-5);
+    background: var(--code-head);
+    border-bottom: 1px solid var(--code-line);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--syn-comment);
+}
+
+.code-head .lang {
+    margin-left: auto;
+    padding-right: var(--s-2);
+    font-family: var(--font-text);
+}
+
+.code .copy {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 28px;
+    padding: 0 10px;
+    border-radius: var(--r-sm);
+    color: var(--code-ink);
+    font-family: var(--font-text);
+    font-size: 13px;
+    font-weight: 500;
+    transition: background var(--dur-1) var(--ease);
+}
+
+.code .copy:hover {
+    background: color-mix(in srgb, var(--code-ink) 10%, transparent);
+}
+
+.code .copy.done,
+.cmd .copy.done {
+    color: var(--syn-string);
+}
+
+.code pre {
+    padding: var(--s-5);
+    font-family: var(--font-mono);
+    font-size: var(--t-code-size);
+    line-height: var(--t-code-lh);
+    overflow-x: auto;
+    white-space: pre;
+    tab-size: 4;
+}
+
+.code pre code {
+    font: inherit;
+}
+
+.code.overflow pre {
+    mask-image: linear-gradient(90deg, #000 calc(100% - 64px), transparent);
+}
+
+.code.overflow.at-end pre {
+    mask-image: none;
+}
+
+/* Shiki's css-variables theme, mapped to the site's syntax colours. */
+.code {
+    --shiki-foreground: var(--code-ink);
+    --shiki-background: transparent;
+    --shiki-token-constant: var(--syn-number);
+    --shiki-token-string: var(--syn-string);
+    --shiki-token-string-expression: var(--syn-string);
+    --shiki-token-comment: var(--syn-comment);
+    --shiki-token-keyword: var(--syn-keyword);
+    --shiki-token-parameter: var(--code-ink);
+    --shiki-token-function: var(--syn-fn);
+    --shiki-token-punctuation: var(--code-ink);
+    --shiki-token-link: var(--accent);
+}
+
+.cmd .f {
+    color: var(--syn-fn);
+}
+
+/* One runnable command with a $ prompt and Copy. On phones the command wraps and Copy goes under it. */
+.cmd {
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    min-height: 56px;
+    padding: 6px 6px 6px var(--s-5);
+    border-radius: var(--r-md);
+    background: var(--code-bg);
+    box-shadow: inset 0 0 0 1px var(--code-line);
+    color: var(--code-ink);
+    font-family: var(--font-mono);
+    font-size: 15px;
+}
+
+.cmd code {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    white-space: pre;
+    overflow-x: auto;
+}
+
+/* The prompt is not part of the command: it is not copied or selected, and a 1ch gap stands for the space. */
+.cmd .p {
+    color: var(--syn-comment);
+    user-select: none;
+    padding-right: 1ch;
+}
+
+.cmd .copy {
+    flex: none;
+    height: 42px;
+    padding: 0 14px;
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--code-line);
+    color: var(--code-ink);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: var(--font-text);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.cmd .copy:hover {
+    background: var(--sunken);
+}
+
+@media (max-width: 733px) {
+    .cmd {
+        flex-direction: column;
+        align-items: stretch;
+        border-radius: var(--r-lg);
+        padding: var(--s-4);
+    }
+
+    .cmd code {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-size: 14px;
+        line-height: 22px;
+    }
+
+    .cmd .copy {
+        height: 44px;
+    }
+}
+
+/* Callouts: note (accent), tip, warning, danger. */
+.callout {
+    display: grid;
+    grid-template-columns: 20px 1fr;
+    gap: var(--s-3);
+    padding: var(--s-4) var(--s-5);
+    border-radius: var(--r-md);
+    background: var(--accent-soft);
+}
+
+.callout > svg {
+    color: var(--accent);
+    margin-top: 3px;
+}
+
+.callout .title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 2px;
+}
+
+.callout p,
+.callout li {
+    font-size: 15px;
+    line-height: 23px;
+    color: var(--ink-2);
+}
+
+.callout > div > * + * {
+    margin-top: var(--s-2);
+}
+
+.callout.tip {
+    background: var(--tip-soft);
+}
+
+.callout.tip > svg,
+.callout.tip .title {
+    color: var(--tip);
+}
+
+.callout.warning {
+    background: var(--warning-soft);
+}
+
+.callout.warning > svg,
+.callout.warning .title {
+    color: var(--warning);
+}
+
+.callout.danger {
+    background: var(--danger-soft);
+}
+
+.callout.danger > svg,
+.callout.danger .title {
+    color: var(--danger);
+}
+
+/* Details: a native <details>; the plus turns into a cross. */
+.details {
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+}
+
+.details + .details {
+    border-top: 0;
+}
+
+.details summary {
+    list-style: none;
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    gap: var(--s-3);
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.details summary::-webkit-details-marker {
+    display: none;
+}
+
+.details summary .plus {
+    margin-left: auto;
+    color: var(--ink-3);
+    transition: transform var(--dur-2) var(--ease);
+}
+
+.details[open] summary .plus {
+    transform: rotate(45deg);
+}
+
+.details .body {
+    padding: 0 0 var(--s-5);
+    color: var(--ink-2);
+}
+
+/* Tables scroll sideways inside their frame when they do not fit. */
+.tbl-wrap {
+    border-radius: var(--r-md);
+    box-shadow: inset 0 0 0 1px var(--line);
+    overflow-x: auto;
+}
+
+table.tbl {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--t-small-size);
+    line-height: var(--t-small-lh);
+}
+
+.tbl th {
+    text-align: left;
+    padding: 10px var(--s-4);
+    background: var(--sunken);
+    color: var(--ink);
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.tbl td {
+    padding: 12px var(--s-4);
+    border-top: 1px solid var(--line);
+    vertical-align: top;
+    color: var(--ink-2);
+}
+
+.tbl code.inline {
+    overflow-wrap: normal;
+}
+
+/* The first column names a field or value: keep it on one line; the table scrolls when it does not fit. */
+.tbl td:first-child {
+    white-space: nowrap;
+}
+
+/* Keys and badges. */
+.kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 6px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    box-shadow: 0 1px 0 var(--line);
+    font-family: var(--font-text);
+    font-size: 12px;
+    line-height: 1;
+    font-weight: 500;
+    color: var(--ink-2);
+    vertical-align: 0.1em;
+}
+
+.badge {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: var(--r-pill);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    background: var(--sunken);
+    color: var(--ink-2);
+    white-space: nowrap;
+}
+
+.badge.accent {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.badge.tip {
+    background: var(--tip-soft);
+    color: var(--tip);
+}
+
+.badge.warning {
+    background: var(--warning-soft);
+    color: var(--warning);
+}
+
+.badge.danger {
+    background: var(--danger-soft);
+    color: var(--danger);
+}
+
+.badge.outline {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+
+/* Segmented control (Tabs). */
+.seg {
+    display: inline-flex;
+    padding: 3px;
+    gap: 2px;
+    border-radius: var(--r-pill);
+    background: var(--sunken);
+}
+
+.seg button {
+    height: 30px;
+    padding: 0 16px;
+    border-radius: var(--r-pill);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--ink-2);
+    transition:
+        background var(--dur-2) var(--ease),
+        color var(--dur-2) var(--ease);
+}
+
+.seg button[aria-selected="true"] {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: 0 1px 3px rgba(var(--shadow-rgb), 0.12);
+}
+
+/* Screenshots: full frame, 1 px border, 8 px radius, a plain caption. */
+.shot {
+    border-radius: var(--r-sm);
+    overflow: hidden;
+    box-shadow: 0 0 0 1px var(--line);
+}
+
+.shot img {
+    width: 100%;
+}
+
+.shot-caption {
+    font-size: 13px;
+    line-height: 20px;
+    color: var(--ink-3);
+    margin-top: var(--s-3);
+}

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg height="128px" viewBox="0 0 128 128" width="128px" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="back" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#1c71d8"/>
+            <stop offset="1" stop-color="#1a5fb4"/>
+        </linearGradient>
+        <linearGradient id="front" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#99c1f1"/>
+            <stop offset="1" stop-color="#62a0ea"/>
+        </linearGradient>
+        <linearGradient id="paper" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#ffffff"/>
+            <stop offset="1" stop-color="#ebeae8"/>
+        </linearGradient>
+    </defs>
+    <!-- The back of the folder with its tab, as the Adwaita folder draws it. -->
+    <path d="M12 28a12 12 0 0 1 12-12h27a12 12 0 0 1 9 4l6 7h38a12 12 0 0 1 12 12v60a12 12 0 0 1-12 12H24a12 12 0 0 1-12-12z" fill="url(#back)"/>
+    <!-- Two sheets standing in it: the files the app is made of. -->
+    <rect fill="#9a9996" height="44" rx="6" width="76" x="26" y="32"/>
+    <rect fill="url(#paper)" height="44" rx="6" width="76" x="26" y="29"/>
+    <g fill="#c0bfbc">
+        <rect height="5" rx="2.5" width="40" x="34" y="38"/>
+        <rect height="5" rx="2.5" width="28" x="34" y="49"/>
+    </g>
+    <!-- The front of the folder, lower edge darker for depth. -->
+    <path d="M12 56a12 12 0 0 1 12-12h80a12 12 0 0 1 12 12v48a12 12 0 0 1-12 12H24a12 12 0 0 1-12-12z" fill="#1a5fb4" opacity="0.35" transform="translate(0 2)"/>
+    <path d="M12 56a12 12 0 0 1 12-12h80a12 12 0 0 1 12 12v48a12 12 0 0 1-12 12H24a12 12 0 0 1-12-12z" fill="url(#front)"/>
+    <rect fill="#ffffff" height="1.5" opacity="0.7" rx="0.75" width="92" x="18" y="44.5"/>
+</svg>

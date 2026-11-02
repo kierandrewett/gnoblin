@@ -1,0 +1,134 @@
+/*
+ * Gnoblin design tokens, from lib/tokens.mjs in the gnoblin-doop design source (see SPEC.md there).
+ * Every component reads var(--name). Colours use light-dark(): the page follows the system appearance until the
+ * reader picks one, which app.html applies as data-scheme on <html> before the first paint.
+ */
+:root {
+    color-scheme: light dark;
+
+    --bg: light-dark(#ffffff, #000000);
+    --bg-alt: light-dark(#f5f5f7, #101012);
+    --surface: light-dark(#ffffff, #1c1c1e);
+    --sunken: light-dark(#f5f5f7, #161617);
+    --raised: light-dark(#ffffff, #2c2c2e);
+    --line: light-dark(#d2d2d7, #333336);
+    --line-strong: light-dark(#86868b, #6e6e73);
+    --ink: light-dark(#1d1d1f, #f5f5f7);
+    --ink-2: light-dark(#424245, #d2d2d7);
+    --ink-3: light-dark(#6e6e73, #a1a1a6);
+    --ink-soft: #86868b;
+    --accent: light-dark(#0a7383, #5ccfdb);
+    --accent-strong: light-dark(#08606d, #8adfe7);
+    --accent-soft: light-dark(#e3f3f5, #0f3439);
+    --on-accent: light-dark(#ffffff, #04262b);
+    --tip: light-dark(#2c6a3c, #8fd19a);
+    --tip-soft: light-dark(#e6f2e8, #13261a);
+    --warning: light-dark(#7f5000, #e5bc6a);
+    --warning-soft: light-dark(#f8eedc, #2a2213);
+    --danger: light-dark(#a3352a, #f2988c);
+    --danger-soft: light-dark(#f9e6e3, #331a18);
+    --code-bg: light-dark(#f5f5f7, #161617);
+    --code-head: light-dark(#ededf0, #101012);
+    --code-line: light-dark(#d2d2d7, #2c2c2e);
+    --code-ink: light-dark(#1d1d1f, #f5f5f7);
+    --syn-keyword: light-dark(#8a3b6e, #ff9ad5);
+    --syn-string: light-dark(#2c6a3c, #9be29f);
+    --syn-number: light-dark(#7f5000, #f2c879);
+    --syn-comment: light-dark(#6e6e73, #98989d);
+    --syn-fn: light-dark(#0a7383, #6fd8e3);
+    --scrim: light-dark(rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.6));
+    --bar: light-dark(rgba(255, 255, 255, 0.72), rgba(0, 0, 0, 0.72));
+    --shadow-rgb: 0, 0, 0;
+
+    --font-text:
+        system-ui, -apple-system, "Segoe UI", Roboto, "Cantarell", "Noto Sans", "Helvetica Neue", Arial, sans-serif;
+    --font-display: var(--font-text);
+    --font-mono:
+        ui-monospace, "SF Mono", "Cascadia Mono", "Roboto Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
+
+    /* Type scale: size / line height / weight. Phone values below. */
+    --t-display-size: 52px;
+    --t-display-lh: 60px;
+    --t-h1-size: 46px;
+    --t-h1-lh: 54px;
+    --t-h2-size: 27px;
+    --t-h2-lh: 36px;
+    --t-h3-size: 20px;
+    --t-h3-lh: 28px;
+    --t-lead-size: 19px;
+    --t-lead-lh: 30px;
+    --t-body-size: 16px;
+    --t-body-lh: 26px;
+    --t-intro-size: 21px;
+    --t-intro-lh: 31px;
+    --t-ui-size: 14px;
+    --t-ui-lh: 20px;
+    --t-small-size: 14px;
+    --t-small-lh: 22px;
+    --t-label-size: 12px;
+    --t-label-lh: 16px;
+    --t-code-size: 14px;
+    --t-code-lh: 22px;
+
+    --s-1: 4px;
+    --s-2: 8px;
+    --s-3: 12px;
+    --s-4: 16px;
+    --s-5: 24px;
+    --s-6: 32px;
+    --s-7: 48px;
+    --s-8: 64px;
+    --s-9: 96px;
+    --s-10: 128px;
+
+    --r-xs: 4px;
+    --r-sm: 8px;
+    --r-md: 12px;
+    --r-lg: 18px;
+    --r-xl: 28px;
+    --r-pill: 980px;
+
+    --page-max: 1080px;
+    --page-pad: 22px;
+    --measure: 700px;
+    --nav-w: 268px;
+    --toc-w: 220px;
+    --topbar-h: 52px;
+
+    --e-3: 0 20px 60px -12px rgba(var(--shadow-rgb), 0.35), 0 4px 12px rgba(var(--shadow-rgb), 0.08);
+
+    --dur-1: 150ms;
+    --dur-2: 300ms;
+    --dur-3: 500ms;
+    --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+:root[data-scheme="light"] {
+    color-scheme: light;
+}
+
+:root[data-scheme="dark"] {
+    color-scheme: dark;
+}
+
+/* Phones (below 734 px): phone type scale and narrower gutters. */
+@media (max-width: 733px) {
+    :root {
+        --t-display-size: 36px;
+        --t-display-lh: 44px;
+        --t-h1-size: 34px;
+        --t-h1-lh: 42px;
+        --t-h2-size: 22px;
+        --t-h2-lh: 30px;
+        --t-h3-size: 18px;
+        --t-h3-lh: 26px;
+        --t-lead-size: 18px;
+        --t-lead-lh: 28px;
+        --t-ui-size: 15px;
+        --t-ui-lh: 22px;
+        --t-code-size: 13px;
+        --t-code-lh: 20px;
+        --page-pad: 20px;
+        --topbar-h: 48px;
+    }
+}

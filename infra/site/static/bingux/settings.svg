@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg height="128px" viewBox="0 0 128 128" width="128px" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="face" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#ffffff"/>
+            <stop offset="1" stop-color="#ebeae8"/>
+        </linearGradient>
+        <linearGradient id="blue" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#3584e4"/>
+            <stop offset="1" stop-color="#1a5fb4"/>
+        </linearGradient>
+    </defs>
+    <!-- The lower edge of the panel, as the Adwaita app icons draw depth. -->
+    <rect fill="#9a9996" height="104" rx="16" width="104" x="12" y="16"/>
+    <rect fill="url(#face)" height="104" rx="16" width="104" x="12" y="8"/>
+    <rect fill="#ffffff" height="1.5" rx="0.75" width="88" x="20" y="8.5"/>
+    <!-- A cog: eight teeth round a hole, the one mark of a settings app. Its shadow first. -->
+    <path d="M55.85 30.61L56.98 22.14L71.02 22.14L72.15 30.61A30.50 30.50 0 0 1 79.02 33.45L85.81 28.27L95.73 38.19L90.55 44.98A30.50 30.50 0 0 1 93.39 51.85L101.86 52.98L101.86 67.02L93.39 68.15A30.50 30.50 0 0 1 90.55 75.02L95.73 81.81L85.81 91.73L79.02 86.55A30.50 30.50 0 0 1 72.15 89.39L71.02 97.86L56.98 97.86L55.85 89.39A30.50 30.50 0 0 1 48.98 86.55L42.19 91.73L32.27 81.81L37.45 75.02A30.50 30.50 0 0 1 34.61 68.15L26.14 67.02L26.14 52.98L34.61 51.85A30.50 30.50 0 0 1 37.45 44.98L32.27 38.19L42.19 28.27L48.98 33.45A30.50 30.50 0 0 1 55.85 30.61ZM50.00 60.00a14 14 0 1 0 28 0a14 14 0 1 0-28 0Z" fill="#000000" fill-rule="evenodd" opacity="0.18" stroke="#000000" stroke-linejoin="round" stroke-width="2" transform="translate(0 3)"/>
+    <path d="M55.85 30.61L56.98 22.14L71.02 22.14L72.15 30.61A30.50 30.50 0 0 1 79.02 33.45L85.81 28.27L95.73 38.19L90.55 44.98A30.50 30.50 0 0 1 93.39 51.85L101.86 52.98L101.86 67.02L93.39 68.15A30.50 30.50 0 0 1 90.55 75.02L95.73 81.81L85.81 91.73L79.02 86.55A30.50 30.50 0 0 1 72.15 89.39L71.02 97.86L56.98 97.86L55.85 89.39A30.50 30.50 0 0 1 48.98 86.55L42.19 91.73L32.27 81.81L37.45 75.02A30.50 30.50 0 0 1 34.61 68.15L26.14 67.02L26.14 52.98L34.61 51.85A30.50 30.50 0 0 1 37.45 44.98L32.27 38.19L42.19 28.27L48.98 33.45A30.50 30.50 0 0 1 55.85 30.61ZM50.00 60.00a14 14 0 1 0 28 0a14 14 0 1 0-28 0Z" fill="url(#blue)" fill-rule="evenodd" stroke="url(#blue)" stroke-linejoin="round" stroke-width="2"/>
+</svg>

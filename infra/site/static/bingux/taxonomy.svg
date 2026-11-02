@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg height="128px" viewBox="0 0 128 128" width="128px" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+        <linearGradient id="face" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0" stop-color="#ffffff"/>
+            <stop offset="1" stop-color="#ebeae8"/>
+        </linearGradient>
+        <linearGradient id="blue" x1="0" x2="1" y1="0" y2="0">
+            <stop offset="0" stop-color="#1c71d8"/>
+            <stop offset="1" stop-color="#3584e4"/>
+        </linearGradient>
+    </defs>
+    <!-- The lower edge of the panel, as the Adwaita app icons draw depth. -->
+    <rect fill="#9a9996" height="104" rx="16" width="104" x="12" y="16"/>
+    <rect fill="url(#face)" height="104" rx="16" width="104" x="12" y="8"/>
+    <rect fill="#ffffff" height="1.5" rx="0.75" width="88" x="20" y="8.5"/>
+    <!-- Four specimens in a grid, each filling its cell: a button, a radio, a switch and a
+         slider, the controls the app lays out side by side. The grid is centred on the panel. -->
+    <rect fill="url(#blue)" height="30" rx="10" width="38" x="24" y="29"/>
+    <circle cx="87" cy="44" fill="#c0bfbc" r="15"/>
+    <circle cx="87" cy="44" fill="url(#blue)" r="7"/>
+    <rect fill="url(#blue)" height="24" rx="12" width="38" x="24" y="67"/>
+    <circle cx="50" cy="79" fill="#ffffff" r="9.5"/>
+    <rect fill="#c0bfbc" height="10" rx="5" width="34" x="70" y="74"/>
+    <rect fill="url(#blue)" height="10" rx="5" width="20" x="70" y="74"/>
+    <circle cx="90" cy="79" fill="#ffffff" r="9" stroke="#9a9996" stroke-width="1"/>
+</svg>
