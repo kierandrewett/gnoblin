@@ -20,10 +20,61 @@ or remove an old file after converting it to Lua. Every selected root and
 included configuration file must use the `.lua` suffix.
 
 When no user config exists, the session supervisor loads the starter Lua
-configuration embedded in the binary. Run `gnoblinctl init` to create an
+configuration embedded in the binary, followed by the
+[system drop-ins](#system-drop-ins). Run `gnoblinctl init` to create an
 editable copy at the selected config path. The command leaves existing files
 unchanged. Setting `GNOBLIN_CONFIG` in a terminal does not change the
 environment of an already-running compositor.
+
+## System drop-ins
+
+Packages and administrators can add configuration for every user without
+touching anyone's `init.lua`. Gnoblin loads these `.lua` files itself; nobody
+needs to add a `gnoblin.load` line for them.
+
+Gnoblin looks in these directories, in this order:
+
+1. `gnoblin/conf.d/` inside each directory of `XDG_DATA_DIRS`, such as
+   `/usr/share/gnoblin/conf.d/`. The default is `/usr/local/share:/usr/share`.
+   `XDG_DATA_DIRS` lists the highest priority first, so Gnoblin loads the last
+   entry first and the first entry last. When two packages set the same value,
+   the first entry wins.
+2. `/etc/gnoblin/conf.d/`, for settings that belong to this machine. It loads
+   after every package.
+
+Files inside one directory load in filename order (byte order). Name them
+`10-name.lua`, `90-name.lua` and so on to control the sequence. A directory
+that does not exist is skipped. Names that start with a dot, files without the
+`.lua` suffix and subdirectories are ignored; a drop-in can still load its own
+parts with `gnoblin.load("parts/extra.lua")`, relative to the drop-in file.
+
+Where the drop-ins fit depends on whether you have your own `init.lua`:
+
+| Your config               | Order                                                        |
+| ------------------------- | ------------------------------------------------------------ |
+| No `init.lua`             | Built-in defaults, then system drop-ins                      |
+| An `init.lua` of your own | System drop-ins, then your `init.lua` and the files it loads |
+
+Whatever loads later replaces earlier values. A package can change a built-in
+default, and your own config can change what a package set.
+
+A copy of the starter files made with `gnoblinctl init` is part of your own
+config. If it contains a rule that a package also sets, your copy overrides the
+package. Delete that rule from your copy to use the package's value. The
+starter files never load the drop-ins a second time.
+
+A drop-in that has a syntax error or fails while it runs is skipped. Gnoblin
+loads the other drop-ins and your own config as usual, writes
+`ignored file <path>: <reason>` to the session log and lists it in the recovery
+notice. It does not reject a reload.
+
+Run `gnoblinctl config reload` after installing or removing a package that
+ships a drop-in.
+
+A Gnoblin installed under its own prefix, such as `/usr/local/lib/gnoblin`, adds
+that prefix's `share` directory to the front of `XDG_DATA_DIRS` for the
+session. Its `share/gnoblin/conf.d/` therefore loads last among the data
+directories.
 
 ## Include a file
 

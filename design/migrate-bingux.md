@@ -117,12 +117,10 @@ open for its subscriptions and connection-owned capabilities.
 
 Bingux handles Alt+Tab and Super+Tab in its own window switcher. Its installed
 Gnoblin configuration fragment clears Mutter's default bindings for those
-accelerators so `shortcut.bind` can register them. Keep the fragment loaded
-from your `init.lua`; existing configs can load the packaged defaults with:
-
-```lua
-gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
-```
+accelerators so `shortcut.bind` can register them. Gnoblin loads the fragment
+from `/usr/share/gnoblin/conf.d/` before the user's `init.lua` on its own, so
+no load line is needed in any user config. See
+[system drop-ins](../docs/guides/files_and_load_order.md#system-drop-ins).
 
 ## Keep shell presentation in Bingux
 

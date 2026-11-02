@@ -21,6 +21,12 @@
   (`<name> could not start: <reason>`). See
   [reload and error notices](docs/guides/files_and_load_order.md#reload-and-error-notices).
 
+- System drop-ins load on their own. Lua files in `gnoblin/conf.d` under each `XDG_DATA_DIRS` entry
+  (such as `/usr/share/gnoblin/conf.d`) and in `/etc/gnoblin/conf.d` run before your `init.lua`, or
+  after the built-in defaults when you have no `init.lua`, so a package no longer needs a `gnoblin.load`
+  line in your config. A drop-in that fails is skipped and shown in the recovery notice. See
+  [system drop-ins](docs/guides/files_and_load_order.md#system-drop-ins).
+
 ### Changed
 
 - The RPM specs, the PKGBUILDs, the openSUSE chain and `packaging/` are gone. Package

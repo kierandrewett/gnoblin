@@ -4,8 +4,7 @@ Save this as `~/.config/gnoblin/init.lua`. Install the commands you use;
 replace `ptyxis` with your terminal.
 
 ```lua
--- Load optional system defaults first, then personal fragments.
-gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
+-- Load personal fragments. System drop-ins from packages load before this file.
 gnoblin.load("conf.d/**/*.lua")
 
 gnoblin.configure {
@@ -22,13 +21,13 @@ gnoblin.window_rule {
 }
 ```
 
-| Setting             | Accepted values                     | Default   | Effect                                                                                 |
-| ------------------- | ----------------------------------- | --------- | -------------------------------------------------------------------------------------- |
-| `focus_mode`        | `"click"`, `"hover"`, or `"hover-strict"` | `"click"` | Selects when pointer or click input changes focus.                                     |
-| `binding`           | One GTK accelerator string          | Not set   | Runs the shortcut when pressed. See [accelerator syntax](/guides/shortcuts#key-names). |
-| `command`           | Nonempty array of strings           | Not set   | Executable followed by its arguments; Gnoblin does not expand shell syntax.            |
-| `focused`           | Boolean                             | Not set   | `false` matches application windows without focus.                                     |
-| `opacity`           | Number from 0 to 1                  | `1`       | Sets matching windows' opacity; 1 is fully opaque.                                     |
+| Setting      | Accepted values                           | Default   | Effect                                                                                 |
+| ------------ | ----------------------------------------- | --------- | -------------------------------------------------------------------------------------- |
+| `focus_mode` | `"click"`, `"hover"`, or `"hover-strict"` | `"click"` | Selects when pointer or click input changes focus.                                     |
+| `binding`    | One GTK accelerator string                | Not set   | Runs the shortcut when pressed. See [accelerator syntax](/guides/shortcuts#key-names). |
+| `command`    | Nonempty array of strings                 | Not set   | Executable followed by its arguments; Gnoblin does not expand shell syntax.            |
+| `focused`    | Boolean                                   | Not set   | `false` matches application windows without focus.                                     |
+| `opacity`    | Number from 0 to 1                        | `1`       | Sets matching windows' opacity; 1 is fully opaque.                                     |
 
 Save the file and run `gnoblinctl config reload` to apply it. See the
 [shortcut reference](/config/configure/shortcuts) and

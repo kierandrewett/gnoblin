@@ -54,7 +54,11 @@ Capture this example from the checkout with
 `scripts/capture-doc-examples.sh waybar-settings`. It uses a disposable config and
 profile; see the [capture script](devkit.md#documentation-captures) for setup.
 
-If your existing `init.lua` loads files installed by a shell, keep those
+A shell or package that installs Lua files into `/usr/share/gnoblin/conf.d/`
+needs nothing in the user's `init.lua`: Gnoblin loads those files before
+`init.lua` (see [system drop-ins](/guides/files_and_load_order#system-drop-ins)).
+
+If your existing `init.lua` loads other files installed by a shell, keep those
 `gnoblin.load(...)` lines and put your additions after them. Use an imported
 shortcut's existing name when changing its command. [Load order and merging](/guides/files_and_load_order)
 explain why the order matters.

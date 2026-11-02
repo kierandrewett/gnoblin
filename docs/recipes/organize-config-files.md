@@ -1,11 +1,12 @@
 # Organize a growing config
 
 Keep the entry point short and group settings by the kind of change you make.
-For example, let `init.lua` load site defaults first, then your local
-appearance and shortcut overrides:
+For example, let `init.lua` load your local fragments first, then your
+appearance and shortcut overrides. Packages that ship system defaults need no
+line here; Gnoblin loads them before `init.lua`
+(see [system drop-ins](/guides/files_and_load_order#system-drop-ins)):
 
 ```lua
-gnoblin.load("/usr/share/gnoblin/conf.d/*.lua")
 gnoblin.load("conf.d/**/*.lua")
 gnoblin.load("appearance.lua")
 gnoblin.load("bindings.lua")

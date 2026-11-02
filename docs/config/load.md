@@ -8,6 +8,8 @@ gnoblin.load("conf.d/**/*.lua")
 
 A missing explicit file is an error. Config loading is limited to 32 nested files.
 
+Files that packages install in `gnoblin/conf.d` under a data directory load without a `gnoblin.load` call. See [system drop-ins](/guides/files_and_load_order#system-drop-ins).
+
 ## Lua `require`
 
 `require` is a global function, not a member of `gnoblin`. It loads a local module from beside the calling file or its `lua/` directory, caches the result for the current reload, and returns it. It does not support Lua's normal installed module search paths.
@@ -47,7 +49,8 @@ this order:
    all, for example the root `init.lua` has a syntax error, Gnoblin uses the
    last accepted settings for that config path.
 3. **Use the embedded defaults.** They stay active if no accepted settings
-   exist or the compositor rejects them.
+   exist or the compositor rejects them. They do not include
+   [system drop-ins](/guides/files_and_load_order#system-drop-ins).
 
 For example, one misspelled keybinding action does not stop your cursor,
 window, or input settings from loading. Each ignored item is written to the
