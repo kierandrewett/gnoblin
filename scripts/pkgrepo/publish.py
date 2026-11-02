@@ -240,6 +240,8 @@ def plan_s3(
                 ["aws", "s3", "cp", "--only-show-errors", str(root / relative), f"{base}/{relative}"],
             )
         )
+    # The syncs print every upload and every delete. A nightly lost two package files after a run that reported no
+    # error, and the log of what the syncs did is the only record of which step touched them.
     plan.steps.append(
         Step(
             "upload package files the bucket lacks",
@@ -247,7 +249,6 @@ def plan_s3(
                 "aws",
                 "s3",
                 "sync",
-                "--only-show-errors",
                 "--size-only",
                 f"{root / scope}",
                 f"{base}/{scope}",
@@ -258,7 +259,7 @@ def plan_s3(
     plan.steps.append(
         Step(
             "upload metadata and pages",
-            ["aws", "s3", "sync", "--only-show-errors", f"{root / scope}", f"{base}/{scope}", *metadata_filter],
+            ["aws", "s3", "sync", f"{root / scope}", f"{base}/{scope}", *metadata_filter],
         )
     )
     for name in site_files(root):
@@ -279,7 +280,6 @@ def plan_s3(
                 "aws",
                 "s3",
                 "sync",
-                "--only-show-errors",
                 "--size-only",
                 "--delete",
                 f"{root / scope}",
@@ -295,7 +295,6 @@ def plan_s3(
                 "aws",
                 "s3",
                 "sync",
-                "--only-show-errors",
                 "--delete",
                 f"{root / scope}",
                 f"{base}/{scope}",
