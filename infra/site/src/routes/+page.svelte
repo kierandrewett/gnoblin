@@ -1,6 +1,6 @@
 <script lang="ts">
-    // Home: one centred 720 px document column in the restrained style of mutter.gnome.org. Links in the accent
-    // colour; the layout's header bar and one-line home footer frame it.
+    // Home: a centred hero (mark, headline, supporting line, buttons, screenshot), three plain points, then a
+    // left-aligned 720 px document column in the restrained style of mutter.gnome.org. Links in the accent colour.
     import Screenshot from "#lib/components/content/Screenshot.svelte";
     import Mark from "#lib/components/ui/Mark.svelte";
     import { docsHref } from "#lib/nav.ts";
@@ -45,35 +45,42 @@
 </svelte:head>
 
 <div class="doc">
-    <div class="top">
-        <Mark height={72} />
-        <h1>Gnoblin</h1>
-    </div>
+    <section class="hero">
+        <div class="mark"><Mark height={48} /></div>
+        <h1>Gnoblin is a Wayland window manager for Linux.</h1>
+        <p class="lede">
+            Use <a href="/bingux">Bingux</a> for a complete desktop, or build your own from tools such as Waybar and Fuzzel.
+        </p>
+        <p class="cta">
+            <a class="btn primary" href="/install">Install</a>
+            <a class="btn secondary" href={docsHref("")}>Read the docs</a>
+        </p>
+        <div class="hero-shot">
+            <Screenshot
+                name="gnoblin-bingux-desktop"
+                scheme
+                caption="Gnoblin with the Bingux desktop."
+                alt="A Gnoblin session running the Bingux desktop, with Files, Settings and a terminal open"
+            />
+        </div>
+    </section>
 
-    <div class="shot">
-        <Screenshot
-            name="gnoblin-bingux-desktop"
-            scheme
-            alt="A Gnoblin session running the Bingux desktop, with Files, Settings and a terminal open"
-        />
-    </div>
-
-    <p>
-        Gnoblin runs the windows and apps on your Linux desktop. It places and focuses windows, handles your keyboard,
-        mouse, touchpad and screens, and starts your desktop when you log in.
-    </p>
-    <p>
-        What the desktop looks like is up to you. <a href="/bingux">Bingux</a> gives you a complete one, with a top bar, dock
-        and search. You can also put one together from tools such as Waybar, Fuzzel and Mako, or write your own.
-    </p>
-    <p>
-        You set Gnoblin up in one file, <code class="inline">~/.config/gnoblin/init.lua</code>, and changes apply
-        without logging out.
-    </p>
-    <p class="cta">
-        <a class="btn primary" href="/install">Install</a>
-        <a class="btn secondary" href={docsHref("")}>Read the docs</a>
-    </p>
+    <ul class="points" aria-label="What Gnoblin does">
+        <li>
+            <p class="t">Places and focuses windows</p>
+            <p>It also starts your desktop when you log in.</p>
+        </li>
+        <li>
+            <p class="t">Handles input and screens</p>
+            <p>Keyboards, mice, touchpads, tablets and pens, plus the screens you connect.</p>
+        </li>
+        <li>
+            <p class="t">One Lua file sets it up</p>
+            <p>
+                Settings live in <code class="inline">~/.config/gnoblin/init.lua</code> and apply without logging out.
+            </p>
+        </li>
+    </ul>
 
     <h2>Documentation</h2>
     <ul>
@@ -112,7 +119,7 @@
     .doc {
         width: min(720px, 100% - 40px);
         margin: 0 auto;
-        padding-top: var(--s-9);
+        padding-top: var(--s-8);
         font-size: 16px;
         line-height: 1.6;
         color: var(--ink);
@@ -128,21 +135,67 @@
         text-underline-offset: 3px;
     }
 
-    .top {
+    .hero {
+        text-align: center;
+    }
+
+    .mark {
         display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: var(--s-3);
+        justify-content: center;
+        margin-bottom: var(--s-4);
+    }
+
+    .lede {
+        max-width: 560px;
+        margin: var(--s-4) auto 0;
+        font-size: var(--t-lead-size);
+        line-height: var(--t-lead-lh);
+        color: var(--ink-2);
+        text-wrap: pretty;
+    }
+
+    .points {
+        list-style: none;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--s-5);
+        margin: var(--s-8) 0 0;
+        padding: 0;
+    }
+
+    .points p {
+        margin: var(--s-1) 0 0;
+        font-size: 15px;
+        line-height: 23px;
+        color: var(--ink-2);
+        text-wrap: pretty;
+    }
+
+    .points p.t {
+        margin: 0;
+        font-size: 16px;
+        line-height: 24px;
+        font-weight: 600;
+        color: var(--ink);
+    }
+
+    .points :global(code.inline) {
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 
     h1 {
+        max-width: 640px;
+        margin: 0 auto;
         font-size: var(--t-h1-size);
         line-height: var(--t-h1-lh);
         font-weight: 700;
+        text-wrap: balance;
     }
 
-    .shot {
-        margin: var(--s-8) 0 var(--s-7);
+    .hero-shot {
+        margin: var(--s-8) 0 0;
+        text-align: center;
     }
 
     p {
@@ -172,8 +225,9 @@
     .cta {
         display: flex;
         flex-wrap: wrap;
+        justify-content: center;
         gap: var(--s-3);
-        margin: var(--s-5) 0 0;
+        margin: var(--s-6) 0 0;
     }
 
     .doc a.btn {
@@ -261,7 +315,22 @@
 
     @media (max-width: 733px) {
         .doc {
-            padding-top: var(--s-7);
+            width: min(720px, 100% - 44px);
+            padding-top: var(--s-6);
+        }
+
+        .mark :global(svg) {
+            width: auto;
+            height: 40px;
+        }
+
+        .hero-shot {
+            margin-top: var(--s-7);
+        }
+
+        .points {
+            grid-template-columns: 1fr;
+            margin-top: var(--s-7);
         }
 
         .pairs {
