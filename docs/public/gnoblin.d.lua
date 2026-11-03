@@ -647,6 +647,7 @@ function gnoblin.launches.snapshot() end
 
 ---@class LayerSurface
 ---@field id string Stable layer surface ID.
+---@field alive boolean False once the surface has been removed. Every read of one surface returns this same object, which shows the newest state the runtime has seen.
 ---@field namespace string Layer surface namespace.
 ---@field title string Layer surface title.
 ---@field layer string Layer-shell layer value.
@@ -684,6 +685,19 @@ function gnoblin.monitors.set_privacy_screen(value) end
 ---@param filter? LayerFilter
 ---@return LayerSurface[]
 function gnoblin.layers.list(filter) end
+
+---Call fn(layer, ...) on a signal of this layer surface: "changed" (with the list of changed
+---fields) or "closed". Listening ends after "closed".
+---@param signal "changed"|"closed"
+---@param fn fun(layer: LayerSurface, changed?: string[])
+---@return {unsubscribe: fun()}
+function LayerSurface:on(signal, fn) end
+
+---Call fn(layer, value, old) when one field of this layer surface changes.
+---@param property string A field of LayerSurface, such as "geometry".
+---@param fn fun(layer: LayerSurface, value: any, old: any)
+---@return {unsubscribe: fun()}
+function LayerSurface:watch(property, fn) end
 
 ---Return the configured animation policy for a layer namespace.
 ---@param namespace string UTF-8 namespace from 1 to 128 bytes.
@@ -1010,6 +1024,7 @@ function gnoblin.shortcuts.end_session(id, session_id) end
 
 ---@class Window
 ---@field id string Stable window ID.
+---@field alive boolean False once the window has closed. Every read of one window returns this same object, which shows the newest state the runtime has seen.
 ---@field title string Window title; empty when the native window has no title.
 ---@field app_id string Application ID used for matching.
 ---@field gtk_app_id? string GTK application ID, when present.
@@ -1183,6 +1198,19 @@ function Window:focus(context) end
 ---@return Operation<{id: string, focused: boolean}>
 function Window:present() end
 
+---Call fn(window, ...) on a signal of this window: "changed" (with the list of changed fields),
+---"focused", "unfocused" or "closed". Listening ends after "closed".
+---@param signal "changed"|"focused"|"unfocused"|"closed"
+---@param fn fun(window: Window, changed?: string[])
+---@return {unsubscribe: fun()}
+function Window:on(signal, fn) end
+
+---Call fn(window, value, old) when one field of this window changes.
+---@param property string A field of Window, such as "title" or "frame".
+---@param fn fun(window: Window, value: any, old: any)
+---@return {unsubscribe: fun()}
+function Window:watch(property, fn) end
+
 ---Begin an interactive move using a live shortcut-event context.
 ---@param context FocusContext Live context from the current shortcut event.
 ---@return Operation<Json>
@@ -1206,6 +1234,7 @@ function Window:thumbnail(width, height) end
 function SnapContext:commit(request) end
 
 ---@class Workspace
+---@field alive boolean False once the workspace has been removed. Every read of one workspace returns this same object, which shows the newest state the runtime has seen.
 ---@field id? string Stable workspace ID. The current native workspace snapshot does not provide this field.
 ---@field number integer One-based workspace number.
 ---@field name string Workspace name.
@@ -1298,3 +1327,16 @@ function Workspace:remove() end
 ---@param options? WorkspaceMoveOptions
 ---@return Operation<WorkspaceMoveResult>
 function Workspace:move_here(window, options) end
+
+---Call fn(workspace, ...) on a signal of this workspace: "changed" (with the list of changed
+---fields), "activated" or "closed". Listening ends after "closed".
+---@param signal "changed"|"activated"|"closed"
+---@param fn fun(workspace: Workspace, changed?: string[])
+---@return {unsubscribe: fun()}
+function Workspace:on(signal, fn) end
+
+---Call fn(workspace, value, old) when one field of this workspace changes.
+---@param property string A field of Workspace, such as "name" or "active".
+---@param fn fun(workspace: Workspace, value: any, old: any)
+---@return {unsubscribe: fun()}
+function Workspace:watch(property, fn) end

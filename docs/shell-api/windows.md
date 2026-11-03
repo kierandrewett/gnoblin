@@ -1,14 +1,14 @@
 # Windows
 
-## Immediate window snapshots
+## Read windows
 
 The native Mutter runtime exposes the window state directly:
 
-| Lua call                        | Arguments                                                                   | Result                             |
-| ------------------------------- | --------------------------------------------------------------------------- | ---------------------------------- |
-| `gnoblin.windows.list(filter?)` | Optional `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` filters | Read-only window snapshots         |
-| `gnoblin.windows.focused()`     | None                                                                        | Read-only window snapshot or `nil` |
-| `gnoblin.windows.by_id(id)`     | Stable string window ID                                                     | Read-only window snapshot or `nil` |
+| Lua call                        | Arguments                                                                   | Result                   |
+| ------------------------------- | --------------------------------------------------------------------------- | ------------------------ |
+| `gnoblin.windows.list(filter?)` | Optional `app_id`, `title`, `focused`, `workspace_id`, `monitor_id` filters | `Window` objects         |
+| `gnoblin.windows.focused()`     | None                                                                        | `Window` object or `nil` |
+| `gnoblin.windows.by_id(id)`     | Stable string window ID                                                     | `Window` object or `nil` |
 
 Window filter values:
 
@@ -18,27 +18,51 @@ Window filter values:
 
 Unknown filter names or values of the wrong type raise a Lua error. These reads
 use a cached native snapshot and return immediately; they do not create an
-`Operation`. Each record includes a state revision. Read the collection again
-to get newer state.
+`Operation`. Each object includes a state revision.
 
 Gnoblin refreshes both collections in one coalesced main-loop publication. A
 read made before that publication completes returns the last published
 state. Lifecycle callbacks run after the corresponding snapshots are refreshed,
 so handlers can read the new state.
 
-Subscribe to these window events to track changes:
-
-- `gnoblin.window.created` and `gnoblin.window.closed`
-- `gnoblin.window.changed`, `gnoblin.window.attention-changed`, and
-  `gnoblin.window.activation-denied`
-- `gnoblin.window.focused` and `gnoblin.window.unfocused`
-
 These reads are available in Gnoblin's standalone session. They raise a
 Lua error when the snapshot is unavailable.
 
-## Snapshot record methods
+## Live window objects
 
-Window and workspace snapshots expose methods that queue the corresponding
+Every read of one window returns the same `Window` object, in event fields as
+well as in the reads above. The object always shows the state from the
+runtime's last update, so you can keep it and read it later. Its fields stay
+read-only; change a window through its methods.
+
+```lua
+gnoblin.on("gnoblin.window.created", function(event)
+    local window = event.window
+    window:watch("title", function(_, title, old)
+        print(old .. " -> " .. title)
+    end)
+    window:on("closed", function()
+        print(window.title .. " closed")
+    end)
+end)
+```
+
+- `window.alive` is `false` once the window has closed. The object keeps its
+  last state.
+- `window:on(signal, fn)` calls `fn(window)` for `"focused"`, `"unfocused"` and
+  `"closed"`, and `fn(window, changed)` for `"changed"`, where `changed` lists
+  the fields that moved. Listening ends after `"closed"`.
+- `window:watch(field, fn)` calls `fn(window, value, old)` when one field
+  changes. The field must be one that `Window` declares; another name raises an
+  error.
+
+Both return a table whose `unsubscribe()` stops the callback. The global
+events `gnoblin.window.created`, `closed`, `changed`, `attention-changed`,
+`activation-denied`, `focused` and `unfocused` still fire as before.
+
+## Window methods
+
+Window and workspace objects expose methods that queue the corresponding
 typed operation. Call them with colon syntax from a runtime event callback.
 Each method returns an `Operation` handle.
 

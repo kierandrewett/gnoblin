@@ -441,30 +441,39 @@ static int lua_record_method(lua_State* state) {
     return 1;
 }
 
-/* Add the lua_api methods of one record class, such as Window, to a record's method table. */
+/* Add the lua_api methods of one record class, such as Window, to a record's method table. Each
+ * gets its wire operation as upvalue 1, or the class name when it has none. */
 static void add_record_methods(lua_State* state, int method_table, const char* class) {
     gsize length = strlen(class);
     for (const LuaApiEntry* entry = lua_api; entry->path; entry++) {
         if (strncmp(entry->path, class, length) != 0 || entry->path[length] != ':')
             continue;
-        lua_pushstring(state, entry->operation);
+        lua_pushstring(state, entry->operation ? entry->operation : class);
         lua_pushcclosure(state, entry->function ? entry->function : lua_record_method, 1);
         lua_setfield(state, method_table, entry->path + length + 1);
     }
 }
 
-static void add_snapshot_methods(lua_State* state, int backing, int method_table) {
+/* Install the record methods for the kind of record `backing` holds and return that kind, or
+ * NULL for plain data. */
+static const char* add_snapshot_methods(lua_State* state, int backing, int method_table) {
     lua_getfield(state, backing, "id");
     gboolean has_id = lua_type(state, -1) == LUA_TSTRING;
     lua_pop(state, 1);
     if (!has_id)
-        return;
+        return NULL;
     lua_getfield(state, backing, "frame");
     gboolean is_window = lua_istable(state, -1) ||
                          luaL_testudata(state, -1, LUA_READONLY_SNAPSHOT_METATABLE) != NULL;
     lua_pop(state, 1);
     lua_getfield(state, backing, "number");
     gboolean is_workspace = lua_isinteger(state, -1);
+    lua_pop(state, 1);
+    lua_getfield(state, backing, "namespace");
+    gboolean is_layer = lua_type(state, -1) == LUA_TSTRING;
+    lua_pop(state, 1);
+    lua_getfield(state, backing, "layer");
+    is_layer &= lua_type(state, -1) == LUA_TSTRING;
     lua_pop(state, 1);
     lua_getfield(state, backing, "session");
     gboolean is_animation_preview = lua_type(state, -1) == LUA_TSTRING;
@@ -481,12 +490,16 @@ static void add_snapshot_methods(lua_State* state, int backing, int method_table
     lua_getfield(state, backing, "playing");
     is_animation_preview &= lua_isboolean(state, -1);
     lua_pop(state, 1);
-    if (is_window)
-        add_record_methods(state, method_table, "Window");
-    else if (is_animation_preview)
-        add_record_methods(state, method_table, "AnimationPreview");
-    else if (is_workspace)
-        add_record_methods(state, method_table, "Workspace");
+    const char* kind = is_window              ? "Window"
+                       : is_animation_preview ? "AnimationPreview"
+                       : is_workspace         ? "Workspace"
+                       : is_layer             ? "LayerSurface"
+                                              : NULL;
+    if (kind)
+        add_record_methods(state, method_table, kind);
+    if (lua_object_kind_is_live(kind))
+        lua_object_add_methods(state, method_table, kind);
+    return kind;
 }
 
 static int lua_readonly_pairs(lua_State* state) {
@@ -497,8 +510,10 @@ static int lua_readonly_pairs(lua_State* state) {
     return 3;
 }
 
-/* Snapshot userdata is detached from the runtime cache and cannot be changed
- * with ordinary assignment or rawset. Nested tables use the same wrapper. */
+/* Snapshot userdata cannot be changed with ordinary assignment or rawset; nested tables use the
+ * same wrapper. A window, workspace or layer surface record becomes the live handle for its id
+ * (gnoblin-lua-objects.c): the one userdata per object, moved to the newest state. Its memory
+ * block holds whether the object has ended. */
 void push_readonly_copy(lua_State* state, int index) {
     index = lua_absindex(state, index);
     if (!lua_istable(state, index)) {
@@ -506,7 +521,8 @@ void push_readonly_copy(lua_State* state, int index) {
         return;
     }
 
-    lua_newuserdatauv(state, sizeof(gpointer), 2);
+    gboolean* closed = lua_newuserdatauv(state, sizeof(gboolean), 2);
+    *closed = FALSE;
     int readonly = lua_absindex(state, -1);
     lua_newtable(state); /* private backing table */
     int backing = lua_absindex(state, -1);
@@ -522,7 +538,7 @@ void push_readonly_copy(lua_State* state, int index) {
         mark_array_table(state, backing);
     lua_newtable(state); /* Methods stay out of pairs()/snapshot fields. */
     int method_table = lua_absindex(state, -1);
-    add_snapshot_methods(state, backing, method_table);
+    const char* kind = add_snapshot_methods(state, backing, method_table);
     lua_pushvalue(state, method_table);
     lua_setiuservalue(state, readonly, 2);
     lua_pushvalue(state, backing);
@@ -542,6 +558,8 @@ void push_readonly_copy(lua_State* state, int index) {
         lua_setfield(state, -2, "__metatable");
     }
     lua_setmetatable(state, readonly);
+    if (lua_object_kind_is_live(kind))
+        lua_object_intern(state, kind, readonly);
 }
 
 /* Event payloads describe a point-in-time state just like the snapshot API.

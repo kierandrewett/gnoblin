@@ -1010,7 +1010,7 @@ record. Optional fields are omitted when Mutter does not provide them. Use
 
 The snapshot includes window identity, focus and state, workspace and monitor
 location, geometry, and operation capabilities. See the [runtime API
-reference](/shell-api/windows#immediate-window-snapshots) for the fields and
+reference](/shell-api/windows#read-windows) for the fields and
 their availability.
 
 In the standalone session, `app_id` comes from the GTK app ID or WM class.

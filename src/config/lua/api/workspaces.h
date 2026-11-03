@@ -3,6 +3,8 @@
 
 /*** lua
 ---@class Workspace
+---@field alive boolean False once the workspace has been removed. Every read of one workspace
+returns this same object, which shows the newest state the runtime has seen.
 ---@field id? string Stable workspace ID. The current native workspace snapshot does not provide
 this field.
 ---@field number integer One-based workspace number.
@@ -100,4 +102,17 @@ function Workspace:remove() end
 ---@param options? WorkspaceMoveOptions
 ---@return Operation<WorkspaceMoveResult>
 function Workspace:move_here(window, options) end
+
+---Call fn(workspace, ...) on a signal of this workspace: "changed" (with the list of changed
+---fields), "activated" or "closed". Listening ends after "closed".
+---@param signal "changed"|"activated"|"closed"
+---@param fn fun(workspace: Workspace, changed?: string[])
+---@return {unsubscribe: fun()}
+function Workspace:on(signal, fn) end
+
+---Call fn(workspace, value, old) when one field of this workspace changes.
+---@param property string A field of Workspace, such as "name" or "active".
+---@param fn fun(workspace: Workspace, value: any, old: any)
+---@return {unsubscribe: fun()}
+function Workspace:watch(property, fn) end
 */

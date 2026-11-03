@@ -10,6 +10,8 @@
 
 ---@class Window
 ---@field id string Stable window ID.
+---@field alive boolean False once the window has closed. Every read of one window returns this
+same object, which shows the newest state the runtime has seen.
 ---@field title string Window title; empty when the native window has no title.
 ---@field app_id string Application ID used for matching.
 ---@field gtk_app_id? string GTK application ID, when present.
@@ -183,6 +185,19 @@ function Window:focus(context) end
 ---250 ms, at most 5 seconds, then succeeds when the window has focus.
 ---@return Operation<{id: string, focused: boolean}>
 function Window:present() end
+
+---Call fn(window, ...) on a signal of this window: "changed" (with the list of changed fields),
+---"focused", "unfocused" or "closed". Listening ends after "closed".
+---@param signal "changed"|"focused"|"unfocused"|"closed"
+---@param fn fun(window: Window, changed?: string[])
+---@return {unsubscribe: fun()}
+function Window:on(signal, fn) end
+
+---Call fn(window, value, old) when one field of this window changes.
+---@param property string A field of Window, such as "title" or "frame".
+---@param fn fun(window: Window, value: any, old: any)
+---@return {unsubscribe: fun()}
+function Window:watch(property, fn) end
 
 ---Begin an interactive move using a live shortcut-event context.
 ---@param context FocusContext Live context from the current shortcut event.

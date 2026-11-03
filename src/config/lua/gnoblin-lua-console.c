@@ -79,6 +79,19 @@ gsize lua_api_parameter_names(const char* path, const char** names, gsize capaci
     return 0;
 }
 
+/* Whether the annotated class declares `field`: the property schema of live objects. */
+gboolean lua_api_class_has_field(const char* class_name, const char* field) {
+    for (const ApiClass* type = api_classes; type->name; type++) {
+        if (!g_str_equal(type->name, class_name))
+            continue;
+        for (gsize i = 0; i < type->n_fields; i++)
+            if (g_str_equal(type->fields[i].name, field))
+                return TRUE;
+        return FALSE;
+    }
+    return FALSE;
+}
+
 #define CONSOLE_SIGNATURES_KEY "gnoblin.signatures"
 
 /* Remember each annotated C function's signature, keyed by the function itself, so a result shows

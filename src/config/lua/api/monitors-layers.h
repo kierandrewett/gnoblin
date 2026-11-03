@@ -46,6 +46,8 @@
 
 ---@class LayerSurface
 ---@field id string Stable layer surface ID.
+---@field alive boolean False once the surface has been removed. Every read of one surface returns
+this same object, which shows the newest state the runtime has seen.
 ---@field namespace string Layer surface namespace.
 ---@field title string Layer surface title.
 ---@field layer string Layer-shell layer value.
@@ -85,6 +87,19 @@ function gnoblin.monitors.set_privacy_screen(value) end
 ---@param filter? LayerFilter
 ---@return LayerSurface[]
 function gnoblin.layers.list(filter) end
+
+---Call fn(layer, ...) on a signal of this layer surface: "changed" (with the list of changed
+---fields) or "closed". Listening ends after "closed".
+---@param signal "changed"|"closed"
+---@param fn fun(layer: LayerSurface, changed?: string[])
+---@return {unsubscribe: fun()}
+function LayerSurface:on(signal, fn) end
+
+---Call fn(layer, value, old) when one field of this layer surface changes.
+---@param property string A field of LayerSurface, such as "geometry".
+---@param fn fun(layer: LayerSurface, value: any, old: any)
+---@return {unsubscribe: fun()}
+function LayerSurface:watch(property, fn) end
 
 ---Return the configured animation policy for a layer namespace.
 ---@param namespace string UTF-8 namespace from 1 to 128 bytes.

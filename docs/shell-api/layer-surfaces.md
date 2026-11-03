@@ -1,8 +1,16 @@
 # Layer surfaces
 
-`gnoblin.layers.list(filter?)` returns read-only records from the native
-layer-surface snapshot. Each record includes its state revision. Layer records
-have no mutating methods; shell clients continue to own their surfaces.
+`gnoblin.layers.list(filter?)` returns `LayerSurface` objects from the native
+layer-surface snapshot. Each includes its state revision. Layer surfaces have
+no mutating methods; shell clients continue to own their surfaces.
+
+Like [window objects](/shell-api/windows#live-window-objects), every read of one
+surface returns the same object, updated with each change:
+
+- `layer.alive` turns `false` when the surface goes away.
+- `layer:on(signal, fn)` takes `"changed"` or `"closed"`.
+- `layer:watch(field, fn)` calls `fn(layer, value, old)` when a declared field
+  changes.
 
 The optional filter accepts exact string matches for `monitor_id`, `namespace`,
 and `layer`. Unknown fields and non-string values raise a Lua error. The read

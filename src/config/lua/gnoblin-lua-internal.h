@@ -280,6 +280,13 @@ void finish_operation_after(lua_State* state, LuaConfig* config, int handle, dou
                             const char* value);
 int request_for_event(lua_State* state, LuaConfig* config, const char* event, GVariant* payload);
 GHashTable* runtime_requests_new(void);
+gboolean lua_object_kind_is_live(const char* kind);
+void lua_object_intern(lua_State* state, const char* kind, int index);
+void lua_object_add_methods(lua_State* state, int method_table, const char* kind);
+int lua_object_on(lua_State* state);
+int lua_object_watch(lua_State* state);
+gboolean lua_object_dispatch_event(lua_State* state, const char* event, GVariant* payload);
+gboolean lua_api_class_has_field(const char* class_name, const char* field);
 gboolean table_fields_allowed(lua_State* state, int index, const char* const* allowed);
 int lua_workspace_action(lua_State* state);
 int lua_generic_api_action(lua_State* state);

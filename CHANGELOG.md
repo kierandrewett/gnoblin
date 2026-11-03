@@ -27,6 +27,10 @@
 - The Lua configuration receives `gnoblin.session.lock-requested` when it listens for it, so
   a config can start a locker without a separate shell process. See
   [session lock](docs/session-lock.md).
+- Windows, workspaces and layer surfaces are live objects in Lua. Every read of one returns
+  the same object, updated with each change, with `alive`, `on(signal, fn)` for its
+  `changed`, `closed` and other signals, and `watch(field, fn)` for one declared field. Before,
+  each read returned a detached copy. See [live window objects](docs/shell-api/windows.md#live-window-objects).
 - Packages for Debian testing (`.deb`) and Alpine edge (`.apk`, release assets only), and arm64
   builds of every package. A single build
   now writes the rpm, deb, Arch and tar packages: `scripts/build-prefix.sh` builds Gnoblin

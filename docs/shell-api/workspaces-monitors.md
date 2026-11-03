@@ -21,13 +21,25 @@ and the [writing workspace recipe](/recipes/writing-workspace).
 
 ## Read workspaces
 
-These methods return immediate, read-only snapshots:
+These methods return immediately:
 
 | Method                         | Arguments           | Result                          |
 | ------------------------------ | ------------------- | ------------------------------- |
-| `gnoblin.workspaces.list()`    | None                | All current `Workspace` records |
-| `gnoblin.workspaces.active()`  | None                | Active record or `nil`          |
-| `gnoblin.workspaces.by_id(id)` | String workspace ID | Matching record or `nil`        |
+| `gnoblin.workspaces.list()`    | None                | All current `Workspace` objects |
+| `gnoblin.workspaces.active()`  | None                | Active workspace or `nil`       |
+| `gnoblin.workspaces.by_id(id)` | String workspace ID | Matching workspace or `nil`     |
+
+Like [window objects](/shell-api/windows#live-window-objects), every read of
+one workspace returns the same object, updated with each change:
+
+- `workspace.alive` turns `false` when the workspace is removed.
+- `workspace:on(signal, fn)` takes `"changed"`, `"activated"` or `"closed"`.
+- `workspace:watch(field, fn)` calls `fn(workspace, value, old)` when a declared
+  field, such as `name` or `active`, changes.
+
+Gnoblin assigns session workspace IDs once the config is committed at startup.
+A workspace object read before then ends, and the same workspace appears again
+under its session ID.
 
 ## Create and change workspaces
 
@@ -74,7 +86,7 @@ A `Workspace` record has `id`, `number`, `name`, `active`, `windows`, and
 `persistent` fields. Gnoblin does not remove a declared workspace, the active
 workspace, or a workspace that still contains windows.
 
-Workspace snapshots also provide these methods. Call them with colon syntax
+Workspace objects also provide these methods. Call them with colon syntax
 from a runtime event callback; each returns an `Operation` handle.
 
 | Method                                  | Arguments                                                                   | Effect                              |
@@ -82,7 +94,7 @@ from a runtime event callback; each returns an `Operation` handle.
 | `workspace:activate()`                  | None                                                                        | Activate this workspace.            |
 | `workspace:rename(name)`                | Nonempty name up to 80 characters                                           | Rename this workspace.              |
 | `workspace:remove()`                    | None                                                                        | Remove this workspace when allowed. |
-| `workspace:move_here(window, options?)` | Window snapshot, stable window ID, or `"active"`; optional `follow` boolean | Move the window to this workspace.  |
+| `workspace:move_here(window, options?)` | `Window` object, stable window ID, or `"active"`; optional `follow` boolean | Move the window to this workspace.  |
 
 ## Monitors
 

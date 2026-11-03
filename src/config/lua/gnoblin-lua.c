@@ -139,6 +139,8 @@ const LuaApiEntry lua_api[] = {
     {"Window:begin_resize", "window.begin_resize", NULL},
     {"Window:thumbnail", "window.thumbnail", NULL},
     {"Window:present", "window.present", NULL},
+    {"Window:on", NULL, lua_object_on},
+    {"Window:watch", NULL, lua_object_watch},
 
     {"workspaces.list", NULL, lua_workspaces_list},
     {"workspaces.active", NULL, lua_workspaces_active},
@@ -155,6 +157,8 @@ const LuaApiEntry lua_api[] = {
     {"Workspace:rename", "workspace.rename", NULL},
     {"Workspace:remove", "workspace.remove", NULL},
     {"Workspace:move_here", "workspace.move_window", NULL},
+    {"Workspace:on", NULL, lua_object_on},
+    {"Workspace:watch", NULL, lua_object_watch},
 
     {"monitors.list", NULL, lua_monitors_list},
     {"monitors.primary", NULL, lua_monitors_primary},
@@ -166,6 +170,8 @@ const LuaApiEntry lua_api[] = {
     {"outputs.renderer", NULL, lua_outputs_renderer},
     {"layers.list", NULL, lua_layers_list},
     {"layers.animation_policy", NULL, lua_layers_animation_policy},
+    {"LayerSurface:on", NULL, lua_object_on},
+    {"LayerSurface:watch", NULL, lua_object_watch},
     {"capabilities.list", NULL, lua_capabilities_list},
     {"appearance.color_scheme", NULL, lua_appearance_color_scheme},
 
