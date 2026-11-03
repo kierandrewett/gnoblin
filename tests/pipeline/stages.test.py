@@ -54,6 +54,20 @@ class Needs(unittest.TestCase):
         self.assertEqual(set(shared_prefix), {"packages"})
         self.assertEqual(self.needs(target(slug="arch", lane="", prefix="shared", prefix_artifact="")), {})
 
+    def test_a_leg_whose_jobs_wrote_nothing_still_has_a_verdict_file(self):
+        # Run 41663496221: Arch Linux arm64 had no packages job (no lane), its test and graphical jobs failed before
+        # they wrote anything, and the empty verdict folder failed the upload. leg.json is always written.
+        out = Path(tempfile.mkdtemp(prefix="gnoblin-stages-test-"))
+        leg = target(slug="arch", lane="", prefix="shared", prefix_artifact="")
+        jobs = {
+            "prefix": {"result": "skipped", "outputs": {}},
+            "test": {"result": "failure", "outputs": {"status": "failure"}},
+        }
+        subprocess.run([sys.executable, HERE / "stages.py", "needs", "--target", json.dumps(leg), "--needs",
+                        json.dumps(jobs), "--out", out], check=True, capture_output=True)  # fmt: skip
+        record = json.loads((out / "leg.json").read_text())
+        self.assertEqual((record["slug"], record["jobs"]["test"]["status"]), ("arch", "failure"))
+
 
 class Shared(unittest.TestCase):
     def test_the_shared_packages_job_records_every_target_without_a_lane_on_its_architecture(self):

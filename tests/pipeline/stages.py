@@ -96,6 +96,16 @@ def main() -> int:
         if target["lane"]:
             status, detail = from_needs(jobs.get("packages"), "packages")
             write(arguments.out, "packages", target["slug"], target["arch"], status, detail, log)
+        # Every verdict holds this file, also a leg whose jobs all were skipped or failed before they wrote anything
+        # (a target of the shared packages whose shared job failed): the artifact is never empty. The gate does not
+        # read it; it is the record of the jobs of the leg.
+        arguments.out.mkdir(parents=True, exist_ok=True)
+        summary = {
+            name: {"result": (job or {}).get("result"), "status": ((job or {}).get("outputs") or {}).get("status")}
+            for name, job in jobs.items()
+        }
+        leg = {"slug": target["slug"], "arch": target["arch"], "jobs": summary, "run": log}
+        (arguments.out / "leg.json").write_text(json.dumps(leg, indent=1) + "\n")
     return 0
 
 

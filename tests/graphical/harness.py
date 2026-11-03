@@ -150,7 +150,9 @@ def qemu_command(guest, accel, memory, cpus, disk, seed, port, qmp_path, serial,
         "-device", "virtio-keyboard-pci,id=keyboard",
         "-device", "virtio-tablet-pci,id=tablet",
         "-netdev", f"user,id=net0,hostfwd=tcp:127.0.0.1:{port}-:22",
-        "-device", "virtio-net-pci,netdev=net0",
+        # No option ROM: the guest boots from its disk, never from the network. QEMU on an Ubuntu arm64 runner has no
+        # efi-virtio.rom (it is in ipxe-qemu, a recommended package), and stops at start when the device asks for it.
+        "-device", "virtio-net-pci,netdev=net0,romfile=",
         "-qmp", f"unix:{qmp_path},server=on,wait=off",
         "-serial", f"file:{serial}",
     ]  # fmt: skip
@@ -453,7 +455,9 @@ def make_seed(directory, public_key):
 users:
   - name: {USER}
     gecos: Gnoblin graphical test
-    lock_passwd: true
+    # No password, but not locked: "*" rather than "!", which an OpenSSH without PAM (Alpine) refuses for a key login.
+    lock_passwd: false
+    hashed_passwd: "*"
     ssh_authorized_keys:
       - {public_key}
 disable_root: false
@@ -467,6 +471,9 @@ runcmd:
   - chmod 700 /root/.ssh
   - echo '{public_key}' > /root/.ssh/authorized_keys
   - chmod 600 /root/.ssh/authorized_keys
+  # An OpenSSH without PAM (Alpine) refuses a key login to a locked account ("!" in /etc/shadow). "*" has no
+  # password either, but is not locked.
+  - sed -i 's/^root:![^:]*:/root:*:/' /etc/shadow
   - systemctl reload sshd 2>/dev/null || systemctl reload ssh 2>/dev/null || rc-service sshd reload 2>/dev/null || true
 """
     (directory / "user-data").write_text(user_data)
@@ -516,7 +523,14 @@ class Guest:
             if self.process.poll() is not None:
                 raise CheckFailed("QEMU exited at start", (self.out / "qemu.log").read_text())
             time.sleep(0.1)
-        self.qmp = Qmp(self.qmp_path)
+        try:
+            self.qmp = Qmp(self.qmp_path)
+        except OSError as error:
+            # QEMU makes the socket and then stops on a bad device: say so, with its own message.
+            time.sleep(0.5)
+            if self.process.poll() is not None:
+                raise CheckFailed("QEMU exited at start", (self.out / "qemu.log").read_text()) from None
+            raise CheckFailed(f"QMP socket {self.qmp_path} refused the connection: {error}") from None
 
     def ssh(self, user, command, timeout=600, check=True, stdin=None):
         result = subprocess.run(

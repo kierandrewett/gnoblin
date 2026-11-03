@@ -6,6 +6,9 @@ deadline. No network, no QEMU: the aarch64 command is checked as text only."""
 import argparse
 import importlib.util
 import json
+import os
+import shutil
+import subprocess
 from pathlib import Path
 import signal
 import struct
@@ -215,6 +218,47 @@ class Guests(unittest.TestCase):
         with self.assertRaisesRegex(harness.CheckFailed, "no UEFI firmware for aarch64: none of /nonexistent/code.fd"):
             harness.find_firmware(guest)
         self.assertIsNone(harness.find_firmware(shipped_guest("amd64")))
+
+
+@unittest.skipUnless(shutil.which("qemu-system-x86_64") and shutil.which("qemu-img") and shutil.which("ssh-keygen"),
+                     "needs qemu-system-x86_64, qemu-img and ssh-keygen")  # fmt: skip
+class GuestStart(unittest.TestCase):
+    """Start the amd64 guest command for real on a blank disk (TCG): QEMU accepts it and QMP answers. A device that
+    QEMU refuses at start (here an option ROM file that does not exist, as efi-virtio.rom on an Ubuntu arm64 runner)
+    fails the check with QEMU's own message, not with a connection error."""
+
+    def start(self, mutate=None):
+        work = Path(tempfile.mkdtemp(dir=os.environ.get("TMPDIR", "/var/tmp")))
+        subprocess.run(["qemu-img", "create", "-q", "-f", "qcow2", str(work / "base.qcow2"), "64M"], check=True)
+        (work / "seed.iso").write_bytes(b"\0" * 4096)
+        guest = harness.Guest(work, work, "tcg", 256, 1, shipped_guest("amd64"))
+        original = harness.qemu_command
+        if mutate:
+            harness.qemu_command = lambda *a, **k: mutate(original(*a, **k))
+        try:
+            guest.start(work / "base.qcow2", work / "seed.iso")
+            return guest, work
+        finally:
+            harness.qemu_command = original
+
+    def test_the_amd64_guest_starts_and_answers_on_qmp(self):
+        guest, work = self.start()
+        try:
+            self.assertIsNone(guest.process.poll())
+            self.assertEqual(guest.qmp.command("query-status")["status"], "running")
+        finally:
+            guest.process.kill()
+            guest.process.wait()
+            shutil.rmtree(work, ignore_errors=True)
+
+    def test_a_device_that_qemu_refuses_fails_with_its_message(self):
+        def bad_rom(command):
+            return [part.replace("romfile=", "romfile=/nonexistent/efi-virtio.rom") for part in command]
+
+        with self.assertRaises(harness.CheckFailed) as caught:
+            self.start(bad_rom)
+        self.assertEqual(caught.exception.detail, "QEMU exited at start")
+        self.assertIn("efi-virtio.rom", caught.exception.excerpt)
 
 
 class Deadline(unittest.TestCase):

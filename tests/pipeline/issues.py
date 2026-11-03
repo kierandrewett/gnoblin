@@ -179,7 +179,8 @@ def plan(verdicts, issues, run_url):
             result = "not built" if all(stage == "build" for _, stage, _, _ in found) else "fail"
             note = "EOL: no issue, notice only"
             actions.append({"action": "notice", "release": name, "title": name_title,
-                            "comment": f"{name} {result}, and it is at its end of life ({eol_date}): no issue"})  # fmt: skip
+                            "comment": f"{name} {'is not built' if result == 'not built' else 'failed a stage'}, and it is "
+                                       f"at its end of life ({eol_date}): no issue"})  # fmt: skip
             if issue:
                 actions.append({"action": "close", "release": name, "number": issue["number"], "title": name_title,
                                 "comment": f"{name} reached its end of life ({eol_date}). It is no longer a target, "

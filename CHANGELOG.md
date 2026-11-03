@@ -45,6 +45,12 @@
 - The graphical VM test reads the checksum file of an Alpine cloud image, which holds the digest only.
 - The graphical VM test starts its session on Fedora 45, where `kmsconvt@tty1` (kmscon) holds tty1 instead of
   `getty@tty1`. The session unit now stops kmscon too, so the hang-up of tty1 no longer ends the session.
+- The graphical VM test logs in to Alpine guests. Alpine's OpenSSH has no PAM and refuses a key login to a locked
+  account, so the seed now gives the test user and root the password field `*` (no password, not locked) instead of
+  `!`. Before, Alpine 3.21 to 3.24 and edge never got past the `boot` check.
+- The graphical VM test starts arm64 guests. Their network device asked for an option ROM (`efi-virtio.rom`) that
+  QEMU on an Ubuntu arm64 runner does not have, so QEMU stopped at start. The device has no ROM now, and a QEMU that
+  stops at start is reported with its own message.
 - The runtime layer of the package suite passes the background colour to `swaybg` as `#ff00ff`. swaybg 1.2.0
   (Ubuntu 24.04) rejects `ff00ff`, so the output stayed black and the R6 check failed.
 - `scripts/build-prefix.sh` fetches the upstream tags of the Mutter and portal checkouts only when the pinned tag is

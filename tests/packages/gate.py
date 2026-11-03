@@ -329,7 +329,9 @@ def names_with_arches(verdicts: list[dict]) -> list[str]:
 def cell(stage: dict) -> str:
     text = {PASS: "pass", SHARED: "shared", NOT_BUILT: "not built"}.get(stage["status"])
     if text is None:
-        text = stage["detail"] if stage["status"] == NOT_RUN else f"FAIL {stage['check']}: {stage['detail']}"
+        detail = stage["detail"]
+        prefix = "" if stage["status"] == NOT_RUN or detail.startswith(f"{stage['check']}:") else f"{stage['check']}: "
+        text = detail if stage["status"] == NOT_RUN else f"FAIL {prefix}{detail}"
     text = text.replace("|", "/").replace("\n", " ")
     return text if len(text) <= 90 else text[:87] + "..."
 

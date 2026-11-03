@@ -54,6 +54,11 @@ ARGUMENTS = {
     "FEDORA": "45",
     "LANES": "all",
 }
+# The build arguments of pkgsmith/*.star (arg("NAME")). pkgsmith takes one that is not given from the environment.
+AMBIENT = {
+    "PKGSMITH_PLUGIN_PATH", "ARCH", "LIBC", "RELEASE", "FEDORA", "LANES", "GLIBC", "LIBINPUT", "DEB_RELEASE",
+    "OPENSUSE_RELEASE", "VERSION", "PORTAL_VERSION", "NEEDED_GNOBLIN", "NEEDED_PORTAL", "NEEDED_FRAMES", "EPOCH",
+}  # fmt: skip
 
 
 @unittest.skipUnless(PKGSMITH, "pkgsmith is not on PATH")
@@ -88,7 +93,9 @@ class PackageDefinitions(unittest.TestCase):
             ],
             capture_output=True,
             text=True,
-            env={key: value for key, value in os.environ.items() if key != "PKGSMITH_PLUGIN_PATH"},
+            # pkgsmith reads a build argument that is not given from the environment of the same name. CI jobs set
+            # ARCH and others for their own steps, so they are left out: the test gives every argument it means.
+            env={key: value for key, value in os.environ.items() if key not in AMBIENT},
         )
 
     def plan(self, script, **overrides):
