@@ -278,6 +278,7 @@ static void native_runtime_suspend_worker(GnoblinNativeControl* control) {
     gnoblin_runtime_writer_reset(control->runtime_writer);
     gnoblin_runtime_reader_reset(control->runtime_reader);
     gnoblin_control_runtime_clear_queue(control->pending_runtime_states);
+    gnoblin_control_tweens_cancel(control, "cancelled");
     gnoblin_control_window_visuals_reset(control);
     gnoblin_control_runtime_clear_queue(control->pending_runtime_events);
     native_runtime_fail_pending_requests(control, "Lua worker restarted before replying");
@@ -616,6 +617,21 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
             g_variant_builder_add(&accepted, "{sv}", "accepted", g_variant_new_boolean(TRUE));
             result = g_variant_ref_sink(g_variant_builder_end(&accepted));
         }
+    } else if (g_str_equal(method, "tween.play")) {
+        guint64 owner_generation = 0;
+        g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+        guint64* operation_key = g_new(guint64, 1);
+        *operation_key = (guint64)operation_id;
+        g_hash_table_add(control->runtime_operation_ids, operation_key);
+        if (gnoblin_control_tween_play(control, operation_id, arguments, owner_generation,
+                                       &operation_error))
+            return TRUE;
+        g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
+    } else if (g_str_has_prefix(method, "tween.")) {
+        guint64 owner_generation = 0;
+        g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
+        result = gnoblin_control_tween_control(control, method, arguments, owner_generation,
+                                               &operation_error);
     } else if (g_str_equal(method, "window.set_visual")) {
         guint64 owner_generation = 0;
         g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation);
@@ -1207,6 +1223,7 @@ gboolean native_runtime_fd_ready(gint fd, GIOCondition condition, gpointer user_
                     control->input_policy_bypassed = FALSE;
                     g_clear_pointer(&control->input_policy_error, g_free);
                     gnoblin_control_cancel_window_drags(control, "config_reloaded");
+                    gnoblin_control_tweens_cancel(control, "cancelled");
                     gnoblin_control_window_visuals_reset(control);
                     revoke_focus_contexts(control);
                 }

@@ -105,6 +105,9 @@ const LuaApiEntry lua_api[] = {
     {"snapshot", NULL, lua_snapshot},
     {"timers.after", NULL, lua_timers_after},
     {"timers.now", NULL, lua_timers_now},
+    {"ease", NULL, lua_ease},
+    {"lerp", NULL, lua_lerp},
+    {"tween", NULL, lua_tween_new},
 
     {"process.spawn", NULL, lua_process_spawn},
     {"on", NULL, lua_on},

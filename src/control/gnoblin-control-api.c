@@ -488,6 +488,8 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     gnoblin_control_prompts_stop(control);
     gnoblin_control_process_clear(control);
     gnoblin_control_present_clear(control);
+    gnoblin_control_tweens_cancel(control, "cancelled");
+    g_clear_pointer(&control->tweens, g_hash_table_unref);
     control->overlay_modifier_hook_available = FALSE;
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session,

@@ -446,6 +446,7 @@ char* handle_ui_session_request(Client* client, JsonObject* request);
 char* handle_request(Client* client, const char* data, gsize length);
 void send_response(Client* client, char* response);
 void schedule_windows(GnoblinNativeControl* control);
+void publish_windows_now(GnoblinNativeControl* control);
 gboolean native_mutter_event_is_subscribable(GnoblinNativeControl* control, const char* name);
 void clear_display_signal_watches(GnoblinNativeControl* control);
 void refresh_display_signal_watches(GnoblinNativeControl* control);

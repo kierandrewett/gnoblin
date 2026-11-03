@@ -137,6 +137,15 @@ void schedule_windows(GnoblinNativeControl* control) {
     }
 }
 
+/* Publish the window and workspace state now, in place of any queued publication, so an event
+ * sent next describes the state after it. */
+void publish_windows_now(GnoblinNativeControl* control) {
+    if (control->publish_id)
+        g_clear_handle_id(&control->publish_id, g_source_remove);
+    control->state_revision++;
+    publish_windows(control);
+}
+
 static void window_changed(MetaWindow* window, gpointer user_data) {
     gnoblin_control_refresh_window_rule_blur(window);
     gnoblin_control_apply_window_rules(user_data, window);

@@ -274,6 +274,7 @@ struct _GnoblinNativeControl {
     guint64 next_prompt_request_id;
     GHashTable* processes; /* process.spawn request ID -> RunningProcess */
     GHashTable* presents;  /* window.present request ID -> PendingPresent */
+    GHashTable* tweens;    /* tween ID -> TweenPlayer (gnoblin-control-tweens.c) */
     GHashTable* runtime_operation_ids;
     GHashTable* runtime_cancelled_operation_ids;
     GHashTable* runtime_event_subscriptions;
@@ -463,6 +464,29 @@ G_GNUC_INTERNAL GVariant* gnoblin_control_window_set_visual(GnoblinNativeControl
 G_GNUC_INTERNAL void gnoblin_control_window_visual_add_fields(MetaWindow* window,
                                                               JsonObject* record);
 G_GNUC_INTERNAL void gnoblin_control_window_visuals_reset(GnoblinNativeControl* control);
+typedef enum {
+    GNOBLIN_VISUAL_OPACITY,
+    GNOBLIN_VISUAL_SCALE,
+    GNOBLIN_VISUAL_ROTATION,
+    GNOBLIN_VISUAL_OFFSET_X,
+    GNOBLIN_VISUAL_OFFSET_Y,
+    GNOBLIN_VISUAL_COUNT,
+} GnoblinVisualProperty;
+G_GNUC_INTERNAL void gnoblin_control_window_visual_values(MetaWindow* window,
+                                                          double values[GNOBLIN_VISUAL_COUNT]);
+G_GNUC_INTERNAL void gnoblin_control_window_visual_store(MetaWindow* window,
+                                                         const double values[GNOBLIN_VISUAL_COUNT],
+                                                         guint64 owner_generation);
+
+/* gnoblin-control-tweens.c: tween.play, tween.pause, tween.seek, tween.kill. */
+G_GNUC_INTERNAL gboolean gnoblin_control_tween_play(GnoblinNativeControl* control,
+                                                    gint64 operation_id, GVariant* arguments,
+                                                    guint64 owner_generation, GError** error);
+G_GNUC_INTERNAL GVariant* gnoblin_control_tween_control(GnoblinNativeControl* control,
+                                                        const char* method, GVariant* arguments,
+                                                        guint64 owner_generation, GError** error);
+G_GNUC_INTERNAL void gnoblin_control_tweens_cancel(GnoblinNativeControl* control,
+                                                   const char* outcome);
 
 /* gnoblin-control-privacy.c: privacy snapshot and location authorization glue. */
 G_GNUC_INTERNAL void gnoblin_control_publish_privacy_snapshot(GnoblinNativeControl* control,

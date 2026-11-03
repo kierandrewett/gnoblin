@@ -10,6 +10,8 @@ mutter gnoblin-control-internal.h src/core/gnoblin-control-internal.h
 mutter gnoblin-control-process.c src/core/gnoblin-control-process.c
 mutter gnoblin-control-present.c src/core/gnoblin-control-present.c
 mutter gnoblin-control-window-visuals.c src/core/gnoblin-control-window-visuals.c
+mutter gnoblin-control-tweens.c src/core/gnoblin-control-tweens.c
+mutter gnoblin-easing.h src/core/gnoblin-easing.h
 mutter gnoblin-control-command.c src/core/gnoblin-control-command.c
 mutter gnoblin-control-runtime.c src/core/gnoblin-control-runtime.c
 mutter gnoblin-control-focus.c src/core/gnoblin-control-focus.c

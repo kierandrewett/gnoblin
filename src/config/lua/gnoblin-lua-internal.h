@@ -281,6 +281,12 @@ void finish_operation_after(lua_State* state, LuaConfig* config, int handle, dou
 int request_for_event(lua_State* state, LuaConfig* config, const char* event, GVariant* payload);
 GHashTable* runtime_requests_new(void);
 gboolean lua_object_kind_is_live(const char* kind);
+gboolean lua_object_property_animatable(const char* kind, const char* property);
+gboolean lua_object_is(lua_State* state, int index, const char* kind);
+int lua_ease(lua_State* state);
+int lua_lerp(lua_State* state);
+int lua_tween_new(lua_State* state);
+gboolean lua_tween_dispatch_event(lua_State* state, const char* event, GVariant* payload);
 void lua_object_intern(lua_State* state, const char* kind, int index);
 void lua_object_add_methods(lua_State* state, int method_table, const char* kind);
 int lua_object_on(lua_State* state);

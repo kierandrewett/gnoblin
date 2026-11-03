@@ -36,6 +36,10 @@
   position, a config reload resets them, and they fail while the session is locked. Window
   objects show the values in `opacity`, `scale`, `rotation` and `offset`. See
   [change how a window is drawn](docs/shell-api/windows.md#change-how-a-window-is-drawn).
+- `gnoblin.tween()` builds a timeline of window opacity, scale, rotation and offset changes,
+  intervals and callbacks, and the compositor plays it in its render loop. `play`, `pause`,
+  `seek` and `kill` control it; a reload or a session lock cancels it. `gnoblin.ease` and
+  `gnoblin.lerp` give the same easing math in Lua. See [tweens and easing](docs/shell-api/tweens.md).
 - Packages for Debian testing (`.deb`) and Alpine edge (`.apk`, release assets only), and arm64
   builds of every package. A single build
   now writes the rpm, deb, Arch and tar packages: `scripts/build-prefix.sh` builds Gnoblin

@@ -206,6 +206,7 @@ static GVariant* gnoblin_config_dispatch_event_internal(const char* event, GVari
     /* Move the live object the event names to its new state and run its own signals and
      * watches before the event's listeners. */
     dispatched |= lua_object_dispatch_event(state, event, payload);
+    dispatched |= lua_tween_dispatch_event(state, event, payload);
     lua_getglobal(state, "gnoblin");
     lua_getfield(state, -1, "listeners");
     g_autoptr(GVariant) stable_gesture = NULL;

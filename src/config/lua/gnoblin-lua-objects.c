@@ -17,16 +17,19 @@
 typedef struct {
     const char* kind;
     const char* const* signals;
+    const char* const* animatable; /* properties a tween can drive (gnoblin-lua-tween.c) */
 } LuaObjectKind;
 
 static const char* const window_signals[] = {"changed", "closed", "focused", "unfocused", NULL};
 static const char* const workspace_signals[] = {"changed", "closed", "activated", NULL};
 static const char* const layer_signals[] = {"changed", "closed", NULL};
+static const char* const window_animatable[] = {"opacity", "scale", "rotation", "offset", NULL};
+static const char* const none[] = {NULL};
 
 static const LuaObjectKind object_kinds[] = {
-    {"Window", window_signals},
-    {"Workspace", workspace_signals},
-    {"LayerSurface", layer_signals},
+    {"Window", window_signals, window_animatable},
+    {"Workspace", workspace_signals, none},
+    {"LayerSurface", layer_signals, none},
 };
 
 /* Which runtime events move a live object, where the object is in the payload, which signal they
@@ -61,6 +64,14 @@ gboolean lua_object_kind_is_live(const char* kind) {
     return object_kind(kind) != NULL;
 }
 
+gboolean lua_object_property_animatable(const char* kind, const char* property) {
+    const LuaObjectKind* type = object_kind(kind);
+    for (guint i = 0; type && property && type->animatable[i]; i++)
+        if (g_str_equal(type->animatable[i], property))
+            return TRUE;
+    return FALSE;
+}
+
 /* Push the registry table `key`, created on first use; weak values when `weak`. */
 static int push_registry_table(lua_State* state, const char* key, gboolean weak) {
     if (lua_getfield(state, LUA_REGISTRYINDEX, key) != LUA_TTABLE) {
@@ -93,6 +104,21 @@ static gboolean push_handle_key(lua_State* state, int index, const char* kind) {
     lua_replace(state, -3);
     lua_pop(state, 1);
     return TRUE;
+}
+
+static gboolean handle_closed(lua_State* state, int index);
+
+/* Whether the value at `index` is the live handle of a `kind` object. */
+gboolean lua_object_is(lua_State* state, int index, const char* kind) {
+    index = lua_absindex(state, index);
+    if (!push_handle_key(state, index, kind))
+        return FALSE;
+    int handles = push_registry_table(state, LUA_OBJECT_HANDLES_KEY, TRUE);
+    lua_pushvalue(state, -2);
+    lua_rawget(state, handles);
+    gboolean same = lua_rawequal(state, -1, index);
+    lua_pop(state, 3);
+    return same;
 }
 
 static gboolean handle_closed(lua_State* state, int index) {

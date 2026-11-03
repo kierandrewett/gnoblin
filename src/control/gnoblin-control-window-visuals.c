@@ -117,12 +117,9 @@ GVariant* gnoblin_control_window_set_visual(GnoblinNativeControl* control, GVari
         return NULL;
     next.owner_generation = owner_generation;
 
-    apply_visual(window, &next);
-    if (memcmp(&next, &identity_visual, offsetof(WindowVisual, owner_generation)) == 0)
-        g_object_set_data(G_OBJECT(window), WINDOW_VISUAL_KEY, NULL);
-    else
-        g_object_set_data_full(G_OBJECT(window), WINDOW_VISUAL_KEY, g_memdup2(&next, sizeof next),
-                               g_free);
+    double values[GNOBLIN_VISUAL_COUNT] = {next.opacity, next.scale, next.rotation, next.offset_x,
+                                           next.offset_y};
+    gnoblin_control_window_visual_store(window, values, owner_generation);
     schedule_windows(control);
 
     GVariantBuilder result;
@@ -134,6 +131,36 @@ GVariant* gnoblin_control_window_set_visual(GnoblinNativeControl* control, GVari
     g_variant_builder_add(&result, "{sv}", "offset_x", g_variant_new_double(next.offset_x));
     g_variant_builder_add(&result, "{sv}", "offset_y", g_variant_new_double(next.offset_y));
     return g_variant_ref_sink(g_variant_builder_end(&result));
+}
+
+/* The window's visual values in GnoblinVisualProperty order; the identity when unset. */
+void gnoblin_control_window_visual_values(MetaWindow* window, double values[GNOBLIN_VISUAL_COUNT]) {
+    const WindowVisual* visual = g_object_get_data(G_OBJECT(window), WINDOW_VISUAL_KEY);
+    if (!visual)
+        visual = &identity_visual;
+    values[GNOBLIN_VISUAL_OPACITY] = visual->opacity;
+    values[GNOBLIN_VISUAL_SCALE] = visual->scale;
+    values[GNOBLIN_VISUAL_ROTATION] = visual->rotation;
+    values[GNOBLIN_VISUAL_OFFSET_X] = visual->offset_x;
+    values[GNOBLIN_VISUAL_OFFSET_Y] = visual->offset_y;
+}
+
+/* Draw the window with these values and keep them as its override, owned by the runtime
+ * generation `owner_generation`. The tween player calls this each frame. */
+void gnoblin_control_window_visual_store(MetaWindow* window,
+                                         const double values[GNOBLIN_VISUAL_COUNT],
+                                         guint64 owner_generation) {
+    WindowVisual next = {
+        values[GNOBLIN_VISUAL_OPACITY],  values[GNOBLIN_VISUAL_SCALE],
+        values[GNOBLIN_VISUAL_ROTATION], values[GNOBLIN_VISUAL_OFFSET_X],
+        values[GNOBLIN_VISUAL_OFFSET_Y], owner_generation,
+    };
+    apply_visual(window, &next);
+    if (memcmp(&next, &identity_visual, offsetof(WindowVisual, owner_generation)) == 0)
+        g_object_set_data(G_OBJECT(window), WINDOW_VISUAL_KEY, NULL);
+    else
+        g_object_set_data_full(G_OBJECT(window), WINDOW_VISUAL_KEY, g_memdup2(&next, sizeof next),
+                               g_free);
 }
 
 /* Add the window's visual state to its record, the identity when nothing overrides it. */

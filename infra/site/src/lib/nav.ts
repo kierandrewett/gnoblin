@@ -178,6 +178,7 @@ export const NAV: NavSection[] = [
                     { label: "Authentication prompts", slug: "shell-api/authentication" },
                     { label: "Keyring and GPG prompts", slug: "shell-api/passphrase-prompts" },
                     { label: "Appearance and animations", slug: "shell-api/appearance-animations" },
+                    { label: "Tweens and easing", slug: "shell-api/tweens" },
                     { label: "Shared types", slug: "shell-api/types" },
                     { label: "Operations, errors and timers", slug: "shell-api/errors" },
                 ],
