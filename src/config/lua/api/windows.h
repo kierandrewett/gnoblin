@@ -35,6 +35,8 @@
 ---@field minimized? boolean Whether the window is minimized.
 ---@field last_user_time? integer Timestamp of the most recent user interaction.
 ---@field parent? string ID of the parent window, when present.
+---@field pid? integer Process ID of the client, from the display server, not the client.
+---@field process? integer Process.id when gnoblin.process.spawn started this window's program.
 ---@field monitor? integer Zero-based monitor index.
 ---@field frame WindowFrame Window frame rectangle.
 ---@field focused boolean Whether the window currently has focus.
@@ -188,6 +190,12 @@ function Window:move_to_monitor(monitor) end
 ---@param context FocusContext Live context from the current shortcut event.
 ---@return Operation<Json>
 function Window:focus(context) end
+
+---Focus a window whose program the runtime started with gnoblin.process.spawn. No key press is
+---needed. It waits until the window is shown and no key press or click reached a window for
+---250 ms, at most 5 seconds, then succeeds when the window has focus.
+---@return Operation<{id: string, focused: boolean}>
+function Window:present() end
 
 ---Begin an interactive move using a live shortcut-event context.
 ---@param context FocusContext Live context from the current shortcut event.

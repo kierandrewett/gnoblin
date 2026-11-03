@@ -145,6 +145,8 @@ static GVariant* legacy_window_list_from_lua(GVariant* windows, GError** error) 
                   {"type", "type"},
                   {"maximized", "maximized"},
                   {"fullscreen", "fullscreen"},
+                  {"pid", "pid"},
+                  {"process", "process"},
                   {"frame", "geometry"}};
     if (!windows || !g_variant_is_of_type(windows, G_VARIANT_TYPE("av"))) {
         g_set_error_literal(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,

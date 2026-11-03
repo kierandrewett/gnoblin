@@ -21,8 +21,12 @@ seconds.
 This config uses `zenity` to ask for a password or a yes or no answer. For a
 password prompt, `zenity --password` prints the password to standard output.
 For a confirmation, `zenity --question` reports the answer in its exit status.
+When the prompt window opens, `window:present()` gives it keyboard focus, so you
+can type the password without clicking it first.
 
 ```lua
+local prompts = {}
+
 local function text(value, fallback)
     if value == nil or value == "" then
         return fallback
@@ -30,13 +34,28 @@ local function text(value, fallback)
     return value
 end
 
+-- Focus the window of a running prompt program.
+gnoblin.on("gnoblin.window.created", function(event)
+    if prompts[event.window.process] then
+        event.window:present()
+    end
+end)
+
+local function ask(argv, options, answer)
+    local prompt = gnoblin.process.spawn(argv, options)
+    prompts[prompt.id] = true
+    prompt:wait():on_complete(function(exit, err)
+        prompts[prompt.id] = nil
+        answer(exit, err)
+    end)
+end
+
 gnoblin.on("gnoblin.prompt.requested", function(event)
     local title = text(event.title, "Passphrase")
     local message = text(event.message, title)
 
     if event.kind == "password" then
-        local prompt = gnoblin.process.spawn({"zenity", "--password", "--title", message}, {stdout = "capture"})
-        prompt:wait():on_complete(function(exit, err)
+        ask({"zenity", "--password", "--title", message}, {stdout = "capture"}, function(exit, err)
             if err or exit.exit_code ~= 0 then
                 gnoblin.prompt.cancel {request_id = event.request_id}
                 return
@@ -47,8 +66,7 @@ gnoblin.on("gnoblin.prompt.requested", function(event)
         return
     end
 
-    local question = gnoblin.process.spawn({"zenity", "--question", "--title", title, "--text", message})
-    question:wait():on_complete(function(exit, err)
+    ask({"zenity", "--question", "--title", title, "--text", message}, nil, function(exit, err)
         if err or exit.signal then
             gnoblin.prompt.cancel {request_id = event.request_id}
             return

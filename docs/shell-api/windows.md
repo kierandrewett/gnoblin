@@ -60,6 +60,7 @@ Each method returns an `Operation` handle.
 | `window:move_to_workspace(selector, options?)` | Workspace selector; optional `follow` boolean     | Move this window and optionally activate the destination.    |
 | `window:move_to_monitor(target)`               | Monitor connector ID or `{id = ID}`               | Move this window to an active monitor.                       |
 | `window:thumbnail(size)`                       | `{width = integer 1–480, height = integer 1–320}` | Capture a bounded compositor-rendered PNG preview.           |
+| `window:present()`                             | None                                              | Focus a window of a process the runtime started.             |
 
 Record properties remain read-only. In the native runtime,
 `Window:focus(context)` requests focus using the context from

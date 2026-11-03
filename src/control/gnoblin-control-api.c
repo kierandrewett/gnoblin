@@ -138,6 +138,7 @@ GnoblinNativeControl* gnoblin_native_control_start(MetaContext* context, GVarian
     gnoblin_control_auth_init(control);
     gnoblin_control_prompts_init(control);
     gnoblin_control_process_init(control);
+    gnoblin_control_present_init(control);
     control->runtime_operation_ids =
         g_hash_table_new_full(g_int64_hash, g_int64_equal, g_free, NULL);
     control->runtime_cancelled_operation_ids =
@@ -486,6 +487,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     gnoblin_control_auth_stop(control);
     gnoblin_control_prompts_stop(control);
     gnoblin_control_process_clear(control);
+    gnoblin_control_present_clear(control);
     control->overlay_modifier_hook_available = FALSE;
     if (control->active_shortcut_session)
         dynamic_shortcut_end_session(control, control->active_shortcut_session,
@@ -666,6 +668,7 @@ void gnoblin_native_control_stop(GnoblinNativeControl* control) {
     g_clear_pointer(&control->pending_auth, g_hash_table_unref);
     g_clear_pointer(&control->pending_prompts, g_hash_table_unref);
     g_clear_pointer(&control->processes, g_hash_table_unref);
+    g_clear_pointer(&control->presents, g_hash_table_unref);
     g_clear_pointer(&control->runtime_operation_ids, g_hash_table_unref);
     g_clear_pointer(&control->runtime_cancelled_operation_ids, g_hash_table_unref);
     g_clear_pointer(&control->runtime_event_subscriptions, g_hash_table_unref);

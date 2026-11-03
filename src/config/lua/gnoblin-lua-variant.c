@@ -344,7 +344,8 @@ static int lua_record_method(lua_State* state) {
         g_str_equal(method, "window.minimize") || g_str_equal(method, "window.toggle_minimize") ||
         g_str_equal(method, "window.restore") || g_str_equal(method, "window.unminimize") ||
         g_str_equal(method, "window.restore_or_minimize") ||
-        g_str_equal(method, "workspace.remove") || g_str_equal(method, "workspace.switch")) {
+        g_str_equal(method, "window.present") || g_str_equal(method, "workspace.remove") ||
+        g_str_equal(method, "workspace.switch")) {
         if (supplied != 0)
             return luaL_error(state, "%s takes no arguments", method);
     } else if (g_str_equal(method, "window.set_above") ||

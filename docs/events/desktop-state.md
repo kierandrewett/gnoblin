@@ -46,6 +46,8 @@ Window records contain the fields available from the compositor:
 - Type: `type`, an integer `MetaWindowType` value.
 - Geometry: `frame` and the optional `monitor` origin.
 - Interaction: `last_user_time`.
+- Origin: `pid`, the client's process ID from the display server, and `process`, the `Process.id` when
+  `gnoblin.process.spawn` started the program. See [processes](/shell-api/processes).
 - Record metadata: `revision`, the state revision for this record.
 
 A field is omitted when the compositor does not provide it. `monitor_id` is

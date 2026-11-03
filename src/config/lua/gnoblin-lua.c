@@ -138,6 +138,7 @@ const LuaApiEntry lua_api[] = {
     {"Window:begin_move", "window.begin_move", NULL},
     {"Window:begin_resize", "window.begin_resize", NULL},
     {"Window:thumbnail", "window.thumbnail", NULL},
+    {"Window:present", "window.present", NULL},
 
     {"workspaces.list", NULL, lua_workspaces_list},
     {"workspaces.active", NULL, lua_workspaces_active},

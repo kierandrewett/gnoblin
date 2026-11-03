@@ -3,8 +3,43 @@
 
 static void native_window_record_add_public_aliases(JsonObject* object);
 
-static void cache_lua_window_snapshot(GnoblinNativeControl* control, GVariant* native_snapshot,
+static void cache_lua_window_snapshot(GnoblinNativeControl* control, JsonNode* native_snapshot,
                                       guint64 revision);
+
+/* Add each window's client pid and, when the runtime started it with process.spawn, that
+ * process's ID. The pid comes from the Wayland socket or XRes, never from the client. A window
+ * keeps the process it was first attributed to for its lifetime, so the field survives the
+ * process's exit and cannot move to another process that reuses the pid. */
+static void attribute_windows(GnoblinNativeControl* control, JsonNode* snapshot) {
+    JsonArray* records =
+        JSON_NODE_HOLDS_OBJECT(snapshot)
+            ? json_object_get_array_member(json_node_get_object(snapshot), "windows")
+            : NULL;
+    if (!records)
+        return;
+    g_autoptr(GHashTable) by_id = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, NULL);
+    g_autoptr(GList) windows = meta_display_list_all_windows(control->display);
+    for (GList* item = windows; item; item = item->next)
+        g_hash_table_insert(by_id, native_window_id(item->data), item->data);
+    for (guint i = 0; i < json_array_get_length(records); i++) {
+        JsonNode* node = json_array_get_element(records, i);
+        if (!JSON_NODE_HOLDS_OBJECT(node))
+            continue;
+        JsonObject* record = json_node_get_object(node);
+        const char* id = json_object_get_string_member_with_default(record, "id", NULL);
+        MetaWindow* window = id ? g_hash_table_lookup(by_id, id) : NULL;
+        if (!window)
+            continue;
+        pid_t pid = meta_window_get_pid(window);
+        if (pid > 0)
+            json_object_set_int_member(record, "pid", pid);
+        gint64 process = GPOINTER_TO_SIZE(g_object_get_data(G_OBJECT(window), "gnoblin-process"));
+        if (!process && (process = gnoblin_control_process_for_pid(control, pid)) > 0)
+            g_object_set_data(G_OBJECT(window), "gnoblin-process", GSIZE_TO_POINTER(process));
+        if (process > 0)
+            json_object_set_int_member(record, "process", process);
+    }
+}
 
 JsonNode* window_snapshot_json(GnoblinNativeControl* control, gboolean update_lua_snapshot,
                                GError** error) {
@@ -18,9 +53,10 @@ JsonNode* window_snapshot_json(GnoblinNativeControl* control, gboolean update_lu
             native_publish_runtime_snapshot(control, "windows", NULL, control->state_revision);
         return NULL;
     }
-    if (update_lua_snapshot)
-        cache_lua_window_snapshot(control, result, control->state_revision);
     g_autoptr(JsonNode) json = json_from_variant(result);
+    attribute_windows(control, json);
+    if (update_lua_snapshot)
+        cache_lua_window_snapshot(control, json, control->state_revision);
     if (JSON_NODE_HOLDS_OBJECT(json)) {
         JsonArray* windows = json_object_get_array_member(json_node_get_object(json), "windows");
         for (guint i = 0; windows && i < json_array_get_length(windows); i++) {
@@ -73,6 +109,8 @@ const WindowPropertyName window_property_names[] = {
     {"lastUserTime", "last_user_time"},
     {"parent", "parent"},
     {"monitor", "monitor"},
+    {"pid", "pid"},
+    {"process", "process"},
     {"geometry", "frame"},
 };
 
@@ -115,9 +153,11 @@ JsonNode* lua_window_record(JsonNode* native_record, guint64 revision) {
     return node;
 }
 
-static void cache_lua_window_snapshot(GnoblinNativeControl* control, GVariant* native_snapshot,
+static void cache_lua_window_snapshot(GnoblinNativeControl* control, JsonNode* native_snapshot,
                                       guint64 revision) {
-    g_autoptr(JsonNode) json = json_from_variant(native_snapshot);
+    /* json_node_copy() shares the object, and this function rewrites it. Copy deeply. */
+    g_autoptr(GVariant) copy = variant_from_json(native_snapshot);
+    g_autoptr(JsonNode) json = copy ? json_from_variant(copy) : json_node_new(JSON_NODE_NULL);
     if (!JSON_NODE_HOLDS_OBJECT(json)) {
         native_publish_runtime_snapshot(control, "windows", NULL, revision);
         return;

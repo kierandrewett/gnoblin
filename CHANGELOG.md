@@ -14,6 +14,11 @@
   directory, environment, standard input, where each output stream goes and how much of it to
   capture, and a timeout. Output is returned as raw bytes. A process keeps running across a
   config reload. See [processes](docs/shell-api/processes.md).
+- Window records carry `pid`, the client's process ID from the display server, and `process`,
+  the `Process.id` when `gnoblin.process.spawn` started the program. `window:present()` focuses
+  such a window without a key press, after the user has not typed or clicked for 250 ms. A
+  shell can now open a passphrase prompt that takes typing straight away. See
+  [focus and activation](docs/shell-api/focus-activation.md).
 - Packages for Debian testing (`.deb`) and Alpine edge (`.apk`, release assets only), and arm64
   builds of every package. A single build
   now writes the rpm, deb, Arch and tar packages: `scripts/build-prefix.sh` builds Gnoblin

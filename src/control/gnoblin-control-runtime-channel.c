@@ -594,6 +594,13 @@ static gboolean native_runtime_handle_operation(GnoblinNativeControl* control,
         g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
     } else if (g_str_equal(method, "process.kill")) {
         result = gnoblin_control_process_kill(control, arguments, &operation_error);
+    } else if (g_str_equal(method, "window.present")) {
+        guint64* operation_key = g_new(guint64, 1);
+        *operation_key = (guint64)operation_id;
+        g_hash_table_add(control->runtime_operation_ids, operation_key);
+        if (gnoblin_control_present_window(control, operation_id, arguments, &operation_error))
+            return TRUE;
+        g_hash_table_remove(control->runtime_operation_ids, &operation_key[0]);
     } else if (g_str_equal(method, "window.snap.offer")) {
         guint64 owner_generation = 0;
         if (!g_variant_lookup(packet->payload, "runtime_generation", "t", &owner_generation) ||
