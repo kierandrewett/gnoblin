@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Fixed
+
+- The Lua API reference now describes `gnoblin.windows.focused`, `windows.by_id`,
+  `windows.snap_context`, `gnoblin.outputs.*`, and `gnoblin.capabilities.list`.
+  These functions already worked, but editor hints and the generated
+  `gnoblin.d.lua` did not list them.
+
 ### Removed
 
 Gnoblin no longer manages app permissions or persistent portal grants. Bingux

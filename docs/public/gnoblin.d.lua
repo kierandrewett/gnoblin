@@ -7,6 +7,7 @@ gnoblin = {}
 gnoblin.animations = {}
 gnoblin.appearance = {}
 gnoblin.auth = {}
+gnoblin.capabilities = {}
 gnoblin.commands = {}
 gnoblin.config = {}
 gnoblin.console = {}
@@ -21,6 +22,7 @@ gnoblin.layers = {}
 gnoblin.location = {}
 gnoblin.monitor = {}
 gnoblin.monitors = {}
+gnoblin.outputs = {}
 gnoblin.privacy = {}
 gnoblin.prompt = {}
 gnoblin.runtime = {}
@@ -743,6 +745,52 @@ function gnoblin.layers.animation_policy(namespace) end
 ---@return LayerSurface[]
 function gnoblin.layer.list() end
 
+---@class OutputMode
+---@field width integer Width in physical pixels.
+---@field height integer Height in physical pixels.
+---@field refresh_rate number Refresh rate in hertz.
+
+---@class Renderer
+---@field name string GL renderer string, such as "llvmpipe".
+---@field vendor? string GL vendor string, when available.
+---@field api string GL API in use, such as "gles2".
+---@field accelerated boolean False for software rasterizers.
+
+---@class Output
+---@field id string Connector name, such as "DP-1". Stable per output.
+---@field kind "display" Kind of output; "virtual" is reserved.
+---@field name? string Display name, when the hardware provides one.
+---@field make? string Manufacturer, when available.
+---@field model? string Model, when available.
+---@field serial? string Serial number, when available.
+---@field enabled boolean Whether the output is active in the current layout.
+---@field primary boolean Whether this is the primary output.
+---@field monitor_id? string Matching logical monitor ID.
+---@field mode OutputMode Current mode.
+---@field scale number Compositing scale of the logical monitor.
+---@field transform string Current transformation, such as "normal" or "90".
+---@field x? integer Logical X position of a display output.
+---@field y? integer Logical Y position of a display output.
+---@field renderer Renderer GPU path that renders this output.
+---@field revision integer State revision for this snapshot.
+
+---Return all current outputs. The list is empty until the first output snapshot is published.
+---@return Output[]
+function gnoblin.outputs.list() end
+
+---Return the primary output, or nil when there is none.
+---@return Output|nil
+function gnoblin.outputs.primary() end
+
+---Return the output with this connector ID, or nil when it does not exist.
+---@param id string Connector ID, such as "DP-1".
+---@return Output|nil
+function gnoblin.outputs.by_id(id) end
+
+---Return the compositor renderer, or nil until the first output snapshot is published.
+---@return Renderer|nil
+function gnoblin.outputs.renderer() end
+
 ---@class SessionStatus
 ---@field state "running" Session status returned by the compositor.
 ---@field lock_available boolean Whether the compositor can report session lock state.
@@ -888,6 +936,17 @@ function gnoblin.appearance.color_scheme() end
 ---Return a detached copy of the active Lua configuration table.
 ---@return Json
 function gnoblin.snapshot() end
+
+---@class Capability
+---@field id string Capability ID.
+---@field description string What the capability provides.
+---@field available boolean Whether the capability is available now.
+---@field reason? string Why the capability is unavailable, when it is not.
+---@field revision integer State revision for this snapshot.
+
+---Return the native compositor and protocol capabilities as read-only records.
+---@return Capability[]
+function gnoblin.capabilities.list() end
 
 ---@class ShortcutAction
 ---@field id string Action identifier.

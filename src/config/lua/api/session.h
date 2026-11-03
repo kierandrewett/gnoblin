@@ -150,4 +150,15 @@ function gnoblin.appearance.color_scheme() end
 ---Return a detached copy of the active Lua configuration table.
 ---@return Json
 function gnoblin.snapshot() end
+
+---@class Capability
+---@field id string Capability ID.
+---@field description string What the capability provides.
+---@field available boolean Whether the capability is available now.
+---@field reason? string Why the capability is unavailable, when it is not.
+---@field revision integer State revision for this snapshot.
+
+---Return the native compositor and protocol capabilities as read-only records.
+---@return Capability[]
+function gnoblin.capabilities.list() end
 */
