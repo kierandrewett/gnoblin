@@ -58,6 +58,8 @@
   `windows.snap_context`, `gnoblin.outputs.*`, and `gnoblin.capabilities.list`.
   These functions already worked, but editor hints and the generated
   `gnoblin.d.lua` did not list them.
+- The Lua API reference no longer lists `Window:match`. The runtime never installed it; the
+  window-rule fields stay available from `gnoblinctl window match`.
 
 ### Removed
 

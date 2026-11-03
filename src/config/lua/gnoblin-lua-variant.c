@@ -444,18 +444,16 @@ static int lua_record_method(lua_State* state) {
     return 1;
 }
 
-static void add_record_method(lua_State* state, int method_table, const char* name,
-                              const char* operation) {
-    lua_pushstring(state, operation);
-    lua_pushcclosure(state, lua_record_method, 1);
-    lua_setfield(state, method_table, name);
-}
-
-static void add_animation_preview_method(lua_State* state, int method_table, const char* name,
-                                         const char* operation) {
-    lua_pushstring(state, operation);
-    lua_pushcclosure(state, lua_animation_preview_method, 1);
-    lua_setfield(state, method_table, name);
+/* Add the lua_api methods of one record class, such as Window, to a record's method table. */
+static void add_record_methods(lua_State* state, int method_table, const char* class) {
+    gsize length = strlen(class);
+    for (const LuaApiEntry* entry = lua_api; entry->path; entry++) {
+        if (strncmp(entry->path, class, length) != 0 || entry->path[length] != ':')
+            continue;
+        lua_pushstring(state, entry->operation);
+        lua_pushcclosure(state, entry->function ? entry->function : lua_record_method, 1);
+        lua_setfield(state, method_table, entry->path + length + 1);
+    }
 }
 
 static void add_snapshot_methods(lua_State* state, int backing, int method_table) {
@@ -486,43 +484,12 @@ static void add_snapshot_methods(lua_State* state, int backing, int method_table
     lua_getfield(state, backing, "playing");
     is_animation_preview &= lua_isboolean(state, -1);
     lua_pop(state, 1);
-    if (is_window) {
-        const char* methods[][2] = {{"close", "window.close"},
-                                    {"kill", "window.kill"},
-                                    {"raise", "window.raise"},
-                                    {"lower", "window.lower"},
-                                    {"minimize", "window.minimize"},
-                                    {"toggle_minimize", "window.toggle_minimize"},
-                                    {"unminimize", "window.unminimize"},
-                                    {"restore", "window.restore"},
-                                    {"restore_or_minimize", "window.restore_or_minimize"},
-                                    {"set_maximized", "window.set_maximized"},
-                                    {"set_fullscreen", "window.set_fullscreen"},
-                                    {"set_above", "window.set_above"},
-                                    {"set_sticky", "window.set_sticky"},
-                                    {"move", "window.move"},
-                                    {"resize", "window.resize"},
-                                    {"move_to_workspace", "window.move_to_workspace"},
-                                    {"move_to_monitor", "window.move_to_monitor"},
-                                    {"focus", "window.focus"},
-                                    {"begin_move", "window.begin_move"},
-                                    {"begin_resize", "window.begin_resize"},
-                                    {"thumbnail", "window.thumbnail"},
-                                    {NULL, NULL}};
-        for (guint i = 0; methods[i][0]; i++)
-            add_record_method(state, method_table, methods[i][0], methods[i][1]);
-    } else if (is_animation_preview) {
-        add_animation_preview_method(state, method_table, "seek", "animation.seek");
-        add_animation_preview_method(state, method_table, "step", "animation.step");
-        add_animation_preview_method(state, method_table, "play", "animation.play");
-        add_animation_preview_method(state, method_table, "pause", "animation.pause");
-        add_animation_preview_method(state, method_table, "stop", "animation.stop");
-    } else if (is_workspace) {
-        add_record_method(state, method_table, "activate", "workspace.switch");
-        add_record_method(state, method_table, "rename", "workspace.rename");
-        add_record_method(state, method_table, "remove", "workspace.remove");
-        add_record_method(state, method_table, "move_here", "workspace.move_window");
-    }
+    if (is_window)
+        add_record_methods(state, method_table, "Window");
+    else if (is_animation_preview)
+        add_record_methods(state, method_table, "AnimationPreview");
+    else if (is_workspace)
+        add_record_methods(state, method_table, "Workspace");
 }
 
 static int lua_readonly_pairs(lua_State* state) {

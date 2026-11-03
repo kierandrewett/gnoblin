@@ -965,12 +965,8 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
             "Gnoblin API call requires an active Lua runtime, method, and argument table");
         return NULL;
     }
-    gboolean known = FALSE;
-    for (guint i = 0; api_methods[i]; i++)
-        known |= g_str_equal(api_methods[i], method);
-    for (guint i = 0; i < api_aliases_count; i++)
-        known |= g_str_equal(api_aliases[i].public_name, method);
-    if (!known) {
+    const LuaApiEntry* entry = lua_api_find_call(method);
+    if (!entry) {
         g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL, "unknown Gnoblin API method '%s'",
                     method);
         return NULL;
@@ -986,63 +982,20 @@ GVariant* gnoblin_config_call_api(const char* method, GVariant* arguments, GErro
                             "too many pending Gnoblin session actions");
         return NULL;
     }
-    /* Wire methods use operation names; Lua exposes them under public collection names such
-     * as gnoblin.animations.preview. Look the function up by its public name. */
-    const char* lookup = method;
-    for (guint i = 0; i < api_aliases_count; i++)
-        if (g_str_equal(api_aliases[i].operation, method)) {
-            lookup = api_aliases[i].public_name;
-            break;
-        }
-    const char* separator = strchr(lookup, '.');
-    g_autofree char* domain = NULL;
-    const char* operation = NULL;
-    if (g_str_equal(method, "shortcut.capture")) {
-        domain = g_strdup("shortcuts");
-        operation = "capture";
-    } else if (g_str_equal(method, "shortcut.bind") || g_str_equal(method, "shortcut.unbind")) {
-        domain = g_strdup("shortcuts");
-        operation = g_str_equal(method, "shortcut.bind") ? "bind" : "unbind";
-    } else if (g_str_equal(method, "shortcut.session.end")) {
-        domain = g_strdup("shortcuts");
-        operation = "end_session";
-    } else {
-        domain = g_strndup(lookup, separator - lookup);
-        operation = separator + 1;
-    }
     lua_State* state = active_runtime->state;
     guint action_start = config->runtime_actions->len;
     config->actions_in_dispatch = 0;
     config->api_calling = TRUE;
-    gboolean native_operation =
-        g_str_has_prefix(method, "workspace.") || g_str_has_prefix(method, "window.") ||
-        g_str_equal(method, "input.select") || g_str_equal(method, "command.run") ||
-        g_str_equal(method, "command.capture");
     int stack_base = lua_gettop(state);
-    if (native_operation) {
-        lua_pushlightuserdata(state, config);
-        lua_pushstring(state, method);
-        lua_pushcclosure(state,
-                         g_str_has_prefix(method, "workspace.") ? lua_workspace_action
-                                                                : lua_generic_api_action,
-                         2);
+    lua_pushlightuserdata(state, config);
+    if (entry->function) {
+        lua_pushcclosure(state, entry->function, 1);
     } else {
-        /* An unregistered domain is a nil, and indexing it outside a protected call would abort
-         * the whole Lua worker. Walk the path only through tables. */
-        lua_getglobal(state, "gnoblin");
-        if (lua_istable(state, -1))
-            lua_getfield(state, -1, domain);
-        if (lua_istable(state, -1))
-            lua_getfield(state, -1, operation);
-        else
-            lua_pushnil(state);
-    }
-    if (!lua_isfunction(state, -1)) {
-        lua_settop(state, stack_base);
-        config->api_calling = FALSE;
-        g_set_error(error, G_FILE_ERROR, G_FILE_ERROR_INVAL,
-                    "Lua API method '%s' is not registered", method);
-        return NULL;
+        lua_pushstring(state, entry->operation);
+        lua_pushcclosure(state,
+                         g_str_has_prefix(entry->operation, "workspace.") ? lua_workspace_action
+                                                                          : lua_generic_api_action,
+                         2);
     }
     int argument_count = g_variant_n_children(arguments) ? 1 : 0;
     if (argument_count)

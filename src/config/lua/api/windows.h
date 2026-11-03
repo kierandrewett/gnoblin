@@ -106,24 +106,6 @@ function gnoblin.windows.by_id(id) end
 ---@return Operation<SnapContext>
 function gnoblin.windows.snap_context(context) end
 
----Identity and window-rule fields for one window, the record that gnoblinctl window match
----prints. Selecting "active" means the focused window.
----@param window? string "active" or a stable window ID; the default is "active".
----@return WindowMatch
-function Window:match(window) end
-
----The record that Window:match returns.
----@class WindowMatch
----@field id string Stable window ID of the matched window.
----@field identity WindowMatchIdentity Verified identity.
----@field match WindowRuleMatch Fields a window rule can match on.
-
----Identity verified from the window record.
----@class WindowMatchIdentity
----@field app_id string Application ID used for matching.
----@field gtk_app_id? string GTK application ID, when present.
----@field wm_class? string Window manager class, when present.
-
 ---Close this window.
 ---@return Operation<Json>
 function Window:close() end

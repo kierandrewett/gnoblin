@@ -208,14 +208,17 @@ void push_menu_context(lua_State* state, guint64 handle, guint64 generation,
                        guint64 native_generation, gint64 expires_at_us, const char* window_id);
 void push_focus_context(lua_State* state, guint64 handle, guint64 generation,
                         guint64 native_generation, gint64 expires_at_us);
-extern const char* api_methods[];
 typedef struct {
-    const char* public_name;
+    const char* path;
     const char* operation;
-} ApiAlias;
+    lua_CFunction function;
+} LuaApiEntry;
 
-extern const ApiAlias api_aliases[];
-extern const gsize api_aliases_count;
+extern const LuaApiEntry lua_api[];
+const LuaApiEntry* lua_api_find_call(const char* method);
+int lua_gnoblin_version(lua_State* state);
+int lua_config_path(lua_State* state);
+int lua_config_default(lua_State* state);
 gboolean append_array_key(const char* key);
 lua_State* new_config_state(LuaConfig* config);
 void limit_hook(lua_State* state, lua_Debug* debug);

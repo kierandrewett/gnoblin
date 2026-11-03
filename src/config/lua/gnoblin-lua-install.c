@@ -1,6 +1,6 @@
 #include "gnoblin-lua-internal.h"
 
-static int lua_config_path(lua_State* state) {
+int lua_config_path(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.config.path takes no arguments");
     g_autofree char* path = gnoblin_config_path();
@@ -8,7 +8,7 @@ static int lua_config_path(lua_State* state) {
     return 1;
 }
 
-static int lua_config_default(lua_State* state) {
+int lua_config_default(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.config.default takes no arguments");
     gsize length = 0;
@@ -87,7 +87,7 @@ static void lua_set_version_string(lua_State* state, const char* field, const ch
     lua_setfield(state, -2, field);
 }
 
-static int lua_gnoblin_version(lua_State* state) {
+int lua_gnoblin_version(lua_State* state) {
     if (lua_gettop(state) != 0)
         return luaL_error(state, "gnoblin.version takes no arguments");
 
@@ -117,6 +117,25 @@ static int lua_gnoblin_version(lua_State* state) {
     return 1;
 }
 
+/* The table that holds the last component of `path`, created under `root` when absent. Leaves it
+ * on the stack and returns that last component. */
+static const char* push_api_parent(lua_State* state, int root, const char* path) {
+    lua_pushvalue(state, root);
+    const char* name = path;
+    for (const char* dot; (dot = strchr(name, '.')); name = dot + 1) {
+        g_autofree char* part = g_strndup(name, dot - name);
+        lua_getfield(state, -1, part);
+        if (!lua_istable(state, -1)) {
+            lua_pop(state, 1);
+            lua_newtable(state);
+            lua_pushvalue(state, -1);
+            lua_setfield(state, -3, part);
+        }
+        lua_remove(state, -2);
+    }
+    return name;
+}
+
 static void install_api(lua_State* state, LuaConfig* config) {
     luaL_openlibs(state);
     const char* blocked[] = {"os", "io", "debug", "package", "dofile", "loadfile", NULL};
@@ -125,276 +144,41 @@ static void install_api(lua_State* state, LuaConfig* config) {
         lua_setglobal(state, blocked[i]);
     }
     lua_newtable(state);
-    lua_pushcfunction(state, lua_gnoblin_version);
-    lua_setfield(state, -2, "version");
+    int gnoblin = lua_absindex(state, -1);
+    /* gnoblin.config holds the saved settings, so its functions live on its metatable. */
     lua_newtable(state);
     int config_table = lua_absindex(state, -1);
     lua_newtable(state);
     int config_metatable = lua_absindex(state, -1);
     lua_newtable(state);
     int config_methods = lua_absindex(state, -1);
-    lua_pushcfunction(state, lua_config_path);
-    lua_setfield(state, config_methods, "path");
-    lua_pushcfunction(state, lua_config_default);
-    lua_setfield(state, config_methods, "default");
-    lua_pushlightuserdata(state, config);
-    lua_pushliteral(state, "config.restore_default");
-    lua_pushcclosure(state, lua_generic_api_action, 2);
-    lua_setfield(state, config_methods, "restore_default");
-    lua_setfield(state, config_metatable, "__index");
-    lua_setmetatable(state, config_table);
-    lua_setfield(state, -2, "config");
-    for (guint i = 0; api_methods[i]; i++) {
-        if (g_str_equal(api_methods[i], "config.restore_default"))
-            continue; /* Config methods live on config's metatable, not in saved settings. */
-        if (g_str_has_prefix(api_methods[i], "workspace."))
-            continue; /* Lua exposes workspace operations through workspaces.*. */
-        if (g_str_equal(api_methods[i], "command.run") ||
-            g_str_equal(api_methods[i], "command.capture"))
-            continue; /* Lua exposes command execution through commands.run() and capture(). */
-        if (g_str_has_prefix(api_methods[i], "window."))
-            continue; /* Lua exposes window operations on Window snapshots. */
-        if (g_str_equal(api_methods[i], "input.select"))
-            continue; /* Lua exposes source selection as input.select_source(). */
-        if (g_str_equal(api_methods[i], "input.list") ||
-            g_str_equal(api_methods[i], "input.current"))
-            continue; /* These legacy names are snapshot reads, not operations. */
-        if (g_str_equal(api_methods[i], "shortcut.capture") ||
-            g_str_equal(api_methods[i], "shortcut.bind") ||
-            g_str_equal(api_methods[i], "shortcut.unbind") ||
-            g_str_equal(api_methods[i], "shortcut.session.end"))
-            continue; /* Public collection API is gnoblin.shortcuts.capture. */
-        if (g_str_equal(api_methods[i], "privacy.get"))
-            continue; /* Exposed as the native snapshot read gnoblin.privacy.state(). */
-        if (g_str_has_prefix(api_methods[i], "animation."))
-            continue; /* Controls are gnoblin.animations.*; gnoblin.animation declares config. */
-        const char* separator = strchr(api_methods[i], '.');
-        g_autofree char* domain = g_strndup(api_methods[i], separator - api_methods[i]);
-        const char* operation = separator + 1;
-        lua_getfield(state, -1, domain);
-        if (!lua_istable(state, -1)) {
-            lua_pop(state, 1);
-            lua_newtable(state);
-            lua_pushvalue(state, -1);
-            lua_setfield(state, -3, domain);
-        }
-        if (g_str_equal(api_methods[i], "session.status")) {
-            lua_pushlightuserdata(state, config);
-            lua_pushcclosure(state, lua_session_status, 1);
-        } else if (g_str_equal(api_methods[i], "runtime.status")) {
-            lua_pushcfunction(state, lua_runtime_status);
-        } else if (g_str_equal(api_methods[i], "session.activity")) {
-            lua_pushlightuserdata(state, config);
-            lua_pushcclosure(state, lua_session_activity, 1);
-        } else if (g_str_equal(api_methods[i], "input.text_target")) {
-            lua_pushlightuserdata(state, config);
-            lua_pushcclosure(state, lua_input_text_target, 1);
+    for (const LuaApiEntry* entry = lua_api; entry->path; entry++) {
+        if (strchr(entry->path, ':'))
+            continue; /* Record methods are added to each snapshot record. */
+        const char* name = g_str_has_prefix(entry->path, "config.")
+                               ? push_api_parent(state, config_methods, entry->path + 7)
+                               : push_api_parent(state, gnoblin, entry->path);
+        lua_pushlightuserdata(state, config);
+        if (entry->function) {
+            lua_pushcclosure(state, entry->function, 1);
         } else {
-            lua_pushlightuserdata(state, config);
-            lua_pushstring(state, api_methods[i]);
+            lua_pushstring(state, entry->operation);
             lua_pushcclosure(state,
-                             g_str_has_prefix(api_methods[i], "workspace.")
+                             g_str_has_prefix(entry->operation, "workspace.")
                                  ? lua_workspace_action
                                  : lua_generic_api_action,
                              2);
         }
-        lua_setfield(state, -2, operation);
+        lua_setfield(state, -2, name);
         lua_pop(state, 1);
     }
-    for (guint i = 0; i < api_aliases_count; i++) {
-        const char* separator = strchr(api_aliases[i].public_name, '.');
-        g_autofree char* domain =
-            g_strndup(api_aliases[i].public_name, separator - api_aliases[i].public_name);
-        const char* operation = separator + 1;
-        lua_getfield(state, -1, domain);
-        if (!lua_istable(state, -1)) {
-            lua_pop(state, 1);
-            lua_newtable(state);
-            lua_pushvalue(state, -1);
-            lua_setfield(state, -3, domain);
-        }
-        lua_pushlightuserdata(state, config);
-        lua_pushstring(state, api_aliases[i].operation);
-        lua_pushcclosure(state,
-                         g_str_has_prefix(api_aliases[i].operation, "workspace.")
-                             ? lua_workspace_action
-                             : lua_generic_api_action,
-                         2);
-        lua_setfield(state, -2, operation);
-        lua_pop(state, 1);
-    }
-    lua_getfield(state, -1, "animations");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_animations_list, 1);
-    lua_setfield(state, -2, "list");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_animation_get, 1);
-    lua_setfield(state, -2, "get");
-    lua_pop(state, 1);
-    lua_getfield(state, -1, "privacy");
-    if (!lua_istable(state, -1)) {
-        lua_pop(state, 1);
-        lua_newtable(state);
-        lua_pushvalue(state, -1);
-        lua_setfield(state, -3, "privacy");
-    }
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_privacy_state, 1);
-    lua_setfield(state, -2, "state");
-    lua_pop(state, 1);
-    lua_newtable(state);
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_windows_list, 1);
-    lua_setfield(state, -2, "list");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_windows_focused, 1);
-    lua_setfield(state, -2, "focused");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_windows_by_id, 1);
-    lua_setfield(state, -2, "by_id");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_windows_snap_context, 1);
-    lua_setfield(state, -2, "snap_context");
-    lua_setfield(state, -2, "windows");
-    lua_getfield(state, -1, "workspaces");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_workspaces_list, 1);
-    lua_setfield(state, -2, "list");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_workspaces_active, 1);
-    lua_setfield(state, -2, "active");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_workspaces_by_id, 1);
-    lua_setfield(state, -2, "by_id");
-    lua_pop(state, 1);
-    lua_newtable(state);
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_monitors_list, 1);
-    lua_setfield(state, -2, "list");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_monitors_primary, 1);
-    lua_setfield(state, -2, "primary");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_monitors_privacy_screen, 1);
-    lua_setfield(state, -2, "privacy_screen");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_monitors_set_privacy_screen, 1);
-    lua_setfield(state, -2, "set_privacy_screen");
-    lua_setfield(state, -2, "monitors");
-    lua_newtable(state);
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_outputs_list, 1);
-    lua_setfield(state, -2, "list");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_outputs_primary, 1);
-    lua_setfield(state, -2, "primary");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_outputs_by_id, 1);
-    lua_setfield(state, -2, "by_id");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_outputs_renderer, 1);
-    lua_setfield(state, -2, "renderer");
-    lua_setfield(state, -2, "outputs");
-    lua_newtable(state);
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_layers_list, 1);
-    lua_setfield(state, -2, "list");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_layers_animation_policy, 1);
-    lua_setfield(state, -2, "animation_policy");
-    lua_setfield(state, -2, "layers");
-    lua_getfield(state, -1, "capabilities");
-    if (!lua_istable(state, -1)) {
-        lua_pop(state, 1);
-        lua_newtable(state);
-        lua_pushvalue(state, -1);
-        lua_setfield(state, -3, "capabilities");
-    }
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_capabilities_list, 1);
-    lua_setfield(state, -2, "list");
-    lua_pop(state, 1);
-    lua_getfield(state, -1, "input");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_input_devices, 1);
-    lua_setfield(state, -2, "devices");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_input_sources, 1);
-    lua_setfield(state, -2, "sources");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_input_current_source, 1);
-    lua_setfield(state, -2, "current_source");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_input_orientation_lock, 1);
-    lua_setfield(state, -2, "orientation_lock");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_input_on, 1);
-    lua_setfield(state, -2, "on");
-    lua_getfield(state, -1, "sources");
-    lua_setfield(state, -2, "list");
-    lua_getfield(state, -1, "current_source");
-    lua_setfield(state, -2, "current");
-    lua_pop(state, 1);
-    lua_newtable(state);
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_appearance_color_scheme, 1);
-    lua_setfield(state, -2, "color_scheme");
-    lua_setfield(state, -2, "appearance");
-    lua_newtable(state);
-    lua_pushcfunction(state, lua_shortcut_actions);
-    lua_setfield(state, -2, "actions");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_shortcuts_list, 1);
-    lua_setfield(state, -2, "list");
-    lua_pushlightuserdata(state, config);
-    lua_pushliteral(state, "shortcut.capture");
-    lua_pushcclosure(state, lua_generic_api_action, 2);
-    lua_setfield(state, -2, "capture");
-    lua_pushlightuserdata(state, config);
-    lua_pushliteral(state, "shortcut.bind");
-    lua_pushcclosure(state, lua_generic_api_action, 2);
-    lua_setfield(state, -2, "bind");
-    lua_pushlightuserdata(state, config);
-    lua_pushliteral(state, "shortcut.unbind");
-    lua_pushcclosure(state, lua_generic_api_action, 2);
-    lua_setfield(state, -2, "unbind");
-    lua_pushlightuserdata(state, config);
-    lua_pushliteral(state, "shortcut.session.end");
-    lua_pushcclosure(state, lua_generic_api_action, 2);
-    lua_setfield(state, -2, "end_session");
-    lua_setfield(state, -2, "shortcuts");
-    lua_newtable(state);
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_launches_list, 1);
-    lua_setfield(state, -2, "list");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_launches_snapshot, 1);
-    lua_setfield(state, -2, "snapshot");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_launches_begin, 1);
-    lua_setfield(state, -2, "begin");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_launches_finish, 1);
-    lua_setfield(state, -2, "finish");
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_launches_finish, 1);
-    lua_setfield(state, -2, "end");
-    lua_setfield(state, -2, "launches");
-    lua_pushcfunction(state, lua_on);
-    lua_setfield(state, -2, "on");
-    lua_newtable(state);
-    int events = lua_absindex(state, -1);
-    lua_pushcfunction(state, lua_on);
-    lua_setfield(state, events, "on");
-    lua_pushcfunction(state, lua_once);
-    lua_setfield(state, events, "once");
-    lua_newtable(state);
-    lua_pushcfunction(state, lua_mutter_on);
-    lua_setfield(state, -2, "on");
-    lua_pushcfunction(state, lua_mutter_once);
-    lua_setfield(state, -2, "once");
-    lua_setfield(state, events, "mutter");
-    lua_setfield(state, -2, "events");
+    lua_pushvalue(state, config_methods);
+    lua_setfield(state, config_metatable, "__index");
+    lua_pushvalue(state, config_metatable);
+    lua_setmetatable(state, config_table);
+    lua_pushvalue(state, config_table);
+    lua_setfield(state, gnoblin, "config");
+    lua_settop(state, gnoblin);
     lua_newtable(state);
     lua_setfield(state, -2, "listeners");
     lua_newtable(state);
@@ -406,8 +190,6 @@ static void install_api(lua_State* state, LuaConfig* config) {
     install_named_view(state, "shortcuts");
     install_named_view(state, "autostart");
     lua_setfield(state, -2, "configure");
-    lua_pushcfunction(state, lua_snapshot);
-    lua_setfield(state, -2, "snapshot");
     const struct {
         const char *name, *section, *key;
         gboolean named;
@@ -422,11 +204,6 @@ static void install_api(lua_State* state, LuaConfig* config) {
         lua_pushcclosure(state, lua_declare, 3);
         lua_setfield(state, -2, declarations[i].name);
     }
-    lua_pushlightuserdata(state, config);
-    lua_pushcclosure(state, lua_config_load, 1);
-    lua_setfield(state, -2, "load");
-    lua_pushcfunction(state, lua_array);
-    lua_setfield(state, -2, "array");
     lua_newtable(state);
     lua_pushlightuserdata(state, config);
     lua_pushcclosure(state, lua_gnoblin_index, 1);

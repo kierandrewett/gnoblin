@@ -1,120 +1,67 @@
 #!/usr/bin/env python3
-"""Compare Lua annotations with the API names registered by gnoblin-lua.c.
+"""Compare the Lua API annotations with the functions the runtime installs.
 
-The rewrites mirror src/config/lua/gnoblin-lua-install.c. A rule that changes
-there must change here too.
+src/config/lua/gnoblin-lua.c lists every installed function in lua_api[]. This script reads that
+table and the LuaCATS annotations that scripts/gen-lua-api.py collects, and reports:
+
+  * an installed function without an annotation, and
+  * an annotated function of the gnoblin global or of a record class that the runtime does not
+    install, unless it is installed by hand (STRUCTURAL below).
 """
 
+import importlib.util
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+TABLE = ROOT / "src/config/lua/gnoblin-lua.c"
 
-PREFIX_REWRITES = {"workspace.": "workspaces.", "command.": "commands.", "animation.": "animations."}
-NAME_REWRITES = {
-    "input.select": "input.select_source",
-    "privacy.get": "privacy.state",
-    "shortcut.capture": "shortcuts.capture",
-    "shortcut.bind": "shortcuts.bind",
-    "shortcut.unbind": "shortcuts.unbind",
-    "shortcut.session.end": "shortcuts.end_session",
-    "workspace.switch": "workspaces.activate",
+# Record classes whose methods come from lua_api[] rows named Class:method.
+RECORD_CLASSES = {"Window", "Workspace", "AnimationPreview"}
+
+# Annotated functions that install_api, lua_gnoblin_index or another record builds by hand,
+# outside lua_api[]. Each one is a table with a metatable, a declaration closure, or a value that
+# exists only on a record of its own type.
+STRUCTURAL = {
+    "gnoblin.configure",  # table whose __call merges settings
+    "gnoblin.window_rule",  # declaration closure
+    "gnoblin.animation",  # declaration closure
+    "gnoblin.focus.policy",  # built on first read by lua_gnoblin_index
+    "gnoblin.focus.history",  # built on first read by lua_gnoblin_index
 }
 
 
-def registered_api_paths():
-    text = (ROOT / "src/config/lua/gnoblin-lua.c").read_text()
-    methods_block = text[text.index("api_methods[] = {") :]
-    aliases_block = text[text.index("api_aliases[] = {") :]
-    methods_cut = methods_block.index("NULL,")
-    NAME_PATTERN = chr(34) + "([a-zA-Z_.]+)" + chr(34)
-    methods = re.findall(NAME_PATTERN, methods_block[:methods_cut])
-    aliases = re.findall(NAME_PATTERN, aliases_block)
-    names = set()
-    for name in methods + aliases:
-        # Register only Lua functions. These seven names are tables, so their
-        # children are annotated without a belong-to entry in the inc file.
-        if name in {
-            "__gnoblin_array",
-            "animations",
-            "autostart",
-            "callback",
-            "rules",
-            "shortcuts",
-            "sources",
-            "workspaces",
-        }:
-            continue
-        if name in NAME_REWRITES:
-            names.add(NAME_REWRITES[name])
-            continue
-        prefix = next((p for p in PREFIX_REWRITES if name.startswith(p)), None)
-        if prefix:
-            name = PREFIX_REWRITES[prefix] + name[len(prefix) :]
-        elif name == "window.match":
-            name = "Window:match"
-        elif name.startswith("window."):
-            name = "Window:" + name[len("window.") :]
-        names.add(name)
-    return sorted(n for n in names if n)
+def load_generator():
+    spec = importlib.util.spec_from_file_location("gen_lua_api", ROOT / "scripts/gen-lua-api.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
-# C functions that gnoblin-lua-install.c registers by hand are named lua_<namespace>_<function>.
-# These are not Lua API names.
-INSTALL_INTERNAL = {"config_load", "configure_call", "declare", "generic_api_action", "gnoblin_index", "require"}
-
-
-def rewrite_prefix(name):
-    prefix = next((p for p in PREFIX_REWRITES if name.startswith(p)), None)
-    return PREFIX_REWRITES[prefix] + name[len(prefix) :] if prefix else name
-
-
-def install_registered_paths(annotated):
-    """Names that gnoblin-lua-install.c registers directly, so gnoblin-lua.c does not list them.
-
-    A C name such as lua_outputs_by_id is one of outputs.by_id, so try every split at an underscore.
-    Return the C names that match no annotation."""
-    text = (ROOT / "src/config/lua/gnoblin-lua-install.c").read_text()
-    unmatched = []
-    for symbol in sorted(set(re.findall(r"lua_pushcclosure\(state, lua_([a-z0-9_]+),", text))):
-        if symbol in INSTALL_INTERNAL:
-            continue
-        candidates = [symbol[:i] + "." + symbol[i + 1 :] for i, c in enumerate(symbol) if c == "_"]
-        candidates = [rewrite_prefix(candidate) for candidate in candidates]
-        if not any("gnoblin." + candidate in annotated for candidate in candidates):
-            unmatched.append(f"lua_{symbol} in gnoblin-lua-install.c")
-    return unmatched
-
-
-def annotated_paths():
-    out = set()
-    inc = (ROOT / "src/config/lua/gnoblin-lua-signatures.inc").read_text()
-    functions_start = inc.index("static const ApiFunction api_functions[]")
-    for line in inc[functions_start:].splitlines():
-        stripped = line.strip()
-        if stripped.startswith("{"):
-            match = re.match(r'{"([a-zA-Z_.:]+)", ', stripped)
-            if match:
-                name = match.group(1)
-                if not name.startswith("Window:"):
-                    name = "gnoblin." + name
-                out.add(name)
-    return out
+def installed_paths():
+    text = TABLE.read_text()
+    block = text[text.index("const LuaApiEntry lua_api[] = {") :]
+    block = block[: block.index("{NULL, NULL, NULL}")]
+    paths = set()
+    for path in re.findall(r'\{"([A-Za-z_.:]+)",', block):
+        paths.add(path if ":" in path else "gnoblin." + path)
+    return paths
 
 
 def main():
-    missing = []
-    compar = annotated_paths()
-    for path in registered_api_paths():
-        prefix = "" if path.startswith("Window:") else "gnoblin."
-        if (prefix + path) not in compar:
-            missing.append(prefix + path)
-    missing.extend(install_registered_paths(compar))
-    print(f"{len(missing)} registered names without an annotation")
-    for path in missing:
-        print(f"not annotated: {path}")
-    return 1 if missing else 0
+    functions, _classes, _aliases, _raw = load_generator().collect()
+    annotated = set(functions)
+    installed = installed_paths()
+    problems = [f"not annotated: {path}" for path in sorted(installed - annotated)]
+    for path in sorted(annotated - installed - STRUCTURAL):
+        owner = path.split(":")[0] if ":" in path else "gnoblin"
+        if owner == "gnoblin" and path.startswith("gnoblin.") or owner in RECORD_CLASSES:
+            problems.append(f"annotated but not installed: {path}")
+    print(f"{len(problems)} mismatches between lua_api[] and the annotations")
+    for problem in problems:
+        print(problem)
+    return 1 if problems else 0
 
 
 if __name__ == "__main__":
