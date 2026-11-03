@@ -60,6 +60,33 @@ def registered_api_paths():
     return sorted(n for n in names if n)
 
 
+# C functions that gnoblin-lua-install.c registers by hand are named lua_<namespace>_<function>.
+# These are not Lua API names.
+INSTALL_INTERNAL = {"config_load", "configure_call", "declare", "generic_api_action", "gnoblin_index", "require"}
+
+
+def rewrite_prefix(name):
+    prefix = next((p for p in PREFIX_REWRITES if name.startswith(p)), None)
+    return PREFIX_REWRITES[prefix] + name[len(prefix) :] if prefix else name
+
+
+def install_registered_paths(annotated):
+    """Names that gnoblin-lua-install.c registers directly, so gnoblin-lua.c does not list them.
+
+    A C name such as lua_outputs_by_id is one of outputs.by_id, so try every split at an underscore.
+    Return the C names that match no annotation."""
+    text = (ROOT / "src/config/lua/gnoblin-lua-install.c").read_text()
+    unmatched = []
+    for symbol in sorted(set(re.findall(r"lua_pushcclosure\(state, lua_([a-z0-9_]+),", text))):
+        if symbol in INSTALL_INTERNAL:
+            continue
+        candidates = [symbol[:i] + "." + symbol[i + 1 :] for i, c in enumerate(symbol) if c == "_"]
+        candidates = [rewrite_prefix(candidate) for candidate in candidates]
+        if not any("gnoblin." + candidate in annotated for candidate in candidates):
+            unmatched.append(f"lua_{symbol} in gnoblin-lua-install.c")
+    return unmatched
+
+
 def annotated_paths():
     out = set()
     inc = (ROOT / "src/config/lua/gnoblin-lua-signatures.inc").read_text()
@@ -83,6 +110,7 @@ def main():
         prefix = "" if path.startswith("Window:") else "gnoblin."
         if (prefix + path) not in compar:
             missing.append(prefix + path)
+    missing.extend(install_registered_paths(compar))
     print(f"{len(missing)} registered names without an annotation")
     for path in missing:
         print(f"not annotated: {path}")

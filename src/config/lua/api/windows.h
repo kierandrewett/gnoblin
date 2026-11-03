@@ -91,6 +91,21 @@ or monitor.
 ---@return Window[]
 function gnoblin.windows.list(filter) end
 
+---Return the focused window, or nil when no window has focus.
+---@return Window|nil
+function gnoblin.windows.focused() end
+
+---Return the window with this stable ID, or nil when it does not exist.
+---@param id string Stable window ID.
+---@return Window|nil
+function gnoblin.windows.by_id(id) end
+
+---Consume a live FocusContext and return a SnapContext for the focused window. Callers cannot
+---choose the window.
+---@param context FocusContext Live context from a trusted shortcut event.
+---@return Operation<SnapContext>
+function gnoblin.windows.snap_context(context) end
+
 ---Identity and window-rule fields for one window, the record that gnoblinctl window match
 ---prints. Selecting "active" means the focused window.
 ---@param window? string "active" or a stable window ID; the default is "active".
