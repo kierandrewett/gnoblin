@@ -1,0 +1,234 @@
+{
+  "newest": 3,
+  "window_years": 3,
+  "graphical_newest": 5,
+  "graphical_architectures": ["amd64", "arm64"],
+  "architectures": [
+    {
+      "arch": "amd64",
+      "runner": "ubuntu-latest",
+      "guest": {
+        "cpu": "x86_64",
+        "boot": "bios",
+        "qemu": "qemu-system-x86_64",
+        "machine": "q35,i8042=off,vmport=off",
+        "gpu": "virtio-vga",
+        "firmware": [],
+        "host_packages": "qemu-system-x86 qemu-utils genisoimage openssh-client",
+        "timeout_minutes": 150
+      }
+    },
+    {
+      "arch": "arm64",
+      "runner": "ubuntu-24.04-arm",
+      "guest": {
+        "cpu": "aarch64",
+        "boot": "uefi",
+        "qemu": "qemu-system-aarch64",
+        "machine": "virt,gic-version=max",
+        "gpu": "virtio-gpu-pci",
+        "firmware": [
+          { "code": "/usr/share/AAVMF/AAVMF_CODE.fd", "vars": "/usr/share/AAVMF/AAVMF_VARS.fd" },
+          {
+            "code": "/usr/share/edk2/aarch64/QEMU_EFI-pflash.raw",
+            "vars": "/usr/share/edk2/aarch64/vars-template-pflash.raw"
+          }
+        ],
+        "host_packages": "qemu-system-arm qemu-efi-aarch64 qemu-utils genisoimage openssh-client",
+        "timeout_minutes": 345
+      }
+    }
+  ],
+  "families": [
+    {
+      "name": "Fedora",
+      "product": "fedora",
+      "image": "fedora:{release}",
+      "slug": "fc{release}",
+      "kind": "rpm",
+      "prefix": "own",
+      "bootstrap": "dnf -y install git-core tar xz zstd",
+      "deps_script": "install-fedora-build-deps.sh",
+      "lane": "fedora",
+      "published": true,
+      "build_from": "41",
+      "verified_from": "43",
+      "verified_through": "45",
+      "planned_reason": {
+        "40": "GLib 2.80.5, GTK 4.14.5, libadwaita 1.5.8, libinput 1.26.2, PipeWire 1.0.9, gsettings-desktop-schemas 46.1 and Meson 1.4.1 are below the build floors",
+        "39": "GLib 2.78.6, GTK 4.12.5, libadwaita 1.4.8, libinput 1.25.0, libwayland 1.22.0, wayland-protocols 1.34, PipeWire 1.0.9, libdisplay-info 0.1.1, gsettings-desktop-schemas 45.0, xdg-desktop-portal 1.18.2, libei 1.2.1 and Meson 1.3.2 are below the build floors"
+      },
+      "source_release": "44",
+      "upcoming": "bodhi",
+      "graphical": {
+        "index": [
+          "https://download.fedoraproject.org/pub/fedora/linux/releases/{release}/Cloud/{cpu}/images/",
+          "https://archives.fedoraproject.org/pub/archive/fedora/linux/releases/{release}/Cloud/{cpu}/images/"
+        ],
+        "file": "Fedora-Cloud-Base-Generic-{release}-[0-9.]+\\.{cpu}\\.qcow2",
+        "checksum": "Fedora-Cloud-{release}-[0-9.]+-{cpu}-CHECKSUM"
+      }
+    },
+    {
+      "name": "Ubuntu",
+      "product": "ubuntu",
+      "image": "ubuntu:{release}",
+      "slug": "ubuntu{release}",
+      "kind": "deb",
+      "prefix": "own",
+      "bootstrap": "apt-get update && apt-get install -y --no-install-recommends git ca-certificates tar xz-utils zstd",
+      "deps_script": "install-debian-build-deps.sh",
+      "lane": "deb",
+      "lts_only": true,
+      "build_from": "24.04",
+      "verified_from": null,
+      "verified_through": null,
+      "planned_reason": {
+        "22.04": "GLib 2.72.4, GTK 4.6.9, libadwaita 1.1.7, libinput 1.20.0, libwayland 1.20.0, wayland-protocols 1.25, PipeWire 0.3.48, gsettings-desktop-schemas 42.0, xdg-desktop-portal 1.14.4, libgudev 237, libdrm 2.4.113, pixman 0.40.0 and Python 3.10 are below the build floors; libei, libdisplay-info and gcr-4 are not packaged"
+      },
+      "graphical": {
+        "index": ["https://cloud-images.ubuntu.com/releases/{release}/release/"],
+        "file": "ubuntu-{release}-server-cloudimg-{arch}\\.img",
+        "checksum": "SHA256SUMS"
+      }
+    },
+    {
+      "name": "Debian",
+      "product": "debian",
+      "image": "debian:{release}",
+      "slug": "deb{release}",
+      "kind": "deb",
+      "prefix": "own",
+      "bootstrap": "apt-get update && apt-get install -y --no-install-recommends git ca-certificates tar xz-utils zstd",
+      "deps_script": "install-debian-build-deps.sh",
+      "lane": "deb",
+      "build_from": "13",
+      "verified_from": null,
+      "verified_through": null,
+      "planned_reason": {
+        "12": "GLib 2.74.6, GTK 4.8.3, libadwaita 1.2.2, libinput 1.22.1, libwayland 1.21.0 and PipeWire 0.3.65 are below the build floors; libei, libdisplay-info and gcr-4 are not packaged",
+        "11": "GLib 2.66.8, libinput 1.16.4, libwayland 1.18.0, PipeWire 0.3.19 and Python 3.9 are below the build floors; GTK 4, libadwaita, libei, libdisplay-info and gcr-4 are not packaged"
+      },
+      "graphical": {
+        "index": ["https://cloud.debian.org/images/cloud/{codename}/latest/"],
+        "file": "debian-{release}-generic-{arch}\\.qcow2",
+        "checksum": "SHA512SUMS"
+      }
+    },
+    {
+      "name": "Alpine",
+      "product": "alpine-linux",
+      "image": "alpine:{release}",
+      "slug": "alpine{release}",
+      "kind": "apk",
+      "prefix": "own",
+      "bootstrap": "apk add --no-cache bash git tar xz zstd",
+      "deps_script": "install-alpine-build-deps.sh",
+      "lane": "other",
+      "install_prepare": "apk add --no-cache bash",
+      "build_from": "3.21",
+      "verified_from": null,
+      "verified_through": null,
+      "planned_reason": {
+        "3.20": "GLib 2.80.5, GTK 4.14.4, libadwaita 1.5.2, libinput 1.25.0, libwayland 1.22.0, wayland-protocols 1.36, PipeWire 1.0.6, libdisplay-info 0.1.1, libei 1.2.1, gsettings-desktop-schemas 46.0 and Meson 1.4.0 are below the build floors",
+        "3.19": "GLib 2.78.6, GTK 4.12.5, libadwaita 1.4.4, libinput 1.24.0, libwayland 1.22.0, wayland-protocols 1.32, PipeWire 1.0.0, libdisplay-info 0.1.1, libei 1.2.0, gsettings-desktop-schemas 45.0, xdg-desktop-portal 1.18.3 and Meson 1.3.0 are below the build floors"
+      },
+      "experimental_reason": {
+        "3.22": "install check fails: apk-tools 2 marks the gnoblin apk broken, because pkgsmith writes no checksum for its symbolic links. Not the dbus or icon-cache triggers",
+        "3.21": "install check fails: apk-tools 2 marks the gnoblin apk broken, because pkgsmith writes no checksum for its symbolic links. Not the dbus or icon-cache triggers"
+      },
+      "graphical": {
+        "index": ["https://dl-cdn.alpinelinux.org/alpine/v{release}/releases/cloud/"],
+        "file": "(?:generic_|nocloud_)?alpine-{release}\\.[0-9]+-{cpu}-(?:{boot}-)?cloudinit-r[0-9]+\\.qcow2",
+        "checksum": "{file}\\.sha512"
+      }
+    },
+    {
+      "name": "openSUSE Leap",
+      "product": "opensuse",
+      "image": "registry.opensuse.org/opensuse/leap:{release}",
+      "slug": "leap{release}",
+      "kind": "rpm",
+      "prefix": "own",
+      "bootstrap": "zypper -n install --no-recommends git-core tar xz zstd",
+      "deps_script": "install-opensuse-build-deps.sh",
+      "lane": "opensuse",
+      "install_prepare": "zypper -n install --no-recommends update-alternatives",
+      "build_from": "16.0",
+      "verified_from": null,
+      "verified_through": null,
+      "planned_reason": {
+        "15.6": "GLib 2.78.6, GTK 4.12.4, libadwaita 1.4.2, libinput 1.25.0, libwayland 1.22.0, wayland-protocols 1.36, PipeWire 1.0.5, libdisplay-info 0.1.1, libei 1.1.0, gsettings-desktop-schemas 45.0, xdg-desktop-portal 1.18.2 and Meson 1.3.1 are below the build floors",
+        "15.5": "GLib 2.70.5, GTK 4.6.9, libadwaita 1.1.0, libinput 1.21.0, PipeWire 0.3.64 and Meson 0.61.4 are below the build floors; libei and libdisplay-info are not packaged"
+      },
+      "graphical": {
+        "index": ["https://download.opensuse.org/distribution/leap/{release}/appliances/"],
+        "file": "(?:openSUSE-)?Leap-{release}-(?:Minimal-VM|JeOS)\\.{cpu}-(?:OpenStack-)?Cloud\\.qcow2",
+        "checksum": "{file}\\.sha256"
+      }
+    }
+  ],
+  "rolling": [
+    {
+      "name": "openSUSE Tumbleweed",
+      "image": "registry.opensuse.org/opensuse/tumbleweed:latest",
+      "slug": "tumbleweed",
+      "kind": "rpm",
+      "prefix": "shared",
+      "graphical": {
+        "index": ["https://download.opensuse.org/tumbleweed/appliances/"],
+        "file": "openSUSE-Tumbleweed-Minimal-VM\\.{cpu}-Cloud\\.qcow2",
+        "checksum": "{file}\\.sha256",
+        "arm64": { "index": ["https://download.opensuse.org/ports/aarch64/tumbleweed/appliances/"] }
+      }
+    },
+    {
+      "name": "Arch Linux",
+      "image": "archlinux:base",
+      "arm64_image": "menci/archlinuxarm:base",
+      "slug": "arch",
+      "kind": "pacman",
+      "prefix": "shared",
+      "graphical": {
+        "index": ["https://geo.mirror.pkgbuild.com/images/latest/"],
+        "file": "Arch-Linux-x86_64-cloudimg\\.qcow2",
+        "checksum": "{file}\\.SHA256",
+        "arm64": {
+          "build": {
+            "script": "scripts/build-arch-arm-image.sh",
+            "file": "Arch-Linux-ARM-aarch64-cloudimg.qcow2",
+            "sudo": true,
+            "timeout_minutes": 40,
+            "host_packages": "arch-install-scripts libarchive-tools gdisk dosfstools mtools e2fsprogs qemu-utils gnupg curl"
+          }
+        }
+      }
+    },
+    {
+      "name": "Debian testing",
+      "image": "debian:testing",
+      "slug": "debian-testing",
+      "kind": "deb",
+      "prefix": "shared",
+      "graphical": {
+        "base": "Debian",
+        "upgrade": "rm -f /etc/apt/sources.list /etc/apt/sources.list.d/*.list /etc/apt/sources.list.d/*.sources && printf 'Types: deb\\nURIs: http://deb.debian.org/debian\\nSuites: testing\\nComponents: main\\nSigned-By: /usr/share/keyrings/debian-archive-keyring.gpg\\n' > /etc/apt/sources.list.d/debian.sources && apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get -y -o Dpkg::Options::=--force-confnew full-upgrade"
+      }
+    },
+    {
+      "name": "Alpine edge",
+      "image": "alpine:edge",
+      "slug": "alpine-edge",
+      "kind": "apk",
+      "prefix": "own",
+      "bootstrap": "apk add --no-cache bash git tar xz zstd",
+      "deps_script": "install-alpine-build-deps.sh",
+      "install_prepare": "apk add --no-cache bash",
+      "shared_source": true,
+      "graphical": {
+        "base": "Alpine",
+        "upgrade": "sed -i -E 's#/v[0-9]+\\.[0-9]+/#/edge/#' /etc/apk/repositories && apk update && apk upgrade --available"
+      }
+    }
+  ]
+}
