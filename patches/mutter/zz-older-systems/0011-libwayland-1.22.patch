@@ -1,0 +1,151 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] wayland: build against libwayland 1.22
+
+Ubuntu 24.04 ships libwayland 1.22.0. Mutter uses two libwayland 1.23
+calls: the user data of a wl_client, which keeps the MetaWaylandClient
+of each client, and wl_display_set_default_max_buffer_size(), which
+gives each client connection 1 MB buffers.
+
+With libwayland 1.22, keep the MetaWaylandClient in a late destroy
+listener, which libwayland 1.22 has. libwayland calls late destroy
+listeners after it destroys the resources of the client, which is where
+libwayland 1.23 calls the user data destroy function, so the client
+object lives as long as before. Leave the buffer size at the libwayland
+default of 4 KB, as Mutter did before Mutter 47.
+
+The effect with libwayland 1.22: a client that sends or receives a large
+burst of protocol messages faster than the other side reads them fills
+its 4 KB buffer sooner, and libwayland then disconnects it. The 1.24
+changes of the earlier patch are off as well.
+
+---
+diff --git a/config.h.meson b/config.h.meson
+index a225c87e2..fe279f1ef 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -135,6 +135,9 @@
+ /* Whether libinput has the plugin system (1.30) */
+ #mesondefine HAVE_LIBINPUT_PLUGIN_SYSTEM
+ 
++/* Whether libwayland-server is 1.23 or newer: wl_client user data, connection buffer size */
++#mesondefine HAVE_WAYLAND_SERVER_1_23
++
+ /* Whether libwayland-server is 1.24 or newer: wl_fixes, wl_shm_buffer_ref, wl_seat version 10 */
+ #mesondefine HAVE_WAYLAND_SERVER_1_24
+ 
+diff --git a/meson.build b/meson.build
+index fdc9a7400..ff46286dc 100644
+--- a/meson.build
++++ b/meson.build
+@@ -46,7 +46,7 @@ gudev_req = '>= 238'
+ umockdev_req = '>= 0.3.0'
+ 
+ # wayland version requirements
+-wayland_server_req = '>= 1.23'
++wayland_server_req = '>= 1.22'
+ wayland_protocols_req = '>= 1.38'
+ 
+ # native backend version requirements
+@@ -571,6 +571,7 @@ cdata.set('HAVE_GL', have_gl)
+ cdata.set('HAVE_GLES2', have_gles2)
+ cdata.set('HAVE_XWAYLAND', have_xwayland)
+ cdata.set('HAVE_WAYLAND', true)
++cdata.set('HAVE_WAYLAND_SERVER_1_23', wayland_server_dep.version().version_compare('>= 1.23'))
+ cdata.set('HAVE_WAYLAND_SERVER_1_24', wayland_server_dep.version().version_compare('>= 1.24'))
+ cdata.set('HAVE_REMOTE_DESKTOP', have_remote_desktop)
+ cdata.set('HAVE_DEVKIT', have_devkit)
+diff --git a/src/wayland/meta-wayland-client.c b/src/wayland/meta-wayland-client.c
+index efc51ed6d..4c54d88e0 100644
+--- a/src/wayland/meta-wayland-client.c
++++ b/src/wayland/meta-wayland-client.c
+@@ -137,6 +137,73 @@ on_client_destroyed (struct wl_listener *listener,
+   g_signal_emit (client, signals[CLIENT_DESTROYED], 0);
+ }
+ 
++#ifndef HAVE_WAYLAND_SERVER_1_23
++/* libwayland 1.22 has no user data on wl_client. Keep the
++ * MetaWaylandClient in a late destroy listener instead. libwayland
++ * calls late destroy listeners after it destroys the resources of the
++ * client, where libwayland 1.23 calls the user data destroy function. */
++typedef struct
++{
++  struct wl_listener late_destroy_listener;
++  MetaWaylandClient *client;
++} MetaWaylandClientData;
++
++static void
++on_client_destroyed_late (struct wl_listener *listener,
++                          void               *data)
++{
++  MetaWaylandClientData *client_data =
++    wl_container_of (listener, client_data, late_destroy_listener);
++
++  g_clear_object (&client_data->client);
++  g_free (client_data);
++}
++
++static MetaWaylandClientData *
++get_client_data (struct wl_client *wayland_client)
++{
++  MetaWaylandClientData *client_data;
++  struct wl_listener *listener;
++
++  listener = wl_client_get_destroy_late_listener (wayland_client,
++                                                  on_client_destroyed_late);
++  if (!listener)
++    return NULL;
++
++  return wl_container_of (listener, client_data, late_destroy_listener);
++}
++
++static MetaWaylandClient *
++wl_client_get_user_data (struct wl_client *wayland_client)
++{
++  MetaWaylandClientData *client_data = get_client_data (wayland_client);
++
++  return client_data ? client_data->client : NULL;
++}
++
++/* As in libwayland 1.23, new data does not destroy the old data. The
++ * caller drops its reference to the old client itself. */
++static void
++wl_client_set_user_data (struct wl_client  *wayland_client,
++                         MetaWaylandClient *client,
++                         GDestroyNotify     destroy)
++{
++  MetaWaylandClientData *client_data = get_client_data (wayland_client);
++
++  g_assert (destroy == g_object_unref);
++
++  if (!client_data)
++    {
++      client_data = g_new0 (MetaWaylandClientData, 1);
++      client_data->late_destroy_listener.notify = on_client_destroyed_late;
++      wl_client_add_destroy_late_listener (wayland_client,
++                                           &client_data->late_destroy_listener);
++    }
++
++  client_data->client = client;
++}
++#endif /* !HAVE_WAYLAND_SERVER_1_23 */
++
+ static void
+ set_wayland_client (MetaWaylandClient *client,
+                     struct wl_client  *wayland_client)
+diff --git a/src/wayland/meta-wayland.c b/src/wayland/meta-wayland.c
+index a6b94021b..ddc8b8581 100644
+--- a/src/wayland/meta-wayland.c
++++ b/src/wayland/meta-wayland.c
+@@ -1063,8 +1063,10 @@ meta_wayland_compositor_new (MetaContext *context)
+   g_signal_connect (context, "prepare-compositor-shutdown",
+                     G_CALLBACK (on_prepare_compositor_shutdown), compositor);
+ 
++#ifdef HAVE_WAYLAND_SERVER_1_23
+   wl_display_set_default_max_buffer_size (compositor->wayland_display,
+                                           1024 * 1024);
++#endif
+ 
+   wayland_event_source = wayland_event_source_new (compositor->wayland_display);
+ 

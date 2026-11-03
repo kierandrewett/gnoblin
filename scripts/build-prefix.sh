@@ -4,14 +4,18 @@
 # usage: scripts/build-prefix.sh [--prefix DIR] [--jobs N]
 #
 # The prefix is laid out like an installed system: DIR/usr/lib/gnoblin holds the private runtime (Mutter, the
-# compositor, the portal backend), DIR/usr/bin, DIR/usr/share and DIR/usr/lib/systemd hold the public entries, and
-# DIR/etc holds the configuration files of the optional GeoClue and ananicy-cpp packages. pkgsmith.star and
-# pkgsmith-ananicy.star cut the packages out of it. Nothing here writes a package.
+# compositor, the X11 frames client, the portal backend), DIR/usr/bin, DIR/usr/share and DIR/usr/lib/systemd hold the
+# public entries, and DIR/etc holds the configuration files of the optional GeoClue and ananicy-cpp packages.
+# pkgsmith/runtime.star and pkgsmith/integrations.star cut the packages out of it. The X11 frames client is the only
+# program of the compositor that links GTK 4, so it has a package of its own. Nothing here writes a package.
 #
-# The build is ./build.sh --layout system. It needs a Fedora system with the packages of
-# scripts/install-fedora-build-deps.sh, checked-out submodules, and git author settings that allow commits (the
-# build applies the patch series as commits in subprojects/mutter). Run it on the oldest glibc you want the packages to
-# run on. CI runs it from a Git checkout of the ref, in the fedora:45 image and in alpine:edge, on amd64 and on arm64.
+# The build is ./build.sh --layout system. It needs a system with the packages of the matching
+# scripts/install-<system>-build-deps.sh (Fedora, Debian and Ubuntu, Alpine, openSUSE), checked-out submodules, and git
+# author settings that allow commits (the build applies the patch series as commits in subprojects/mutter). Run it on
+# the release that the packages are for: they ask for its C library and the sonames of its libraries. CI runs it from a
+# Git checkout of the ref, in the image of each target that has its own prefix, on each architecture.
+# scripts/supported-targets.py lists the targets, their images and the script that installs the build requirements of
+# each.
 #
 # One prefix serves every package format, so the build avoids what differs between distributions:
 #   - Lua is linked statically. Fedora, openSUSE, Arch and Debian name the Lua library differently (liblua-5.5.so,
@@ -54,7 +58,7 @@ lua_sha256=1c4b4068d67061f2a2231ad2b5422e77acea1487ea9890f6320af614f4373dce
 
 for tool in cmake ninja meson pkg-config python3 git strip gzip; do
     command -v "$tool" >/dev/null || {
-        echo "[prefix] missing $tool. On Fedora run scripts/install-fedora-build-deps.sh first." >&2
+        echo "[prefix] missing $tool. Run the scripts/install-*-build-deps.sh of your system first." >&2
         exit 1
     }
 done
@@ -69,8 +73,13 @@ export SOURCE_DATE_EPOCH
 
 echo "[prefix] upstream release tags of the pinned sources"
 for submodule in subprojects/mutter subprojects/xdg-desktop-portal-gnome; do
-    # The submodules are shallow. The source step resets each one to the upstream tag it pins, so the tags must be there.
-    git -C "$submodule" fetch --quiet --force --tags origin
+    # The submodules are shallow. The source step resets each one to the upstream tag it pins, so that tag must be
+    # there. A checkout that has it already needs no network, so an upstream host that refuses the request (GNOME
+    # GitLab answers some networks with HTTP 406) does not stop the build.
+    tag="$(python3 scripts/gnome-versions.py get "${submodule#subprojects/}" version)"
+    if ! git -C "$submodule" rev-parse --verify --quiet "refs/tags/$tag^{commit}" >/dev/null; then
+        git -C "$submodule" fetch --quiet --force --tags origin
+    fi
 done
 
 # The build directories carry the target of the compiler, so a prefix build next to a development build, or one for
@@ -112,6 +121,12 @@ fi
 # Mutter hardcodes -Werror=array-bounds. With the LTO and fortify flags that Fedora sets, GCC reports a false positive
 # on g_free (grab) in src/core/keybindings.c. Keep the warning and stop it from failing the build.
 export CFLAGS="${CFLAGS:-} -Wno-error=array-bounds"
+# __FILE__ in the assertions of GLib and Gnoblin, and the debug paths, would carry the folder that the build ran in (/work
+# in CI, a home folder on a laptop) into the programs. Map the checkout to "." so the packages hold no path of the build
+# machine (tests/packages, S7). Meson and CMake read both variables when they configure the build.
+prefix_map="-ffile-prefix-map=$root=."
+export CFLAGS="$CFLAGS $prefix_map"
+export CXXFLAGS="${CXXFLAGS:-} $prefix_map"
 
 rm -rf -- "$prefix"
 mkdir -p "$prefix"

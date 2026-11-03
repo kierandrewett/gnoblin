@@ -1,0 +1,227 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] screen-cast: build against PipeWire 1.0
+
+Ubuntu 24.04 ships PipeWire 1.0.5. Explicit sync for DMA-BUF screen cast
+buffers (SPA_META_SyncTimeline and SPA_DATA_SyncObj) came with PipeWire
+1.2, and so did the node.supports-request property.
+
+With PipeWire 1.0, explicit_sync_supported() returns FALSE, so the
+stream offers only the buffer parameters without a sync timeline. That
+is the path Mutter already takes when the consumer or the DRM driver has
+no explicit sync: buffers carry no sync timeline, so the sync point
+functions return at once and every buffer can be reused at once. The
+consumer then relies on implicit sync of the DMA-BUF. Name the
+node.supports-request key when PipeWire does not; PipeWire 1.0 does not
+know it and ignores it, so the consumer drives the stream as before
+PipeWire 1.2.
+
+Screen sharing keeps working. Without explicit sync, a consumer may read
+a frame before the GPU has finished it, which can show as tearing or a
+partly drawn frame with drivers that need explicit sync.
+
+---
+diff --git a/config.h.meson b/config.h.meson
+index 5fc3eefbd..d4d581bbb 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -50,6 +50,9 @@
+ /* Defined if screen cast and remote desktop support is enabled */
+ #mesondefine HAVE_REMOTE_DESKTOP
+ 
++/* Whether PipeWire has explicit sync for DMA-BUF buffers (1.2) */
++#mesondefine HAVE_PIPEWIRE_EXPLICIT_SYNC
++
+ /* Defined if the devkit is enabled */
+ #mesondefine HAVE_DEVKIT
+ 
+diff --git a/meson.build b/meson.build
+index 76cca0e06..f5c45eee7 100644
+--- a/meson.build
++++ b/meson.build
+@@ -55,7 +55,7 @@ gbm_req = '>= 21.3'
+ libdrm_req = '>= 2.4.118'
+ 
+ # screen cast version requirements
+-libpipewire_req = '>= 1.2.7'
++libpipewire_req = '>= 1.0.5'
+ 
+ # profiler requirements
+ sysprof_req = '>= 3.37.2'
+@@ -297,8 +297,10 @@ if have_startup_notification
+ endif
+ 
+ have_remote_desktop = get_option('remote_desktop')
++have_pipewire_explicit_sync = false
+ if have_remote_desktop
+   libpipewire_dep = dependency('libpipewire-0.3', version: libpipewire_req)
++  have_pipewire_explicit_sync = libpipewire_dep.version().version_compare('>= 1.2.0')
+   if libpipewire_dep.version().version_compare('>= 1.5.84')
+     add_project_arguments('-DHAVE_PIPEWIRE_CAPABILITIES', language: 'c')
+   endif
+@@ -580,6 +582,7 @@ cdata.set('HAVE_WAYLAND', true)
+ cdata.set('HAVE_WAYLAND_SERVER_1_23', wayland_server_dep.version().version_compare('>= 1.23'))
+ cdata.set('HAVE_WAYLAND_SERVER_1_24', wayland_server_dep.version().version_compare('>= 1.24'))
+ cdata.set('HAVE_REMOTE_DESKTOP', have_remote_desktop)
++cdata.set('HAVE_PIPEWIRE_EXPLICIT_SYNC', have_pipewire_explicit_sync)
+ cdata.set('HAVE_DEVKIT', have_devkit)
+ cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
+ cdata.set('HAVE_SOUND_PLAYER', have_sound_player)
+diff --git a/src/backends/meta-stream-source.c b/src/backends/meta-stream-source.c
+index 2cadcd541..82a2086bc 100644
+--- a/src/backends/meta-stream-source.c
++++ b/src/backends/meta-stream-source.c
+@@ -49,6 +49,11 @@
+ 
+ #include <drm_fourcc.h>
+ 
++#ifndef PW_KEY_NODE_SUPPORTS_REQUEST
++/* PipeWire 1.0 does not know this node property and ignores it */
++#define PW_KEY_NODE_SUPPORTS_REQUEST "node.supports-request"
++#endif
++
+ #include "backends/meta-stream.h"
+ #include "backends/meta-stream-monitor.h"
+ #include "core/meta-fraction.h"
+@@ -214,6 +219,7 @@ static const struct {
+   G_STMT_END
+ 
+ 
++#ifdef HAVE_PIPEWIRE_EXPLICIT_SYNC
+ enum {
+   DATA_OFFSET_RELEASE = 1,
+   DATA_OFFSET_ACQUIRE,
+@@ -229,6 +235,7 @@ syncobj_data_from_buffer (struct spa_buffer *spa_buffer,
+   spa_data = &spa_buffer->datas[spa_buffer->n_datas - offset];
+   return spa_data;
+ }
++#endif
+ 
+ static void
+ meta_spa_dict_entry_clear (MetaSpaDictEntry *dict_entry)
+@@ -1017,6 +1024,7 @@ static void
+ maybe_set_sync_points (MetaStreamSource  *source,
+                        struct spa_buffer *spa_buffer)
+ {
++#ifdef HAVE_PIPEWIRE_EXPLICIT_SYNC
+   MetaStreamSourcePrivate *priv =
+     meta_stream_source_get_instance_private (source);
+   struct spa_meta_sync_timeline *sync_timeline;
+@@ -1059,6 +1067,7 @@ maybe_set_sync_points (MetaStreamSource  *source,
+       g_warning_once ("meta_drm_timeline_set_sync_point failed: %s",
+                       local_error->message);
+     }
++#endif
+ }
+ 
+ static gboolean
+@@ -1368,6 +1377,7 @@ can_reuse_pw_buffer (MetaStreamSourcePrivate  *priv,
+                      struct pw_buffer         *buffer,
+                      GError                  **error)
+ {
++#ifdef HAVE_PIPEWIRE_EXPLICIT_SYNC
+   struct spa_buffer *spa_buffer;
+   struct spa_data *spa_data;
+   struct spa_meta_sync_timeline *sync_timeline;
+@@ -1403,6 +1413,9 @@ can_reuse_pw_buffer (MetaStreamSourcePrivate  *priv,
+     return FALSE;
+ 
+   return is_signaled;
++#else
++  return TRUE;
++#endif
+ }
+ 
+ static struct pw_buffer *
+@@ -2258,6 +2271,7 @@ add_video_damage_meta_param (struct spa_pod_builder *pod_builder,
+ static gboolean
+ explicit_sync_supported (MetaStreamSource *source)
+ {
++#ifdef HAVE_PIPEWIRE_EXPLICIT_SYNC
+   uint64_t supported = 0;
+   MetaStream *stream = meta_stream_source_get_stream (source);
+   MetaBackend *backend = meta_stream_get_backend (stream);
+@@ -2287,6 +2301,9 @@ explicit_sync_supported (MetaStreamSource *source)
+     return FALSE;
+ 
+   return supported != 0;
++#else
++  return FALSE;
++#endif
+ }
+ 
+ static gboolean
+@@ -2364,7 +2381,9 @@ on_format_param_changed (MetaStreamSource *source,
+   MetaStreamSourceClass *klass = META_STREAM_SOURCE_GET_CLASS (source);
+   struct spa_video_info_raw video_format = {};
+   struct spa_pod_dynamic_builder pod_builder;
++#ifdef HAVE_PIPEWIRE_EXPLICIT_SYNC
+   struct spa_pod_frame pod_frame;
++#endif
+   g_autoptr (GArray) pod_offsets = NULL;
+   g_autoptr (GPtrArray) params = NULL;
+   int buffer_types;
+@@ -2496,6 +2515,7 @@ on_format_param_changed (MetaStreamSource *source,
+ 
+   /* Buffers param when using explicit sync with extra data blocks for acquire_fd
+    * and release_fd */
++#ifdef HAVE_PIPEWIRE_EXPLICIT_SYNC
+   if (use_explicit_sync)
+     {
+       append_pod_offset (pod_offsets, &pod_builder.b);
+@@ -2516,6 +2536,7 @@ on_format_param_changed (MetaStreamSource *source,
+       spa_pod_builder_int (&pod_builder.b, 1 << SPA_META_SyncTimeline);
+       spa_pod_builder_pop (&pod_builder.b, &pod_frame);
+     }
++#endif
+ 
+   /* Fallback Buffers param */
+   meta_pod_builder_add_object (
+@@ -2550,12 +2571,14 @@ on_format_param_changed (MetaStreamSource *source,
+ 
+   if (use_explicit_sync)
+     {
++#ifdef HAVE_PIPEWIRE_EXPLICIT_SYNC
+       meta_pod_builder_add_object (
+         &pod_builder.b,
+         pod_offsets,
+         SPA_TYPE_OBJECT_ParamMeta, SPA_PARAM_Meta,
+         SPA_PARAM_META_type, SPA_POD_Id (SPA_META_SyncTimeline),
+         SPA_PARAM_META_size, SPA_POD_Int (sizeof (struct spa_meta_sync_timeline)));
++#endif
+ 
+       meta_topic (META_DEBUG_SCREEN_CAST,
+                   "Advertising explicit sync support for pw_stream %u",
+@@ -2736,6 +2759,7 @@ static void
+ maybe_create_syncobj (MetaStreamSource  *source,
+                       struct spa_buffer *spa_buffer)
+ {
++#ifdef HAVE_PIPEWIRE_EXPLICIT_SYNC
+   MetaStreamSourcePrivate *priv =
+     meta_stream_source_get_instance_private (source);
+   MetaStream *stream = meta_stream_source_get_stream (source);
+@@ -2796,6 +2820,7 @@ maybe_create_syncobj (MetaStreamSource  *source,
+   g_hash_table_insert (priv->timelines,
+                        GINT_TO_POINTER (g_steal_fd (&syncobj_fd)),
+                        g_steal_pointer (&timeline));
++#endif
+ }
+ 
+ static void
+@@ -2932,6 +2957,7 @@ static void
+ maybe_remove_syncobj (MetaStreamSource *source,
+                       struct pw_buffer *buffer)
+ {
++#ifdef HAVE_PIPEWIRE_EXPLICIT_SYNC
+   MetaStreamSourcePrivate *priv =
+     meta_stream_source_get_instance_private (source);
+   struct spa_buffer *spa_buffer = buffer->buffer;
+@@ -2952,6 +2978,7 @@ maybe_remove_syncobj (MetaStreamSource *source,
+   acquire_fd = syncobj_data_from_buffer (spa_buffer, DATA_OFFSET_ACQUIRE)->fd;
+   if (!g_hash_table_remove (priv->timelines, GINT_TO_POINTER (acquire_fd)))
+     g_critical ("Failed to remove DRM timeline syncobj");
++#endif
+ }
+ 
+ static void

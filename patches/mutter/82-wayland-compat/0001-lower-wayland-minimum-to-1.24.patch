@@ -1,8 +1,11 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Fri, 25 Sep 2026 14:00:00 +0100
-Subject: [PATCH] mutter: lower Wayland library minimum to 1.25
+Subject: [PATCH] mutter: lower Wayland library minimum to 1.24
 
+Mutter 51 asks for libwayland 1.26 so that a later minor release can use
+protocols from 1.26 without a new requirement. No code uses an API that
+is newer than 1.24. Ubuntu 26.04 LTS and EL10 ship 1.24.
 ---
 diff --git a/meson.build b/meson.build
 index b926c9b39..2a7e802d8 100644
@@ -13,7 +16,7 @@ index b926c9b39..2a7e802d8 100644
  
  # wayland version requirements
 -wayland_server_req = '>= 1.26'
-+wayland_server_req = '>= 1.25'
++wayland_server_req = '>= 1.24'
  wayland_protocols_req = '>= 1.48'
  
  # native backend version requirements

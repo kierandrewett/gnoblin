@@ -1,13 +1,18 @@
 From 6e1b9b5874e5bfef19c72aab1c30cbf5dc46aec0 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Tue, 6 Oct 2026 12:00:00 +0100
-Subject: [PATCH] build: support GTK 4.20 and older GNOME schemas
+Subject: [PATCH] build: support GTK 4.14 and older GNOME schemas
 
 GTK 4.22 added gtk_disable_portal_interfaces().  The Gnoblin portal
-backend disables every GTK portal interface, so GTK 4.20's existing
- gtk_disable_portals() has the required behaviour for it.  Retain the
-selective call for newer GTK builds and conservatively disable every portal
-when libgxdp is used with a selective list on GTK 4.20.
+backend disables every GTK portal interface, so the older
+gtk_disable_portals() has the required behaviour for it.  It is in GTK
+4.18, which Debian 13 ships.  Retain the selective call for newer GTK
+builds and disable every portal on older GTK.
+
+GTK 4.16, which Fedora 41 and Alpine 3.21 ship, and GTK 4.14, which
+Ubuntu 24.04 ships, have no gtk_disable_portals().  Add the no-portals key to GDK_DEBUG before GTK
+starts, which has the same effect, and restore GDK_DEBUG after GTK has
+read it, so that programs the backend starts still use portals.
 
 
 The backend also binds every listed GNOME setting to a GtkSettings
@@ -17,12 +22,12 @@ reduced-motion, so the backend died with SIGTRAP at startup. Skip
 schemas, keys and GtkSettings properties that are not available.
 ---
  meson.build        |  2 +-
- src/gxdp-wayland.c | 21 +++++++++++++++++++++
- src/gxdp.c         |  6 ++++++
- 3 files changed, 28 insertions(+), 1 deletion(-)
+ src/gxdp-wayland.c | 21 +++++++++++++++++++
+ src/gxdp.c         | 52 +++++++++++++++++++++++++++++++++++++++++++++-
+ 3 files changed, 73 insertions(+), 2 deletions(-)
 
 diff --git a/meson.build b/meson.build
-index 792ecb0..7443166 100644
+index 792ecb0..b79a1d4 100644
 --- a/meson.build
 +++ b/meson.build
 @@ -6,7 +6,7 @@ project(
@@ -30,7 +35,7 @@ index 792ecb0..7443166 100644
  )
  
 -gtk_dep = dependency('gtk4', version: '>= 4.22.0')
-+gtk_dep = dependency('gtk4', version: '>= 4.20.0')
++gtk_dep = dependency('gtk4', version: '>= 4.14.0')
  
  subdir('src')
  
@@ -75,23 +80,85 @@ index 650424a..386e942 100644
              {
                g_settings_bind_with_mapping (settings,
 diff --git a/src/gxdp.c b/src/gxdp.c
-index 9cc8d7e..d1b02df 100644
+index 9cc8d7e..22cd669 100644
 --- a/src/gxdp.c
 +++ b/src/gxdp.c
-@@ -66,7 +66,13 @@ gxdp_init_gtk (GxdpServiceClientType   service_client_type,
+@@ -30,6 +30,27 @@
+ #include "gxdp-wayland.h"
+ #endif
+ 
++static void
++disable_all_portals (void)
++{
++#if GTK_CHECK_VERSION(4, 18, 0)
++  gtk_disable_portals ();
++#else
++  /* GTK before 4.18 has no gtk_disable_portals().  GDK reads the no-portals
++   * debug key when GTK starts, with the same effect. */
++  const char *debug = g_getenv ("GDK_DEBUG");
++  g_autofree char *value = NULL;
++
++  value = debug && *debug ? g_strconcat (debug, ":no-portals", NULL)
++                          : g_strdup ("no-portals");
++  g_setenv ("GDK_DEBUG", value, TRUE);
++#endif
++}
++
++static gboolean init_gtk (GxdpServiceClientType   service_client_type,
++                          const char            **implemented_interfaces,
++                          GError                **error);
++
+ /**
+  * gxdp_init_gtk:
+  * @service_client_type: Wayland service client type to be used
+@@ -48,6 +69,29 @@ gboolean
+ gxdp_init_gtk (GxdpServiceClientType   service_client_type,
+                const char            **implemented_interfaces,
+                GError                **error)
++{
++#if GTK_CHECK_VERSION(4, 18, 0)
++  return init_gtk (service_client_type, implemented_interfaces, error);
++#else
++  g_autofree char *gdk_debug = g_strdup (g_getenv ("GDK_DEBUG"));
++  gboolean initialized;
++
++  initialized = init_gtk (service_client_type, implemented_interfaces, error);
++
++  /* GTK has read GDK_DEBUG.  Programs that this process starts use portals. */
++  if (gdk_debug)
++    g_setenv ("GDK_DEBUG", gdk_debug, TRUE);
++  else
++    g_unsetenv ("GDK_DEBUG");
++
++  return initialized;
++#endif
++}
++
++static gboolean
++init_gtk (GxdpServiceClientType   service_client_type,
++          const char            **implemented_interfaces,
++          GError                **error)
+ {
+   const char *forced_gdk_backend;
+   const char *session_type;
+@@ -62,11 +106,17 @@ gxdp_init_gtk (GxdpServiceClientType   service_client_type,
+   if (implemented_interfaces == NULL)
+     {
+       /* No portal interfaces specified, disabling all portals */
+-      gtk_disable_portals ();
++      disable_all_portals ();
      }
    else
      {
 +#if GTK_CHECK_VERSION(4, 22, 0)
        gtk_disable_portal_interfaces (implemented_interfaces);
 +#else
-+      /* GTK 4.20 cannot select interfaces.  Disabling all portals keeps
++      /* GTK before 4.22 cannot select interfaces.  Disabling all portals keeps
 +       * backend dialog requests inside this process. */
-+      gtk_disable_portals ();
++      disable_all_portals ();
 +#endif
      }
  
    /* Make libadwaita use GSettings */
-
 -- 
 2.55.0

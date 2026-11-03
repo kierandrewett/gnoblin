@@ -1,0 +1,81 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 2 Nov 2026 22:51:25 +0000
+Subject: [PATCH] screencast: build against libadwaita 1.6
+
+Fedora 41 ships libadwaita 1.6.10 and Alpine 3.21 ships 1.6.9. The
+screen cast dialog uses AdwInlineViewSwitcher, which libadwaita 1.7
+added. It is in a template, so the C compiler does not see it, and
+with libadwaita 1.6 the dialog template fails to load at run time.
+
+Create the switcher in screen_cast_widget_init() instead, in an AdwBin
+that the template keeps in its place. With libadwaita 1.7 and newer it
+is the same AdwInlineViewSwitcher with the same properties. With 1.6 it
+is an AdwViewSwitcher with the wide policy, which also shows the icon
+and the label of each page, in the header bar style.
+
+The other libadwaita API of the backend is in 1.6.
+
+diff --git a/src/meson.build b/src/meson.build
+index 5987425..da92925 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -67,7 +67,7 @@ config_h.set('HAVE_GLYCIN', glycin_dep.found())
+ built_sources += configure_file(output: 'config.h', configuration: config_h)
+ 
+ # Sources
+-adw_min_version = '>= 1.7.alpha'
++adw_min_version = '>= 1.6.0'
+ 
+ libadwaita_dep = dependency(
+   'libadwaita-1',
+diff --git a/src/screencastwidget.c b/src/screencastwidget.c
+index 04e5675..27e3039 100644
+--- a/src/screencastwidget.c
++++ b/src/screencastwidget.c
+@@ -552,11 +552,28 @@ screen_cast_widget_init (ScreenCastWidget *widget)
+ {
+   GtkExpression *expression;
+   g_autoptr(GtkFilter) filter = NULL;
++  GtkWidget *switcher;
+ 
+   widget->selection_changed_timeout_id = 0;
+ 
+   gtk_widget_init_template (GTK_WIDGET (widget));
+ 
++#if ADW_CHECK_VERSION (1, 7, 0)
++  switcher = adw_inline_view_switcher_new ();
++  adw_inline_view_switcher_set_display_mode (ADW_INLINE_VIEW_SWITCHER (switcher),
++                                             ADW_INLINE_VIEW_SWITCHER_BOTH);
++  adw_inline_view_switcher_set_homogeneous (ADW_INLINE_VIEW_SWITCHER (switcher), TRUE);
++  adw_inline_view_switcher_set_stack (ADW_INLINE_VIEW_SWITCHER (switcher),
++                                      ADW_VIEW_STACK (widget->source_type));
++#else
++  /* libadwaita 1.6 has no inline view switcher. The wide view switcher also
++   * shows the icon and the label of each page. */
++  switcher = adw_view_switcher_new ();
++  adw_view_switcher_set_policy (ADW_VIEW_SWITCHER (switcher), ADW_VIEW_SWITCHER_POLICY_WIDE);
++  adw_view_switcher_set_stack (ADW_VIEW_SWITCHER (switcher), ADW_VIEW_STACK (widget->source_type));
++#endif
++  adw_bin_set_child (ADW_BIN (widget->source_type_switcher), switcher);
++
+   screen_cast_widget_set_app_id (widget, NULL);
+   screen_cast_widget_set_allow_multiple (widget, FALSE);
+   screen_cast_widget_set_source_types (widget, screen_cast_source_types_from_flags (0));
+diff --git a/src/screencastwidget.ui b/src/screencastwidget.ui
+index 095485b..de94b40 100644
+--- a/src/screencastwidget.ui
++++ b/src/screencastwidget.ui
+@@ -27,10 +27,8 @@
+         <property name="margin-bottom">5</property>
+         <property name="spacing">17</property>
+         <child>
+-          <object class="AdwInlineViewSwitcher" id="source_type_switcher">
+-            <property name="display-mode">both</property>
+-            <property name="homogeneous">True</property>
+-            <property name="stack">source_type</property>
++          <!-- screen_cast_widget_init () adds the switcher. Its class depends on the libadwaita release. -->
++          <object class="AdwBin" id="source_type_switcher">
+             <property name="halign">center</property>
+           </object>
+         </child>

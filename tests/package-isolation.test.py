@@ -241,7 +241,19 @@ exit 0
         for requirement in ("pkgconfig(libcanberra) >= 0.26", "pkgconfig(gtk4)"):
             with self.subTest(requirement=requirement), self.assertRaises(ValueError):
                 isolation.validate("gnoblin", "", "", "", "", requirement)
-        isolation.validate("gnoblin", "", "", "", "", "libgtk-4.so.1()(64bit)\nglib2 >= 2.86.0\nlua-libs >= 5.4")
+        isolation.validate("gnoblin", "", "", "", "", "libatk-1.0.so.0()(64bit)\nglib2 >= 2.86.0\nlua-libs >= 5.4")
+
+    def test_only_the_frames_client_and_the_portal_backend_may_require_gtk(self):
+        for requirement in ("libgtk-4.so.1()(64bit)", "libadwaita-1.so.0()(64bit)", "gtk4 >= 4.14.0"):
+            with self.subTest(requirement=requirement), self.assertRaises(ValueError):
+                isolation.validate("gnoblin", "", "", "", "", requirement)
+            isolation.validate("gnoblin-x11-frames", "", "", "", "", requirement)
+            isolation.validate("xdg-desktop-portal-gnoblin", "", "", "", "", requirement)
+
+    def test_the_frames_package_ships_only_the_frames_client(self):
+        isolation.validate("gnoblin-x11-frames", "/usr/lib/gnoblin/libexec/mutter-x11-frames", "", "", "")
+        with self.assertRaises(ValueError):
+            isolation.validate("gnoblin-x11-frames", "/usr/bin/mutter-x11-frames", "", "", "")
 
     def test_gnoblin_payload_provides_and_obsoletes_the_old_session_package(self):
         self.assertNotIn("/usr/lib/systemd/user/gnoblin-recovery.service", isolation.PUBLIC_FILES)

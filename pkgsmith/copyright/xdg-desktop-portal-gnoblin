@@ -1,0 +1,26 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: xdg-desktop-portal-gnome
+Upstream-Contact: Kieran Drewett <kieran@drewett.dev>
+Source: https://github.com/kierandrewett/gnoblin
+Comment: xdg-desktop-portal-gnoblin is xdg-desktop-portal-gnome (subprojects/xdg-desktop-portal-gnome) with the
+ patches in patches/xdg-desktop-portal-gnome/ of the Gnoblin source.
+
+Files: *
+Copyright: The xdg-desktop-portal-gnome and GNOME authors, as identified by the notices in the source files
+License: LGPL-2.1-or-later
+
+Files: subprojects/libgxdp/*
+Copyright: The libgxdp and GNOME authors, as identified by the notices in the source files
+License: LGPL-2.1-or-later
+
+License: LGPL-2.1-or-later
+ This library is free software; you can redistribute it and/or modify it under the terms of the GNU Lesser General
+ Public License as published by the Free Software Foundation; either version 2.1 of the License, or (at your option)
+ any later version.
+ .
+ This library is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied
+ warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more
+ details.
+ .
+ On Debian systems, the complete text of the GNU Lesser General Public License version 2.1 can be found in
+ /usr/share/common-licenses/LGPL-2.1.

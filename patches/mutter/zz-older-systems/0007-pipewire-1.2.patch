@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 2 Nov 2026 22:49:09 +0000
+Subject: [PATCH] build: lower the PipeWire floor to 1.2.7
+
+Fedora 41 ships PipeWire 1.2.8 and Alpine 3.21 ships 1.2.7, the floor
+of Mutter 49. The screen cast code compiles and links against both
+when the 1.5.84 and 1.6.0 API stays behind the version checks of
+74-fedora43-compat.
+
+Nothing is lost compared with PipeWire 1.4.2.
+
+diff --git a/meson.build b/meson.build
+index 6c668d9da..a900eae0e 100644
+--- a/meson.build
++++ b/meson.build
+@@ -55,7 +55,7 @@ gbm_req = '>= 21.3'
+ libdrm_req = '>= 2.4.118'
+ 
+ # screen cast version requirements
+-libpipewire_req = '>= 1.4.2'
++libpipewire_req = '>= 1.2.7'
+ 
+ # profiler requirements
+ sysprof_req = '>= 3.37.2'

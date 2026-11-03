@@ -1,8 +1,11 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: kierandrewett <kieran@drewett.dev>
 Date: Mon, 14 Sep 2026 16:33:21 +0200
-Subject: [PATCH] lower PipeWire floor to Fedora 43 API baseline
+Subject: [PATCH] lower PipeWire floor to 1.4.2
 
+The screen cast code compiles against PipeWire 1.4.2 when the 1.5.84 and
+1.6.0 APIs stay behind the version checks of the previous patch. Debian 13
+ships 1.4.2.
 ---
 diff --git a/meson.build b/meson.build
 index cdd13b683..074ce4243 100644
@@ -13,7 +16,7 @@ index cdd13b683..074ce4243 100644
  
  # screen cast version requirements
 -libpipewire_req = '>= 1.6.0'
-+libpipewire_req = '>= 1.4.11'
++libpipewire_req = '>= 1.4.2'
  
  # profiler requirements
  sysprof_req = '>= 3.37.2'

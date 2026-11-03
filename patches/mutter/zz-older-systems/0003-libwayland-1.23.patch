@@ -1,0 +1,166 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 2 Nov 2026 17:14:54 +0000
+Subject: [PATCH] wayland: build against libwayland 1.23
+
+Debian 13 ships libwayland 1.23. Three upstream changes need 1.24:
+the wl_fixes global, the wl_shm_buffer reference that keeps a client's
+shm buffer readable after the client destroys its wl_buffer, and
+wl_keyboard version 10 with the repeated key state.
+
+With 1.23, do not offer wl_fixes, read shm buffers through their
+wl_buffer resource as Mutter 48 did, and offer wl_seat version 9.
+libwayland 1.23 refuses to create a wl_seat global above version 9, so
+the seat would otherwise be missing. Clients then repeat keys
+themselves.
+
+diff --git a/config.h.meson b/config.h.meson
+index 0ac0d8df2..1230506e5 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -132,5 +132,8 @@
+ /* Whether libinput has the plugin system (1.30) */
+ #mesondefine HAVE_LIBINPUT_PLUGIN_SYSTEM
+ 
++/* Whether libwayland-server is 1.24 or newer: wl_fixes, wl_shm_buffer_ref, wl_seat version 10 */
++#mesondefine HAVE_WAYLAND_SERVER_1_24
++
+ /* Whether ASan testing is enabled */
+ #mesondefine HAVE_ASAN_TESTS
+diff --git a/meson.build b/meson.build
+index f436e7a1c..00bfb4221 100644
+--- a/meson.build
++++ b/meson.build
+@@ -46,7 +46,7 @@ gudev_req = '>= 238'
+ umockdev_req = '>= 0.3.0'
+ 
+ # wayland version requirements
+-wayland_server_req = '>= 1.24'
++wayland_server_req = '>= 1.23'
+ wayland_protocols_req = '>= 1.44'
+ 
+ # native backend version requirements
+@@ -571,6 +571,7 @@ cdata.set('HAVE_GL', have_gl)
+ cdata.set('HAVE_GLES2', have_gles2)
+ cdata.set('HAVE_XWAYLAND', have_xwayland)
+ cdata.set('HAVE_WAYLAND', true)
++cdata.set('HAVE_WAYLAND_SERVER_1_24', wayland_server_dep.version().version_compare('>= 1.24'))
+ cdata.set('HAVE_REMOTE_DESKTOP', have_remote_desktop)
+ cdata.set('HAVE_DEVKIT', have_devkit)
+ cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
+diff --git a/src/backends/native/meta-cursor-renderer-native.c b/src/backends/native/meta-cursor-renderer-native.c
+index 7269212a1..069c14616 100644
+--- a/src/backends/native/meta-cursor-renderer-native.c
++++ b/src/backends/native/meta-cursor-renderer-native.c
+@@ -1111,7 +1111,15 @@ realize_cursor_sprite_from_wl_buffer_for_crtc (MetaCursorRenderer *renderer,
+   if (!buffer)
+     return FALSE;
+ 
++#ifdef HAVE_WAYLAND_SERVER_1_24
+   shm_buffer = buffer->shm.buffer;
++#else
++  /* libwayland-server 1.23 has no wl_shm_buffer reference, so the buffer is
++   * only reachable while the client keeps its wl_buffer. */
++  if (!meta_wayland_buffer_get_resource (buffer))
++    return FALSE;
++  shm_buffer = wl_shm_buffer_get (meta_wayland_buffer_get_resource (buffer));
++#endif
+   if (shm_buffer)
+     {
+       int rowstride = wl_shm_buffer_get_stride (shm_buffer);
+diff --git a/src/wayland/meta-wayland-buffer.c b/src/wayland/meta-wayland-buffer.c
+index dbaed6c87..bf769f119 100644
+--- a/src/wayland/meta-wayland-buffer.c
++++ b/src/wayland/meta-wayland-buffer.c
+@@ -404,8 +404,10 @@ shm_buffer_attach (MetaWaylandBuffer  *buffer,
+       return FALSE;
+     }
+ 
++#ifdef HAVE_WAYLAND_SERVER_1_24
+   g_clear_pointer (&buffer->shm.buffer, wl_shm_buffer_unref);
+   buffer->shm.buffer = wl_shm_buffer_ref (shm_buffer);
++#endif
+ 
+   cogl_format = format_info->cogl_format;
+   multi_format = format_info->multi_texture_format;
+@@ -730,7 +732,11 @@ process_shm_buffer_damage (MetaWaylandBuffer *buffer,
+ 
+   n_rectangles = mtk_region_num_rectangles (region);
+ 
++#ifdef HAVE_WAYLAND_SERVER_1_24
+   shm_buffer = buffer->shm.buffer;
++#else
++  shm_buffer = wl_shm_buffer_get (buffer->resource);
++#endif
+   stride = wl_shm_buffer_get_stride (shm_buffer);
+   height = wl_shm_buffer_get_height (shm_buffer);
+   shm_format = wl_shm_buffer_get_format (shm_buffer);
+@@ -976,7 +982,9 @@ meta_wayland_buffer_finalize (GObject *object)
+   g_clear_pointer (&buffer->single_pixel.single_pixel_buffer,
+                    meta_wayland_single_pixel_buffer_free);
+   g_clear_object (&buffer->single_pixel.texture);
++#ifdef HAVE_WAYLAND_SERVER_1_24
+   g_clear_pointer (&buffer->shm.buffer, wl_shm_buffer_unref);
++#endif
+ 
+   G_OBJECT_CLASS (meta_wayland_buffer_parent_class)->finalize (object);
+ }
+diff --git a/src/wayland/meta-wayland-fixes.c b/src/wayland/meta-wayland-fixes.c
+index 279b4650d..e5185c301 100644
+--- a/src/wayland/meta-wayland-fixes.c
++++ b/src/wayland/meta-wayland-fixes.c
+@@ -22,6 +22,7 @@
+ #include "wayland/meta-wayland-private.h"
+ #include "wayland/meta-wayland-versions.h"
+ 
++#ifdef HAVE_WAYLAND_SERVER_1_24
+ static void
+ wl_fixes_destroy (struct wl_client   *client,
+                   struct wl_resource *resource)
+@@ -68,3 +69,10 @@ meta_wayland_init_fixes (MetaWaylandCompositor *compositor)
+                         bind_wl_fixes) == NULL)
+     g_error ("Failed to register a global wl_fixes object");
+ }
++#else
++/* wl_fixes is part of libwayland 1.24. Older releases do not offer it. */
++void
++meta_wayland_init_fixes (MetaWaylandCompositor *compositor)
++{
++}
++#endif
+diff --git a/src/wayland/meta-wayland-keyboard.c b/src/wayland/meta-wayland-keyboard.c
+index c255080cd..58382669f 100644
+--- a/src/wayland/meta-wayland-keyboard.c
++++ b/src/wayland/meta-wayland-keyboard.c
+@@ -59,6 +59,13 @@
+ #include "wayland/meta-wayland-private.h"
+ #include "wayland/meta-wayland-activation.h"
+ 
++#ifndef WL_KEYBOARD_KEY_STATE_REPEATED_SINCE_VERSION
++/* libwayland-server 1.23 knows wl_keyboard up to version 9, so no client
++ * reaches version 10 and the repeated key state is never sent. */
++#define WL_KEYBOARD_KEY_STATE_REPEATED_SINCE_VERSION 10
++#define WL_KEYBOARD_KEY_STATE_REPEATED 2
++#endif
++
+ typedef struct
+ {
+   struct xkb_keymap *keymap;
+diff --git a/src/wayland/meta-wayland-versions.h b/src/wayland/meta-wayland-versions.h
+index f17a642bc..e7b0ef601 100644
+--- a/src/wayland/meta-wayland-versions.h
++++ b/src/wayland/meta-wayland-versions.h
+@@ -35,7 +35,13 @@
+ #define META_WL_COMPOSITOR_VERSION          6
+ #define META_WL_DATA_DEVICE_MANAGER_VERSION 3
+ #define META_XDG_WM_BASE_VERSION            7
++#ifdef HAVE_WAYLAND_SERVER_1_24
+ #define META_WL_SEAT_VERSION                10
++#else
++/* libwayland-server 1.23 knows wl_seat up to version 9 and refuses to
++ * create the global with a higher version. */
++#define META_WL_SEAT_VERSION                9
++#endif
+ #define META_WL_OUTPUT_VERSION              4
+ #define META_XSERVER_VERSION                1
+ #define META_GTK_SHELL1_VERSION             7

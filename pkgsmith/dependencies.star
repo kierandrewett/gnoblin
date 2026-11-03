@@ -9,7 +9,9 @@
 # such capability, so they get the package name. The packages that carry data and tools, such as dconf, polkit and
 # wireplumber, are named by hand where each package is declared.
 
-# The library, the Debian package that ships it, the Arch package that ships it.
+load("common.star", "LANES")
+
+# The library, the Debian package that ships it, the Arch package that ships it. None: no package of that format ships it.
 LIBRARIES = {
     "libadwaita-1.so.0": ("libadwaita-1-0", "libadwaita"),
     "libatk-1.0.so.0": ("libatk1.0-0t64", "at-spi2-core"),
@@ -17,6 +19,8 @@ LIBRARIES = {
     "libcanberra.so.0": ("libcanberra0", "libcanberra"),
     "libcolord.so.2": ("libcolord2", "libcolord"),
     "libc.so.6": ("libc6", "glibc"),
+    "libdisplay-info.so.1": ("libdisplay-info1", None),
+    "libdisplay-info.so.2": ("libdisplay-info2", None),
     "libdisplay-info.so.3": ("libdisplay-info3", "libdisplay-info"),
     "libdrm.so.2": ("libdrm2", "libdrm"),
     "libEGL.so.1": ("libegl1", "libglvnd"),
@@ -72,30 +76,49 @@ LIBRARIES = {
     "libXrandr.so.2": ("libxrandr2", "libxrandr"),
 }
 
+# The newest LIBINPUT_ symbol version that the programs use, such as 1.30. scripts/build-packages.sh reads it from the
+# programs, as it reads the glibc floor, because it depends on the libinput of the host that built the prefix.
+LIBINPUT = arg("LIBINPUT", "")
+
 # Libraries whose version matters: the symbol version rpm checks, and a minimum for the distributions without symbol
-# versions. Each entry is (rpm capability, Debian package, Arch package, minimum version).
+# versions. Each entry is (rpm capability, Debian package, Arch package, minimum version). libwayland and PipeWire have
+# no symbol versions, so their floor is the oldest release that the source builds against (Ubuntu 24.04 for both). A
+# prefix built on a newer host can use newer API: a Fedora prefix needs libwayland 1.24, which this floor does not say.
 FLOORS = [
-    ("libinput.so.10(LIBINPUT_1.30)(64bit)", "libinput10", "libinput", "1.30.0"),
-    ("libwayland-server.so.0()(64bit)", "libwayland-server0", "wayland", "1.25.0"),
-    ("libpipewire-0.3.so.0()(64bit)", "libpipewire-0.3-0t64", "libpipewire", "1.4.11"),
-]
+    ("libwayland-server.so.0()(64bit)", "libwayland-server0", "wayland", "1.22.0"),
+    ("libpipewire-0.3.so.0()(64bit)", "libpipewire-0.3-0t64", "libpipewire", "1.0.5"),
+] + ([("libinput.so.10(LIBINPUT_" + LIBINPUT + ")(64bit)", "libinput10", "libinput", LIBINPUT)] if LIBINPUT else [])
+
+# Libraries that an older release ships under an older soname. Ubuntu 24.04 has libdisplay-info 0.1 (.so.1). Fedora 42
+# and 43, Debian 13 and openSUSE Leap 16.0 have libdisplay-info 0.2 (.so.2); Arch, Tumbleweed and newer Fedora and
+# Debian releases have 0.3. An rpm names the library
+# itself, so the rpm of a release lane may carry one: the Fedora rpm, and the rpm of the openSUSE lane, whose prefix was
+# built on the Leap release it is for. The shared openSUSE rpm is for Tumbleweed, which has no such library. The deb names
+# the Debian package from LIBRARIES. Arch has none (None).
+OLDER_SONAMES = ["libdisplay-info.so.1", "libdisplay-info.so.2"]
 
 def split_list(text):
     """A build argument that holds a comma separated list."""
     return [item for item in (text or "").split(",") if item]
 
-def library_depends(fmt, sonames, glibc):
+def library_depends(fmt, sonames, glibc, distro = None):
     """The library requirements of one package in one format.
 
     sonames are the NEEDED entries of its programs. glibc is the newest glibc symbol version the programs use, such as 2.43,
-    which becomes the floor on the C library.
+    which becomes the floor on the C library. distro is "fedora" or "opensuse" for an rpm, and None for the other formats.
     """
     if fmt == "apk":
         # apk resolves a library by its soname, so no table is needed.
         return ["so:" + soname for soname in sonames]
     for soname in sonames:
+        if soname in OLDER_SONAMES and fmt == "rpm":
+            if distro == "opensuse" and LANES != "opensuse":
+                fail("Tumbleweed ships no " + soname + ". A prefix that links it makes no shared openSUSE rpm. Build the rpm of an openSUSE Leap release with LANES=opensuse from a prefix built on that release.")
+            continue
         if soname not in LIBRARIES:
             fail("no package is known for " + soname + ". Add it to LIBRARIES in pkgsmith/dependencies.star, with the Debian and Arch package that ship it.")
+        if fmt in ["deb", "archlinux"] and LIBRARIES[soname][0 if fmt == "deb" else 1] == None:
+            fail("no " + fmt + " package ships " + soname + ". A prefix that links it makes no " + fmt + " package.")
     if fmt == "rpm":
         result = []
         for soname in sonames:

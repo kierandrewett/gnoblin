@@ -1,0 +1,40 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 2 Nov 2026 17:15:24 +0000
+Subject: [PATCH] build: accept the schema and IBus releases of Debian 13
+
+Debian 13 ships gsettings-desktop-schemas 48.0 and IBus 1.5.32.
+
+The schema headers of 48.0 have every enum value that the code uses.
+The input settings that later schemas added (scroll speed, the
+disable-while-typing timeout, custom acceleration, scroll wheel
+emulation, the eraser button) are read only when the installed schema
+has the key, so with 48.0 they can be set only in the Gnoblin Lua
+configuration.
+
+With IBus 1.5.32 the Gnoblin IBus input method keeps working. It shows
+the preedit text without the per-segment hints that IBus 1.5.33 added.
+Without this change the build silently left the IBus input method out.
+
+diff --git a/meson.build b/meson.build
+index 00bfb4221..7a8e29cb8 100644
+--- a/meson.build
++++ b/meson.build
+@@ -25,7 +25,7 @@ pango_req = '>= 1.46.0'
+ cairo_req = '>= 1.10.0'
+ pangocairo_req = '>= 1.20'
+ pixman_req = '>= 0.42'
+-gsettings_desktop_schemas_req = '>= 49.1'
++gsettings_desktop_schemas_req = '>= 48.0'
+ x11_req = '>= 1.7.0'
+ xcomposite_req = '>= 0.4'
+ xkbcommon_req = '>= 0.4.3'
+@@ -122,7 +122,7 @@ hyprcursor_dep = dependency('hyprcursor', version: '>= 0.1.11', required: get_op
+ have_hyprcursor = hyprcursor_dep.found()
+ if have_hyprcursor
+ endif
+-ibus_dep = dependency('ibus-1.0', version: '>= 1.5.33', required: get_option('ibus'))
++ibus_dep = dependency('ibus-1.0', version: '>= 1.5.32', required: get_option('ibus'))
+ have_ibus = ibus_dep.found()
+ pixman_dep = dependency('pixman-1', version: pixman_req)
+ gsettings_desktop_schemas_dep = dependency('gsettings-desktop-schemas',

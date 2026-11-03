@@ -210,8 +210,7 @@ add_custom_target(gnoblinctl-identity
 add_dependencies(gnoblinctl gnoblinctl-identity)
 target_compile_definitions(gnoblinctl PRIVATE
   GNOBLIN_NATIVE_CONTROL_API_MAJOR=${GNOBLIN_NATIVE_CONTROL_API_MAJOR}
-  GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR}
-  "GNOBLIN_IDENTITY_FALLBACK=\"${CMAKE_BINARY_DIR}/gnoblinctl-identity.json\"")
+  GNOBLIN_NATIVE_CONTROL_API_MINOR=${GNOBLIN_NATIVE_CONTROL_API_MINOR})
 
 set(GNOBLIN_BUILD_TYPE "debugoptimized" CACHE STRING "Meson build type")
 set(GNOBLIN_DEVKIT "disabled" CACHE STRING "Build the Mutter devkit")
@@ -223,6 +222,12 @@ set(GNOBLIN_LAYOUT "private" CACHE STRING
   "private: everything under GNOBLIN_PREFIX. system: also the public entries a package ships")
 set_property(CACHE GNOBLIN_LAYOUT PROPERTY STRINGS private system)
 set(GNOBLIN_SYSTEM_PREFIX "/usr" CACHE PATH "Where the system layout puts its public entries")
+# gnoblinctl run from the build tree finds its identity there. A package (the system layout) must not hold a path of
+# the build machine: there gnoblinctl reads <prefix>/share/gnoblin/version.json or GNOBLIN_VERSION_FILE.
+if(NOT GNOBLIN_LAYOUT STREQUAL "system")
+  target_compile_definitions(gnoblinctl PRIVATE
+    "GNOBLIN_IDENTITY_FALLBACK=\"${CMAKE_BINARY_DIR}/gnoblinctl-identity.json\"")
+endif()
 set_property(CACHE GNOBLIN_SOURCE_MODE PROPERTY STRINGS checkout release-archive)
 set(GNOBLIN_JOBS "4" CACHE STRING "Parallel jobs inside each Meson build")
 

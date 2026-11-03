@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 2 Nov 2026 22:51:25 +0000
+Subject: [PATCH] build: accept xdg-desktop-portal 1.18.4
+
+Alpine 3.21 ships xdg-desktop-portal 1.18.4. The backend generates its
+D-Bus code from the interface XML that Gnoblin bundles, so it builds
+against the 1.18.4 package.
+
+The 1.18.4 frontend has no USB portal. Sandboxed applications cannot
+ask for USB devices, and the frontend never calls the USB dialog of
+this backend. Other portal features that the frontend added in 1.19
+and 1.20 are also absent.
+
+diff --git a/src/meson.build b/src/meson.build
+index da92925..6992bd0 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -1,7 +1,7 @@
+ gnome = import('gnome')
+ pkg = import('pkgconfig')
+ 
+-xdg_desktop_portal_dep = dependency('xdg-desktop-portal', version: '>= 1.20.0')
++xdg_desktop_portal_dep = dependency('xdg-desktop-portal', version: '>= 1.18.4')
+ 
+ # Desktop Portal D-Bus interfaces
+ desktop_portal_dbus_interfaces = gnome_portal_interfaces + [

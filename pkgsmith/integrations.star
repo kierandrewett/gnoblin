@@ -5,36 +5,22 @@
 # architecture, except that the GeoClue package names the exact gnoblin build it was made for.
 # Run it with scripts/build-packages.sh.
 
-load("common.star", "EPOCH", "FEDORA", "FORMATS", "HOMEPAGE", "MAINTAINER", "RELEASE", "VERSION", "spell")
-
-def lanes():
-    result = []
-    for fmt in FORMATS:
-        if fmt == "rpm":
-            result.append(("rpm", "fedora"))
-            result.append(("rpm", "opensuse"))
-        else:
-            result.append((fmt, None))
-    return result
-
-def release_for(distro):
-    if distro == "fedora":
-        return RELEASE + ".fc" + FEDORA
-    if distro == "opensuse":
-        return RELEASE + ".tumbleweed"
-    return RELEASE
+load("common.star", "DEB_COPYRIGHT", "EPOCH", "HOMEPAGE", "MAINTAINER", "RELEASE", "VERSION", "gnoblin_package", "lanes", "release_for", "spell")
 
 # gnoblin-geoclue-integration lets Gnoblin's location agent register with GeoClue. It needs the gnoblin build it was
-# made for, so it names that build exactly.
+# made for, so it names that build exactly. Its one file is a drop-in in /etc/geoclue/conf.d, which GeoClue reads since
+# 2.7.0. The agent calls AddAgent and answers AuthorizeApp, which are older. So 2.7.0 is the floor.
+GEOCLUE = "2.7.0"
+
 def geoclue_depends(fmt, distro):
     version = spell(fmt, VERSION)
     if fmt == "rpm":
-        gnoblin = "gnoblin = " + str(EPOCH) + ":" + version + "-" + release_for(distro)
-        return [gnoblin, "geoclue2 >= 2.7.2"]
+        gnoblin = "gnoblin = " + str(EPOCH) + ":" + version + "-" + release_for(distro, RELEASE)
+        return [gnoblin, "geoclue2 >= " + GEOCLUE]
     if fmt == "deb":
-        return ["gnoblin (= " + str(EPOCH) + ":" + version + "-" + RELEASE + ")", "geoclue-2.0 (>= 2.7.2)"]
+        return ["gnoblin (= " + str(EPOCH) + ":" + version + "-" + RELEASE + ")", "geoclue-2.0 (>= " + GEOCLUE + ")"]
     if fmt == "archlinux":
-        return ["gnoblin=" + str(EPOCH) + ":" + version + "-" + RELEASE, "geoclue>=2.7.2"]
+        return ["gnoblin=" + str(EPOCH) + ":" + version + "-" + RELEASE, "geoclue>=" + GEOCLUE]
     return []
 
 # gnoblin-ananicy-rules gives the Gnoblin processes normal scheduling under ananicy-cpp. The daemon reads its rules at
@@ -60,16 +46,16 @@ programs use the CPU.
 This package adds rules that give the gnoblin, quickshell and bingux-frame processes normal scheduling with a small
 priority boost. It contains only data files for ananicy-cpp. It has no effect where ananicy-cpp is not installed."""
 
-include("/etc/geoclue/**")
+include("/etc/geoclue/**", DEB_COPYRIGHT)
 for lane in lanes():
     fmt = lane[0]
     distro = lane[1]
     fields = {"distro": distro} if distro else {}
-    package(
+    gnoblin_package(
         fmt,
         name = "gnoblin-geoclue-integration",
         version = VERSION,
-        release = release_for(distro),
+        release = release_for(distro, RELEASE),
         epoch = EPOCH,
         arch = "all",
         description = GEOCLUE_DESCRIPTION,
@@ -83,7 +69,7 @@ for lane in lanes():
     )
 
 reset()
-include("/etc/ananicy.d/**")
+include("/etc/ananicy.d/**", DEB_COPYRIGHT)
 for lane in lanes():
     fmt = lane[0]
     distro = lane[1]
@@ -91,11 +77,11 @@ for lane in lanes():
     scripts = {}
     if fmt in ["rpm", "deb", "archlinux", "apk"]:
         scripts = {"post_install": ANANICY_RESTART, "post_remove": ANANICY_RESTART}
-    package(
+    gnoblin_package(
         fmt,
         name = "gnoblin-ananicy-rules",
         version = VERSION,
-        release = release_for(distro),
+        release = release_for(distro, RELEASE),
         arch = "all",
         description = ANANICY_DESCRIPTION,
         maintainer = MAINTAINER,

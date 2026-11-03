@@ -13,9 +13,10 @@ ROOT = Path(__file__).resolve().parent.parent
 MESON_ASSIGNMENT = re.compile(r"^([a-zA-Z0-9_]+)\s*=\s*'([^']+)'$", re.MULTILINE)
 
 # The pinned portal build pulls libgxdp through a Meson wrap, so its gtk4
-# requirement is not visible in the portal's root Meson files.
+# requirement is not visible in the portal's root Meson files. The value is
+# the floor that patches/portal-dependencies/libgxdp sets.
 WRAPPED_PROJECT_REQUIREMENTS = {
-    "xdg-desktop-portal-gnome": (("gtk4", ">= 4.20.0"),),
+    "xdg-desktop-portal-gnome": (("gtk4", ">= 4.14.0"),),
 }
 
 
@@ -52,10 +53,11 @@ def requirements(source, include_schemas=False, bundled=()):
             continue
 
         arguments = source[start:end]
-        module_match = re.match(r"\s*(['\"])([^'\"]+)\1", arguments)
-        if not module_match:
+        # dependency('a', 'b') accepts either name. The names are joined with | and check() takes any of them.
+        names_match = re.match(r"\s*((?:['\"][^'\"]+['\"]\s*,\s*)*['\"][^'\"]+['\"])", arguments)
+        if not names_match:
             continue
-        module = module_match.group(2)
+        module = "|".join(re.findall(r"['\"]([^'\"]+)['\"]", names_match.group(1)))
         if re.search(r"\brequired\s*:\s*false\b", arguments):
             continue
         version_match = re.search(r"\bversion\s*:\s*('[^']+'|[a-zA-Z0-9_]+)", arguments)
@@ -191,11 +193,18 @@ def check(mode="checkout", project=None, xwayland=True, vector_cursors=False):
                 root_source = result.stdout
             source = apply_dependency_version_patches(source, source_project, build_file)
         # Gnoblin bundles the upstream 1.21.1 backend interface XML, so its
-        # portal backend supports the installed 1.20 frontend API floor.
+        # portal backend builds against the 1.18.4 frontend package. The
+        # older-systems patch of the portal leaves the accent colour out when
+        # gsettings-desktop-schemas is older than 47, so 46.1 is enough.
         if source_project == "xdg-desktop-portal-gnome":
             source = re.sub(
                 r"dependency\('xdg-desktop-portal', version: '>= 1\.21\.1'\)",
-                "dependency('xdg-desktop-portal', version: '>= 1.20.0')",
+                "dependency('xdg-desktop-portal', version: '>= 1.18.4')",
+                source,
+            )
+            source = re.sub(
+                r"dependency\('gsettings-desktop-schemas', version: '>= 47\.alpha'\)",
+                "dependency('gsettings-desktop-schemas', version: '>= 46.1')",
                 source,
             )
         for module, minimum in requirements(
@@ -205,13 +214,12 @@ def check(mode="checkout", project=None, xwayland=True, vector_cursors=False):
             ),
             bundled=bundled_subprojects(root_source),
         ):
-            if module in disabled_modules.get(source_project, set()):
+            if set(module.split("|")) & disabled_modules.get(source_project, set()):
                 continue
-            expression = (
-                module if minimum is None else f"{module} {minimum if not minimum[0].isdigit() else '>=' + minimum}"
-            )
-            if subprocess.run(["pkg-config", "--exists", expression]).returncode:
-                version = subprocess.run(["pkg-config", "--modversion", module], capture_output=True, text=True)
+            constraint = "" if minimum is None else f" {minimum if not minimum[0].isdigit() else '>=' + minimum}"
+            names = module.split("|")
+            if all(subprocess.run(["pkg-config", "--exists", name + constraint]).returncode for name in names):
+                version = subprocess.run(["pkg-config", "--modversion", names[0]], capture_output=True, text=True)
                 missing.add((module, minimum or "required", version.stdout.strip() or "not installed"))
         for module, minimum in WRAPPED_PROJECT_REQUIREMENTS.get(source_project, ()):
             expression = f"{module} {minimum}"

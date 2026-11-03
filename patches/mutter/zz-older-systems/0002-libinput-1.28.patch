@@ -1,0 +1,157 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 2 Nov 2026 17:14:28 +0000
+Subject: [PATCH] native: build against libinput 1.28
+
+Debian 13 ships libinput 1.28. Two upstream features need newer API:
+the stylus eraser-button mode (1.29) and the libinput plugin system
+(1.30). Check for each function at configure time, as the build already
+does for the disable-while-typing timeout, and leave the feature out when
+the library does not have it.
+
+config.h is written from config.h.meson, which names each define.
+HAVE_LIBINPUT_DWT_TIMEOUT was never in it, so the disable-while-typing
+timeout was compiled out even with libinput 1.31. Add it with the two
+new defines.
+
+With libinput 1.28, pens report no eraser button and Gnoblin's eraser
+button setting has no effect, and no libinput Lua plugins are loaded.
+
+diff --git a/config.h.meson b/config.h.meson
+index efd62e369..0ac0d8df2 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -123,5 +123,14 @@
+ /* Whether libei has eis_event_ref() */
+ #mesondefine HAVE_EIS_EVENT_REF
+ 
++/* Whether libinput has the disable-while-typing timeout (1.31) */
++#mesondefine HAVE_LIBINPUT_DWT_TIMEOUT
++
++/* Whether libinput has the stylus eraser button mode (1.29) */
++#mesondefine HAVE_LIBINPUT_ERASER_BUTTON
++
++/* Whether libinput has the plugin system (1.30) */
++#mesondefine HAVE_LIBINPUT_PLUGIN_SYSTEM
++
+ /* Whether ASan testing is enabled */
+ #mesondefine HAVE_ASAN_TESTS
+diff --git a/meson.build b/meson.build
+index 555327eba..f436e7a1c 100644
+--- a/meson.build
++++ b/meson.build
+@@ -50,7 +50,7 @@ wayland_server_req = '>= 1.24'
+ wayland_protocols_req = '>= 1.44'
+ 
+ # native backend version requirements
+-libinput_req = '>= 1.30.0'
++libinput_req = '>= 1.28.0'
+ gbm_req = '>= 21.3'
+ libdrm_req = '>= 2.4.118'
+ 
+@@ -254,6 +254,12 @@ libinput_dep = dependency('libinput', version: libinput_req)
+ have_libinput_dwt_timeout = cc.has_function('libinput_device_config_dwt_set_timeout',
+   dependencies: libinput_dep,
+   prefix: '#include <libinput.h>')
++have_libinput_eraser_button = cc.has_function('libinput_tablet_tool_config_eraser_button_set_mode',
++  dependencies: libinput_dep,
++  prefix: '#include <libinput.h>')
++have_libinput_plugin_system = cc.has_function('libinput_plugin_system_load_plugins',
++  dependencies: libinput_dep,
++  prefix: '#include <libinput.h>')
+ 
+ 
+ if not have_egl
+@@ -570,6 +576,8 @@ cdata.set('HAVE_DEVKIT', have_devkit)
+ cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
+ cdata.set('HAVE_SOUND_PLAYER', have_sound_player)
+ cdata.set('HAVE_LIBINPUT_DWT_TIMEOUT', have_libinput_dwt_timeout)
++cdata.set('HAVE_LIBINPUT_ERASER_BUTTON', have_libinput_eraser_button)
++cdata.set('HAVE_LIBINPUT_PLUGIN_SYSTEM', have_libinput_plugin_system)
+ cdata.set('HAVE_LIBWACOM', have_libwacom)
+ cdata.set('HAVE_LIBWACOM_GET_NUM_RINGS', have_libwacom_get_num_rings)
+ cdata.set('HAVE_STARTUP_NOTIFICATION', have_startup_notification)
+diff --git a/src/backends/native/meta-input-device-tool-native.c b/src/backends/native/meta-input-device-tool-native.c
+index 0f3dae403..500275efd 100644
+--- a/src/backends/native/meta-input-device-tool-native.c
++++ b/src/backends/native/meta-input-device-tool-native.c
+@@ -101,11 +101,12 @@ meta_input_device_tool_native_new (struct libinput_tablet_tool *tool,
+                                    ClutterInputDeviceToolType   type)
+ {
+   MetaInputDeviceToolNative *evdev_tool;
+-  uint32_t modes;
+-  gboolean has_eraser_button;
++  gboolean has_eraser_button = FALSE;
+ 
+-  modes = libinput_tablet_tool_config_eraser_button_get_modes (tool);
+-  has_eraser_button = modes & LIBINPUT_CONFIG_ERASER_BUTTON_BUTTON;
++#ifdef HAVE_LIBINPUT_ERASER_BUTTON
++  has_eraser_button = (libinput_tablet_tool_config_eraser_button_get_modes (tool) &
++                       LIBINPUT_CONFIG_ERASER_BUTTON_BUTTON) != 0;
++#endif
+ 
+   /* For libinput < 1.32 we hardcode BTN_STYLUS3, in the future
+    * we can map this to some other button so we can disambiguate
+@@ -185,16 +186,22 @@ meta_input_device_tool_native_set_eraser_button_action_in_impl (ClutterInputDevi
+                                                                 GDesktopStylusButtonAction      action)
+ {
+   MetaInputDeviceToolNative *evdev_tool;
++#ifdef HAVE_LIBINPUT_ERASER_BUTTON
+   enum libinput_config_eraser_button_mode libinput_mode;
+   unsigned int eraser_button;
++#endif
+ 
+   switch (mode)
+     {
+     case META_STYLUS_ERASER_BUTTON_MODE_DEFAULT:
++#ifdef HAVE_LIBINPUT_ERASER_BUTTON
+       libinput_mode = LIBINPUT_CONFIG_ERASER_BUTTON_DEFAULT;
++#endif
+       break;
+     case META_STYLUS_ERASER_BUTTON_MODE_BUTTON:
++#ifdef HAVE_LIBINPUT_ERASER_BUTTON
+       libinput_mode = LIBINPUT_CONFIG_ERASER_BUTTON_BUTTON;
++#endif
+       break;
+     default:
+       g_return_if_reached ();
+@@ -202,9 +209,11 @@ meta_input_device_tool_native_set_eraser_button_action_in_impl (ClutterInputDevi
+ 
+   evdev_tool = META_INPUT_DEVICE_TOOL_NATIVE (tool);
+   evdev_tool->eraser_button_action = action;
++#ifdef HAVE_LIBINPUT_ERASER_BUTTON
+   eraser_button = clutter_input_device_tool_get_eraser_button (tool);
+   libinput_tablet_tool_config_eraser_button_set_mode (evdev_tool->tool, libinput_mode);
+   libinput_tablet_tool_config_eraser_button_set_button (evdev_tool->tool, eraser_button);
++#endif
+ }
+ 
+ double
+diff --git a/src/backends/native/meta-seat-impl.c b/src/backends/native/meta-seat-impl.c
+index c45173abd..d3cfd4310 100644
+--- a/src/backends/native/meta-seat-impl.c
++++ b/src/backends/native/meta-seat-impl.c
+@@ -3101,7 +3101,9 @@ init_libinput (MetaSeatImpl  *seat_impl,
+ {
+   struct udev *udev;
+   struct libinput *libinput;
++#ifdef HAVE_LIBINPUT_PLUGIN_SYSTEM
+   char xdg[PATH_MAX] = {0};
++#endif
+ 
+   udev = udev_new ();
+   if (G_UNLIKELY (udev == NULL))
+@@ -3122,11 +3124,13 @@ init_libinput (MetaSeatImpl  *seat_impl,
+       return FALSE;
+     }
+ 
++#ifdef HAVE_LIBINPUT_PLUGIN_SYSTEM
+   g_snprintf (xdg, sizeof xdg, "%s/libinput/plugins", g_get_user_config_dir ());
+ 
+   libinput_plugin_system_append_path (libinput, xdg);
+   libinput_plugin_system_append_default_paths (libinput);
+   libinput_plugin_system_load_plugins (libinput, LIBINPUT_PLUGIN_SYSTEM_FLAG_NONE);
++#endif
+ 
+   if (libinput_udev_assign_seat (libinput, seat_impl->seat_id) == -1)
+     {

@@ -1,0 +1,219 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Sun, 13 Sep 2026 19:06:55 -0300
+Subject: [PATCH] build against libadwaita 1.5 and gsettings-desktop-schemas 46.1
+
+Ubuntu 24.04 ships libadwaita 1.5.0 and gsettings-desktop-schemas 46.1.
+
+The accent colour of the Settings portal needs the accent-color key and
+enum of gsettings-desktop-schemas 47 and the accent palette of
+libadwaita 1.6. Without them, leave the accent colour out of the
+org.freedesktop.appearance namespace, as the backend did before GNOME
+47. Applications then use their own default accent colour.
+
+AdwSpinner (the loading page of the wallpaper preview) and the
+description-centered property of AdwPreferencesPage (the app chooser)
+came with libadwaita 1.6. They are in templates, so the compiler does
+not see them, and with libadwaita 1.5 the templates fail to load at run
+time. Create the spinner in code, as an AdwSpinner with libadwaita 1.6
+and newer and as a GtkSpinner with 1.5, and set description-centered in
+code with libadwaita 1.6 and newer. With libadwaita 1.5 the app chooser
+description is not centred.
+
+---
+diff --git a/src/appchooserdialog.c b/src/appchooserdialog.c
+index bb6a744..15ede32 100644
+--- a/src/appchooserdialog.c
++++ b/src/appchooserdialog.c
+@@ -70,6 +70,10 @@ static void
+ app_chooser_dialog_init (AppChooserDialog *dialog)
+ {
+   gtk_widget_init_template (GTK_WIDGET (dialog));
++
++#if ADW_CHECK_VERSION (1, 6, 0)
++  adw_preferences_page_set_description_centered (ADW_PREFERENCES_PAGE (dialog->prefs_page), TRUE);
++#endif
+ }
+ 
+ static void
+diff --git a/src/appchooserdialog.ui b/src/appchooserdialog.ui
+index b5577d8..6c410b2 100644
+--- a/src/appchooserdialog.ui
++++ b/src/appchooserdialog.ui
+@@ -40,7 +40,6 @@
+                 <property name="name">list</property>
+                 <property name="child">
+                   <object class="AdwPreferencesPage" id="prefs_page">
+-                    <property name="description-centered">True</property>
+                     <child>
+                       <object class="AdwPreferencesGroup">
+                         <child>
+diff --git a/src/meson.build b/src/meson.build
+index 6992bd0..715c465 100644
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -64,10 +64,16 @@ config_h.set_quoted('PACKAGE_STRING', '@0@ @1@'.format(meson.project_name(), mes
+ # Glycin decodes wallpaper previews in a sandbox. Without it, gdk-pixbuf decodes them in this process.
+ glycin_dep = dependency('glycin-2', required: false)
+ config_h.set('HAVE_GLYCIN', glycin_dep.found())
++# gsettings-desktop-schemas 46 has no accent colour key.
++gsettings_desktop_schemas_dep = dependency('gsettings-desktop-schemas', version: '>= 46.1')
++config_h.set('HAVE_GDESKTOP_ACCENT_COLOR',
++  meson.get_compiler('c').has_header_symbol('gdesktop-enums.h',
++    'G_DESKTOP_ACCENT_COLOR_BLUE',
++    dependencies: gsettings_desktop_schemas_dep))
+ built_sources += configure_file(output: 'config.h', configuration: config_h)
+ 
+ # Sources
+-adw_min_version = '>= 1.6.0'
++adw_min_version = '>= 1.5.0'
+ 
+ libadwaita_dep = dependency(
+   'libadwaita-1',
+@@ -91,7 +97,7 @@ deps = [
+   dependency('json-glib-1.0'),
+   dependency('gtk4', version: '>= 4.0'),
+   dependency('gtk4-unix-print', version: '>= 4.0'),
+-  dependency('gsettings-desktop-schemas', version: '>= 47.alpha'),
++  gsettings_desktop_schemas_dep,
+   dependency('libgxdp'),
+   libadwaita_dep,
+   xdg_desktop_portal_dep,
+diff --git a/src/settings.c b/src/settings.c
+index 178e734..e2db683 100644
+--- a/src/settings.c
++++ b/src/settings.c
+@@ -36,6 +36,13 @@
+ #include "xdg-desktop-portal-dbus.h"
+ #include "fc-monitor.h"
+ 
++/* The accent colour needs the key of gsettings-desktop-schemas 47 and
++ * the palette of libadwaita 1.6. Without them the backend does not
++ * report an accent colour, as before GNOME 47. */
++#if ADW_CHECK_VERSION (1, 6, 0) && defined (HAVE_GDESKTOP_ACCENT_COLOR)
++#define HAVE_ACCENT_COLOR 1
++#endif
++
+ static GHashTable *settings;
+ static FcMonitor *fontconfig_monitor;
+ static int fontconfig_serial;
+@@ -157,6 +164,7 @@ get_theme_value (const char *key)
+   return g_variant_new_string (theme);
+ }
+ 
++#ifdef HAVE_ACCENT_COLOR
+ static GVariant *
+ get_accent_color (void)
+ {
+@@ -201,6 +209,7 @@ get_accent_color (void)
+ 
+   return g_variant_new ("(ddd)", color_rgba.red, color_rgba.green, color_rgba.blue);
+ }
++#endif /* HAVE_ACCENT_COLOR */
+ 
+ static gboolean
+ settings_handle_read_all (XdpImplSettings       *object,
+@@ -265,7 +274,9 @@ settings_handle_read_all (XdpImplSettings       *object,
+       g_variant_dict_init (&dict, NULL);
+       g_variant_dict_insert_value (&dict, "color-scheme", get_color_scheme ());
+       g_variant_dict_insert_value (&dict, "contrast", get_contrast_value ());
++#ifdef HAVE_ACCENT_COLOR
+       g_variant_dict_insert_value (&dict, "accent-color", get_accent_color ());
++#endif
+       g_variant_dict_insert_value (&dict, "reduced-motion", get_reduced_motion_value ());
+ 
+       g_variant_builder_add (builder, "{s@a{sv}}", "org.freedesktop.appearance", g_variant_dict_end (&dict));
+@@ -310,12 +321,14 @@ settings_handle_read (XdpImplSettings       *object,
+                                                  g_variant_new ("(v)", get_contrast_value ()));
+           return TRUE;
+         }
++#ifdef HAVE_ACCENT_COLOR
+       else if (strcmp (arg_key, "accent-color") == 0)
+         {
+           g_dbus_method_invocation_return_value (invocation,
+                                                  g_variant_new ("(v)", get_accent_color ()));
+           return TRUE;
+         }
++#endif
+       else if (strcmp (arg_key, "reduced-motion") == 0)
+         {
+           g_dbus_method_invocation_return_value (invocation,
+@@ -402,11 +415,13 @@ on_settings_changed (GSettings             *settings,
+                                             "org.freedesktop.appearance", key,
+                                             g_variant_new_variant (get_color_scheme ()));
+ 
++#ifdef HAVE_ACCENT_COLOR
+   if (strcmp (user_data->namespace, "org.gnome.desktop.interface") == 0 &&
+       strcmp (key, "accent-color") == 0)
+     xdp_impl_settings_emit_setting_changed (user_data->self,
+                                             "org.freedesktop.appearance", key,
+                                             g_variant_new_variant (get_accent_color ()));
++#endif
+ 
+   if (strcmp (user_data->namespace, "org.gnome.desktop.a11y.interface") == 0 &&
+       strcmp (key, "high-contrast") == 0)
+diff --git a/src/wallpaperpreview.c b/src/wallpaperpreview.c
+index 77d7ac2..5e9d636 100644
+--- a/src/wallpaperpreview.c
++++ b/src/wallpaperpreview.c
+@@ -24,6 +24,7 @@
+ 
+ #include <string.h>
+ 
++#include <adwaita.h>
+ #include <gdk-pixbuf/gdk-pixbuf.h>
+ #ifdef HAVE_GLYCIN
+ #include <glycin.h>
+@@ -38,6 +39,7 @@ struct _WallpaperPreview {
+   GtkBox parent;
+ 
+   GtkStack *stack;
++  GtkWidget *loading;
+   GtkWidget *desktop_preview;
+   GtkWidget *animated_background_icon;
+   GtkLabel *desktop_clock_label;
+@@ -334,8 +336,22 @@ wallpaper_preview_finalize (GObject *object)
+ static void
+ wallpaper_preview_init (WallpaperPreview *self)
+ {
++  GtkWidget *spinner;
++
+   gtk_widget_init_template (GTK_WIDGET (self));
+ 
++#if ADW_CHECK_VERSION (1, 6, 0)
++  spinner = adw_spinner_new ();
++#else
++  /* libadwaita 1.5 has no AdwSpinner. */
++  spinner = gtk_spinner_new ();
++  gtk_spinner_set_spinning (GTK_SPINNER (spinner), TRUE);
++  gtk_widget_set_size_request (spinner, 32, 32);
++  gtk_widget_set_halign (spinner, GTK_ALIGN_CENTER);
++  gtk_widget_set_valign (spinner, GTK_ALIGN_CENTER);
++#endif
++  adw_bin_set_child (ADW_BIN (self->loading), spinner);
++
+   self->desktop_settings = g_settings_new ("org.gnome.desktop.interface");
+ 
+   g_signal_connect_object (self->desktop_settings,
+@@ -378,6 +394,7 @@ wallpaper_preview_class_init (WallpaperPreviewClass *klass)
+   gtk_widget_class_set_template_from_resource (widget_class, "/org/freedesktop/portal/desktop/gnome/wallpaperpreview.ui");
+ 
+   gtk_widget_class_bind_template_child (widget_class, WallpaperPreview, stack);
++  gtk_widget_class_bind_template_child (widget_class, WallpaperPreview, loading);
+   gtk_widget_class_bind_template_child (widget_class, WallpaperPreview, desktop_preview);
+   gtk_widget_class_bind_template_child (widget_class, WallpaperPreview, animated_background_icon);
+   gtk_widget_class_bind_template_child (widget_class, WallpaperPreview, drawing_area);
+diff --git a/src/wallpaperpreview.ui b/src/wallpaperpreview.ui
+index bdd7403..fa6657b 100644
+--- a/src/wallpaperpreview.ui
++++ b/src/wallpaperpreview.ui
+@@ -20,7 +20,8 @@
+             <property name="vexpand">1</property>
+ 
+             <child>
+-              <object class="AdwSpinner">
++              <!-- wallpaper_preview_init () adds the spinner. Its class depends on the libadwaita release. -->
++              <object class="AdwBin" id="loading">
+                 <style>
+                   <class name="dim-label"/>
+                 </style>

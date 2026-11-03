@@ -1,18 +1,35 @@
 #!/usr/bin/env bash
 # Write the Gnoblin packages from a prefix with pkgsmith.
 #
-# usage: scripts/build-packages.sh [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N] [--list]
+# usage: scripts/build-packages.sh [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N] [--lanes LANES] [--deb-release NAME] [--opensuse-release NAME] [--list]
 #
 # DIR is the prefix that scripts/build-prefix.sh made. The script runs pkgsmith once for each script in pkgsmith/ and
 # writes every package into the output folder (default: dist):
 #
-#   pkgsmith/runtime.star       gnoblin and xdg-desktop-portal-gnoblin, which hold compiled code
+#   pkgsmith/runtime.star       gnoblin, gnoblin-x11-frames and xdg-desktop-portal-gnoblin, which hold compiled code
 #   pkgsmith/integrations.star  gnoblin-geoclue-integration and gnoblin-ananicy-rules, which hold configuration only
 #
 # --version is a SemVer number. The default is the version of the tree (src/gnoblin-version.json), which is also the
 # version of a nightly build once scripts/apply-nightly-version.py has written it. --formats limits the formats, for
 # example rpm,deb. The architecture and the C library are read from the compositor in the prefix, so a prefix built
 # on arm64 gets arm64 packages on any machine that runs this script, and a prefix built on Alpine (musl) gets apk packages.
+#
+# --fedora is the Fedora release of the host that built the prefix. It names the rpm (.fc43) and, with the glibc symbol
+# versions of the programs, makes the rpm ask for what that release has. --lanes chooses what is written: fedora is
+# the Fedora rpm only, other is every package except the Fedora rpm, and all (the default) is both. deb is the deb only,
+# for a prefix built on a Debian or Ubuntu release, and opensuse is the openSUSE rpm only, for a prefix built on an
+# openSUSE Leap release: such a prefix links library sonames that only its release may have. On a musl prefix other
+# writes the apk packages of the Alpine release that built it. CI writes the packages of a release from the prefix of
+# that release, with the lane and the arguments that scripts/supported-targets.py gives for it (package_args), and the
+# shared packages (--lanes other) from the shared prefixes.
+#
+# --deb-release names the Debian or Ubuntu release that built the prefix of the deb lane, such as deb13 or ubuntu26.04.
+# It goes into the revision of each deb (1~deb13), so the files of the deb lane never take the name of a deb from the
+# shared prefix. These debs are for install checks: no repository suite takes them yet.
+#
+# --opensuse-release names the openSUSE release that built the prefix of the opensuse lane, such as leap16.0. It goes
+# into the release of each rpm (1.leap16.0), as .fc43 goes into a Fedora rpm. The shared openSUSE rpm is .tumbleweed.
+# These rpms are for install checks: no repository takes them yet.
 #
 # --list writes no package and prints the files that each package would hold, for a review of what the prefix gives
 # each package.
@@ -28,8 +45,11 @@ output="$root/dist"
 version=""
 formats=""
 release=1
-fedora=45
+fedora=
+lanes=all
 list=false
+deb_release=
+opensuse_release=
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --prefix)
@@ -56,16 +76,47 @@ while [ "$#" -gt 0 ]; do
             fedora="${2:?--fedora needs a release number}"
             shift 2
             ;;
+        --lanes)
+            lanes="${2:?--lanes needs all, fedora, other, deb or opensuse}"
+            shift 2
+            ;;
+        --deb-release)
+            deb_release="${2:?--deb-release needs a release name, such as deb13}"
+            shift 2
+            ;;
+        --opensuse-release)
+            opensuse_release="${2:?--opensuse-release needs a release name, such as leap16.0}"
+            shift 2
+            ;;
         --list)
             list=true
             shift
             ;;
         *)
-            echo "usage: $0 [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N] [--list]" >&2
+            echo "usage: $0 [--prefix DIR] [--output DIR] [--version SEMVER] [--formats LIST] [--release N] [--fedora N] [--lanes LANES] [--deb-release NAME] [--opensuse-release NAME] [--list]" >&2
             exit 2
             ;;
     esac
 done
+case "$lanes" in
+    all | fedora | other | deb | opensuse) ;;
+    *)
+        echo "[packages] --lanes is $lanes, which is not all, fedora, other, deb or opensuse" >&2
+        exit 2
+        ;;
+esac
+if [ "$lanes" != other ] && [ "$lanes" != deb ] && [ "$lanes" != opensuse ] && [ -z "$fedora" ]; then
+    echo "[packages] --fedora N is missing: the Fedora release of the prefix, such as 43" >&2
+    exit 2
+fi
+if [ "$lanes" = deb ] && [ -z "$deb_release" ]; then
+    echo "[packages] --deb-release NAME is missing: the Debian or Ubuntu release of the prefix, such as deb13" >&2
+    exit 2
+fi
+if [ "$lanes" = opensuse ] && [ -z "$opensuse_release" ]; then
+    echo "[packages] --opensuse-release NAME is missing: the openSUSE release of the prefix, such as leap16.0" >&2
+    exit 2
+fi
 prefix="$(realpath -- "$prefix")"
 output="$(realpath -m -- "$output")"
 version="${version:-$(python3 scripts/gnoblin-version.py get version)}"
@@ -98,22 +149,25 @@ fi
 echo "[packages] version $version, $arch, $libc"
 
 # pkgsmith does not look inside the programs, so the libraries they need go to the scripts as arguments. The portal
-# backend has its own list. A library that the prefix carries itself, such as Mutter's, needs no package.
+# backend and the X11 frames client have their own lists, so that gnoblin asks for no GTK. A library that the prefix
+# carries itself, such as Mutter's, needs no package.
 is_elf() {
     [ "$(head -c 4 -- "$1" | od -An -tx1 | tr -d ' ')" = 7f454c46 ]
 }
 mapfile -t provided < <(find "$prefix/usr/lib/gnoblin/lib" -name '*.so*' -printf '%f\n' | sort -u)
 core_programs=()
 portal_programs=()
+frames_programs=()
 while IFS= read -r -d '' file; do
     is_elf "$file" || continue
     case "$file" in
         */libexec/xdg-desktop-portal-gnoblin) portal_programs+=("$file") ;;
+        */libexec/mutter-x11-frames) frames_programs+=("$file") ;;
         *) core_programs+=("$file") ;;
     esac
 done < <(find "$prefix/usr" -type f -perm /111 -print0)
-[ "${#core_programs[@]}" -gt 0 ] && [ "${#portal_programs[@]}" -gt 0 ] || {
-    echo "[packages] found no programs in $prefix/usr" >&2
+[ "${#core_programs[@]}" -gt 0 ] && [ "${#portal_programs[@]}" -gt 0 ] && [ "${#frames_programs[@]}" -gt 0 ] || {
+    echo "[packages] found no programs, or no portal backend or frames client, in $prefix/usr" >&2
     exit 1
 }
 # On arm64 the dynamic loader (ld-linux-aarch64.so.1) is a NEEDED entry too. It comes with glibc, like libc.so.6, which
@@ -123,18 +177,33 @@ needed() {
         grep -v -x -F -f <(printf '%s\n' "${provided[@]}") | paste -sd, -
 }
 needed_gnoblin="$(needed "${core_programs[@]}")"
+# gnoblin asks the system for no GTK. If a program or library other than the two optional ones links it, the package
+# would pull GTK 4 onto every install again, so the build stops. Move that file into its own package instead.
+case ",$needed_gnoblin," in
+    *,libgtk-* | *,libadwaita-*)
+        echo "[packages] gnoblin would need GTK ($needed_gnoblin). Give the program that links it a package of its own." >&2
+        exit 1
+        ;;
+esac
 needed_portal="$(needed "${portal_programs[@]}")"
+needed_frames="$(needed "${frames_programs[@]}")"
+# The glibc floor below counts every program, so the frames client joins the list after its libraries are read.
+core_programs+=("${frames_programs[@]}")
 # The newest glibc symbol version that any program uses is the oldest glibc that runs them.
 glibc="$(objdump -T -- "${core_programs[@]}" "${portal_programs[@]}" 2>/dev/null | grep -o '(GLIBC_[0-9][0-9.]*)' |
     tr -d '()' | sed 's/^GLIBC_//' | sort -V | tail -n 1 || true)"
+# libinput versions its symbols the same way (LIBINPUT_1.30), so the newest one is the oldest libinput that runs them.
+libinput="$(objdump -T -- "${core_programs[@]}" 2>/dev/null | grep -o '(LIBINPUT_[0-9][0-9.]*)' |
+    tr -d '()' | sed 's/^LIBINPUT_//' | sort -V | tail -n 1 || true)"
 # The portal backend takes the version of its GNOME source, which pkgsmith needs as three numbers.
 portal_version="$(python3 scripts/gnome-versions.py get xdg-desktop-portal-gnome version)"
 while [ "$(tr -cd . <<<"$portal_version" | wc -c)" -lt 2 ]; do
     portal_version="$portal_version.0"
 done
-echo "[packages] glibc ${glibc:-none}, portal $portal_version"
+echo "[packages] glibc ${glibc:-none}, libinput ${libinput:-none}, portal $portal_version"
 echo "[packages] gnoblin needs: $needed_gnoblin"
 echo "[packages] portal needs:  $needed_portal"
+echo "[packages] frames needs:  $needed_frames"
 
 : "${SOURCE_DATE_EPOCH:=$(git log -1 --format=%ct 2>/dev/null || stat -c %Y build.sh)}"
 export SOURCE_DATE_EPOCH
@@ -147,9 +216,10 @@ for script in runtime integrations; do
     script_args=(
         -f "pkgsmith/$script.star" --prefix "$prefix"
         --build-arg "VERSION=$version" --build-arg "ARCH=$arch" --build-arg "LIBC=$libc"
-        --build-arg "RELEASE=$release" --build-arg "FEDORA=$fedora" --build-arg "GLIBC=$glibc"
+        --build-arg "RELEASE=$release" --build-arg "FEDORA=$fedora" --build-arg "LANES=$lanes" --build-arg "GLIBC=$glibc"
+        --build-arg "LIBINPUT=$libinput" --build-arg "DEB_RELEASE=$deb_release" --build-arg "OPENSUSE_RELEASE=$opensuse_release"
         --build-arg "PORTAL_VERSION=$portal_version" --build-arg "NEEDED_GNOBLIN=$needed_gnoblin"
-        --build-arg "NEEDED_PORTAL=$needed_portal"
+        --build-arg "NEEDED_PORTAL=$needed_portal" --build-arg "NEEDED_FRAMES=$needed_frames"
     )
     if "$list"; then
         pkgsmith files . "${script_args[@]}"

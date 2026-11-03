@@ -18,13 +18,21 @@ spec.loader.exec_module(checker)
 class BuildRequirements(unittest.TestCase):
     def test_dependency_check_applies_pipewire_compatibility_floor(self):
         source = """
+glib_req = '>= 2.81.1'
+glib_dep = dependency('glib-2.0', version: glib_req)
 gsettings_desktop_schemas_req = '>= 51.rc'
 wayland_server_req = '>= 1.26'
 wayland_server_dep = dependency('wayland-server', version: wayland_server_req)
+wayland_protocols_req = '>= 1.48'
+wayland_protocols_dep = dependency('wayland-protocols', version: wayland_protocols_req)
 libinput_req = '>= 1.31.0'
 libinput_dep = dependency('libinput', version: libinput_req)
 libpipewire_req = '>= 1.6.0'
 libpipewire_dep = dependency('libpipewire-0.3', version: libpipewire_req)
+libei_req = '>= 1.3.901'
+libeis_dep = dependency('libeis-1.0', version: libei_req)
+libdisplay_info_req = '>= 0.2'
+libdisplay_info_dep = dependency('libdisplay-info', version: libdisplay_info_req)
 """
 
         patched = checker.apply_dependency_version_patches(source, "mutter", "meson.build")
@@ -32,9 +40,13 @@ libpipewire_dep = dependency('libpipewire-0.3', version: libpipewire_req)
         self.assertEqual(
             list(checker.requirements(patched)),
             [
-                ("wayland-server", ">= 1.25"),
-                ("libinput", ">= 1.30.0"),
-                ("libpipewire-0.3", ">= 1.4.11"),
+                ("glib-2.0", ">= 2.80.0"),
+                ("wayland-server", ">= 1.22"),
+                ("wayland-protocols", ">= 1.38"),
+                ("libinput", ">= 1.25.0"),
+                ("libpipewire-0.3", ">= 1.0.5"),
+                ("libeis-1.0", ">= 1.2.1"),
+                ("libdisplay-info", ">= 0.1.1"),
             ],
         )
 
@@ -49,6 +61,7 @@ wayland_dep = dependency('wayland-server',
 schemas_dep = dependency('gsettings-desktop-schemas', version: schemas_req)
 private_dep = dependency(private_name, version: glib_req)
 unversioned_dep = dependency('gnome-desktop-4')
+either_dep = dependency('xkeyboard-config-2', 'xkeyboard-config')
 optional_dep = dependency('optional', required: false)
 option_dep = dependency('option-dependent', required: get_option('feature'))
 subproject('bundled-lib')
@@ -60,6 +73,7 @@ bundled_dep = dependency('bundled-lib')
                 ("glib-2.0", ">= 2.86.0"),
                 ("wayland-server", ">= 1.25"),
                 ("gnome-desktop-4", None),
+                ("xkeyboard-config-2|xkeyboard-config", None),
                 ("option-dependent", None),
             ],
         )
@@ -111,9 +125,12 @@ bundled_dep = dependency('bundled-lib')
         self.assertIn("gnome-bg-4", modules)
 
     def test_pinned_portal_wrap_includes_gtk4_minimum(self):
+        patch = (ROOT / "patches/portal-dependencies/libgxdp/0001-gtk-4.20-compat.patch").read_text()
+        floor = re.search(r"^\+gtk_dep = dependency\('gtk4', version: '([^']+)'\)$", patch, re.MULTILINE)
+        self.assertIsNotNone(floor)
         self.assertEqual(
             checker.WRAPPED_PROJECT_REQUIREMENTS["xdg-desktop-portal-gnome"],
-            (("gtk4", ">= 4.20.0"),),
+            (("gtk4", floor.group(1)),),
         )
 
     def test_current_build_dry_run_reports_options_without_provisioning(self):

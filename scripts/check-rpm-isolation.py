@@ -12,6 +12,7 @@ import subprocess
 PACKAGES = {
     "gnoblin",
     "xdg-desktop-portal-gnoblin",
+    "gnoblin-x11-frames",
     "gnoblin-geoclue-integration",
     "gnoblin-ananicy-rules",
 }
@@ -53,6 +54,9 @@ def validate(name, files, provides, conflicts, obsoletes, requires=""):
     for requirement in requires.splitlines():
         if requirement.startswith("pkgconfig("):
             raise ValueError(f"{name} requires a development package through {requirement}")
+        # Only the frames client and the portal backend link GTK. gnoblin must not ask the system for it.
+        if name == "gnoblin" and re.match(r"(?:libgtk-|libadwaita-|gtk4\b)", requirement):
+            raise ValueError(f"gnoblin requires GTK through {requirement}. Only gnoblin-x11-frames may.")
     if conflicts.strip():
         raise ValueError(f"{name} declares Conflicts")
     for obsolete in obsoletes.splitlines():

@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 2 Nov 2026 22:49:10 +0000
+Subject: [PATCH] build: accept the schema and IBus releases of Fedora 41
+
+Fedora 41 and Alpine 3.21 ship gsettings-desktop-schemas 47.1 and IBus
+1.5.31.
+
+The 47.1 headers have every enum value that the code uses. The only
+keys that 48.0 adds are the screen-time-limits keys, which the code
+does not read. The input settings of later schemas stay available only
+in the Gnoblin Lua configuration, as with 48.0.
+
+The Gnoblin IBus input method uses no IBus 1.5.32 API, so with IBus
+1.5.31 it works as with 1.5.32. Without this change the build silently
+left the IBus input method out.
+
+diff --git a/meson.build b/meson.build
+index a900eae0e..af18c701d 100644
+--- a/meson.build
++++ b/meson.build
+@@ -25,7 +25,7 @@ pango_req = '>= 1.46.0'
+ cairo_req = '>= 1.10.0'
+ pangocairo_req = '>= 1.20'
+ pixman_req = '>= 0.42'
+-gsettings_desktop_schemas_req = '>= 48.0'
++gsettings_desktop_schemas_req = '>= 47.1'
+ x11_req = '>= 1.7.0'
+ xcomposite_req = '>= 0.4'
+ xkbcommon_req = '>= 0.4.3'
+@@ -122,7 +122,7 @@ hyprcursor_dep = dependency('hyprcursor', version: '>= 0.1.11', required: get_op
+ have_hyprcursor = hyprcursor_dep.found()
+ if have_hyprcursor
+ endif
+-ibus_dep = dependency('ibus-1.0', version: '>= 1.5.32', required: get_option('ibus'))
++ibus_dep = dependency('ibus-1.0', version: '>= 1.5.31', required: get_option('ibus'))
+ have_ibus = ibus_dep.found()
+ pixman_dep = dependency('pixman-1', version: pixman_req)
+ gsettings_desktop_schemas_dep = dependency('gsettings-desktop-schemas',

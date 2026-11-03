@@ -1,0 +1,308 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] edid: build against libdisplay-info 0.1.1
+
+Ubuntu 24.04 ships libdisplay-info 0.1.1. libdisplay-info 0.2 added the
+derived colour data of a display: the default colour primaries and white
+point, the default gamma, the supported signal colorimetry and the HDR
+static metadata. edid.h uses their types, so without them almost every
+unit of the backend fails to compile.
+
+libdisplay-info 0.2 builds this data in info.c from the EDID API that
+0.1 already has: the base block chromaticity, gamma and feature flags,
+the DisplayID display parameters, and the CTA colorimetry and HDR static
+metadata blocks. With 0.1, declare the four types as 0.2 does and fill
+them with the same derivation. The colour and HDR code then gets the
+same values as with libdisplay-info 0.2.
+
+Nothing is lost if the derivation matches 0.2. Nobody has compared the
+two on a real display.
+
+edid.h tests HAVE_LIBDISPLAY_INFO_0_2, and some Gnoblin units include
+edid.h before config.h, so Meson passes it as a compiler argument and
+config.h.meson does not name it.
+
+---
+diff --git a/meson.build b/meson.build
+index ff46286dc..87c2d6e04 100644
+--- a/meson.build
++++ b/meson.build
+@@ -38,7 +38,7 @@ libwacom_req = '>= 0.13'
+ atk_req = '>= 2.5.3'
+ harfbuzz_req = '>= 2.6'
+ libei_req = '>= 1.3.0'
+-libdisplay_info_req = '>= 0.2'
++libdisplay_info_req = '>= 0.1.1'
+ 
+ # optional version requirements
+ udev_req = '>= 228'
+@@ -145,6 +145,11 @@ libeis_dep = dependency('libeis-1.0', version: libei_req)
+ libei_dep = dependency('libei-1.0', version: libei_req)
+ gvdb_dep = dependency('gvdb')
+ libdisplay_info_dep = dependency('libdisplay-info', version: libdisplay_info_req)
++# edid.h tests this, and some Gnoblin units include edid.h before config.h,
++# so it is a compiler argument and not a config.h entry.
++if libdisplay_info_dep.version().version_compare('>= 0.2')
++  add_project_arguments('-DHAVE_LIBDISPLAY_INFO_0_2', language: ['c', 'cpp'])
++endif
+ libdrm_dep = dependency('libdrm', version: libdrm_req)
+ 
+ have_xwayland = get_option('xwayland')
+diff --git a/src/backends/edid-parse.c b/src/backends/edid-parse.c
+index 121bba731..3940b67ba 100644
+--- a/src/backends/edid-parse.c
++++ b/src/backends/edid-parse.c
+@@ -32,9 +32,166 @@
+ #include <libdisplay-info/cta.h>
+ #include <libdisplay-info/edid.h>
+ #include <libdisplay-info/info.h>
++#ifndef HAVE_LIBDISPLAY_INFO_0_2
++#include <libdisplay-info/displayid.h>
++#endif
+ 
+ #include "backends/edid.h"
+ 
++#ifndef HAVE_LIBDISPLAY_INFO_0_2
++/* The derivations below follow info.c of libdisplay-info 0.2 (MIT
++ * licence), which builds the same data from the API that 0.1 has. */
++static const struct di_cta_data_block *
++edid_get_cta_data_block (const struct di_edid       *di_edid,
++                         enum di_cta_data_block_tag  tag)
++{
++  const struct di_edid_ext *const *ext;
++
++  for (ext = di_edid_get_extensions (di_edid); *ext; ext++)
++    {
++      const struct di_edid_cta *cta;
++      const struct di_cta_data_block *const *block;
++
++      if (di_edid_ext_get_tag (*ext) != DI_EDID_EXT_CEA)
++        continue;
++
++      cta = di_edid_ext_get_cta (*ext);
++      for (block = di_edid_cta_get_data_blocks (cta); *block; block++)
++        {
++          if (di_cta_data_block_get_tag (*block) == tag)
++            return *block;
++        }
++    }
++
++  return NULL;
++}
++
++static void
++derive_hdr_static_metadata (const struct di_edid       *di_edid,
++                            struct di_hdr_static_metadata *hsm)
++{
++  const struct di_cta_data_block *block;
++  const struct di_cta_hdr_static_metadata_block *cta_hsm;
++
++  /* Without a block, only traditional SDR gamma is supported. */
++  hsm->traditional_sdr = true;
++
++  block = edid_get_cta_data_block (di_edid,
++                                   DI_CTA_DATA_BLOCK_HDR_STATIC_METADATA);
++  if (!block)
++    return;
++
++  cta_hsm = di_cta_data_block_get_hdr_static_metadata (block);
++  if (!cta_hsm)
++    return;
++
++  hsm->desired_content_max_luminance = cta_hsm->desired_content_max_luminance;
++  hsm->desired_content_max_frame_avg_luminance =
++    cta_hsm->desired_content_max_frame_avg_luminance;
++  hsm->desired_content_min_luminance = cta_hsm->desired_content_min_luminance;
++  hsm->type1 = cta_hsm->descriptors->type1;
++  hsm->traditional_sdr = cta_hsm->eotfs->traditional_sdr;
++  hsm->traditional_hdr = cta_hsm->eotfs->traditional_hdr;
++  hsm->pq = cta_hsm->eotfs->pq;
++  hsm->hlg = cta_hsm->eotfs->hlg;
++}
++
++static void
++derive_color_primaries (const struct di_edid     *di_edid,
++                        struct di_color_primaries *cc)
++{
++  const struct di_edid_chromaticity_coords *cm;
++  const struct di_edid_misc_features *misc;
++
++  misc = di_edid_get_misc_features (di_edid);
++  if (misc->srgb_is_primary)
++    {
++      cc->primary[0].x = 0.640f;
++      cc->primary[0].y = 0.330f;
++      cc->primary[1].x = 0.300f;
++      cc->primary[1].y = 0.600f;
++      cc->primary[2].x = 0.150f;
++      cc->primary[2].y = 0.060f;
++      cc->has_primaries = true;
++      cc->default_white.x = 0.3127f;
++      cc->default_white.y = 0.3290f;
++      cc->has_default_white_point = true;
++      return;
++    }
++
++  cm = di_edid_get_chromaticity_coords (di_edid);
++  if (cm->red_x > 0.0f && cm->red_y > 0.0f &&
++      cm->green_x > 0.0f && cm->green_y > 0.0f &&
++      cm->blue_x > 0.0f && cm->blue_y > 0.0f)
++    {
++      cc->primary[0].x = cm->red_x;
++      cc->primary[0].y = cm->red_y;
++      cc->primary[1].x = cm->green_x;
++      cc->primary[1].y = cm->green_y;
++      cc->primary[2].x = cm->blue_x;
++      cc->primary[2].y = cm->blue_y;
++      cc->has_primaries = true;
++    }
++  if (cm->white_x > 0.0f && cm->white_y > 0.0f)
++    {
++      cc->default_white.x = cm->white_x;
++      cc->default_white.y = cm->white_y;
++      cc->has_default_white_point = true;
++    }
++}
++
++static void
++derive_signal_colorimetry (const struct di_edid                   *di_edid,
++                           struct di_supported_signal_colorimetry *ssc)
++{
++  const struct di_cta_data_block *block;
++  const struct di_cta_colorimetry_block *cm;
++
++  block = edid_get_cta_data_block (di_edid, DI_CTA_DATA_BLOCK_COLORIMETRY);
++  if (!block)
++    return;
++
++  cm = di_cta_data_block_get_colorimetry (block);
++  if (!cm)
++    return;
++
++  ssc->bt2020_cycc = cm->bt2020_cycc;
++  ssc->bt2020_ycc = cm->bt2020_ycc;
++  ssc->bt2020_rgb = cm->bt2020_rgb;
++  ssc->st2113_rgb = cm->st2113_rgb;
++  ssc->ictcp = cm->ictcp;
++}
++
++static float
++derive_default_gamma (const struct di_edid *di_edid)
++{
++  const struct di_edid_ext *const *ext;
++
++  for (ext = di_edid_get_extensions (di_edid); *ext; ext++)
++    {
++      const struct di_displayid *displayid;
++      const struct di_displayid_data_block *const *block;
++
++      if (di_edid_ext_get_tag (*ext) != DI_EDID_EXT_DISPLAYID)
++        continue;
++
++      displayid = di_edid_ext_get_displayid (*ext);
++      for (block = di_displayid_get_data_blocks (displayid); *block; block++)
++        {
++          if (di_displayid_data_block_get_tag (*block) ==
++              DI_DISPLAYID_DATA_BLOCK_DISPLAY_PARAMS)
++            return di_displayid_data_block_get_display_params (*block)->gamma;
++        }
++      break;
++    }
++
++  if (di_edid_get_misc_features (di_edid)->srgb_is_primary)
++    return 2.2f;
++
++  return di_edid_get_basic_gamma (di_edid);
++}
++#endif /* !HAVE_LIBDISPLAY_INFO_0_2 */
++
+ MetaEdidInfo *
+ meta_edid_info_new_parse (const uint8_t *edid,
+                           size_t         size)
+@@ -44,9 +201,11 @@ meta_edid_info_new_parse (const uint8_t *edid,
+   const struct di_edid *di_edid;
+   const struct di_edid_vendor_product *vendor_product;
+   const struct di_edid_display_descriptor *const *edid_descriptors;
++#ifdef HAVE_LIBDISPLAY_INFO_0_2
+   const struct di_color_primaries *default_color_primaries;
+   const struct di_supported_signal_colorimetry *signal_colorimetry;
+   const struct di_hdr_static_metadata *hdr_static_metadata;
++#endif
+ 
+   di_info = di_info_parse_edid (edid, size);
+ 
+@@ -95,6 +254,7 @@ meta_edid_info_new_parse (const uint8_t *edid,
+         }
+     }
+ 
++#ifdef HAVE_LIBDISPLAY_INFO_0_2
+   /* Default Color Characteristics */
+   default_color_primaries = di_info_get_default_color_primaries (di_info);
+   memcpy (&info->default_color_primaries,
+@@ -115,6 +275,12 @@ meta_edid_info_new_parse (const uint8_t *edid,
+   memcpy (&info->hdr_static_metadata,
+           hdr_static_metadata,
+           sizeof (*hdr_static_metadata));
++#else
++  derive_color_primaries (di_edid, &info->default_color_primaries);
++  info->default_gamma = derive_default_gamma (di_edid);
++  derive_signal_colorimetry (di_edid, &info->colorimetry);
++  derive_hdr_static_metadata (di_edid, &info->hdr_static_metadata);
++#endif
+ 
+   di_info_destroy (di_info);
+   return g_steal_pointer (&info);
+diff --git a/src/backends/edid.h b/src/backends/edid.h
+index ead8cc490..f82d23c71 100644
+--- a/src/backends/edid.h
++++ b/src/backends/edid.h
+@@ -28,6 +28,48 @@
+ 
+ #include "core/util-private.h"
+ 
++#ifndef HAVE_LIBDISPLAY_INFO_0_2
++/* libdisplay-info 0.1 has no derived colour and HDR data. These are the
++ * types of libdisplay-info 0.2 (info.h, MIT licence), and edid-parse.c
++ * fills them from the EDID blocks as libdisplay-info 0.2 does. */
++#include <stdbool.h>
++
++struct di_hdr_static_metadata
++{
++  float desired_content_max_luminance;
++  float desired_content_max_frame_avg_luminance;
++  float desired_content_min_luminance;
++  bool type1;
++  bool traditional_sdr;
++  bool traditional_hdr;
++  bool pq;
++  bool hlg;
++};
++
++struct di_chromaticity_cie1931
++{
++  float x;
++  float y;
++};
++
++struct di_color_primaries
++{
++  bool has_primaries;
++  bool has_default_white_point;
++  struct di_chromaticity_cie1931 primary[3];
++  struct di_chromaticity_cie1931 default_white;
++};
++
++struct di_supported_signal_colorimetry
++{
++  bool bt2020_cycc;
++  bool bt2020_ycc;
++  bool bt2020_rgb;
++  bool st2113_rgb;
++  bool ictcp;
++};
++#endif /* !HAVE_LIBDISPLAY_INFO_0_2 */
++
+ typedef struct _MetaEdidInfo
+ {
+   char *manufacturer_code;

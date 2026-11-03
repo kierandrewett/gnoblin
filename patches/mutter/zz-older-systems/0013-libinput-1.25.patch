@@ -1,0 +1,228 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] native: build against libinput 1.25
+
+Ubuntu 24.04 ships libinput 1.25.0. libinput 1.26 added tablet pad
+dials, libinput_device_get_id_bustype() and the tablet tool pressure
+range, and 1.27 added the sticky drag lock mode.
+
+With libinput 1.25:
+
+- Pads report no dials, and Mutter sends no dial events. libinput 1.25
+  has no dial events, so the dials of a pad do nothing.
+- Read the bus type from the id/bustype attribute of the kernel input
+  device, where libinput reads it. Tablets keep their bus type.
+- Do not set the tool pressure range. The pressure curve still applies.
+- Tap and drag lock uses the timeout mode of libinput 1.25: the drag
+  ends a short time after the finger lifts, not at the next tap.
+
+---
+diff --git a/config.h.meson b/config.h.meson
+index 9570c626a..5fc3eefbd 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -132,6 +132,12 @@
+ /* Whether libinput has the disable-while-typing timeout (1.31) */
+ #mesondefine HAVE_LIBINPUT_DWT_TIMEOUT
+ 
++/* Whether libinput has pad dials, the device bus type and the tool pressure range (1.26) */
++#mesondefine HAVE_LIBINPUT_1_26
++
++/* Whether libinput has the sticky drag lock mode (1.27) */
++#mesondefine HAVE_LIBINPUT_STICKY_DRAG_LOCK
++
+ /* Whether libinput has the stylus eraser button mode (1.29) */
+ #mesondefine HAVE_LIBINPUT_ERASER_BUTTON
+ 
+diff --git a/meson.build b/meson.build
+index 68f7a2547..76cca0e06 100644
+--- a/meson.build
++++ b/meson.build
+@@ -50,7 +50,7 @@ wayland_server_req = '>= 1.22'
+ wayland_protocols_req = '>= 1.38'
+ 
+ # native backend version requirements
+-libinput_req = '>= 1.27.0'
++libinput_req = '>= 1.25.0'
+ gbm_req = '>= 21.3'
+ libdrm_req = '>= 2.4.118'
+ 
+@@ -251,6 +251,12 @@ endif
+ 
+ libgbm_dep = dependency('gbm', version: gbm_req)
+ libinput_dep = dependency('libinput', version: libinput_req)
++have_libinput_1_26 = cc.has_function('libinput_device_tablet_pad_get_num_dials',
++  dependencies: libinput_dep,
++  prefix: '#include <libinput.h>')
++have_libinput_sticky_drag_lock = cc.has_header_symbol('libinput.h',
++  'LIBINPUT_CONFIG_DRAG_LOCK_ENABLED_STICKY',
++  dependencies: libinput_dep)
+ have_libinput_dwt_timeout = cc.has_function('libinput_device_config_dwt_set_timeout',
+   dependencies: libinput_dep,
+   prefix: '#include <libinput.h>')
+@@ -578,6 +584,8 @@ cdata.set('HAVE_DEVKIT', have_devkit)
+ cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
+ cdata.set('HAVE_SOUND_PLAYER', have_sound_player)
+ cdata.set('HAVE_LIBINPUT_DWT_TIMEOUT', have_libinput_dwt_timeout)
++cdata.set('HAVE_LIBINPUT_1_26', have_libinput_1_26)
++cdata.set('HAVE_LIBINPUT_STICKY_DRAG_LOCK', have_libinput_sticky_drag_lock)
+ cdata.set('HAVE_LIBINPUT_ERASER_BUTTON', have_libinput_eraser_button)
+ cdata.set('HAVE_LIBINPUT_PLUGIN_SYSTEM', have_libinput_plugin_system)
+ cdata.set('HAVE_LIBWACOM', have_libwacom)
+diff --git a/src/backends/native/meta-input-device-native.c b/src/backends/native/meta-input-device-native.c
+index 4ad101ae6..67ac0ec22 100644
+--- a/src/backends/native/meta-input-device-native.c
++++ b/src/backends/native/meta-input-device-native.c
+@@ -250,12 +250,17 @@ update_pad_features (MetaInputDeviceNative *device_native)
+   ClutterInputDevice *device = CLUTTER_INPUT_DEVICE (device_native);
+   struct libinput_device *libinput_device;
+   struct libinput_tablet_pad_mode_group *mode_group;
+-  int n_groups, n_buttons, n_rings, n_strips, n_dials, n_modes, i, j;
++  int n_groups, n_buttons, n_rings, n_strips, n_modes, i, j;
++#ifdef HAVE_LIBINPUT_1_26
++  int n_dials;
++#endif
+ 
+   libinput_device = meta_input_device_native_get_libinput_device (device);
+   n_rings = libinput_device_tablet_pad_get_num_rings (libinput_device);
+   n_strips = libinput_device_tablet_pad_get_num_strips (libinput_device);
++#ifdef HAVE_LIBINPUT_1_26
+   n_dials = libinput_device_tablet_pad_get_num_dials (libinput_device);
++#endif
+   n_groups = libinput_device_tablet_pad_get_num_mode_groups (libinput_device);
+   n_buttons = libinput_device_tablet_pad_get_num_buttons (libinput_device);
+ 
+@@ -296,6 +301,7 @@ update_pad_features (MetaInputDeviceNative *device_native)
+             g_array_append_val (device_native->pad_features, feature);
+         }
+ 
++#ifdef HAVE_LIBINPUT_1_26
+       for (j = 0; j < n_dials; j++)
+         {
+           PadFeature feature = { CLUTTER_PAD_FEATURE_DIAL, j, i };
+@@ -303,9 +309,36 @@ update_pad_features (MetaInputDeviceNative *device_native)
+           if (libinput_tablet_pad_mode_group_has_dial (mode_group, j))
+             g_array_append_val (device_native->pad_features, feature);
+         }
++#endif
+     }
+ }
+ 
++#ifndef HAVE_LIBINPUT_1_26
++/* libinput 1.25 has no libinput_device_get_id_bustype(). Read the bus
++ * type from the kernel input device, which is where libinput reads it. */
++static unsigned int
++get_id_bustype (struct libinput_device *ldev)
++{
++  struct udev_device *udev_device;
++  struct udev_device *parent;
++  const char *value;
++  unsigned int bustype = 0;
++
++  udev_device = libinput_device_get_udev_device (ldev);
++  if (!udev_device)
++    return 0;
++
++  parent = udev_device_get_parent (udev_device);
++  value = parent ? udev_device_get_sysattr_value (parent, "id/bustype") : NULL;
++  if (value)
++    bustype = (unsigned int) g_ascii_strtoull (value, NULL, 16);
++
++  udev_device_unref (udev_device);
++
++  return bustype;
++}
++#endif
++
+ static ClutterInputDeviceType
+ determine_device_type (struct libinput_device *ldev)
+ {
+@@ -407,7 +440,11 @@ meta_input_device_native_new_in_impl (MetaSeatImpl           *seat_impl,
+   type = determine_device_type (libinput_device);
+   vendor = libinput_device_get_id_vendor (libinput_device);
+   product = libinput_device_get_id_product (libinput_device);
++#ifdef HAVE_LIBINPUT_1_26
+   bustype = libinput_device_get_id_bustype (libinput_device);
++#else
++  bustype = get_id_bustype (libinput_device);
++#endif
+   node_path = g_strdup_printf ("/dev/input/%s", libinput_device_get_sysname (libinput_device));
+ 
+   if (libinput_device_has_capability (libinput_device,
+@@ -415,7 +452,9 @@ meta_input_device_native_new_in_impl (MetaSeatImpl           *seat_impl,
+     {
+       n_rings = libinput_device_tablet_pad_get_num_rings (libinput_device);
+       n_strips = libinput_device_tablet_pad_get_num_strips (libinput_device);
++#ifdef HAVE_LIBINPUT_1_26
+       n_dials = libinput_device_tablet_pad_get_num_dials (libinput_device);
++#endif
+       n_groups = libinput_device_tablet_pad_get_num_mode_groups (libinput_device);
+       n_buttons = libinput_device_tablet_pad_get_num_buttons (libinput_device);
+     }
+diff --git a/src/backends/native/meta-input-device-tool-native.c b/src/backends/native/meta-input-device-tool-native.c
+index 500275efd..5d237d725 100644
+--- a/src/backends/native/meta-input-device-tool-native.c
++++ b/src/backends/native/meta-input-device-tool-native.c
+@@ -155,7 +155,9 @@ meta_input_device_tool_native_set_pressure_curve_in_impl (ClutterInputDeviceTool
+       init_pressurecurve (evdev_tool);
+     }
+ 
++#ifdef HAVE_LIBINPUT_1_26
+   libinput_tablet_tool_config_pressure_range_set (evdev_tool->tool, range[0], range[1]);
++#endif
+ }
+ 
+ void
+diff --git a/src/backends/native/meta-input-settings-native.c b/src/backends/native/meta-input-settings-native.c
+index 27645ec85..4250e2fb7 100644
+--- a/src/backends/native/meta-input-settings-native.c
++++ b/src/backends/native/meta-input-settings-native.c
+@@ -252,7 +252,11 @@ meta_input_settings_native_set_tap_and_drag_lock_enabled (MetaInputSettings  *se
+   if (libinput_device_config_tap_get_finger_count (libinput_device) > 0)
+     libinput_device_config_tap_set_drag_lock_enabled (libinput_device,
+                                                       enabled ?
++#ifdef HAVE_LIBINPUT_STICKY_DRAG_LOCK
+                                                       LIBINPUT_CONFIG_DRAG_LOCK_ENABLED_STICKY :
++#else
++                                                      LIBINPUT_CONFIG_DRAG_LOCK_ENABLED :
++#endif
+                                                       LIBINPUT_CONFIG_DRAG_LOCK_DISABLED);
+ }
+ 
+diff --git a/src/backends/native/meta-seat-impl.c b/src/backends/native/meta-seat-impl.c
+index d3cfd4310..30ea0213e 100644
+--- a/src/backends/native/meta-seat-impl.c
++++ b/src/backends/native/meta-seat-impl.c
+@@ -1859,6 +1859,7 @@ notify_pad_ring (ClutterInputDevice *input_device,
+   queue_event (seat_impl, event);
+ }
+ 
++#ifdef HAVE_LIBINPUT_1_26
+ static void
+ notify_pad_dial (ClutterInputDevice *input_device,
+                  uint64_t            time_us,
+@@ -1882,6 +1883,7 @@ notify_pad_dial (ClutterInputDevice *input_device,
+ 
+   queue_event (seat_impl, event);
+ }
++#endif /* HAVE_LIBINPUT_1_26 */
+ 
+ static gboolean
+ has_touchscreen (MetaSeatImpl *seat_impl)
+@@ -2901,6 +2903,7 @@ process_device_event (MetaSeatImpl          *seat_impl,
+         notify_pad_ring (device, time, number, source, group, mode, angle);
+         break;
+       }
++#ifdef HAVE_LIBINPUT_1_26
+     case LIBINPUT_EVENT_TABLET_PAD_DIAL:
+       {
+         uint64_t time;
+@@ -2922,6 +2925,7 @@ process_device_event (MetaSeatImpl          *seat_impl,
+         notify_pad_dial (device, time, number, group, mode, delta);
+         break;
+       }
++#endif /* HAVE_LIBINPUT_1_26 */
+     case LIBINPUT_EVENT_SWITCH_TOGGLE:
+       {
+         struct libinput_event_switch *switch_event =

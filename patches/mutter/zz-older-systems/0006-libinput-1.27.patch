@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 2 Nov 2026 22:49:09 +0000
+Subject: [PATCH] native: accept libinput 1.27
+
+Fedora 41 ships libinput 1.27.1 and Alpine 3.21 ships 1.27.0. With the
+eraser button (1.29) and plugin system (1.30) calls behind the checks
+of the earlier patch, the code needs no libinput API newer than 1.26: a
+build on Fedora 41 imports symbols up to the LIBINPUT_1.26 node only.
+
+Nothing is lost compared with libinput 1.28.
+
+diff --git a/meson.build b/meson.build
+index 4fcd43c13..6c668d9da 100644
+--- a/meson.build
++++ b/meson.build
+@@ -50,7 +50,7 @@ wayland_server_req = '>= 1.23'
+ wayland_protocols_req = '>= 1.44'
+ 
+ # native backend version requirements
+-libinput_req = '>= 1.28.0'
++libinput_req = '>= 1.27.0'
+ gbm_req = '>= 21.3'
+ libdrm_req = '>= 2.4.118'
+ 

@@ -15,11 +15,38 @@ if not VERSION:
 ARCH = arg("ARCH", host()["arch"])
 LIBC = arg("LIBC", "glibc")
 
-# The revision of one version, for a packaging fix that does not change the version. It starts at 1 for each version.
-RELEASE = arg("RELEASE", "1")
+# The Fedora release that the prefix was built on, which is the one the Fedora packages are for. The libraries and the
+# glibc symbol versions in the programs come from that release, so the rpm asks for what that release has. It is empty
+# for a run that writes no Fedora package.
+FEDORA = arg("FEDORA", "")
 
-# The Fedora release that the prefix was built on, which is the one the Fedora packages are for.
-FEDORA = arg("FEDORA", "45")
+# Which packages this run writes: "fedora" is the rpm for FEDORA only, "other" is everything except the Fedora rpm, and
+# "all" is both. scripts/build-packages.sh runs the Fedora lane once for each Fedora prefix and the other lane once, from
+# the prefix that the deb, Arch, tar and openSUSE packages come from. "deb" is the deb only, from a prefix built on a
+# Debian or Ubuntu release, and "opensuse" is the openSUSE rpm only, from a prefix built on an openSUSE Leap release:
+# such a prefix links the sonames of its release, which the other systems may not have.
+LANES = arg("LANES", "all")
+if LANES not in ["all", "fedora", "other", "deb", "opensuse"]:
+    fail("LANES is " + LANES + ", which is not all, fedora, other, deb or opensuse.")
+if LANES not in ["other", "deb", "opensuse"] and not FEDORA.isdigit():
+    fail("FEDORA is missing. Pass --build-arg FEDORA=43, or run scripts/build-packages.sh, which takes --fedora.")
+
+# The Debian or Ubuntu release that built the prefix of the deb lane, such as deb13 or ubuntu26.04. It goes into the
+# revision of every deb of that lane (1~deb13), so those files never take the name of a deb from the shared prefix, and
+# they sort before it.
+DEB_RELEASE = arg("DEB_RELEASE", "")
+if LANES == "deb" and not DEB_RELEASE:
+    fail("DEB_RELEASE is missing. The deb lane needs the release that built the prefix, such as deb13.")
+DEB_SUFFIX = "~" + DEB_RELEASE if LANES == "deb" else ""
+
+# The openSUSE release that built the prefix of the openSUSE lane, such as leap16.0. It names the rpm of that lane
+# (1.leap16.0), as .fc43 names a Fedora rpm. The shared openSUSE rpm is for Tumbleweed (1.tumbleweed).
+OPENSUSE_RELEASE = arg("OPENSUSE_RELEASE", "")
+if LANES == "opensuse" and not OPENSUSE_RELEASE:
+    fail("OPENSUSE_RELEASE is missing. The openSUSE lane needs the release that built the prefix, such as leap16.0.")
+
+# The revision of one version, for a packaging fix that does not change the version. It starts at 1 for each version.
+RELEASE = arg("RELEASE", "1") + DEB_SUFFIX
 
 # Every package of this repository carries epoch 1 in the formats that have one, as the Fedora packages always did.
 # A higher epoch makes the packages of the new build system upgrade the ones that the old recipes made, whatever
@@ -32,6 +59,36 @@ FORMATS = {
     "glibc": ["rpm", "deb", "archlinux", "tar"],
     "musl": ["apk"],
 }[LIBC]
+
+def lanes():
+    """The (format, distro) pairs that this run writes. Fedora and openSUSE are two rpm lanes, the other formats have one."""
+    result = []
+    for fmt in FORMATS:
+        if LANES == "deb":
+            if fmt == "deb":
+                result.append(("deb", None))
+        elif LANES == "opensuse":
+            if fmt == "rpm":
+                result.append(("rpm", "opensuse"))
+        elif fmt == "rpm":
+            if LANES != "other":
+                result.append(("rpm", "fedora"))
+            if LANES != "fedora":
+                result.append(("rpm", "opensuse"))
+        elif LANES != "fedora":
+            result.append((fmt, None))
+    if not result:
+        fail("LANES=" + LANES + " writes nothing for a " + LIBC + " prefix.")
+    return result
+
+def release_for(distro, number):
+    """The release field of a package: 1.fc43 for the Fedora rpm, 1.leap16.0 for the rpm of the openSUSE lane,
+    1.tumbleweed for the shared openSUSE rpm, and the number alone for the other formats."""
+    if distro == "fedora":
+        return str(number) + ".fc" + FEDORA
+    if distro == "opensuse":
+        return str(number) + "." + (OPENSUSE_RELEASE if LANES == "opensuse" else "tumbleweed")
+    return str(number)
 
 def _is_commit(text):
     # A short or long Git hash, written with a leading g: gabc1234.
@@ -62,7 +119,27 @@ def numeric_release(version):
     """An increasing whole number for each Gnoblin release: 0.1.13 is 1013, 0.2.0 is 2000, 1.0.0 is 1000000.
 
     The portal backend keeps the version of its GNOME source (51.0.0), so its release number is what tells one Gnoblin
-    release from the next. The stable repository refuses two packages with one version.
+    release from the next. The stable repository refuses two packages with one version. The deb lane adds DEB_SUFFIX.
     """
     core = version.split("-", 1)[0].split(".")
-    return int(core[0]) * 1000000 + int(core[1]) * 1000 + int(core[2])
+    return str(int(core[0]) * 1000000 + int(core[1]) * 1000 + int(core[2])) + DEB_SUFFIX
+
+# Debian policy wants the licence of every deb in /usr/share/doc/<package>/copyright, in the machine-readable format
+# (DEP-5). The other formats name the licence in their metadata. pkgsmith/copyright/ holds one file for each licence
+# that a Gnoblin package has, and every package of these scripts goes through gnoblin_package, so every deb gets it.
+COPYRIGHT_FILES = {
+    "GPL-2.0-or-later": "copyright/gnoblin",
+    "LGPL-2.1-or-later": "copyright/xdg-desktop-portal-gnoblin",
+}
+
+# A script that keeps only some paths with include() must keep the copyright file of the deb as well.
+DEB_COPYRIGHT = "/usr/share/doc/*/copyright"
+
+def gnoblin_package(fmt, contents = [], **fields):
+    """package(), and for a deb the copyright file of the package's licence."""
+    if fmt == "deb":
+        notice = COPYRIGHT_FILES.get(fields["license"])
+        if not notice:
+            fail("no copyright file for the licence " + fields["license"] + " in pkgsmith/copyright/")
+        contents = contents + [file(here() + "/" + notice, "/usr/share/doc/" + fields["name"] + "/copyright", mode = "0644")]
+    package(fmt, contents = contents, **fields)

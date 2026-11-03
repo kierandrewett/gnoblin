@@ -10,12 +10,15 @@
 # ~/.cache/gnoblin/pkgsmith. Run the result with PATH="$(scripts/install-pkgsmith.sh):$PATH" pkgsmith plan.
 #
 # Needs git and a Rust toolchain (cargo). To move to a newer pkgsmith, write its commit into scripts/pkgsmith.ref.
+#
+# GNOBLIN_PKGSMITH_REF, when set, is a 40-digit commit that replaces the pin for this run only, to try a pkgsmith fix
+# before the pin moves. CI never sets it, and a report made with it says so (scripts/run-package-tests.sh).
 set -euo pipefail
 
 root="$(cd -- "$(dirname -- "$0")/.." && pwd)"
-ref="$(tr -d '[:space:]' <"$root/scripts/pkgsmith.ref")"
+ref="${GNOBLIN_PKGSMITH_REF:-$(tr -d '[:space:]' <"$root/scripts/pkgsmith.ref")}"
 [[ "$ref" =~ ^[0-9a-f]{40}$ ]] || {
-    echo "[pkgsmith] scripts/pkgsmith.ref must hold a 40-digit commit, not: $ref" >&2
+    echo "[pkgsmith] scripts/pkgsmith.ref or GNOBLIN_PKGSMITH_REF must hold a 40-digit commit, not: $ref" >&2
     exit 1
 }
 dir="${XDG_CACHE_HOME:-$HOME/.cache}/gnoblin/pkgsmith"

@@ -130,6 +130,9 @@ static void on_delete_surrounding_text(IBusInputContext* context, int offset, gu
     clutter_input_method_delete_surrounding(CLUTTER_INPUT_METHOD(self), offset, n_chars);
 }
 
+/* IBus added the preedit hint attribute type and its values in 1.5.33. An older IBus sends only
+ * explicit style attributes, which are not mapped, so the preedit then has no hints. */
+#if IBUS_CHECK_VERSION(1, 5, 33)
 static ClutterPreeditStyleHint preedit_hint_from_ibus(guint value, gboolean* known) {
     *known = TRUE;
     switch (value) {
@@ -154,13 +157,16 @@ static ClutterPreeditStyleHint preedit_hint_from_ibus(guint value, gboolean* kno
         return CLUTTER_PREEDIT_STYLE_NONE;
     }
 }
+#endif
 
 static void store_preedit_attributes(GnoblinIbusInputMethod* self, IBusText* text) {
-    IBusAttrList* list = ibus_text_get_attributes(text);
     GArray* attributes = g_array_new(FALSE, FALSE, sizeof(ClutterPreeditAttribute));
 
     g_clear_pointer(&self->preedit_attributes, g_free);
     self->n_preedit_attributes = 0;
+
+#if IBUS_CHECK_VERSION(1, 5, 33)
+    IBusAttrList* list = ibus_text_get_attributes(text);
 
     for (guint i = 0; list; i++) {
         IBusAttribute* attribute = ibus_attr_list_get(list, i);
@@ -182,6 +188,9 @@ static void store_preedit_attributes(GnoblinIbusInputMethod* self, IBusText* tex
         converted.end = ibus_attribute_get_end_index(attribute);
         g_array_append_val(attributes, converted);
     }
+#else
+    (void)text;
+#endif
 
     self->n_preedit_attributes = attributes->len;
     self->preedit_attributes = (ClutterPreeditAttribute*)g_array_free(attributes, FALSE);
@@ -270,7 +279,9 @@ static void on_context_created(GObject* source, GAsyncResult* result, gpointer u
 
     self->context = context;
     ibus_input_context_set_client_commit_preedit(context, TRUE);
+#if IBUS_CHECK_VERSION(1, 5, 33)
     ibus_input_context_set_preedit_format(context, IBUS_PREEDIT_FORMAT_HINT);
+#endif
     g_signal_connect(context, "commit-text", G_CALLBACK(on_commit_text), self);
     g_signal_connect(context, "delete-surrounding-text", G_CALLBACK(on_delete_surrounding_text),
                      self);

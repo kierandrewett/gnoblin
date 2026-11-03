@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] build: accept IBus 1.5.29
+
+Ubuntu 24.04 ships IBus 1.5.29. The Gnoblin IBus input method in
+src/input/method maps preedit hints, which IBus 1.5.33 added, and leaves
+that code out with an older IBus. Without this change the build silently
+left the IBus input method out on Ubuntu 24.04.
+
+Nothing is lost compared with IBus 1.5.31: below 1.5.33 the preedit has
+no hint styles.
+
+---
+diff --git a/meson.build b/meson.build
+index fd7f84b70..8613f9da2 100644
+--- a/meson.build
++++ b/meson.build
+@@ -122,7 +122,7 @@ hyprcursor_dep = dependency('hyprcursor', version: '>= 0.1.11', required: get_op
+ have_hyprcursor = hyprcursor_dep.found()
+ if have_hyprcursor
+ endif
+-ibus_dep = dependency('ibus-1.0', version: '>= 1.5.31', required: get_option('ibus'))
++ibus_dep = dependency('ibus-1.0', version: '>= 1.5.29', required: get_option('ibus'))
+ have_ibus = ibus_dep.found()
+ pixman_dep = dependency('pixman-1', version: pixman_req)
+ gsettings_desktop_schemas_dep = dependency('gsettings-desktop-schemas',

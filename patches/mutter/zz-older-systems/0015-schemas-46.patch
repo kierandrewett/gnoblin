@@ -1,0 +1,140 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: kierandrewett <kieran@drewett.dev>
+Date: Mon, 14 Sep 2026 16:33:21 +0200
+Subject: [PATCH] input-settings: build against gsettings-desktop-schemas 46.1
+
+Ubuntu 24.04 ships gsettings-desktop-schemas 46.1. Its headers have no
+switch-monitor and keybinding stylus button actions, and its schema has
+no pressure-range, eraser-pressure-range and button keybinding keys.
+
+Define the two enum values with the values of 47 when the header lacks
+them. The GSettings keys cannot hold them, but the Gnoblin Lua
+configuration can, so these actions still work from there.
+
+GSettings aborts the process when code reads a key that the schema does
+not have. Read the pressure range keys and the button keybinding keys
+only when the schema has them. Without the keys the pressure range is
+the full range, which is the default value of the keys, and a keybinding
+action has no keybinding unless the Lua configuration names one.
+
+---
+diff --git a/config.h.meson b/config.h.meson
+index d4d581bbb..7a317ad12 100644
+--- a/config.h.meson
++++ b/config.h.meson
+@@ -135,6 +135,9 @@
+ /* Whether libinput has the disable-while-typing timeout (1.31) */
+ #mesondefine HAVE_LIBINPUT_DWT_TIMEOUT
+ 
++/* Whether gsettings-desktop-schemas has the stylus switch-monitor and keybinding actions (47) */
++#mesondefine HAVE_GDESKTOP_STYLUS_BUTTON_ACTION_KEYBINDING
++
+ /* Whether libinput has pad dials, the device bus type and the tool pressure range (1.26) */
+ #mesondefine HAVE_LIBINPUT_1_26
+ 
+diff --git a/meson.build b/meson.build
+index f5c45eee7..c8059cb5d 100644
+--- a/meson.build
++++ b/meson.build
+@@ -25,7 +25,7 @@ pango_req = '>= 1.46.0'
+ cairo_req = '>= 1.10.0'
+ pangocairo_req = '>= 1.20'
+ pixman_req = '>= 0.42'
+-gsettings_desktop_schemas_req = '>= 47.1'
++gsettings_desktop_schemas_req = '>= 46.1'
+ x11_req = '>= 1.7.0'
+ xcomposite_req = '>= 0.4'
+ xkbcommon_req = '>= 0.4.3'
+@@ -587,6 +587,10 @@ cdata.set('HAVE_DEVKIT', have_devkit)
+ cdata.set('HAVE_GNOME_DESKTOP', have_gnome_desktop)
+ cdata.set('HAVE_SOUND_PLAYER', have_sound_player)
+ cdata.set('HAVE_LIBINPUT_DWT_TIMEOUT', have_libinput_dwt_timeout)
++cdata.set('HAVE_GDESKTOP_STYLUS_BUTTON_ACTION_KEYBINDING',
++  cc.has_header_symbol('gdesktop-enums.h',
++    'G_DESKTOP_STYLUS_BUTTON_ACTION_KEYBINDING',
++    dependencies: gsettings_desktop_schemas_dep))
+ cdata.set('HAVE_LIBINPUT_1_26', have_libinput_1_26)
+ cdata.set('HAVE_LIBINPUT_STICKY_DRAG_LOCK', have_libinput_sticky_drag_lock)
+ cdata.set('HAVE_LIBINPUT_ERASER_BUTTON', have_libinput_eraser_button)
+diff --git a/src/backends/meta-input-settings-private.h b/src/backends/meta-input-settings-private.h
+index 738be65f2..1518bade2 100644
+--- a/src/backends/meta-input-settings-private.h
++++ b/src/backends/meta-input-settings-private.h
+@@ -23,6 +23,14 @@
+ 
+ #include <gdesktop-enums.h>
+ 
++#ifndef HAVE_GDESKTOP_STYLUS_BUTTON_ACTION_KEYBINDING
++/* gsettings-desktop-schemas 46 has neither value. The GSettings keys
++ * cannot hold them, but the Gnoblin Lua configuration can. These are
++ * the values of gsettings-desktop-schemas 47. */
++#define G_DESKTOP_STYLUS_BUTTON_ACTION_SWITCH_MONITOR ((GDesktopStylusButtonAction) 5)
++#define G_DESKTOP_STYLUS_BUTTON_ACTION_KEYBINDING ((GDesktopStylusButtonAction) 6)
++#endif
++
+ #ifdef HAVE_LIBWACOM
+ #include <libwacom/libwacom.h>
+ #endif
+diff --git a/src/backends/meta-input-settings.c b/src/backends/meta-input-settings.c
+index 1e7ef1459..813fe86df 100644
+--- a/src/backends/meta-input-settings.c
++++ b/src/backends/meta-input-settings.c
+@@ -2083,6 +2083,7 @@ update_stylus_pressure (MetaInputSettings      *input_settings,
+   GSettings *tool_settings;
+   const gint32 *curve;
+   const guint32 *percent;
++  const char *range_key;
+   gdouble range[2];
+   GVariant *variant;
+   gsize n_elems;
+@@ -2106,18 +2107,28 @@ update_stylus_pressure (MetaInputSettings      *input_settings,
+   if (n_elems != 4)
+     return;
+ 
+-  if (clutter_input_device_tool_get_tool_type (tool) ==
+-      CLUTTER_INPUT_DEVICE_TOOL_ERASER)
+-    variant = g_settings_get_value (tool_settings, "eraser-pressure-range");
+-  else
+-    variant = g_settings_get_value (tool_settings, "pressure-range");
++  range_key = clutter_input_device_tool_get_tool_type (tool) ==
++              CLUTTER_INPUT_DEVICE_TOOL_ERASER ?
++              "eraser-pressure-range" : "pressure-range";
+ 
+-  percent = g_variant_get_fixed_array (variant, &n_elems, sizeof (guint32));
+-  if (n_elems != 2)
+-    return;
++  /* gsettings-desktop-schemas 46 has no pressure range keys: use the
++   * full range, which is their default value. */
++  if (input_settings_has_key (input_settings, tool_settings, range_key))
++    {
++      variant = g_settings_get_value (tool_settings, range_key);
+ 
+-  range[0] = CLAMP (percent[0] / 100.0, 0.0, 1.0);
+-  range[1] = CLAMP (percent[1] / 100.0, 0.0, 1.0);
++      percent = g_variant_get_fixed_array (variant, &n_elems, sizeof (guint32));
++      if (n_elems != 2)
++        return;
++
++      range[0] = CLAMP (percent[0] / 100.0, 0.0, 1.0);
++      range[1] = CLAMP (percent[1] / 100.0, 0.0, 1.0);
++    }
++  else
++    {
++      range[0] = 0.0;
++      range[1] = 1.0;
++    }
+ 
+   if (range[0] >= range[1])
+     return;
+@@ -2742,8 +2753,10 @@ meta_input_settings_get_tool_button_action (MetaInputSettings       *input_setti
+           GVariant *binding = gnoblin_setting (input_settings, settings, binding_key);
+           if (binding && g_variant_is_of_type (binding, G_VARIANT_TYPE_STRING))
+             *keybinding = g_variant_dup_string (binding, NULL);
+-          else
++          else if (input_settings_has_key (input_settings, settings, binding_key))
+             *keybinding = g_settings_get_string (settings, binding_key);
++          else
++            *keybinding = g_strdup ("");
+           g_clear_pointer (&binding, g_variant_unref);
+         }
+     }
